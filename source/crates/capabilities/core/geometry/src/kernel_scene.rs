@@ -54,7 +54,8 @@ impl Density {
 }
 
 impl KernelScene {
-    /// The units of a kernel case: the count design 04 sets for an RTS battle.
+    /// The units of a kernel case: the count of a large Zero Hour battle (02-engine-core.md, Atomic
+    /// and integration cases).
     pub const UNITS: usize = 1000;
 
     pub fn new(seed: u64) -> Self {

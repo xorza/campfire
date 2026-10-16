@@ -8,9 +8,9 @@ use campfire_values::Team;
 use serde::{Deserialize, Serialize};
 
 /// Marks a player whose slot a player or a bot held as the match started, on its entity, which
-/// spawns with it: a slot open then has none, so a mode places nothing for it, as Zero Hour
-/// places no start for an empty slot (design 19, D1). A join or a leave after the start changes
-/// it not; the mode hears those by their hooks.
+/// spawns with it: a slot open then has none, so a mode places nothing for it, as Zero Hour places
+/// no start for an empty slot (12-zero-hour.md, Eight teams of one). A join or a leave after the
+/// start changes it not; the mode hears those by their hooks.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 pub struct Seated;

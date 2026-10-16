@@ -4,7 +4,7 @@ use campfire_geometry::{Bounds, Grid, Metric, Polygon};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{PathEnd, Wall};
 use campfire_sim::Position;
-use campfire_units::Layer;
+use campfire_units::{CellSplit, CoarseSpan, Layer};
 use campfire_values::{DeclaredName, Names};
 use serde::{Deserialize, Serialize};
 
@@ -13,15 +13,20 @@ use crate::map_point::MapPoint;
 use crate::mode_data::ModeParam;
 use crate::region_data::RegionData;
 
-/// One of the mode's maps, `map/<name>/map.toml`: its metric, its bounds, its grids, its paths,
-/// the units placed on it from the start, and its markers. It writes as it reads, but a field at
-/// the value its read takes when the field is left out, which it leaves out.
+/// One of the mode's maps, `map/<name>/map.toml`: its metric, its bounds, how the sim reads its
+/// ground, its grids, its paths, the units placed on it from the start, and its markers. It writes
+/// as it reads, but a field at the value its read takes when the field is left out, which it leaves
+/// out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapData {
     #[serde(default, skip_serializing_if = "is_default")]
     pub metric: Metric,
     pub bounds: Bounds,
+    /// How the sim reads the map's height grid, `map/<name>/heights.bin`, which a map of this
+    /// section has.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ground: Option<GroundData>,
     /// The cells vision reveals, over the bounds; a mode that declares `vision` has one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub grid: Option<GridData>,
@@ -36,6 +41,18 @@ pub struct MapData {
     pub units: Vec<PlacedUnitData>,
     #[serde(default, skip_serializing_if = "is_default")]
     pub markers: Vec<MarkerData>,
+}
+
+/// A map's `[ground]` (20-zero-hour-projectiles.md, The sim's ground is the map's height grid): the
+/// diagonal each cell of its height grid splits on, and its coarse cells, the grid's own when it
+/// names none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GroundData {
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub split: CellSplit,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub high: Option<CoarseSpan>,
 }
 
 /// A map's `[grid]`: the size of the square cells vision reveals, in meters, and its brush.
@@ -277,6 +294,7 @@ pub(crate) mod internals {
             Self {
                 metric: Metric::Planar,
                 bounds,
+                ground: None,
                 grid: None,
                 navigation: None,
                 paths: Vec::new(),

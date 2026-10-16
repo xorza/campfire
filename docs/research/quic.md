@@ -1,6 +1,6 @@
 # QUIC — research
 
-What a transport of QUIC alone under Lightyear can be built from, read from the crates' sources and documentation, for [design 15](../design/15-quic-transport.md). Facts only: what the design takes from them is design 15's. Read on 11 October 2026; the crates are the versions in `source/Cargo.lock` on that day, Lightyear at the patched revision `9c2d69b`.
+What a transport of QUIC alone under Lightyear can be built from, read from the crates' sources and documentation, for [QUIC transport](../design/15-quic-transport.md). Facts only: what the design takes from them is its own. Read on 11 October 2026; the crates are the versions in `source/Cargo.lock` on that day, Lightyear at the patched revision `9c2d69b`.
 
 ## The build before the transport
 

@@ -2,7 +2,7 @@ use campfire_declare::CapabilitySet;
 use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_sim::TickRate;
 use campfire_stats::StatId;
-use campfire_units::ScriptBook;
+use campfire_units::{HeightGrid, ScriptBook};
 use campfire_values::{DeclaredName, PackagePath, Speed};
 
 use crate::books::package_content::PackageContent;
@@ -15,6 +15,8 @@ use crate::books::unit_type_data::UnitTypeData;
 pub struct BookInput<'a> {
     pub data: &'a ModeData,
     pub map: &'a MapData,
+    /// The map's height grid, when it has one.
+    pub heights: Option<&'a HeightGrid>,
     /// The playing teams, in the manifest's order.
     pub teams: &'a [TeamManifest],
     pub max_move_speed: Speed,

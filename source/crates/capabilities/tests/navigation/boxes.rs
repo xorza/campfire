@@ -187,10 +187,10 @@ fn a_dash_at_a_box_ends_touching_it() {
 fn a_placed_box_lies_within_the_bounds_and_may_overlap_the_walls_and_the_bodies_that_stand() {
     // Boxes of 2 by 2 m, a tower of 0.9 m at (5, 2), and a building from (6, 0) to (8, 1), in the
     // corridor from (0, 0) to (10, 4). A box at (3, 2) clears the tower; one at (4.2, 2) overlaps
-    // it, and loads, as the bodies block alike (design 17, D5). One at (7, 1.5) overlaps the
-    // building's wall, and loads too, as one at (7, 2.5) does. One at (9.5, 2) reaches past the
-    // bounds, and is refused. Two side by side at (1, 2) and (3, 2) touch, and two at (1, 2) and
-    // (2.5, 2) overlap: both load.
+    // it, and loads, as the bodies block alike (04-capabilities/navigation.md, Placed obstacles may
+    // overlap). One at (7, 1.5) overlaps the building's wall, and loads too, as one at (7, 2.5)
+    // does. One at (9.5, 2) reaches past the bounds, and is refused. Two side by side at (1, 2) and
+    // (3, 2) touch, and two at (1, 2) and (2.5, 2) overlap: both load.
     let point = MapPoint::ground;
     let rules = ModeNavigationData::default();
     let body_of = |unit_type: &str| match unit_type {

@@ -125,12 +125,12 @@ impl ParamTable {
         }
     }
 
-    /// The param at `at` of run `run` at `rank`, a scaling table's of `source`: `base + per_level
-    /// × (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − the type's value)`: each stat
-    /// stopped at the range of a number, each product of a ratio rounded to nearest, the sum
-    /// exact, and at the end of the range of numbers when past it, so products past the range
-    /// still cancel (design 09, D11); with no source, level 1 and stats of 0. Each param holds
-    /// `rank`, as the load or the call checked.
+    /// The param at `at` of run `run` at `rank`, a scaling table's of `source`: `base + per_level ×
+    /// (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − the type's value)`: each stat stopped
+    /// at the range of a number, each product of a ratio rounded to nearest, the sum exact, and at
+    /// the end of the range of numbers when past it, so products past the range still cancel
+    /// (09-determinism-core.md, A compound value is a chain of rounded steps); with no source,
+    /// level 1 and stats of 0. Each param holds `rank`, as the load or the call checked.
     pub fn value(
         &self,
         run: usize,

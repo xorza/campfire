@@ -68,11 +68,12 @@ pub(crate) struct ModeImport<'a> {
 
 /// The imported package's mode data: its name and its teams' names, the rules package's mode
 /// script, the player resource `money`, the stats its unit types drive by and the life they live
-/// by, the pool of that life, its combat of the game's damage types and armors, the tag of
-/// victory, the markers its players start at, the state `ended` by which its script ends the
-/// match once, its params of what each starts with, `start` (design 17, D6), and the money
-/// `start_money`; the slot kinds `weapon` and `command`, the weapons of `combat` (design 19) and
-/// the trains and builds of `production` (design 18).
+/// by, the pool of that life, its combat of the game's damage types and armors, the tag of victory,
+/// the markers its players start at, the state `ended` by which its script ends the match once, its
+/// params of what each starts with, `start` (12-zero-hour.md, A skirmish starts with the faction's
+/// start objects), and the money `start_money`; the slot kinds `weapon` and `command`, the weapons
+/// of `combat` (12-zero-hour.md) and the trains and builds of `production`
+/// (04-capabilities/production.md).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {
         start,

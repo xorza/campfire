@@ -10,8 +10,9 @@ const WAN_SERVICES: [&str; 3] = [
     "urn:schemas-upnp-org:service:WANIPConnection:2",
 ];
 
-/// What a router's device description says of its WAN connection service (design 15, D12): its
-/// type, its control URL and its service schema's, both at the description's address.
+/// What a router's device description says of its WAN connection service (15-quic-transport.md, A
+/// server maps its own port): its type, its control URL and its service schema's, both at the
+/// description's address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RouterDescription {
     service_type: String,

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::entity_kinds::EntityKinds;
 
 /// The entity of a player slot, of the slot's named id, which holds the player's state that
-/// clients receive (design 14, D7).
+/// clients receive (14-replication-audiences.md, The match and each player are entities).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable, on_add = EntityKinds::one)]
 #[serde(transparent)]

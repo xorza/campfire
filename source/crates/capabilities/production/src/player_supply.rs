@@ -19,10 +19,10 @@ use crate::supply_book::SupplyBook;
 use crate::supply_cost_book::SupplyCostBook;
 use crate::train_queue::TrainQueue;
 
-/// A player's supply, on its entity, as its kind's audience sees it (design 14, D7): what its
-/// living units and queued trains use, and its cap. The server derives it as each tick ends,
-/// as a train counts it, and sends it on each change: a client holds only the units it sees, and
-/// no hash or snapshot holds it.
+/// A player's supply, on its entity, as its kind's audience sees it (14-replication-audiences.md,
+/// The match and each player are entities): what its living units and queued trains use, and its
+/// cap. The server derives it as each tick ends, as a train counts it, and sends it on each change:
+/// a client holds only the units it sees, and no hash or snapshot holds it.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlayerSupply {
     used: u64,

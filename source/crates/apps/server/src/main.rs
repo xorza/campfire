@@ -128,7 +128,7 @@ fn run() -> Result<ExitCode, StartError> {
     app.world_mut().trigger(Start { entity: server });
     let exit = app.run();
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP
-    // request's 10 s, which no client waits for (design 15, D12).
+    // request's 10 s, which no client waits for (15-quic-transport.md, A server maps its own port).
     drop(app);
     drop(port_map);
     Ok(exit_code(exit))
@@ -173,7 +173,7 @@ fn open(
 /// The server's app: its plugins at the rate of the session of `opening`, that session, a
 /// `listening` event logged once its transport listens, and the end once every player left, or at
 /// a signal `stop` caught, with its code, the session left in its journal for the next start to
-/// restore (design 10, Stop).
+/// restore (10-sessions.md, A stop is an exit, not a crash).
 fn server_app(
     opening: Opening,
     data: ServerDir,

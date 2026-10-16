@@ -715,6 +715,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         let layers = &mode_names.layers;
         let input = MapInput {
             map: &files.map,
+            heights: None,
             teams: &files.teams,
             relations,
             layers,

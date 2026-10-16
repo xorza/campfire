@@ -180,7 +180,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     assert_eq!(hero(local.server()), arrived);
     let link = local.link(0);
     // Both ends of a link take a QUIC link's minimum MTU from their spawn, so their fragments
-    // agree whatever IO links them (design 15, D5).
+    // agree whatever IO links them (15-quic-transport.md, A link's minimum MTU is QUIC's datagram).
     let server_link = local.server().world().get::<Link>(link).unwrap();
     assert_eq!(server_link.min_mtu(), LINK_MIN_MTU);
     let client_links: Vec<usize> = local
@@ -385,7 +385,8 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
     assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
     local.step();
     assert_eq!(local.client(0).world().match_end(), Some(end));
-    // A spectator holds the match's entity, and its end with it (design 14, D7).
+    // A spectator holds the match's entity, and its end with it (14-replication-audiences.md, The
+    // match and each player are entities).
     assert_eq!(local.client(spectator).world().match_end(), Some(end));
 
     // After the end neither end moves the hero, and the server's tick still counts on.

@@ -11,7 +11,6 @@ Four pillars all ship:
 3. **Bitcoin and Nostr:** identity, discovery, reputation and optional Lightning payments.
 4. **Imported games:** so close to the original that no player notices a difference.
 
-Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Capabilities](04-capabilities/00-overview.md) · [Games](04-capabilities/games.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [MOBA test content](07-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md) · [Sessions](10-sessions.md) · [RTS foundations](11-rts-foundations.md) · [Zero Hour](12-zero-hour.md) · [Wide bodies, uses, the shop and gravity](13-bodies-uses-shop-gravity.md) · [Replication audiences](14-replication-audiences.md) · [QUIC transport](15-quic-transport.md)
 
 ## Guiding principles
 
@@ -93,7 +92,7 @@ A world is one session: its dungeons are regions of the same sim, which at 1,000
 
 ## Singleplayer and saves
 
-A singleplayer game is a session with one player, on a server that runs as a thread of the client, as Minecraft's integrated server does: one code path for singleplayer, LAN and online play ([Local server](10-sessions.md#local-server)).
+A singleplayer game is a session with one player, on a server that runs as a thread of the client, as Minecraft's integrated server does: one code path for singleplayer, LAN and online play ([Sessions](10-sessions.md#local-server)).
 
 - **Saves.** The player saves when the mode allows; a save is a checkpoint with the log before it, and loading it starts a new segment of the same session ([Saves](02-engine-core.md#saves)).
 - **Newer releases.** A save loads on its release and every later one, through converters each release carries, one way, as Factorio and Minecraft convert old saves.
@@ -117,7 +116,7 @@ No central server list or account system: Nostr provides both.
 - **Reputation:** players and servers publish signed statements after matches, and each player chooses whom to trust. Servers may form groups that share bans, ratings and dispute handling.
 - **Matchmaking** runs on each server.
 
-**The host decides:** which modes, maps and characters are allowed, and whether ownership is enforced; tick rate, player limits, grace period and restore window; whether spectators may watch, how many, and what spectators and players out of play see, within what the mode leaves to it ([Replication audiences](14-replication-audiences.md), D14); the settings each capability leaves to the host, as hitboxes' rewind limit; payment models, prices, caps, stake rules and spectator betting; ranking, matchmaking and plugins. Settings can differ per map or mode.
+**The host decides:** which modes, maps and characters are allowed, and whether ownership is enforced; tick rate, player limits, grace period and restore window; whether spectators may watch, how many, and what spectators and players out of play see, within what the mode leaves to it ([Replication audiences](14-replication-audiences.md)); the settings each capability leaves to the host, as hitboxes' rewind limit; payment models, prices, caps, stake rules and spectator betting; ranking, matchmaking and plugins. Settings can differ per map or mode.
 
 ## Lightning payments
 
@@ -163,7 +162,7 @@ An imported game is one players already know, rebuilt on Campfire's sim: General
 - **Rules as content.** What a game shares with others is a capability; what only it does is Rhai in its rules package, which holds no file of the game and ships with the importer. Only what Rhai cannot match, as a pathfinder, runs natively, behind a backend interface ([Backends](02-engine-core.md#backends)). If a game needs something scripts cannot do and no backend should, the script API is incomplete.
 - **Written from the source.** Importers and rules packages are written from the original's GPL source, under MIT/Apache-2.0; a release that ships them takes a legal check first.
 
-**The MOBA** in `source/packages/test/moba/` is test content that tests and benches play ([MOBA test content](07-moba.md)).
+**The MOBA** in `source/packages/test/moba/` is test content that tests and benches play; its packages are their own description.
 
 ## Milestones
 

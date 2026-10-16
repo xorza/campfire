@@ -219,7 +219,7 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records `spec` as planned: design 08 gives it, and no code runs it yet.
+    /// Records `spec` as planned: the design gives it, and no code runs it yet.
     pub fn plan(&mut self, spec: MemberSpec) -> &mut Self {
         let spec = self.owned(spec);
         self.api.record(ApiMember {

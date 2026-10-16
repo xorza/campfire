@@ -105,7 +105,7 @@ struct Stop(Arc<AtomicBool>);
 
 impl LocalServer {
     /// In-process channels have no TLS session: both ends of a local link take this binding
-    /// (design 15, D11).
+    /// (15-quic-transport.md, The answer binds to the TLS session).
     const BINDING: ChannelBinding = ChannelBinding::new([0; 32]);
 
     /// Opens the local server's data directory and session, and starts its thread. An error when

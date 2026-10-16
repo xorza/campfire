@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 campfire_common::enum_all! {
     /// Why Campfire ends a link, which `quic` carries as an `AppCode` and the peer reads back
-    /// (design 15, D10).
+    /// (15-quic-transport.md, A link's end is a type).
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
     #[repr(u32)]
     pub enum CloseCode {

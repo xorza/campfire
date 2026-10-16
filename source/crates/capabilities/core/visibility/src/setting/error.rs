@@ -3,8 +3,9 @@ use thiserror::Error;
 
 use crate::setting::Setting;
 
-/// Why a mode's `[visibility]`, or a host's setting, does not set a session's visibility (design
-/// 14, D4, D14).
+/// Why a mode's `[visibility]`, or a host's setting, does not set a session's visibility
+/// (14-replication-audiences.md, Each kind has a default audience, and a mode may set it;
+/// 14-replication-audiences.md, Three layers).
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum VisibilityError {
     /// A name that is no setting.

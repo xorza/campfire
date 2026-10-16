@@ -461,16 +461,15 @@ impl SimServer {
             server,
             bots,
         } = restore;
-        let packages = &*packages;
         let terms = restored.log.header().terms.clone();
         // The rules of the packages the server runs now may not admit the terms it ran under.
-        let visibility = SessionRules::of(packages)
+        let visibility = SessionRules::of(&packages)
             .check(&terms)
             .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
         Self::take_terms(world, &terms, visibility);
         let slots = restored.log.slot_count();
         let signer = Signer::new(server.key, server.os.entropy);
-        let snapshots = restored.replay(world, packages, signer, |world| {
+        let snapshots = restored.replay(world, &packages, signer, |world| {
             if world.contains_resource::<TickHashes>() {
                 record_hash(world);
             }

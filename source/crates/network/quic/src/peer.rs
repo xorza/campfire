@@ -10,7 +10,8 @@ use crate::LINK_MIN_MTU;
 use crate::app_code::AppCode;
 use crate::link_binding::LinkBinding;
 
-/// A connection in its endpoint's table, and the link entity that carries it (design 15, D9).
+/// A connection in its endpoint's table, and the link entity that carries it (15-quic-transport.md,
+/// A link's entity is its peer, not its address).
 #[derive(Debug)]
 pub(crate) struct Peer {
     pub(crate) connection: Connection,
@@ -76,7 +77,8 @@ impl Peer {
 
     /// The connection's largest datagram now, while it carries `LINK_MIN_MTU`: a Campfire peer's
     /// always does, and only a peer that gives longer connection ids or a smaller
-    /// `max_datagram_frame_size` makes it less (design 15, D5).
+    /// `max_datagram_frame_size` makes it less (15-quic-transport.md, A link's minimum MTU is
+    /// QUIC's datagram).
     pub(crate) fn link_mtu(&mut self) -> Option<usize> {
         self.connection
             .datagrams()

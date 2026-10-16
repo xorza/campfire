@@ -1,6 +1,6 @@
 //! Importers: each reads a game's install as that game reads it, and writes a package of it, the
-//! same bytes on every machine for one install and one importer release. Zero Hour's is the first,
-//! as design 12 says.
+//! same bytes on every machine for one install and one importer release. Zero Hour's is the first
+//! (12-zero-hour.md, Zero Hour is the first import).
 
 mod gltf;
 mod texture;

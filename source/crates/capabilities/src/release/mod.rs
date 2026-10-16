@@ -382,13 +382,13 @@ pub(crate) mod internals {
     }
 
     impl Release {
-        /// Design 14's D12 for the reads no access names, an exclusive system's, as GGPO's sync
-        /// test checks rollback: `scene` places a scene into a predicting client's match of
-        /// `declared` twice, each unit it does not predict marked `Unpredicted`; in the second,
-        /// those units hold only the state types their audiences send the client. Both run
-        /// `ticks` ticks of alike inputs, so the units the client predicts end alike, and each
-        /// unit it does not predict keeps what it received, unwritten: a read of state the
-        /// client lacks shows as a difference.
+        /// The rule (14-replication-audiences.md, Prediction reads only what its client holds) for
+        /// the reads no access names, an exclusive system's, as GGPO's sync test checks rollback:
+        /// `scene` places a scene into a predicting client's match of `declared` twice, each unit
+        /// it does not predict marked `Unpredicted`; in the second, those units hold only the state
+        /// types their audiences send the client. Both run `ticks` ticks of alike inputs, so the
+        /// units the client predicts end alike, and each unit it does not predict keeps what it
+        /// received, unwritten: a read of state the client lacks shows as a difference.
         pub fn sync_held(declared: &[Capability], ticks: u64, scene: impl Fn(&mut Match)) {
             let set = Self::capability_set(declared).expect("a test declares a valid set");
             let mut worlds = [(); 2].map(|()| {

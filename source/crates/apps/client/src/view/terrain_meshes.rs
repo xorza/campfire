@@ -1,13 +1,15 @@
 use bevy::asset::RenderAssetUsages;
 use bevy::math::{UVec2, Vec2, Vec3, Vec4};
 use bevy::mesh::{Indices, Mesh, PrimitiveTopology};
-use campfire_client_files::{HeightGrid, TerrainQuads};
+use campfire_client_files::TerrainQuads;
+use campfire_units::HeightGrid;
 
 use crate::view::float_num::FloatNum;
 
-/// A terrain file's two meshes over its map's height grid (design 16, D1, D3): the ground, each
-/// cell's quad; and the overlays, in the file's order. Each quad has its own four vertices, at
-/// the grid's samples of its cell's corners, with the sample's normal and the quad's texture
+/// A terrain file's two meshes over its map's height grid (02-engine-core.md, A terrain is quads
+/// over the height grid; 02-engine-core.md, The terrain is lit as every model is): the ground, each
+/// cell's quad; and the overlays, in the file's order. Each quad has its own four vertices, at the
+/// grid's samples of its cell's corners, with the sample's normal and the quad's texture
 /// coordinates as shares of the texture; an overlay's alpha at each corner is its vertices'.
 #[derive(Debug)]
 pub(crate) struct TerrainMeshes {
@@ -37,7 +39,10 @@ impl TerrainMeshes {
     /// The meshes of `quads` over `grid`, whose cells they are, their texture `size` texels at
     /// its first level.
     pub(crate) fn of(quads: &TerrainQuads, size: UVec2, grid: &HeightGrid) -> Self {
-        debug_assert!(quads.fits(grid), "a terrain over the grid's cells");
+        debug_assert!(
+            quads.fits(grid.columns(), grid.rows()),
+            "a terrain over the grid's cells"
+        );
         let samples = Samples::of(grid);
         // A file's texture sides lie far below 2²⁴, exact in an f32.
         let size = size.as_vec2();

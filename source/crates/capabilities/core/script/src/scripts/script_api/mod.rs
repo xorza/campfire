@@ -30,7 +30,7 @@ pub(crate) mod hook_status;
 pub(crate) mod tag_property_status;
 
 /// The script API as the engine binds it: every name a script may use, each recorded by the
-/// call that binds it, or planned, by design 08, and bound by no code yet. The load check and
+/// call that binds it, or planned by the design and bound by no code yet. The load check and
 /// the reference read it; nothing else lists the names.
 #[derive(Debug)]
 pub struct ScriptApi {

@@ -22,11 +22,11 @@ use crate::pointer::Pointer;
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::ViewSystems;
 
-/// Selects the player's own units with the left button (design 17, D7): a click on one selects
-/// it alone, and a drag selects each whose ground point shows within the rectangle it draws; a
-/// click or a drag that meets none of them leaves the selection as it is, and a press while the
-/// player places a build is the preview's. Each frame, a unit the
-/// client no longer holds leaves the selection, and an empty selection takes the avatar.
+/// Selects the player's own units with the left button (02-engine-core.md, A selection of the
+/// player's own units): a click on one selects it alone, and a drag selects each whose ground point
+/// shows within the rectangle it draws; a click or a drag that meets none of them leaves the
+/// selection as it is, and a press while the player places a build is the preview's. Each frame, a
+/// unit the client no longer holds leaves the selection, and an empty selection takes the avatar.
 #[derive(Debug)]
 pub(crate) struct Selecting;
 

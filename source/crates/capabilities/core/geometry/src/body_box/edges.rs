@@ -16,11 +16,11 @@ pub(super) trait Lines {
 }
 
 /// The bounds past which a point's distance from a half edge's line, as the half edge's direction
-/// measures it, to the nearest unit and within 0.51 of the true one (design 09, D9), lies against
-/// a reach with no direction. The point's cross product with the half edge, `C`, over the half
-/// edge's length `|h|`, is the true distance: `|C| ≥ far`, at least `(reach + 2) |h|`, puts it
-/// at least two units past the reach, so its measure too; `|C| < near`, below `(reach − 1) |h|`,
-/// more than a unit short of it, so its measure short of it too.
+/// measures it, to the nearest unit and within 0.51 of the true one (09-determinism-core.md, Exact
+/// where it fits), lies against a reach with no direction. The point's cross product with the half
+/// edge, `C`, over the half edge's length `|h|`, is the true distance: `|C| ≥ far`, at least
+/// `(reach + 2) |h|`, puts it at least two units past the reach, so its measure too; `|C| < near`,
+/// below `(reach − 1) |h|`, more than a unit short of it, so its measure short of it too.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct LineBounds {
     pub(super) far: u128,

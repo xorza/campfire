@@ -1,6 +1,6 @@
 # campfire-capabilities
 
-The engine's capabilities and the core under them, a crate each: the core's crates in `core/`, each capability in its own folder, and `campfire-capabilities`, which installs them, in this one. The design is `docs/design/04-capabilities/` and design 02's [capabilities' crates](../../../docs/design/02-engine-core.md#the-capabilities-crates); the repository's `AGENTS.md` comes first, with its Direction. Each convention below has a release test or a lint that fails when it breaks.
+The engine's capabilities and the core under them, a crate each: the core's crates in `core/`, each capability in its own folder, and `campfire-capabilities`, which installs them, in this one. The design is `docs/design/04-capabilities/` and [Modules](../../../docs/design/02-engine-core.md#modules); the repository's `AGENTS.md` comes first, with its Direction. Each convention below has a release test or a lint that fails when it breaks.
 
 ## Where a thing goes
 
@@ -14,7 +14,6 @@ The engine's capabilities and the core under them, a crate each: the core's crat
 
 - A system that spends something shared, takes stable ids or runs scripts walks its units in stable-id order, never in query order.
 - No `HashMap` or `HashSet`, and no schedule ambiguity: two systems that touch one thing are ordered against each other.
-- Numbers in the sim are `Num`, exact, rounded once where the design says; no float.
 
 ## State
 

@@ -6,12 +6,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::client_path;
 use crate::error::TerrainFileError;
-use crate::height_grid::HeightGrid;
 
-/// A map's terrain, `client/maps/<name>/terrain.bin`, through `Binary` (design 16): a ground quad
-/// for each cell of the map's height grid and the overlays drawn over them, each with its own
-/// coordinates in its texture; the texture, composed of package textures as the client loads it;
-/// and the surface it is lit as. It names no rule of a game.
+/// A map's terrain, `client/maps/<name>/terrain.bin`, through `Binary` (02-engine-core.md, Client):
+/// a ground quad for each cell of the map's height grid and the overlays drawn over them, each with
+/// its own coordinates in its texture; the texture, composed of package textures as the client
+/// loads it; and the surface it is lit as. It names no rule of a game.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TerrainFile {
     quads: TerrainQuads,
@@ -81,7 +80,7 @@ pub struct BorderWrap {
     pub border: u32,
 }
 
-/// The terrain's surface, as a material file's (design 12, the client): its metallic, roughness
+/// The terrain's surface, as a material file's (02-engine-core.md, Client): its metallic, roughness
 /// and specular factors, each from 0 to 1.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TerrainSurface {
@@ -153,11 +152,11 @@ impl TerrainFile {
 }
 
 impl TerrainQuads {
-    /// Whether its ground quads are `grid`'s cells: its columns are the grid's, and it has a
-    /// ground quad for each cell.
-    pub fn fits(&self, grid: &HeightGrid) -> bool {
-        let cells = (grid.columns() as usize - 1) * (grid.rows() as usize - 1);
-        self.columns == grid.columns() && self.ground.len() == cells
+    /// Whether its ground quads are the cells of a height grid of `columns` and `rows` samples:
+    /// its columns are the grid's, and it has a ground quad for each cell.
+    pub const fn fits(&self, columns: u32, rows: u32) -> bool {
+        let cells = (columns as usize - 1) * (rows as usize - 1);
+        self.columns == columns && self.ground.len() == cells
     }
 }
 
@@ -226,7 +225,6 @@ impl<'de> Deserialize<'de> for TerrainFile {
 #[cfg(test)]
 mod tests {
     use campfire_codec::Binary;
-    use campfire_math::Num;
 
     use super::*;
 
@@ -282,13 +280,9 @@ mod tests {
         let read: TerrainFile = Binary::decode(&Binary::encode(&file)).unwrap();
         assert_eq!(read, file);
         // Its two cells are those of a grid of 3 × 2 samples, not of 3 × 3 or of 2 × 2.
-        let grid = |columns: u32, rows: u32| {
-            let samples = vec![0; (columns * rows) as usize];
-            HeightGrid::new([Num::ZERO; 2], Num::ONE, Num::ONE, columns, samples).unwrap()
-        };
-        assert!(file.quads().fits(&grid(3, 2)));
-        assert!(!file.quads().fits(&grid(3, 3)));
-        assert!(!file.quads().fits(&grid(2, 2)));
+        assert!(file.quads().fits(3, 2));
+        assert!(!file.quads().fits(3, 3));
+        assert!(!file.quads().fits(2, 2));
         let refused = |change: fn(&mut TerrainQuads, &mut TerrainTexture, &mut TerrainSurface)| {
             let (mut quads, mut texture, mut surface) = parts();
             change(&mut quads, &mut texture, &mut surface);

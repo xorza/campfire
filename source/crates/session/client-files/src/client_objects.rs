@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::client_path;
 
 /// A map's `client/maps/<name>/objects.toml`: the objects the client alone draws, still, of which
-/// the sim holds none (design 12, D14). Each names its look among the `objects` of its package's
-/// `client/units.toml`, and stands as a placed unit does: at a point of the ground plane, a height
-/// above the ground there, and an angle in degrees, each an exact decimal.
+/// the sim holds none (12-zero-hour.md, The multiplayer rule for client objects). Each names its
+/// look among the `objects` of its package's `client/units.toml`, and stands as a placed unit does:
+/// at a point of the ground plane, a height above the ground there, and an angle in degrees, each
+/// an exact decimal.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientObjects {

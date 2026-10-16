@@ -19,9 +19,12 @@ use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::team_rooms::TeamRooms;
 
-/// How a client link views the match, which every data filter reads (design 14, D1, D15, D16):
-/// as the player of a slot of a team, or as a spectator. It stands in its rooms by it, and in none
-/// without one. Immutable, as replicon's filters require: a change inserts a new one.
+/// How a client link views the match, which every data filter reads (14-replication-audiences.md,
+/// Four recipients; 14-replication-audiences.md, The host admits spectators, and their fog is a
+/// setting; 14-replication-audiences.md, A player out of play sees what its team sees, or what a
+/// spectator sees): as the player of a slot of a team, or as a spectator. It stands in its rooms by
+/// it, and in none without one. Immutable, as replicon's filters require: a change inserts a new
+/// one.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 #[component(immutable, on_insert = Viewer::enter_rooms, on_remove = Viewer::leave_rooms)]
 pub(crate) enum Viewer {
@@ -36,7 +39,7 @@ pub(crate) enum Viewer {
 }
 
 /// What a spectator watches: every unit, through any fog, or the views of the teams it chose
-/// together (design 14, D15).
+/// together (14-replication-audiences.md, The host admits spectators, and their fog is a setting).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Watching {
     Everything,
@@ -147,9 +150,10 @@ impl Viewer {
         );
     }
 
-    /// Views each player's link again as its player goes out of play and comes back, which
-    /// changes its rooms and what each data filter gives it (design 14, D16): what it held of
-    /// the other teams' entities leaves it as a unit that leaves vision does.
+    /// Views each player's link again as its player goes out of play and comes back, which changes
+    /// its rooms and what each data filter gives it (14-replication-audiences.md, A player out of
+    /// play sees what its team sees, or what a spectator sees): what it held of the other teams'
+    /// entities leaves it as a unit that leaves vision does.
     pub(crate) fn follow_out_of_play(app: &mut App) {
         app.add_observer(
             |out: On<'_, '_, Insert, OutOfPlay>, mut views: PlayerViews<'_, '_>| {

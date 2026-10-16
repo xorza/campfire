@@ -12,7 +12,7 @@ use crate::error::WriteError;
 /// directory, written once with no sync and its row kept, then the index of the rows, synced, so
 /// every file is checked against what was written whenever it is read, and a write a crash cut
 /// short is found then. A file whose SHA-256 an earlier file has is a hard link to that file, so
-/// the package keeps one copy of identical files on disk (design 05, Packages).
+/// the package keeps one copy of identical files on disk (05-protocol-spec.md, Packages).
 #[derive(Debug)]
 pub struct PackageWriter {
     root: PathBuf,

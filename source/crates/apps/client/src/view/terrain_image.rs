@@ -11,10 +11,10 @@ use tracing::error;
 
 use crate::view::client_data::ClientData;
 
-/// A terrain's texture, composed as a terrain file says (design 16, D2): at each level, each copy
-/// of a package texture's rectangle in order, then each border wrap. A copy whose texture does
-/// not read, holds fewer levels than the terrain, or lacks its rectangle, leaves its place
-/// opaque black, logged.
+/// A terrain's texture, composed as a terrain file says (02-engine-core.md, The terrain's texture
+/// is composed at load): at each level, each copy of a package texture's rectangle in order, then
+/// each border wrap. A copy whose texture does not read, holds fewer levels than the terrain, or
+/// lacks its rectangle, leaves its place opaque black, logged.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct TerrainImage {
     size: UVec2,

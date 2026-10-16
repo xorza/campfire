@@ -133,9 +133,10 @@ fn named_as_value(text: &str, name: &str) -> bool {
 
 #[test]
 fn a_free_function_that_takes_a_world_first_is_a_system() {
-    // Design 02's world rule: what acts on the match's content is a function of its module's
-    // type, and a value made from the world a constructor of its own. A free function past its
-    // module that takes the world first is a system or a function a table holds, named as a value.
+    // The world rule (02-engine-core.md, Structural rules): what acts on the match's content is a
+    // function of its module's type, and a value made from the world a constructor of its own. A
+    // free function past its module that takes the world first is a system or a function a table
+    // holds, named as a value.
     let sources = sources();
     let production: Vec<(&str, String)> = sources
         .iter()
@@ -197,11 +198,11 @@ fn refused_traits(text: &str) -> Vec<(usize, &str)> {
 
 #[test]
 fn no_trait_is_a_test_trait_on_the_world_or_a_modules_trait_on_a_match() {
-    // Design 02's world rule: a world trait holds the whole match and the fast access to a
-    // module's systems, for other crates, its own crate, or the tests and benches of any crate;
-    // a test's verbs belong to its fixture or its capability's type, and a match a module builds
-    // to the module's type. Test code counts, as these traits lived in it; this file holds a
-    // source of each form for the check's own test.
+    // The world rule (02-engine-core.md, Structural rules): a world trait holds the whole match and
+    // the fast access to a module's systems, for other crates, its own crate, or the tests and
+    // benches of any crate; a test's verbs belong to its fixture or its capability's type, and a
+    // match a module builds to the module's type. Test code counts, as these traits lived in it;
+    // this file holds a source of each form for the check's own test.
     let mut found = Vec::new();
     let own = "crates/test/rules/src/world.rs";
     for file in sources().into_iter().filter(|file| file.path != own) {
@@ -242,9 +243,9 @@ pub struct ScriptedMatch;
     );
 }
 
-/// Each use of a `<Module>WorldCrate` trait outside the crate that declares it, among `files`,
-/// each a source by its crate's name, its path and its text: by the path, the line and the trait.
-/// Such a trait is its own crate's alone (design 02's world rule): another crate takes the
+/// Each use of a `<Module>WorldCrate` trait outside the crate that declares it, among `files`, each
+/// a source by its crate's name, its path and its text: by the path, the line and the trait. Such a
+/// trait is its own crate's alone (02-engine-core.md, Structural rules): another crate takes the
 /// module's `<Module>World`, and a test or a bench its `<Module>WorldInternals`.
 fn foreign_crate_traits<'a>(
     files: &[(&'a str, &'a str, &'a str)],

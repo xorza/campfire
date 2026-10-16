@@ -38,11 +38,11 @@ use crate::view::float_num::{self, FloatNum};
 use crate::view::look::Shape;
 use crate::view::unit_looks::UnitLooks;
 
-/// The build preview (design 18, D7): while the player places a build, its building's look
-/// follows the ground point under the cursor, at its type's angle, over its box drawn green where
-/// it may stand and red where it overlaps a wall or a body the client holds; a left click on
-/// green orders the build there, and a right click or Esc drops it. It reads the clicks before
-/// the selection and the orders, which leave them to it while it places.
+/// The build preview (02-engine-core.md, A command panel from the actions): while the player places
+/// a build, its building's look follows the ground point under the cursor, at its type's angle,
+/// over its box drawn green where it may stand and red where it overlaps a wall or a body the
+/// client holds; a left click on green orders the build there, and a right click or Esc drops it.
+/// It reads the clicks before the selection and the orders, which leave them to it while it places.
 #[derive(Debug)]
 pub(crate) struct BuildPreview;
 

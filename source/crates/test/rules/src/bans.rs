@@ -26,7 +26,7 @@ impl Proxy {
     }
 }
 
-/// The calls only `store` makes (design 02, Storage): those that read, list, check, write,
+/// The calls only `store` makes (02-engine-core.md, Storage): those that read, list, check, write,
 /// rename or remove a file or make a directory, `Path`'s probes, and those that start a thread.
 const STORAGE_METHODS: [&str; 37] = [
     "std::fs::read",
@@ -82,7 +82,7 @@ const STORAGE_TYPES: [&str; 10] = [
     "tempfile::SpooledTempFile",
 ];
 
-/// The calls only `codec` makes (design 02, Serialization): each format's own encodes and
+/// The calls only `codec` makes (02-engine-core.md, Serialization): each format's own encodes and
 /// decodes, and replicon's helpers over postcard.
 const CODEC_METHODS: [&str; 24] = [
     "postcard::to_allocvec",

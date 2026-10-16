@@ -1,6 +1,7 @@
-//! Spectators (design 14, D15): a link with no slot, admitted while the session holds a place
-//! for it, watches every unit through any fog, or the teams' views it chooses, and holds of each
-//! entity what its kind's audience gives spectators. It predicts nothing.
+//! Spectators (14-replication-audiences.md, The host admits spectators, and their fog is a
+//! setting): a link with no slot, admitted while the session holds a place for it, watches every
+//! unit through any fog, or the teams' views it chooses, and holds of each entity what its kind's
+//! audience gives spectators. It predicts nothing.
 
 use std::collections::BTreeSet;
 

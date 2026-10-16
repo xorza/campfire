@@ -92,7 +92,8 @@ impl Module for Vision {
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
         d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());
-        // What each team sees is the server's (design 14, D12): a predicting client holds none.
+        // What each team sees is the server's (14-replication-audiences.md, Prediction reads only
+        // what its client holds): a predicting client holds none.
         d.server_part::<UnitEntity, SeenBy>();
     }
 

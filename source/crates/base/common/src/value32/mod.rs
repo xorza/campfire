@@ -1,5 +1,5 @@
-//! A 32-byte value of one meaning, a hash, an id or a key, as design 05's Hashes, ids and keys
-//! names them.
+//! A 32-byte value of one meaning, a hash, an id or a key, as the protocol names them
+//! (05-protocol-spec.md, Hashes, ids and keys).
 
 use std::cmp::Ordering;
 use std::fmt;

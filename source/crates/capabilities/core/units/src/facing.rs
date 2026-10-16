@@ -10,9 +10,10 @@ use serde::{Deserialize, Serialize};
 use crate::turn_step::TurnStep;
 use crate::unit_entity::UnitEntity;
 
-/// The way a unit faces, in degrees from `x` towards `−z`, counter-clockwise seen from above,
-/// taken modulo 360: its spawn's angle, a placed unit's or a build order's, as its box body turns
-/// by it; a walker's turns toward the way it walks (design 17, D2).
+/// The way a unit faces, in degrees from `x` towards `−z`, counter-clockwise seen from above, taken
+/// modulo 360: its spawn's angle, a placed unit's or a build order's, as its box body turns by it;
+/// a walker's turns toward the way it walks (04-capabilities/navigation.md, A walker faces its leg
+/// and turns at its turn rate).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Facing(Num);

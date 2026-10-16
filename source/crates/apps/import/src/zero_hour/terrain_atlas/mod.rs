@@ -5,14 +5,14 @@ use campfire_values::PackagePath;
 
 use crate::zero_hour::format::map::terrain::TerrainParts;
 
-/// Zero Hour's terrain texture, as `WorldHeightMap` lays it out and `TerrainTextureClass` fills
-/// it, as a terrain file's texture (design 16, D2): 2,048 texels wide, each texture class a
-/// square block of its tiles, 64 texels each, placed on a grid of 72-texel cells, the widest
-/// classes first, and wrapped about by a border of 4 texels, so a filtered or stretched sample
-/// near a block's edge reads its own class. Its three levels, as the game keeps three: each texel
-/// of a level below covers 2 × 2 of the one above within one tile, since tiles and borders start
-/// on texels divisible by 4, so a tile's level is its texture's own level of that tile, and the
-/// wrap of a level is the level of the wrap.
+/// Zero Hour's terrain texture, as `WorldHeightMap` lays it out and `TerrainTextureClass` fills it,
+/// as a terrain file's texture (02-engine-core.md, The terrain's texture is composed at load):
+/// 2,048 texels wide, each texture class a square block of its tiles, 64 texels each, placed on a
+/// grid of 72-texel cells, the widest classes first, and wrapped about by a border of 4 texels, so
+/// a filtered or stretched sample near a block's edge reads its own class. Its three levels, as the
+/// game keeps three: each texel of a level below covers 2 × 2 of the one above within one tile,
+/// since tiles and borders start on texels divisible by 4, so a tile's level is its texture's own
+/// level of that tile, and the wrap of a level is the level of the wrap.
 #[derive(Debug)]
 pub(crate) struct TerrainAtlas {
     /// Each class's block's corner, by the class's index, when the grid had room for it.

@@ -13,9 +13,10 @@ use crate::sim_server::viewer::{Viewer, Watching};
 
 pub(crate) mod spectators_world;
 
-/// The links that watch the session with no slot (design 14, D15): each joins by a signed
-/// answer, as a player does, takes a place while the session admits one more, and watches as its
-/// view says. The log holds nothing of them.
+/// The links that watch the session with no slot (14-replication-audiences.md, The host admits
+/// spectators, and their fog is a setting): each joins by a signed answer, as a player does, takes
+/// a place while the session admits one more, and watches as its view says. The log holds nothing
+/// of them.
 #[derive(Debug)]
 pub(crate) struct Spectators;
 

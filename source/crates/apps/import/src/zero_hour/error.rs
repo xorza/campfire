@@ -4,6 +4,7 @@ use campfire_client_files::TerrainFileError;
 use campfire_package_disk::WriteError;
 use campfire_store::PathError;
 use campfire_store::ReadError;
+use campfire_units::GroundError;
 use derive_more::Display;
 use thiserror::Error;
 
@@ -179,6 +180,10 @@ pub enum MapError {
     /// Its heights are no grid within the world's bound.
     #[error("its heights are no grid within the world's bound")]
     Heights,
+    /// Its ground's coarse cells, the original's partition over its playable area, make no ground
+    /// the engine loads.
+    #[error("its playable area makes no ground of its heights")]
+    Ground(#[source] GroundError),
     /// Its heights and the points its objects stand at make no bounds within the world's bound.
     #[error("its heights and its objects' points make no bounds within the world's bound")]
     Bounds,

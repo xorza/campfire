@@ -365,13 +365,14 @@ redundant_explicit_links = "warn"
 unescaped_backticks = "warn"
 
 # Lightyear 0.30.1 with its confirmed history never pruned past the latest completed checkpoint,
-# its raw server keeping a `RemoteId` its link holds (design 15, D9), its aeronet link's MTU kept
-# within the session's, and a received payload kept in the form its IO backend holds, so a QUIC
-# datagram reaches the link with no copy, until upstream releases the fixes (branch main of the
-# fork, which merges the branch of each fix).
+# its raw server keeping a `RemoteId` its link holds (15-quic-transport.md, A link's entity is its
+# peer, not its address), its aeronet link's MTU kept within the session's, and a received payload
+# kept in the form its IO backend holds, so a QUIC datagram reaches the link with no copy, until
+# upstream releases the fixes (branch main of the fork, which merges the branch of each fix).
 # Replicon 0.44.2 with a mutation kept for a client in the tick a filter hides a component from
-# it, which it otherwise drops, as a new owner the old owner's client must see (design 14, D17),
-# until upstream releases the fix (simgine/bevy_replicon#782; branch master of the fork).
+# it, which it otherwise drops, as a new owner the old owner's client must see
+# (14-replication-audiences.md, An owner changes by an insert alone), until upstream releases the
+# fix (simgine/bevy_replicon#782; branch master of the fork).
 [patch.crates-io]
 bevy_replicon = { git = "https://github.com/xorza/bevy_replicon", branch = "master" }
 lightyear = { git = "https://github.com/xorza/lightyear", branch = "main" }

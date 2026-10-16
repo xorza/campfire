@@ -9,7 +9,8 @@ use campfire_net::{Pace, PaceSpeed, PendingSaves, SaveCommand};
 
 /// The keys of a local match: Space pauses it and plays it on, minus and equals, or the keypad's
 /// minus and plus, step its speed down and up through 0.5, 1, 2 and 4 times, F5 saves it, and F9
-/// loads its latest save. P and the digits are the shop's and the items' (design 13, D12).
+/// loads its latest save. P and the digits are the shop's and the items' (02-engine-core.md, Every
+/// key on a keyboard with no keypad).
 #[derive(Debug)]
 pub(crate) struct LocalKeys {
     pub(crate) pace: Arc<Pace>,

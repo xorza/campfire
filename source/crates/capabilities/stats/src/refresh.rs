@@ -38,7 +38,8 @@ impl Refresh {
     /// stats once they are final; a live change whose source is gone keeps the value it last had.
     /// An effect whose stat the mode does not declare keeps what the unit's type gave it as it
     /// spawned. A predicting client derives the stats and tags of every unit it holds, as their
-    /// inputs reach it, so an aura's numbers resolve there as on the server (design 14, D11); it
+    /// inputs reach it, so an aura's numbers resolve there as on the server
+    /// (14-replication-audiences.md, A client derives what it can for every unit it holds); it
     /// writes nothing else of a unit it holds as the server sent it.
     #[expect(
         clippy::too_many_arguments,
@@ -101,7 +102,6 @@ impl Refresh {
             modifiers: modifier_book,
             tags: tag_book,
         } = books;
-        let scratch = &mut *scratch;
         scratch.clear();
         visits.clear();
         visits.extend(units.p0().iter());
@@ -170,7 +170,7 @@ impl Refresh {
                 stats.refill().extend_from_slice(values);
             }
         }
-        Self::hold_effects(scratch, (&book, &pool_book), life, *rate, &mut units.p4());
+        Self::hold_effects(&scratch, (&book, &pool_book), life, *rate, &mut units.p4());
         // The value a live change last had is state, so a replay keeps it; its write marks a
         // change, which refreshes its carrier once more, to the value it now holds.
         let mut holders = units.p5();

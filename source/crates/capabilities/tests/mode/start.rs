@@ -1,6 +1,6 @@
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
-use campfire_units::MapBook;
+use campfire_units::{CellSplit, CoarseSpan, Ground, GroundError, HeightGrid, MapBook};
 use campfire_vision::VisionBook;
 
 use super::*;
@@ -190,6 +190,7 @@ fn a_map_with_vision_holds_at_most_64_teams() {
         let teams = teams(count);
         let input = MapInput {
             map: &files.map,
+            heights: None,
             teams: &teams,
             relations: &[],
             layers: &layers,
@@ -198,6 +199,63 @@ fn a_map_with_vision_holds_at_most_64_teams() {
     };
     assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
     assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
+}
+
+#[test]
+fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
+    // A map of 3 × 3 samples 10 m apart, from the origin. With no grid it is flat, and a
+    // `[ground]` with no grid is refused; with one, its split and coarse cells are those of its
+    // `[ground]`, the grid's own cells with none, and coarse cells smaller than its cells are
+    // refused.
+    let files = mode_files();
+    let layers = Names::default();
+    let grid = HeightGrid::new(
+        [Num::ZERO; 2],
+        Num::int(10),
+        Num::ONE,
+        3,
+        vec![0, 1, 2, 3, 4, 5, 6, 7, 8],
+    )
+    .unwrap();
+    let span = |cell: i64| CoarseSpan {
+        cell: Num::int(cell),
+        from: [Num::ZERO; 2],
+        to: [Num::int(20); 2],
+    };
+    let resolve = |ground: Option<GroundData>, heights: Option<&HeightGrid>| {
+        let map = MapData {
+            ground,
+            ..MapData::planar(Bounds::new([Num::int(-50); 2], [Num::int(50); 2]).unwrap())
+        };
+        let input = MapInput {
+            map: &map,
+            heights,
+            teams: &files.teams,
+            relations: &[],
+            layers: &layers,
+        };
+        ModeMap::resolve(input, |_| None).map(|resolved| resolved.ground.ground)
+    };
+    let read = |split, cell| GroundData {
+        split,
+        high: Some(span(cell)),
+    };
+    assert_eq!(resolve(None, None), Ok(Ground::default()));
+    assert_eq!(
+        resolve(Some(GroundData::default()), None),
+        Err(ModeError::NoHeights)
+    );
+    let own = Ground::new(grid.clone(), CellSplit::ZeroTwo, None).unwrap();
+    assert_eq!(resolve(None, Some(&grid)), Ok(own));
+    let coarse = Ground::new(grid.clone(), CellSplit::OneThree, Some(span(20))).unwrap();
+    assert_eq!(
+        resolve(Some(read(CellSplit::OneThree, 20)), Some(&grid)),
+        Ok(coarse)
+    );
+    assert_eq!(
+        resolve(Some(read(CellSplit::OneThree, 5)), Some(&grid)),
+        Err(ModeError::Ground(GroundError::CoarseCell))
+    );
 }
 
 #[test]

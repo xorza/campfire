@@ -1,7 +1,7 @@
 //! The state types each module adds, named once in its declarations, which every consumer reads:
 //! the state registry, for the hash, the snapshot and the copy, and the network layer, for what
-//! replicates, how and to whom (design 14, D9). Each type declares its kind and how it is sent;
-//! the list names it and nothing more.
+//! replicates, how and to whom (14-replication-audiences.md, Each capability names its state types
+//! once). Each type declares its kind and how it is sent; the list names it and nothing more.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
@@ -40,12 +40,14 @@ pub trait StateTypes: Sized {
     /// value is no part of the hash, the snapshot or what a client receives.
     fn derived<C: Component>(&mut self);
 
-    /// `C`, derived as a derived component is, and no part of the hash or the snapshot, but sent
-    /// on each change to its kind's audience, which cannot derive it: a player's supply, from
-    /// units its audience may not hold (design 14, D9).
+    /// `C`, derived as a derived component is, and no part of the hash or the snapshot, but sent on
+    /// each change to its kind's audience, which cannot derive it: a player's supply, from units
+    /// its audience may not hold (14-replication-audiences.md, Each capability names its state
+    /// types once).
     fn derived_sent<C: Replication + Component<Mutability = Mutable>>(&mut self);
 
-    /// `R`, a resource, which no client receives (design 14, D6).
+    /// `R`, a resource, which no client receives (14-replication-audiences.md, A resource never
+    /// replicates).
     fn resource<R: SimResource + Default>(&mut self);
 }
 

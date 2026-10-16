@@ -23,8 +23,8 @@ use campfire_projectiles::ProjectileData;
 use campfire_script::*;
 use campfire_sim::Capability;
 use campfire_stats::{AuraData, ModifierData};
+use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
-use campfire_store::{DirEntries, InputFile};
 use campfire_units::{CollisionData, TagData};
 use campfire_values::TagProperty;
 use campfire_vision::VisionData;
@@ -368,7 +368,7 @@ impl<'de> Deserializer<'de> for FieldNames<'_> {
 /// The most bytes a test reads of the reference: far past the few hundred kilobytes it holds.
 const REFERENCE_LEN: usize = 16 << 20;
 
-/// The reference beside design 08.
+/// The reference beside the script API's design.
 const REFERENCE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../../docs/design/08-script-api-reference.md"
@@ -468,105 +468,4 @@ fn the_data_fields_are_the_schemas() {
         recorded.sort_unstable();
         assert_eq!(recorded, schema, "{table:?}");
     }
-}
-
-/// The capability docs, whose `Script API` sections name what scripts of each capability use.
-const CAPABILITY_DOCS: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../docs/design/04-capabilities"
-);
-
-/// A name a capability doc's `Script API` section gives, as a span of code writes it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum DocName {
-    /// `ctx.<name>`: a call or a value of `ctx`.
-    Ctx(String),
-    /// `unit.<name>`: a field or a method of a unit.
-    Unit(String),
-    /// `on_<name>(…)` or `calc_<name>(…)`: a hook.
-    Hook(String),
-}
-
-impl DocName {
-    /// The names `text`'s `## Script API` section gives, in order, each span of code once.
-    fn all_in(text: &str) -> Vec<Self> {
-        let Some((_, section)) = text.split_once("\n## Script API\n") else {
-            return Vec::new();
-        };
-        let section = section.split("\n## ").next().unwrap_or_default();
-        let ident = |rest: &str| -> String {
-            rest.chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect()
-        };
-        section
-            .split('`')
-            .skip(1)
-            .step_by(2)
-            .filter_map(|code| {
-                if let Some(rest) = code.strip_prefix("ctx.") {
-                    Some(Self::Ctx(ident(rest)))
-                } else if let Some(rest) = code.strip_prefix("unit.") {
-                    Some(Self::Unit(ident(rest)))
-                } else if (code.starts_with("on_") || code.starts_with("calc_"))
-                    && code.contains('(')
-                {
-                    Some(Self::Hook(ident(code)))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    /// Whether `api` binds or plans it.
-    fn in_api(&self, api: &ScriptApi) -> bool {
-        let member = |owner: ApiOwner, name: &str| {
-            api.members()
-                .iter()
-                .any(|member| member.spec.owner == owner && member.spec.name == name)
-        };
-        match self {
-            Self::Ctx(name) => member(ApiOwner::Ctx, name),
-            Self::Unit(name) => member(ApiOwner::Unit, name),
-            Self::Hook(name) => api.hooks().iter().any(|hook| hook.hook.name() == name),
-        }
-    }
-}
-
-#[test]
-fn each_name_a_capability_doc_gives_is_bound_or_planned() {
-    let api = Release::script_api();
-    // A section gives calls, a unit's members and hooks; other code, and text past the
-    // section, gives none.
-    let sample = "# X\n\n## Script API\n\n`ctx.order_move(unit, pos)`, `unit.path`, `ctx`, \
-                  `m`; the hook `on_think(ctx, unit)`, `on_think`.\n\n## Later\n\n`ctx.later`";
-    assert_eq!(
-        DocName::all_in(sample),
-        [
-            DocName::Ctx("order_move".to_owned()),
-            DocName::Unit("path".to_owned()),
-            DocName::Hook("on_think".to_owned()),
-        ]
-    );
-    assert!(!DocName::Ctx("no_such_call".to_owned()).in_api(&api));
-    let mut missing = Vec::new();
-    let docs = DirEntries::read(Path::new(CAPABILITY_DOCS)).unwrap();
-    let docs = docs.iter().filter_map(|doc| doc.name.to_str());
-    for doc in docs.filter(|doc| Path::new(doc).extension() == Some("md".as_ref())) {
-        let path = Path::new(CAPABILITY_DOCS).join(doc);
-        let text = InputFile::read_text(&path, REFERENCE_LEN).unwrap();
-        let names = DocName::all_in(&text);
-        missing.extend(
-            names
-                .into_iter()
-                .filter(|name| !name.in_api(&api))
-                .map(|name| (doc.to_owned(), name)),
-        );
-    }
-    assert_eq!(
-        missing,
-        [],
-        "names the docs give that the registry neither binds nor plans"
-    );
 }

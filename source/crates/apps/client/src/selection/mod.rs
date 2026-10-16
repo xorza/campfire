@@ -4,10 +4,10 @@ use campfire_capabilities::{Action, Order};
 use campfire_players::OrderUnits;
 use campfire_sim::StableId;
 
-/// The player's own units that a right click and the stop key order, in stable id order, each
-/// once (design 17, D7). A click or a drag that meets none of the player's units leaves it as it
-/// is; a unit the client no longer holds leaves it, and an empty selection takes the avatar, so a
-/// MOBA's player orders their avatar as before.
+/// The player's own units that a right click and the stop key order, in stable id order, each once
+/// (02-engine-core.md, A selection of the player's own units). A click or a drag that meets none of
+/// the player's units leaves it as it is; a unit the client no longer holds leaves it, and an empty
+/// selection takes the avatar, so a MOBA's player orders their avatar as before.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Selection(Vec<StableId>);
 

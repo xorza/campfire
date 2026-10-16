@@ -12,9 +12,9 @@ use crate::port_map::pcp_map::{MapNonce, PcpMap, PcpReply};
 const MESSAGE_MAX: usize = 1100;
 const NO_EXTERNAL: SocketAddrV4 = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, 0);
 
-/// A client of a gateway's port mappings (design 15, D12): it speaks PCP, and NAT-PMP to a
-/// gateway that answers PCP with NAT-PMP's version, from a socket that only the gateway's replies
-/// reach.
+/// A client of a gateway's port mappings (15-quic-transport.md, A server maps its own port): it
+/// speaks PCP, and NAT-PMP to a gateway that answers PCP with NAT-PMP's version, from a socket that
+/// only the gateway's replies reach.
 #[derive(Debug)]
 pub(crate) struct Gateway {
     socket: UdpSocket,

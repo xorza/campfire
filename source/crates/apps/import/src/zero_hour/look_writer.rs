@@ -32,9 +32,9 @@ impl LookWriter<'_, '_, '_> {
     /// for an object whose draw modules name none, as it draws nothing, and no look for one whose
     /// models the package lacks, which the client shows as the engine's shape; and the look of each
     /// object that maps place as client objects, as the client's tree or prop buffer draws it
-    /// (design 12, D14): a tree's models of its tree draw modules, a prop's of its first draw
-    /// module, when the `W3DModelDraw` family's, each created by its name, so only the meshes
-    /// hidden by their own flag are hidden.
+    /// (12-zero-hour.md, The multiplayer rule for client objects): a tree's models of its tree draw
+    /// modules, a prop's of its first draw module, when the `W3DModelDraw` family's, each created
+    /// by its name, so only the meshes hidden by their own flag are hidden.
     pub(crate) fn units(
         &mut self,
         ini: &ObjectIni,

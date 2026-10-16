@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use campfire_actions::ActionKind;
-use campfire_client_files::{ClientObjects, ClientUnits, HeightGrid, MapConditions, TerrainFile};
+use campfire_client_files::{ClientObjects, ClientUnits, MapConditions, TerrainFile};
 use campfire_codec::Binary;
 use campfire_common::MapName;
 use campfire_import::{DropCause, Imported, WeaponDrop};
@@ -37,9 +37,10 @@ impl ImportCheck<'_> {
     /// Tournament Desert's heights, units, client objects, markers, terrain and walls.
     pub(crate) fn map(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
-        let heights = files.read_file(&HeightGrid::path(self.map))?;
-        let grid = Binary::decode::<HeightGrid>(&heights).map_err(CheckError::Decode)?;
-        let [columns, rows] = [grid.columns(), grid.rows()];
+        let [columns, rows] = self
+            .packages
+            .heights()
+            .map_or([0, 0], |grid| [grid.columns(), grid.rows()]);
         if [columns, rows] != HEIGHTS {
             self.failures.push(Failure::Heights { columns, rows });
         }

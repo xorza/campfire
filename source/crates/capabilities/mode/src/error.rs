@@ -1,6 +1,7 @@
 use campfire_geometry::PolygonError;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
+use campfire_units::GroundError;
 use campfire_values::DeclaredName;
 use thiserror::Error;
 
@@ -90,6 +91,11 @@ pub enum ModeError {
         #[source]
         problem: PolygonError,
     },
+    /// The map's `[ground]` reads a height grid the map does not have.
+    #[error("the map's [ground] reads a height grid it does not have")]
+    NoHeights,
+    #[error("the map's ground")]
+    Ground(#[from] GroundError),
 }
 
 campfire_common::enum_all! {

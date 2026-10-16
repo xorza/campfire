@@ -8,14 +8,15 @@ use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
 use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::import_names::ImportNames;
 
-/// The player template a skirmish starts its players as, until a faction choice comes (design
-/// 17, D6).
+/// The player template a skirmish starts its players as, until a faction choice comes
+/// (12-zero-hour.md, A skirmish starts with the faction's start objects).
 const FACTION: &str = "FactionAmerica";
 
-/// What a skirmish starts each player with, which the mode's params give its script (design 17,
-/// D6): its faction's building and starting units, by their unit types, and how far along `+z`
-/// from the building its units start on a map with no rally, half the building's bounding
-/// sphere, as `placeNetworkBuildingsForPlayer` moves them toward the original's `−y`.
+/// What a skirmish starts each player with, which the mode's params give its script
+/// (12-zero-hour.md, A skirmish starts with the faction's start objects): its faction's building
+/// and starting units, by their unit types, and how far along `+z` from the building its units
+/// start on a map with no rally, half the building's bounding sphere, as
+/// `placeNetworkBuildingsForPlayer` moves them toward the original's `−y`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SkirmishStart {
     pub(crate) building: DeclaredName,

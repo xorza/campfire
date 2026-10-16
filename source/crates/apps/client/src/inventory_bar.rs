@@ -25,7 +25,7 @@ use crate::own_player::OwnPlayer;
 use crate::ui_style::{self, BACK, TEXT};
 use crate::view::ViewSystems;
 
-/// The inventory bar, always shown (design 13, D10): each of the own avatar's inventory slots,
+/// The inventory bar, always shown : each of the own avatar's inventory slots,
 /// with its key, its item's name, its stack or uses, and its cooldown. A right click on a slot
 /// sells its item at the nearest shop unit, when it serves the avatar; a slot dragged onto
 /// another swaps them.

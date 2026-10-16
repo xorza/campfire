@@ -1,6 +1,6 @@
-//! The server's stop (design 10, Stop): a stop's signal ends the server by an exit with code 130,
-//! whose endpoint closes each link, so a client hears it at once; a server whose start ignored
-//! the terminal's signals still takes the stop's.
+//! The server's stop (10-sessions.md, A stop is an exit, not a crash): a stop's signal ends the
+//! server by an exit with code 130, whose endpoint closes each link, so a client hears it at once;
+//! a server whose start ignored the terminal's signals still takes the stop's.
 
 use std::path::Path;
 use std::process::{Child, Command};

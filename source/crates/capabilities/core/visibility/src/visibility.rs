@@ -7,9 +7,12 @@ use crate::setting::SettingValue;
 use crate::setting::error::VisibilityError;
 use crate::spectator_fog::SpectatorFog;
 
-/// A session's visibility (design 14, D4, D14 to D16): the audience of each kind, the
-/// spectators' fog, what a player out of play sees, and the most spectators the session
-/// admits. Its terms carry it, so every player signs it, as its bytes.
+/// A session's visibility (14-replication-audiences.md, Each kind has a default audience, and a
+/// mode may set it; 14-replication-audiences.md, Three layers; 14-replication-audiences.md, The
+/// host admits spectators, and their fog is a setting; 14-replication-audiences.md, A player out of
+/// play sees what its team sees, or what a spectator sees): the audience of each kind, the
+/// spectators' fog, what a player out of play sees, and the most spectators the session admits. Its
+/// terms carry it, so every player signs it, as its bytes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Visibility {
     audiences: [Recipients; DataKind::ALL.len()],
@@ -72,9 +75,9 @@ impl Visibility {
         Ok(())
     }
 
-    /// Its bytes, which the session id hashes (design 05, Keys): a byte for each kind a mode
-    /// may set, in the order `DataKind` declares them, its recipients' bits; the spectators' fog;
-    /// what a player out of play sees; and the most spectators, a `u32` little-endian.
+    /// Its bytes, which the session id hashes (05-protocol-spec.md, Keys): a byte for each kind a
+    /// mode may set, in the order `DataKind` declares them, its recipients' bits; the spectators'
+    /// fog; what a player out of play sees; and the most spectators, a `u32` little-endian.
     pub fn encode(&self) -> Vec<u8> {
         let kinds = Self::settable_kinds();
         let mut bytes = Vec::with_capacity(kinds.clone().count() + 2 + 4);

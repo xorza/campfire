@@ -1,6 +1,7 @@
-//! Design 14's D12: a predicting client's schedule reads, on a unit it holds as the server sent
-//! it, only what it derives itself or what reaches every client that holds the unit, and builds
-//! no system that computes the server's own state.
+//! (14-replication-audiences.md, Prediction reads only what its client holds): a predicting
+//! client's schedule reads, on a unit it holds as the server sent it, only what it derives itself
+//! or what reaches every client that holds the unit, and builds no system that computes the
+//! server's own state.
 
 use bevy_ecs::component::ComponentId;
 use bevy_ecs::query::{ComponentAccessKind, FilteredAccess, FilteredAccessSet};
@@ -130,7 +131,8 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         }
     });
     // Aura carriers a client does not predict hold their modifiers on the units it does, and a
-    // param reads each source's stats (design 14, D11).
+    // param reads each source's stats (14-replication-audiences.md, A client derives what it can
+    // for every unit it holds).
     for type_name in [type_name::<Modifiers>(), type_name::<UnitStats>()] {
         assert!(read_unpredicted.contains(&type_name), "{type_name}");
     }

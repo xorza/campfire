@@ -155,7 +155,8 @@ impl ModelBuilder {
     /// A glTF mesh of `mesh`: its vertices on glTF's axes, a skin's placed by each one's bone of
     /// `poses`; for each pass, one primitive for each texture, shader and vertex material its
     /// triangles draw, and for its detail stage one for each texture and shader that mixes it in,
-    /// each a layer over what is drawn before it, all of the same vertices (design 12, D13).
+    /// each a layer over what is drawn before it, all of the same vertices (12-zero-hour.md, A W3D
+    /// material becomes the one material).
     pub(super) fn mesh(
         &mut self,
         mesh: &W3dMesh,

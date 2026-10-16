@@ -44,14 +44,15 @@ pub struct MarkerPoint {
 }
 
 impl WalkCheck<'_> {
-    /// Checks that each placed box lies within the bounds, and that the map can be walked by
-    /// every kind of unit that walks, of the walkers, for the widest of each layer, among the
-    /// placed bodies; `name_of` names a type in a problem. Placed bodies may overlap the walls
-    /// and each other, as they block alike; a placement in a match refuses an overlap (design
-    /// 17, D5). Every spawn point, and every waypoint, is a place that walker may stand, and
-    /// every waypoint is in a reachable set of the one before it, by the regions a match plans
-    /// its routes with. A narrower walker of the layer has every cell the widest has open. A map
-    /// with no cells, or a mode with no walker, has nothing more to check.
+    /// Checks that each placed box lies within the bounds, and that the map can be walked by every
+    /// kind of unit that walks, of the walkers, for the widest of each layer, among the placed
+    /// bodies; `name_of` names a type in a problem. Placed bodies may overlap the walls and each
+    /// other, as they block alike; a placement in a match refuses an overlap
+    /// (04-capabilities/navigation.md, Placed obstacles may overlap). Every spawn point, and every
+    /// waypoint, is a place that walker may stand, and every waypoint is in a reachable set of the
+    /// one before it, by the regions a match plans its routes with. A narrower walker of the layer
+    /// has every cell the widest has open. A map with no cells, or a mode with no walker, has
+    /// nothing more to check.
     pub fn run(&self, name_of: impl Fn(UnitType) -> DeclaredName) -> Result<(), MapProblem> {
         let bounds = &self.ground.bounds;
         let NavigationBook {

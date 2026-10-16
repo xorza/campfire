@@ -5,11 +5,9 @@ use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::client_path;
-
-/// A map's ground, `map/<name>/heights.bin`, through `Binary`: samples `cell` meters apart, the one of
-/// `column` and `row` at `[x, z] = origin + [column, row] · cell`, row after row from the first,
-/// each `step` meters per unit above height 0.
+/// A map's ground, `map/<name>/heights.bin`, through `Binary`: samples `cell` meters apart, the
+/// one of `column` and `row` at `[x, z] = origin + [column, row] · cell`, row after row from the
+/// first, each `step` meters per unit above height 0.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct HeightGrid {
     origin: [Num; 2],
@@ -22,7 +20,8 @@ pub struct HeightGrid {
 impl HeightGrid {
     /// The file of the map `map`.
     pub fn path(map: &MapName) -> PackagePath {
-        client_path::parse(&format!("map/{map}/heights.bin"))
+        PackagePath::parse(&format!("map/{map}/heights.bin"))
+            .expect("a map's name is a package path's name")
     }
 
     /// The grid; `None` unless `cell` and `step` are positive, `samples` fill at least two whole
@@ -90,6 +89,11 @@ impl HeightGrid {
     /// Each sample, row after row.
     pub fn samples(&self) -> &[u8] {
         &self.samples
+    }
+
+    /// The sample of `column` and `row`, in steps.
+    pub(crate) fn sample(&self, column: u32, row: u32) -> u8 {
+        self.samples[row as usize * self.columns as usize + column as usize]
     }
 
     fn checked_far_corner(&self) -> Option<[Num; 2]> {

@@ -51,6 +51,7 @@ impl Fixture {
                 width: COLUMNS,
                 depth: ROWS,
                 border: 0,
+                boundary: None,
                 samples: vec![0; COLUMNS * ROWS],
             },
             textures: vec![Some(sand_texture), None],

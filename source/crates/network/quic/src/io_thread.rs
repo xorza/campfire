@@ -11,9 +11,9 @@ use crate::recv_batch::RecvBatch;
 use crate::shared_endpoint::SharedEndpoint;
 
 /// An endpoint's thread: it waits for the socket, a deadline or a wake, reads one batch with no
-/// lock, gives it to the endpoint and serves the connections under the mutex, then writes what
-/// they send with no lock (design 15, D3). It ends after the pass that writes an endpoint's
-/// closes.
+/// lock, gives it to the endpoint and serves the connections under the mutex, then writes what they
+/// send with no lock (15-quic-transport.md, A thread for each endpoint, and no IO in the frame). It
+/// ends after the pass that writes an endpoint's closes.
 #[derive(Debug)]
 pub(crate) struct IoThread {
     shared: Arc<SharedEndpoint>,

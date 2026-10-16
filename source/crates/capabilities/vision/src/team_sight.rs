@@ -6,9 +6,10 @@ use campfire_values::Team;
 
 use crate::seen_by::SeenBy;
 
-/// How a match tells whether a team sees a unit, for a check of what a player's order may aim
-/// at: by the server's vision, or, on a predicting client, by what the client holds, as the
-/// server sends it each unit its team sees and no other (design 14, D12).
+/// How a match tells whether a team sees a unit, for a check of what a player's order may aim at:
+/// by the server's vision, or, on a predicting client, by what the client holds, as the server
+/// sends it each unit its team sees and no other (14-replication-audiences.md, Prediction reads
+/// only what its client holds).
 pub trait TeamSight: RoleForm {
     /// What a query reads of a unit to tell.
     type Seen: ReadOnlyQueryData + Debug + 'static;

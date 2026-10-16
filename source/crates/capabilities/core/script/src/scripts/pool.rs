@@ -1,7 +1,8 @@
 use campfire_common::PlayerSlot;
 
-/// The pool a script call draws from, as design 02's table gives them; its `systems` pool, of
-/// `on_system`, is planned, and `calc_damage`, `calc_heal` and `on_generate` draw from none.
+/// The pool a script call draws from, as scripting gives them (02-engine-core.md, Operation pools);
+/// its `systems` pool, of `on_system`, is planned, and `calc_damage`, `calc_heal` and `on_generate`
+/// draw from none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pool {
     /// The calls a player causes: their units' actions, with those actions' deliveries and

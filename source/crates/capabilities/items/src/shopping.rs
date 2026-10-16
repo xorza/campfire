@@ -101,7 +101,7 @@ impl Shopping<'_, '_> {
 
     /// The nearest living shop unit whose buyers select the unit `unit`, in its reach or not:
     /// by the distance from the unit to the nearest point of the shop's body, the lower stable id
-    /// on a tie, as a shop panel shows it (design 13, D10).
+    /// on a tie, as a shop panel shows it .
     pub fn nearest_for(&self, unit: StableId) -> Option<StableId> {
         let visitor = self.visitor(unit)?;
         let relations = self.relations.get();

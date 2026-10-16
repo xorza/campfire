@@ -1,9 +1,10 @@
 use std::str;
 use std::sync::Arc;
 
-use campfire_codec::Toml;
+use campfire_codec::{Binary, Toml};
 use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_values::PackagePath;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::error::ContentError;
@@ -60,6 +61,19 @@ impl PackageReader {
             error,
         })?;
         Toml::parse(text).map_err(|error| ContentError::Data {
+            path: path.clone(),
+            error,
+        })
+    }
+
+    /// The binary data file at `path`, which a load does not keep, read now, checked against its
+    /// row, and decoded as a `T`, as a map's height grid is.
+    pub fn read_binary<T: Serialize + DeserializeOwned>(
+        &self,
+        path: &PackagePath,
+    ) -> Result<T, ContentError> {
+        let bytes = self.read_file(path)?;
+        Binary::decode(&bytes).map_err(|error| ContentError::Binary {
             path: path.clone(),
             error,
         })

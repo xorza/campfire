@@ -3,7 +3,8 @@ use zeroize::Zeroizing;
 
 /// A secret a server's endpoint derives from the secret of the server's own key, by HKDF-SHA256
 /// ([RFC 5869](https://www.rfc-editor.org/rfc/rfc5869)) with no salt and the secret's label: one
-/// key, kept in one file, gives both, so neither can be lost alone (design 15, D6, D8).
+/// key, kept in one file, gives both, so neither can be lost alone (15-quic-transport.md, A raw key
+/// derived from the server's key; 15-quic-transport.md, Retry, tokens and resets after a restart).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DerivedSecret {
     /// The seed of the Ed25519 key the server presents to TLS.

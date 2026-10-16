@@ -29,15 +29,16 @@ use crate::pointer::{Pointed, Pointer};
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::float_num;
 
-/// Turns the player's clicks and keys into orders: a right click on a unit the own avatar may
-/// use, with the avatar selected, orders the avatar alone to use it (design 13, D6); else, with
-/// producers selected and no walker, it sets their rally point at the unit under the cursor or
-/// the ground point (design 18, D7); else it orders the selection, as one group order, to attack
-/// an enemy under the cursor, and anywhere else but the UI to walk there, and S stops it (design
-/// 17, D7); while the player places a build, the right click is the preview's; Q, W, E and R cast the
-/// avatar's abilities of slots 0 to 3, and with Ctrl held learn their next rank; 1 to 6 cast the
-/// actions of its inventory's slots. A key aims as its slot's action takes: at the unit under
-/// the cursor, at the ground point under it, or at nothing (design 13, D11).
+/// Turns the player's clicks and keys into orders: a right click on a unit the own avatar may use,
+/// with the avatar selected, orders the avatar alone to use it ; else, with producers selected and
+/// no walker, it sets their rally point at the unit under the cursor or the ground point
+/// (02-engine-core.md, A command panel from the actions); else it orders the selection, as one
+/// group order, to attack an enemy under the cursor, and anywhere else but the UI to walk there,
+/// and S stops it (02-engine-core.md, A selection of the player's own units); while the player
+/// places a build, the right click is the preview's; Q, W, E and R cast the avatar's abilities of
+/// slots 0 to 3, and with Ctrl held learn their next rank; 1 to 6 cast the actions of its
+/// inventory's slots. A key aims as its slot's action takes: at the unit under the cursor, at the
+/// ground point under it, or at nothing .
 #[derive(Debug)]
 pub(crate) struct Orders;
 

@@ -27,7 +27,8 @@ use crate::error::use_problem::UseProblem;
 use crate::error::way::Way;
 use crate::files::package_name::PackageName;
 
-/// A problem that fails a package's load, as design 08's checks find them.
+/// A problem that fails a package's load, as the load's checks find them (08-script-api.md, Checks
+/// at package load).
 #[derive(Debug, Error)]
 pub enum LoadProblem {
     /// A file does not read, or a data file does not match its schema.
@@ -285,7 +286,8 @@ pub enum LoadProblem {
     /// unit holds.
     #[error("{0}: more than {limit} slots", limit = ActionSlots::LIMIT)]
     TooManySlots(Place),
-    /// The data at `at` gives `field`, which design 08 plans and the release does not read yet.
+    /// The data at `at` gives `field`, which the script API plans and the release does not read
+    /// yet.
     #[error("{at}: {field} is planned, and the release does not read it yet")]
     Planned { field: &'static str, at: Place },
 }

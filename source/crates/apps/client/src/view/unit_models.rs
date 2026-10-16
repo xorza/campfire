@@ -74,10 +74,10 @@ impl UnitModels {
         commands.insert_resource(UnitLooks::of(&origins, &data, &assets));
     }
 
-    /// Places each of the map's client objects (design 12, D14): a root on the ground at its point,
-    /// at its height above the heightmap, turned by its angle as a placed unit is, and its look's
-    /// models over it, each at its scale; a look the mode's package lacks is logged, and its
-    /// object not drawn.
+    /// Places each of the map's client objects (12-zero-hour.md, The multiplayer rule for client
+    /// objects): a root on the ground at its point, at its height above the heightmap, turned by
+    /// its angle as a placed unit is, and its look's models over it, each at its scale; a look the
+    /// mode's package lacks is logged, and its object not drawn.
     fn place_objects(
         data: Res<'_, ClientData>,
         assets: Res<'_, AssetServer>,
@@ -257,9 +257,10 @@ mod tests {
     use bevy::mesh::MeshPlugin;
     use bevy::world_serialization::{WorldAsset, WorldSerializationPlugin};
     use campfire_client_files::{
-        Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, HeightGrid, ModelScale,
+        Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale,
     };
     use campfire_math::Num;
+    use campfire_units::HeightGrid;
     use campfire_values::{DeclaredName, PackagePath};
 
     use super::*;

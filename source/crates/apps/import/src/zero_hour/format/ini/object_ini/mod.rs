@@ -39,12 +39,12 @@ pub(crate) struct IniObject {
     fight: FightData,
 }
 
-/// The kinds of an object's `KindOf` that the import reads: those that decide who draws its
-/// placed objects (`GameLogic::startNewGame`), an optimized tree and a prop the client alone
-/// draws, an object a build clears, which is fluff, the client's too, unless it is a fence, and a
-/// wall a unit walks on top of, which the game spawns with the bridges; a structure, which
-/// routes block when it is not small; and an object that counts for a multiplayer victory, which
-/// a structure of it keeps its player in the match by (design 19, D7).
+/// The kinds of an object's `KindOf` that the import reads: those that decide who draws its placed
+/// objects (`GameLogic::startNewGame`), an optimized tree and a prop the client alone draws, an
+/// object a build clears, which is fluff, the client's too, unless it is a fence, and a wall a unit
+/// walks on top of, which the game spawns with the bridges; a structure, which routes block when it
+/// is not small; and an object that counts for a multiplayer victory, which a structure of it keeps
+/// its player in the match by (12-zero-hour.md, Defeat by the last building that counts).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct ObjectKinds {
     optimized_tree: bool,
@@ -76,9 +76,10 @@ pub(crate) enum GeometryShape {
     Box,
 }
 
-/// Who draws an object a map places, as a multiplayer game spawns it (design 12, D14): a unit of
-/// the sim placed before every other, as the game spawns bridge-like objects in a pass of their
-/// own; the client's tree buffer; its prop buffer; or the sim, as a unit.
+/// Who draws an object a map places, as a multiplayer game spawns it (12-zero-hour.md, The
+/// multiplayer rule for client objects): a unit of the sim placed before every other, as the game
+/// spawns bridge-like objects in a pass of their own; the client's tree buffer; its prop buffer; or
+/// the sim, as a unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PlacedAs {
     Bridge,

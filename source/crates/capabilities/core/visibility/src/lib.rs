@@ -1,6 +1,6 @@
-//! A session's visibility: who receives each kind of state, what its spectators see, what a
-//! player out of play sees, and how many spectators it admits (design 14), as a mode's data and
-//! a host's settings state it, and the bytes a session's terms carry.
+//! A session's visibility: who receives each kind of state, what its spectators see, what a player
+//! out of play sees, and how many spectators it admits (14-replication-audiences.md), as a mode's
+//! data and a host's settings state it, and the bytes a session's terms carry.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 

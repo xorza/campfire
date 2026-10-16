@@ -94,7 +94,7 @@ impl PlayerCamera {
         let now = time.elapsed_secs_f64();
         let held = |key| keys.pressed(key);
         // Alt turns the arrows from scrolling to turning and zooming, for a keyboard with no
-        // keypad (design 13, D12).
+        // keypad (02-engine-core.md, Every key on a keyboard with no keypad).
         let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
         let arrow = |key| !alt && held(key);
         let alt_arrow = |key| alt && held(key);

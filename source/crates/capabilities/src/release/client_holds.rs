@@ -1,4 +1,5 @@
-//! What a predicting client holds of each unit, by state type: the rule of design 14's D12, which
+//! What a predicting client holds of each unit, by state type: the rule of
+//! (14-replication-audiences.md, Prediction reads only what its client holds), which
 //! the prediction test and the sync test share.
 
 use std::any::type_name;
@@ -24,10 +25,11 @@ pub(crate) enum Held {
 }
 
 impl Held {
-    /// Whether a client holds a type held so of a unit, which it predicts when `predicted`: one
-    /// it derives always; of a unit it predicts, whose owner it is, every kind sent; of another,
-    /// a kind whose default audience holds every client that holds the unit, or one of its own
-    /// player's, which it reads through the owner of a unit it predicts (design 14, D12).
+    /// Whether a client holds a type held so of a unit, which it predicts when `predicted`: one it
+    /// derives always; of a unit it predicts, whose owner it is, every kind sent; of another, a
+    /// kind whose default audience holds every client that holds the unit, or one of its own
+    /// player's, which it reads through the owner of a unit it predicts
+    /// (14-replication-audiences.md, Prediction reads only what its client holds).
     pub(crate) const fn reaches(self, predicted: bool) -> bool {
         match self {
             Self::Derived => true,

@@ -17,10 +17,11 @@ use crate::match_play::{CENTER, DOZER, MatchPlay};
 /// The most ticks the check waits for the dozer's walk to end, past which it never arrives.
 const DRIVE_LIMIT: u64 = 30 * 60 * 10;
 
-/// The skirmish's start of Tournament Desert and the dozer's drive (design 17, D6): player 1's
-/// command center at `Player_1_Start` and its dozer clear of the center's box, both its own; then
-/// the dozer, ordered to `Player_2_Start`, which stands in no wall's cell in any tick, and ends
-/// its walk `ticks` later at `end`, `left` from the point it was ordered to.
+/// The skirmish's start of Tournament Desert and the dozer's drive (12-zero-hour.md, A skirmish
+/// starts with the faction's start objects): player 1's command center at `Player_1_Start` and its
+/// dozer clear of the center's box, both its own; then the dozer, ordered to `Player_2_Start`,
+/// which stands in no wall's cell in any tick, and ends its walk `ticks` later at `end`, `left`
+/// from the point it was ordered to.
 #[derive(Debug)]
 pub(crate) struct StartDrive {
     pub(crate) ticks: u64,

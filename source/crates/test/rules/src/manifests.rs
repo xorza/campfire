@@ -43,8 +43,9 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
 
 #[test]
 fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
-    // Design 02's module table names each module in its first column and its status in the
-    // second; a built module's crate is `campfire-<module>`, in a folder of `crates/` or `checks/`.
+    // The module table (02-engine-core.md, Modules) names each module in its first column and its
+    // status in the second; a built module's crate is `campfire-<module>`, in a folder of `crates/`
+    // or `checks/`.
     let design = read(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../../../docs/design/02-engine-core.md"
@@ -80,8 +81,8 @@ fn each_crates_folder_is_its_package_name_without_the_prefix() {
 
 /// The crates whose test infrastructure any crate's tests may take: `store`'s scratch and pinned
 /// files, `log`'s check of the warnings, `common`'s allocation audit, `codec` for a type's encoded
-/// form, `math` for the numbers a crate's values hold, and the test packages (design 02, The
-/// capabilities' crates).
+/// form, `math` for the numbers a crate's values hold, and the test packages
+/// (02-engine-core.md, Tests live at the top).
 const TEST_INFRASTRUCTURE: [&str; 6] = [
     "campfire-codec",
     "campfire-common",

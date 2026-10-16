@@ -1,7 +1,7 @@
 use derive_more::Display;
 
 /// A fixed set the engine owns, which scripts hold as members of an enum, `Relation::Hostile`,
-/// not as strings, as design 08's Engine enums gives them.
+/// not as strings, (08-script-api.md, The engine's sets are enums, a mode's names strings).
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[display("{}", self.name())]
 pub enum EngineEnum {

@@ -14,7 +14,7 @@ use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::status::Status;
 
 /// The script API of the core: `ctx` itself, `ctx.p`, and the core's and the movement calls
-/// design 08 plans.
+/// the script API plans.
 #[derive(Debug)]
 pub struct CoreApi;
 

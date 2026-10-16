@@ -11,8 +11,9 @@ use crate::arrived_short::ArrivedShort;
 use crate::unit_entity::UnitEntity;
 
 /// Where a unit walks to; none once it arrives. The goal of a walk, which a capability sets and
-/// `navigation` pursues and drops on arrival: navigation's state, kept here, as `ForcedMove` is,
-/// so a capability walks a unit with no dependency on navigation (design 02, Contracts).
+/// `navigation` pursues and drops on arrival: navigation's state, kept here, as `ForcedMove` is, so
+/// a capability walks a unit with no dependency on navigation (02-engine-core.md, Contracts through
+/// `units`).
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Destination(Option<Vec3>);

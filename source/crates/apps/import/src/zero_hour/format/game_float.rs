@@ -1,5 +1,5 @@
 //! The game's `f32` values as numbers, read from their bits: the engine has no float conversion
-//! of its own (design 09, D7).
+//! of its own (09-determinism-core.md, No float converts).
 
 use campfire_math::{Num, Rounding};
 

@@ -30,11 +30,12 @@ pub(crate) struct CommandSources<'a> {
     pub(crate) strings: &'a StringTable,
 }
 
-/// Zero Hour's trains and builds (design 18, D3 to D6): each `UNIT_BUILD` and `DOZER_CONSTRUCT`
-/// button of the command set of each unit type, and of each type a converted button makes, once
-/// for the whole import; the names of their actions, as the string table gives their labels;
-/// the buttons dropped, each once for each cause, in the order the sets are read; and what it
-/// gives each producer, its actions of the slot kind `command` and its `production` section.
+/// Zero Hour's trains and builds (12-zero-hour.md, Every command set's trains and builds are
+/// imported; 12-zero-hour.md, The default money): each `UNIT_BUILD` and `DOZER_CONSTRUCT` button of
+/// the command set of each unit type, and of each type a converted button makes, once for the whole
+/// import; the names of their actions, as the string table gives their labels; the buttons dropped,
+/// each once for each cause, in the order the sets are read; and what it gives each producer, its
+/// actions of the slot kind `command` and its `production` section.
 #[derive(Debug, Default)]
 pub(crate) struct ProductionImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedAction>,
@@ -121,7 +122,8 @@ pub(crate) const COMMAND: &str = "command";
 pub(crate) const MONEY: &str = "money";
 
 /// How near a builder comes to its building's box, 10 m, the pathfinder's cell: the dozer docks in
-/// the free cell beside the building nearest it (design 18, D4).
+/// the free cell beside the building nearest it (12-zero-hour.md, Every command set's trains and
+/// builds are imported).
 const BUILD_RANGE: Num = Num::int(10);
 
 /// The logic frames a second of the game, `LOGICFRAMES_PER_SECOND`.

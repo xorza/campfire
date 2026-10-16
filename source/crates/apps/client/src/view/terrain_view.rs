@@ -14,10 +14,10 @@ use crate::view::client_data::ClientData;
 use crate::view::terrain_image::TerrainImage;
 use crate::view::terrain_meshes::TerrainMeshes;
 
-/// Draws a map's terrain, its file as the client data keeps it (design 16): composes its texture
-/// of the mode's own package's textures as the client starts, and lays its ground and its
-/// overlays over the map's heights, lit by the map's lights as every model is. A map with no
-/// terrain draws none.
+/// Draws a map's terrain, its file as the client data keeps it (02-engine-core.md, Client):
+/// composes its texture of the mode's own package's textures as the client starts, and lays its
+/// ground and its overlays over the map's heights, lit by the map's lights as every model is. A map
+/// with no terrain draws none.
 #[derive(Debug)]
 pub(crate) struct TerrainView {
     pub(crate) packages: Arc<ModePackages>,

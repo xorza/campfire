@@ -25,12 +25,14 @@ pub(crate) struct CombatSources<'a> {
     pub(crate) armors: &'a ArmorIni,
 }
 
-/// Zero Hour's combat (design 19, D4 to D6): the weapons of each unit type's starting weapon set
-/// that hit one target at once, as attack actions, once for the whole import, each in its type's
-/// slot kind `weapon`; every armor, the share of each damage kind it does not take whole; the
-/// weapons dropped, each once for each cause, in the order the types are read; the objects
-/// whose body the import gives no life, and those whose body starts below its most life; and
-/// each type's actions of the slot kind `weapon`, by its name, which it returns.
+/// Zero Hour's combat (04-capabilities/combat.md, Armor by damage kind; 12-zero-hour.md, Life is
+/// the original's; 12-zero-hour.md, A weapon converts when it hits one target at once): the weapons
+/// of each unit type's starting weapon set that hit one target at once, as attack actions, once for
+/// the whole import, each in its type's slot kind `weapon`; every armor, the share of each damage
+/// kind it does not take whole; the weapons dropped, each once for each cause, in the order the
+/// types are read; the objects whose body the import gives no life, and those whose body starts
+/// below its most life; and each type's actions of the slot kind `weapon`, by its name, which it
+/// returns.
 #[derive(Debug, Default)]
 pub(crate) struct CombatImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedWeapon>,
@@ -41,7 +43,8 @@ pub(crate) struct CombatImport {
     pub(crate) wounded: Vec<String>,
 }
 
-/// An attack as the mode's data writes it, `[actions.weapon_<name>]` (design 19, D6).
+/// An attack as the mode's data writes it, `[actions.weapon_<name>]` (12-zero-hour.md, A weapon
+/// converts when it hits one target at once).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedWeapon {
     kind: &'static str,
@@ -69,7 +72,8 @@ pub struct DroppedWeapon {
 }
 
 campfire_common::enum_all! {
-/// Why the import drops a weapon (design 19, D6).
+/// Why the import drops a weapon (12-zero-hour.md, A weapon converts when it hits one target at
+/// once).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum WeaponDrop {
     /// No file defines it.
@@ -287,9 +291,10 @@ impl ImportedWeapon {
     }
 
     /// The milliseconds the engine turns into the frames the game turns `ms` into: the game's
-    /// `ceil(ms × 0.03)` in its `f32` (`INI::parseDurationUnsignedInt`, `parseShotDelay`), as
-    /// design 12's rule of times writes it, `⌊frames × 100 / 3⌋`, which the engine's rounding up
-    /// turns back into the same frames; a time below 0 is no number.
+    /// `ceil(ms × 0.03)` in its `f32` (`INI::parseDurationUnsignedInt`, `parseShotDelay`), as the
+    /// import's rule of times writes it (12-zero-hour.md, Thirty frames a second, the original's
+    /// times), `⌊frames × 100 / 3⌋`, which the engine's rounding up turns back into the same
+    /// frames; a time below 0 is no number.
     fn ms(ms: i32) -> Result<u64, WeaponDrop> {
         if ms < 0 {
             return Err(WeaponDrop::BadNumber);

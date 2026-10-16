@@ -12,7 +12,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The encode and decode Lightyear's messages and replicated components register with: the
-/// gateway's (design 02, Serialization), so what crosses the network decodes from its one
+/// gateway's (02-engine-core.md, Serialization), so what crosses the network decodes from its one
 /// encoding, as every other postcard value does.
 #[derive(Debug)]
 pub(crate) struct WireCodec;

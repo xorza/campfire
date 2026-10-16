@@ -3638,7 +3638,7 @@ fn fan_of_frost() -> ActionData {
 
 #[test]
 fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
-    // Rime's Fan of Frost as design 04 writes it, with no script: five arrows of 0.5 m wide,
+    // Rime's Fan of Frost as its data writes it, with no script: five arrows of 0.5 m wide,
     // fanned over 30 degrees around the aim along +x, each for 6 m at half a meter a tick, whose
     // hits deal the `damage` param, 30, and apply `chilled`; and each hit restores 2 mana to the
     // caster.

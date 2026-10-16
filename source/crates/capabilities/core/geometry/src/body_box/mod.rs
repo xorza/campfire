@@ -17,12 +17,12 @@ mod closer;
 mod closure;
 mod edges;
 
-/// A box body: a parallelogram on the ground plane around its unit's position, held as its two
-/// half edges `a` and `b`, each `[x, z]`, rounded once as it was made. Its corners are the
-/// position plus `−a − b`, `a − b`, `a + b` and `−a + b`, counterclockwise, and its edges run
-/// from each corner to the next. Every test reads them in integers, whether two shapes meet
-/// exactly and each distance to the nearest unit (design 09, D9), so the box is the same shape to
-/// every test on every machine.
+/// A box body: a parallelogram on the ground plane around its unit's position, held as its two half
+/// edges `a` and `b`, each `[x, z]`, rounded once as it was made. Its corners are the position plus
+/// `−a − b`, `a − b`, `a + b` and `−a + b`, counterclockwise, and its edges run from each corner to
+/// the next. Every test reads them in integers, whether two shapes meet exactly and each distance
+/// to the nearest unit (09-determinism-core.md, Exact where it fits), so the box is the same shape
+/// to every test on every machine.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct BodyBox {
     half: [[Num; 2]; 2],
@@ -631,8 +631,9 @@ fn bits(bits: i128) -> Num {
 }
 
 /// How far a push of a body out of a box goes past touching, in bits: the most a measure of a
-/// distance by a `Direction`, or by a nearest root, lies from the true one, 0.51 of a bit,
-/// rounded up, so the next measure sees the body apart (design 09, D10).
+/// distance by a `Direction`, or by a nearest root, lies from the true one, 0.51 of a bit, rounded
+/// up, so the next measure sees the body apart (09-determinism-core.md, A push rounds away from
+/// what it leaves).
 const PUSH_SLACK: i128 = 1;
 
 /// `off` moved along `normal` until a body of `radius` there touches, from outside, the line

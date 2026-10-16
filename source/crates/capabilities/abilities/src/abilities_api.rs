@@ -10,7 +10,7 @@ use campfire_values::{ActionId, Block, TagProperty};
 use crate::abilities_effect::AbilitiesEffect;
 use crate::error::AbilitiesRefusal;
 
-/// The script API of `abilities`: the values of a cast that design 08 plans, and the
+/// The script API of `abilities`: the values of a cast that the script API plans, and the
 /// bookkeeping of cooldowns and charges.
 #[derive(Debug)]
 pub struct AbilitiesApi;

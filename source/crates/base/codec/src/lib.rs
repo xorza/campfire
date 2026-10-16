@@ -1,5 +1,5 @@
-//! The one gateway of serialization (design 02, Serialization): every serde encoding and decoding
-//! of the engine, postcard's, TOML's and JSON's, passes through it, so each format has one
+//! The one gateway of serialization (02-engine-core.md, Serialization): every serde encoding and
+//! decoding of the engine, postcard's, TOML's and JSON's, passes through it, so each format has one
 //! configuration, one canonical form and one error type. A proxy crate: the formats' calls, which
 //! `clippy.toml` denies every other crate, are made here alone.
 

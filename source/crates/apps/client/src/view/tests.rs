@@ -9,10 +9,10 @@ use bevy::time::{TimePlugin, TimeUpdateStrategy};
 use bevy::world_serialization::WorldAsset;
 use campfire_areas::Areas;
 use campfire_capabilities::internals::AreasFixtures;
-use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, HeightGrid, ModelScale};
+use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale};
 use campfire_math::Num;
 use campfire_sim::IdAllocator;
-use campfire_units::{TypeOrigin, TypeOriginBook};
+use campfire_units::{HeightGrid, TypeOrigin, TypeOriginBook};
 use campfire_values::{DeclaredName, PackageIndex, PackagePath};
 
 use super::*;

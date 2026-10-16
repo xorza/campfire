@@ -19,7 +19,6 @@ mod tests {
     use crate::camera_file::CameraFile;
     use crate::client_objects::ClientObjects;
     use crate::client_units::ClientUnits;
-    use crate::height_grid::HeightGrid;
     use crate::map_conditions::MapConditions;
     use crate::map_lights::MapLights;
     use crate::material_file::MaterialFile;
@@ -34,7 +33,6 @@ mod tests {
             MapLights::path(&map),
             MapConditions::path(&map),
             TerrainFile::path(&map),
-            HeightGrid::path(&map),
             ClientUnits::path(),
             CameraFile::path(),
         ];
@@ -45,7 +43,6 @@ mod tests {
                 "client/maps/tournament_desert/lights.toml",
                 "client/maps/tournament_desert/conditions.toml",
                 "client/maps/tournament_desert/terrain.bin",
-                "map/tournament_desert/heights.bin",
                 "client/units.toml",
                 "client/camera.toml",
             ]

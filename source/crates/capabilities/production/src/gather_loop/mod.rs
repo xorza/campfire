@@ -371,7 +371,7 @@ impl GatherLoop {
 
     /// The node of `entity` to write; none on a client for a node it holds as the server sent
     /// it, whose amount and holder are the server's word, as a client writes nothing of one
-    /// (design 14, D11).
+    /// (14-replication-audiences.md, A client derives what it can for every unit it holds).
     fn node_mut(world: &mut World, entity: Entity) -> Option<Mut<'_, Node>> {
         if world.entity(entity).contains::<Unpredicted>() {
             return None;

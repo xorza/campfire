@@ -11,8 +11,8 @@ use crate::stat_book::StatBook;
 use crate::unit_stats::UnitStats;
 
 /// What a system reads a modifier's params from: the param book, and the units a param scales by,
-/// by stable id, those a predicting client holds as the server sent them among them (design 14,
-/// D11).
+/// by stable id, those a predicting client holds as the server sent them among them
+/// (14-replication-audiences.md, A client derives what it can for every unit it holds).
 #[derive(SystemParam, Debug)]
 pub struct ModifierParams<'w, 's> {
     params: Res<'w, ParamBook>,

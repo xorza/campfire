@@ -8,9 +8,11 @@ use campfire_actions::{
     LaunchFields, ListHook, PlannedEffect, PurgeFields,
 };
 use campfire_capabilities::{CapabilityError, Release, UnitStartError};
+use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
 use campfire_common::MapName;
 use campfire_geometry::Metric;
+use campfire_math::Num;
 use campfire_mode::ModeError;
 use campfire_navigation::MapProblem;
 use campfire_orders::AiError;
@@ -25,6 +27,7 @@ use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::ModifierProblem;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
+use campfire_units::HeightGrid;
 use campfire_values::{DeclaredName, EngineEnum, Number, Scalar, TimeTooLarge};
 
 use crate::package::moba::{edited, load, moba, two_lanes};
@@ -1605,7 +1608,8 @@ static ACTION_FLAWS: &[Flaw] = &[
         MODE,
         |problem| matches!(problem, LoadProblem::ModeStateSync(name) if name.as_str() == "first_blood"),
     ),
-    // Names design 08 plans: a `ctx` method and field, a handle's field, a hook and data fields.
+    // Names the script API plans: a `ctx` method and field, a handle's field, a hook and data
+    // fields.
     flaw(
         MODE_SCRIPT,
         Edit::Replace(
@@ -3299,6 +3303,24 @@ fn a_mode_loads_the_map_its_session_names() {
         &*load(&upper).unwrap_err().problem,
         LoadProblem::MapDirName(name) if name == "Upper"
     ));
+}
+
+#[test]
+fn a_maps_height_grid_loads_with_it_and_one_that_does_not_decode_fails_the_load() {
+    // The 3v3's map has no height grid. A grid of 2 × 2 samples at its `heights.bin` loads with
+    // its packages, and bytes that decode as none fail the load at that file.
+    let heights = "modes/3v3/map/two_lanes/heights.bin";
+    assert_eq!(load(&edited([])).unwrap().heights(), None);
+    let grid = HeightGrid::new([Num::ZERO; 2], Num::ONE, Num::ONE, 2, vec![0, 1, 2, 3]).unwrap();
+    let mut tree = PackageTree::of(TestMode::Moba3v3);
+    tree.put(heights, Binary::encode(&grid));
+    assert_eq!(load(&tree.dir(MODE_DIR)).unwrap().heights(), Some(&grid));
+    tree.put(heights, vec![0xFF]);
+    let error = load(&tree.dir(MODE_DIR)).unwrap_err();
+    assert!(
+        matches!(&*error.problem, LoadProblem::Content(ContentError::Binary { path, .. }) if path.as_str() == "map/two_lanes/heights.bin"),
+        "{error:?}"
+    );
 }
 
 #[test]

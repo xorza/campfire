@@ -11,8 +11,8 @@ pub enum Role {
     /// as a test or a bench of the capabilities builds.
     Rules,
     /// A client's match, which predicts its own player's units and runs no scripts: it builds no
-    /// system that computes the server's own state, which reaches it from the server (design 14,
-    /// D12).
+    /// system that computes the server's own state, which reaches it from the server
+    /// (14-replication-audiences.md, Prediction reads only what its client holds).
     Client,
 }
 

@@ -166,7 +166,7 @@ impl SimClient {
 
     /// Spawns the client's entity, which its link and its connect name. Its link takes
     /// `LINK_MIN_MTU` now, as its transport fixes its fragment size at the spawn, before any IO
-    /// links it (design 15, D5).
+    /// links it (15-quic-transport.md, A link's minimum MTU is QUIC's datagram).
     pub fn spawn(world: &mut World) -> Entity {
         world
             .spawn((Client, RawClient, ReplicationReceiver, QuicEndpoint::link()))

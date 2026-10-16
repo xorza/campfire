@@ -1,4 +1,5 @@
-//! Zero Hour's skirmish, its rules package's script played by a test mode (design 19, D1, D7).
+//! Zero Hour's skirmish, its rules package's script played by a test mode (12-zero-hour.md, Eight
+//! teams of one; 12-zero-hour.md, Defeat by the last building that counts).
 
 use std::num::NonZeroU32;
 

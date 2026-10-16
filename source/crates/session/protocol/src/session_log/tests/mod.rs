@@ -748,7 +748,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         assert_eq!(SessionLog::new(other).err(), Some(refused), "change {at}");
     }
 
-    // The id, as design 05 spells it.
+    // The id, as the protocol spells it (05-protocol-spec.md, Keys).
     let mut spelled = Hasher::new();
     spelled
         .update(b"campfire/session-id/v3")

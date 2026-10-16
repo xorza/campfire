@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::match_mode::MatchMode;
 use crate::mode_schema::ModeSchema;
 
-/// The fields of the mode's script state whose `sync` is `S`'s, on the match's entity: a value
-/// for each such field its data declares, in the order of their names. Each class is a component
-/// of its own kind (design 14, D3); a mode field syncs to no owner or team, which the match lacks
-/// (D7).
+/// The fields of the mode's script state whose `sync` is `S`'s, on the match's entity: a value for
+/// each such field its data declares, in the order of their names. Each class is a component of its
+/// own kind (14-replication-audiences.md, One kind for each type); a mode field syncs to no owner
+/// or team, which the match lacks (D7).
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ModeState<S: ModeSync> {

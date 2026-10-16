@@ -2,7 +2,7 @@ use derive_more::Display;
 
 use crate::scripts::api_version::ApiVersion;
 
-/// Whether the release runs a name, since the package API version it came in, or design 08
+/// Whether the release runs a name, since the package API version it came in, or the script API
 /// plans it.
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
 pub enum Status {

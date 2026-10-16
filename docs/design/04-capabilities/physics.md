@@ -1,31 +1,5 @@
 # Physics
 
-## Mechanism
-
-Planned. Vehicles, rigid bodies and terrain: a collision backend that moves bodies by forces.
-
-## Data
-
-A unit type's `physics` section: its shape, its mass and, for a vehicle, its wheels and engine. Bodies collide with the map's terrain.
-
-## Rules
-
-- **Backend:** a physics engine such as Rapier in its deterministic mode, the one place floating point is allowed in the sim ([Backends](../02-engine-core.md#backends)).
-- **Terrain:** heightmap collision for maps around 8 × 8 km.
-- Ragdolls and debris are client-side presentation.
-
-## State and derived
-
-- **State:** each body's position, rotation and velocities, in the snapshot.
-
-## Network
-
-Vehicles a client drives are predicted; other bodies are interpolated.
-
-## Cost
-
-The backend's step, which grows with the bodies in contact.
-
-## Genres
-
-A battle royale's vehicles; any game with rigid bodies.
+- **Deterministic floating point in one backend.** Planned: vehicles and rigid bodies move by a physics backend such as Rapier in its deterministic mode, the one place floating point is allowed in the sim ([Backends](../02-engine-core.md#backends)).
+- **Ragdolls and debris are presentation,** client-side alone.
+- **Driven vehicles are predicted,** other bodies interpolated.

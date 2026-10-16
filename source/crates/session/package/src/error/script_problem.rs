@@ -39,12 +39,12 @@ pub enum ScriptProblem {
     /// It makes a function pointer: a closure, an anonymous function or a call of `Fn`.
     #[error("makes a function pointer: a closure, an anonymous function or Fn")]
     FunctionPointer,
-    /// It uses `ctx` other than design 08's convention allows, so the load checks cannot see
-    /// every use of it.
+    /// It uses `ctx` other than the script API's convention allows (08-script-api.md, `ctx` stays
+    /// visible), so the load checks cannot see every use of it.
     #[error(transparent)]
     CtxMisuse(CtxMisuse),
-    /// It uses or defines a name design 08 plans, a `ctx` name, a field or method of a handle, or
-    /// a hook, which the release does not run yet.
+    /// It uses or defines a name the script API plans, a `ctx` name, a field or method of a handle,
+    /// or a hook, which the release does not run yet.
     #[error("{0} is planned, and the release does not run it yet")]
     Planned(String),
 }

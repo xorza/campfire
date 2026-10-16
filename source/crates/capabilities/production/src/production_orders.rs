@@ -40,8 +40,9 @@ impl ProductionOrders {
     ) {
         let now = tick.start();
         cancelled.clear();
-        // A predicting client refunds nothing, as a player's resources are the server's (design
-        // 14, D12): its cancel stands as the server's refund will.
+        // A predicting client refunds nothing, as a player's resources are the server's
+        // (14-replication-audiences.md, Prediction reads only what its client holds): its cancel
+        // stands as the server's refund will.
         let mut refunds = |amounts: &[ResourceAmount], slot| {
             S::PREDICTS
                 || amounts.is_empty()

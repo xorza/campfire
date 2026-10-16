@@ -334,6 +334,7 @@ impl<'a> BookBuilder<'a> {
         };
         let map = MapInput {
             map: input.map,
+            heights: input.heights,
             teams: input.teams,
             relations: &data.relations,
             layers: &self.names.layers,

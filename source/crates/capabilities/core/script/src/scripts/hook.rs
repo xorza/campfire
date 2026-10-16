@@ -160,7 +160,7 @@ mod tests {
         for relation in [RelationSet::Enemies, RelationSet::Allies, RelationSet::All] {
             assert_eq!(RelationSet::named(relation.name()), Some(relation));
         }
-        // A few as design 08 lists them.
+        // A few as the reference lists them.
         let think = Hook::OnThink;
         assert_eq!((think.params(), think.role()), (2, ScriptRole::Ai));
         let hit = Hook::OnHit;

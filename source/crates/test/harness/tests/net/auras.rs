@@ -1,7 +1,8 @@
-//! Auras over the network (design 14, D5, D11): a client resolves an ally's aura, whose numbers
-//! come from its source's stats, as the server does, so it predicts its unit inside it with no
-//! correction; an enemy's aura, whose modifiers a mode hides from it, comes from the server as a
-//! correction, once.
+//! Auras over the network (14-replication-audiences.md, A mode's hidden data is not predicted;
+//! 14-replication-audiences.md, A client derives what it can for every unit it holds): a client
+//! resolves an ally's aura, whose numbers come from its source's stats, as the server does, so it
+//! predicts its unit inside it with no correction; an enemy's aura, whose modifiers a mode hides
+//! from it, comes from the server as a correction, once.
 
 use bevy_ecs::world::EntityRef;
 use campfire_bots::OrderScript;

@@ -16,12 +16,14 @@ use crate::outbox::Outbox;
 use crate::peer::{Peer, PeerKey};
 use crate::recv_batch::Datagram;
 
-/// The name every client sends: its verifier reads the key alone (design 15, D7).
+/// The name every client sends: its verifier reads the key alone (15-quic-transport.md, TLS 1.3,
+/// ALPN `campfire`, no client key, no resumption).
 const SERVER_NAME: &str = "campfire";
 
 /// An endpoint and its connections, which its thread and the app's frame share behind one mutex
-/// (design 15, D3, D9). A connection lives in a table by `quinn-proto`'s handle, with the link
-/// entity that carries it, if any.
+/// (15-quic-transport.md, A thread for each endpoint, and no IO in the frame; 15-quic-transport.md,
+/// A link's entity is its peer, not its address). A connection lives in a table by `quinn-proto`'s
+/// handle, with the link entity that carries it, if any.
 #[derive(Debug)]
 pub(crate) struct EndpointState {
     endpoint: Endpoint,
@@ -133,7 +135,8 @@ impl EndpointState {
     }
 
     /// The thread's work under the mutex for one read: each datagram to the endpoint, then each
-    /// connection served (design 15, D3).
+    /// connection served (15-quic-transport.md, A thread for each endpoint, and no IO in the
+    /// frame).
     pub(crate) fn pass(
         &mut self,
         now: Instant,

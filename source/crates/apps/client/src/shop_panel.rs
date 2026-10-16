@@ -30,7 +30,7 @@ use crate::own_player::OwnPlayer;
 use crate::ui_style::{self, BACK, DIMMED, TEXT};
 use crate::view::ViewSystems;
 
-/// The shop panel, as League of Legends' (design 13, D10): P opens and closes it; it shows the
+/// The shop panel, as League of Legends' : P opens and closes it; it shows the
 /// nearest living shop unit whose buyers select the own avatar, its items in their order, each
 /// with its name and its price for the avatar now, and the player's amount of the shop's
 /// resource above; an item the avatar cannot buy now is dimmed, and a click buys it.

@@ -11,8 +11,9 @@ use crate::spectator_fog::SpectatorFog;
 pub(crate) mod error;
 
 /// A setting of a session's visibility, which a mode's `[visibility]` sets and its `host` list may
-/// leave to the host (design 14, D4, D14): a kind's audience, the spectators' fog, or what a player
-/// out of play sees.
+/// leave to the host (14-replication-audiences.md, Each kind has a default audience, and a mode may
+/// set it; 14-replication-audiences.md, Three layers): a kind's audience, the spectators' fog, or
+/// what a player out of play sees.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Setting {
     Kind(DataKind),

@@ -13,8 +13,8 @@ pub struct HashDomain<T> {
     output: PhantomData<fn() -> T>,
 }
 
-/// BLAKE3 of an input led by its domain's tag (design 05, Encoding and cryptography), given its
-/// parts and finished into the domain's type.
+/// BLAKE3 of an input led by its domain's tag (05-protocol-spec.md, Encoding and cryptography),
+/// given its parts and finished into the domain's type.
 pub struct DomainHasher<T> {
     hasher: blake3::Hasher,
     output: PhantomData<fn() -> T>,

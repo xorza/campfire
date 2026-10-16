@@ -23,13 +23,13 @@ use tracing::error;
 /// resolve by their paths beside it. Each read goes through the package's reader, which checks
 /// the bytes against the package's index; Bevy runs it on its IO pool, not the frame's thread.
 ///
-/// At most `MODELS_AT_ONCE` glTF models load at a time (design 17, D9): a model's read waits for
-/// a permit, which its reader holds until the asset server drops it after the load. Bevy's glTF
-/// loader waits on a task scope, and its thread runs the next queued load inside that wait, so
-/// with no bound the loads nest as deep as there are models (Bevy #21954); a load that waits
-/// for a permit yields instead. No model's load waits on another model's, which would hold every
-/// permit and wait forever once four did: Bevy's glTF loader loads its textures apart and reads
-/// a `.gltf`'s buffers, which are no models.
+/// At most `MODELS_AT_ONCE` glTF models load at a time (02-engine-core.md, At most four glTF loads
+/// at a time): a model's read waits for a permit, which its reader holds until the asset server
+/// drops it after the load. Bevy's glTF loader waits on a task scope, and its thread runs the next
+/// queued load inside that wait, so with no bound the loads nest as deep as there are models (Bevy
+/// #21954); a load that waits for a permit yields instead. No model's load waits on another
+/// model's, which would hold every permit and wait forever once four did: Bevy's glTF loader loads
+/// its textures apart and reads a `.gltf`'s buffers, which are no models.
 #[derive(Debug, Clone)]
 pub(crate) struct PackageSource {
     /// By place.

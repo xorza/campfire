@@ -35,14 +35,14 @@ use crate::sim_server::server_setup::ServerSetup;
 const RESEND_TICKS: u32 = 30;
 
 /// How long a link may stay silent after its first offer, which goes out as it connects, before
-/// the server closes it (design 05, Connection, step 3): an honest client answers the first offer
+/// the server closes it (05-protocol-spec.md, Connection): an honest client answers the first offer
 /// it receives, so a connection that only keeps itself alive holds no link.
 const ANSWER_WINDOW: Duration = Duration::from_secs(10);
 
 /// What the server offers each new link, and how it checks the answer: the session's terms, its
 /// grace period and restore window, and a fresh challenge, which the player's session key signs
-/// with the link's channel binding (design 15, D11). The lobby offers it before the start, and
-/// the door after it.
+/// with the link's channel binding (15-quic-transport.md, The answer binds to the TLS session). The
+/// lobby offers it before the start, and the door after it.
 #[derive(Debug)]
 pub(crate) struct Offering {
     pub(crate) terms: SessionTerms,

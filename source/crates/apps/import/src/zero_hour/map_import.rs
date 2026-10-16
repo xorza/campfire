@@ -2,13 +2,16 @@ use std::collections::BTreeSet;
 
 use bevy_math::Vec3;
 use campfire_client_files::{
-    ClientObject, ClientObjects, ClientUnits, HeightGrid, MapConditions, MapLight, MapLights,
-    TerrainFile, TerrainSurface,
+    ClientObject, ClientObjects, ClientUnits, MapConditions, MapLight, MapLights, TerrainFile,
+    TerrainSurface,
 };
 use campfire_codec::{Binary, Toml};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::Num;
-use campfire_mode::{MapData, MapNavigationData, MapPoint, MarkerData, ModeParam, PlacedUnitData};
+use campfire_mode::{
+    GroundData, MapData, MapNavigationData, MapPoint, MarkerData, ModeParam, PlacedUnitData,
+};
+use campfire_units::{CellSplit, CoarseSpan, Ground, HeightGrid};
 use campfire_values::DeclaredName;
 
 use crate::zero_hour::cliff_walls::{CellFrame, CliffWalls};
@@ -94,8 +97,8 @@ pub(crate) struct MapSources<'a> {
     pub(crate) textures: &'a [Option<ClassTexture>],
 }
 
-/// The terrain's surface, rough, of no metal or specular, as the import's materials are (design
-/// 12, D13).
+/// The terrain's surface, rough, of no metal or specular, as the import's materials are
+/// (12-zero-hour.md, A W3D material becomes the one material).
 const SURFACE: TerrainSurface = TerrainSurface {
     metallic: 0.0,
     roughness: 1.0,
@@ -105,8 +108,13 @@ const SURFACE: TerrainSurface = TerrainSurface {
 /// A cell of the heightmap, 10 units wide (`MAP_XY_FACTOR`).
 const CELL: i64 = 10;
 
+/// A cell of the partition, 40 units wide (`GameData.ini`'s `PartitionCellSize`), whose highest
+/// samples a shell's curve rises over (20-zero-hour-projectiles.md, The sim's ground is the map's
+/// height grid).
+const PARTITION_CELL: i64 = 40;
+
 /// A cell of the pathfinder, 10 units wide (`PATHFIND_CELL_SIZE`), which the navigation's cells
-/// take (design 17, D3).
+/// take (12-zero-hour.md, Cliffs are walls).
 const PATHFIND_CELL: i64 = 10;
 
 /// A step of height, 0.625 units (`MAP_HEIGHT_SCALE`): 5 · 2⁻³, exact in a `Num`.
@@ -122,25 +130,26 @@ const WAYPOINT: &str = "waypoint";
 const WAYPOINT_NAME: &str = "name";
 
 /// The tag beside `waypoint` of a skirmish's start and rally waypoints, which the mode spawns its
-/// players' start objects at (design 17, D6).
+/// players' start objects at (12-zero-hour.md, A skirmish starts with the faction's start objects).
 pub(crate) const START: &str = "start";
 
 /// The player slots of a game, `MAX_SLOTS`: the starts a map may name, from `Player_1_Start`,
 /// and the players of a skirmish, each its own team, as the original's default skirmish holds
-/// them (design 19, D1).
+/// them (12-zero-hour.md, Eight teams of one).
 pub(crate) const SLOTS: u8 = 8;
 
 impl MapImport {
     /// The files of `file`, of `sources`: its heights on the engine's axes, its terrain over them
     /// as a terrain file, its texture the atlas the game builds of its classes; its objects as a
-    /// multiplayer game spawns them (design 12, D14), none of a template no INI object names, an
-    /// optimized tree, a prop and fluff as client objects, of a look of `looks`, or none when it
-    /// has none, and every other as a unit of the type `names` gives it, the bridge-like ones
-    /// first, in the map's order; bounds that hold its heights and each unit's body whole; its
-    /// waypoints within them as markers, and the names of those past them, which it drops; the
-    /// walls of its cliffs within them (design 17, D3); and its first `lights` object lights, as
-    /// the game draws `NumberGlobalLights` of each, which the terrain is lit by too; their ambient
-    /// color is the first light's, as the game takes it.
+    /// multiplayer game spawns them (12-zero-hour.md, The multiplayer rule for client objects),
+    /// none of a template no INI object names, an optimized tree, a prop and fluff as client
+    /// objects, of a look of `looks`, or none when it has none, and every other as a unit of the
+    /// type `names` gives it, the bridge-like ones first, in the map's order; bounds that hold its
+    /// heights and each unit's body whole; its waypoints within them as markers, and the names of
+    /// those past them, which it drops; the walls of its cliffs within them (12-zero-hour.md,
+    /// Cliffs are walls); and its first `lights` object lights, as the game draws
+    /// `NumberGlobalLights` of each, which the terrain is lit by too; their ambient color is the
+    /// first light's, as the game takes it.
     pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<Self, MapError> {
         let MapSources {
             ini,
@@ -152,6 +161,10 @@ impl MapImport {
             textures,
         } = sources;
         let heights = Self::heights(&file.heights)?;
+        // The ground a match loads, checked as its load checks it, so a map the load would refuse
+        // is refused here, not by the match.
+        let ground = Self::ground(&file.heights);
+        Ground::new(heights.clone(), ground.split, ground.high).map_err(MapError::Ground)?;
         let map_lights = MapLights::new(
             file.lights[0].ambient,
             file.lights[..lights].iter().map(|light| MapLight {
@@ -309,6 +322,7 @@ impl MapImport {
         let map = MapData {
             metric: Metric::Planar,
             bounds,
+            ground: Some(ground),
             grid: None,
             navigation: Some(MapNavigationData {
                 cell: Num::int(PATHFIND_CELL),
@@ -339,6 +353,30 @@ impl MapImport {
         Vec3::new(x, z, -y)
     }
 
+    /// The ground as the original's logic reads it (20-zero-hour-projectiles.md, The sim's ground
+    /// is the map's height grid): each cell split on its own corners 0 to 2, the file's 1 to 3
+    /// (`BaseHeightMapRenderObjClass::getHeightMapHeight`), and the partition's cells from its
+    /// world's corner over its first boundary, the playable area, an extent below 1 unit taking 1
+    /// (`PartitionManager::init`), its `y` the engine's `−z`.
+    fn ground(heights: &MapHeights) -> GroundData {
+        let extent = |cells: i32| {
+            if cells >= 1 {
+                Num::int(i64::from(cells) * CELL)
+            } else {
+                Num::ONE
+            }
+        };
+        let [x, y] = heights.boundary.unwrap_or([0, 0]);
+        GroundData {
+            split: CellSplit::OneThree,
+            high: Some(CoarseSpan {
+                cell: Num::int(PARTITION_CELL),
+                from: [Num::ZERO; 2],
+                to: [extent(x), -extent(y)],
+            }),
+        }
+    }
+
     /// The heights on the engine's axes. The original's sample of column `i` and row `j` lies at
     /// `x = (i − border) · 10` and its `y = (j − border) · 10`, which is the engine's `−z`: so
     /// the engine's rows run the file's in reverse, from `z = −(depth − 1 − border) · 10`.
@@ -348,6 +386,7 @@ impl MapImport {
             depth,
             border,
             samples,
+            ..
         } = heights;
         if border >= width || border >= depth {
             return Err(MapError::Heights);
@@ -391,6 +430,7 @@ mod tests {
     use std::mem;
 
     use campfire_client_files::ClientUnit;
+    use campfire_units::GroundError;
 
     use super::*;
     use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
@@ -618,6 +658,27 @@ box = ["20", "5"]
         // tree's x of 50, which the sim does not hold.
         let bounds = Toml::parse("min = [-10, -15]\nmax = [35, 10]").unwrap();
         assert_eq!(map.bounds, bounds);
+        // The ground of the original's logic: split on the file's 1 to 3, and the partition's
+        // cells of 40 from the world's corner over the boundary of 2 × 1 cells, x 0 to 20 and the
+        // original's y 0 to 10, the engine's z 0 to −10. A boundary past the heights, 9 cells to
+        // x 90, holds 3 × 1 cells, fewer than its 12 samples, and loads; one of 100 × 100 cells,
+        // 25 × 25 partition cells, more than its samples, is refused.
+        let span = CoarseSpan {
+            cell: Num::int(40),
+            from: [Num::ZERO; 2],
+            to: [Num::int(20), Num::int(-10)],
+        };
+        let ground = GroundData {
+            split: CellSplit::OneThree,
+            high: Some(span),
+        };
+        assert_eq!(map.ground, Some(ground));
+        let mut wide = file.clone();
+        wide.heights.boundary = Some([9, 1]);
+        assert!(import(&wide, &mut names, 3).is_ok());
+        wide.heights.boundary = Some([100, 100]);
+        let refused = import(&wide, &mut names, 3).map(drop);
+        assert_eq!(refused, Err(MapError::Ground(GroundError::CoarseCount)));
         // The tree, the prop 1 above the ground, its reskin and the fluff are client objects, in
         // the map's order, of their templates' looks; the prop of no look, the template no object
         // names and the one of another case are none; the fence that a build clears is a unit.

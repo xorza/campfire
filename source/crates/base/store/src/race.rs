@@ -9,11 +9,18 @@ pub struct Race;
 impl Race {
     /// What `run` gave on each of `count` threads, by the index each was given.
     pub fn run<T: Send>(count: usize, run: impl Fn(usize) -> T + Sync) -> Vec<T> {
-        let barrier = Barrier::new(count);
+        Self::race(count, &Barrier::new(count), &run)
+    }
+
+    /// `run`, its racers released by `barrier`; each thread's closure moves the references in.
+    fn race<T: Send>(count: usize, barrier: &Barrier, run: &(dyn Fn(usize) -> T + Sync)) -> Vec<T> {
         thread::scope(|scope| {
+            #[expect(
+                clippy::needless_collect,
+                reason = "every racer spawns before the first join, or the barrier waits forever"
+            )]
             let threads: Vec<_> = (0..count)
                 .map(|index| {
-                    let (barrier, run) = (&barrier, &run);
                     scope.spawn(move || {
                         barrier.wait();
                         run(index)

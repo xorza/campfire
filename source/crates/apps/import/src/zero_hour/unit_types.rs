@@ -24,9 +24,10 @@ pub(crate) struct TypedObject {
     pub(crate) imported: ImportedType,
 }
 
-/// What the stages give each unit type, by its name: the actions of its slot kinds `weapon`, in
-/// its starting weapon set's order, and `command`, in its command set's order, and its
-/// `production` section when it trains (design 18, D3; design 19, D6).
+/// What the stages give each unit type, by its name: the actions of its slot kinds `weapon`, in its
+/// starting weapon set's order, and `command`, in its command set's order, and its `production`
+/// section when it trains (12-zero-hour.md, Every command set's trains and builds are imported;
+/// 12-zero-hour.md, A weapon converts when it hits one target at once).
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypeAdditions<'a> {
     pub(crate) weapon: &'a BTreeMap<ImportName, Vec<DeclaredName>>,

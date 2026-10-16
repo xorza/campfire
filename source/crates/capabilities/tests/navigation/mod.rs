@@ -863,6 +863,7 @@ fn check_walkable(
     let layers = layer_table(rules);
     let input = MapInput {
         map,
+        heights: None,
         teams: &teams,
         relations: &[],
         layers: &layers,

@@ -1,6 +1,6 @@
 use crate::workspace::sources;
 
-/// The one module whose code may differ by OS (design 02, Platform).
+/// The one module whose code may differ by OS (02-engine-core.md, Platform).
 const PLATFORM: &str = "crates/base/store/src/platform/";
 
 /// The words of a condition that name an OS, or the vendor or the toolchain environment that

@@ -11,7 +11,8 @@ pub struct LinkTimes {
 }
 
 impl LinkTimes {
-    /// A keep-alive each second and a loss after 5 s (design 15, D8).
+    /// A keep-alive each second and a loss after 5 s (15-quic-transport.md, Retry, tokens and
+    /// resets after a restart).
     pub const CAMPFIRE: Self = Self {
         keep_alive: Duration::from_secs(1),
         idle_timeout: Duration::from_secs(5),

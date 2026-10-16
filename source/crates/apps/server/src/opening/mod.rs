@@ -95,7 +95,8 @@ impl Opening {
     }
 
     /// The seats of the session it starts: its slots and the most spectators it admits, which no
-    /// address of honest players passes in live connections (design 15, D13).
+    /// address of honest players passes in live connections (15-quic-transport.md, Limits for each
+    /// address, from the session's seats).
     pub(crate) const fn seats(&self) -> NonZeroU32 {
         self.seats
     }

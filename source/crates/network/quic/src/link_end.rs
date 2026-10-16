@@ -8,8 +8,9 @@ use crate::app_code::AppCode;
 /// carries it as the crypto error 0x100 + 49 (RFC 9001 §4.8).
 const ACCESS_DENIED: u8 = 49;
 
-/// How a link ended, on its entity from the frame it unlinks to the frame it links again (design
-/// 15, D10): the IO's account of a lost connection, or the code its own end closed it with.
+/// How a link ended, on its entity from the frame it unlinks to the frame it links again
+/// (15-quic-transport.md, A link's end is a type): the IO's account of a lost connection, or the
+/// code its own end closed it with.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LinkEnd {
     /// This end closed the link with its code, by `CloseLink`.
@@ -19,8 +20,8 @@ pub enum LinkEnd {
     /// The peer's endpoint holds no connection of this one: it started again since.
     Reset,
     /// The server refused the connection before its handshake: it has not started, it ended,
-    /// or the address holds as many connections or handshakes as its limit lets (design 15,
-    /// D13).
+    /// or the address holds as many connections or handshakes as its limit lets
+    /// (15-quic-transport.md, Limits for each address, from the session's seats).
     Refused,
     /// The server presented a key the client did not pin.
     WrongServerKey,

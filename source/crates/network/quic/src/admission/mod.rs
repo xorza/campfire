@@ -6,14 +6,14 @@ use std::time::Instant;
 
 use crate::address_limit::AddressLimit;
 
-/// What a server's endpoint admits from each address while it takes connections (design 15,
-/// D13): a connection whose address holds fewer live connections than the seats, and has a
-/// handshake left in its bucket. A bucket holds `seats` handshakes and gets one back each
-/// `refill / seats`, as the generic cell rate algorithm keeps a token bucket in one number: the
-/// time it is full again. A handshake finds its bucket in a search of a tree and the full buckets
-/// go by their times, so a flood from many addresses costs each handshake a logarithm of them;
-/// the tree keeps that bound for keys an attacker picks, which a hashed map with a fixed hasher
-/// does not.
+/// What a server's endpoint admits from each address while it takes connections
+/// (15-quic-transport.md, Limits for each address, from the session's seats): a connection whose
+/// address holds fewer live connections than the seats, and has a handshake left in its bucket. A
+/// bucket holds `seats` handshakes and gets one back each `refill / seats`, as the generic cell
+/// rate algorithm keeps a token bucket in one number: the time it is full again. A handshake finds
+/// its bucket in a search of a tree and the full buckets go by their times, so a flood from many
+/// addresses costs each handshake a logarithm of them; the tree keeps that bound for keys an
+/// attacker picks, which a hashed map with a fixed hasher does not.
 #[derive(Debug)]
 pub(crate) struct Admission {
     limit: AddressLimit,

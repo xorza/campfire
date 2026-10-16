@@ -105,7 +105,7 @@ impl PackageFiles {
     /// Its manifest, as the package `package`, once its API version is one the release loads:
     /// the version and the name are read first, as every version of the format names both, so a
     /// package of another version fails as `OtherApi` before any other field or file of it is
-    /// read (design 03, Package API).
+    /// read (03-game-scripting.md, A versioned package API).
     pub(crate) fn manifest(&self, package: &PackageRef) -> Result<Manifest, LoadError> {
         #[derive(Debug, Deserialize)]
         struct Targets {

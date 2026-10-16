@@ -181,8 +181,9 @@ impl Route {
     }
 
     /// The way the walker faces on its leg to the next waypoint: from where the leg began to the
-    /// waypoint, so it holds for the whole leg, whatever each step's rounding (design 17, D2);
-    /// past a leg of no length, the next leg's. None with no waypoint ahead off where it stands.
+    /// waypoint, so it holds for the whole leg, whatever each step's rounding
+    /// (04-capabilities/navigation.md, A walker faces its leg and turns at its turn rate); past a
+    /// leg of no length, the next leg's. None with no waypoint ahead off where it stands.
     pub fn way(&self) -> Option<Facing> {
         let mut from = self.from?;
         for waypoint in self.ahead() {

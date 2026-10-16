@@ -2,14 +2,13 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use bevy_math::UVec2;
-use campfire_client_files::{
-    CameraFile, ClientObjects, HeightGrid, MapConditions, MapLights, TerrainFile,
-};
+use campfire_client_files::{CameraFile, ClientObjects, MapConditions, MapLights, TerrainFile};
 use campfire_codec::Toml;
 use campfire_common::{MapName, PackageFingerprint};
 use campfire_math::Num;
 use campfire_package_disk::{PackageWriter, WriteError};
 use campfire_store::DurableDir;
+use campfire_units::HeightGrid;
 use campfire_values::PackagePath;
 
 use crate::texture::dds_file::DdsFile;
@@ -86,11 +85,14 @@ pub struct Imported {
     pub missing_textures: Vec<String>,
     /// Each map the import wrote, by name.
     pub maps: BTreeMap<MapName, ImportedMap>,
-    /// The command buttons the import does not convert, each with why (design 18, D3).
+    /// The command buttons the import does not convert, each with why (12-zero-hour.md, Every
+    /// command set's trains and builds are imported).
     pub dropped_buttons: Vec<DroppedButton>,
-    /// The weapons the import does not convert, each with why (design 19, D6).
+    /// The weapons the import does not convert, each with why (12-zero-hour.md, A weapon converts
+    /// when it hits one target at once).
     pub dropped_weapons: Vec<DroppedWeapon>,
-    /// The unit types' objects whose body the import gives no life (design 19, D5).
+    /// The unit types' objects whose body the import gives no life (12-zero-hour.md, Life is the
+    /// original's).
     pub unliving: Vec<String>,
     /// The unit types' objects whose body starts below its most life, which the engine starts
     /// full.

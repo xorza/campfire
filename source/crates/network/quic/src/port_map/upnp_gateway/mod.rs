@@ -24,7 +24,7 @@ const DESCRIPTION: &str = "campfire";
 pub(crate) const MAX_DOCUMENT: usize = 1 << 20;
 
 /// A UPnP-IGD router, through `igd-next`'s blocking API, and the address of this host on its side
-/// (design 15, D12).
+/// (15-quic-transport.md, A server maps its own port).
 #[derive(Debug)]
 pub(crate) struct UpnpGateway {
     router: igd_next::Gateway,
@@ -47,8 +47,9 @@ impl UpnpGateway {
     }
 
     /// The router of `announcement`, built as `igd-next` builds one from a search's answer: its
-    /// description and its service schema read at its location, each within `timeout`, every URL
-    /// at its address (design 15, D12); the map's stop ends it between the two reads.
+    /// description and its service schema read at its location, each within `timeout`, every URL at
+    /// its address (15-quic-transport.md, A server maps its own port); the map's stop ends it
+    /// between the two reads.
     pub(crate) fn announced(
         announcement: &SsdpAnnouncement,
         timeout: Duration,

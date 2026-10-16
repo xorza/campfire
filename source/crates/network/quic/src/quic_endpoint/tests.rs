@@ -1074,7 +1074,7 @@ impl Limited {
 #[test]
 fn a_server_refuses_an_address_past_its_seats_of_live_connections_or_of_handshakes() {
     // Two seats over 60 s: each handshake of an address comes back 30 s after its bucket was
-    // full again (design 15, D13).
+    // full again (15-quic-transport.md, Limits for each address, from the session's seats).
     let seats = NonZeroU32::new(2).unwrap();
     let mut limited = Limited::new(AddressLimit::new(seats, Duration::from_secs(60)));
     let home = |port| SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 2)), port);

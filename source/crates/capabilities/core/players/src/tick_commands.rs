@@ -10,10 +10,11 @@ use crate::capability_action::CapabilityAction;
 use crate::out_of_play::OutOfPlay;
 use crate::player_rows::PlayerRows;
 
-/// The orders of one capability among the tick's inputs, of action `A`, each decoded as it is
-/// read, in input order, into buffers each tick reuses. A body that is no such order is left
-/// out, and so is each order of a player out of play in a session whose players out of play see
-/// what a spectator sees: it would act on what its team does not see (design 14, D16).
+/// The orders of one capability among the tick's inputs, of action `A`, each decoded as it is read,
+/// in input order, into buffers each tick reuses. A body that is no such order is left out, and so
+/// is each order of a player out of play in a session whose players out of play see what a
+/// spectator sees: it would act on what its team does not see (14-replication-audiences.md, A
+/// player out of play sees what its team sees, or what a spectator sees).
 #[derive(SystemParam, Debug)]
 pub struct TickCommands<'w, 's, A: CapabilityAction> {
     inputs: Res<'w, TickInputs>,

@@ -11,14 +11,14 @@ use campfire_mode::{MapData, ModeData};
 use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::TickRate;
 use campfire_stats::{EdgeError, StatGraph, StatId};
-use campfire_units::ScriptBook;
+use campfire_units::{HeightGrid, ScriptBook};
 use campfire_values::{DeclaredName, EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
-use crate::error::LoadError;
 use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
+use crate::error::{ContentError, LoadError};
 use crate::file_index::FileIndex;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
@@ -48,6 +48,8 @@ pub struct ModePackages {
     /// The name of the map it loaded, which its session plays.
     map_name: MapName,
     pub(crate) map: MapData,
+    /// The map's height grid, `map/<name>/heights.bin`, when it has one.
+    pub(crate) heights: Option<HeightGrid>,
     /// The mode's actions, modifiers, unit types and item types.
     pub(crate) content: PackageContent,
     /// In the order of their names in the mode's manifest.
@@ -192,6 +194,7 @@ impl ModePackages {
         BookInput {
             data: &self.data,
             map: &self.map,
+            heights: self.heights.as_ref(),
             teams: &self.manifest.teams,
             max_move_speed: self.manifest.max_move_speed,
             set: self.manifest.capabilities,
@@ -242,6 +245,11 @@ impl ModePackages {
 
     pub const fn map(&self) -> &MapData {
         &self.map
+    }
+
+    /// The map's height grid, when it has one.
+    pub const fn heights(&self) -> Option<&HeightGrid> {
+        self.heights.as_ref()
     }
 
     /// The ways each modifier of `view`, one of its packages, is applied.
@@ -404,6 +412,11 @@ impl ModePackages {
             .read_data(&map_data)
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
+        let heights = match files.reader().read_binary(&HeightGrid::path(&map_name)) {
+            Ok(grid) => Some(grid),
+            Err(ContentError::Missing { .. }) => None,
+            Err(error) => return Err(fail(LoadProblem::Content(error))),
+        };
         let mode = Package::read(files, &manifest.header, &parser, &api)?;
         let dependencies: Vec<Dependent> = dependencies
             .iter()
@@ -428,6 +441,7 @@ impl ModePackages {
             data,
             map_name,
             map,
+            heights,
             content,
             tag_names,
             dependencies,

@@ -10,9 +10,9 @@ use derive_more::Display;
 pub(crate) const MAP: &str = "tournament_desert";
 
 /// The fingerprints of the imported package and of the rules package that the known version and
-/// this importer give on every OS: those a run on Linux and a run on macOS gave (design 12, D4,
-/// D7). An importer that converts anything otherwise moves them, and a run on each OS pins them
-/// again.
+/// this importer give on every OS: those a run on Linux and a run on macOS gave  (12-zero-hour.md,
+/// One reproducible package; 12-zero-hour.md, Fixtures in the tests, the install on request). An
+/// importer that converts anything otherwise moves them, and a run on each OS pins them again.
 pub(crate) const FINGERPRINTS: Fingerprints = Fingerprints {
     game: PackageFingerprint::of_hex(
         "9a322cdb435b7860b4a89d526296087da2b3ea553ce23edb038831b43c55c90f",
@@ -23,7 +23,7 @@ pub(crate) const FINGERPRINTS: Fingerprints = Fingerprints {
 };
 
 /// Tournament Desert's walls: its 48,689 cliff cells grown by one ring, merged row by row
-/// (design 17, D3).
+/// (12-zero-hour.md, Cliffs are walls).
 pub(crate) const WALLS: usize = 286;
 
 /// The most ticks player 1's dozer takes from its start to player 2's on Tournament Desert, at 30
@@ -43,7 +43,7 @@ pub(crate) const LOOKS: LookCounts = LookCounts {
 /// The trains and builds the import converts from every command set, and the buttons it drops, by
 /// cause in the order of `DropCause::ALL`: no object, a science 22, an either-or 4, no walker 36,
 /// as the aircraft an airfield or a supply center trains, no box 24, no queue, no type, a bad time
-/// (design 18, D3).
+/// (12-zero-hour.md, Every command set's trains and builds are imported).
 pub(crate) const PRODUCED: ProducedCounts = ProducedCounts {
     trains: 187,
     builds: 138,
@@ -75,13 +75,13 @@ pub(crate) const FIGHT: FightSteps = FightSteps {
     killed: true,
 };
 
-/// The weapons the import converts from every starting weapon set, the weapons it drops by cause
-/// in the order of `WeaponDrop::ALL`: no weapon, a projectile 70, a radius 6, a scatter, a speed
-/// that may delay the damage 7, no hit on the ground 7, a suicide, damage at its own place, a
-/// fire that speeds up 3, a delay before the attack 4, a minimum range, a random delay, no delay
-/// 3, no damage to life 4, healing, a bad number; its armors, `Armor.ini`'s 53,
-/// and damage kinds, the game's 38; and the unit types' objects of no life, 38, and of a wounded
-/// start (design 19, D5, D6).
+/// The weapons the import converts from every starting weapon set, the weapons it drops by cause in
+/// the order of `WeaponDrop::ALL`: no weapon, a projectile 70, a radius 6, a scatter, a speed that
+/// may delay the damage 7, no hit on the ground 7, a suicide, damage at its own place, a fire that
+/// speeds up 3, a delay before the attack 4, a minimum range, a random delay, no delay 3, no damage
+/// to life 4, healing, a bad number; its armors, `Armor.ini`'s 53, and damage kinds, the game's 38;
+/// and the unit types' objects of no life, 38, and of a wounded start (12-zero-hour.md, Life is the
+/// original's; 12-zero-hour.md, A weapon converts when it hits one target at once).
 pub(crate) const FOUGHT: FoughtCounts = FoughtCounts {
     weapons: 17,
     dropped: [0, 70, 6, 0, 7, 7, 0, 0, 3, 4, 0, 0, 3, 4, 0, 0],

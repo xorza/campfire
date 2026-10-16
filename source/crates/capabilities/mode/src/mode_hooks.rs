@@ -61,7 +61,6 @@ impl ModeHooks {
             return;
         }
         let now = world.resource::<SimTick>().start();
-        let bodies = &*bodies;
         Calls::scope(world, now, |call| {
             for input in &*inputs {
                 let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {

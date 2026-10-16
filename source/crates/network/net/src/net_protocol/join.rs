@@ -12,7 +12,7 @@ pub(crate) struct Join {
 }
 
 /// What a joining player asks for: a slot to play, or a spectator's place, which holds no slot
-/// (design 14, D15).
+/// (14-replication-audiences.md, The host admits spectators, and their fog is a setting).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum JoinRole {
     Play,

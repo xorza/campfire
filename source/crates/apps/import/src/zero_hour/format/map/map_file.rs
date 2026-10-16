@@ -69,6 +69,9 @@ pub(crate) struct MapHeights {
     pub(crate) width: usize,
     pub(crate) depth: usize,
     pub(crate) border: usize,
+    /// The first playable boundary, in cells, the one a map starts with active; none when the
+    /// file holds none.
+    pub(crate) boundary: Option<[i32; 2]>,
     pub(crate) samples: Vec<u8>,
 }
 
@@ -182,7 +185,7 @@ impl MapFile {
     }
 
     /// `HeightMapData` version 4 (`WorldHeightMap::ParseHeightMapData`): its sizes, its border,
-    /// its playable boundaries, which the import does not keep, and its samples.
+    /// its playable boundaries, of which the import keeps the first, and its samples.
     fn heights(chunk: RawChunk<'_>) -> Result<MapHeights, MapReadError> {
         chunk.check_version(Chunk::HeightMapData, 4..=4)?;
         let mut body = chunk.body;
@@ -190,8 +193,14 @@ impl MapFile {
         let depth = body.count()?;
         let border = body.count()?;
         let boundaries = body.count()?;
-        body.cursor
-            .take(boundaries.checked_mul(8).ok_or(MapReadError::Short)?)?;
+        let mut kept = body
+            .cursor
+            .take(boundaries.checked_mul(8).ok_or(MapReadError::Short)?)?
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|&bytes| i32::from_le_bytes(bytes));
+        let boundary = kept.next().zip(kept.next()).map(|(x, y)| [x, y]);
         let len = body.count()?;
         if len == 0 || Some(len) != width.checked_mul(depth) {
             return Err(MapReadError::Samples { len, width, depth });
@@ -202,6 +211,7 @@ impl MapFile {
             width,
             depth,
             border,
+            boundary,
             samples,
         })
     }
@@ -376,12 +386,12 @@ impl MapFile {
         })
     }
 
-    /// `GlobalLighting` versions 1 to 3 (`WorldHeightMap::ParseLightingDataChunk`): the map's
-    /// time of day, then for each of the four, the first terrain light and the first object
-    /// light, from version 2 the two other object lights, from version 3 the two other terrain
-    /// lights; and the shadows' color, which the import does not keep. The object lights of the
-    /// map's time of day: the terrain is lit by them (design 16, D3), so its own are read and
-    /// dropped, each still refused when a number of it is not finite.
+    /// `GlobalLighting` versions 1 to 3 (`WorldHeightMap::ParseLightingDataChunk`): the map's time
+    /// of day, then for each of the four, the first terrain light and the first object light, from
+    /// version 2 the two other object lights, from version 3 the two other terrain lights; and the
+    /// shadows' color, which the import does not keep. The object lights of the map's time of day:
+    /// the terrain is lit by them (02-engine-core.md, The terrain is lit as every model is), so its
+    /// own are read and dropped, each still refused when a number of it is not finite.
     fn lighting(chunk: RawChunk<'_>) -> Result<Lighting, MapReadError> {
         chunk.check_version(Chunk::GlobalLighting, 1..=3)?;
         let version = chunk.version;
@@ -754,6 +764,7 @@ mod tests {
                 width: 4,
                 depth: 3,
                 border: 1,
+                boundary: Some([2, 1]),
                 samples: HEIGHTS.to_vec(),
             }
         );

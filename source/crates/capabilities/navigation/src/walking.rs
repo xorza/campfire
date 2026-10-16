@@ -149,7 +149,8 @@ impl Walking {
     /// planner walks the one it has, if any. One its tags or a forced move stop keeps both.
     ///
     /// First it turns toward its leg's way, at its turn step, or at once with none, and it stands
-    /// this tick unless it then faces within `Facing::WITHIN` of the way (design 17, D2).
+    /// this tick unless it then faces within `Facing::WITHIN` of the way
+    /// (04-capabilities/navigation.md, A walker faces its leg and turns at its turn rate).
     pub(super) fn move_units(
         mut units: Query<
             '_,

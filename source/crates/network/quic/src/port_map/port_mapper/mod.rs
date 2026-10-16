@@ -19,7 +19,7 @@ const PCP_PORT: u16 = 5351;
 /// apart; it holds a gateway that grants a very short lifetime off a loop of requests.
 const RENEWAL_MIN: Duration = Duration::from_secs(4);
 
-/// How long each part of the port map waits (design 15, D12).
+/// How long each part of the port map waits (15-quic-transport.md, A server maps its own port).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct MapTimes {
     /// The lifetime each mapping asks for.
@@ -276,7 +276,8 @@ impl PortMapper {
     }
 
     /// Maps the port through the router a search finds, else through the last that announced
-    /// itself, whose answer a host firewall may have dropped (design 15, D12).
+    /// itself, whose answer a host firewall may have dropped (15-quic-transport.md, A server maps
+    /// its own port).
     fn map_by_upnp(&self, stop: &AtomicBool) -> Result<Held, MapError> {
         if stop.load(Ordering::SeqCst) {
             return Err(MapError::Stopped);

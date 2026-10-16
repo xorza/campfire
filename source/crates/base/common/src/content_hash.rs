@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use crate::value32::{ContentMeaning, Meaning, Value32};
 
 /// The SHA-256 of a file's bytes, as a package's index lists each file's, and as a Blossom server
-/// names a blob (design 05, Hashes, ids and keys).
+/// names a blob (05-protocol-spec.md, Hashes, ids and keys).
 pub type ContentHash = Value32<ContentHashMeaning>;
 
 /// The meaning of a `ContentHash`.

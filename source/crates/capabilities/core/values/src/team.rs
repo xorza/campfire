@@ -52,8 +52,8 @@ impl SimComponent for Team {
     }
 }
 
-// Sent on each insert, as a change of owner moves its unit to the new owner's team (design 14,
-// D18).
+// Sent on each insert, as a change of owner moves its unit to the new owner's team
+// (14-replication-audiences.md, A unit's owner is a player of its team).
 impl Replication for Team {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentOnInsert;

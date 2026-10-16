@@ -20,7 +20,7 @@ const WIDEST: i128 = 1 << 47;
 /// vector, each axis with 62 bits of fraction, and its length, each rounded to nearest. Each
 /// measure it takes of an offset, how far along it and how far from its line, rounds once more,
 /// to the nearest unit: along, and apart in two axes, within 0.51 of a unit of the true value;
-/// apart in three axes, within 1.4 (design 09, D9).
+/// apart in three axes, within 1.4 (09-determinism-core.md, Exact where it fits).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Direction<const N: usize> {
     unit: [i64; N],

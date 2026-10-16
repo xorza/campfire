@@ -5,9 +5,10 @@ use crate::ktx2_image::{IDENTIFIER, LEVEL_ENTRY, LEVEL_INDEX};
 use crate::texture_format::TextureFormat;
 
 /// A texture of the package, decoded, as a texture composed of package textures takes it, a
-/// terrain's among them (design 16, D2): `size` texels of sRGB red, green, blue and alpha, rows
-/// from the top, its first `levels` levels one after another, the largest first. It reads what
-/// the import writes of a TGA, a KTX2 file of `R8G8B8A8_SRGB`.
+/// terrain's among them (02-engine-core.md, The terrain's texture is composed at load): `size`
+/// texels of sRGB red, green, blue and alpha, rows from the top, its first `levels` levels one
+/// after another, the largest first. It reads what the import writes of a TGA, a KTX2 file of
+/// `R8G8B8A8_SRGB`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextureLevels {
     size: UVec2,

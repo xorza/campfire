@@ -3,12 +3,12 @@ use campfire_geometry::Grid;
 use campfire_navigation::{
     MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, WalkerKinds, Walls,
 };
-use campfire_units::{BodyForm, Layer, MapBook};
+use campfire_units::{BodyForm, Ground, HeightGrid, Layer, MapBook};
 use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType, VisionShare};
 use campfire_vision::{BrushMap, VisionBook, VisionGrid};
 
 use crate::error::ModeError;
-use crate::map_data::MapData;
+use crate::map_data::{GroundData, MapData};
 use crate::map_point::MapPoint;
 use crate::marker_spec::MarkerSpec;
 use crate::placed_unit::{PlacedPath, PlacedUnit};
@@ -38,11 +38,12 @@ pub struct ResolvedMap {
     pub vision: VisionBook,
 }
 
-/// What a mode's map resolves from: the map, the mode's teams and their relations, and the
-/// names of the layers its walls stand on.
+/// What a mode's map resolves from: the map and its height grid, if it has one, the mode's teams
+/// and their relations, and the names of the layers its walls stand on.
 #[derive(Debug, Clone, Copy)]
 pub struct MapInput<'a> {
     pub map: &'a MapData,
+    pub heights: Option<&'a HeightGrid>,
     pub teams: &'a [TeamManifest],
     pub relations: &'a [RelationData],
     pub layers: &'a Names<Layer>,
@@ -79,6 +80,7 @@ impl ModeMap {
     ) -> Result<ResolvedMap, ModeError> {
         let MapInput {
             map,
+            heights,
             teams,
             relations,
             layers,
@@ -165,6 +167,7 @@ impl ModeMap {
             ground: MapBook {
                 metric: map.metric,
                 bounds: map.bounds,
+                ground: Self::ground(map, heights)?,
             },
             navigation: NavigationBook {
                 paths,
@@ -179,6 +182,19 @@ impl ModeMap {
     pub fn install_pathing(&self, world: &mut World, walkers: WalkerKinds) {
         if let Some(grid) = self.pathing {
             Navigation::load_pathing(world, grid, walkers);
+        }
+    }
+
+    /// The ground of `map`, of its height grid `heights`, as its `[ground]` reads it; flat with no
+    /// grid. An error for a `[ground]` with no grid, or coarse cells that do not fit it.
+    fn ground(map: &MapData, heights: Option<&HeightGrid>) -> Result<Ground, ModeError> {
+        match (heights, map.ground) {
+            (None, None) => Ok(Ground::default()),
+            (None, Some(_)) => Err(ModeError::NoHeights),
+            (Some(grid), data) => {
+                let GroundData { split, high } = data.unwrap_or_default();
+                Ok(Ground::new(grid.clone(), split, high)?)
+            }
         }
     }
 

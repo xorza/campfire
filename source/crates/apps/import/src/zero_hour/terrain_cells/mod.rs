@@ -94,12 +94,12 @@ impl<'a> TerrainCells<'a> {
         i32::from(self.samples[self.at([x, y])])
     }
 
-    /// The terrain file's quads of the cells the game draws (design 16, D1): each cell's tile as
-    /// its ground, and its blend and its third blend as overlays, in that order, each when it has
-    /// one of some alpha: a custom edge's blend has none, as the import draws no custom edge.
-    /// Of `n` rows of cells, the file's cell `[column, row]` is the game's `[column, n − 1 − row]`,
-    /// its corners 0 to 3 the game's 3 to 0, so the game's diagonal from corner 0 to 2 is the
-    /// file's from 1 to 3.
+    /// The terrain file's quads of the cells the game draws (02-engine-core.md, A terrain is quads
+    /// over the height grid): each cell's tile as its ground, and its blend and its third blend as
+    /// overlays, in that order, each when it has one of some alpha: a custom edge's blend has none,
+    /// as the import draws no custom edge. Of `n` rows of cells, the file's cell `[column, row]` is
+    /// the game's `[column, n − 1 − row]`, its corners 0 to 3 the game's 3 to 0, so the game's
+    /// diagonal from corner 0 to 2 is the file's from 1 to 3.
     pub(crate) fn quads(&self) -> TerrainQuads {
         let [columns, rows] = self.drawn();
         let mut ground = Vec::with_capacity(columns * rows);

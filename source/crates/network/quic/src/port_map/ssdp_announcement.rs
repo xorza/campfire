@@ -12,9 +12,9 @@ const GATEWAY_TYPES: [&str; 5] = [
     "urn:schemas-upnp-org:service:WANPPPConnection:1",
 ];
 
-/// A UPnP-IGD router's `NOTIFY` announcement that it is alive, multicast to SSDP's group (design
-/// 15, D12): where its description is. Its location's address is the announcer's, as `igd-next`
-/// trusts a search's answer only at its sender's address.
+/// A UPnP-IGD router's `NOTIFY` announcement that it is alive, multicast to SSDP's group
+/// (15-quic-transport.md, A server maps its own port): where its description is. Its location's
+/// address is the announcer's, as `igd-next` trusts a search's answer only at its sender's address.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SsdpAnnouncement {
     location: RouterUrl,

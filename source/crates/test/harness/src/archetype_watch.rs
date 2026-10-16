@@ -10,7 +10,7 @@ use campfire_sim::{EntityIndex, StableId};
 
 /// The parts each entity of a running match held as a tick first found it, by its stable id:
 /// after that, its parts change only by the parts of the states its kind declares, as each part
-/// comes with the spawn (design 02, Direction). Each tick, it notes each entity whose parts
+/// comes with the spawn as AGENTS.md's Direction asks. Each tick, it notes each entity whose parts
 /// changed otherwise.
 #[derive(Debug, Default)]
 pub struct ArchetypeWatch {

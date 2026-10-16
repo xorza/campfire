@@ -12,7 +12,8 @@ const SPKI_PREFIX: [u8; 12] = [
 const SPKI_LEN: usize = SPKI_PREFIX.len() + 32;
 
 /// A TLS key as TLS carries it with no certificate ([RFC 7250]): its `SubjectPublicKeyInfo`, which
-/// a server presents and a client's verifier takes (design 15, D6).
+/// a server presents and a client's verifier takes (15-quic-transport.md, A raw key derived from
+/// the server's key).
 ///
 /// [RFC 7250]: https://www.rfc-editor.org/rfc/rfc7250
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

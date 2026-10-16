@@ -22,11 +22,11 @@ use crate::quic_link::QuicLink;
 type Unstarted = (Without<Linking>, Without<Linked>);
 
 /// Links Lightyear's `Link`s over QUIC: an entity with a `QuicEndpoint` opens at its `LinkStart`;
-/// in `PreUpdate`, in `BufferToLink`, each endpoint's news and received datagrams reach the
-/// world, and in `PostUpdate`, in `LinkSystems::Send`, each link's packets reach their
-/// connection (design 15, D3). A `CloseLink` closes its connection with its code, and an `Unlink`
-/// with none. It adds no transport: an app with no `QuicEndpoint`, as an in-process one, takes
-/// its `CloseLink` and its `LinkEnd` alike.
+/// in `PreUpdate`, in `BufferToLink`, each endpoint's news and received datagrams reach the world,
+/// and in `PostUpdate`, in `LinkSystems::Send`, each link's packets reach their connection
+/// (15-quic-transport.md, A thread for each endpoint, and no IO in the frame). A `CloseLink` closes
+/// its connection with its code, and an `Unlink` with none. It adds no transport: an app with no
+/// `QuicEndpoint`, as an in-process one, takes its `CloseLink` and its `LinkEnd` alike.
 #[derive(Debug)]
 pub struct QuicPlugin;
 

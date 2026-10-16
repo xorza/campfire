@@ -157,7 +157,7 @@ fn the_list_holds_each_capability_at_most_once_after_what_it_builds_on() {
     assert!(rows.iter().all(|row| row.capability != Mode));
 }
 
-/// The capability table of design 04, beside this crate.
+/// The capability table (04-capabilities/00-overview.md, Capabilities), beside this crate.
 /// The most bytes a test reads of a design document: far past any the design holds.
 const DOC_LEN: usize = 1 << 20;
 
@@ -207,7 +207,7 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 
 /// Each capability crate's folder under this crate's and its layer, lowest first: a crate
 /// depends only on crates of lower layers, and a capability needs only capabilities of lower
-/// layers, as design 02's structural rules ask. This crate sits above them all.
+/// layers, as the structural rules ask (02-engine-core.md, Layers). This crate sits above them all.
 const LAYERS: [(&str, u8); 23] = [
     ("core/geometry", 0),
     ("core/state-types", 0),

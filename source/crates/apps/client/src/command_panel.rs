@@ -36,13 +36,13 @@ use crate::selection::{Selection, SelectionSystems};
 use crate::ui_style::{self, BACK, DIMMED, TEXT};
 use crate::view::unit_looks::UnitLooks;
 
-/// The command panel (design 18, D7): it shows the first selected unit, in stable id order, of
-/// the player's own that has a train or a build or is a site. Its rows: the player's amount of
-/// each of the mode's resources; a button for each train and build of the unit's slots, with its
-/// name and cost, dimmed while the player cannot pay it; the unit's train queue, each entry's
-/// name and the head's progress, a click on an entry cancelling it; and of a site, its progress,
-/// a click cancelling it. A train button orders the unit alone to train; a build button starts
-/// the build preview.
+/// The command panel (02-engine-core.md, A command panel from the actions): it shows the first
+/// selected unit, in stable id order, of the player's own that has a train or a build or is a site.
+/// Its rows: the player's amount of each of the mode's resources; a button for each train and build
+/// of the unit's slots, with its name and cost, dimmed while the player cannot pay it; the unit's
+/// train queue, each entry's name and the head's progress, a click on an entry cancelling it; and
+/// of a site, its progress, a click cancelling it. A train button orders the unit alone to train; a
+/// build button starts the build preview.
 #[derive(Debug, Clone)]
 pub(crate) struct CommandPanel {
     pub(crate) resources: Vec<ResourceId>,

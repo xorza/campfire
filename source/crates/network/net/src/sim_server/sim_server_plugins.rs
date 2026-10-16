@@ -41,7 +41,7 @@ impl PluginGroup for SimServerPlugins {
 /// starts, sets its own. A build turns Bevy's `multi_threaded` on wherever one of its members
 /// enables it: without this, a server built beside the client runs its systems in parallel, and
 /// one built alone does not, and systems with no order between them run in an order that timing
-/// sets (design 02, Bevy).
+/// sets (02-engine-core.md, Bevy).
 #[derive(Debug)]
 struct OneThread;
 

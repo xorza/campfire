@@ -78,6 +78,13 @@ impl PackageTree {
         self
     }
 
+    /// Puts `bytes` at `file`, by its path from the tree's root: a binary file, which no text edit
+    /// writes, new or in place of the one there.
+    pub fn put(&mut self, file: &str, bytes: Vec<u8>) -> &mut Self {
+        self.files.insert(PathBuf::from(file), bytes);
+        self
+    }
+
     /// The package at `root`, by its path from the tree's root, in memory.
     pub fn dir(&self, root: &str) -> TreeDir {
         TreeDir::new(Arc::new(TreeDir::reindexed(self.files.clone())), root)

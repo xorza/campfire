@@ -277,7 +277,9 @@ fn held_as(local: &InProcessMatch, client: usize, id: StableId) -> Option<Held> 
 #[test]
 fn a_new_owner_reaches_the_clients_and_takes_the_owners_kinds_to_its_own() {
     // A duo, player 0 west and player 1 east. Player 0's hero passes to player 1, and to the east
-    // with it, as a capture does (design 14, D17, D18): a new `Owner` and `Team` inserted.
+    // with it, as a capture does (14-replication-audiences.md, An owner changes by an insert alone;
+    // 14-replication-audiences.md, A unit's owner is a player of its team): a new `Owner` and
+    // `Team` inserted.
     let mut local = InProcessMatch::new(MatchSetup::duo(
         LinkModel::PERFECT,
         InProcessMatch::SEED_CHAIN,

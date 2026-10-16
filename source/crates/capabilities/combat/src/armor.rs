@@ -9,8 +9,9 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 /// An armor: the share of each damage kind's damage a unit of it takes, by kind, the whole of a
-/// kind it does not name, as Warcraft III's table of attack and armor types holds it (design 19,
-/// D4). Each unit type of the armor shares its one table.
+/// kind it does not name, as Warcraft III's table of attack and armor types holds it
+/// (04-capabilities/combat.md, Armor by damage kind). Each unit type of the armor shares its one
+/// table.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Armor(Arc<[Num]>);
 

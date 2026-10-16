@@ -1,16 +1,17 @@
 use bevy::ecs::resource::Resource;
 use bevy::math::{Vec2, Vec3};
-use campfire_client_files::{HeightGrid, TerrainQuads};
+use campfire_client_files::TerrainQuads;
+use campfire_units::HeightGrid;
 
 use crate::view::float_num::FloatNum;
 
-/// The ground's height beneath a point of a map with a heightmap, the drawn ground's (design 17,
-/// D8). On the grid's axes, in cells from its first sample, `u` along `x` and `v` along `z`, a
-/// point's cell is its coordinates floored, and the cell's two triangles meet as its terrain's
-/// quad draws them: on the diagonal from its corner 0 to 2, or from 1 to 3 when the quad is
-/// flipped, its corners at the samples `(u, v)`, `(u + 1, v)`, `(u + 1, v + 1)` and
-/// `(u, v + 1)`. A point off the grid takes the height of the grid's nearest point, so the
-/// ground runs on level past its edge.
+/// The ground's height beneath a point of a map with a heightmap, the drawn ground's
+/// (02-engine-core.md, The drawn ground is the terrain's). On the grid's axes, in cells from its
+/// first sample, `u` along `x` and `v` along `z`, a point's cell is its coordinates floored, and
+/// the cell's two triangles meet as its terrain's quad draws them: on the diagonal from its corner
+/// 0 to 2, or from 1 to 3 when the quad is flipped, its corners at the samples `(u, v)`, `(u + 1,
+/// v)`, `(u + 1, v + 1)` and `(u, v + 1)`. A point off the grid takes the height of the grid's
+/// nearest point, so the ground runs on level past its edge.
 #[derive(Resource, Debug, Clone, PartialEq)]
 pub(crate) struct GroundHeights {
     grid: HeightGrid,
@@ -37,7 +38,10 @@ impl GroundHeights {
         let rows = grid.rows() as usize;
         let flips = match quads {
             Some(quads) => {
-                debug_assert!(quads.fits(&grid), "a terrain over the grid's cells");
+                debug_assert!(
+                    quads.fits(grid.columns(), grid.rows()),
+                    "a terrain over the grid's cells"
+                );
                 quads.ground.iter().map(|quad| quad.flip).collect()
             }
             None => vec![false; (columns - 1) * (rows - 1)],

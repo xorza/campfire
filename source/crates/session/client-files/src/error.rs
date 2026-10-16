@@ -1,7 +1,7 @@
 use thiserror::Error;
 
-/// Why a terrain file is none the client draws (design 16): a shape, an index, a number or a
-/// rectangle past what it holds.
+/// Why a terrain file is none the client draws (02-engine-core.md, Client): a shape, an index, a
+/// number or a rectangle past what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum TerrainFileError {
     /// Its grid has fewer than two columns, or its ground quads fill no whole rows of its cells.

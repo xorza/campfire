@@ -12,7 +12,8 @@ use crate::move_step::MoveStep;
 use crate::unit_entity::UnitEntity;
 
 /// How far a walker turns in one tick, in degrees, never negative: the effect of its turn rate,
-/// which its stats give (design 17, D2). A walker of none turns at once.
+/// which its stats give (04-capabilities/navigation.md, A walker faces its leg and turns at its
+/// turn rate). A walker of none turns at once.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct TurnStep(Num);

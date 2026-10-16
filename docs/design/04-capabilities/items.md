@@ -2,51 +2,25 @@
 
 ## Mechanism
 
-Things a unit carries, equips or finds: MOBA items, shooter weapons and grenades, battle royale loot, MMO gear. A carried item is an entry of its carrier's inventory, not a unit: its type, stack and uses, as League of Legends keeps an item in a slot. An item on the ground is a unit, planned with world items, which picking it up turns into an entry.
-
-## Data
-
-- **Item types:** the mode package's `[items.<id>]`; the load refuses one in an avatar or a loadout package. `name`, a message id ([Human text](../03-game-scripting.md#game-package)); `cost`, whole amounts of player resources, `{ gold = 1100 }`; `components`, the items of its package it is built from, as League of Legends' and Dota 2's recipes; `stack`, how many share a slot, 1 by default; `uses`, a consumable's, one spent as its action resolves, the item going with the last; `modifiers`, held from the carrier while carried; `action`, the item's active.
-- **Inventories:** a carrier's type gives `inventory = { slots, kind }`: at least one slot, and the slot kind of one rank whose action slots they fill, one each, after the kinds before it ([Actions](actions.md#data)). A slot with no item, or an item with no action, holds none.
-- **Shops:** a unit type's `shop` makes its units shops, as Warcraft III's shops, a courier and a market are units: `items`, the types it sells, each costing only its resource; `resource`, the player resource it takes; `reach`, how far from its body's edge it serves, by the reach rule ([Reach](00-overview.md#space-and-map)); `buyers`, a filter of the units it serves, as its team regards theirs; and `sell_share`, the share of a cost a sale returns, from 0 to 1, a decimal of at most nine digits kept exactly, so 70 % of 300 is 210. A shop is its type's data, not state. An item costs at least its components, in each resource, and a full stack of it costs what an amount of a resource holds, so a sale of the stack gives back an amount.
+- **A carried item is an inventory entry, not a unit.** Its type, stack and uses, as League of Legends keeps an item in a slot; an item on the ground is a unit, planned with world items.
+- **An item has a name.** An item type's `name` is a message id of its package's locale, as an avatar's is, and the load checks each locale holds it.
+- **Shops are units.** A unit type's `shop` makes its units shops, as Warcraft III's shops and couriers are units; a shop is its type's data, not state.
+- **A sale returns an exact share.** A shop's sale share is a decimal of at most nine digits kept exactly, so 70 % of 300 is 210.
+- **A recipe gives back its components.** A buy pays the cost less the components the unit holds, which it gives up, as League of Legends' and Dota 2's recipes do.
 
 ## Rules
 
-- **Orders:** `buy`, `sell` and `swap` apply in Inputs, in input order, to a unit of the player's with an inventory, so a later one sees what an earlier one changed; one that fails a check is dropped.
-- **Serving:** a living shop unit serves a unit its `buyers` select, within its `reach`; a dead unit stands nowhere, so a shop whose `buyers` select it serves it from anywhere: `allies` lets a dead player shop, as League of Legends does, and `allies:!dead` does not, as Warcraft III does ([Tags](stats.md#tags)).
-- **Buying:** `buy = { item, shop }` buys an item that the shop unit `shop` sells, for a unit it serves. It pays the cost less the components it holds, which it gives up, each counted once; the item joins a slot of its type with room in its stack, else the first empty slot once the components left. An order the player cannot pay, or with no room, is dropped.
-- **Selling:** `sell = { slot, shop }` gives up the slot's item at a shop unit that serves the unit, for the shop's `sell_share` of its cost in the shop's resource times its stack, rounded down.
-- **Moving:** `swap = { from, to }` swaps two slots anywhere at any time; an active keeps its cooldown in its new slot.
-- **Actives:** an item's action sits in its slot's action slot at rank 1, filled afresh, ready and with no charges, when an item of another type comes into the slot, and empty when none is; no unit type or choice puts actions in an inventory's kind, which the load checks. A consumable's spends a use as it resolves, with its cost and cooldown. An item's action is in the `use` group, whatever its kind: a stun stops it and a silence does not, as in League of Legends and Dota 2.
-- **Passives:** a carried item holds its modifiers from the carrier at rank 1; two items with one modifier hold it once, as unique passives. No unit type's `passive` and no action's `passive_modifier` is an item's modifier, which the load checks.
-- **Death:** a unit keeps what it carries.
+- **Orders in input order.** `buy`, `sell` and `swap` apply in Inputs in input order, so a later one sees what an earlier one changed.
+- **The buyer filter decides who shops dead.** A shop whose filter selects a dead unit serves it from anywhere: `allies` lets a dead player shop, as League of Legends does, and `allies:!dead` does not, as Warcraft III does.
+- **An item's action is a use.** It sits in its slot at rank 1, filled afresh, and is in the `use` group whatever its kind, so a stun stops it and a silence does not, as in League of Legends and Dota 2.
+- **Unique passives.** Two items with one modifier hold it once.
+- **A unit keeps what it carries at death.**
 
-### Planned
+## Planned
 
-Equipment, world items, loot, crafting, owners and trade come with the imported games that need them.
-
-- **Equipment** that shows, as a weapon in hand, goes to everyone who sees its unit.
-- **Crafting** is the `craft` kind: a recipe (`[recipes.<id>]`) names the items and pools it takes, the station it needs as a filter on a unit near, and what it makes, an item or modifiers added to one, as Skyrim's enchanting does. Added modifiers are the item's state.
-- **Owners.** In a world, an item of a tradable type has an owner, a player's main key, kept when it is stored, dropped or held by a follower; only its owner may sell or trade it. `tradable` is off unless the mode turns it on, and `bound` makes an item its first owner's for good.
-- **Trade** between two players is an order of each: each offers items and resources, both confirm, and the sim swaps them in one tick, all or nothing. A sale for sats is the `payments` module's ([Item sale](../05-protocol-spec.md#item-sale)).
-
-## State and derived
-
-- **State:** each inventory's slots, each an item type, its stack and its uses, and its carrier's `UseGroup`, the inventory's slot kind, a state type of `actions`, which the abilities read for the `use` group with no import of `items`; later each item on the ground, its added modifiers, its owner and any sale that holds it.
-- **Derived:** the modifiers and actions an item grants while carried; a recipe's cost less its components.
-
-## Script API
-
-None in the MOBA's cut: orders buy, sell and move items. Later `ctx.give_item(unit, id)` and `ctx.drop(unit, slot)`.
+- **Crafting** is the `craft` kind: a recipe takes items and pools at a station and makes an item or adds modifiers to one, as Skyrim's enchanting does.
+- **Owners and trade.** In a world, a tradable item has an owner, a player's main key; a trade between players is all or nothing in one tick, and a sale for sats is the `payments` module's ([Item sale](../05-protocol-spec.md#item-sale)).
 
 ## Network
 
-A unit's inventory goes to its owner, or as the mode sets ([Replication audiences](../14-replication-audiences.md), `inventory`). A client predicts no buy or sale: its gold and slots come from the server.
-
-## Cost
-
-Each inventory change costs a refresh of its carrier. Items on the ground cost what units that do not move cost.
-
-## Genres
-
-A MOBA's shop items and wards; a shooter's guns, grenades and armor; a battle royale's loot; an MMO's gear and consumables; Diablo's drops with random modifiers; Skyrim's smithing and enchanting.
+- **A client predicts no buy or sale.** Its gold and slots come from the server.

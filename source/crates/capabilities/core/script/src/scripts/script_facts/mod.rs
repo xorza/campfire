@@ -14,7 +14,8 @@ use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::ScriptApi;
 
-/// The variable every script API call goes through, by design 08's convention.
+/// The variable every script API call goes through, by the script API's convention
+/// (08-script-api.md, `ctx` stays visible).
 const CTX: &str = "ctx";
 /// Rhai's call that makes a function pointer of a function's name, which its optimizer folds
 /// into a constant when the name is a literal, and the start of the name it gives each anonymous

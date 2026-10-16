@@ -49,11 +49,11 @@ use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
 
-/// Design 08's checks at package load, over a mode and every package it depends on: data matches
-/// its schema (the reads checked that), every per-rank array has an entry for each rank, every
-/// script is named by data and defines only hooks of its roles, and every capability, `ctx` name,
-/// modifier, param, stat, filter and damage kind a script or data names exists for the mode. And
-/// every homing projectile is faster than the mode's move speed cap.
+/// The checks at package load (08-script-api.md, Checks at package load), over a mode and every
+/// package it depends on: data matches its schema (the reads checked that), every per-rank array
+/// has an entry for each rank, every script is named by data and defines only hooks of its roles,
+/// and every capability, `ctx` name, modifier, param, stat, filter and damage kind a script or data
+/// names exists for the mode. And every homing projectile is faster than the mode's move speed cap.
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
@@ -1570,8 +1570,8 @@ impl<'a> LoadCheck<'a> {
         types.chain(choices).next()
     }
 
-    /// No data gives a field design 08 plans: the mode's `state_version`, or a projectile type's
-    /// `gravity` in any package. An action's planned effects fail the action's own checks.
+    /// No data gives a field the script API plans: the mode's `state_version`, or a projectile
+    /// type's `gravity` in any package. An action's planned effects fail the action's own checks.
     fn planned_data(&self) -> Result<(), LoadProblem> {
         let planned = |table: DataTable, field: &str| {
             self.api.data().iter().any(|held| {

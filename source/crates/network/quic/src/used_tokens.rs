@@ -4,10 +4,11 @@ use std::time::{Duration, SystemTime};
 
 use quinn_proto::{TokenLog, TokenReuseError};
 
-/// The `NEW_TOKEN` tokens a server took, each until it expires, so each validates one address
-/// once and a party that saw it pass cannot use it again (design 15, D8). `quinn-proto` asks it for
-/// each token that decrypts, names the client's IP and has not expired; it holds no token past its
-/// expiry, when `quinn-proto` refuses the token by itself.
+/// The `NEW_TOKEN` tokens a server took, each until it expires, so each validates one address once
+/// and a party that saw it pass cannot use it again (15-quic-transport.md, Retry, tokens and resets
+/// after a restart). `quinn-proto` asks it for each token that decrypts, names the client's IP and
+/// has not expired; it holds no token past its expiry, when `quinn-proto` refuses the token by
+/// itself.
 #[derive(Debug, Default)]
 pub(crate) struct UsedTokens {
     used: Mutex<BTreeSet<UsedToken>>,

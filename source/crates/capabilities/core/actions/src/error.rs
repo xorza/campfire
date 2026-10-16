@@ -7,7 +7,7 @@ use crate::action_data_field::ActionDataField;
 use crate::action_kind::{ActionKind, MeteredKind};
 use crate::list_hook::ListHook;
 
-/// Why an action's data makes no action of a match: a rule of design 08's checks that its data
+/// Why an action's data makes no action of a match: a rule of the load's checks that its data
 /// breaks, which the action's book holds as it builds. Packages are untrusted, so each is an
 /// expected failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

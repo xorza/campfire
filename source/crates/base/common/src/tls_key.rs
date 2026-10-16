@@ -1,7 +1,8 @@
 use crate::value32::{Meaning, Value32};
 
-/// The Ed25519 public key a server presents to TLS with no certificate (design 15, D6): the
-/// client takes this key and no other, in hex as a listing gives it.
+/// The Ed25519 public key a server presents to TLS with no certificate (15-quic-transport.md, A raw
+/// key derived from the server's key): the client takes this key and no other, in hex as a listing
+/// gives it.
 pub type TlsKey = Value32<TlsKeyMeaning>;
 
 /// The meaning of a `TlsKey`.

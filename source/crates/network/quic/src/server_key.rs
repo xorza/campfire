@@ -13,7 +13,8 @@ use zeroize::Zeroizing;
 use crate::derived_secret::DerivedSecret;
 use crate::spki::Spki;
 
-/// The ALPN of every Campfire connection, which RFC 9001 requires (design 15, D7).
+/// The ALPN of every Campfire connection, which RFC 9001 requires (15-quic-transport.md, TLS 1.3,
+/// ALPN `campfire`, no client key, no resumption).
 pub(crate) const ALPN: &[u8] = b"campfire";
 
 /// A one-key PKCS#8 v1 `PrivateKeyInfo` of Ed25519 before its 32-byte seed ([RFC 8410] §7).
@@ -25,7 +26,7 @@ const PKCS8_PREFIX: [u8; 16] = [
 const PKCS8_LEN: usize = PKCS8_PREFIX.len() + 32;
 
 /// The server's TLS identity: an Ed25519 key with no certificate, whose seed derives from the
-/// server's own key (design 15, D6).
+/// server's own key (15-quic-transport.md, A raw key derived from the server's key).
 #[derive(Debug)]
 pub(crate) struct ServerKey {
     signing: Arc<dyn SigningKey>,

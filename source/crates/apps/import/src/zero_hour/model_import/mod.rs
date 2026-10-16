@@ -89,7 +89,6 @@ impl ModelImport {
         if let Some(other) = &other {
             assets.load(other)?;
         }
-        let assets = &*assets;
         let error = |error| ZeroHourError::Model {
             model: name.clone(),
             error,

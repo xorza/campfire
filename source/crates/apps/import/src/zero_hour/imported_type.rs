@@ -10,13 +10,15 @@ use crate::zero_hour::format::ini::object_ini::fight_data::BodyKind;
 use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
 use crate::zero_hour::import_name::ImportName;
 
-/// An object's unit type as the import writes it in `data/units.toml` (design 17, D1, D4; design
-/// 19, D5, D7): the speed and the turn rate of its first normal locomotor that drives on the
-/// ground; its body: a circle of its bounding radius, at most `MAX_WALKER`, when it drives, or,
-/// when it is a structure that is not small, a box of twice its radii for a box geometry, else a
-/// circle of its radius; the life of an active or a structure body, with its `combat` section,
-/// which despawns it as it dies, and the armor of its starting armor set; and the tag of victory
-/// for a structure that counts for one. Every other object has none of these.
+/// An object's unit type as the import writes it in `data/units.toml`  (12-zero-hour.md, Units move
+/// by the generic backends with the original's numbers; 12-zero-hour.md, Only walkers and standing
+/// structures have bodies; 12-zero-hour.md, Life is the original's; 12-zero-hour.md, Defeat by the
+/// last building that counts): the speed and the turn rate of its first normal locomotor that
+/// drives on the ground; its body: a circle of its bounding radius, at most `MAX_WALKER`, when it
+/// drives, or, when it is a structure that is not small, a box of twice its radii for a box
+/// geometry, else a circle of its radius; the life of an active or a structure body, with its
+/// `combat` section, which despawns it as it dies, and the armor of its starting armor set; and the
+/// tag of victory for a structure that counts for one. Every other object has none of these.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedType {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -72,12 +74,14 @@ struct TypeCombat {
 /// The mode's pool of life, and the stat of its maximum.
 pub(crate) const LIFE: &str = "life";
 
-/// The tag of a type that counts for a multiplayer victory (design 19, D7).
+/// The tag of a type that counts for a multiplayer victory (12-zero-hour.md, Defeat by the last
+/// building that counts).
 pub(crate) const VICTORY: &str = "counts_for_victory";
 
 /// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
 /// cells of 10 m on each side of a center cell (`MAX_RADIUS` of `getRadiusAndCenter`), which our
-/// one body for collision and pathfinding takes (design 17, D4).
+/// one body for collision and pathfinding takes (12-zero-hour.md, Only walkers and standing
+/// structures have bodies).
 const MAX_WALKER: f32 = 25.0;
 
 impl ImportedType {

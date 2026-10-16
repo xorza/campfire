@@ -85,7 +85,8 @@ pub use crate::error::{ModeError, ModeList, ModeNamesError, ModeRefusal};
 pub use crate::game_map::GameMap;
 pub use crate::loadout_setup::LoadoutSetup;
 pub use crate::map_data::{
-    BrushData, GridData, MapData, MapNavigationData, MarkerData, PathData, PlacedUnitData, WallData,
+    BrushData, GridData, GroundData, MapData, MapNavigationData, MarkerData, PathData,
+    PlacedUnitData, WallData,
 };
 pub use crate::map_point::MapPoint;
 pub use crate::marker::{Marker, MarkerInfo};

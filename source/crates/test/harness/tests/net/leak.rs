@@ -1,10 +1,11 @@
-//! The leak test (design 14, D13): a scripted 3v3 in process, with spectators among its clients,
-//! checks after each tick that each client holds each sent component on exactly the entities its
-//! kind's audience admits, and each entity exactly where its team's, or its spectator's, view
-//! holds it: once with the defaults, and once with every setting at its other extreme, through
-//! the host's flags for those the mode leaves to it and the mode's `[visibility]` for the rest.
-//! It reads the capabilities' lists of state types, so a wrong filter, a scope that lacks a type,
-//! a dropped setting and a new type each fail by the type, the entity and the client.
+//! The leak test (14-replication-audiences.md, A leak test over every type and two settings): a
+//! scripted 3v3 in process, with spectators among its clients, checks after each tick that each
+//! client holds each sent component on exactly the entities its kind's audience admits, and each
+//! entity exactly where its team's, or its spectator's, view holds it: once with the defaults, and
+//! once with every setting at its other extreme, through the host's flags for those the mode leaves
+//! to it and the mode's `[visibility]` for the rest. It reads the capabilities' lists of state
+//! types, so a wrong filter, a scope that lacks a type, a dropped setting and a new type each fail
+//! by the type, the entity and the client.
 
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Write};
@@ -49,7 +50,8 @@ const STRIKE: u64 = 60;
 #[derive(Debug, Clone, Copy)]
 enum Role {
     /// The player of `slot`, of `team`; `out` while it is out of play in a session whose players
-    /// out of play see the other teams as spectators do (design 14, D16).
+    /// out of play see the other teams as spectators do (14-replication-audiences.md, A player out
+    /// of play sees what its team sees, or what a spectator sees).
     Player {
         slot: PlayerSlot,
         team: Team,
@@ -62,9 +64,9 @@ enum Role {
 impl Role {
     /// Whether it holds an entity its team, or the teams it watches, see as `seen` says, in a
     /// session of `visibility`: one with no `SeenBy`, or of which no Vision stage spoke, reaches
-    /// every client, as the player and match
-    /// entities do (design 14, D1); a player out of play also sees what the spectators' fog
-    /// shows, every unit or every team's view.
+    /// every client, as the player and match entities do (14-replication-audiences.md, Four
+    /// recipients); a player out of play also sees what the spectators' fog shows, every unit or
+    /// every team's view.
     fn sees(self, seen: Option<&SeenBy>, visibility: &Visibility) -> bool {
         let Some(seen) = seen.and_then(|seen| seen.get()) else {
             return true;
@@ -80,10 +82,11 @@ impl Role {
         }
     }
 
-    /// Whether it receives `kind` on an entity of `owner` and `team`, in a session of
-    /// `visibility`: the owner every kind but the server's, the others as the kind's audience
-    /// holds them, each an ally of its own team and of an entity of none, an enemy of another, or
-    /// a spectator (design 14, D1); a player out of play a spectator of another team's entity.
+    /// Whether it receives `kind` on an entity of `owner` and `team`, in a session of `visibility`:
+    /// the owner every kind but the server's, the others as the kind's audience holds them, each an
+    /// ally of its own team and of an entity of none, an enemy of another, or a spectator
+    /// (14-replication-audiences.md, Four recipients); a player out of play a spectator of another
+    /// team's entity.
     fn receives(
         self,
         kind: DataKind,
@@ -436,8 +439,9 @@ impl LeakCheck {
     }
 
     /// Marks each player out of play while its hero is dead or the script holds it out, in a
-    /// session whose players out of play see as spectators (design 14, D16): the test's own
-    /// reading of the server's state, not the server's `OutOfPlay`.
+    /// session whose players out of play see as spectators (14-replication-audiences.md, A player
+    /// out of play sees what its team sees, or what a spectator sees): the test's own reading of
+    /// the server's state, not the server's `OutOfPlay`.
     fn mark_out(&mut self) {
         let sees_as_spectator = self.visibility.out() == OutView::Spectators;
         for client in 0..PLAYERS {

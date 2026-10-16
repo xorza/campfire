@@ -10,10 +10,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::unit_entity::UnitEntity;
 
-/// The player who controls a unit, by slot: design 04's control relation, which `orders` and,
-/// later, `character` read. A player may control many units, each of the player's team.
-/// Immutable, so a change of owner is a new one inserted, which every data filter follows
-/// (design 14, D17, D18).
+/// The player who controls a unit, by slot: the control relation (04-capabilities/00-overview.md,
+/// Control is a relation to units), which `orders` and, later, `character` read. A player may
+/// control many units, each of the player's team. Immutable, so a change of owner is a new one
+/// inserted, which every data filter follows (14-replication-audiences.md, An owner changes by an
+/// insert alone; 14-replication-audiences.md, A unit's owner is a player of its team).
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 #[serde(transparent)]

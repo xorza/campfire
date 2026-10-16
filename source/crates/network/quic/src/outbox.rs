@@ -7,9 +7,9 @@ use tracing::trace;
 
 use crate::udp_port::UdpPort;
 
-/// The transmits of one pass of the thread, kept while it holds the mutex and written to the
-/// socket after it lets go, so the frame never waits on a send (design 15, D3). Its buffers keep
-/// their capacity from pass to pass.
+/// The transmits of one pass of the thread, kept while it holds the mutex and written to the socket
+/// after it lets go, so the frame never waits on a send (15-quic-transport.md, A thread for each
+/// endpoint, and no IO in the frame). Its buffers keep their capacity from pass to pass.
 #[derive(Debug, Default)]
 pub(crate) struct Outbox {
     bytes: Vec<u8>,

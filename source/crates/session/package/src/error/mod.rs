@@ -2,7 +2,7 @@ use std::error::Error;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
-use campfire_codec::TomlError;
+use campfire_codec::{BinaryError, TomlError};
 use campfire_common::PackageFingerprint;
 use campfire_values::PackagePath;
 use derive_more::Display;
@@ -45,6 +45,13 @@ pub enum ContentError {
         path: PackagePath,
         #[source]
         error: TomlError,
+    },
+    /// The binary file does not decode as its type.
+    #[error("{path} does not decode as its data")]
+    Binary {
+        path: PackagePath,
+        #[source]
+        error: BinaryError,
     },
     /// The source of the package's files does not read them, as a directory on disk fails; the
     /// source's own error, which the core does not name.

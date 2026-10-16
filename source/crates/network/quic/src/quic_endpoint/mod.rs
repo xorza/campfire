@@ -53,10 +53,11 @@ const TOKENS_SENT: u32 = 2;
 /// client tries to rejoin. A server's start makes every earlier token useless by its new key.
 const TOKEN_LIFETIME: Duration = Duration::from_secs(120);
 
-/// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the
-/// thread that drives them (design 15, D3, D9). A `LinkStart` opens it: a server takes
-/// connections within its `AddressLimit` (D13), and spawns a `LinkOf` for each once its
-/// handshake completes; a client connects to its server, and its entity carries the connection.
+/// A QUIC endpoint on a server's entity or a client's: its socket, its connections and the thread
+/// that drives them (15-quic-transport.md, A thread for each endpoint, and no IO in the frame;
+/// 15-quic-transport.md, A link's entity is its peer, not its address). A `LinkStart` opens it: a
+/// server takes connections within its `AddressLimit` (D13), and spawns a `LinkOf` for each once
+/// its handshake completes; a client connects to its server, and its entity carries the connection.
 /// Taken from a started entity, by any path, it ends that entity's link; dropped, it closes every
 /// connection with `AppCode::STOPPED`, waits until its thread wrote the closes, and joins it.
 #[derive(Component, Debug)]
