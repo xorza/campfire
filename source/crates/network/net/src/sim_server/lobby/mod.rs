@@ -7,7 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_mode::OptionPicks;
+use campfire_mode::{OptionPicks, OptionValue};
 use campfire_package::ModePackages;
 use campfire_protocol::{
     Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
@@ -64,6 +64,8 @@ pub struct LobbyOpening {
     pub open: Vec<PlayerSlot>,
     /// What the host sets of the session's visibility, within what the mode leaves it.
     pub host: HostVisibility,
+    /// The values the host picks of the mode's options, the others their defaults.
+    pub options: Vec<OptionValue>,
     pub server: ServerSetup,
 }
 
@@ -112,7 +114,8 @@ impl Lobby {
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
     /// not run at the setup's tick rate or has not as many slots, when a bot or an open slot
     /// names a slot the session does not have or one already named, when no slot is left to a
-    /// player, and when the host sets a visibility the mode does not leave it.
+    /// player, when the host sets a visibility the mode does not leave it, and when it picks a
+    /// value of no option of the mode's.
     pub fn new(setup: LobbySetup) -> Result<Self, LobbyError> {
         let LobbySetup {
             opening:
@@ -121,6 +124,7 @@ impl Lobby {
                     bots,
                     open,
                     host,
+                    options,
                     server,
                 },
             seed_chain,
@@ -152,7 +156,8 @@ impl Lobby {
             .visibility()
             .session(&host)
             .map_err(LobbyError::Visibility)?;
-        let picks = OptionPicks::defaults(session_rules.options());
+        let picks =
+            OptionPicks::named(session_rules.options(), &options).map_err(LobbyError::Options)?;
         let terms = session_rules
             .terms(HostChoices {
                 server_key: server.key.x_only_public_key().0,

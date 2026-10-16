@@ -4,10 +4,11 @@ use campfire_values::{DeclaredName, Scalar};
 
 use crate::error::PickError;
 use crate::option_data::OptionData;
+use crate::option_value::OptionValue;
 
 /// The value a session's host picked of each of the mode's options, by its place among the
 /// option's values, in the order of the options' names (21-match-options.md, The host picks, and
-/// the terms record the pick). Only `defaults` and `checked` make one, so each place is one of its
+/// the terms record the pick). Only its constructors make one, so each place is one of its
 /// option's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OptionPicks(Box<[u8]>);
@@ -16,6 +17,34 @@ impl OptionPicks {
     /// The default of each of `options`.
     pub fn defaults(options: &BTreeMap<DeclaredName, OptionData>) -> Self {
         Self(options.values().map(OptionData::default_place).collect())
+    }
+
+    /// The default of each of `options` but those `values` pick, each by its value; an error
+    /// for a pick of an option `options` lacks, of a value its option lacks, or of one option
+    /// twice.
+    pub fn named(
+        options: &BTreeMap<DeclaredName, OptionData>,
+        values: &[OptionValue],
+    ) -> Result<Self, PickError> {
+        let mut picks = Self::defaults(options);
+        let mut picked = vec![false; options.len()];
+        for OptionValue { name, value } in values {
+            let at = options
+                .keys()
+                .position(|held| held == name)
+                .ok_or_else(|| PickError::Unknown(name.clone()))?;
+            if picked[at] {
+                return Err(PickError::Twice(name.clone()));
+            }
+            picked[at] = true;
+            picks.0[at] = options[name]
+                .place(*value)
+                .ok_or_else(|| PickError::NoValue {
+                    option: name.clone(),
+                    value: *value,
+                })?;
+        }
+        Ok(picks)
     }
 
     /// `places`, as a session's terms carry them, the picks of `options`; an error for another
@@ -118,6 +147,33 @@ mod tests {
                 option: DeclaredName::new("money").unwrap(),
                 place: 3
             })
+        );
+        // By value: the other options keep their defaults; an option the mode lacks, a value
+        // its option lacks, and one option twice, are refused.
+        let value = |text: &str| text.parse::<OptionValue>().unwrap();
+        let rich = OptionPicks::named(&options, &[value("money=50000")]).unwrap();
+        assert_eq!(rich.places(), [1, 2]);
+        let both = [value("bounty=3"), value("money=5000")];
+        assert_eq!(
+            OptionPicks::named(&options, &both).unwrap().places(),
+            [0, 0]
+        );
+        let refused = |values: &[OptionValue]| OptionPicks::named(&options, values).unwrap_err();
+        let name = |name: &str| DeclaredName::new(name).unwrap();
+        assert_eq!(
+            refused(&[value("speed=2")]),
+            PickError::Unknown(name("speed"))
+        );
+        assert_eq!(
+            refused(&[value("money=7")]),
+            PickError::NoValue {
+                option: name("money"),
+                value: Scalar::Int(7)
+            }
+        );
+        assert_eq!(
+            refused(&[value("money=5000"), value("money=10000")]),
+            PickError::Twice(name("money"))
         );
         let none = BTreeMap::<DeclaredName, OptionData>::new();
         assert!(OptionPicks::defaults(&none).places().is_empty());

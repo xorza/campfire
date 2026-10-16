@@ -3,6 +3,7 @@ use std::num::NonZeroU32;
 use std::path::PathBuf;
 
 use campfire_common::{MapName, PlayerSlot, TlsKey};
+use campfire_mode::OptionValue;
 use campfire_net::SlotBotFile;
 use campfire_values::DeclaredName;
 use clap::Parser;
@@ -37,10 +38,12 @@ pub(crate) enum Server {
         tick_hz: NonZeroU32,
         data: Option<PathBuf>,
     },
-    /// A local server, on a thread of the client's process, with the bots of `bots`, its data in
-    /// the data directory `data`, which it needs.
+    /// A local server, on a thread of the client's process, with the bots of `bots`, the values
+    /// `options` picks of the mode's options, its data in the data directory `data`, which it
+    /// needs.
     Local {
         bots: Vec<SlotBotFile>,
+        options: Vec<OptionValue>,
         data: PathBuf,
     },
 }
@@ -80,6 +83,10 @@ pub(crate) struct CommandLine {
         value_parser = CommandLine::server_bot
     )]
     server_bots: Vec<SlotBotFile>,
+    /// A value of one of the mode's options for the local server's session, as name=value; an
+    /// option not named takes its default
+    #[arg(long = "option", value_name = "NAME=VALUE", requires = "local")]
+    options: Vec<OptionValue>,
     /// The mode's map the session plays, as the listing names it; the mode's only map when it has
     /// one
     #[arg(long, value_name = "NAME")]
@@ -119,6 +126,7 @@ impl From<CommandLine> for Args {
             },
             None => Server::Local {
                 bots: line.server_bots,
+                options: line.options,
                 data: line.data.expect("clap takes --local only with --data"),
             },
         };

@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::{Duration, SystemTime};
 
 use campfire_common::MapName;
+use campfire_mode::{OptionPicks, OptionValue};
 use campfire_net::{
     Lobby, LobbyOpening, PendingRestore, Publisher, RestoredSession, ServerBots, ServerDir,
     ServerSetup, SessionDir,
@@ -42,6 +43,8 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) bots: ServerBots,
     /// What the host sets of a new session's visibility; a restored session keeps its own.
     pub(crate) host: HostVisibility,
+    /// The values the host picks of a new session's options; a restored session keeps its own.
+    pub(crate) options: Vec<OptionValue>,
 }
 
 /// How long a session waits to restore, and the time of the start that asks: a session whose
@@ -55,20 +58,24 @@ pub(crate) struct RestoreWindow {
 impl Opening {
     /// What the server starts: `found`, the session to restore that `find` gave, or a new one,
     /// its directory, private record and journal made. An error for a session or a journal not
-    /// made, and for a restored session whose terms the mode's rules do not admit, as a journal
-    /// another release wrote holds.
+    /// made, for a restored session whose terms the mode's rules do not admit, as a journal
+    /// another release wrote holds, and for one of other picks than the host asks.
     pub(crate) fn of(
         found: Option<RestoredSession>,
         setup: OpeningSetup<'_>,
     ) -> Result<Self, OpeningError> {
         let rules = SessionRules::of(&setup.packages);
         let session = match found {
-            Some(session) => Opened::Restored(Box::new(PendingRestore {
-                session,
-                packages: Arc::new(setup.packages),
-                server: setup.server,
-                bots: setup.bots,
-            })),
+            Some(session) => {
+                let options = &session.private.terms.options;
+                Self::picks(&rules, options, &setup.options)?;
+                Opened::Restored(Box::new(PendingRestore {
+                    session,
+                    packages: Arc::new(setup.packages),
+                    server: setup.server,
+                    bots: setup.bots,
+                }))
+            }
             None => Opened::New(Box::new(Self::open(setup)?)),
         };
         let terms = session.terms();
@@ -127,6 +134,24 @@ impl Opening {
         }
     }
 
+    /// An error when the host `asked` picks of the mode's options of `rules`, and they are not
+    /// `journal`'s, the picks a waiting session's terms hold, which it restores with, as its map
+    /// is checked (21-match-options.md, A pick is given by its value).
+    fn picks(
+        rules: &SessionRules,
+        journal: &[u8],
+        asked: &[OptionValue],
+    ) -> Result<(), OpeningError> {
+        if asked.is_empty() {
+            return Ok(());
+        }
+        let asked = OptionPicks::named(rules.options(), asked).map_err(OpeningError::Options)?;
+        if asked.places() != journal {
+            return Err(OpeningError::OtherPicks);
+        }
+        Ok(())
+    }
+
     /// The session `waiting` to restore within `window`: when it is past the window or ended,
     /// `publisher` publishes its log instead, and none restores. An error for a session that
     /// does not end.
@@ -152,6 +177,7 @@ impl Opening {
             bots: setup.bots,
             open: Vec::new(),
             host: setup.host,
+            options: setup.options,
             server: setup.server,
         };
         Lobby::open(opening, setup.data).map_err(OpeningError::Open)
@@ -179,6 +205,8 @@ impl Opened {
 
 #[cfg(test)]
 mod tests {
+    use campfire_test_packages::TestMode;
+
     use super::*;
 
     #[test]
@@ -200,6 +228,26 @@ mod tests {
         assert!(matches!(
             Opening::map(Some(&lane), Some(river.clone())),
             Err(OpeningError::OtherMap { asked, journal }) if asked == river && journal == lane
+        ));
+    }
+
+    #[test]
+    fn a_waiting_sessions_picks_are_kept_and_others_asked_are_refused() {
+        let rules = SessionRules::of(&TestMode::Skirmish.packages());
+        let asked = |values: &[&str]| -> Vec<OptionValue> {
+            values.iter().map(|value| value.parse().unwrap()).collect()
+        };
+        // A session of the skirmish's 5,000, its second value, waits: no pick asked, and its
+        // own, restore it; the default asked, a value of none, and a value it lacks, are refused.
+        assert!(Opening::picks(&rules, &[1], &[]).is_ok());
+        assert!(Opening::picks(&rules, &[1], &asked(&["start_money=5000"])).is_ok());
+        assert!(matches!(
+            Opening::picks(&rules, &[1], &asked(&["start_money=100"])),
+            Err(OpeningError::OtherPicks)
+        ));
+        assert!(matches!(
+            Opening::picks(&rules, &[1], &asked(&["start_money=7"])),
+            Err(OpeningError::Options(_))
         ));
     }
 }

@@ -11,6 +11,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
+use campfire_mode::OptionValue;
 use campfire_package::ModePackages;
 use campfire_protocol::Signer;
 use campfire_quic::{LinkBinding, QuicEndpoint};
@@ -95,6 +96,8 @@ pub struct LocalServerSetup {
     pub data: PathBuf,
     /// The bots it plays, none in slot 0.
     pub bots: Vec<SlotBot>,
+    /// The values the player picks of the mode's options, the others their defaults.
+    pub options: Vec<OptionValue>,
     pub pace: Arc<Pace>,
     pub os: Os,
 }
@@ -116,6 +119,7 @@ impl LocalServer {
             packages,
             data,
             bots,
+            options,
             pace,
             os,
         } = setup;
@@ -147,6 +151,7 @@ impl LocalServer {
             bots: bots.clone(),
             open,
             host: HostVisibility::default(),
+            options,
             server: server.clone(),
         };
         let lobby = Lobby::open(opening, &dir).map_err(LocalServerError::Open)?;

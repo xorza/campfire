@@ -34,6 +34,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         packages: Arc::clone(&packages),
         data: scratch.path("data"),
         bots: Vec::new(),
+        options: Vec::new(),
         pace,
         os: Os {
             clock: Clock::manual(TestKey::NOW),

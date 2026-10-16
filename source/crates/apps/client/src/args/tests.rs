@@ -59,11 +59,19 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
         "2=b.toml",
         "--map",
         "lane",
+        "--option",
+        "start_money=50000",
     ]);
     assert_eq!(local.map, MapName::parse("lane"));
-    let Server::Local { bots, data } = local.server else {
+    let Server::Local {
+        bots,
+        options,
+        data,
+    } = local.server
+    else {
         panic!("a local server");
     };
+    assert_eq!(options, ["start_money=50000".parse().unwrap()]);
     assert_eq!(data, PathBuf::from("d"));
     let bots: Vec<(u32, PathBuf)> = bots
         .into_iter()
@@ -90,6 +98,19 @@ fn the_command_line_names_a_remote_or_a_local_server_or_its_flaw() {
             ErrorKind::MissingRequiredArgument,
         ),
         (&["--fast", "mode"], ErrorKind::UnknownArgument),
+        // A pick is the local server's alone.
+        (
+            &[
+                "--option",
+                "a=1",
+                "mode",
+                "10.0.0.2:4433",
+                &tls_key,
+                key,
+                "30",
+            ],
+            ErrorKind::MissingRequiredArgument,
+        ),
         (
             &["--local", "--data", "d", "--map", "3v3", "mode"],
             ErrorKind::ValueValidation,

@@ -65,6 +65,7 @@ mod mode_world;
 mod offer;
 mod option_data;
 mod option_picks;
+mod option_value;
 mod out_of_play_marks;
 mod placed_unit;
 mod players_data;
@@ -83,7 +84,9 @@ mod unanswered_slot_events;
 pub use crate::calls::Calls;
 pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choices::Choices;
-pub use crate::error::{ModeError, ModeList, ModeNamesError, ModeRefusal, PickError};
+pub use crate::error::{
+    ModeError, ModeList, ModeNamesError, ModeRefusal, OptionValueError, PickError,
+};
 pub use crate::game_map::GameMap;
 pub use crate::loadout_setup::LoadoutSetup;
 pub use crate::map_data::{
@@ -113,6 +116,7 @@ pub use crate::mode_world::ModeWorld;
 pub use crate::offer::Offer;
 pub use crate::option_data::OptionData;
 pub use crate::option_picks::OptionPicks;
+pub use crate::option_value::OptionValue;
 pub use crate::placed_unit::{PlacedPath, PlacedUnit};
 pub use crate::players_data::PlayersData;
 pub use crate::region_data::RegionData;

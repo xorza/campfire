@@ -4,6 +4,7 @@ use std::time::Duration;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_bots::OrderScript;
 use campfire_common::ChannelBinding;
+use campfire_mode::PickError;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy,
@@ -12,6 +13,7 @@ use campfire_protocol::{
 use campfire_state_types::DataKind;
 use campfire_store::internals::Scratch;
 use campfire_test_packages::TestMode;
+use campfire_values::{DeclaredName, Scalar};
 use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
 
@@ -47,6 +49,7 @@ fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
         },
         open: open.iter().copied().map(PlayerSlot::new).collect(),
         host: HostVisibility::default(),
+        options: Vec::new(),
         server: ServerSetup {
             key: TestKey::server(),
             times: SessionTimes::DEFAULT,
@@ -98,6 +101,36 @@ fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
         hosted(&["out=spectators", "out=team"], 0),
         Err(LobbyError::Visibility(VisibilityError::Repeated(
             Setting::Out
+        )))
+    );
+}
+
+#[test]
+fn the_lobby_records_the_hosts_picks_of_the_modes_options() {
+    let picked = |packages: ModePackages, slots, options: &[&str]| {
+        let mut setup = setup(&[], &[]);
+        setup.opening.packages = Arc::new(packages);
+        setup.slots = slots;
+        setup.opening.options = options.iter().map(|text| text.parse().unwrap()).collect();
+        Lobby::new(setup).map(|lobby| lobby.terms().options.clone())
+    };
+    // The skirmish's 3 slots, its money of 100 by default, or the 5,000 its host picks, its
+    // second value.
+    let skirmish = || TestMode::Skirmish.packages();
+    assert_eq!(picked(skirmish(), 3, &[]), Ok(vec![0]));
+    assert_eq!(picked(skirmish(), 3, &["start_money=5000"]), Ok(vec![1]));
+    assert_eq!(
+        picked(skirmish(), 3, &["start_money=7"]),
+        Err(LobbyError::Options(PickError::NoValue {
+            option: DeclaredName::new("start_money").unwrap(),
+            value: Scalar::Int(7),
+        }))
+    );
+    // The lane declares no option: a pick of one is refused.
+    assert_eq!(
+        picked(TestMode::Lane.packages(), 2, &["start_money=5000"]),
+        Err(LobbyError::Options(PickError::Unknown(
+            DeclaredName::new("start_money").unwrap()
         )))
     );
 }

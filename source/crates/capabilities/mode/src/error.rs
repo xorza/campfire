@@ -3,7 +3,7 @@ use campfire_geometry::PolygonError;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use campfire_units::GroundError;
-use campfire_values::DeclaredName;
+use campfire_values::{DeclaredName, Scalar};
 use thiserror::Error;
 
 /// A list of the mode's names, as its data gives it.
@@ -38,6 +38,27 @@ pub enum PickError {
     /// A pick past its option's values.
     #[error("the pick {place} of the option {option}, which has no value there")]
     Place { option: DeclaredName, place: u8 },
+    /// A host's pick of an option the mode does not declare.
+    #[error("the mode has no option {0}")]
+    Unknown(DeclaredName),
+    /// A host's pick of a value its option lacks.
+    #[error("the option {option} has no value {value}")]
+    NoValue { option: DeclaredName, value: Scalar },
+    /// A host's two picks of one option.
+    #[error("the option {0} is picked twice")]
+    Twice(DeclaredName),
+}
+
+/// Why a host's `--option` is no pick: it names no value, after `=`, or its name or its value
+/// does not read.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum OptionValueError {
+    #[error("an option is picked as name=value")]
+    NoValue,
+    #[error("{0:?} is no option's name")]
+    Name(String),
+    #[error("{0:?} is no number")]
+    Value(String),
 }
 
 /// Why the mode's teams, relations or map do not load: they name what the mode does not have.

@@ -1,4 +1,5 @@
 use campfire_common::MapName;
+use campfire_mode::PickError;
 use campfire_net::{AbortError, LobbyOpenError, WaitingError};
 use campfire_runner::TermsError;
 use thiserror::Error;
@@ -11,6 +12,12 @@ pub(crate) enum OpeningError {
     /// A session waits to restore on one map, and the server was asked for another.
     #[error("a session of map {journal} waits to restore, and map {asked} was asked")]
     OtherMap { asked: MapName, journal: MapName },
+    /// The options' picks asked are none of the mode's.
+    #[error("the options asked")]
+    Options(#[source] PickError),
+    /// A session waits to restore, and other picks of its options than its own were asked.
+    #[error("a session waits to restore, and other picks of its options were asked")]
+    OtherPicks,
     #[error("could not end the session")]
     Abort(#[source] AbortError),
     /// The new session does not open, as a bot names a slot the mode does not have, or keeps no

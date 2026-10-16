@@ -2997,6 +2997,7 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-log",
+ "campfire-mode",
  "campfire-net",
  "campfire-package",
  "campfire-package-disk",

@@ -8,6 +8,7 @@ use bevy::app::App;
 use bevy::ecs::entity::Entity;
 use campfire_common::ExitStatus;
 use campfire_log::ErrorReport;
+use campfire_mode::OptionValue;
 use campfire_net::{
     ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Os, Pace, ServerPin,
     SlotBotFile,
@@ -32,6 +33,17 @@ pub(crate) enum Connection {
         server: LocalServer,
         data: Arc<ClientDir>,
     },
+}
+
+/// What a local server starts with: the client's data directory, the mode, the bots, the values
+/// the player picks of the mode's options, and the pace it follows.
+#[derive(Debug, Clone, Copy)]
+struct LocalStart<'a> {
+    data: &'a ClientDir,
+    packages: &'a Arc<ModePackages>,
+    bots: &'a [SlotBotFile],
+    options: &'a [OptionValue],
+    pace: &'a Arc<Pace>,
 }
 
 impl Connection {
@@ -59,9 +71,19 @@ impl Connection {
                 address: *address,
                 data: data.as_deref().map(Self::open_dir).transpose()?,
             }),
-            Server::Local { bots, data } => {
+            Server::Local {
+                bots,
+                options,
+                data,
+            } => {
                 let data = Self::open_dir(data)?;
-                let server = Self::start_local(&data, packages, bots, pace)?;
+                let server = Self::start_local(LocalStart {
+                    data: &data,
+                    packages,
+                    bots,
+                    options,
+                    pace,
+                })?;
                 Ok(Self::Local { server, data })
             }
         }
@@ -130,15 +152,16 @@ impl Connection {
         Ok(())
     }
 
-    /// Starts the local server of the mode `packages` holds, its data in the client's data
-    /// directory `data`, its bots those of `bots`, following `pace`; the exit code when it does
-    /// not start.
-    fn start_local(
-        data: &ClientDir,
-        packages: &Arc<ModePackages>,
-        bots: &[SlotBotFile],
-        pace: &Arc<Pace>,
-    ) -> Result<LocalServer, ExitCode> {
+    /// Starts the local server of `start`'s mode, its data in the client's data directory; the
+    /// exit code when it does not start.
+    fn start_local(start: LocalStart<'_>) -> Result<LocalServer, ExitCode> {
+        let LocalStart {
+            data,
+            packages,
+            bots,
+            options,
+            pace,
+        } = start;
         let slots = bots
             .iter()
             .map(SlotBotFile::read)
@@ -152,6 +175,7 @@ impl Connection {
             packages: Arc::clone(packages),
             data,
             bots: slots,
+            options: options.to_vec(),
             pace: Arc::clone(pace),
             os: Os::SYSTEM,
         })

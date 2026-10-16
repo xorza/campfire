@@ -4,14 +4,15 @@ use std::time::Duration;
 
 use campfire_bots::{OrderScript, OrderScriptReadError};
 use campfire_common::MapName;
+use campfire_mode::OptionValue;
 use campfire_net::{ServerBots, SessionTimes, SlotBotFile};
 use campfire_visibility::{HostVisibility, SettingValue};
 use clap::Parser;
 
 /// What the command line names: the data directory, how long after its journal's last write a
 /// session a stop ended restores, the server's bots, the mode to open and its map, what the host
-/// sets of a new session's visibility, the address to listen on, and whether the server asks its
-/// router to forward the port.
+/// sets of a new session's visibility and picks of its mode's options, the address to listen on,
+/// and whether the server asks its router to forward the port.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) data: PathBuf,
@@ -21,6 +22,7 @@ pub(crate) struct Args {
     pub(crate) mode: PathBuf,
     pub(crate) map: Option<MapName>,
     pub(crate) host: HostVisibility,
+    pub(crate) options: Vec<OptionValue>,
     pub(crate) address: SocketAddr,
     pub(crate) port_map: bool,
 }
@@ -53,6 +55,10 @@ pub(crate) struct CommandLine {
     /// out=team or spectators
     #[arg(long = "visibility", value_name = "SETTING=VALUE")]
     visibility: Vec<SettingValue>,
+    /// A value of one of the mode's options for a new session, as name=value; an option not
+    /// named takes its default
+    #[arg(long = "option", value_name = "NAME=VALUE")]
+    options: Vec<OptionValue>,
     /// The most links with no slot a new session admits
     #[arg(long, value_name = "COUNT", default_value_t = 0)]
     spectators: u32,
@@ -83,6 +89,7 @@ impl From<CommandLine> for Args {
                 settings: line.visibility,
                 max_spectators: line.spectators,
             },
+            options: line.options,
             address: line.address,
             port_map: !line.no_port_map,
         }

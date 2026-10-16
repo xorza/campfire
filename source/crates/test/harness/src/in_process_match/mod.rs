@@ -530,6 +530,7 @@ impl InProcessMatch {
             packages: Arc::clone(&packages),
             bots: self.server_bots(),
             open: Vec::new(),
+            options: Vec::new(),
             host: HostVisibility {
                 settings: self
                     .setup

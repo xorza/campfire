@@ -84,6 +84,7 @@ fn run() -> Result<ExitCode, StartError> {
         mode,
         map,
         host,
+        options,
         address,
         port_map,
         ..
@@ -117,6 +118,7 @@ fn run() -> Result<ExitCode, StartError> {
         },
         bots,
         host,
+        options,
     };
     let opening = open(waiting, setup).map_err(no_session)?;
     let local = socket.local_address();

@@ -17,12 +17,6 @@ The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): t
 
 The slice of [Match options](docs/design/21-match-options.md): the player starts a Zero Hour skirmish with 50,000 money for every player against a bot that builds a base and never attacks. The systems it changes: `package`, `mode`, `protocol`, `runner`, `verifier`, `harness`, `net`, `server`, `client`, `import`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 3. The host names its picks
-
-`net`: `sim_server/lobby/`; `server`: `args/`; `client`: `args/`, the local server. Builds: a name is resolved once, at the command line.
-
-- [ ] crates/apps/server/src/args/mod.rs:104 — no command line names an option (A pick is given by its value). → `--option <name>=<value>` on the server and on the local client, refused for a name the mode lacks and a value the option lacks.
-
 ### 4. Zero Hour's money and the builder bot
 
 `import`: `zero_hour/rules_package.rs`; `zero-hour-check`: its bot's order script, its play and `pins.rs`. It stands last, as it plays every batch before it.

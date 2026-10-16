@@ -1,4 +1,5 @@
 use campfire_common::PlayerSlot;
+use campfire_mode::PickError;
 use campfire_runner::TermsError;
 use campfire_store::{AppendOpenError, PathError};
 use campfire_visibility::VisibilityError;
@@ -23,6 +24,9 @@ pub enum LobbyError {
     /// The host's visibility settings are not ones the mode leaves it.
     #[error("the host's visibility")]
     Visibility(#[source] VisibilityError),
+    /// The host picks a value of no option of the mode's, or one its option lacks.
+    #[error("the host's options")]
+    Options(#[source] PickError),
 }
 
 /// Why a server's new session does not open.

@@ -9,6 +9,7 @@ campfire-bots.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
+campfire-mode.workspace = true
 campfire-net.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
