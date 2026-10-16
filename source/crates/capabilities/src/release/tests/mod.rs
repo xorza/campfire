@@ -473,7 +473,7 @@ const LOOKUPS: [(&str, &str); 43] = [
     ("visibility/mode_visibility.rs", "named"),
     ("visibility/setting/mod.rs", "named"),
     // A bot's script, each unit type it names resolved once as its bot starts.
-    ("net/bot_script/mod.rs", "named"),
+    ("bots/bot_script/mod.rs", "named"),
     // The load, and a filter a script names.
     ("script/scripts/view/filter.rs", "named"),
     ("values/filter_data.rs", "named"),
@@ -754,9 +754,11 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
         }
     };
     capability_sources(&mut visit);
-    // The network's crate, whose bots name unit types.
-    let net = Path::new(env!("CARGO_MANIFEST_DIR")).join("../network/net/src");
-    production(&net, &mut |path, code| visit(&format!("net/{path}"), code));
+    // The bots' crate, whose scripts name unit types.
+    let bots = Path::new(env!("CARGO_MANIFEST_DIR")).join("../session/bots/src");
+    production(&bots, &mut |path, code| {
+        visit(&format!("bots/{path}"), code);
+    });
     found.sort();
     found.dedup();
     let mut known: Vec<(String, String)> = LOOKUPS

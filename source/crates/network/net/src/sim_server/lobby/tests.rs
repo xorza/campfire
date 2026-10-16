@@ -2,6 +2,7 @@ use std::mem;
 use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
+use campfire_bots::OrderScript;
 use campfire_common::ChannelBinding;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
@@ -16,7 +17,6 @@ use lightyear::prelude::{PeerId, RemoteId, Tick};
 
 use super::*;
 use crate::net_protocol::join::{Join, JoinRole};
-use crate::order_script::OrderScript;
 use crate::os::{Clock, Os};
 use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;

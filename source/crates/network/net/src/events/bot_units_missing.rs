@@ -1,10 +1,9 @@
+use campfire_bots::UnitsMissing;
 use campfire_capabilities::Action;
 use campfire_common::PlayerSlot;
 use campfire_log::{JsonText, LogEvent, LogLine};
 use serde::Deserialize;
 use tracing::warn;
-
-use crate::bot_script::error::UnitsMissing;
 
 /// A bot's order found none of the units of `slot` it names, and was dropped, with why and its
 /// action.

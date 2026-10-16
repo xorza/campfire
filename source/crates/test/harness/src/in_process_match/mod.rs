@@ -11,6 +11,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
+use campfire_bots::{BotScript, OrderScript};
 use campfire_capabilities::{Action, Order};
 use campfire_codec::Toml;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
@@ -18,10 +19,10 @@ use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
-    BotScript, ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup,
-    LocalPace, MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, ServerBots,
-    ServerDir, ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins,
-    SimServerWorld, SlotBot, TickHashes,
+    ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
+    MatchClock, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir, ServerPin,
+    ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld, SlotBot,
+    TickHashes,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
@@ -245,7 +246,6 @@ impl InProcessMatch {
         let server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
         server.cleanup();
-        run_in_order(&mut server);
         let mut local = Self {
             server,
             server_entity,
@@ -495,7 +495,6 @@ impl InProcessMatch {
         self.server_entity = server.world_mut().spawn((RawServer, Linked)).id();
         server.finish();
         server.cleanup();
-        run_in_order(&mut server);
         server.world_mut().insert_resource(data);
         server.world_mut().insert_resource(PendingRestore {
             session,
@@ -905,10 +904,10 @@ impl ClientApp {
     }
 }
 
-/// Runs every schedule of `app` on one thread, so systems with no order between them keep the same
-/// order in every run: Lightyear's schedules have such systems, and the parallel executor, which
-/// Bevy's `multi_threaded` feature turns on wherever a workspace build enables it, orders them
-/// by timing.
+/// Runs every schedule of `app`, a client's, on one thread, so systems with no order between them
+/// keep the same order in every run: Lightyear's schedules have such systems, and the parallel
+/// executor, which Bevy's `multi_threaded` feature turns on wherever a workspace build enables
+/// it, orders them by timing. A server's plugins run its own on one thread.
 fn run_in_order(app: &mut App) {
     let mut schedules = app.world_mut().resource_mut::<Schedules>();
     for (_, schedule) in schedules.iter_mut() {
@@ -937,6 +936,7 @@ pub(crate) mod bench {
     use std::time::Duration;
     use std::{env, process};
 
+    use campfire_bots::OrderScript;
     use campfire_math::{Num, Vec3};
     use campfire_orders::OrdersAction;
     use campfire_sim::{Position, SimWorld};
@@ -946,7 +946,6 @@ pub(crate) mod bench {
 
     use crate::in_process_match::link_model::LinkModel;
     use crate::in_process_match::{CONNECT_FRAMES, End, InProcessMatch, MatchSetup, StepCost};
-    use campfire_net::OrderScript;
 
     /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new
     /// order every 40 frames keeps the avatar walking and the server sending updates.

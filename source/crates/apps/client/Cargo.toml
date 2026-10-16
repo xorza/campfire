@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 campfire-actions.workspace = true
 campfire-areas.workspace = true
+campfire-bots.workspace = true
 campfire-capabilities.workspace = true
 campfire-client-files.workspace = true
 campfire-codec.workspace = true
@@ -43,8 +44,6 @@ tracing.workspace = true
 [dev-dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-package = { workspace = true, features = ["internals"] }
-campfire-package-disk = { workspace = true, features = ["internals"] }
 campfire-production = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 

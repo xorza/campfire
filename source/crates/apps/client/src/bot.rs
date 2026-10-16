@@ -3,8 +3,9 @@ use bevy::ecs::message::MessageWriter;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Commands, Res, ResMut, Single};
+use campfire_bots::BotScript;
 use campfire_common::Tick;
-use campfire_net::{BotScript, JoinState, LeaveRequest};
+use campfire_net::{JoinState, LeaveRequest};
 use lightyear::prelude::{Client, Disconnected, SyncedLocalTimeline};
 use tracing::info;
 

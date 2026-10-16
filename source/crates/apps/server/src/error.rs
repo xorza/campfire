@@ -1,8 +1,9 @@
 use std::io;
 use std::path::PathBuf;
 
+use campfire_bots::{OrderScriptReadError, UnknownUnitType};
 use campfire_common::ExitStatus;
-use campfire_net::{KeyFileError, LobbyOpenError, OrderScriptReadError, UnknownUnitType};
+use campfire_net::{KeyFileError, LobbyOpenError};
 use campfire_package::LoadError;
 use campfire_quic::BindError;
 use campfire_store::DataDirError;

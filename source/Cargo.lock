@@ -2246,6 +2246,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-bots"
+version = "0.1.0"
+dependencies = [
+ "bevy_ecs",
+ "campfire-actions",
+ "campfire-capabilities",
+ "campfire-codec",
+ "campfire-common",
+ "campfire-math",
+ "campfire-mode",
+ "campfire-orders",
+ "campfire-players",
+ "campfire-production",
+ "campfire-progression",
+ "campfire-sim",
+ "campfire-store",
+ "campfire-units",
+ "campfire-values",
+ "serde",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "campfire-capabilities"
 version = "0.1.0"
 dependencies = [
@@ -2294,6 +2317,7 @@ dependencies = [
  "bevy",
  "campfire-actions",
  "campfire-areas",
+ "campfire-bots",
  "campfire-capabilities",
  "campfire-client-files",
  "campfire-codec",
@@ -2443,6 +2467,7 @@ dependencies = [
  "bevy_time",
  "campfire-actions",
  "campfire-areas",
+ "campfire-bots",
  "campfire-capabilities",
  "campfire-codec",
  "campfire-combat",
@@ -2548,6 +2573,7 @@ dependencies = [
 name = "campfire-lan-check"
 version = "0.1.0"
 dependencies = [
+ "campfire-bots",
  "campfire-codec",
  "campfire-common",
  "campfire-log",
@@ -2651,7 +2677,7 @@ dependencies = [
  "bevy_replicon",
  "bevy_state",
  "bevy_time",
- "campfire-actions",
+ "campfire-bots",
  "campfire-capabilities",
  "campfire-codec",
  "campfire-combat",
@@ -2664,7 +2690,6 @@ dependencies = [
  "campfire-orders",
  "campfire-package",
  "campfire-players",
- "campfire-production",
  "campfire-progression",
  "campfire-protocol",
  "campfire-quic",
@@ -2956,6 +2981,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
+ "campfire-bots",
  "campfire-common",
  "campfire-declare",
  "campfire-log",

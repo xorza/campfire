@@ -4,6 +4,7 @@
 use std::time::Duration;
 
 use bevy_ecs::query::With;
+use campfire_bots::OrderScript;
 use campfire_common::{AfterLeave, PlayerSlot};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::Num;
@@ -11,7 +12,7 @@ use campfire_mode::PlayersData;
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
     CloseCode, InputsDiscarded, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss,
-    OrderScript, SessionTimes, TickHashes,
+    SessionTimes, TickHashes,
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;

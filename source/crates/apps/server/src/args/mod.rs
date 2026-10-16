@@ -2,8 +2,9 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use campfire_bots::{OrderScript, OrderScriptReadError};
 use campfire_common::MapName;
-use campfire_net::{OrderScript, OrderScriptReadError, ServerBots, SessionTimes, SlotBotFile};
+use campfire_net::{ServerBots, SessionTimes, SlotBotFile};
 use campfire_visibility::{HostVisibility, SettingValue};
 use clap::Parser;
 

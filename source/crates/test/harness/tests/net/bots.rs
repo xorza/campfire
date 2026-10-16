@@ -4,13 +4,14 @@
 use std::time::Duration;
 
 use bevy_ecs::query::With;
+use campfire_bots::OrderScript;
 use campfire_common::{AfterLeave, PlayerSlot, StateHash, Tick};
 use campfire_harness::{
     End, FixedMatch, FixedSession, HashTrail, InProcessMatch, LinkModel, MatchSetup,
 };
 use campfire_mode::{ModeWorld, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
-use campfire_net::{OrderScript, SessionTimes, SlotBot, TickHashes};
+use campfire_net::{SessionTimes, SlotBot, TickHashes};
 use campfire_progression::Experience;
 use campfire_protocol::{Controller, InputRules, LeaveReason, ServerInput, SessionLog, SlotPlan};
 use campfire_runner::{Replay, Session, SessionWorld};

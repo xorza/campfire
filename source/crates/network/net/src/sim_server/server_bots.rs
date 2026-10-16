@@ -1,9 +1,6 @@
+use campfire_bots::{BotScript, OrderScript, UnknownUnitType};
 use campfire_common::PlayerSlot;
 use campfire_values::{Names, UnitType};
-
-use crate::bot_script::BotScript;
-use crate::order_script::OrderScript;
-use crate::order_script::error::UnknownUnitType;
 
 /// The bots a server plays: a script for each slot its plan gives a bot, and one for each slot
 /// that becomes a bot's after its player left, whose ticks count from then. A bot slot with no

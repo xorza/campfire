@@ -32,11 +32,11 @@ use bevy::log::LogPlugin;
 use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
+use campfire_bots::{BotScript, OrderScript};
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    BotScript, Hosting, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, SimClient,
-    WatchRequest, exit_code,
+    Hosting, JoinRole, KeyFile, NetProtocol, Os, Pace, SimClient, WatchRequest, exit_code,
 };
 use campfire_package::{ModePackages, Texts};
 use campfire_package_disk::PackageDir;

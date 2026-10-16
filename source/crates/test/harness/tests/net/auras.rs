@@ -4,9 +4,9 @@
 //! correction, once.
 
 use bevy_ecs::world::EntityRef;
+use campfire_bots::OrderScript;
 use campfire_harness::{End, InProcessMatch, MatchSetup};
 use campfire_math::Num;
-use campfire_net::OrderScript;
 use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, StableId};
 use campfire_stats::Modifiers;

@@ -62,6 +62,7 @@ default-members = [
     "crates/capabilities/vision",
     "crates/network/net",
     "crates/network/quic",
+    "crates/session/bots",
     "crates/session/client-files",
     "crates/session/package",
     "crates/session/package-disk",
@@ -84,6 +85,7 @@ campfire-capabilities = { path = "crates/capabilities" }
 campfire-abilities = { path = "crates/capabilities/abilities" }
 campfire-actions = { path = "crates/capabilities/core/actions" }
 campfire-areas = { path = "crates/capabilities/areas" }
+campfire-bots = { path = "crates/session/bots" }
 campfire-combat = { path = "crates/capabilities/combat" }
 campfire-declare = { path = "crates/capabilities/core/declare" }
 campfire-deliveries = { path = "crates/capabilities/core/deliveries" }

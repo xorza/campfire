@@ -29,15 +29,15 @@ pub struct BotScript {
 /// One order of a bot's script: the sim tick it is sent in, the units it commands, and what they
 /// do.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct BotOrder {
+pub struct BotOrder {
     pub(crate) tick: Tick,
-    pub(crate) units: BotUnits,
-    pub(crate) action: Action,
+    pub units: BotUnits,
+    pub action: Action,
 }
 
 /// The units of its player a bot's order commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum BotUnits {
+pub enum BotUnits {
     /// The player's avatar.
     Avatar,
     /// The player's living units of the type, as the order is due.
@@ -74,20 +74,20 @@ impl BotScript {
 
     /// Takes the mode inputs due by `tick`, each once: a tick that passed while the match did not
     /// run sends its own late.
-    pub(crate) fn due_inputs(&mut self, tick: Tick) -> &[ScriptedInput] {
+    pub fn due_inputs(&mut self, tick: Tick) -> &[ScriptedInput] {
         let first = self.next_input;
         self.next_input += self.inputs[first..].partition_point(|input| input.tick <= tick);
         &self.inputs[first..self.next_input]
     }
 
     /// Takes the orders due by `tick`, each once, as `due_inputs` takes the mode inputs.
-    pub(crate) fn due_orders(&mut self, tick: Tick) -> &[BotOrder] {
+    pub fn due_orders(&mut self, tick: Tick) -> &[BotOrder] {
         self.due_orders_while(tick, |_| true)
     }
 
     /// Takes the orders due by `tick` as `due_orders` does, but only up to the first that is not
     /// `ready`, which waits with those after it.
-    pub(crate) fn due_orders_while(
+    pub fn due_orders_while(
         &mut self,
         tick: Tick,
         mut ready: impl FnMut(&BotOrder) -> bool,
@@ -114,7 +114,7 @@ impl BotOrder {
 
     /// The order it gives for the player of `slot`: its action for its units as `players` holds
     /// them now, gathered in `scratch`; why it has none.
-    pub(crate) fn order(
+    pub fn order(
         &self,
         slot: PlayerSlot,
         players: &PlayerUnits<'_, '_>,

@@ -5,7 +5,6 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-mod bot_script;
 mod close_code;
 mod error;
 mod events;
@@ -15,7 +14,6 @@ mod key_file;
 mod local;
 mod match_clock;
 mod net_protocol;
-mod order_script;
 mod os;
 mod pace;
 mod process_exit;
@@ -23,8 +21,6 @@ mod session_times;
 mod sim_client;
 mod sim_server;
 
-pub use crate::bot_script::BotScript;
-pub use crate::bot_script::error::UnitsMissing;
 pub use crate::close_code::CloseCode;
 pub use crate::error::{JoinError, ReceiptRefusal, SaveRefusal};
 pub use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
@@ -72,10 +68,6 @@ pub use crate::net_protocol::input_message::InputMessage;
 pub use crate::net_protocol::join::JoinRole;
 pub use crate::net_protocol::save_command::SaveCommand;
 pub use crate::net_protocol::{InputChannel, NetProtocol};
-pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError, UnknownUnitType};
-pub use crate::order_script::{
-    OrderScript, ScriptedInput, ScriptedOrder, ScriptedUnits, ScriptedValue,
-};
 pub use crate::os::{Clock, Os};
 pub use crate::pace::{Pace, PaceSpeed};
 pub use crate::process_exit::exit_code;

@@ -499,6 +499,98 @@ fn default_members(manifest: &str) -> Vec<&str> {
         .collect()
 }
 
+/// The crates of `crates` whose `internals` gates code of their own: a gate of the feature in
+/// one of `sources`, as their paths under `source/` name them, or a target of the crate's that
+/// requires the feature. A crate whose feature only passes the feature on gates none.
+fn gating_internals<'a>(crates: &'a [Crate], sources: &[SourceFile]) -> BTreeSet<&'a str> {
+    let gate = concat!("feature = ", "\"internals\"");
+    let required = concat!("required-features = [", "\"internals\"]");
+    let mut found: BTreeSet<&str> = crates
+        .iter()
+        .filter(|krate| krate.manifest.contains(required))
+        .map(|krate| krate.name.as_str())
+        .collect();
+    for file in sources.iter().filter(|file| file.text.contains(gate)) {
+        if let Some(at) = holder(crates, &file.path) {
+            found.insert(crates[at].name.as_str());
+        }
+    }
+    found
+}
+
+/// The dev-dependencies of `krate` that are also its dependencies, there to turn `internals` on,
+/// on a crate of `gating`'s complement among `crates`: one whose feature gates no code of its
+/// own, so the tests read no helper of it.
+fn needless_internals<'a>(
+    krate: &'a Crate,
+    crates: &[Crate],
+    gating: &BTreeSet<&str>,
+) -> Vec<&'a str> {
+    let dependencies: Vec<&str> = section(&krate.manifest, "dependencies")
+        .map(dependency)
+        .collect();
+    section(&krate.manifest, "dev-dependencies")
+        .filter(|line| line.contains(r#""internals""#))
+        .map(dependency)
+        .filter(|&other| other != krate.name && dependencies.contains(&other))
+        .filter(|other| crates.iter().any(|known| known.name == *other) && !gating.contains(other))
+        .collect()
+}
+
+#[test]
+fn a_dev_dependency_turns_on_internals_that_gate_code() {
+    let crates = crates();
+    let gating = gating_internals(&crates, &sources());
+    let found: Vec<String> = crates
+        .iter()
+        .flat_map(|krate| {
+            needless_internals(krate, &crates, &gating)
+                .into_iter()
+                .map(move |other| format!("{} {other}", krate.name))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+    // `a` depends on `b`, `c` and `d`, and dev-depends on each with `internals`: `b`'s feature
+    // only passes the feature on, so it is found; `c` gates code in a source and `d` requires the
+    // feature for a target, so neither is. `e` dev-depends on `b` with no dependency on it, a
+    // crate its tests read, which the rule leaves alone.
+    let krate = |name: &str, manifest: &str| Crate {
+        folder: name.to_owned(),
+        path: format!("crates/{name}"),
+        name: name.to_owned(),
+        manifest: manifest.to_owned(),
+    };
+    let with = r#" = { workspace = true, features = ["internals"] }"#;
+    let sample = [
+        krate(
+            "a",
+            &format!(
+                "[dependencies]\nb.workspace = true\nc.workspace = true\nd.workspace = true\n\n\
+                 [dev-dependencies]\nb{with}\nc{with}\nd{with}\n"
+            ),
+        ),
+        krate("b", "[features]\ninternals = [\"x/internals\"]\n"),
+        krate("c", "[features]\ninternals = []\n"),
+        krate(
+            "d",
+            "[features]\ninternals = []\n\n[[test]]\nname = \"t\"\nrequired-features = [\"internals\"]\n",
+        ),
+        krate("e", &format!("[dev-dependencies]\nb{with}\n")),
+    ];
+    let gated = SourceFile {
+        path: "crates/c/src/lib.rs".to_owned(),
+        text: concat!("#[cfg(feature = ", "\"internals\")]\nmod helpers;\n").to_owned(),
+        gate: None,
+    };
+    let gating = gating_internals(&sample, &[gated]);
+    assert_eq!(gating, BTreeSet::from(["c", "d"]));
+    let found: Vec<Vec<&str>> = sample
+        .iter()
+        .map(|krate| needless_internals(krate, &sample, &gating))
+        .collect();
+    assert_eq!(found, [vec!["b"], vec![], vec![], vec![], vec![]]);
+}
+
 #[test]
 fn the_default_members_are_the_build_that_ships() {
     // Each member but those that unify `internals`, by its folder under `source/`, sorted, so a

@@ -13,6 +13,7 @@ autotests = false
 [dependencies]
 campfire-actions = { workspace = true, features = ["internals"] }
 campfire-areas = { workspace = true, features = ["internals"] }
+campfire-bots.workspace = true
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-codec = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }

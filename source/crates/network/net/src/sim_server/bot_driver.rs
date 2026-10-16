@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
+use campfire_bots::{BotScript, OrderScript};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog, Signer};
@@ -7,10 +8,8 @@ use campfire_runner::{ServerInputRefused, Session};
 use campfire_sim::StableId;
 use campfire_units::{HeldPlayerUnits, UnitTypeBook};
 
-use crate::bot_script::BotScript;
 use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
 use crate::events::bot_units_missing::BotUnitsMissing;
-use crate::order_script::OrderScript;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_signer::ServerSigner;
 

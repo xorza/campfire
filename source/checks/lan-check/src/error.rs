@@ -1,8 +1,8 @@
 use std::io;
 use std::str::Utf8Error;
 
+use campfire_bots::OrderScriptError;
 use campfire_codec::JsonError;
-use campfire_net::OrderScriptError;
 use campfire_protocol::LogError;
 use campfire_store::{DurableError, PathError, ReadError};
 use thiserror::Error;

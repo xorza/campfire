@@ -6,6 +6,7 @@ license.workspace = true
 publish = false
 
 [dependencies]
+campfire-bots.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-log = { workspace = true, features = ["start"] }

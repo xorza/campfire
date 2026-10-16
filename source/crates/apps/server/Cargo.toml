@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+campfire-bots.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
@@ -26,7 +27,6 @@ tracing.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
-campfire-package = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
 campfire-test-packages.workspace = true
 

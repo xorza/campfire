@@ -1,10 +1,9 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use campfire_bots::{OrderScript, OrderScriptReadError};
 use campfire_common::PlayerSlot;
 
-use crate::order_script::OrderScript;
-use crate::order_script::error::OrderScriptReadError;
 use crate::sim_server::server_bots::SlotBot;
 use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 

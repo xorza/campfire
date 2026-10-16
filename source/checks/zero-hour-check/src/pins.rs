@@ -15,7 +15,7 @@ pub(crate) const MAP: &str = "tournament_desert";
 /// again.
 pub(crate) const FINGERPRINTS: Fingerprints = Fingerprints {
     game: PackageFingerprint::of_hex(
-        "66b625667c81ebd360d2aa3e7318d86c1512d6fc158296e621b4d445ebc30c23",
+        "9a322cdb435b7860b4a89d526296087da2b3ea553ce23edb038831b43c55c90f",
     ),
     rules: PackageFingerprint::of_hex(
         "d0245c9b5ddd9cb2cb58aeb2e69e92f3779b30cbbca0aa291a47ef35cd3aa874",

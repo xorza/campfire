@@ -26,10 +26,11 @@ use std::path::{self, Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
 use std::time::SystemTime;
 
+use campfire_bots::OrderScript;
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    ClientLayout, LinkLost, Listening, OrderScript, ServerLayout, SessionWritten, TicksCaughtUp,
+    ClientLayout, LinkLost, Listening, ServerLayout, SessionWritten, TicksCaughtUp,
 };
 use campfire_protocol::SessionLog;
 use campfire_store::{DurableFile, InputFile, RunDir};

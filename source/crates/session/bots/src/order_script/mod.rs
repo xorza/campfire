@@ -72,7 +72,7 @@ pub enum ScriptedUnits {
 impl ScriptedInput {
     /// Appends the payload of this mode input alone to `out`, its body written in `body`; a list
     /// of texts allocates the list of their slices.
-    pub(crate) fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
+    pub fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
         let value = match &self.value {
             ScriptedValue::Text(text) => InputValue::String(text),
             ScriptedValue::List(texts) => {

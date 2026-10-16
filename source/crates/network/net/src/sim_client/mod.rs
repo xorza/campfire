@@ -13,6 +13,7 @@ use bevy_ecs::schedule::common_conditions::{
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
+use campfire_bots::{BotOrder, BotScript, BotUnits, ScriptedInput};
 use campfire_capabilities::{MatchSpec, Order, Release};
 use campfire_combat::Fallen;
 use campfire_common::{SegmentSeed, Tick};
@@ -37,7 +38,6 @@ use lightyear::prelude::{
 use secp256k1::Keypair;
 use tracing::info;
 
-use crate::bot_script::{BotOrder, BotScript, BotUnits};
 use crate::close_code::CloseCode;
 use crate::events::bot_units_missing::BotUnitsMissing;
 use crate::events::client_frame::ClientFrame;
@@ -64,7 +64,6 @@ use crate::net_protocol::save_command::SaveCommand;
 use crate::net_protocol::watch_start::WatchStart;
 use crate::net_protocol::watch_teams::WatchTeams;
 use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
-use crate::order_script::ScriptedInput;
 use crate::os::Os;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, Started};

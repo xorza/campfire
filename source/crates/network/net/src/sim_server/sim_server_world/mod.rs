@@ -140,14 +140,13 @@ impl SimServerWorldCrate for World {
 pub(crate) mod internals {
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
+    use campfire_bots::{BotScript, OrderScript};
     use campfire_common::{PlayerSlot, Tick};
     use campfire_runner::SessionWorld;
     use campfire_units::UnitTypeBook;
 
-    use crate::bot_script::BotScript;
     use crate::faults::Faults;
     use crate::faults::fault::Fault;
-    use crate::order_script::OrderScript;
     use crate::sim_server::bot_driver::BotDriver;
     use crate::sim_server::checkpoints::Checkpoints;
     use crate::sim_server::player_link::PlayerLink;
