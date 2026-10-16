@@ -32,7 +32,7 @@ pub(crate) struct GroundHeights {
 impl GroundHeights {
     /// The heights of `grid`, each cell split as `quads` draw it, a terrain's quads over the
     /// grid's cells; with none, each from its first sample to the one across.
-    pub(crate) fn of(grid: HeightGrid, quads: Option<&TerrainQuads>) -> GroundHeights {
+    pub(crate) fn of(grid: HeightGrid, quads: Option<&TerrainQuads>) -> Self {
         let columns = grid.columns() as usize;
         let rows = grid.rows() as usize;
         let flips = match quads {
@@ -45,7 +45,7 @@ impl GroundHeights {
         let step = grid.step().float();
         let samples = grid.samples().iter().copied();
         let height = |sample: Option<u8>| f32::from(sample.expect("a grid has samples")) * step;
-        GroundHeights {
+        Self {
             columns,
             rows,
             origin: Vec2::from(grid.origin().map(FloatNum::float)),

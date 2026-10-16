@@ -1,7 +1,7 @@
-use campfire_common::Ticks;
+use campfire_common::{PlayerSlot, Ticks};
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, ApiVersion, Applies, Checked, Ctx, DataTable, Hook, MemberSpec,
-    Status, Unit,
+    ApiBuilder, ApiOwner, ApiVersion, Applies, Checked, Ctx, DataTable, Hook, MemberSpec,
+    ScriptTicks, Status, Unit,
 };
 use campfire_values::{ModifierId, Rank, TagProperty};
 
@@ -72,7 +72,7 @@ impl StatsApi {
 
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         ModifierHandle::register(api);
-        StatsApi::register_unit(api);
+        Self::register_unit(api);
         let call = |name, signature, description| MemberSpec::call(name, signature, description);
         let add = call(
             "add_modifier",
@@ -83,13 +83,12 @@ impl StatsApi {
         )
         .applies(Applies::WithAction);
         api.call(add, |ctx: &mut Ctx, target: Unit, id: ModifierId| {
-            StatsApi::add_modifier(ctx, &target, id, None)
+            Self::add_modifier(ctx, &target, id, None)
         })
         .call(
             add,
-            |ctx: &mut Ctx, target: Unit, id: ModifierId, ms: i64| {
-                let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
-                StatsApi::add_modifier(ctx, &target, id, Some(ticks))
+            |ctx: &mut Ctx, target: Unit, id: ModifierId, ms: ScriptTicks| {
+                Self::add_modifier(ctx, &target, id, Some(ms.get()))
             },
         )
         .call(
@@ -101,8 +100,8 @@ impl StatsApi {
                  action, so the modifier declares each param it reads",
             )
             .applies(Applies::WithoutAction),
-            |ctx: &mut Ctx, player: i64, id: ModifierId| {
-                StatsApi::add_player_modifier(ctx, player, id)
+            |ctx: &mut Ctx, player: PlayerSlot, id: ModifierId| {
+                Self::add_player_modifier(ctx, player, id)
             },
         )
         .call(
@@ -111,8 +110,13 @@ impl StatsApi {
                 &[&["handle"]],
                 "ends the modifier, projectile or area at once",
             ),
-            |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(handle.remove()),
-        );
+            |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(StatsEffect::removing(&handle)),
+        )
+        .plan(call(
+            "purge",
+            &[&["unit", "tag"]],
+            "ends every modifier on `unit` that grants `tag`",
+        ));
         api.hook(Hook::OnInterval, Status::Runs(ApiVersion::FIRST))
             .tag_property(TagProperty::Immune, Status::Runs(ApiVersion::FIRST));
         api.data::<ModifierData>(
@@ -140,8 +144,7 @@ impl StatsApi {
 
     /// Queues modifier `id` of the call's package for `player`, one of the session's; an error
     /// when `id` reads a param it does not declare.
-    fn add_player_modifier(ctx: &Ctx, player: i64, id: ModifierId) -> Checked<()> {
-        let player = ctx.view().names().player(player)?;
+    fn add_player_modifier(ctx: &Ctx, player: PlayerSlot, id: ModifierId) -> Checked<()> {
         StatsColumn::check_way(
             ctx.view(),
             StatsCall::of(&ctx.frame()),

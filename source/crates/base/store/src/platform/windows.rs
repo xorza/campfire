@@ -78,11 +78,11 @@ impl Os {
     }
 
     pub(crate) fn create_owner_only(path: &Path) -> io::Result<File> {
-        Os::create_file(path, CREATE_NEW)
+        Self::create_file(path, CREATE_NEW)
     }
 
     pub(crate) fn open_owner_only(path: &Path) -> io::Result<File> {
-        Os::create_file(path, OPEN_ALWAYS)
+        Self::create_file(path, OPEN_ALWAYS)
     }
 
     /// The file at `path` for writing, as `disposition` makes or opens it, its owner's only when
@@ -138,7 +138,7 @@ impl Os {
         .map_err(io_error)?;
         // SAFETY: the descriptor the call allocated, which this alone frees, as the function ends.
         let _descriptor = unsafe { Owned::new(HLOCAL(descriptor.0)) };
-        Os::exposed(owner, dacl)
+        Self::exposed(owner, dacl)
     }
 
     /// Who besides the user may open a file whose owner is `owner` and whose DACL is `dacl`, as
@@ -243,12 +243,10 @@ impl Os {
     }
 
     pub(crate) fn catch_stop(received: &Arc<AtomicBool>) -> io::Result<()> {
-        assert!(
-            STOP.set(Arc::clone(received)).is_ok(),
-            "a process catches the stop's signals once"
-        );
+        STOP.set(Arc::clone(received))
+            .expect("`StopSignals::catch` runs once in a process");
         // SAFETY: a handler of the routine's signature, which lives as long as the process.
-        unsafe { SetConsoleCtrlHandler(Some(Os::on_console_event), true) }.map_err(io_error)
+        unsafe { SetConsoleCtrlHandler(Some(Self::on_console_event), true) }.map_err(io_error)
     }
 
     /// Raises the stop's flag at the console's `event`, or ends the process at a second; on a
@@ -263,7 +261,7 @@ impl Os {
             event,
             CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT
         ) {
-            Os::wait_for_exit();
+            Self::wait_for_exit();
         }
         true.into()
     }
@@ -528,7 +526,7 @@ pub(crate) mod internals {
             // SAFETY: the descriptor the call allocated, which this alone frees, as the function
             // ends.
             let _descriptor = unsafe { Owned::new(HLOCAL(descriptor.0)) };
-            Os::exposed(owner, dacl)
+            Self::exposed(owner, dacl)
         }
     }
 }

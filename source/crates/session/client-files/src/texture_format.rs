@@ -28,27 +28,27 @@ impl TextureFormat {
     /// Vulkan's number for it, `VK_FORMAT_BC1_RGBA_SRGB_BLOCK` and the rest.
     pub(crate) const fn vk_format(self) -> u32 {
         match self {
-            TextureFormat::Bc1 => 134,
-            TextureFormat::Bc2 => 136,
-            TextureFormat::Bc3 => 138,
-            TextureFormat::Rgba8 => 43,
+            Self::Bc1 => 134,
+            Self::Bc2 => 136,
+            Self::Bc3 => 138,
+            Self::Rgba8 => 43,
         }
     }
 
     /// The side of a block, in texels.
     pub(crate) const fn block_side(self) -> u32 {
         match self {
-            TextureFormat::Bc1 | TextureFormat::Bc2 | TextureFormat::Bc3 => 4,
-            TextureFormat::Rgba8 => 1,
+            Self::Bc1 | Self::Bc2 | Self::Bc3 => 4,
+            Self::Rgba8 => 1,
         }
     }
 
     /// The bytes of a block.
     pub(crate) const fn block_bytes(self) -> u32 {
         match self {
-            TextureFormat::Bc1 => 8,
-            TextureFormat::Bc2 | TextureFormat::Bc3 => 16,
-            TextureFormat::Rgba8 => 4,
+            Self::Bc1 => 8,
+            Self::Bc2 | Self::Bc3 => 16,
+            Self::Rgba8 => 4,
         }
     }
 
@@ -67,10 +67,10 @@ impl TextureFormat {
     /// The Khronos data format model: `RGBSDA`, or the block model of its compression.
     pub(crate) const fn model(self) -> u8 {
         match self {
-            TextureFormat::Bc1 => 128,
-            TextureFormat::Bc2 => 129,
-            TextureFormat::Bc3 => 130,
-            TextureFormat::Rgba8 => 1,
+            Self::Bc1 => 128,
+            Self::Bc2 => 129,
+            Self::Bc3 => 130,
+            Self::Rgba8 => 1,
         }
     }
 
@@ -80,13 +80,13 @@ impl TextureFormat {
     pub(crate) const fn samples(self) -> &'static [Sample] {
         const BLOCK: u32 = u32::MAX;
         match self {
-            TextureFormat::Bc1 => &[Sample {
+            Self::Bc1 => &[Sample {
                 offset: 0,
                 bits: 64,
                 channel: 1,
                 upper: BLOCK,
             }],
-            TextureFormat::Bc2 | TextureFormat::Bc3 => &[
+            Self::Bc2 | Self::Bc3 => &[
                 Sample {
                     offset: 0,
                     bits: 64,
@@ -100,7 +100,7 @@ impl TextureFormat {
                     upper: BLOCK,
                 },
             ],
-            TextureFormat::Rgba8 => &[
+            Self::Rgba8 => &[
                 Sample {
                     offset: 0,
                     bits: 8,

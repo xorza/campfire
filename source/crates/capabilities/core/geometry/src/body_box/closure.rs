@@ -12,8 +12,8 @@ impl Closure {
     /// `|value| ≤ limit − 1` for a whole value.
     pub(super) const fn bound(self, limit: u128) -> u128 {
         match self {
-            Closure::Closed => limit,
-            Closure::Open => limit.wrapping_sub(1),
+            Self::Closed => limit,
+            Self::Open => limit.wrapping_sub(1),
         }
     }
 }

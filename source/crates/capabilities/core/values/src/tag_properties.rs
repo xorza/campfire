@@ -9,43 +9,43 @@ pub struct TagProperties(u16);
 
 impl TagProperties {
     /// No property.
-    pub const NONE: TagProperties = TagProperties(0);
+    pub const NONE: Self = Self(0);
     const HIDDEN: u16 = 1 << Block::ALL.len();
-    const DETECTS: u16 = TagProperties::HIDDEN << 1;
-    const NAMED_ONLY: u16 = TagProperties::DETECTS << 1;
-    const PASSES: u16 = TagProperties::NAMED_ONLY << 1;
+    const DETECTS: u16 = Self::HIDDEN << 1;
+    const NAMED_ONLY: u16 = Self::DETECTS << 1;
+    const PASSES: u16 = Self::NAMED_ONLY << 1;
 
     #[must_use]
-    pub const fn with_block(self, block: Block) -> TagProperties {
-        TagProperties(self.0 | (1 << block as u8))
+    pub const fn with_block(self, block: Block) -> Self {
+        Self(self.0 | (1 << block as u8))
     }
 
     #[must_use]
-    pub const fn with_hidden(self) -> TagProperties {
-        TagProperties(self.0 | TagProperties::HIDDEN)
+    pub const fn with_hidden(self) -> Self {
+        Self(self.0 | Self::HIDDEN)
     }
 
     #[must_use]
-    pub const fn with_detects(self) -> TagProperties {
-        TagProperties(self.0 | TagProperties::DETECTS)
+    pub const fn with_detects(self) -> Self {
+        Self(self.0 | Self::DETECTS)
     }
 
     /// The property of a delivery's tag: a filter selects its unit only when it names it.
     #[must_use]
-    pub const fn with_named_only(self) -> TagProperties {
-        TagProperties(self.0 | TagProperties::NAMED_ONLY)
+    pub const fn with_named_only(self) -> Self {
+        Self(self.0 | Self::NAMED_ONLY)
     }
 
     /// The property of a gathering worker's tag: its unit passes through each unit that holds it
     /// too.
     #[must_use]
-    pub const fn with_passes(self) -> TagProperties {
-        TagProperties(self.0 | TagProperties::PASSES)
+    pub const fn with_passes(self) -> Self {
+        Self(self.0 | Self::PASSES)
     }
 
     #[must_use]
-    pub const fn union(self, other: TagProperties) -> TagProperties {
-        TagProperties(self.0 | other.0)
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
     }
 
     pub const fn blocks(self, block: Block) -> bool {
@@ -53,19 +53,19 @@ impl TagProperties {
     }
 
     pub const fn hidden(self) -> bool {
-        self.0 & TagProperties::HIDDEN != 0
+        self.0 & Self::HIDDEN != 0
     }
 
     pub const fn detects(self) -> bool {
-        self.0 & TagProperties::DETECTS != 0
+        self.0 & Self::DETECTS != 0
     }
 
     pub const fn named_only(self) -> bool {
-        self.0 & TagProperties::NAMED_ONLY != 0
+        self.0 & Self::NAMED_ONLY != 0
     }
 
     pub const fn passes(self) -> bool {
-        self.0 & TagProperties::PASSES != 0
+        self.0 & Self::PASSES != 0
     }
 }
 

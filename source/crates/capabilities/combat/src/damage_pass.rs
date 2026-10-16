@@ -1,28 +1,32 @@
+use std::fmt;
+
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::Local;
+use bevy_ecs::system::{Local, Query, Res, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionSlots, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf,
+    ActionBook, ActionProgress, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf,
 };
 use campfire_common::Tick;
 use campfire_declare::ByType;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorld};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
     CarriedMut, Life, ModifierBook, ModifierClocks, PoolId, StatId, StatsWorld, UnitPools,
     UnitStats,
 };
-use campfire_units::TagEffect;
-use campfire_values::{Block, NameId, UnitTags, UnitType};
+use campfire_units::{Avatar, Owner, TagEffect};
+use campfire_values::{Block, NameId, Team, UnitTags, UnitType};
 
 use crate::armor::Armor;
 use crate::combat_book::CombatBook;
-use crate::combat_event::{CombatEvent, CombatEvents};
+use crate::combat_event::CombatEvent;
 use crate::combat_hooks::CombatHooks;
 use crate::damage::Damage;
 use crate::deaths::{Deaths, Fallen};
 use crate::heal::{Heal, HealCause};
+use crate::modifier_hooks::ModifierHooks;
+use crate::next_damage::NextDamage;
 use crate::pass_queue::{PassEntry, PassQueue};
 use crate::recent_attack::RecentAttack;
 use crate::recent_attackers::RecentAttackers;
@@ -66,12 +70,27 @@ impl<'w> PassRun<'_, 'w> {
     }
 }
 
-/// The buffers the pass keeps between its runs: the attackers a damage's target forgets as its
-/// source strikes it, and the assisters of a death, then of the kill whose events run.
-#[derive(Debug, Default)]
+/// What the pass keeps between its runs: the query that records a damage's source among its
+/// target's attackers, made as the first record needs it, and the assisters of a death, then of
+/// the kill whose events run.
+#[derive(Default)]
 pub(crate) struct PassScratch {
-    gone: Vec<StableId>,
+    records: Option<SystemState<AttackerRecords<'static, 'static>>>,
     assisters: Vec<StableId>,
+}
+
+/// What a record of an attacker reads and writes: the stable ids, and each unit's attackers.
+type AttackerRecords<'w, 's> = (
+    Res<'w, EntityIndex>,
+    Query<'w, 's, &'static mut RecentAttackers>,
+);
+
+impl fmt::Debug for PassScratch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PassScratch")
+            .field("assisters", &self.assisters)
+            .finish_non_exhaustive()
+    }
 }
 
 impl DamagePass {
@@ -79,23 +98,44 @@ impl DamagePass {
     /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
     /// `on_hit` list, then its combat events, whose damage joins the end of the queue, and whose
     /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has one.
-    /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal
-    /// of a unit at zero life.
+    /// Damage to a unit that does not live, or to an invulnerable one, does nothing, and so does a
+    /// heal of a unit that does not live.
     pub(crate) fn run(world: &mut World, mut scratch: Local<'_, PassScratch>) {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
-        world.resource_mut::<PassQueue>().begin();
+        // Only a tick that carries entries writes the next tick's damage, which is state.
+        let carried = if world.resource::<NextDamage>().is_empty() {
+            Vec::new()
+        } else {
+            world.resource_mut::<NextDamage>().take()
+        };
+        world.resource_mut::<PassQueue>().begin(carried);
         let hooks = world.non_send::<CombatHooks>().clone();
         let weigh = world.resource::<Weighers>().get();
         if weigh.is_none() && hooks.events.is_none() {
-            DamagePass::drain(&mut PassRun::Plain(world), &hooks, weigh, &mut scratch);
+            Self::drain(&mut PassRun::Plain(world), &hooks, weigh, &mut scratch);
         } else if !world.resource::<PassQueue>().is_empty() {
             world.script_batch(|batch| {
                 let run = &mut PassRun::Scripted(batch);
-                DamagePass::drain(run, &hooks, weigh, &mut scratch);
+                Self::drain(run, &hooks, weigh, &mut scratch);
             });
         }
-        world.resource_mut::<PassQueue>().end();
+        world.resource_mut::<PassQueue>().end(now);
+    }
+
+    /// Queues `entry` for the tick's pass, or, once that ran, as a mode's hook deals one after
+    /// it, for the next tick's, which deals it first.
+    pub fn queue(world: &mut World, entry: PassEntry) {
+        let now = world.resource::<SimTick>().start();
+        let mut queue = world.resource_mut::<PassQueue>();
+        if !queue.open_at(now) {
+            world.resource_mut::<NextDamage>().push(entry);
+            return;
+        }
+        match entry {
+            PassEntry::Damage(damage) => queue.push_damage(damage, now),
+            PassEntry::Heal(heal) => queue.push_heal(heal, now),
+        }
     }
 
     /// Deals the queue's entries in order, with the pass's `hooks` and the mode's `weigh` when
@@ -111,7 +151,7 @@ impl DamagePass {
             let damage = match entry {
                 PassEntry::Damage(damage) => damage,
                 PassEntry::Heal(heal) => {
-                    let Some(entity) = DamagePass::living(run.world(), heal.target) else {
+                    let Some(entity) = Self::living(run.world(), heal.target) else {
                         continue;
                     };
                     let amount = match (weigh, run.batch()) {
@@ -125,15 +165,15 @@ impl DamagePass {
                         },
                         _ => heal.amount,
                     };
-                    DamagePass::heal(run.world(), entity, amount);
+                    Self::heal(run.world(), entity, amount);
                     continue;
                 }
             };
-            let Some(target) = DamagePass::damageable(run.world(), damage.target) else {
+            let Some(target) = Self::damageable(run.world(), damage.target) else {
                 continue;
             };
             let damage = Damage {
-                amount: DamagePass::armored(run.world(), target, damage),
+                amount: Self::armored(run.world(), target, damage),
                 ..damage
             };
             let amount = match (weigh, run.batch()) {
@@ -148,30 +188,31 @@ impl DamagePass {
                 _ => damage.amount,
             };
             let weighed = Damage { amount, ..damage };
-            let landed = DamagePass::deal(run.world(), weighed, scratch);
+            let landed = Self::deal(run.world(), weighed, scratch);
             let Some(batch) = run.batch() else {
                 continue;
             };
             if landed != Landed::Nothing {
                 let ctx = batch.ctx().clone();
-                DamagePass::run_weapon_list(batch, &ctx, damage, now);
+                Self::run_weapon_list(batch, &ctx, damage, now);
             }
             if let Some(events) = &hooks.events {
                 let dealt = Damage {
                     amount: amount.max(Num::ZERO),
                     ..damage
                 };
-                DamagePass::answer(batch, events, dealt, landed, &mut scratch.assisters);
+                Self::answer(batch, events, dealt, landed, &mut scratch.assisters);
             }
         }
     }
 
-    /// The entity of `id`, when it exists, the sim simulates it, and its life pool is above
-    /// zero: one that damage, heals and restores reach, and write. A predicting client writes
-    /// none of a unit it holds as the server sent it, which `Unpredicted` hides.
+    /// The entity of `id`, when it exists, the sim simulates it, it has a life and it lives, as
+    /// `StatsWorld::lives` says: one that damage, heals and restores reach, and write. A
+    /// predicting client writes none of a unit it holds as the server sent it, which
+    /// `Unpredicted` hides.
     pub(super) fn living(world: &World, id: StableId) -> Option<Entity> {
         let entity = world.queried_entity_of(id)?;
-        (!world.get::<Life>(entity)?.is_empty()).then_some(entity)
+        (world.get::<Life>(entity).is_some() && world.lives(entity)).then_some(entity)
     }
 
     /// What `damage` deals to `target` through the armor of its type, before the mode weighs it:
@@ -188,8 +229,10 @@ impl DamagePass {
 
     /// The entity of `id`, when it is living and its tags let damage reach it.
     fn damageable(world: &World, id: StableId) -> Option<Entity> {
-        DamagePass::living(world, id)
-            .filter(|&entity| !UnitTags::properties_of(world.get(entity)).blocks(Block::Damage))
+        Self::living(world, id).filter(|&entity| {
+            let tags = world.get::<UnitTags>(entity);
+            !tags.is_some_and(|tags| tags.properties.blocks(Block::Damage))
+        })
     }
 
     /// Runs the `on_hit` list of the weapon of `damage`, an attack's that reached its target, in
@@ -204,7 +247,7 @@ impl DamagePass {
         let world = batch.world();
         if world
             .resource::<EffectListBook>()
-            .of(ListsOf::Action(weapon), ListHook::OnHit)
+            .of(ListsOf::Action(weapon, ListHook::OnHit))
             .is_empty()
         {
             return;
@@ -224,8 +267,7 @@ impl DamagePass {
         };
         batch.hook_call(start, Hook::OnHit, Some(source), |batch| {
             let call = ListCall {
-                of: ListsOf::Action(weapon),
-                hook: ListHook::OnHit,
+                of: ListsOf::Action(weapon, ListHook::OnHit),
                 reached: ActionTarget::Unit(damage.target),
             };
             EffectListBook::queue(batch.world(), call, ctx)
@@ -237,7 +279,7 @@ impl DamagePass {
     /// each assister, by stable id, whom `assisters` holds while their hooks run.
     fn answer(
         batch: &mut ScriptBatch<'_>,
-        events: &CombatEvents,
+        events: &ModifierHooks,
         damage: Damage,
         landed: Landed,
         assisters: &mut Vec<StableId>,
@@ -246,9 +288,9 @@ impl DamagePass {
             return;
         }
         if damage.cause.attack() {
-            events.call(batch, CombatEvent::AttackHit(damage));
+            events.hear(batch, CombatEvent::AttackHit(damage));
         }
-        events.call(batch, CombatEvent::DamageTaken(damage));
+        events.hear(batch, CombatEvent::DamageTaken(damage));
         let Landed::Killed { death } = landed else {
             return;
         };
@@ -258,7 +300,7 @@ impl DamagePass {
         assisters.extend_from_slice(kill.assisters);
         let (victim, depth) = (damage.target, damage.depth);
         if let Some(killer) = killer {
-            events.call(
+            events.hear(
                 batch,
                 CombatEvent::Kill {
                     killer,
@@ -268,7 +310,7 @@ impl DamagePass {
             );
         }
         for unit in killer.into_iter().chain(assisters.iter().copied()) {
-            events.call(
+            events.hear(
                 batch,
                 CombatEvent::Takedown {
                     unit,
@@ -287,19 +329,18 @@ impl DamagePass {
     /// damage and `other` for the rest, times the life taken. Each write follows the reads it
     /// needs, which go to `scratch`.
     fn deal(world: &mut World, damage: Damage, scratch: &mut PassScratch) -> Landed {
-        let Some(entity) = DamagePass::damageable(world, damage.target) else {
+        let Some(entity) = Self::damageable(world, damage.target) else {
             return Landed::Nothing;
         };
         let now = world.resource::<SimTick>().start();
         let index = world.resource::<EntityIndex>();
         let source = damage.source.filter(|&source| index.get(source).is_some());
         let mut left = damage.amount.max(Num::ZERO);
-        let slots = world.get::<ActionSlots>(entity);
-        if left > Num::ZERO
-            && slots.is_some_and(|slots| slots.damage_cuts(world.resource::<ActionBook>()))
-        {
-            let slots = world.get_mut::<ActionSlots>(entity);
-            slots.expect("a unit whose channel runs").cut_channel();
+        let progress = world.get::<ActionProgress>(entity);
+        let book = world.resource::<ActionBook>();
+        if left > Num::ZERO && progress.is_some_and(|progress| progress.damage_cuts(book)) {
+            let progress = world.get_mut::<ActionProgress>(entity);
+            progress.expect("a unit whose channel runs").cut_channel();
         }
         let clocks = world.get::<ModifierClocks>(entity);
         if clocks.is_some_and(ModifierClocks::shielded) {
@@ -324,13 +365,14 @@ impl DamagePass {
         };
         let killed = !living(world);
         if let Some(source) = source {
-            let index = world.resource::<EntityIndex>();
-            if let Some(attackers) = world.get::<RecentAttackers>(entity) {
-                attackers.gone(source, index, &mut scratch.gone);
-                world
-                    .get_mut::<RecentAttackers>(entity)
-                    .expect("a unit with attackers")
-                    .record(source, now, &scratch.gone);
+            let records = scratch
+                .records
+                .get_or_insert_with(|| SystemState::new(world));
+            let (index, mut attackers) = records
+                .get_mut(world)
+                .expect("the records of attackers are always valid");
+            if let Ok(mut attackers) = attackers.get_mut(entity) {
+                attackers.record(source, now, &index);
             }
         }
         let death = killed.then(|| {
@@ -351,29 +393,36 @@ impl DamagePass {
                 .map(|attack| attack.source);
             scratch.assisters.clear();
             scratch.assisters.extend(assisters);
-            let fallen = Fallen::of(damage.target, world.get(entity), world.get(entity));
+            let fallen = Fallen {
+                id: damage.target,
+                team: world.get::<Team>(entity).copied(),
+                owner: world.get::<Owner>(entity).map(|owner| owner.slot()),
+                avatar: world.entity(entity).contains::<Avatar>(),
+            };
             let mut deaths = world.resource_mut::<Deaths>();
             deaths.push(fallen, source, scratch.assisters.iter().copied())
         });
         if let Some((id, entity)) =
-            source.and_then(|id| DamagePass::living(world, id).map(|entity| (id, entity)))
+            source.and_then(|id| Self::living(world, id).map(|entity| (id, entity)))
         {
-            let bindings = world.resource::<CombatBook>().bindings;
+            let bindings = *world.resource::<CombatBook>();
             let stat = if damage.cause.attack() {
                 bindings.leech_attack
             } else {
                 bindings.leech_other
             };
-            let amount = scaled(taken, DamagePass::stat(world, entity, stat));
+            let amount =
+                taken.saturating_mul(Self::stat(world, entity, stat), Rounding::NearestEven);
             if amount > Num::ZERO {
-                world.resource_mut::<PassQueue>().push_heal(Heal {
+                let heal = Heal {
                     source: Some(id),
                     target: id,
                     amount,
                     cause: HealCause::Leech,
                     action: damage.action,
                     depth: damage.depth,
-                });
+                };
+                world.resource_mut::<PassQueue>().push_heal(heal, now);
             }
         }
         death.map_or(Landed::Taken, |death| Landed::Killed { death })
@@ -382,10 +431,10 @@ impl DamagePass {
     /// Heals the life pool of `entity`, a living unit, by `amount` times one plus its
     /// `heal_scale` stat.
     pub(super) fn heal(world: &mut World, entity: Entity, amount: Num) {
-        let bindings = world.resource::<CombatBook>().bindings;
-        let scale = DamagePass::stat(world, entity, bindings.heal_scale);
+        let bindings = *world.resource::<CombatBook>();
+        let scale = Self::stat(world, entity, bindings.heal_scale);
         let received = Num::ONE.checked_add(scale).unwrap_or(Num::MAX);
-        let amount = scaled(amount, received);
+        let amount = amount.saturating_mul(received, Rounding::NearestEven);
         if amount > Num::ZERO {
             let mut life = world.get_mut::<Life>(entity).expect("a living unit");
             life.add(amount);
@@ -395,7 +444,7 @@ impl DamagePass {
     /// Restores `amount` of `id`'s `pool`, unscaled, when the unit exists, its life is above
     /// zero, and it has the pool.
     pub fn restore(world: &mut World, id: StableId, pool: PoolId, amount: Num) {
-        let Some(entity) = DamagePass::living(world, id) else {
+        let Some(entity) = Self::living(world, id) else {
             return;
         };
         if amount > Num::ZERO {
@@ -413,15 +462,4 @@ impl DamagePass {
         stat.zip(values)
             .map_or(Num::ZERO, |(at, values)| values.values()[at.index()])
     }
-}
-
-/// `amount` times `ratio`, rounded once, at the end of the range of numbers when past it.
-fn scaled(amount: Num, ratio: Num) -> Num {
-    amount.checked_mul(ratio).unwrap_or_else(|| {
-        if (amount < Num::ZERO) == (ratio < Num::ZERO) {
-            Num::MAX
-        } else {
-            Num::MIN
-        }
-    })
 }

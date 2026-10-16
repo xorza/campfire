@@ -15,7 +15,7 @@ pub enum ArgCtx<'a> {
 
 impl<'a> ArgCtx<'a> {
     /// The context of the method call `call`, found when an argument reads it.
-    pub(super) const fn of_call(call: &'a NativeCallContext<'a>) -> ArgCtx<'a> {
+    pub(super) const fn of_call(call: &'a NativeCallContext<'a>) -> Self {
         ArgCtx::Call(call, OnceCell::new())
     }
 

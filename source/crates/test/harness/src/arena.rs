@@ -29,10 +29,14 @@ pub struct Arena {
 impl Arena {
     /// The arena of `tree`'s mode, the unit types of the units a test spawns and their actions
     /// added to its files.
-    pub fn load(tree: &PackageTree) -> Arena {
-        Arena {
+    pub fn load(tree: &PackageTree) -> Self {
+        Self {
             packages: tree.packages(),
         }
+    }
+
+    pub const fn packages(&self) -> &ModePackages {
+        &self.packages
     }
 
     /// The arena's match at `rate`, for `players` players, which fails its test on any warning it

@@ -20,10 +20,6 @@ mod radius;
 mod row_directory;
 mod shape;
 
-#[cfg(feature = "internals")]
-mod kernel_scene;
-
-pub use crate::approach::Approach;
 pub use crate::body_bound::MAX_BOUND;
 pub use crate::body_box::BodyBox;
 pub use crate::body_grid::{BodyGrid, Indexed};
@@ -57,6 +53,10 @@ pub mod bench {
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    pub use crate::approach::internals::path_comes_closer;
     pub use crate::body_box::bench::COUNT;
     pub use crate::kernel_scene::{Density, KernelScene, SceneBody};
 }
+
+#[cfg(feature = "internals")]
+mod kernel_scene;

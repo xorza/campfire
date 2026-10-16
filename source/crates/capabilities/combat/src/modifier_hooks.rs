@@ -3,7 +3,7 @@ use std::mem;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_script::{CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptValue};
+use campfire_script::{CallStart, Ctx, Hook, HookCall, Pool, ScriptBatch, ScriptValue};
 use campfire_sim::{SimTick, SimWorld, StableId};
 use campfire_stats::{
     HandleOf, Instance, ModifierBook, ModifierClocks, Modifiers, StatsCall, StatsColumn,
@@ -39,8 +39,8 @@ struct HeardInstance {
 }
 
 impl ModifierHooks {
-    pub const fn new(ctx: Ctx) -> ModifierHooks {
-        ModifierHooks {
+    pub const fn new(ctx: Ctx) -> Self {
+        Self {
             ctx,
             heard: RefCell::new(Vec::new()),
         }
@@ -175,7 +175,7 @@ impl ModifierHooks {
             .script
             .expect("a modifier whose script defines a hook has one");
         let (action, rank, package) = (instance.action, instance.rank, entry.package);
-        let pool = ModifierHooks::pool(world, heard.source);
+        let pool = Self::pool(world, heard.source);
         let now = world.resource::<SimTick>().start();
         let start = CallStart {
             acting: heard.source,
@@ -200,9 +200,12 @@ impl ModifierHooks {
                 };
                 StatsColumn::held_handle(ctx.view(), call, of, clocks.state(at))
             };
-            match arg {
-                Some(arg) => batch.call_hook(pool, script, hook, (ctx.clone(), handle, arg)),
-                None => batch.call_hook(pool, script, hook, (ctx.clone(), handle)),
+            if let Some(arg) = arg {
+                let args = (ctx.clone(), handle, arg);
+                batch.call(pool, HookCall { script, hook, args }).map(drop)
+            } else {
+                let args = (ctx.clone(), handle);
+                batch.call(pool, HookCall { script, hook, args }).map(drop)
             }
         });
     }

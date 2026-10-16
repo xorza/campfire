@@ -50,9 +50,13 @@ impl ViewNames {
         self.table::<I>()?.named(key)
     }
 
-    /// The name of `id`; none for an id past its table.
-    pub fn name<I: NameId + 'static>(&self, id: I) -> Option<ScriptText> {
-        self.table::<I>()?.name(id)
+    /// The name of `id`, an id of the match: its owner put in the table of its kind before it
+    /// made any id of it.
+    pub fn name<I: NameId + 'static>(&self, id: I) -> ScriptText {
+        let table = self
+            .table::<I>()
+            .expect("the match names each kind of id it holds");
+        table.name(id).expect("an id of the match is in its table")
     }
 
     /// How many ids of type `I` the table names; none before their owner puts it in.
@@ -121,7 +125,7 @@ impl ViewNames {
     }
 
     /// Player `player`'s slot, as a script names it, when the session has it.
-    pub fn player(&self, player: i64) -> Checked<PlayerSlot> {
+    pub(crate) fn player(&self, player: i64) -> Checked<PlayerSlot> {
         match self.teams.as_deref() {
             Some(teams) => teams.player(player),
             None => Err(ApiError::UnknownPlayer.fail().into()),

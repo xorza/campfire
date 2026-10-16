@@ -33,14 +33,14 @@ struct Wake {
 }
 
 impl UdpPort {
-    pub(crate) fn bind(address: SocketAddr) -> io::Result<UdpPort> {
+    pub(crate) fn bind(address: SocketAddr) -> io::Result<Self> {
         let socket = UdpSocket::bind(address)?;
         let state = UdpSocketState::new((&socket).into())?;
         let poller = Poller::new()?;
         let wake = Wake::pair()?;
-        UdpPort::watch(&poller, &socket, SOCKET)?;
-        UdpPort::watch(&poller, &wake.receiver, WAKE)?;
-        Ok(UdpPort {
+        Self::watch(&poller, &socket, SOCKET)?;
+        Self::watch(&poller, &wake.receiver, WAKE)?;
+        Ok(Self {
             socket,
             state,
             poller,
@@ -120,14 +120,14 @@ impl UdpPort {
 impl Wake {
     /// Two loopback sockets, each connected to the other, so no other sender reaches the
     /// receiver; both non-blocking.
-    fn pair() -> io::Result<Wake> {
+    fn pair() -> io::Result<Self> {
         let receiver = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
         let sender = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0))?;
         sender.connect(receiver.local_addr()?)?;
         receiver.connect(sender.local_addr()?)?;
         receiver.set_nonblocking(true)?;
         sender.set_nonblocking(true)?;
-        Ok(Wake { sender, receiver })
+        Ok(Self { sender, receiver })
     }
 
     /// Takes every wake that came, so the next wait waits until another.

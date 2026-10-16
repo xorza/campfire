@@ -10,23 +10,23 @@ pub struct Recipients(u8);
 
 impl Recipients {
     /// The owner alone.
-    pub const NONE: Recipients = Recipients(0);
-    pub const ALLIES: Recipients = Recipients(1);
-    pub const ENEMIES: Recipients = Recipients(1 << 1);
-    pub const SPECTATORS: Recipients = Recipients(1 << 2);
-    pub const ALL: Recipients = Recipients(0b111);
+    pub const NONE: Self = Self(0);
+    pub const ALLIES: Self = Self(1);
+    pub const ENEMIES: Self = Self(1 << 1);
+    pub const SPECTATORS: Self = Self(1 << 2);
+    pub const ALL: Self = Self(0b111);
 
-    pub const fn union(self, other: Recipients) -> Recipients {
-        Recipients(self.0 | other.0)
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
     }
 
     /// Its recipients but those of `other`.
-    pub const fn without(self, other: Recipients) -> Recipients {
-        Recipients(self.0 & !other.0)
+    pub const fn without(self, other: Self) -> Self {
+        Self(self.0 & !other.0)
     }
 
     /// Whether it holds every recipient of `other`.
-    pub const fn contains(self, other: Recipients) -> bool {
+    pub const fn contains(self, other: Self) -> bool {
         self.0 & other.0 == other.0
     }
 
@@ -36,32 +36,32 @@ impl Recipients {
     }
 
     /// The set of the byte `bits`; `None` for a byte with another bit.
-    pub const fn from_bits(bits: u8) -> Option<Recipients> {
-        if bits & !Recipients::ALL.0 == 0 {
-            Some(Recipients(bits))
+    pub const fn from_bits(bits: u8) -> Option<Self> {
+        if bits & !Self::ALL.0 == 0 {
+            Some(Self(bits))
         } else {
             None
         }
     }
 
     /// The recipient of the name `name` in a mode's `[visibility]` or a host's settings.
-    pub fn named(name: &str) -> Option<Recipients> {
-        Recipients::NAMED
+    pub fn named(name: &str) -> Option<Self> {
+        Self::NAMED
             .into_iter()
             .find_map(|(named, recipient)| (named == name).then_some(recipient))
     }
 
     /// The names of its recipients, in the order allies, enemies, spectators.
     pub fn names(self) -> impl Iterator<Item = &'static str> {
-        Recipients::NAMED
+        Self::NAMED
             .into_iter()
             .filter_map(move |(name, recipient)| self.contains(recipient).then_some(name))
     }
 
-    const NAMED: [(&'static str, Recipients); 3] = [
-        ("allies", Recipients::ALLIES),
-        ("enemies", Recipients::ENEMIES),
-        ("spectators", Recipients::SPECTATORS),
+    const NAMED: [(&'static str, Self); 3] = [
+        ("allies", Self::ALLIES),
+        ("enemies", Self::ENEMIES),
+        ("spectators", Self::SPECTATORS),
     ];
 }
 
@@ -82,9 +82,9 @@ impl fmt::Display for Recipients {
 }
 
 impl BitOr for Recipients {
-    type Output = Recipients;
+    type Output = Self;
 
-    fn bitor(self, other: Recipients) -> Recipients {
+    fn bitor(self, other: Self) -> Self {
         self.union(other)
     }
 }

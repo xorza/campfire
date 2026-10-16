@@ -14,12 +14,12 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for CombatRefusal {
     const OWNER: Capability = Capability::Combat;
-    const CASES: &'static [CombatRefusal] = &CombatRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            CombatRefusal::NegativeDamage => "damage is negative",
-            CombatRefusal::NegativeHeal => "amount to heal or restore is negative",
+            Self::NegativeDamage => "damage is negative",
+            Self::NegativeHeal => "amount to heal or restore is negative",
         }
     }
 }

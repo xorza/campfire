@@ -65,7 +65,7 @@ impl ModifierIntervals {
                 source,
             } in &*due
             {
-                events.call(
+                events.hear(
                     batch,
                     CombatEvent::Interval {
                         carrier,

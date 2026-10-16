@@ -1,10 +1,11 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, QueryState, Without};
-use bevy_ecs::system::{Local, ParamSet, Query, Res};
+use bevy_ecs::query::{QueryState, Without};
+use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionKind, ActionSlots, KindSpec, Payer, Purse, SlotTimes,
+    ActionBook, ActionCheck, ActionKind, ActionProgress, ActionSlots, KindSpec, Payer, Purse,
+    SlotTimes,
 };
 use campfire_declare::{ByType, RoleForm};
 use campfire_math::{Num, Vec3};
@@ -17,16 +18,13 @@ use campfire_values::{Relation, Team, UnitType};
 
 use crate::frame_point::FramePoint;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
-use crate::held::Held;
 use crate::holdings::Holdings;
 use crate::node_book::NodeBook;
 use crate::production_books::ProductionBooks;
 use crate::production_data::ProductionData;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
-use crate::site::Site;
-use crate::supply::{CountedUnit, Supply};
-use crate::supply_cost_book::SupplyUnit;
+use crate::supply::{Counted, Supply};
 use crate::train_queue::{Queued, TrainQueue};
 
 /// Where a producer's trained units come out and where they go, on the ground plane: its exit
@@ -38,21 +36,12 @@ struct TrainPlaces {
     rally: Option<Vec3>,
 }
 
-/// The parts of a unit supply counts, dead or not.
-pub(super) type Counted = (
-    &'static UnitType,
-    &'static Owner,
-    Has<Dead>,
-    Option<&'static TrainQueue>,
-    Has<Site>,
-);
-
 /// The parts of a living unit a train it was ordered reads and changes.
 type Training = (
     Entity,
     &'static StableId,
     &'static UnitType,
-    &'static mut ActionSlots,
+    (&'static ActionSlots, &'static mut ActionProgress),
     &'static mut SlotTimes,
     &'static mut TrainQueue,
     UnitPools,
@@ -92,7 +81,7 @@ impl Trains {
         >,
         mut order: Local<'_, Ordered>,
         mut supply: Local<'_, Supply>,
-        mut held: Local<'_, Vec<Held>>,
+        mut holdings: ResMut<'_, Holdings>,
     ) {
         let ProductionBooks {
             actions: book,
@@ -104,11 +93,13 @@ impl Trains {
         let now = tick.start();
         let trains = {
             let training = units.p1();
-            let ordered = training.iter().filter_map(|(entity, &id, _, slots, ..)| {
-                slots
-                    .ordered(&book, ActionKind::Train)
-                    .map(|_| Keyed { id, entity })
-            });
+            let ordered = training
+                .iter()
+                .filter_map(|(entity, &id, _, (slots, progress), ..)| {
+                    progress
+                        .ordered(slots, &book, ActionKind::Train)
+                        .map(|_| Keyed { id, entity })
+                });
             order.sort(ordered)
         };
         if trains.is_empty() {
@@ -117,46 +108,26 @@ impl Trains {
         {
             let counted = units.p0();
             if let Some(rules) = rules.0 {
-                let units = counted
-                    .iter()
-                    .map(|(&unit_type, owner, dead, queue, site)| CountedUnit {
-                        owner: owner.slot(),
-                        unit: SupplyUnit {
-                            unit_type,
-                            dead,
-                            complete: !site,
-                            queue,
-                        },
-                    });
-                supply.count(&costs, rules, units);
+                supply.count(&costs, rules, counted.iter());
             }
-            let complete = counted
-                .iter()
-                .filter(|&(_, _, dead, _, site)| !dead && !site);
-            Held::collect(
-                &mut held,
-                complete.map(|(&unit_type, owner, ..)| Held {
-                    owner: owner.slot(),
-                    unit_type,
-                }),
-            );
+            holdings.read(counted.iter());
         }
         let mut training = units.p1();
         for &Keyed { entity, .. } in trains {
-            let (_, _, &unit_type, mut slots, mut times, mut queue, pools, held_by) =
+            let (_, _, &unit_type, (slots, mut progress), mut times, mut queue, pools, held_by) =
                 training.get_mut(entity).expect("a unit in the order");
             let pools = pools.of(life.as_deref().and_then(PoolBook::life));
-            let ordered = slots
-                .ordered(&book, ActionKind::Train)
+            let ordered = progress
+                .ordered(slots, &book, ActionKind::Train)
                 .expect("an ordered train");
-            slots.stop();
+            progress.stop();
             let purse = Purse::of(pools.read(), resources.of(held_by));
             let owner = held_by.map(|owner| owner.slot());
             let no_target = |_| Relation::Friendly;
             let checked = times.checked_action(ActionCheck {
                 book: &book,
                 now,
-                slots: &slots,
+                slots,
                 purse,
                 aim: ordered,
                 relation: no_target,
@@ -169,7 +140,6 @@ impl Trains {
             if !capacity.is_some_and(|capacity| queue.has_room(capacity)) {
                 continue;
             }
-            let holdings = Holdings { units: &held };
             let modifiers = held_modifiers.of(held_by);
             if !holdings.meet(owner, modifiers, requirements.of(checked.id)) {
                 continue;
@@ -269,7 +239,7 @@ impl Trains {
     /// rallies to a node whose resource one of its gathers takes: by the first such gather in its
     /// slots, to be checked as the next tick's orders are.
     fn gather_at_rally(world: &World, entity: Entity, trained: Entity) -> Option<GatherOrder> {
-        let RallyTarget::Unit(node) = world.get::<Rally>(entity)?.get() else {
+        let RallyTarget::Unit(node) = world.get::<Rally>(entity)?.get()? else {
             return None;
         };
         let target = world.entity_ref_of(node)?;
@@ -279,8 +249,8 @@ impl Trains {
         let pos = *target.get::<Position>()?;
         let slots = world.get::<ActionSlots>(trained)?;
         let book = world.resource::<ActionBook>();
-        let slot = slots.indexed().find_map(|(slot, held)| {
-            let action = book.get(held.action?)?;
+        let slot = slots.indexed().find_map(|(slot, action_slot)| {
+            let action = book.get(action_slot.action?)?;
             let KindSpec::Gather(spec) = action.kind else {
                 return None;
             };
@@ -301,7 +271,7 @@ impl Trains {
     fn rally_point(world: &World, entity: Entity) -> Option<Vec3> {
         let producer = world.entity(entity);
         let pos = producer.get::<Position>().expect("a producer stands").get();
-        match producer.get::<Rally>()?.get() {
+        match producer.get::<Rally>()?.get()? {
             RallyTarget::Point { x, z } => {
                 Some(world.resource::<MapBook>().bounds.ground_point([x, z], pos))
             }
@@ -318,7 +288,7 @@ impl TrainPlaces {
     /// The places of the producer of `entity`: its exit point and its default rally point, of
     /// its type's `production`, each turned with it and taken into the bounds; and its rally
     /// point, where one is set to a point or a living unit, in place of the default.
-    fn of(world: &World, entity: Entity) -> TrainPlaces {
+    fn of(world: &World, entity: Entity) -> Self {
         let producer = world.entity(entity);
         let pos = producer.get::<Position>().expect("a producer stands").get();
         let angle = producer
@@ -331,7 +301,7 @@ impl TrainPlaces {
             let at = point?.placed(pos, angle);
             Some(bounds.ground_point([at.x, at.z], at))
         };
-        TrainPlaces {
+        Self {
             exit: place(data.and_then(|data| data.exit)),
             rally: Trains::rally_point(world, entity).or_else(|| place(data?.rally)),
         }

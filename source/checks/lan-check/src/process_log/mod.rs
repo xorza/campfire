@@ -19,43 +19,53 @@ impl ProcessLog {
     /// The most bytes a process's log may hold to be read whole: a line for each frame at Trace
     /// and for each order, a few mebibytes for a match of the check, so a gibibyte is far past
     /// one.
-    const MAX_LEN: usize = 1 << 30;
+    pub(crate) const MAX_LEN: usize = 1 << 30;
 
-    pub(crate) const fn empty(process: Process) -> ProcessLog {
-        ProcessLog {
+    pub(crate) const fn empty(process: Process) -> Self {
+        Self {
             process,
             lines: Vec::new(),
         }
     }
 
     /// The log `process` wrote to `path`; empty when it wrote none.
-    pub(crate) fn read(process: Process, path: &Path) -> Result<ProcessLog, CheckError> {
-        match InputFile::read_if_present(path, ProcessLog::MAX_LEN).map_err(CheckError::Read)? {
-            Some(bytes) => ProcessLog::parse(process, &bytes),
-            None => Ok(ProcessLog::empty(process)),
+    pub(crate) fn read(process: Process, path: &Path) -> Result<Self, CheckError> {
+        match InputFile::read_if_present(path, Self::MAX_LEN).map_err(CheckError::Read)? {
+            Some(bytes) => Self::parse(process, &bytes),
+            None => Ok(Self::empty(process)),
         }
     }
 
     /// The log in `bytes`, one event a line. A last line with no line end is one a process did not
     /// finish writing before it was stopped, and is left out.
-    pub(crate) fn parse(process: Process, bytes: &[u8]) -> Result<ProcessLog, CheckError> {
+    pub(crate) fn parse(process: Process, bytes: &[u8]) -> Result<Self, CheckError> {
+        let mut log = Self::empty(process);
+        log.extend(bytes)?;
+        Ok(log)
+    }
+
+    /// Adds each whole line of `bytes`, which go on from the last line it holds; how many bytes
+    /// those lines take, line ends among them. A last line with no line end is left for a later
+    /// read to finish.
+    pub(crate) fn extend(&mut self, bytes: &[u8]) -> Result<usize, CheckError> {
+        let process = self.process;
         // Cut before the text is read, so a character the process had not finished writing
         // goes with its line.
-        let end = bytes.iter().rposition(|&byte| byte == b'\n').unwrap_or(0);
+        let Some(end) = bytes.iter().rposition(|&byte| byte == b'\n') else {
+            return Ok(0);
+        };
         let whole = str::from_utf8(&bytes[..end])
             .map_err(|error| CheckError::NotText { process, error })?;
-        let lines = whole
-            .lines()
-            .enumerate()
-            .map(|(index, line)| {
-                LogLine::parse(line).map_err(|error| CheckError::Event {
-                    process,
-                    line: index + 1,
-                    error,
-                })
-            })
-            .collect::<Result<_, _>>()?;
-        Ok(ProcessLog { process, lines })
+        let first = self.lines.len();
+        for (index, line) in whole.lines().enumerate() {
+            let line = LogLine::parse(line).map_err(|error| CheckError::Event {
+                process,
+                line: first + index + 1,
+                error,
+            })?;
+            self.lines.push(line);
+        }
+        Ok(end + 1)
     }
 
     pub(crate) fn lines(&self) -> &[LogLine] {
@@ -96,24 +106,32 @@ impl ProcessLog {
 
     /// Every event of type `E`, in order; an error at the first whose fields do not read.
     pub(crate) fn read_all<E: LogEvent>(&self) -> Result<Vec<E>, CheckError> {
-        self.events().collect()
+        self.events(0).collect()
+    }
+
+    /// Every event of type `E` from line index `from` on, in order; an error at the first whose
+    /// fields do not read.
+    pub(crate) fn read_from<E: LogEvent>(&self, from: usize) -> Result<Vec<E>, CheckError> {
+        self.events(from).collect()
     }
 
     /// The first event of type `E`; an error when its fields do not read.
     pub(crate) fn first<E: LogEvent>(&self) -> Result<Option<E>, CheckError> {
-        self.events().next().transpose()
+        self.events(0).next().transpose()
     }
 
-    fn events<E: LogEvent>(&self) -> impl Iterator<Item = Result<E, CheckError>> {
-        self.lines.iter().enumerate().filter_map(|(index, line)| {
-            line.read::<E>().map(|event| {
-                event.map_err(|error| CheckError::Event {
-                    process: self.process,
-                    line: index + 1,
-                    error,
+    fn events<E: LogEvent>(&self, from: usize) -> impl Iterator<Item = Result<E, CheckError>> {
+        (from..)
+            .zip(&self.lines[from..])
+            .filter_map(|(index, line)| {
+                line.read::<E>().map(|event| {
+                    event.map_err(|error| CheckError::Event {
+                        process: self.process,
+                        line: index + 1,
+                        error,
+                    })
                 })
             })
-        })
     }
 }
 

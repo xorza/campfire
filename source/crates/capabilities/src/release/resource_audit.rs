@@ -1,11 +1,12 @@
-use bevy_ecs::bundle::Bundle;
-use bevy_ecs::event::Event;
-use bevy_ecs::lifecycle::ComponentHook;
-use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::any::{TypeId, type_name};
 use std::fmt::Debug;
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
+use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
+use bevy_ecs::schedule::SystemCondition;
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
@@ -41,15 +42,25 @@ impl DeclaredResources {
     /// own, the sim's own and those of `host` aside, then, while the match runs, each scratch
     /// resource not clear, each by its name.
     pub(super) fn audit(set: CapabilitySet, world: &World, host: &[TypeId]) -> Vec<String> {
-        let mut declared = DeclaredResources::default();
+        let mut declared = Self::default();
         Release::declare(set, &mut declared);
-        declared.ids.extend(DeclaredResources::release_own());
+        declared.ids.extend(Self::release_own());
         declared.ids.extend(SimWorldBuilder::sim_resources());
         declared.ids.extend(host);
+        // Bevy's walk of the resources leaves the non-send ones out, which its storage lists.
+        let components = world.components();
+        let non_sends = world
+            .storages()
+            .non_sends
+            .iter()
+            .filter(|(_, data)| data.is_present())
+            .filter_map(|(id, _)| components.get_info(id));
         let mut unlisted: Vec<String> = world
             .iter_resources()
-            .filter(|(info, _)| info.type_id().is_none_or(|id| !declared.ids.contains(&id)))
-            .map(|(info, _)| info.name().to_string())
+            .map(|(info, _)| info)
+            .chain(non_sends)
+            .filter(|info| info.type_id().is_none_or(|id| !declared.ids.contains(&id)))
+            .map(|info| info.name().to_string())
             .collect();
         unlisted.sort_unstable();
         if world.match_end().is_some() {
@@ -66,11 +77,12 @@ impl DeclaredResources {
     }
 
     /// What the release puts in a match itself: its capabilities, what a client's view of it
-    /// leaves out, and its script budgets.
-    const fn release_own() -> [TypeId; 3] {
+    /// leaves out, its role, and its script budgets.
+    const fn release_own() -> [TypeId; 4] {
         [
             TypeId::of::<CapabilitySet>(),
             TypeId::of::<OutView>(),
+            TypeId::of::<Role>(),
             TypeId::of::<ScriptBudgets>(),
         ]
     }
@@ -165,7 +177,13 @@ impl Declarations for DeclaredResources {
 
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 
-    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {
         self.ids.push(TypeId::of::<R>());
     }
+
+    fn non_send_loaded<R: 'static>(&mut self) {
+        self.ids.push(TypeId::of::<R>());
+    }
+
+    fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 }

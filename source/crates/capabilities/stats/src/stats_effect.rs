@@ -6,6 +6,9 @@ use campfire_values::{ModifierId, Tag};
 
 use crate::Stats;
 use crate::applier::Applier;
+use crate::modifier_adds::{HeldModifierAdds, ModifierAdd};
+use crate::modifier_handle::ModifierHandle;
+use crate::stats_call::StatsCall;
 use crate::stats_world::StatsWorld;
 
 /// A change to a unit's modifiers that a call queued.
@@ -31,28 +34,51 @@ pub enum StatsEffect {
 }
 
 impl StatsEffect {
-    /// Applies the effect, which a call by `applier` queued. An added modifier's numbers resolve
-    /// now, its params read from the param book, of its source as it is now; nothing is added to a
-    /// dead or gone unit, or one that carries no modifiers.
-    pub(crate) fn apply_by(self, world: &mut World, applier: Applier) {
+    /// `ctx.remove(m)`: the effect that ends the instance of `handle`, which the call now sees
+    /// as gone.
+    pub(crate) fn removing(handle: &ModifierHandle) -> Self {
+        let mut data = handle.data();
+        data.removed = true;
+        Self::Remove {
+            carrier: data.carrier,
+            id: data.id,
+            source: data.source,
+        }
+    }
+
+    /// Applies the effect, which a call by `applier` queued, an added modifier as
+    /// `HeldModifierAdds::add` adds it: through `adds`, the call frame's, or with none, from a
+    /// world alone.
+    fn apply_by(self, world: &mut World, applier: Applier, adds: Option<&mut HeldModifierAdds>) {
         match self {
-            StatsEffect::Add {
+            Self::Add {
                 target,
                 id,
                 duration,
-            } => Stats::add_modifier(world, target, id, applier, duration),
-            StatsEffect::AddPlayer { player, id } => {
+            } => {
+                let add = ModifierAdd {
+                    target,
+                    id,
+                    applier,
+                    duration,
+                };
+                match adds {
+                    Some(adds) => adds.add(world, add),
+                    None => Stats::add_modifier(world, add),
+                }
+            }
+            Self::AddPlayer { player, id } => {
                 world
                     .player_modifiers_mut(player)
                     .expect("a player of the session holds its modifiers")
                     .add(id);
             }
-            StatsEffect::Remove {
+            Self::Remove {
                 carrier,
                 id,
                 source,
             } => Stats::remove_modifier(world, carrier, id, source),
-            StatsEffect::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
+            Self::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
         }
     }
 }
@@ -66,6 +92,22 @@ impl Effect for StatsEffect {
             rank: frame.rank(),
             hold: None,
         };
-        self.apply_by(world, applier);
+        self.apply_by(world, applier, Some(StatsCall::of_mut(frame).adds()));
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::applier::Applier;
+    use crate::stats_effect::StatsEffect;
+
+    impl StatsEffect {
+        /// Applies the effect as a call by `applier` would, from a world alone, its added
+        /// modifier's shares and state held first.
+        pub(crate) fn apply_from(self, world: &mut World, applier: Applier) {
+            self.apply_by(world, applier, None);
+        }
     }
 }

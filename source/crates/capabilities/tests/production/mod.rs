@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, Actions, SlotKind, TimedSlots};
+use campfire_actions::{ActionProgress, ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
@@ -66,7 +66,7 @@ struct Shop {
 
 impl Shop {
     /// Loads the shop's types into `game`, a match with production, as the mode's.
-    fn place(game: &mut Match) -> Shop {
+    fn place(game: &mut Match) -> Self {
         let data = UnitTypeCore::default();
         let grunt = Units::load_type(game, TypeScope::Mode, "grunt", &data);
         let barracks = Units::load_type(game, TypeScope::Mode, "barracks", &data);
@@ -78,24 +78,24 @@ impl Shop {
             exit: None,
             rally: None,
         };
-        Shop::give(game, barracks, production);
+        Self::give(game, barracks, production);
         let frame = |x: i64| FramePoint::new([Num::int(x), Num::ZERO]);
         let gated = ProductionData {
             exit: frame(3),
             rally: frame(-3),
             ..production
         };
-        Shop::give(game, gate, gated);
-        Shop::give(
+        Self::give(game, gate, gated);
+        Self::give(
             game,
             gate,
             BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
         );
-        Shop::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
-        Shop::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
+        Self::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
+        Self::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
         Mode::load_test_units(game);
         let gold = ResourceId::new(0);
-        Shop {
+        Self {
             grunt,
             barracks,
             gate,
@@ -159,7 +159,7 @@ impl Shop {
     /// Each grunt trained so far, in order: the team and position of the producer it came from,
     /// and its owner.
     fn spawns(self, game: &mut World) -> Vec<(Team, Vec3, Option<PlayerSlot>)> {
-        let spawned = Shop::spawned(game, self.grunt);
+        let spawned = Self::spawned(game, self.grunt);
         spawned
             .iter()
             .map(|spawn| (spawn.team, spawn.pos, spawn.owner))
@@ -175,7 +175,7 @@ impl Shop {
 
     /// The depots spawned so far, by stable id.
     fn depots(self, game: &mut World) -> Vec<StableId> {
-        let spawned = Shop::spawned(game, self.depot);
+        let spawned = Self::spawned(game, self.depot);
         spawned.iter().map(|spawn| spawn.id).collect()
     }
 
@@ -329,7 +329,10 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     assert_eq!(held, 3);
     for id in [owned, unowned] {
         let entity = game.unit_entity(id);
-        assert_eq!(game.get::<ActionSlots>(entity).unwrap().in_progress(), None);
+        assert_eq!(
+            game.get::<ActionProgress>(entity).unwrap().in_progress(),
+            None
+        );
         assert_eq!(game.get::<TrainQueue>(entity), Some(&TrainQueue::default()));
     }
 

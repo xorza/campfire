@@ -1,10 +1,10 @@
 use std::fmt::Write as _;
 
 use campfire_capabilities::Match;
+use campfire_runner::SessionWorld;
 use campfire_sim::{SimWorld, StateCopy, StateRegistry, TypeHash};
 
 use crate::hash_trail::MatchHashes;
-use campfire_runner::SessionWorld;
 
 /// A `StateCopy` of a match that follows it tick by tick, checked after each: every state type
 /// of the copy hashes as the match's own, so the copy of what changed missed no write.
@@ -18,8 +18,8 @@ pub(crate) struct CopyCheck {
 
 impl CopyCheck {
     /// A copy of the state of `game` as it stands.
-    pub(crate) fn of(game: &mut Match) -> CopyCheck {
-        CopyCheck {
+    pub(crate) fn of(game: &mut Match) -> Self {
+        Self {
             copy: StateCopy::of(game),
             copied: Vec::new(),
             own: Vec::new(),

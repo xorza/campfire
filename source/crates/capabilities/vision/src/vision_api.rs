@@ -1,7 +1,7 @@
 use campfire_math::Vec3;
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, Ctx, DataTable, Filter, MemberSpec,
-    RoleSet, ScriptPosition, ScriptRadius, Status, Unit,
+    RoleSet, ScriptLasting, ScriptPosition, ScriptRadius, Status, Unit,
 };
 use campfire_values::TagProperty;
 
@@ -16,7 +16,7 @@ pub struct VisionApi;
 
 impl VisionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        VisionApi::register_queries(api);
+        Self::register_queries(api);
         let reveal = MemberSpec::call(
             "reveal",
             &[&["pos", "radius", "ms"]],
@@ -25,8 +25,8 @@ impl VisionApi {
         .roles(RoleSet::ACTING);
         api.call(
             reveal,
-            |ctx: &mut Ctx, pos: ScriptPosition, radius: ScriptRadius, ms: i64| {
-                VisionApi::reveal(ctx, pos.get(), radius, ms)
+            |ctx: &mut Ctx, pos: ScriptPosition, radius: ScriptRadius, ms: ScriptLasting| {
+                Self::reveal(ctx, pos.get(), radius, ms)
             },
         )
         .tag_property(TagProperty::Hidden, Status::Runs(ApiVersion::FIRST))
@@ -35,14 +35,13 @@ impl VisionApi {
         .shared_data(DataTable::UnitType, &["vision"], &[]);
     }
 
-    /// Queues a reveal to the acting unit's team of the cells within `radius` of `pos`, for `ms`
-    /// rounded up to ticks.
-    fn reveal(ctx: &Ctx, pos: Vec3, radius: ScriptRadius, ms: i64) -> Checked<()> {
+    /// Queues a reveal to the acting unit's team of the cells within `radius` of `pos`, for `ms`.
+    fn reveal(ctx: &Ctx, pos: Vec3, radius: ScriptRadius, ms: ScriptLasting) -> Checked<()> {
         let view = ctx.view();
         let acting = ctx.acting().and_then(|id| view.row(id));
         let team = acting.ok_or_else(|| ApiError::NoActingUnit.fail())?.team;
         let radius = radius.get();
-        let ticks = view.lasting(ms).map_err(ApiError::fail)?;
+        let ticks = ms.get();
         ctx.queue(VisionEffect {
             team,
             pos,

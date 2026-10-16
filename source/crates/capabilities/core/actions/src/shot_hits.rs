@@ -1,8 +1,9 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Scratch;
-use campfire_math::Num;
 use campfire_sim::StableId;
-use campfire_values::{ActionId, DamageKind, Hit, Rank};
+use campfire_values::Hit;
+
+use crate::shot_damage::ShotDamage;
 
 /// The hits of the tick's attack projectiles, in the order they struck, which the capability that
 /// deals an attack's damage takes as the projectiles end their flight. Not state: it empties
@@ -10,17 +11,13 @@ use campfire_values::{ActionId, DamageKind, Hit, Rank};
 #[derive(Resource, Debug, Default)]
 pub struct ShotHits(pub Vec<ShotHit>);
 
-/// The hit of a ranged attack's projectile: `source`'s weapon `action` at `rank` struck `target`
-/// as `hit` says, with its damage `amount` of `kind` and the roll it drew.
+/// The hit of a ranged attack's projectile: `source`'s shot struck `target` as `hit` says, with
+/// its `damage`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShotHit {
     pub source: StableId,
     pub target: StableId,
-    pub action: ActionId,
-    pub rank: Rank,
-    pub amount: Num,
-    pub kind: DamageKind,
-    pub roll: Num,
+    pub damage: ShotDamage,
     pub hit: Hit,
 }
 

@@ -9,18 +9,18 @@ use crate::team::Team;
 pub struct TeamSet(Bits256);
 
 impl TeamSet {
-    pub const NONE: TeamSet = TeamSet(Bits256::NONE);
-    pub const ALL: TeamSet = TeamSet(Bits256::ALL);
+    pub const NONE: Self = Self(Bits256::NONE);
+    pub const ALL: Self = Self(Bits256::ALL);
 
     #[must_use]
-    pub const fn with(self, team: Team) -> TeamSet {
-        TeamSet(self.0.with(team.get() as usize))
+    pub const fn with(self, team: Team) -> Self {
+        Self(self.0.with(team.get() as usize))
     }
 
     /// The teams in either set.
     #[must_use]
-    pub const fn union(self, other: TeamSet) -> TeamSet {
-        TeamSet(self.0.union(other.0))
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0.union(other.0))
     }
 
     pub const fn contains(self, team: Team) -> bool {
@@ -36,13 +36,13 @@ impl TeamSet {
 }
 
 impl FromIterator<Team> for TeamSet {
-    fn from_iter<I: IntoIterator<Item = Team>>(teams: I) -> TeamSet {
-        teams.into_iter().fold(TeamSet::NONE, TeamSet::with)
+    fn from_iter<I: IntoIterator<Item = Team>>(teams: I) -> Self {
+        teams.into_iter().fold(Self::NONE, Self::with)
     }
 }
 
 impl<const N: usize> From<[Team; N]> for TeamSet {
-    fn from(teams: [Team; N]) -> TeamSet {
+    fn from(teams: [Team; N]) -> Self {
         teams.into_iter().collect()
     }
 }
@@ -54,8 +54,8 @@ pub(crate) mod internals {
 
     impl TeamSet {
         /// The set of `team` alone.
-        pub const fn of(team: Team) -> TeamSet {
-            TeamSet::NONE.with(team)
+        pub const fn of(team: Team) -> Self {
+            Self::NONE.with(team)
         }
     }
 }

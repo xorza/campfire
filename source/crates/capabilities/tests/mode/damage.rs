@@ -1,9 +1,9 @@
 use campfire_combat::{Armor, ArmorShare};
 use campfire_common::Tick;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
@@ -162,14 +162,17 @@ fn calc_heal(ctx, h) {
     // A heal of 10 that `calc_heal` halves, and a leech heal of 6 it keeps: 950 + 5 + 6, as
     // the target has no heal scale.
     for (amount, cause) in [(10, HealCause::Effect), (6, HealCause::Leech)] {
-        game.resource_mut::<PassQueue>().push_heal(Heal {
-            source: Some(source),
-            target,
-            amount: Num::int(amount),
-            cause,
-            action: None,
-            depth: 0,
-        });
+        DamagePass::queue(
+            &mut game,
+            PassEntry::Heal(Heal {
+                source: Some(source),
+                target,
+                amount: Num::int(amount),
+                cause,
+                action: None,
+                depth: 0,
+            }),
+        );
     }
     Mode::tick_inputs(&mut game, &[]);
     assert_eq!(Mode::failures(&game), []);

@@ -1,6 +1,8 @@
+use campfire_codec::BinaryError;
+
 use super::*;
 use crate::harness::test_key::TestKey;
-use campfire_codec::BinaryError;
+use crate::verifier::Verifier;
 
 #[test]
 fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
@@ -16,7 +18,7 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
     };
     let signed = SignedReceipt {
         receipt,
-        signature: receipt.sign(&TestKey::signer(server)),
+        signature: TestKey::signer(server).sign(&receipt),
     };
     // A buffer that held other bytes is cleared first, so the file decodes.
     let mut bytes = vec![9; 3];
@@ -36,13 +38,10 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
         SignedReceipt::decode(&bytes[..bytes.len() - 1]),
         Err(TaggedError::Value(_))
     ));
-    assert!(receipt.signed_by(&Verifier::new(), &key, &signed.signature));
+    assert!(Verifier::new().verifies(&signed.signature, &key, &receipt));
     let stranger = TestKey::of(42);
-    assert!(!receipt.signed_by(
-        &Verifier::new(),
-        &stranger.x_only_public_key().0,
-        &signed.signature
-    ));
+    let stranger = stranger.x_only_public_key().0;
+    assert!(!Verifier::new().verifies(&signed.signature, &stranger, &receipt));
     let others = [
         Receipt {
             head: InputHash::new([4; 32]),
@@ -68,7 +67,7 @@ fn a_receipt_round_trips_and_holds_only_under_its_key_over_its_head() {
     ];
     for other in others {
         assert!(
-            !other.signed_by(&Verifier::new(), &key, &signed.signature),
+            !Verifier::new().verifies(&signed.signature, &key, &other),
             "{other:?}"
         );
     }

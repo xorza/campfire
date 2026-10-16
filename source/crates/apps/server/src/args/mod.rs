@@ -67,8 +67,8 @@ pub(crate) struct CommandLine {
 
 /// What the command line clap read as `line` names.
 impl From<CommandLine> for Args {
-    fn from(line: CommandLine) -> Args {
-        Args {
+    fn from(line: CommandLine) -> Self {
+        Self {
             data: line.data,
             times: SessionTimes {
                 grace: Duration::from_secs(line.grace),

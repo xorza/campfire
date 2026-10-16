@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use bevy_ecs::resource::Resource;
-use campfire_store::{DataDir, DataDirError, PathError};
+use campfire_store::{DataDir, DataDirError};
 
 use crate::sim_server::server_layout::ServerLayout;
 
@@ -16,9 +16,9 @@ pub struct ServerDir {
 
 impl ServerDir {
     /// The data directory at `path`, made when missing, and locked.
-    pub fn open(path: &Path) -> Result<ServerDir, PathError<DataDirError>> {
+    pub fn open(path: &Path) -> Result<Self, DataDirError> {
         let data = DataDir::open(path)?;
-        Ok(ServerDir {
+        Ok(Self {
             layout: ServerLayout::at(data.path().to_owned()),
             _data: data,
         })

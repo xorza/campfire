@@ -1,7 +1,10 @@
+use std::str;
 use std::sync::Arc;
 
+use campfire_codec::Toml;
 use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_values::PackagePath;
+use serde::de::DeserializeOwned;
 
 use crate::error::ContentError;
 use crate::file_index::{FileIndex, FileRow};
@@ -12,20 +15,21 @@ use crate::package_source::PackageSource;
 /// names.
 #[derive(Debug, Clone)]
 pub struct PackageReader {
-    index: FileIndex,
+    /// Shared by every clone, as a mode's packages each keep their reader.
+    index: Arc<FileIndex>,
     source: Arc<dyn PackageSource>,
 }
 
 impl PackageReader {
-    pub(crate) fn new(index: FileIndex, source: Arc<dyn PackageSource>) -> PackageReader {
-        PackageReader { index, source }
+    pub(crate) fn new(index: Arc<FileIndex>, source: Arc<dyn PackageSource>) -> Self {
+        Self { index, source }
     }
 
-    pub const fn fingerprint(&self) -> PackageFingerprint {
+    pub fn fingerprint(&self) -> PackageFingerprint {
         self.index.fingerprint()
     }
 
-    pub(crate) const fn index(&self) -> &FileIndex {
+    pub(crate) fn index(&self) -> &FileIndex {
         &self.index
     }
 
@@ -45,6 +49,20 @@ impl PackageReader {
             .row(path)
             .ok_or_else(|| ContentError::Missing { path: path.clone() })?;
         self.read_row(path, row)
+    }
+
+    /// The TOML data file at `path`, which a load does not keep, read now, checked against its
+    /// row, and read as a `T`, as a session's map is.
+    pub fn read_data<T: DeserializeOwned>(&self, path: &PackagePath) -> Result<T, ContentError> {
+        let bytes = self.read_file(path)?;
+        let text = str::from_utf8(&bytes).map_err(|error| ContentError::NotText {
+            path: path.clone(),
+            error,
+        })?;
+        Toml::parse(text).map_err(|error| ContentError::Data {
+            path: path.clone(),
+            error,
+        })
     }
 
     /// The bytes of the file at `path`, whose row is `row`, read no further than its row's size

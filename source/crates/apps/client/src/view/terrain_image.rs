@@ -36,12 +36,12 @@ struct LevelTexels<'t> {
 
 impl TerrainImage {
     /// The texture of `texture`, its copies' textures read from `files`, each once.
-    pub(crate) fn compose(texture: &TerrainTexture, files: &PackageReader) -> TerrainImage {
+    pub(crate) fn compose(texture: &TerrainTexture, files: &PackageReader) -> Self {
         let mut sources = BTreeMap::new();
         for copy in &texture.copies {
             sources
                 .entry(&copy.texture)
-                .or_insert_with(|| TerrainImage::source(files, &copy.texture, texture.levels));
+                .or_insert_with(|| Self::source(files, &copy.texture, texture.levels));
         }
         let texels_of = |level: u32| (texture.size >> level).element_product() as usize;
         let mut texels = BLACK.repeat((0..texture.levels).map(texels_of).sum());
@@ -54,14 +54,14 @@ impl TerrainImage {
                 level,
             };
             for copy in &texture.copies {
-                TerrainImage::copy(&mut target, copy, sources[&copy.texture].as_ref());
+                Self::copy(&mut target, copy, sources[&copy.texture].as_ref());
             }
             for wrap in &texture.wraps {
-                TerrainImage::wrap(&mut target, *wrap);
+                Self::wrap(&mut target, *wrap);
             }
             rest = next;
         }
-        TerrainImage {
+        Self {
             size: texture.size,
             levels: texture.levels,
             texels,

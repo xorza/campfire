@@ -29,7 +29,7 @@ pub(crate) struct ChoiceSpec {
 }
 
 impl ChoiceSpecs {
-    pub(crate) fn new(choices: &BTreeMap<DeclaredName, ChoiceData>) -> ChoiceSpecs {
+    pub(crate) fn new(choices: &BTreeMap<DeclaredName, ChoiceData>) -> Self {
         let mut width = 0;
         let names = Arc::new(choices.keys().map(DeclaredName::as_str).collect());
         let choices = choices
@@ -44,7 +44,7 @@ impl ChoiceSpecs {
                 }
             })
             .collect();
-        ChoiceSpecs {
+        Self {
             names,
             choices,
             width,

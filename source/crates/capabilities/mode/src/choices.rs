@@ -17,8 +17,8 @@ pub struct Choices(Vec<Option<Offer>>);
 
 impl Choices {
     /// The choices of `players` players of `specs`, none chosen.
-    pub(crate) fn empty(specs: &ChoiceSpecs, players: usize) -> Choices {
-        Choices(vec![None; specs.width() * players])
+    pub(crate) fn empty(specs: &ChoiceSpecs, players: usize) -> Self {
+        Self(vec![None; specs.width() * players])
     }
 
     /// Whether these choices hold a row of `specs` for each of `players` players, as `choose`
@@ -94,7 +94,7 @@ impl SimResource for Choices {
     // A row or a value past the mode's choices would be read past their places.
     fn check(&self, world: &World) -> bool {
         let book = world.non_send::<MatchMode>();
-        let players = book.teams.players() as usize;
+        let players = usize::try_from(book.teams.players()).expect("a player count fits usize");
         self.fits(&book.choices, players, &book.roster)
     }
 }
@@ -106,8 +106,8 @@ pub(crate) mod internals {
 
     impl Choices {
         /// The choices of `offers`, one a row, as a snapshot may hold them.
-        pub const fn of(offers: Vec<Option<Offer>>) -> Choices {
-            Choices(offers)
+        pub const fn of(offers: Vec<Option<Offer>>) -> Self {
+            Self(offers)
         }
 
         /// The offer each row took, if one.

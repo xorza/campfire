@@ -31,8 +31,8 @@ impl CloseCode {
     }
 
     /// The code a peer closed with, when it names one of Campfire's.
-    pub fn of(code: AppCode) -> Option<CloseCode> {
-        CloseCode::ALL.into_iter().find(|close| close.app() == code)
+    pub fn of(code: AppCode) -> Option<Self> {
+        Self::ALL.into_iter().find(|close| close.app() == code)
     }
 }
 

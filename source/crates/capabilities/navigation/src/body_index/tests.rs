@@ -343,3 +343,45 @@ fn a_layer_whose_rows_spread_wide_still_meets_exactly_its_bodies() {
     assert!(index.blocks(Segment::new(point(1, 0), point(1, far)), walker(0)));
     assert!(!index.blocks(Segment::new(point(0, 10), point(0, 20)), walker(1)));
 }
+
+#[test]
+fn a_route_is_blocked_only_by_a_body_of_its_layer_the_last_update_put_in() {
+    // A walker of 1 m from (0, 0) by (10, 0) to (10, 10). A post of 1 m at (5, 3) comes 3 m
+    // from the first leg and 5 m from the second, past the two radii, 2 m; one at (12, 5)
+    // comes 2 m from the second, not closer; one at (11, 5), 1 m. One on the second layer at
+    // (5, 0) stands on the first leg, and blocks no walker of the first.
+    let mut ids = IdAllocator::default();
+    let mut post = |x, z, layer| IndexedBody {
+        id: ids.allocate(),
+        pos: Vec3::from((x, 0, z)),
+        shape: Shape::Circle(Radius::new(Num::ONE).unwrap()),
+        layer,
+    };
+    let (far, touching, near, above) = (
+        post(5, 3, Layer::FIRST),
+        post(12, 5, Layer::FIRST),
+        post(11, 5, Layer::FIRST),
+        post(5, 0, Layer::new(1)),
+    );
+    let walker = Walker {
+        layer: Layer::FIRST,
+        radius: Num::ONE,
+    };
+    let legs = [
+        Segment::new(Vec3::from((0, 0, 0)), Vec3::from((10, 0, 0))),
+        Segment::new(Vec3::from((10, 0, 0)), Vec3::from((10, 0, 10))),
+    ];
+    let blocked = |index: &BodyIndex| legs.iter().any(|&leg| index.added_blocks(leg, walker));
+    let mut index = BodyIndex::new(Num::ONE);
+    assert!(!index.filled());
+    index.update(&[far, touching, above]);
+    assert!(index.filled());
+    assert!(!blocked(&index));
+    // The near post put in blocks; once the next update puts nothing in, it stands and no longer
+    // counts as put in, though `blocks` still finds it.
+    index.update(&[far, touching, near]);
+    assert!(blocked(&index));
+    index.update(&[far, touching, near]);
+    assert!(!blocked(&index));
+    assert!(legs.iter().any(|&leg| index.blocks(leg, walker)));
+}

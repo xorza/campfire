@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
+use campfire_values::MessageId;
 use campfire_values::PackagePath;
 use fluent_bundle::FluentResource;
 use fluent_syntax::ast::Entry;
@@ -8,7 +9,6 @@ use fluent_syntax::ast::Entry;
 use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::package_files::PackageFiles;
-use campfire_values::MessageId;
 
 /// One Fluent file of human text, parsed, with the messages it defines.
 #[derive(Debug)]
@@ -25,10 +25,7 @@ pub(crate) struct LocaleFile {
 impl LocaleFile {
     /// The file at `path` of `files`: it parses with no error, and defines no message or term
     /// twice.
-    pub(crate) fn read(
-        files: &PackageFiles,
-        path: &PackagePath,
-    ) -> Result<LocaleFile, LoadProblem> {
+    pub(crate) fn read(files: &PackageFiles, path: &PackagePath) -> Result<Self, LoadProblem> {
         let fail = |problem| LoadProblem::Locale {
             path: path.clone(),
             problem,
@@ -69,7 +66,7 @@ impl LocaleFile {
                 | Entry::Junk { .. } => {}
             }
         }
-        Ok(LocaleFile {
+        Ok(Self {
             path: path.clone(),
             resource: Arc::new(resource),
             messages,
@@ -84,7 +81,7 @@ impl LocaleFile {
 
     /// A message it defines that `own` does not, if it has one: a translation of `own` names
     /// none.
-    pub(crate) fn stray(&self, own: Option<&LocaleFile>) -> Option<&MessageId> {
+    pub(crate) fn stray(&self, own: Option<&Self>) -> Option<&MessageId> {
         self.messages
             .iter()
             .find(|id| own.is_none_or(|own| !own.messages.contains(*id)))

@@ -1,7 +1,8 @@
 use std::fmt;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::{EntityWorldMut, World};
+use bevy_ecs::world::World;
+use campfire_declare::PartWriter;
 use campfire_script::{StatePlace, StateValue, SyncTo};
 use campfire_values::UnitType;
 
@@ -13,9 +14,9 @@ use crate::unit_state_book::UnitStateBook;
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct UnitStates([Vec<StateValue>; SyncTo::ALL.len()]);
 
-/// Inserts a class's values into a unit as its `UnitState`, unless it has none.
-struct InsertClass<'t, 'w> {
-    target: &'t mut EntityWorldMut<'w>,
+/// Adds a class's values to a spawning unit's write as its `UnitState`, unless it has none.
+struct InsertClass<'t, 'w, 's> {
+    target: &'t mut PartWriter<'w, 's>,
     values: Vec<StateValue>,
 }
 
@@ -30,8 +31,8 @@ struct WriteClass<'w> {
 
 impl UnitStates {
     /// The state a unit of `unit_type` spawns with, by `book`, each field at its first value.
-    pub fn initial(book: &UnitStateBook, unit_type: UnitType) -> UnitStates {
-        let mut states = UnitStates::default();
+    pub fn initial(book: &UnitStateBook, unit_type: UnitType) -> Self {
+        let mut states = Self::default();
         if let Some(schema) = book.schema(unit_type) {
             for (value, place) in schema.initial().iter().zip(schema.places()) {
                 states.push(place.sync, value.clone());
@@ -56,8 +57,9 @@ impl UnitStates {
         *held = value;
     }
 
-    /// Inserts a component into `target` for each class it holds a field of.
-    pub fn insert_into(self, target: &mut EntityWorldMut<'_>) {
+    /// Adds a component to `target`, a spawning unit's write, for each class it holds a field
+    /// of.
+    pub fn push_into(self, target: &mut PartWriter<'_, '_>) {
         for (sync, values) in SyncTo::ALL.into_iter().zip(self.0) {
             InsertClass { target, values }.on(sync);
         }
@@ -78,7 +80,7 @@ impl UnitStates {
 }
 
 /// The values it inserts: the unit it inserts them into prints nothing.
-impl fmt::Debug for InsertClass<'_, '_> {
+impl fmt::Debug for InsertClass<'_, '_, '_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InsertClass")
             .field("values", &self.values)
@@ -86,12 +88,12 @@ impl fmt::Debug for InsertClass<'_, '_> {
     }
 }
 
-impl SyncCall for InsertClass<'_, '_> {
+impl SyncCall for InsertClass<'_, '_, '_> {
     type Output = ();
 
     fn call<S: StateSync>(self) {
         if !self.values.is_empty() {
-            self.target.insert(UnitState::<S>::new(self.values));
+            self.target.push(UnitState::<S>::new(self.values));
         }
     }
 }

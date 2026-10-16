@@ -40,8 +40,8 @@ pub struct SessionRules {
 }
 
 impl SessionRules {
-    pub fn of(packages: &ModePackages) -> SessionRules {
-        SessionRules {
+    pub fn of(packages: &ModePackages) -> Self {
+        Self {
             mode: packages.fingerprint(),
             map: packages.map_name().clone(),
             dependencies: packages.dependency_fingerprints().collect(),
@@ -89,7 +89,7 @@ impl SessionRules {
     /// more than the mode's teams have, and of a visibility the mode admits, which it gives. The
     /// check is the one way to the terms' visibility, so no reader takes it from terms unchecked.
     pub fn check(&self, terms: &SessionTerms) -> Result<Visibility, TermsError> {
-        SessionRules::check_release(terms)?;
+        Self::check_release(terms)?;
         if terms.mode != self.mode {
             return Err(TermsError::OtherMode);
         }

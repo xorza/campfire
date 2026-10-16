@@ -11,8 +11,8 @@ impl NameId for PathId {
     type Scope = ();
     const LIMIT: usize = 1 << u32::BITS;
 
-    fn at(index: usize) -> PathId {
-        PathId(u32::try_from(index).expect("paths fit u32"))
+    fn at(index: usize) -> Self {
+        Self(u32::try_from(index).expect("paths fit u32"))
     }
 
     fn index(self) -> usize {
@@ -26,8 +26,8 @@ pub(crate) mod internals {
 
     impl PathId {
         /// The path at `index` of the map's.
-        pub const fn new(index: u32) -> PathId {
-            PathId(index)
+        pub const fn new(index: u32) -> Self {
+            Self(index)
         }
     }
 }

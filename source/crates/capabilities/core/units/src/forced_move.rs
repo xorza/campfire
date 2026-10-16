@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_values::{ActionStart, DashDelivery};
@@ -52,15 +52,15 @@ pub struct Advanced {
 }
 
 impl ForcedMove {
-    /// One tick of it from `point`, towards `goal`; none for a dash whose unit is gone or dead, which
-    /// ends where it is. A dash goes its step, and ends once it comes within its goal's reach; a
-    /// knock back goes its share of the way to its end, and ends on it in its last tick.
+    /// One tick of it from `point`, towards `goal`; none for a dash whose unit is gone or dead,
+    /// which ends where it is. A dash goes its step, and ends once it comes within its goal's
+    /// reach; a knock back goes its share of the way to its end, and ends on it in its last tick.
     pub fn advance(&mut self, point: Vec3, goal: Option<Goal>) -> Advanced {
         let Some(goal) = goal else {
             return Advanced { point, ends: true };
         };
         match self {
-            ForcedMove::Dash { step, .. } => {
+            Self::Dash { step, .. } => {
                 if point.within(goal.point, goal.reach + *step) {
                     let gap = (point.distance(goal.point) - goal.reach).max(Num::ZERO);
                     return Advanced {
@@ -73,7 +73,7 @@ impl ForcedMove {
                     ends: false,
                 }
             }
-            ForcedMove::KnockBack { left, .. } => {
+            Self::KnockBack { left, .. } => {
                 if *left <= 1 {
                     return Advanced {
                         point: goal.point,
@@ -84,7 +84,7 @@ impl ForcedMove {
                     i64::try_from(*left).expect("a knock back's ticks are within the tick limit");
                 let share = point
                     .distance(goal.point)
-                    .checked_div_int(ticks)
+                    .checked_div_int(ticks, Rounding::NearestEven)
                     .expect("a share of a way within the bound fits");
                 *left -= 1;
                 Advanced {
@@ -102,24 +102,25 @@ impl SimComponent for ForcedMove {
 
     // A dash of no step, or a knock back with no tick left, never ends. A dash's step, and a
     // knock back's end, lie within twice the world's bound, a distance within it from a place
-    // within it, so a step past a body's reach and a way to the end fit a number; a knock back's
-    // ticks are a time's, within the tick limit; a dash's point, and the start of the action it
-    // delivers, lie within the world's bound, as every place does. That its unit walks, and so is no box, its declarations require.
+    // within it, so a step past a body's reach and a way to the end fit a number. A knock back's
+    // ticks are a time's, within the tick limit. A dash's point, and the start of the action it
+    // delivers, lie within the world's bound, as every place does. The declarations, not this
+    // check, require that its unit walks, and so is no box.
     fn check(&self, _: &World, _: Entity) -> bool {
         let reach = 2 * Position::BOUND.to_bits().unsigned_abs();
         let within = |value: Num| value.to_bits().unsigned_abs() <= reach;
         match *self {
-            ForcedMove::Dash { to, step, delivers } => {
+            Self::Dash { to, step, delivers } => {
                 let point = match to {
                     DashTo::Point(point) => Position::from(point).within_bound(),
                     DashTo::Unit(_) => true,
                 };
                 let start = delivers
                     .and_then(|delivers| delivers.start)
-                    .is_none_or(ActionStart::within_bound);
+                    .is_none_or(ActionStart::check);
                 step > Num::ZERO && within(step) && point && start
             }
-            ForcedMove::KnockBack { to, left } => {
+            Self::KnockBack { to, left } => {
                 (1..=Tick::LIMIT.get()).contains(&left)
                     && [to.x, to.y, to.z].into_iter().all(within)
             }

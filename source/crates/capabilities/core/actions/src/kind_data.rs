@@ -1,11 +1,11 @@
 use std::num::NonZeroU32;
 
-use campfire_math::Num;
-use campfire_values::{DeclaredName, Stat};
+use campfire_values::{DeclaredName, Distance, Stat};
 
 use crate::action_data::ActionData;
 use crate::action_data_field::ActionDataField;
 use crate::action_kind::ActionKind;
+use crate::error::KindError;
 
 /// What an action of a kind the release runs needs, as its data gives it: a cast and a use
 /// nothing; an attack its weapon's rate and damage, each a stat or its own, and its damage kind;
@@ -29,7 +29,7 @@ pub enum KindData<'a> {
     Gather {
         resource: &'a DeclaredName,
         take: NonZeroU32,
-        bounce: Option<Num>,
+        bounce: Option<Distance>,
     },
 }
 
@@ -42,12 +42,15 @@ pub enum FromData<'a> {
 }
 
 impl<'a> KindData<'a> {
-    /// What the kind of `data`, one the release runs, needs, as `data` gives it; an error names the
-    /// first field the kind refuses, or needs and `data` does not give, as the table of action
-    /// fields says.
-    pub fn of(data: &'a ActionData) -> Result<KindData<'a>, ActionDataField> {
+    /// What the kind of `data` needs, as `data` gives it; an error for a kind the release does not
+    /// run, and one that names the first field the kind refuses, or needs and `data` does not
+    /// give, as the table of action fields says.
+    pub fn of(data: &'a ActionData) -> Result<Self, KindError> {
+        if !data.kind.runs() {
+            return Err(KindError::NotRun(data.kind));
+        }
         if let Some(field) = ActionDataField::misused(data, data.kind) {
-            return Err(field);
+            return Err(KindError::Field(field));
         }
         let needs = "the table of action fields makes its kind need it";
         Ok(match data.kind {
@@ -69,7 +72,9 @@ impl<'a> KindData<'a> {
                 take: data.take.expect(needs),
                 bounce: data.bounce,
             },
-            kind => panic!("the release runs no {kind:?}"),
+            ActionKind::Enter | ActionKind::Craft => {
+                unreachable!("the release runs no {:?}", data.kind)
+            }
         })
     }
 }

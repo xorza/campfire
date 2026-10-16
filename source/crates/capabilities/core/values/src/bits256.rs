@@ -6,24 +6,24 @@ use serde::{Deserialize, Serialize};
 /// without an allocation.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Bits256([u64; Bits256::WORDS]);
+pub struct Bits256([u64; Self::WORDS]);
 
 impl Bits256 {
     pub(crate) const BITS: usize = 256;
-    const WORDS: usize = Bits256::BITS / 64;
-    pub const NONE: Bits256 = Bits256([0; Bits256::WORDS]);
-    pub const ALL: Bits256 = Bits256([u64::MAX; Bits256::WORDS]);
+    const WORDS: usize = Self::BITS / 64;
+    pub const NONE: Self = Self([0; Self::WORDS]);
+    pub const ALL: Self = Self([u64::MAX; Self::WORDS]);
 
     /// The bits with bit `index`, below `BITS`, set.
     #[must_use]
-    pub const fn with(mut self, index: usize) -> Bits256 {
+    pub const fn with(mut self, index: usize) -> Self {
         self.0[index / 64] |= 1 << (index % 64);
         self
     }
 
     /// The bits with bit `index`, below `BITS`, clear.
     #[must_use]
-    pub const fn without(mut self, index: usize) -> Bits256 {
+    pub const fn without(mut self, index: usize) -> Self {
         self.0[index / 64] &= !(1 << (index % 64));
         self
     }
@@ -34,9 +34,9 @@ impl Bits256 {
 
     /// The bits set in either.
     #[must_use]
-    pub(crate) const fn union(mut self, other: Bits256) -> Bits256 {
+    pub(crate) const fn union(mut self, other: Self) -> Self {
         let mut word = 0;
-        while word < Bits256::WORDS {
+        while word < Self::WORDS {
             self.0[word] |= other.0[word];
             word += 1;
         }
@@ -44,9 +44,9 @@ impl Bits256 {
     }
 
     /// Whether the two set a bit in common.
-    pub const fn meets(self, other: Bits256) -> bool {
+    pub const fn meets(self, other: Self) -> bool {
         let mut word = 0;
-        while word < Bits256::WORDS {
+        while word < Self::WORDS {
             if self.0[word] & other.0[word] != 0 {
                 return true;
             }
@@ -56,9 +56,9 @@ impl Bits256 {
     }
 
     /// Whether it sets every bit `other` sets.
-    pub(crate) const fn covers(self, other: Bits256) -> bool {
+    pub(crate) const fn covers(self, other: Self) -> bool {
         let mut word = 0;
-        while word < Bits256::WORDS {
+        while word < Self::WORDS {
             if other.0[word] & !self.0[word] != 0 {
                 return false;
             }

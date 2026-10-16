@@ -23,9 +23,9 @@ impl OpenCells {
     /// The buckets of the ring, more than the totals from the least to `SPREAD` past it.
     const RING: u32 = 32;
 
-    pub(crate) fn new() -> OpenCells {
-        OpenCells {
-            buckets: (0..OpenCells::RING).map(|_| BinaryHeap::new()).collect(),
+    pub(crate) fn new() -> Self {
+        Self {
+            buckets: (0..Self::RING).map(|_| BinaryHeap::new()).collect(),
             least: None,
             len: 0,
         }
@@ -43,11 +43,11 @@ impl OpenCells {
     pub(crate) fn push(&mut self, total: u32, estimate: u32, cell: u32) {
         let least = *self.least.get_or_insert(total);
         debug_assert!(
-            total >= least && total - least <= OpenCells::SPREAD,
+            total >= least && total - least <= Self::SPREAD,
             "a consistent estimate keeps every total near the least"
         );
         let key = (u64::from(estimate) << 32) | u64::from(cell);
-        self.buckets[(total % OpenCells::RING) as usize].push(Reverse(key));
+        self.buckets[(total % Self::RING) as usize].push(Reverse(key));
         self.len += 1;
     }
 
@@ -61,7 +61,7 @@ impl OpenCells {
             .as_mut()
             .expect("a pushed cell set the least total");
         loop {
-            let bucket = &mut self.buckets[(*least % OpenCells::RING) as usize];
+            let bucket = &mut self.buckets[(*least % Self::RING) as usize];
             if let Some(Reverse(key)) = bucket.pop() {
                 self.len -= 1;
                 #[expect(
@@ -76,8 +76,8 @@ impl OpenCells {
 }
 
 impl Default for OpenCells {
-    fn default() -> OpenCells {
-        OpenCells::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 

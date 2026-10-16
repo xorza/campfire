@@ -25,8 +25,8 @@ pub(crate) struct ModeSchema {
 
 impl ModeSchema {
     /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives.
-    pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> ModeSchema {
-        let mut schema = ModeSchema {
+    pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> Self {
+        let mut schema = Self {
             script,
             hooks: scripts.defines(Some(script), ScriptRole::Mode),
             params: NameTable::default(),
@@ -49,7 +49,7 @@ impl ModeSchema {
     }
 
     /// The param `name`, as `ctx.p` reads it.
-    pub(crate) fn param(&self, name: &str) -> Option<ScriptValue> {
+    pub(crate) fn param_named(&self, name: &str) -> Option<ScriptValue> {
         let at = self.params.named(RUN, name)?;
         Some(self.params.values(RUN)[at].clone())
     }
@@ -91,7 +91,7 @@ impl ModeSchema {
     }
 
     /// The input type `name`.
-    pub(crate) fn input_type(&self, name: &str) -> Option<InputType> {
+    pub(crate) fn input_type_named(&self, name: &str) -> Option<InputType> {
         let at = self.inputs.named(RUN, name)?;
         Some(self.inputs.values(RUN)[at])
     }

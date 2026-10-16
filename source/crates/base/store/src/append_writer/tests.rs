@@ -69,10 +69,15 @@ fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() 
         while !watch.settled() {
             thread::yield_now();
         }
-        // Stopped, it takes no record more.
+        // Stopped, it takes no record more. The failure is taken once, through the watch after
+        // a drop, or from the close.
         writer.append(|_| unreachable!("a stopped writer takes no record"));
-        drop(writer);
-        let failure = watch.take_failure();
+        let failure = if append {
+            drop(writer);
+            watch.take_failure()
+        } else {
+            writer.close()
+        };
         let step = match &failure {
             Some(AppendError::Write(error)) => (true, false, error.to_string()),
             Some(AppendError::Sync(error)) => (false, true, error.to_string()),

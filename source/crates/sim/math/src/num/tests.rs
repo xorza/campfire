@@ -32,43 +32,6 @@ fn int_conversion_is_exact_within_range() {
 }
 
 #[test]
-fn a_float_converts_exactly_or_rounds_once_below_a_step() {
-    let num = |value: f32| Num::try_from(value).map(Num::to_bits);
-    // A float of sign `negative`, exponent `power` and fraction `fraction`, by its bits, as the
-    // crate does no float arithmetic.
-    let float = |negative: bool, power: i32, fraction: u32| {
-        let exponent = u32::try_from(power + 127).unwrap();
-        f32::from_bits((u32::from(negative) << 31) | (exponent << 23) | fraction)
-    };
-    // 1234.5677 in `f32` is 1234.5677490234375, 20,712,609,792 steps of 2⁻²⁴; −0.625, 1.25 · 2⁻¹
-    // below 0, is 10,485,760 steps below.
-    assert_eq!(num(1234.5677), Ok(20_712_609_792));
-    assert_eq!(num(float(true, -1, 0x20_0000)), Ok(-10_485_760));
-    // 2⁻²⁵ is half a step and rounds to the even 0; 1.5 · 2⁻²⁴ rounds to the even 2; 1.25 · 2⁻²⁴
-    // to 1; −1.5 · 2⁻²⁴ to −2.
-    assert_eq!(num(float(false, -25, 0)), Ok(0));
-    assert_eq!(num(float(false, -24, 0x40_0000)), Ok(2));
-    assert_eq!(num(float(false, -24, 0x20_0000)), Ok(1));
-    assert_eq!(num(float(true, -24, 0x40_0000)), Ok(-2));
-    // The smallest normal float, the smallest subnormal, and −0 are 0.
-    assert_eq!(num(f32::MIN_POSITIVE), Ok(0));
-    assert_eq!(num(f32::from_bits(1)), Ok(0));
-    assert_eq!(num(f32::from_bits(1 << 31)), Ok(0));
-    // (2²⁴ − 1) · 2¹⁵, the largest float below 2³⁹, is 2⁶³ − 2³⁹ steps; 2³⁹ is past a `Num`,
-    // and −2³⁹, its least, is not.
-    assert_eq!(
-        num(float(false, 38, 0x7F_FFFF)),
-        Ok(i64::MAX - (1 << 39) + 1)
-    );
-    assert_eq!(num(float(false, 39, 0)), Err(FloatToNumError::OutOfRange));
-    assert_eq!(num(float(true, 39, 0)), Ok(i64::MIN));
-    assert_eq!(num(1e12), Err(FloatToNumError::OutOfRange));
-    assert_eq!(num(f32::MAX), Err(FloatToNumError::OutOfRange));
-    assert_eq!(num(f32::NAN), Err(FloatToNumError::NotFinite));
-    assert_eq!(num(f32::NEG_INFINITY), Err(FloatToNumError::NotFinite));
-}
-
-#[test]
 fn floor_ceil_round() {
     // (bits, floor, ceil, round); round sends halves away from zero.
     let cases = [
@@ -139,13 +102,16 @@ fn mul_overflow_boundary() {
     let big = Num::from_int(1 << 38).unwrap();
     let two = Num::from_int(2).unwrap();
     // 2³⁸ · −2 = −2³⁹, exactly MIN; 2³⁸ · 2 = 2³⁹ is one past MAX.
-    assert_eq!(big.checked_mul(-two), Some(Num::MIN));
-    assert_eq!(big.checked_mul(two), None);
+    assert_eq!(big.checked_mul(-two, Rounding::NearestEven), Some(Num::MIN));
+    assert_eq!(big.checked_mul(two, Rounding::NearestEven), None);
     // Saturating, the one past MAX stops at MAX, and MIN times −1, one past MAX too, as well;
     // the ends of the bits stop at the ends of the range.
-    assert_eq!(big.saturating_mul(two), Num::MAX);
-    assert_eq!(big.saturating_mul(-two), Num::MIN);
-    assert_eq!(Num::MIN.saturating_mul(-Num::ONE), Num::MAX);
+    assert_eq!(big.saturating_mul(two, Rounding::NearestEven), Num::MAX);
+    assert_eq!(big.saturating_mul(-two, Rounding::NearestEven), Num::MIN);
+    assert_eq!(
+        Num::MIN.saturating_mul(-Num::ONE, Rounding::NearestEven),
+        Num::MAX
+    );
     assert_eq!(Num::saturating_from_bits(i128::MAX), Num::MAX);
     assert_eq!(
         Num::saturating_from_bits(i128::from(i64::MIN) - 1),
@@ -175,38 +141,49 @@ fn div_rounds_to_nearest_even() {
     for (a, b, quotient) in cases {
         assert_eq!(n(a) / n(b), n(quotient), "{a} / {b}");
     }
-    assert_eq!(Num::ONE.checked_div(Num::ZERO), None);
-    assert_eq!(Num::MIN.checked_div(-Num::EPSILON), None);
-    assert_eq!(Num::MIN.checked_div(-Num::ONE), None);
+    assert_eq!(Num::ONE.checked_div(Num::ZERO, Rounding::NearestEven), None);
+    assert_eq!(
+        Num::MIN.checked_div(-Num::EPSILON, Rounding::NearestEven),
+        None
+    );
+    assert_eq!(Num::MIN.checked_div(-Num::ONE, Rounding::NearestEven), None);
 }
 
 #[test]
 fn each_rounding_takes_its_own_way() {
     // 7ε ÷ 2 = 3.5ε: to the even 4ε, down 3ε, up 4ε; −7ε ÷ 2: −4ε, −4ε, −3ε; 5ε ÷ 2 = 2.5ε: 2ε,
-    // 2ε, 3ε, so the three modes give three answers over the two.
+    // 2ε, 3ε, so the three modes give three answers over the two. Each way to halve takes the
+    // rounding it is given: times a half, over 2, and times 1 over 2.
     let modes = [Rounding::NearestEven, Rounding::Floor, Rounding::Ceiling];
-    let halve = |bits: i64| modes.map(|mode| n(bits).checked_mul_ratio(1, 2, mode).unwrap());
+    let halve = |bits: i64| {
+        let halves = [
+            modes.map(|mode| n(bits).checked_mul(Num::HALF, mode).unwrap()),
+            modes.map(|mode| n(bits).saturating_mul(Num::HALF, mode)),
+            modes.map(|mode| n(bits).checked_div_int(2, mode).unwrap()),
+            modes.map(|mode| n(bits).checked_mul_div_int(1, 2, mode).unwrap()),
+        ];
+        assert!(halves.iter().all(|half| *half == halves[0]), "{bits}");
+        halves[0]
+    };
     assert_eq!(halve(7), [n(4), n(3), n(4)]);
     assert_eq!(halve(-7), [n(-4), n(-4), n(-3)]);
     assert_eq!(halve(5), [n(2), n(2), n(3)]);
     // 1 ÷ 3 = 5 592 405.33ε: 5 592 405ε to nearest and down, 5 592 406ε up; and 1.5 · 1.5 ÷ 0.75
     // = 3 whole every way.
-    let third = modes.map(|mode| Num::ONE.checked_div_rounded(n(3 * ONE), mode).unwrap());
+    let third = modes.map(|mode| Num::ONE.checked_div(n(3 * ONE), mode).unwrap());
     assert_eq!(third, [n(5_592_405), n(5_592_405), n(5_592_406)]);
     let (one_half, three_quarters) = (n(ONE + HALF), n(HALF + QUARTER));
     let whole = modes.map(|mode| one_half.checked_mul_div(one_half, three_quarters, mode));
     assert_eq!(whole, [Some(n(3 * ONE)); 3]);
     // A divisor of 0, and a result past the range, give none.
-    assert_eq!(
-        Num::ONE.checked_div_rounded(Num::ZERO, Rounding::Floor),
-        None
-    );
+    assert_eq!(Num::ONE.checked_div(Num::ZERO, Rounding::Floor), None);
+    assert_eq!(Num::ONE.checked_div_int(0, Rounding::Floor), None);
     assert_eq!(
         Num::ONE.checked_mul_div(Num::ONE, Num::ZERO, Rounding::Floor),
         None
     );
-    assert_eq!(Num::ONE.checked_mul_ratio(1, 0, Rounding::Floor), None);
-    assert_eq!(Num::MAX.checked_mul_ratio(2, 1, Rounding::Floor), None);
+    assert_eq!(Num::ONE.checked_mul_div_int(1, 0, Rounding::Floor), None);
+    assert_eq!(Num::MAX.checked_mul_div_int(2, 1, Rounding::Floor), None);
     // A count scales to a count: 3 × 0.5 = 1.5 gives 2, 1 and 2; a count of 2⁶² whole times 1 is
     // itself, and times 0.75 is 3 · 2⁶⁰ exactly, past what a `Num` holds; ε of 2⁶⁴ − 1 is
     // 2⁴⁰ − 2⁻²⁴, 2⁴⁰ up and 2⁴⁰ − 1 down. Below 0 and past `u64` give none.
@@ -235,24 +212,24 @@ fn int_operands() {
     assert_eq!(n(5) / 2, n(2));
     assert_eq!(Num::ONE / 3, n(5_592_405));
     assert_eq!(-Num::ONE / 3, n(-5_592_405));
-    assert_eq!(Num::ONE.checked_div_int(0), None);
-    assert_eq!(Num::MIN.checked_div_int(-1), None);
+    assert_eq!(Num::ONE.checked_div_int(0, Rounding::NearestEven), None);
+    assert_eq!(Num::MIN.checked_div_int(-1, Rounding::NearestEven), None);
     // The ends of the integer operands, past the ±1000 the proptest draws: −MIN is past MAX;
     // ε times i64::MAX is MAX's bits exactly; MIN over i64::MIN is one bit, ε; MAX over
     // i64::MIN is just short of −ε, which rounds to −ε; ONE over i64::MIN, 2⁻³⁹ bits, to 0.
     assert_eq!(Num::MIN.checked_mul_int(-1), None);
     assert_eq!(Num::EPSILON.checked_mul_int(i64::MAX), Some(Num::MAX));
-    assert_eq!(Num::MIN.checked_div_int(i64::MIN), Some(n(1)));
-    assert_eq!(Num::MAX.checked_div_int(i64::MIN), Some(n(-1)));
-    assert_eq!(Num::ONE.checked_div_int(i64::MIN), Some(Num::ZERO));
-    // ε · 1 ÷ 2 ties to 0, 3ε · 1 ÷ 2 to 2ε; ε · 1.5 ÷ 3 is ε/2, which ties to 0, where ε · 1.5
-    // rounded first, to 2ε, then ÷ 3 would give ε: one rounding, not two.
-    assert_eq!(n(1).checked_mul_div_int(Num::ONE, 2), Some(n(0)));
-    assert_eq!(n(3).checked_mul_div_int(Num::ONE, 2), Some(n(2)));
-    assert_eq!(n(1).checked_mul_div_int(n(ONE + HALF), 3), Some(n(0)));
+    assert_eq!(Num::MIN / i64::MIN, n(1));
+    assert_eq!(Num::MAX / i64::MIN, n(-1));
+    assert_eq!(Num::ONE / i64::MIN, Num::ZERO);
+    // ε · 1.5 ÷ 3 is ε/2, which ties to 0, where ε · 1.5 rounded first, to 2ε, then ÷ 3 would
+    // give ε: one rounding, not two.
+    let three = Num::int(3);
+    assert_eq!(
+        n(1).checked_mul_div(n(ONE + HALF), three, Rounding::NearestEven),
+        Some(n(0))
+    );
     assert_eq!((n(1) * n(ONE + HALF)) / 3, n(1));
-    assert_eq!(Num::ONE.checked_mul_div_int(Num::ONE, 0), None);
-    assert_eq!(Num::MAX.checked_mul_div_int(n(2 * ONE), 1), None);
     // Each assigning operator gives what its operator does: 1.5 + 1 − 0.25 = 2.25, · 2 = 4.5,
     // / 1.5 = 3, · 3 = 9, / 4 = 2.25.
     let mut x = n(ONE + HALF);
@@ -418,10 +395,10 @@ proptest! {
     #[test]
     fn mul_matches_exact_rounding(a in bits(), b in bits()) {
         let expected = exact(nearest_even(i128::from(a) * i128::from(b), i128::from(ONE)));
-        prop_assert_eq!(n(a).checked_mul(n(b)), expected);
+        prop_assert_eq!(n(a).checked_mul(n(b), Rounding::NearestEven), expected);
         // Saturating, it is the product where it fits, and an end of the range past it.
         let saturated = expected.unwrap_or(if (a < 0) == (b < 0) { Num::MAX } else { Num::MIN });
-        prop_assert_eq!(n(a).saturating_mul(n(b)), saturated);
+        prop_assert_eq!(n(a).saturating_mul(n(b), Rounding::NearestEven), saturated);
     }
 
     #[test]
@@ -433,27 +410,19 @@ proptest! {
         } else {
             nearest_even(-numerator, -i128::from(b))
         };
-        prop_assert_eq!(n(a).checked_div(n(b)), exact(expected));
+        prop_assert_eq!(n(a).checked_div(n(b), Rounding::NearestEven), exact(expected));
     }
 
     #[test]
-    fn int_operands_match_exact(a in bits(), b in bits(), k in -1000_i64..1000) {
+    fn int_operands_match_exact(a in bits(), k in -1000_i64..1000) {
         prop_assert_eq!(n(a).checked_mul_int(k), exact(i128::from(a) * i128::from(k)));
         prop_assume!(k != 0);
-        let product = i128::from(a) * i128::from(b);
-        let divisor = i128::from(k) << Num::FRAC_BITS;
-        let expected = if k > 0 {
-            nearest_even(product, divisor)
-        } else {
-            nearest_even(-product, -divisor)
-        };
-        prop_assert_eq!(n(a).checked_mul_div_int(n(b), k), exact(expected));
         let expected = if k > 0 {
             nearest_even(i128::from(a), i128::from(k))
         } else {
             nearest_even(-i128::from(a), -i128::from(k))
         };
-        prop_assert_eq!(n(a).checked_div_int(k), exact(expected));
+        prop_assert_eq!(n(a).checked_div_int(k, Rounding::NearestEven), exact(expected));
     }
 
     #[test]
@@ -467,12 +436,18 @@ proptest! {
         for rounding in [Rounding::NearestEven, Rounding::Floor, Rounding::Ceiling] {
             let rounded = |n: i128, d: i128| exact(rounded_exactly(n, d, rounding));
             let (wide_a, wide_b, wide_c) = (i128::from(a), i128::from(b), i128::from(c));
+            let product = rounded(wide_a * wide_b, i128::from(ONE));
+            prop_assert_eq!(n(a).checked_mul(n(b), rounding), product);
+            let saturated = product.unwrap_or(if (a < 0) == (b < 0) { Num::MAX } else { Num::MIN });
+            prop_assert_eq!(n(a).saturating_mul(n(b), rounding), saturated);
             let quotient = (b != 0).then(|| rounded(wide_a << 24, wide_b)).flatten();
-            prop_assert_eq!(n(a).checked_div_rounded(n(b), rounding), quotient);
+            prop_assert_eq!(n(a).checked_div(n(b), rounding), quotient);
+            let share = (k != 0).then(|| rounded(wide_a, i128::from(k))).flatten();
+            prop_assert_eq!(n(a).checked_div_int(k, rounding), share);
             let scaled = (c != 0).then(|| rounded(wide_a * wide_b, wide_c)).flatten();
             prop_assert_eq!(n(a).checked_mul_div(n(b), n(c), rounding), scaled);
             let ratio = (m != 0).then(|| rounded(wide_a * i128::from(k), i128::from(m))).flatten();
-            prop_assert_eq!(n(a).checked_mul_ratio(k, m, rounding), ratio);
+            prop_assert_eq!(n(a).checked_mul_div_int(k, m, rounding), ratio);
         }
     }
 

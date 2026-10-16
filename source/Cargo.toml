@@ -174,39 +174,36 @@ windows = { version = "=0.62.2", features = [
 xmltree = "=0.10.3"
 zeroize = "=1.9.0"
 
+# Overflow checks stay on in dev and release: an overflow in the sim crashes on every machine,
+# never wraps silently into a state that diverges between them.
 [profile.dev]
-overflow-checks = true
 opt-level = 1
 debug = "line-tables-only"
-split-debuginfo = "unpacked"
+overflow-checks = true
 
 [profile.dev.package."*"]
 opt-level = 3
 
-[profile.release-dev]
-inherits = "release"
-lto = false
-codegen-units = 16
-incremental = true
-debug = "line-tables-only"
-split-debuginfo = "unpacked"
-
 [profile.release]
-overflow-checks = true
 lto = "fat"
 codegen-units = 1
 panic = "abort"
-debug = false
-split-debuginfo = "packed"
-strip = "debuginfo"
+debug = "full"
+split-debuginfo = "off"
+overflow-checks = true
 
 [profile.bench]
-inherits = "release"
 debug = "line-tables-only"
-split-debuginfo = "off"
 strip = "none"
 
+[profile.release-dev]
+inherits = "release"
+lto = "thin"
+codegen-units = 16
+incremental = true
+debug = "line-tables-only"
 
+# Warn, not deny: the verification chain runs clippy with `-D warnings`.
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 meta_variable_misuse = "warn"
@@ -272,6 +269,8 @@ iter_over_hash_type = "warn"
 iter_with_drain = "warn"
 large_include_file = "warn"
 literal_string_with_formatting_args = "warn"
+lossy_float_literal = "warn"
+mem_forget = "warn"
 missing_const_for_fn = "warn"
 mixed_read_write_in_expression = "warn"
 module_name_repetitions = "warn"
@@ -286,6 +285,7 @@ pathbuf_init_then_push = "warn"
 precedence_bits = "warn"
 print_stderr = "warn"
 print_stdout = "warn"
+rc_buffer = "warn"
 rc_mutex = "warn"
 redundant_clone = "warn"
 redundant_feature_names = "warn"
@@ -302,6 +302,7 @@ unimplemented = "warn"
 unnecessary_safety_comment = "warn"
 unnecessary_safety_doc = "warn"
 unnecessary_self_imports = "warn"
+use_self = "warn"
 useless_let_if_seq = "warn"
 verbose_file_reads = "warn"
 wildcard_dependencies = "warn"

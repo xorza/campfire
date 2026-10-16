@@ -143,8 +143,8 @@ impl Plugin for CommandPanel {
     fn build(&self, app: &mut App) {
         app.insert_resource(PanelSetup(self.clone()));
         app.init_resource::<Shown>();
-        app.add_systems(Startup, CommandPanel::spawn);
-        app.add_systems(Update, CommandPanel::show.after(SelectionSystems));
+        app.add_systems(Startup, Self::spawn);
+        app.add_systems(Update, Self::show.after(SelectionSystems));
     }
 }
 
@@ -348,7 +348,7 @@ impl CommandPanel {
     ) {
         if let Ok(row) = rows.get(click.entity) {
             let place = row.place;
-            CommandPanel::cancel(
+            Self::cancel(
                 &click,
                 &shown,
                 orders,
@@ -363,7 +363,7 @@ impl CommandPanel {
         shown: Res<'_, Shown>,
         orders: ResMut<'_, PendingOrders>,
     ) {
-        CommandPanel::cancel(&click, &shown, orders, ProductionAction::CancelBuild);
+        Self::cancel(&click, &shown, orders, ProductionAction::CancelBuild);
     }
 
     /// Orders the shown unit to `action`, for a left click.

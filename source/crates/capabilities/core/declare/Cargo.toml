@@ -23,7 +23,6 @@ campfire-state-types.workspace = true
 campfire-values.workspace = true
 
 bevy_ecs.workspace = true
-thiserror.workspace = true
 
 [dev-dependencies]
 campfire-declare = { workspace = true, features = ["internals"] }

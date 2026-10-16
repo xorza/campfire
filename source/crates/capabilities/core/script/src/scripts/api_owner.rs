@@ -19,16 +19,16 @@ impl ApiOwner {
     /// The owner as the reference titles it.
     pub const fn title(self) -> &'static str {
         match self {
-            ApiOwner::Ctx => "`ctx`",
-            ApiOwner::Unit => "Unit",
-            ApiOwner::NewUnit => "New unit, of `spawn_unit`, `ctx.projectile` and `ctx.area`",
-            ApiOwner::Modifier => "Modifier `m`",
-            ApiOwner::Hit => "Hit `hit`",
-            ApiOwner::Damage => "Damage `d`",
-            ApiOwner::Heal => "Heal `h`",
-            ApiOwner::Vector => "Vector",
-            ApiOwner::GameMap => "Map, `ctx.map`",
-            ApiOwner::Marker => "Marker, of `ctx.map.markers(tag)`",
+            Self::Ctx => "`ctx`",
+            Self::Unit => "Unit",
+            Self::NewUnit => "New unit, of `spawn_unit`, `ctx.projectile` and `ctx.area`",
+            Self::Modifier => "Modifier `m`",
+            Self::Hit => "Hit `hit`",
+            Self::Damage => "Damage `d`",
+            Self::Heal => "Heal `h`",
+            Self::Vector => "Vector",
+            Self::GameMap => "Map, `ctx.map`",
+            Self::Marker => "Marker, of `ctx.map.markers(tag)`",
         }
     }
 }

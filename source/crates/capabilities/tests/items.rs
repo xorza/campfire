@@ -59,7 +59,7 @@ impl Carrier {
 
     /// Loads the carrier's stats, modifier, actions and shop into `game`, a match of
     /// `CAPABILITIES`, and spawns it.
-    fn place(game: &mut Match) -> Carrier {
+    fn place(game: &mut Match) -> Self {
         Units::name_kinds(game, &["physical"], &["health"], &["gold"]);
         let attack_damage = Stat::named("attack_damage").unwrap();
         Stats::load_rules(
@@ -110,7 +110,7 @@ impl Carrier {
         let shop = spawn_shop(game, shop_type);
         let id = Mode::spawn(game, carrier, Vec3::ZERO, Team::new(0), owner);
         game.part_mut::<Life>(id).take(Num::int(200));
-        Carrier {
+        Self {
             id,
             shop,
             drink,
@@ -363,12 +363,12 @@ struct ShopRead {
 }
 
 impl ShopRead {
-    fn of(game: &mut Match, shop: StableId, unit: StableId, item: ItemId) -> ShopRead {
+    fn of(game: &mut Match, shop: StableId, unit: StableId, item: ItemId) -> Self {
         let entity = game.unit_entity(unit);
         let read = move |shopping: Shopping<'_, '_>, inventories: Query<'_, '_, &Inventory>| {
             let inventory = inventories.get(entity).unwrap();
             let sold = shopping.shop(shop).unwrap();
-            ShopRead {
+            Self {
                 served: shopping.serving(shop, unit).is_some(),
                 purchase: shopping.purchase(sold, inventory, item, &mut Vec::new()),
             }

@@ -26,7 +26,7 @@ const FASTER_KEYS: [KeyCode; 2] = [KeyCode::Equal, KeyCode::NumpadAdd];
 impl Plugin for LocalKeys {
     fn build(&self, app: &mut App) {
         app.insert_resource(Keyed(Arc::clone(&self.pace)));
-        app.add_systems(Update, LocalKeys::press);
+        app.add_systems(Update, Self::press);
     }
 }
 
@@ -43,7 +43,7 @@ impl LocalKeys {
         let step = i8::from(keys.any_just_pressed(FASTER_KEYS))
             - i8::from(keys.any_just_pressed(SLOWER_KEYS));
         if step != 0 {
-            pace.set_speed(LocalKeys::stepped(pace.speed(), step));
+            pace.set_speed(Self::stepped(pace.speed(), step));
         }
         if keys.just_pressed(KeyCode::F5) {
             saves.push(SaveCommand::Save);

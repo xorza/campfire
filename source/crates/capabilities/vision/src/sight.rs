@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
 use campfire_units::UnitEntity;
 use serde::de::Error;
@@ -17,11 +17,11 @@ pub struct Sight(Num);
 
 impl Sight {
     /// `None` for a negative range.
-    pub const fn new(range: Num) -> Option<Sight> {
+    pub const fn new(range: Num) -> Option<Self> {
         if range.to_bits() < 0 {
             return None;
         }
-        Some(Sight(range))
+        Some(Self(range))
     }
 
     pub const fn range(self) -> Num {
@@ -46,13 +46,12 @@ impl Replication for Sight {
 
 /// A snapshot is untrusted, so a negative range fails to decode.
 impl<'de> Deserialize<'de> for Sight {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Sight, D::Error> {
-        Sight::new(Num::deserialize(deserializer)?)
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(Num::deserialize(deserializer)?)
             .ok_or_else(|| D::Error::custom("a negative sight range"))
     }
 }
 
 impl PerType for Sight {
-    const OWNER: Option<Capability> = Some(Capability::Vision);
     const SCRIPTS_ONLY: bool = false;
 }

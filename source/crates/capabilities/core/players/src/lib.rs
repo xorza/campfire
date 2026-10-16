@@ -21,7 +21,7 @@ pub use crate::capability_action::CapabilityAction;
 pub use crate::held_out::HeldOut;
 pub use crate::on_match::OnMatch;
 pub use crate::order_units::OrderUnits;
-pub use crate::out_of_play::{Avatars, OutOfPlay};
+pub use crate::out_of_play::OutOfPlay;
 pub use crate::player_resources::PlayerResources;
 pub use crate::player_rows::{PlayerRows, PlayerRowsMut};
 pub use crate::players::Players;

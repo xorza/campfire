@@ -139,6 +139,19 @@ fn normalized_rounds_each_component() {
         v(3, 4, 0).normalized(),
         Some(raw(10_066_330, 13_421_773, 0))
     );
+    // As short a vector as one bit each way is as exact: (1, 1) bits is 2²⁴ / √2 =
+    // 11 863 283.2 bits each way, where a length rounded to a bit first gave 2²⁴.
+    assert_eq!(
+        raw(1, 1, 0).normalized(),
+        Some(raw(11_863_283, 11_863_283, 0))
+    );
+    assert_eq!(
+        raw(-1, 0, 1).normalized(),
+        Some(raw(-11_863_283, 0, 11_863_283))
+    );
+    // Past ±2⁴⁷ bits a component is no offset of two places, and has no unit.
+    assert_eq!(raw(1 << 47, 0, 0).normalized(), None);
+    assert_eq!(raw((1 << 47) - 1, 0, 0).normalized(), Some(v(1, 0, 0)));
     assert_eq!(v(0, 0, -7).normalized(), Some(v(0, 0, -1)));
     assert_eq!(Vec3::ZERO.normalized(), None);
     assert_eq!(v(1, 1, 1).direction_to(v(1, 1, 3)), Some(v(0, 0, 1)));
@@ -187,6 +200,20 @@ fn serializes_as_three_nums() {
     assert_eq!(Binary::decode::<Vec3>(&encoded).unwrap(), a);
 }
 
+/// The true `component · 2²⁴ / √square` by floats, within 2⁻²⁶ of it, rounded to nearest, where
+/// it lies past 2⁻²⁰ of a half, so the float's error cannot cross it.
+#[expect(
+    clippy::cast_precision_loss,
+    clippy::cast_possible_truncation,
+    clippy::float_arithmetic,
+    reason = "a float reference within 2⁻²⁶ of the true quotient"
+)]
+fn true_unit(component: i64, square: u128) -> Option<i64> {
+    let exact = component as f64 * 16_777_216.0 / (square as f64).sqrt();
+    let rest = exact - exact.floor();
+    ((rest - 0.5).abs() > 1.0 / 1_048_576.0).then(|| exact.round() as i64)
+}
+
 fn component() -> impl Strategy<Value = i64> {
     prop_oneof![any::<i64>(), -(1_i64 << 45)..(1_i64 << 45), -64_i64..64,]
 }
@@ -211,12 +238,21 @@ proptest! {
     }
 
     #[test]
-    fn normalized_matches_division(a in vector()) {
-        let expected = a
-            .checked_length()
-            .filter(|&length| length != Num::ZERO)
-            .and_then(|length| a.checked_div(length));
-        prop_assert_eq!(a.normalized(), expected);
+    fn normalized_is_each_true_component_rounded_once(a in vector()) {
+        // The true quotient `c · 2²⁴ / √square` by floats, within 2⁻²⁶ of it, rounds as the
+        // component must wherever it lies past 2⁻²⁰ of a half.
+        let components = [a.x, a.y, a.z].map(Num::to_bits);
+        let wide = components.iter().any(|&component| component.unsigned_abs() >= 1 << 47);
+        let Some(unit) = a.normalized() else {
+            prop_assert!(wide || a == Vec3::ZERO);
+            return Ok(());
+        };
+        prop_assert!(!wide);
+        for (component, got) in components.into_iter().zip([unit.x, unit.y, unit.z]) {
+            if let Some(rounded) = true_unit(component, squared_bits(a)) {
+                prop_assert_eq!(got.to_bits(), rounded);
+            }
+        }
     }
 
     #[test]
@@ -249,4 +285,45 @@ fn a_triple_converts_each_element_exactly() {
         Vec3::new(Num::int(-2_147_483_648), Num::ZERO, Num::int(2_147_483_647))
     );
     assert_eq!(Vec3::from((3, 0, 4)), v(3, 0, 4));
+}
+
+#[test]
+fn a_unit_component_near_a_half_rounds_by_the_exact_half() {
+    // (1, 1) bits: each component is 2²⁴ / √2 = 11 863 283.203 bits, below the half 11 863 283.5,
+    // as 4 · 2⁴⁸ = 2⁵⁰ is below 23 726 567² · 2. A unit of 2⁻⁶² at that half, or a unit either
+    // side of it, gives the true rounding, the floor; a unit 3 past the half gives its own.
+    let floor = 11_863_283_i64 << 38;
+    let half = floor + (1 << 37);
+    assert!(4_u128 << 48 < 23_726_567_u128.pow(2) * 2);
+    for unit in [half - 2, half, half + 2] {
+        assert_eq!(
+            unit_component(unit, 1, 2),
+            Num::from_bits(11_863_283),
+            "{unit}"
+        );
+        assert_eq!(
+            unit_component(-unit, -1, 2),
+            Num::from_bits(-11_863_283),
+            "{unit}"
+        );
+    }
+    assert_eq!(unit_component(half + 3, 1, 2), Num::from_bits(11_863_284));
+    // The wide product of two 128-bit factors, high and low halves.
+    assert_eq!(
+        WideProduct::of(u128::MAX, u128::MAX),
+        WideProduct {
+            high: u128::MAX - 1,
+            low: 1,
+        }
+    );
+    assert_eq!(
+        WideProduct::of(1 << 100, 1 << 100),
+        WideProduct {
+            high: 1 << 72,
+            low: 0,
+        }
+    );
+    assert_eq!(WideProduct::of(3, 5), WideProduct { high: 0, low: 15 });
+    // The high half orders first: 2¹²⁸ is past every product below it, 2¹²⁸ − 1 among them.
+    assert!(WideProduct::of(1 << 64, 1 << 64) > WideProduct::of(u128::MAX, 1));
 }

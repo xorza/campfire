@@ -13,7 +13,7 @@ pub struct SessionTimes {
 
 impl SessionTimes {
     /// What a server waits unless its host says: a minute of grace, two of restore window.
-    pub const DEFAULT: SessionTimes = SessionTimes {
+    pub const DEFAULT: Self = Self {
         grace: Duration::from_secs(60),
         restore_window: Duration::from_secs(120),
     };

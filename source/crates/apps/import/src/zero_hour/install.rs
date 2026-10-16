@@ -2,12 +2,13 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 use std::path::{Path, PathBuf};
 
-use campfire_common::{ContentHash, ContentHasher};
+use campfire_common::{ContentHash, ContentHashMeaning, ContentHasher};
 use campfire_store::{DirEntries, EntryKind, FileStamp, InputFile, InputRanges};
 
 use crate::zero_hour::archive_path::ArchivePath;
-use crate::zero_hour::big_archive::BigArchive;
 use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::format::big::big_archive::BigArchive;
+use crate::zero_hour::format::big::error::BigReadError;
 
 /// A Zero Hour install as the game reads it: every `.big` archive under its directory, its
 /// subdirectories' included, in the case-insensitive order of their paths, and each file's path in
@@ -85,9 +86,9 @@ const HASH_CHUNK: u64 = 1 << 20;
 
 impl Install {
     /// The install under `root`, its archives read in the game's order.
-    pub(crate) fn open(root: &Path) -> Result<Install, ZeroHourError> {
+    pub(crate) fn open(root: &Path) -> Result<Self, ZeroHourError> {
         let mut found = Vec::new();
-        Install::find(root, "", &mut found)?;
+        Self::find(root, "", &mut found)?;
         found.retain(|archive| ArchivePath::of(&archive.name).as_str() != SKIPPED);
         // The game compares paths ignoring case, `\` between names; two that differ only in case
         // keep their bytes' order, so one tree gives one order.
@@ -96,11 +97,26 @@ impl Install {
                 .cmp(&ArchivePath::of(&b.name))
                 .then_with(|| a.name.cmp(&b.name))
         });
+        if let Some([first, second]) = found
+            .array_windows()
+            .find(|[first, second]| ArchivePath::of(&first.name) == ArchivePath::of(&second.name))
+        {
+            return Err(ZeroHourError::ArchiveClash {
+                first: first.name.clone(),
+                second: second.name.clone(),
+            });
+        }
         let mut archives = Vec::new();
         let mut files = BTreeMap::new();
         for Found { name, path } in found {
             let mut file = InputFile::ranges(&path)?;
-            let big = BigArchive::read(&mut file, &path)?;
+            let big = BigArchive::read(&mut file).map_err(|error| match error {
+                BigReadError::Read(error) => ZeroHourError::Read(error),
+                BigReadError::Archive(error) => ZeroHourError::Archive {
+                    archive: path.clone(),
+                    error,
+                },
+            })?;
             for entry in big.entries {
                 if let Entry::Vacant(vacant) = files.entry(ArchivePath::of(&entry.path)) {
                     vacant.insert(Located {
@@ -116,7 +132,7 @@ impl Install {
                 stamp: file.stamp(),
             });
         }
-        Ok(Install { archives, files })
+        Ok(Self { archives, files })
     }
 
     /// The bytes of the file at `path`, as the game names it, in the first archive that holds
@@ -236,7 +252,7 @@ impl Install {
             .iter()
             .map(|archive| {
                 let mut file = archive.open()?;
-                let mut hasher = ContentHasher::default();
+                let mut hasher = ContentHasher::<ContentHashMeaning>::new();
                 let mut at = 0;
                 while at < file.len() {
                     let len = (file.len() - at).min(HASH_CHUNK);
@@ -264,7 +280,7 @@ impl Install {
                 .extension()
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("big"));
             match entry.kind {
-                EntryKind::Dir => Install::find(&path, &format!("{name}/"), found)?,
+                EntryKind::Dir => Self::find(&path, &format!("{name}/"), found)?,
                 EntryKind::File | EntryKind::Link if big => found.push(Found { name, path }),
                 EntryKind::File | EntryKind::Link | EntryKind::Other => {}
             }
@@ -293,19 +309,21 @@ pub(crate) mod internals {
     use campfire_store::internals::Scratch;
 
     use crate::texture::internals::textures;
-    use crate::zero_hour::armor_ini::internals::ARMORS;
-    use crate::zero_hour::big_archive::internals::big;
-    use crate::zero_hour::command_button_ini::internals::COMMAND_BUTTONS;
-    use crate::zero_hour::command_set_ini::internals::COMMAND_SETS;
-    use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
-    use crate::zero_hour::map_file::internals::map;
+    use crate::zero_hour::format::big::big_archive::internals::big;
+    use crate::zero_hour::format::csf::string_table::internals::strings;
+    use crate::zero_hour::format::ini::armor_ini::internals::ARMORS;
+    use crate::zero_hour::format::ini::command_button_ini::internals::COMMAND_BUTTONS;
+    use crate::zero_hour::format::ini::command_set_ini::internals::COMMAND_SETS;
+    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::format::ini::multiplayer_ini::internals::MULTIPLAYER;
+    use crate::zero_hour::format::ini::object_ini::internals::{
+        DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
+    };
+    use crate::zero_hour::format::ini::player_template_ini::internals::PLAYER_TEMPLATES;
+    use crate::zero_hour::format::ini::weapon_ini::internals::WEAPONS;
+    use crate::zero_hour::format::map::map_file::internals::map;
+    use crate::zero_hour::format::ref_pack::internals::literal;
     use crate::zero_hour::model_import::internals::{nothing_drawn, rock, tank};
-    use crate::zero_hour::multiplayer_ini::internals::MULTIPLAYER;
-    use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
-    use crate::zero_hour::player_template_ini::internals::PLAYER_TEMPLATES;
-    use crate::zero_hour::ref_pack::internals::literal;
-    use crate::zero_hour::string_table::internals::strings;
-    use crate::zero_hour::weapon_ini::internals::WEAPONS;
 
     /// The fixture's terrain types: the fixture map's `Sand`, whose texture the install holds,
     /// and its `Grass`, whose texture it lacks.
@@ -384,8 +402,8 @@ mod tests {
     use campfire_store::internals::Scratch;
 
     use super::*;
-    use crate::zero_hour::big_archive::internals::big;
-    use crate::zero_hour::error::ArchiveError;
+    use crate::zero_hour::format::big::big_archive::internals::big;
+    use crate::zero_hour::format::big::error::ArchiveError;
     use crate::zero_hour::install::internals::fixture;
 
     #[test]
@@ -516,6 +534,23 @@ mod tests {
                 ),
                 "{error:?}"
             );
+        }
+        // Two archives of one path to the game, its case aside, as a changed `INIZH.BIG` beside
+        // the genuine `INIZH.big`: the game reads one, so the import reads neither. A file
+        // system that folds case, as Windows' and macOS's do, holds one file of the two names,
+        // which is no clash.
+        let scratch = Scratch::new();
+        scratch.write("zh/INIZH.big", &full);
+        scratch.write("zh/INIZH.BIG", big(&[("a.ini", b"xyz")]));
+        let opened = Install::open(&scratch.path("zh"));
+        if scratch.names("zh").len() == 2 {
+            assert!(matches!(
+                opened,
+                Err(ZeroHourError::ArchiveClash { first, second })
+                    if first == "INIZH.BIG" && second == "INIZH.big"
+            ));
+        } else {
+            assert!(opened.is_ok());
         }
     }
 }

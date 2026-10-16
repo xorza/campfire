@@ -1,16 +1,19 @@
 use std::ops::ControlFlow;
+use std::rc::Rc;
 
 use bevy_ecs::world::World;
 use campfire_combat::{Damage, DamageHandle, Heal, HealHandle};
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::{
-    CallError, CapabilityRefusal, Ctx, Hook, Pool, ScriptArgs, ScriptBatch, ScriptError,
-    ScriptValue, ScriptsWorld,
+    CallError, CallStart, CapabilityRefusal, Ctx, Hook, HookCall, Pool, ScriptArgs, ScriptBatch,
+    ScriptRole, ScriptValue, ScriptsWorld,
 };
 use campfire_sim::{SimTick, StableId};
 
 use crate::error::ModeRefusal;
+use crate::mode_call::ModeCall;
+use crate::mode_ctx::ModeCtx;
 use crate::mode_spec::ModeSpec;
 
 /// The mode calls of one batch, at one time.
@@ -31,13 +34,20 @@ impl Calls<'_, '_> {
     ) -> T {
         world.script_batch(|batch| {
             let ctx = batch.ctx().clone();
-            calls(&mut Calls { batch, ctx, now })
+            ModeCall::of(&ctx.frame()).debug_assert_no_batch();
+            let given = calls(&mut Calls {
+                batch,
+                ctx: ctx.clone(),
+                now,
+            });
+            ModeCall::of_mut(&mut ctx.frame()).end_batch();
+            given
         })
     }
 
     /// The match's mode.
-    pub(crate) fn book(&self) -> &ModeSpec {
-        ModeSpec::of_match(&self.ctx)
+    pub(crate) fn book(&self) -> Rc<ModeSpec> {
+        self.ctx.match_mode_spec()
     }
 
     /// Runs `hook` with `args` from `pool`: on success its state, choices and ids commit and its
@@ -47,12 +57,12 @@ impl Calls<'_, '_> {
         pool: Pool,
         hook: Hook,
         args: impl ScriptArgs,
-    ) -> Result<(), ScriptError> {
-        self.begin(false);
+    ) -> Result<(), CallError> {
         let script = self.book().schema.script;
-        drop(self.batch.call(pool, script, hook, args)?);
-        self.commit();
-        Ok(())
+        let start = CallStart::mode(ScriptRole::Mode, self.now);
+        self.batch.run(start, |batch| {
+            batch.call(pool, HookCall { script, hook, args }).map(drop)
+        })
     }
 
     /// Runs `hook` with `args` from `pool` as `run` does, and records a failure, for `id` if
@@ -67,11 +77,9 @@ impl Calls<'_, '_> {
     ) -> ControlFlow<CallError> {
         match self.run(pool, hook, args) {
             Ok(()) => ControlFlow::Continue(()),
-            Err(ScriptError::TickBudget) => {
-                ControlFlow::Break(CallError::from_script(ScriptError::TickBudget))
-            }
+            Err(CallError::PoolSpent) => ControlFlow::Break(CallError::PoolSpent),
             Err(error) => {
-                self.batch.record(id, hook, CallError::from_script(error));
+                self.batch.record(id, hook, error);
                 ControlFlow::Continue(())
             }
         }
@@ -114,7 +122,7 @@ impl Calls<'_, '_> {
 
     /// Whether the mode's script defines `hook`, as its load found it.
     fn defines(batch: &ScriptBatch<'_>, hook: Hook) -> bool {
-        ModeSpec::of_match(batch.ctx()).schema.hooks.contains(hook)
+        batch.ctx().match_mode_spec().schema.hooks.contains(hook)
     }
 
     /// The number the mode's pure `hook` returns for `handle`, in `batch`.
@@ -125,32 +133,18 @@ impl Calls<'_, '_> {
     ) -> Result<Num, CallError> {
         let now = batch.world().resource::<SimTick>().start();
         let ctx = batch.ctx().clone();
-        let mut calls = Calls {
-            batch,
-            ctx: ctx.clone(),
-            now,
-        };
-        calls.begin(true);
-        let script = calls.book().schema.script;
-        let returned = calls.batch.call_pure(script, hook, (ctx, handle));
-        let value = returned.map_err(CallError::from_script)?;
+        let script = ctx.match_mode_spec().schema.script;
+        let value = batch.run(CallStart::pure(now), |batch| {
+            batch.call_pure(HookCall {
+                script,
+                hook,
+                args: (ctx, handle),
+            })
+        })?;
         let amount = match value.as_int() {
             Some(int) => Num::from_int(int),
             None => value.try_cast::<Num>(),
         };
         amount.ok_or_else(|| CallError::Api(ModeRefusal::NotAnAmount.refused()))
-    }
-
-    /// Starts a mode call on the mode's state as it stands; `pure` for a hook whose `ctx` only
-    /// reads.
-    fn begin(&mut self, pure: bool) {
-        let world = self.batch.world();
-        self.ctx.frame().begin_mode(world, pure, self.now);
-    }
-
-    /// Commits what the call wrote, the mode's state and choices first, and applies its effects
-    /// in order.
-    fn commit(&mut self) {
-        self.ctx.apply(self.batch.world());
     }
 }

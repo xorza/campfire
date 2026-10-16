@@ -17,7 +17,7 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, SimEdge, SimSet};
-use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
+use campfire_units::{BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
 
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
@@ -51,12 +51,12 @@ mod route_planner;
 mod routing;
 mod segment;
 mod static_bodies;
-mod static_changes;
 mod static_tracking;
 mod steering;
 mod terrain;
 mod walk_check;
 mod walker;
+mod walker_kinds;
 mod walking;
 mod wall;
 mod walls;
@@ -77,15 +77,15 @@ pub use crate::path_walker::{PathEnd, PathWalker};
 pub use crate::paths::Paths;
 pub use crate::progress::Progress;
 pub use crate::room_making::{RoomMaking, RoomMakingRun};
-pub use crate::route::Route;
+pub use crate::route::{Route, RouteAsk};
 pub use crate::route_planner::RoutePlanner;
 pub use crate::routing::Routing;
 pub use crate::segment::Segment;
 pub use crate::static_bodies::StaticBodies;
-pub use crate::static_changes::StaticChanges;
 pub use crate::static_tracking::{StaticTracking, StaticTrackingRun};
 pub use crate::walk_check::{MarkerPoint, PlacedBody, WalkCheck};
 pub use crate::walker::Walker;
+pub use crate::walker_kinds::WalkerKinds;
 pub use crate::walking::Walking;
 pub use crate::wall::Wall;
 pub use crate::walls::Walls;
@@ -101,6 +101,9 @@ pub(crate) enum NavigationSet {
     Collide,
     /// The units out of the map's bounds come back in.
     Bounds,
+    /// The static bodies are taken once the tick's last stage is done, so the index holds them
+    /// as they stand at the boundary.
+    TrackEnd,
     /// Each walker's `ArrivedShort` follows its route, in a gap, so a capability that reads it
     /// in a stage reads the route as the stage began.
     Report(SimEdge),
@@ -108,26 +111,26 @@ pub(crate) enum NavigationSet {
 
 impl NavigationSet {
     /// The steps in the stages and after Collide.
-    const STEPS: [NavigationSet; 4] = [
-        NavigationSet::TrackStatics,
-        NavigationSet::Move,
-        NavigationSet::Collide,
-        NavigationSet::Bounds,
+    const STEPS: [Self; 5] = [
+        Self::TrackStatics,
+        Self::Move,
+        Self::Collide,
+        Self::Bounds,
+        Self::TrackEnd,
     ];
 
     /// The steps, then a report in each gap, `SimEdge::Start` first.
-    const ALL: [NavigationSet; NavigationSet::STEPS.len() + 1 + SimSet::ALL.len()] = {
-        let steps = NavigationSet::STEPS.len();
-        let mut all = [NavigationSet::Report(SimEdge::Start);
-            NavigationSet::STEPS.len() + 1 + SimSet::ALL.len()];
+    const ALL: [Self; Self::STEPS.len() + 1 + SimSet::ALL.len()] = {
+        let steps = Self::STEPS.len();
+        let mut all = [Self::Report(SimEdge::Start); Self::STEPS.len() + 1 + SimSet::ALL.len()];
         let mut at = 0;
         while at < steps {
-            all[at] = NavigationSet::STEPS[at];
+            all[at] = Self::STEPS[at];
             at += 1;
         }
         let mut stage = 0;
         while stage < SimSet::ALL.len() {
-            all[steps + 1 + stage] = NavigationSet::Report(SimEdge::After(SimSet::ALL[stage]));
+            all[steps + 1 + stage] = Self::Report(SimEdge::After(SimSet::ALL[stage]));
             stage += 1;
         }
         all
@@ -136,15 +139,16 @@ impl NavigationSet {
 
 impl ModuleSet for NavigationSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
-    const ALL: &'static [NavigationSet] = &NavigationSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            NavigationSet::TrackStatics => SetPlace::Phase(Phase::Begin),
-            NavigationSet::Move => SetPlace::Phase(Phase::Move),
-            NavigationSet::Collide => SetPlace::Phase(Phase::Collide),
-            NavigationSet::Bounds => SetPlace::Gap(SimEdge::After(SimSet::Collide)),
-            NavigationSet::Report(edge) => SetPlace::Gap(edge),
+            Self::TrackStatics => SetPlace::Phase(Phase::Begin),
+            Self::Move => SetPlace::Phase(Phase::Move),
+            Self::Collide => SetPlace::Phase(Phase::Collide),
+            Self::Bounds => SetPlace::Gap(SimEdge::After(SimSet::Collide)),
+            Self::TrackEnd => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
+            Self::Report(edge) => SetPlace::Gap(edge),
         }
     }
 }
@@ -161,12 +165,11 @@ impl Module for Navigation {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<NavigationSet>();
-        d.callback::<SpawnHooks>(Capability::Navigation, Navigation::make_room);
+        d.callback::<SpawnHooks>(Capability::Navigation, Self::make_room);
         d.component::<PathWalker>();
         d.component::<OnPath>();
         d.component::<Route>();
         d.component::<Progress>();
-        d.scratch::<StaticChanges>();
         d.cache::<UnitTracker<StaticBodies>>();
         d.cache::<BodyIndex>();
         d.cache::<PathingGrid>();
@@ -209,6 +212,9 @@ impl Module for Navigation {
                 .chain()
                 .in_set(NavigationSet::Collide),
             Walking::keep_in_bounds.in_set(NavigationSet::Bounds),
+            StaticTracking::track_static_bodies
+                .in_set(NavigationSet::TrackEnd)
+                .before(NavigationSet::Report(SimEdge::After(SimSet::Vision))),
         ));
         for set in NavigationSet::ALL {
             if let NavigationSet::Report(_) = set {
@@ -231,10 +237,10 @@ impl Navigation {
     /// navigation book block, for the kinds of `walkers`, a static index for the widest of them,
     /// and a planner of routes on the grid; the static bodies fill the grid and the index from
     /// the first tick on.
-    pub fn load_pathing(world: &mut World, grid: Grid, walkers: impl IntoIterator<Item = Walker>) {
-        let walkers: Vec<Walker> = walkers.into_iter().collect();
+    pub fn load_pathing(world: &mut World, grid: Grid, walkers: impl Into<WalkerKinds>) {
+        let walkers = walkers.into();
         debug_assert!(
-            world.contains_resource::<StaticChanges>(),
+            world.contains_resource::<BodyIndex>(),
             "a map's pathing grid is navigation's, which the load checked the mode declares"
         );
         let terrain = Terrain::new(&grid, world.resource::<NavigationBook>().walls.walls());
@@ -252,12 +258,6 @@ impl Navigation {
     /// is clear of every static body, and no push of collision can hold the walker between two.
     /// With no pathing grid, the box pushes it out as collision would.
     fn make_room(world: &mut World, entity: Entity) {
-        let boxed = world
-            .get::<Body>(entity)
-            .is_some_and(|body| body.half_edges().is_some());
-        if !boxed {
-            return;
-        }
         let run = world.resource::<RoomMakingRun>().0;
         world
             .run_system_with(run, entity)
@@ -284,6 +284,7 @@ pub mod internals {
     use campfire_declare::Book;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::Num;
+    use campfire_sim::{SimWorld, StableId};
     use campfire_units::{Destination, MoveStep};
 
     use crate::Navigation;
@@ -292,8 +293,9 @@ pub mod internals {
     use crate::pathing_grid::PathingGrid;
     use crate::paths::Paths;
     use crate::progress::Progress;
-    use crate::route::Route;
+    use crate::route::{Route, RouteAsk};
     use crate::walker::Walker;
+    use crate::walker_kinds::WalkerKinds;
     use crate::wall::Wall;
     use crate::walls::Walls;
 
@@ -306,6 +308,16 @@ pub mod internals {
                 Route::default(),
                 Progress::default(),
             )
+        }
+
+        /// Asks the route `ask` names for the walker `id`, with its progress.
+        pub fn ask_route(world: &mut World, id: StableId, ask: RouteAsk) {
+            let entity = world.entity_of(id).expect("a walker of the match");
+            let mut unit = world.entity_mut(entity);
+            let (mut route, mut progress) = unit
+                .get_components_mut::<(&mut Route, &mut Progress)>()
+                .expect("a walker has a route and its progress");
+            route.ask(ask, &mut progress);
         }
 
         /// Whether the pathing grid of `world` holds the cell at `cell` open to `walker`.
@@ -322,7 +334,7 @@ pub mod internals {
             walkers: impl IntoIterator<Item = Walker>,
         ) {
             let cell = cell.into();
-            Navigation::load_walled(world, cell, min, max, walkers, &[]);
+            Self::load_walled(world, cell, min, max, walkers, &[]);
         }
 
         /// Loads a pathing grid as `load_pathing` does, with `walls`.
@@ -337,8 +349,8 @@ pub mod internals {
             let cell = cell.into();
             let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
             let grid = Grid::new(cell, bounds).unwrap();
-            Navigation::load_walls(world, walls);
-            Navigation::load_pathing(world, grid, walkers);
+            Self::load_walls(world, walls);
+            Self::load_pathing(world, grid, walkers.into_iter().collect::<WalkerKinds>());
         }
 
         /// Gives the match the walls `walls`, which a pathing grid loaded after blocks.

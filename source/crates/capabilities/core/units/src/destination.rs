@@ -19,8 +19,8 @@ pub struct Destination(Option<Vec3>);
 
 impl Destination {
     /// A destination of `target`, none for no target.
-    pub const fn to(target: Option<Vec3>) -> Destination {
-        Destination(target)
+    pub const fn to(target: Option<Vec3>) -> Self {
+        Self(target)
     }
 
     pub const fn get(self) -> Option<Vec3> {
@@ -31,21 +31,21 @@ impl Destination {
     /// marks it changed, and an avatar's destination replicates. A unit that `arrived` short of
     /// `target` stays where it stands, with no destination, until the static bodies change.
     pub fn walk_to(
-        destination: &mut Mut<'_, Destination>,
+        destination: &mut Mut<'_, Self>,
         arrived: Option<&ArrivedShort>,
         target: Option<Vec3>,
     ) {
         let short =
             target.is_some_and(|target| arrived.is_some_and(|arrived| arrived.of_goal(target)));
         if !short {
-            destination.set_if_neq(Destination::to(target));
+            destination.set_if_neq(Self::to(target));
         }
     }
 
     /// Whether a unit with `destination` gives up a walk to `target`: it cannot walk, or it
     /// stands, as it `arrived` short of `target`.
     pub fn gives_up(
-        destination: Option<&Destination>,
+        destination: Option<&Self>,
         arrived: Option<&ArrivedShort>,
         target: Vec3,
     ) -> bool {

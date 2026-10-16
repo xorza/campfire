@@ -13,7 +13,6 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_common::Ticks;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
@@ -21,11 +20,16 @@ use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, Tic
 use campfire_units::{BodyUnit, Dead, Player, SpawnHooks};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
+use crate::application::{Adding, ApplyAt};
+use crate::aura_carriers::AuraCarriers;
+use crate::modifier_adds::ModifierAdd;
+use crate::player_grants::PlayerGrants;
 use crate::stats_column::RowReads;
 
 mod application;
 mod applier;
 mod applier_param;
+mod aura_carriers;
 mod carried_mut;
 mod error;
 mod grant_pass;
@@ -40,6 +44,7 @@ mod lifetime;
 mod live_carriers;
 mod live_param;
 mod meter;
+mod modifier_adds;
 mod modifier_book;
 mod modifier_data;
 mod modifier_ends;
@@ -51,6 +56,7 @@ mod param_book;
 mod param_read;
 mod param_source;
 mod param_table;
+mod player_grants;
 mod player_modifiers;
 mod pool_book;
 mod pool_cost;
@@ -83,7 +89,7 @@ pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
 pub use crate::error::{EdgeError, ModifierError, ModifierProblem, SpecError, StatsRefusal};
 pub use crate::grant_pass::GrantPass;
-pub use crate::grants::{Grant, GrantChange, Grants, GrantsIter, UnitGrants};
+pub use crate::grants::{Grant, GrantChange, GrantFrom, Grants, GrantsIter, UnitGrants};
 pub use crate::held_modifiers::{Held, HeldModifiers};
 pub use crate::held_pass::HeldPass;
 pub use crate::instance::{Instance, StackEnd, StatShare};
@@ -162,30 +168,29 @@ pub enum StatsSet {
 
 impl StatsSet {
     /// The steps in the stages.
-    const STEPS: [StatsSet; 8] = [
-        StatsSet::Expire,
-        StatsSet::Regenerate,
-        StatsSet::GrantAtInputs,
-        StatsSet::GrantAtStrike,
-        StatsSet::GrantAtResolve,
-        StatsSet::GrantAtEnd,
-        StatsSet::ClearDead,
-        StatsSet::Hold,
+    const STEPS: [Self; 8] = [
+        Self::Expire,
+        Self::Regenerate,
+        Self::GrantAtInputs,
+        Self::GrantAtStrike,
+        Self::GrantAtResolve,
+        Self::GrantAtEnd,
+        Self::ClearDead,
+        Self::Hold,
     ];
 
     /// The steps in the stages, then a refresh in each gap, `SimEdge::Start` first.
-    const ALL: [StatsSet; StatsSet::STEPS.len() + 1 + SimSet::ALL.len()] = {
-        let steps = StatsSet::STEPS.len();
-        let mut all =
-            [StatsSet::Refresh(SimEdge::Start); StatsSet::STEPS.len() + 1 + SimSet::ALL.len()];
+    const ALL: [Self; Self::STEPS.len() + 1 + SimSet::ALL.len()] = {
+        let steps = Self::STEPS.len();
+        let mut all = [Self::Refresh(SimEdge::Start); Self::STEPS.len() + 1 + SimSet::ALL.len()];
         let mut at = 0;
         while at < steps {
-            all[at] = StatsSet::STEPS[at];
+            all[at] = Self::STEPS[at];
             at += 1;
         }
         let mut stage = 0;
         while stage < SimSet::ALL.len() {
-            all[steps + 1 + stage] = StatsSet::Refresh(SimEdge::After(SimSet::ALL[stage]));
+            all[steps + 1 + stage] = Self::Refresh(SimEdge::After(SimSet::ALL[stage]));
             stage += 1;
         }
         all
@@ -194,18 +199,18 @@ impl StatsSet {
 
 impl ModuleSet for StatsSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
-    const ALL: &'static [StatsSet] = &StatsSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            StatsSet::Expire | StatsSet::Regenerate => SetPlace::Phase(Phase::Begin),
-            StatsSet::GrantAtInputs => SetPlace::Phase(Phase::GrantAtInputs),
-            StatsSet::GrantAtStrike => SetPlace::Phase(Phase::GrantAtStrike),
-            StatsSet::GrantAtResolve => SetPlace::Phase(Phase::GrantAtResolve),
-            StatsSet::GrantAtEnd => SetPlace::Phase(Phase::GrantAtEnd),
-            StatsSet::ClearDead => SetPlace::Phase(Phase::ClearDead),
-            StatsSet::Hold => SetPlace::Phase(Phase::HoldModifiers),
-            StatsSet::Refresh(edge) => SetPlace::Gap(edge),
+            Self::Expire | Self::Regenerate => SetPlace::Phase(Phase::Begin),
+            Self::GrantAtInputs => SetPlace::Phase(Phase::GrantAtInputs),
+            Self::GrantAtStrike => SetPlace::Phase(Phase::GrantAtStrike),
+            Self::GrantAtResolve => SetPlace::Phase(Phase::GrantAtResolve),
+            Self::GrantAtEnd => SetPlace::Phase(Phase::GrantAtEnd),
+            Self::ClearDead => SetPlace::Phase(Phase::ClearDead),
+            Self::Hold => SetPlace::Phase(Phase::HoldModifiers),
+            Self::Refresh(edge) => SetPlace::Gap(edge),
         }
     }
 }
@@ -224,6 +229,7 @@ impl Module for Stats {
         d.component::<Pools>();
         d.scratch::<HeldModifiers>();
         d.scratch::<Grants>();
+        d.cache::<AuraCarriers>();
         d.cache::<LiveCarriers>();
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
@@ -255,13 +261,19 @@ impl Module for Stats {
             Refresh::regenerate.in_set(StatsSet::Regenerate),
             GrantPass::run.in_set(StatsSet::GrantAtInputs),
             GrantPass::run.in_set(StatsSet::GrantAtStrike),
-            GrantPass::run.in_set(StatsSet::GrantAtResolve),
+            (PlayerGrants::want, GrantPass::run)
+                .chain()
+                .in_set(StatsSet::GrantAtResolve),
             GrantPass::run.in_set(StatsSet::GrantAtEnd),
             ModifierEnds::clear_dead_modifiers.in_set(StatsSet::ClearDead),
         ));
         cx.by_role(
-            HeldPass::run::<ServerForm>.in_set(StatsSet::Hold),
-            HeldPass::run::<ClientForm>.in_set(StatsSet::Hold),
+            (AuraCarriers::track, HeldPass::run::<ServerForm>)
+                .chain()
+                .in_set(StatsSet::Hold),
+            (AuraCarriers::track, HeldPass::run::<ClientForm>)
+                .chain()
+                .in_set(StatsSet::Hold),
         );
         for set in StatsSet::ALL {
             if let StatsSet::Refresh(_) = set {
@@ -285,31 +297,34 @@ impl Stats {
         }
     }
 
-    fn add_modifier(
-        world: &mut World,
-        target: StableId,
-        id: ModifierId,
-        applier: Applier,
-        duration: Option<Ticks>,
-    ) {
-        let Some(entity) = world.entity_of(target) else {
+    /// Adds `add` from a world alone, as `HeldModifierAdds::add` adds it, its shares and state
+    /// held first: for a spawn's hook and a test, which hold no call's frame.
+    fn add_modifier(world: &mut World, add: ModifierAdd) {
+        let Some(entity) = world.entity_of(add.target) else {
             return;
         };
         if world.entity(entity).contains::<Dead>() {
             return;
         }
-        let now = world.resource::<SimTick>().start();
-        let rate = *world.resource::<TickRate>();
-        let book = world.resource::<ModifierBook>();
-        let source = applier
+        let at = ApplyAt {
+            now: world.resource::<SimTick>().start(),
+            rate: *world.resource::<TickRate>(),
+            params: world.resource::<ParamBook>(),
+        };
+        let source = add
+            .applier
             .source
             .and_then(|source| ParamSource::of(world, source));
-        let params = world.resource::<ParamBook>();
-        let param = |place: ParamPlace| {
-            let (action, rank) = (applier.action, applier.rank);
-            params.modifier_param(id, action, rank, place, source.as_ref())
+        let adding = Adding {
+            id: add.id,
+            applier: add.applier,
+            source: source.as_ref(),
+            duration: add.duration,
         };
-        let application = book.application(id, applier, duration, now, rate, param);
+        let application = world
+            .resource::<ModifierBook>()
+            .application(at, adding)
+            .owned();
         if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.apply(application);
         }
@@ -366,7 +381,7 @@ pub mod internals {
     use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId, TickRate};
-    use campfire_units::{ScriptBook, UnitTypeBook};
+    use campfire_units::{ScriptBook, UnitTypeBook, Units};
     use campfire_values::{
         ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet,
         UnitType,
@@ -419,7 +434,7 @@ pub mod internals {
                 id,
                 duration: None,
             };
-            add.apply_by(world, applier);
+            add.apply_from(world, applier);
         }
 
         /// The modifiers `id` carries, each with its source, in their order.
@@ -458,7 +473,7 @@ pub mod internals {
             let id = world
                 .resource_mut::<ModifierBook>()
                 .push_changes(changes, tags);
-            Stats::load_modifier_params(world, id, &BTreeMap::new(), |_| StatId::new(0));
+            Self::load_modifier_params(world, id, &BTreeMap::new(), |_| StatId::new(0));
             id
         }
 
@@ -473,17 +488,24 @@ pub mod internals {
             script: Option<ScriptId>,
         ) {
             let name = DeclaredName::new(name).expect("a modifier's name is a name");
+            // A test's package names no tag before its modifiers, as a mode's does.
+            let tags = world.resource::<UnitTypeBook>().tags();
+            let new = data
+                .tags
+                .iter()
+                .any(|tag| tags.named(tag.as_str()).is_none());
+            if new {
+                Units::declare_tags(world, data.tags.iter().map(DeclaredName::as_str));
+            }
             world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
-                let mut types = world
-                    .remove_resource::<UnitTypeBook>()
-                    .expect("the unit types");
+                let tags = world.resource::<UnitTypeBook>().tags();
                 // A match that runs no scripts holds no script book, and its modifiers none.
                 let none = ScriptBook::default();
                 let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);
-                let places = Stats::stat_places(world, data.stats.keys());
+                let places = Self::stat_places(world, data.stats.keys());
                 let load = ModifierLoad {
                     scripts,
-                    types: &mut types,
+                    tags,
                     stat: |stat: &Stat| Ok(places[stat]),
                     rate: *world.resource::<TickRate>(),
                 };
@@ -494,17 +516,15 @@ pub mod internals {
                 };
                 book.load(load, package, &[modifier])
                     .expect("a test's modifier loads");
-                world.insert_resource(types);
             });
-            UnitTypeBook::share_in(world);
             let book = world.resource::<ModifierBook>();
             let id = book
                 .names()
                 .named((package, name.as_str()))
                 .expect("the modifier loaded");
             ModifierBook::share_in(world);
-            let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
-            Stats::load_modifier_params(world, id, &data.params, |stat| places[stat]);
+            let places = Self::stat_places(world, data.params.values().flat_map(Param::stats));
+            Self::load_modifier_params(world, id, &data.params, |stat| places[stat]);
         }
 
         /// Gives a match with no mode the stat book `book`, with no pool stats; the pools its
@@ -522,7 +542,7 @@ pub mod internals {
         /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool stats;
         /// the pools its scripts name stay named.
         pub fn load_rules(world: &mut World, rules: &BTreeMap<Stat, StatRule>) {
-            Stats::load_book(world, StatBook::new(rules, Num::MAX));
+            Self::load_book(world, StatBook::new(rules, Num::MAX));
         }
 
         /// Adds the params of `action`, the one the match's action book loaded last, each stat at
@@ -535,7 +555,7 @@ pub mod internals {
         ) {
             let run = world.resource_mut::<ParamBook>().push_action(params, stat);
             assert_eq!(run, action.index(), "one run of params per action");
-            Stats::resolve_appliers(world);
+            Self::resolve_appliers(world);
         }
 
         /// Adds the params of `modifier`, the one the match's modifier book loaded last, each stat
@@ -550,7 +570,7 @@ pub mod internals {
                 .resource_mut::<ParamBook>()
                 .push_modifier(params, stat);
             assert_eq!(run, modifier.index(), "one run of params per modifier");
-            Stats::resolve_appliers(world);
+            Self::resolve_appliers(world);
         }
 
         /// Resolves the params the match's modifiers read from their abilities in each action's

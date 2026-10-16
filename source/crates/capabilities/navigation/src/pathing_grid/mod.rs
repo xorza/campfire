@@ -1,18 +1,16 @@
 use std::ops::Range;
 
-use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_geometry::Grid;
 use campfire_math::Num;
-use campfire_units::Body;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::regions::Regions;
 use crate::segment::Segment;
 use crate::terrain::Terrain;
 use crate::walker::Walker;
+use crate::walker_kinds::WalkerKinds;
 
 /// The map's pathing grid: its bounds in square cells, and for each kind of walker the mode has,
 /// its clearance: the cells it cannot stand in, those the walls of its layer block and those whose
@@ -24,8 +22,8 @@ use crate::walker::Walker;
 #[derive(Resource, Debug)]
 pub(crate) struct PathingGrid {
     grid: Grid,
-    /// The kinds of walker, in order, each once: one clearance each.
-    walkers: Vec<Walker>,
+    /// The kinds of walker: one clearance each.
+    walkers: WalkerKinds,
     /// Words of blocked cells a clearance.
     words: usize,
     /// Each clearance's blocked cells, one bit a cell, clearance after clearance.
@@ -47,35 +45,28 @@ pub(crate) struct PathingGrid {
 impl PathingGrid {
     /// The grid over `grid`'s cells for `walkers`, with the cells `terrain`'s walls block and no
     /// static body yet.
-    pub(crate) fn new(
-        grid: Grid,
-        walkers: impl IntoIterator<Item = Walker>,
-        terrain: &Terrain,
-    ) -> PathingGrid {
-        let mut walkers: Vec<Walker> = walkers.into_iter().collect();
-        walkers.sort_unstable();
-        walkers.dedup();
+    pub(crate) fn new(grid: Grid, walkers: WalkerKinds, terrain: &Terrain) -> Self {
         let words = grid.cells().div_ceil(64);
         let mut walled = vec![0; words * walkers.len()];
         let mut walls = vec![false; walkers.len()];
         for (at, walker) in walkers.iter().enumerate() {
             if let Some(blocked) = terrain.blocked(walker.layer) {
                 let cells = &mut walled[at * words..(at + 1) * words];
-                PathingGrid::clear_of(&grid, blocked, walker.radius, cells);
+                Self::clear_of(&grid, blocked, walker.radius, cells);
                 walls[at] = true;
             }
         }
         let mut walled_columns = vec![0; walled.len()];
         for at in 0..walkers.len() {
             let span = at * words..(at + 1) * words;
-            PathingGrid::by_column(&grid, &walled[span.clone()], &mut walled_columns[span]);
+            Self::by_column(&grid, &walled[span.clone()], &mut walled_columns[span]);
         }
         let blocked = walled.clone();
         let regions: Vec<Regions> = (0..walkers.len())
             .map(|at| Regions::new(&grid, &blocked[at * words..(at + 1) * words]))
             .collect();
         let chunks = regions.first().map_or(0, Regions::chunks);
-        PathingGrid {
+        Self {
             grid,
             blocked,
             walled,
@@ -94,7 +85,7 @@ impl PathingGrid {
     /// open, then the bodies still near mark them again, and each body it put in marks its own;
     /// each clearance's regions are labeled again in the chunks those cells lie in.
     pub(crate) fn update(&mut self, statics: &BodyIndex) {
-        let PathingGrid {
+        let Self {
             grid,
             walkers,
             words: count,
@@ -155,20 +146,22 @@ impl PathingGrid {
         self.grid.cell()
     }
 
-    /// The cells `walker` may stand in, when it is one of the mode's kinds of walker.
+    /// The cells `walker` may stand in, when it is one of the mode's kinds of walker: for the
+    /// walker of a unit that may not walk.
     pub(crate) fn serving(&self, walker: Walker) -> Option<Clearance<'_>> {
-        let at = self.walkers.binary_search(&walker).ok()?;
-        Some(self.clearance_at(at))
+        let at = self.walkers.position(walker)?;
+        Some(self.clearance_at(at, walker))
     }
 
-    /// The cells `walker`, one of the mode's kinds of walker, may stand in.
+    /// The cells `walker`, a walking unit's, may stand in: every unit that walks is of one of the
+    /// mode's kinds of walker, as the load builds them and a restore checks its route.
     pub(crate) fn clearance(&self, walker: Walker) -> Clearance<'_> {
-        self.serving(walker).expect("a kind of walker the mode has")
+        self.serving(walker)
+            .expect("a walking unit's kind of walker")
     }
 
-    /// The cells the kind of walker at `at` among the mode's may stand in.
-    fn clearance_at(&self, at: usize) -> Clearance<'_> {
-        let walker = self.walkers[at];
+    /// The cells `walker`, the kind at `at` among the mode's, may stand in.
+    fn clearance_at(&self, at: usize, walker: Walker) -> Clearance<'_> {
         let span = at * self.words..(at + 1) * self.words;
         Clearance {
             grid: &self.grid,
@@ -228,15 +221,6 @@ impl PathingGrid {
                 }
             }
         }
-    }
-
-    /// Whether the unit of `entity` in `world` walks as one of the mode's kinds of walker, which
-    /// routes and steering read its cells by; every unit does in a match with no pathing grid.
-    pub(super) fn serves(world: &World, entity: Entity) -> bool {
-        world.get_resource::<PathingGrid>().is_none_or(|grid| {
-            Walker::of(world.get::<Body>(entity))
-                .is_some_and(|walker| grid.walkers.binary_search(&walker).is_ok())
-        })
     }
 }
 
@@ -318,7 +302,7 @@ impl Clearance<'_> {
 
 /// The map's install builds it, of the map's walkers.
 impl Cache for PathingGrid {
-    fn installed() -> Option<PathingGrid> {
+    fn installed() -> Option<Self> {
         None
     }
 }

@@ -27,14 +27,14 @@ pub(crate) mod internals {
 
     impl UnitTypeCore {
         /// A type of `tags` and no params.
-        pub fn tagged(tags: &[&str]) -> UnitTypeCore {
-            UnitTypeCore::of(tags, &[])
+        pub fn tagged(tags: &[&str]) -> Self {
+            Self::of(tags, &[])
         }
 
         /// A type of `tags` and `params`.
-        pub fn of(tags: &[&str], params: &[(&str, Scalar)]) -> UnitTypeCore {
+        pub fn of(tags: &[&str], params: &[(&str, Scalar)]) -> Self {
             let name = |name| DeclaredName::new(name).unwrap();
-            UnitTypeCore {
+            Self {
                 tags: tags.iter().map(|&tag| name(tag)).collect(),
                 params: params
                     .iter()

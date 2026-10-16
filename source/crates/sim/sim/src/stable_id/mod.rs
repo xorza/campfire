@@ -24,20 +24,20 @@ pub struct StableId(u64);
 
 impl StableId {
     /// The first named id, past `Tick::LIMIT`, which bounds the allocator: the match's entity's.
-    pub const MATCH: StableId = StableId(1 << 63);
+    pub const MATCH: Self = Self(1 << 63);
 
-    pub(crate) const fn new(value: u64) -> StableId {
-        StableId(value)
+    pub(crate) const fn new(value: u64) -> Self {
+        Self(value)
     }
 
     /// The named id of player `slot`'s entity, after the match's.
-    pub const fn of_player(slot: PlayerSlot) -> StableId {
-        StableId(StableId::MATCH.0 + 1 + slot.get() as u64)
+    pub const fn of_player(slot: PlayerSlot) -> Self {
+        Self(Self::MATCH.0 + 1 + slot.get() as u64)
     }
 
     /// Whether the allocator handed the id out, so it is not named.
     pub const fn is_allocated(self) -> bool {
-        self.0 < StableId::MATCH.0
+        self.0 < Self::MATCH.0
     }
 
     pub const fn get(self) -> u64 {

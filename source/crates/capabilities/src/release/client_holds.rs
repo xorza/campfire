@@ -30,9 +30,9 @@ impl Held {
     /// player's, which it reads through the owner of a unit it predicts (design 14, D12).
     pub(crate) const fn reaches(self, predicted: bool) -> bool {
         match self {
-            Held::Derived => true,
-            Held::Of(kind) if predicted => kind.is_sent(),
-            Held::Of(kind) => {
+            Self::Derived => true,
+            Self::Of(kind) if predicted => kind.is_sent(),
+            Self::Of(kind) => {
                 matches!(kind.audience(), Recipients::ALL)
                     || matches!(
                         kind,
@@ -50,10 +50,10 @@ pub(crate) struct ClientHolds(BTreeMap<ComponentId, (&'static str, Held)>);
 
 impl ClientHolds {
     /// The state types of a match of `set`, by their ids in `world`, which registers each.
-    pub(crate) fn of(world: &mut World, set: CapabilitySet) -> ClientHolds {
+    pub(crate) fn of(world: &mut World, set: CapabilitySet) -> Self {
         let mut classes = Classes {
             world,
-            holds: ClientHolds::default(),
+            holds: Self::default(),
         };
         Release::state_types(set, &mut classes);
         classes.holds
@@ -67,7 +67,7 @@ impl ClientHolds {
     /// Takes from each unit of `world` that its client does not predict each state type it does
     /// not hold of such a unit, as a client holds the unit.
     pub(crate) fn strip(&self, world: &mut World) {
-        for entity in ClientHolds::unpredicted(world) {
+        for entity in Self::unpredicted(world) {
             let unheld: Vec<ComponentId> = world
                 .entity(entity)
                 .archetype()
@@ -105,7 +105,7 @@ impl ClientHolds {
         keep: impl Fn(ComponentTicks) -> bool,
     ) -> Vec<(StableId, &'static str)> {
         let mut received = Vec::new();
-        for entity in ClientHolds::unpredicted(world) {
+        for entity in Self::unpredicted(world) {
             let unit = world.entity(entity);
             let id = *unit.get::<StableId>().expect("a unit has a stable id");
             for &component in unit.archetype().components() {

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use campfire_common::{MapName, PackageFingerprint};
 use campfire_package::{ContentError, ModePackages, PackageFiles, PackageRef};
-use campfire_store::{DirEntries, EntryKind};
+use campfire_store::{DirEntries, EntryKind, PathError, ReadError};
 
 use crate::error::StoreError;
 use crate::package_dir::PackageDir;
@@ -26,9 +26,9 @@ pub struct StoreFailure {
 
 impl PackageStore {
     /// Every package under `root`: each directory that holds a `manifest.toml`, which is not
-    /// searched further; an error only when a directory that holds no package does not read.
-    pub fn scan(root: &Path) -> Result<PackageStore, ContentError> {
-        let mut store = PackageStore::default();
+    /// searched further; an error only when a directory that holds no package does not list.
+    pub fn scan(root: &Path) -> Result<Self, PathError<ReadError>> {
+        let mut store = Self::default();
         store.scan_dir(root)?;
         Ok(store)
     }
@@ -68,7 +68,7 @@ impl PackageStore {
                 Ok((name.clone(), files))
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
-        ModePackages::new(files, manifest, map, &dependencies).map_err(StoreError::Load)
+        ModePackages::new(files, manifest, Some(map), &dependencies).map_err(StoreError::Load)
     }
 
     /// The packages under the root that do not read, in the order of their directories.
@@ -98,9 +98,9 @@ impl PackageStore {
 
     /// Finds the packages under `dir`, in the order of their names, so the same tree gives the
     /// same result on every OS.
-    fn scan_dir(&mut self, dir: &Path) -> Result<(), ContentError> {
+    fn scan_dir(&mut self, dir: &Path) -> Result<(), PathError<ReadError>> {
         let mut subdirs = Vec::new();
-        for entry in DirEntries::read(dir).map_err(|error| ContentError::Read(Box::new(error)))? {
+        for entry in DirEntries::read(dir)? {
             // By its exact name, which a file system that ignores case would also find as
             // `Manifest.toml`.
             if entry.kind == EntryKind::File && entry.name == PackageFiles::MANIFEST {

@@ -52,7 +52,7 @@ impl Delegation {
     pub const MAX_JSON: usize = 4096;
 
     /// `terms` signed by `main`, the player's main key, at `created_at`, in Unix seconds.
-    pub fn sign(main: &Signer, terms: &DelegationTerms, created_at: u64) -> Delegation {
+    pub fn sign(main: &Signer, terms: &DelegationTerms, created_at: u64) -> Self {
         let tags = [
             custom(
                 DelegationTag::SessionKey,
@@ -62,10 +62,7 @@ impl Delegation {
                 DelegationTag::ServerKey,
                 Bytes32::new(terms.server_key.serialize()).to_string(),
             ),
-            custom(
-                DelegationTag::SessionId,
-                Bytes32::new(*terms.session_id.as_bytes()).to_string(),
-            ),
+            custom(DelegationTag::SessionId, terms.session_id.to_string()),
             custom(
                 DelegationTag::SeedContribution,
                 terms.seed_contribution.to_string(),
@@ -80,21 +77,25 @@ impl Delegation {
             "",
         );
         let id = unsigned.compute_id();
-        let signature = Signature::from_byte_array(main.sign(id.as_bytes()).to_bytes());
+        let signature = Signature::from_byte_array(main.sign_event_id(id.as_bytes()).to_bytes());
         let event = unsigned
             .add_signature(signature)
             .expect("a fresh signature holds");
-        Delegation::parse(&event.as_json()).expect("a signed delegation parses")
+        Self::parse(&event.as_json()).expect("a signed delegation parses")
     }
 
-    /// Reads a delegation from its event's JSON, at most `MAX_JSON` bytes, checking the event's
-    /// id and signature, its kind, and each term's tag. Other tags and the content are ignored.
-    pub fn parse(json: &str) -> Result<Delegation, DelegationError> {
-        if json.len() > Delegation::MAX_JSON {
+    /// Reads a delegation from its event's JSON, at most `MAX_JSON` bytes and in the one spelling
+    /// nostr writes, checking the event's id and signature, its kind, and each term's tag. Other
+    /// tags and the content are ignored.
+    pub fn parse(json: &str) -> Result<Self, DelegationError> {
+        if json.len() > Self::MAX_JSON {
             return Err(DelegationError::TooLong);
         }
         let event = Event::from_json(json)
             .map_err(|error| DelegationError::NotEvent(EventError::from(error)))?;
+        if event.as_json() != json {
+            return Err(DelegationError::NotCanonical);
+        }
         if !event.verify_id() {
             return Err(DelegationError::WrongId);
         }
@@ -117,7 +118,7 @@ impl Delegation {
         };
         let session_key = key(DelegationTag::SessionKey)?;
         let server_key = key(DelegationTag::ServerKey)?;
-        Ok(Delegation {
+        Ok(Self {
             json: json.to_owned(),
             id: DelegationId::new(event.id.to_bytes()),
             main_key: MainKey::new(event.pubkey.to_bytes()),

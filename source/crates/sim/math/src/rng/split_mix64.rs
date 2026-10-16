@@ -7,8 +7,8 @@ pub struct SplitMix64 {
 }
 
 impl SplitMix64 {
-    pub const fn new(seed: u64) -> SplitMix64 {
-        SplitMix64 { state: seed }
+    pub const fn new(seed: u64) -> Self {
+        Self { state: seed }
     }
 
     pub const fn next_u64(&mut self) -> u64 {

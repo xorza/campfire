@@ -4,8 +4,8 @@
 pub struct Budget(u64);
 
 impl Budget {
-    pub const fn new(operations: u64) -> Budget {
-        Budget(operations)
+    pub const fn new(operations: u64) -> Self {
+        Self(operations)
     }
 
     pub const fn left(self) -> u64 {

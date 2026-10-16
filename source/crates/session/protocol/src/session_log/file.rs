@@ -9,20 +9,21 @@ use crate::bytes::Bytes;
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
-use crate::player_input::PlayerInput;
 use crate::server_input::ServerInput;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::server_seed::ServerSeed;
 use crate::session_log::applied::Applied;
 use crate::session_log::error::{HeaderError, LogError};
+use crate::session_log::log_entries::Entry;
+use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::session_header::SessionHeader;
-use crate::session_log::{Entry, LoggedResult, POSITION_BOUND, SessionLog, offset, put, take};
+use crate::session_log::{Bounds, LoggedResult, SessionLog, Signatures, len, offset, put, take};
 use crate::session_terms::SessionTerms;
 use crate::slot_plan::SlotPlan;
 use crate::slot_start::SlotStart;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
-pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v4";
+pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v5";
 /// The bytes that start a player's packet and a server input in the file.
 pub(super) const PACKET_ENTRY: u8 = 0;
 const SERVER_ENTRY: u8 = 1;
@@ -41,20 +42,25 @@ impl SessionLog {
     /// the delegation's JSON, 1 for a bot and 2 for an open slot.
     pub fn encode(&self, out: &mut Vec<u8>) {
         assert!(
-            self.begun.is_none(),
+            self.segments.begun().is_none(),
             "a log is written once every checkpoint it began has its record"
         );
         let start = self.put_segments(out, self.segments.len(), self.next_tick());
-        self.put_entries(out, start..offset(self.entries.len()));
+        self.put_entries(out, start..self.entries.len());
         put(out, &self.revealed);
         put(out, &self.result);
+        debug_assert_eq!(
+            len(out.len()),
+            self.file_len,
+            "the log counts its file's bytes"
+        );
     }
 
     /// Writes into `out`, which is cleared first, the file of the log as it stood at the boundary
     /// where segment `segment` starts: its segments up to that one, their ticks before it, and
     /// none of the entries logged after them.
     pub(super) fn encode_through(&self, segment: usize, out: &mut Vec<u8>) {
-        let tick = self.segments[segment].tick;
+        let tick = self.segments.first(segment + 1)[segment].tick;
         let start = self.put_segments(out, segment + 1, tick);
         self.put_entries(out, start..start);
         put(out, &None::<ServerSeed>);
@@ -69,19 +75,16 @@ impl SessionLog {
         self.put_header(out);
         put(out, &offset(segments));
         let mut start = 0;
-        for (at, segment) in self.segments[..segments].iter().enumerate() {
+        let written = self.segments.first(segments);
+        for (place, segment) in written.iter().enumerate() {
             if let Some(logged) = &segment.checkpoint {
                 logged.record.encode(out);
                 put(out, &logged.signature);
             }
-            let end = self
-                .segments
-                .get(at + 1)
-                .filter(|_| at + 1 < segments)
-                .map_or(end, |next| next.tick);
+            let end = written.get(place + 1).map_or(end, |next| next.tick);
             put(out, &(end.get() - segment.tick.get()));
             for tick in segment.tick.get()..end.get() {
-                let tick_end = self.tick_ends[usize::try_from(tick).expect("tick fits usize")];
+                let tick_end = self.entries.tick_end(Tick::new(tick));
                 self.put_entries(out, start..tick_end);
                 start = tick_end;
             }
@@ -92,18 +95,23 @@ impl SessionLog {
     /// Decodes a log file. Its entries are recorded again, which checks every chain link and
     /// signature, and only the bytes `encode` gives for the decoded log are accepted, so a log has
     /// one file.
-    pub fn decode(bytes: &[u8]) -> Result<SessionLog, LogError> {
-        SessionLog::decode_within(bytes, POSITION_BOUND)
+    pub fn decode(bytes: &[u8]) -> Result<Self, LogError> {
+        Self::decode_within(bytes, Bounds::MAX, Signatures::Check)
     }
 
+    /// Decodes a log file as `decode` does, the log's file and journal held within `bounds`, its
+    /// signatures taken as `signatures` says. Each value it takes is canonical postcard, and each
+    /// count is the count of what follows, so the bytes `encode` gives for the decoded log are
+    /// the file's, which a debug build checks.
     pub(super) fn decode_within(
         bytes: &[u8],
-        position_bound: usize,
-    ) -> Result<SessionLog, LogError> {
+        bounds: Bounds,
+        signatures: Signatures,
+    ) -> Result<Self, LogError> {
         let mut rest = bytes.strip_prefix(LOG_TAG).ok_or(LogError::NotLog)?;
         let header = take_header(&mut rest)?;
-        let mut log = SessionLog::new(header).map_err(LogError::Header)?;
-        log.position_bound = position_bound;
+        let mut log = Self::within(header, bounds).map_err(LogError::Header)?;
+        log.signatures = signatures;
         let mut inputs = Vec::new();
         let mut applied = Vec::new();
         let segments: u32 = take(&mut rest)?;
@@ -125,7 +133,7 @@ impl SessionLog {
             if !server_seed.check(log.segment(), &log.header.terms.seed_commitment) {
                 return Err(LogError::WrongSeed);
             }
-            log.revealed = Some(server_seed);
+            log.set_revealed(server_seed);
         }
         if let Some(LoggedResult { result, signature }) = take(&mut rest)? {
             log.record_result(result, &signature)
@@ -134,11 +142,15 @@ impl SessionLog {
         if !rest.is_empty() {
             return Err(LogError::Trailing);
         }
-        let mut canonical = Vec::with_capacity(bytes.len());
-        log.encode(&mut canonical);
-        if canonical != bytes {
-            return Err(LogError::NotCanonical);
+        if cfg!(debug_assertions) {
+            let mut canonical = Vec::with_capacity(bytes.len());
+            log.encode(&mut canonical);
+            assert!(
+                canonical == bytes,
+                "a file that decodes is the file its log encodes"
+            );
         }
+        log.signatures = Signatures::Check;
         Ok(log)
     }
 
@@ -156,42 +168,40 @@ impl SessionLog {
     /// Writes the entries at `entries` of the log's.
     fn put_entries(&self, out: &mut Vec<u8>, entries: Range<u32>) {
         put(out, &(entries.end - entries.start));
-        for &entry in self
-            .entries
-            .range(entries.start as usize..entries.end as usize)
-        {
+        for entry in self.entries.entries(entries) {
             match entry {
-                Entry::Packet(at) => {
+                Entry::Packet(index) => {
                     put(out, &PACKET_ENTRY);
-                    self.put_packet(out, at);
+                    self.put_packet(out, index);
                 }
-                Entry::Server(at) => {
+                Entry::Server(index) => {
                     put(out, &SERVER_ENTRY);
-                    self.put_server(out, at);
+                    self.put_server(out, index);
                 }
             }
         }
     }
 
-    /// Writes the packet `at`: its `u32` slot, its inputs as a `u32` count and each input's stamp
-    /// and payload bytes, and its signature.
-    pub(super) fn put_packet(&self, out: &mut Vec<u8>, at: u32) {
-        let packet = &self.packets[at as usize];
-        let slot = self.inputs[packet.inputs.start as usize].slot;
-        put(out, &slot.get());
-        put(out, &(packet.inputs.end - packet.inputs.start));
-        for index in packet.inputs.clone() {
-            let input = self.input(index);
-            put(out, &input.stamp);
-            put(out, &Bytes(input.payload));
-        }
-        put(out, &packet.signature);
+    /// Writes the packet `index`, as `write_packet` does.
+    pub(super) fn put_packet(&self, out: &mut Vec<u8>, index: u32) {
+        let packet = self.entries.packet(index);
+        let slot = self.entries.input(packet.inputs.start).slot;
+        let inputs = packet.inputs.clone().map(|index| {
+            let input = self.entries.input(index);
+            (input.stamp, input.payload)
+        });
+        let written = PlayerPacket {
+            slot,
+            inputs,
+            signature: &packet.signature,
+        };
+        write_packet(out, written);
     }
 
-    /// Writes the server input `at` and its signature.
-    pub(super) fn put_server(&self, out: &mut Vec<u8>, at: u32) {
-        let logged = &self.server[at as usize];
-        self.server_input(logged.served).encode(out);
+    /// Writes the server input `index` and its signature.
+    pub(super) fn put_server(&self, out: &mut Vec<u8>, index: u32) {
+        let logged = self.entries.server(index);
+        self.entries.server_input(logged.served).encode(out);
         put(out, &logged.signature);
     }
 
@@ -200,7 +210,7 @@ impl SessionLog {
     fn record_logged<'a>(
         &mut self,
         rest: &mut &'a [u8],
-        inputs: &mut Vec<PlayerInput<'a>>,
+        inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let entries: u32 = take(rest)?;
@@ -219,7 +229,7 @@ impl SessionLog {
     pub(super) fn record_packet<'a>(
         &mut self,
         rest: &mut &'a [u8],
-        inputs: &mut Vec<PlayerInput<'a>>,
+        inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let tick = self.next_tick();
@@ -229,14 +239,15 @@ impl SessionLog {
         for _ in 0..count {
             let stamp = take(rest)?;
             let payload = take(rest)?;
-            inputs.push(PlayerInput {
-                slot,
-                stamp,
-                payload,
-            });
+            inputs.push((stamp, payload));
         }
         let signature = take(rest)?;
-        self.record(inputs.iter().copied(), &signature, applied)
+        let packet = PlayerPacket {
+            slot,
+            inputs: inputs.iter().copied(),
+            signature: &signature,
+        };
+        self.record(packet, applied)
             .map_err(|error| LogError::Input { tick, error })
     }
 
@@ -273,6 +284,22 @@ impl SessionLog {
         self.record_checkpoint(taken.value, &signature)
             .map_err(|error| LogError::Checkpoint { segment, error })
     }
+}
+
+/// Writes `packet`: its `u32` slot, its inputs as a `u32` count and each input's stamp and
+/// payload bytes, and its signature.
+pub(super) fn write_packet<'a>(
+    out: &mut Vec<u8>,
+    packet: PlayerPacket<'_, impl Iterator<Item = (Tick, &'a [u8])> + Clone>,
+) {
+    let count = u32::try_from(packet.inputs.clone().count()).expect("a packet's inputs fit u32");
+    put(out, &packet.slot.get());
+    put(out, &count);
+    for (stamp, payload) in packet.inputs {
+        put(out, &stamp);
+        put(out, &Bytes(payload));
+    }
+    put(out, packet.signature);
 }
 
 /// Reads the header `SessionLog::put_header` wrote, checking each delegation.

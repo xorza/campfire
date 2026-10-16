@@ -5,6 +5,6 @@ use campfire_values::ModifierId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct IntervalDue {
     pub(super) carrier: StableId,
-    pub id: ModifierId,
+    pub(super) id: ModifierId,
     pub(super) source: Option<StableId>,
 }

@@ -91,12 +91,12 @@ enum Part {
 }
 
 impl Edges {
-    pub(super) fn of(frame: Frame) -> Edges {
+    pub(super) fn of(frame: Frame) -> Self {
         let [a, b] = frame.halves;
         let dot = |u: Flat, v: Flat| product(u[0], v[0]).wrapping_add(product(u[1], v[1]));
         let (aa, ab, bb) = (dot(a, a), dot(a, b), dot(b, b));
         let twice_ab = ab << 1;
-        Edges {
+        Self {
             frame,
             area: cross(a, b),
             corners: frame.corners(),
@@ -148,6 +148,13 @@ impl Edges {
         })
     }
 
+    /// Whether a point of these slab values lies inside the open box, off its edges: both values
+    /// within the area, as `|value| < area`.
+    pub(super) fn inside(&self, slabs: [i128; 2]) -> bool {
+        let area = self.area.cast_unsigned();
+        slabs.iter().all(|value| value.unsigned_abs() < area)
+    }
+
     /// The point at `x` of `row`, of these slab values, outside the box.
     pub(super) fn probe_of(&self, row: &Row, x: i64, slabs: [i128; 2]) -> Probe {
         let [a, b] = self.frame.halves;
@@ -162,13 +169,17 @@ impl Edges {
     }
 
     /// Whether the point at `x` of `row` lies closer than the reach to the box, each distance to
-    /// the nearest unit: inside it, at 0, or nearer than that to an edge or a corner, the first
-    /// found ending the search. Each edge is one compare against the reach, not an order
-    /// compared after: that made `grid/box_spans_closer` 26 % slower on a Ryzen.
+    /// the nearest unit: on its edge, at 0; inside the open box, below 0, as a signed distance
+    /// measures it, so closer than a reach of 0 too, as a circle's center is; or nearer than the
+    /// reach to an edge or a corner, the first found ending the search. Each edge is one compare
+    /// against the reach, not an order compared after: that made `grid/box_spans_closer` 26 %
+    /// slower on a Ryzen.
     fn closer(&self, row: &Row, x: i64, lines: &mut impl Lines) -> bool {
-        match self.probe(row, x) {
-            Some(probe) => self.closer_probe(&probe, lines),
-            None => lines.reach().units > 0,
+        let slabs = self.slabs(row, x);
+        if self.outside(slabs) {
+            self.closer_probe(&self.probe_of(row, x, slabs), lines)
+        } else {
+            lines.reach().units > 0 || self.inside(slabs)
         }
     }
 
@@ -186,13 +197,19 @@ impl Edges {
         self.closer(&self.row(off[1]), off[0], lines)
     }
 
-    /// How the distance from `off` to the box lies against the reach: inside it, 0; else the
-    /// nearest of its edges' distances, each to the nearest unit and measured against the reach
-    /// alone, a corner's with no root, the first closer one ending the search.
+    /// How the distance from `off` to the box lies against the reach: on its edge, 0; inside
+    /// the open box, closer than every reach, as `closer` measures it; else the nearest of its
+    /// edges' distances, each to the nearest unit and measured against the reach alone, a
+    /// corner's with no root, the first closer one ending the search.
     pub(super) fn against(&self, off: Flat, lines: &mut impl Lines) -> Ordering {
-        match self.probe(&self.row(off[1]), off[0]) {
-            Some(probe) => self.probe_against(&probe, lines),
-            None => 0.cmp(&lines.reach().units),
+        let row = self.row(off[1]);
+        let slabs = self.slabs(&row, off[0]);
+        if self.outside(slabs) {
+            self.probe_against(&self.probe_of(&row, off[0], slabs), lines)
+        } else if self.inside(slabs) {
+            Ordering::Less
+        } else {
+            0.cmp(&lines.reach().units)
         }
     }
 
@@ -351,13 +368,13 @@ impl LineBounds {
     /// lies from the floor root to the ceiling one, so `far` takes the ceiling and `near` the
     /// floor. A reach and a half edge within the world's bound keep each below 2¹⁰², so the
     /// wrapping steps skip the checks a release build makes.
-    pub(super) fn of(square: i128, reach: i128) -> LineBounds {
+    pub(super) fn of(square: i128, reach: i128) -> Self {
         debug_assert!(square > 0 && reach >= 0);
         let square = square.cast_unsigned();
         let root = square.floor_root();
         let ceiling = root.wrapping_add(u128::from(root.wrapping_mul(root) < square));
         let reach = reach.cast_unsigned();
-        LineBounds {
+        Self {
             far: reach.wrapping_add(2).wrapping_mul(ceiling),
             near: if reach >= 1 {
                 (reach - 1).wrapping_mul(root)
@@ -369,9 +386,9 @@ impl LineBounds {
 }
 
 impl Reach {
-    pub(super) const fn of(units: i128) -> Reach {
+    pub(super) const fn of(units: i128) -> Self {
         debug_assert!(units >= 0);
-        Reach {
+        Self {
             units,
             square_limit: if units > 0 { units * units - units } else { -1 },
         }

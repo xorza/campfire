@@ -5,8 +5,8 @@ use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, EffectTo};
 use campfire_common::{Tick, Ticks};
 use campfire_deliveries::Teleported;
-use campfire_math::{Num, Vec3};
-use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, View};
+use campfire_math::{Num, Rounding, Vec3};
+use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, ScriptLasting, View};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, MapBook};
 use campfire_values::DashDelivery;
@@ -54,14 +54,14 @@ impl NavigationEffect {
         id: StableId,
         to: DashTo,
         speed: Num,
-    ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, id)?;
+    ) -> Result<Self, ApiError> {
+        Self::walker(view, id)?;
         let hz = NonZeroI64::from(view.rate().hz()).get();
         let step = speed
-            .checked_div_int(hz)
+            .checked_div_int(hz, Rounding::NearestEven)
             .filter(|&step| step > Num::ZERO)
             .ok_or_else(|| NavigationRefusal::NotASpeed.refused())?;
-        Ok(NavigationEffect::Dash {
+        Ok(Self::Dash {
             id,
             to,
             step,
@@ -70,20 +70,20 @@ impl NavigationEffect {
     }
 
     /// A knock back of `id`, which walks, `distance` away from `from`, more than 0 and within
-    /// the world's bound, over `ms`, more than 0, rounded up to ticks.
+    /// the world's bound, over `lasting`.
     pub(crate) fn knock_back(
         view: &View,
         id: StableId,
         from: Vec3,
         distance: Num,
-        ms: i64,
-    ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, id)?;
+        lasting: ScriptLasting,
+    ) -> Result<Self, ApiError> {
+        Self::walker(view, id)?;
         if distance <= Num::ZERO || distance > Position::BOUND {
             return Err(NavigationRefusal::NotADistance.refused());
         }
-        let ticks = view.lasting(ms)?;
-        Ok(NavigationEffect::KnockBack {
+        let ticks = lasting.get();
+        Ok(Self::KnockBack {
             id,
             from,
             distance,
@@ -92,13 +92,9 @@ impl NavigationEffect {
     }
 
     /// A teleport of `id`, which walks, to `to`.
-    pub(crate) fn teleport(
-        view: &View,
-        id: StableId,
-        to: Vec3,
-    ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, id)?;
-        Ok(NavigationEffect::Teleport { id, to })
+    pub(crate) fn teleport(view: &View, id: StableId, to: Vec3) -> Result<Self, ApiError> {
+        Self::walker(view, id)?;
+        Ok(Self::Teleport { id, to })
     }
 
     /// Queues a listed forced move of `id`, whose other unit is the acting unit or `reached`,
@@ -118,14 +114,13 @@ impl NavigationEffect {
             EffectTo::Source => acting.ok_or(ApiError::NoActingUnit),
         };
         let effect = match does {
-            CapabilityDoesSpec::Dash { to, speed } => other(to).and_then(|to| {
-                NavigationEffect::dash(view, frame, id, DashTo::Unit(to), speed.number(frame))
-            }),
+            CapabilityDoesSpec::Dash { to, speed } => other(to)
+                .and_then(|to| Self::dash(view, frame, id, DashTo::Unit(to), speed.number(frame))),
             CapabilityDoesSpec::KnockBack { from, distance, ms } => other(from).and_then(|from| {
                 let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
                 // Whole, as the load checked, so the floor is exact.
-                let ms = ms.number(frame).floor();
-                NavigationEffect::knock_back(view, id, from, distance.number(frame), ms)
+                let lasting = ScriptLasting::of(view.rate(), ms.number(frame).floor())?;
+                Self::knock_back(view, id, from, distance.number(frame), lasting)
             }),
             _ => unreachable!("navigation queues only its own listed effects"),
         };
@@ -160,9 +155,7 @@ impl Effect for NavigationEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
         let id = match self {
-            NavigationEffect::Dash { id, .. }
-            | NavigationEffect::KnockBack { id, .. }
-            | NavigationEffect::Teleport { id, .. } => id,
+            Self::Dash { id, .. } | Self::KnockBack { id, .. } | Self::Teleport { id, .. } => id,
         };
         let Some(entity) = world.entity_of(id) else {
             return;
@@ -171,10 +164,10 @@ impl Effect for NavigationEffect {
             return;
         }
         let forced = match self {
-            NavigationEffect::Dash {
+            Self::Dash {
                 to, step, delivers, ..
             } => ForcedMove::Dash { to, step, delivers },
-            NavigationEffect::KnockBack {
+            Self::KnockBack {
                 from,
                 distance,
                 ticks,
@@ -186,7 +179,7 @@ impl Effect for NavigationEffect {
                     left: ticks.get(),
                 }
             }
-            NavigationEffect::Teleport { to, .. } => {
+            Self::Teleport { to, .. } => {
                 teleport(world, entity, id, to, now);
                 return;
             }
@@ -216,13 +209,12 @@ fn knock_back_end(pos: Vec3, from: Vec3, distance: Num) -> Vec3 {
 /// its route again from there, and every delivery that homes on it loses it.
 fn teleport(world: &mut World, entity: Entity, id: StableId, to: Vec3, now: Tick) {
     let mut pos = world.resource::<MapBook>().bounds.clamp(to);
-    if let Some(grid) = world.get_resource::<PathingGrid>()
-        && PathingGrid::serves(world, entity)
-    {
-        let walkable = Walkable::of(
-            grid.clearance(Walker::walking(world.get::<Body>(entity))),
-            world.resource::<BodyIndex>(),
-        );
+    let clearance = world.get_resource::<PathingGrid>().and_then(|grid| {
+        let walker = Walker::of(world.get::<Body>(entity))?;
+        grid.serving(walker)
+    });
+    if let Some(clearance) = clearance {
+        let walkable = Walkable::of(clearance, world.resource::<BodyIndex>());
         let Some(open) = world.resource::<RoutePlanner>().stand_at(walkable, pos) else {
             return;
         };

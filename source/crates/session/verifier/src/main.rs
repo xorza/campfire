@@ -8,7 +8,7 @@ use std::process::ExitCode;
 
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, LogEvent, Logging};
-use campfire_verifier::{Verification, Verified};
+use campfire_verifier::{Verified, verify_file};
 use tracing::error;
 
 use crate::args::Args;
@@ -25,7 +25,7 @@ fn main() -> ExitCode {
         Ok(args) => args,
         Err(status) => return ExitCode::from(status),
     };
-    match Verification::file(&args.packages, &args.log, args.snapshots.as_deref()) {
+    match verify_file(&args.packages, &args.log, args.snapshots.as_deref()) {
         Ok(hash) => {
             Verified {
                 file: args.log,

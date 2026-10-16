@@ -20,12 +20,12 @@ use lightyear::prelude::{
 use tracing::debug;
 
 use crate::close_code::CloseCode;
-use crate::dismissed::Dismissed;
+use crate::error::JoinError;
 use crate::events::join_refused::JoinRefused;
-use crate::events::join_refused::error::JoinError;
-use crate::join::{Join, JoinRole};
 use crate::net_protocol::MatchChannel;
-use crate::offer::Offer;
+use crate::net_protocol::dismissed::Dismissed;
+use crate::net_protocol::join::{Join, JoinRole};
+use crate::net_protocol::offer::Offer;
 use crate::os::Clock;
 use crate::session_times::SessionTimes;
 use crate::sim_server::player_link::PlayerLink;
@@ -102,7 +102,7 @@ impl Dismissing {
         if let Ok(mut refused) = commands.get_entity(link) {
             refused.remove::<(Joined, PlayerLink)>().insert((
                 Refused(error),
-                Dismissing {
+                Self {
                     dismissed,
                     told: None,
                 },
@@ -113,7 +113,7 @@ impl Dismissing {
     /// Tells each dismissed link's client, once.
     pub(crate) fn tell(
         time: Res<'_, Time<Real>>,
-        mut links: Query<'_, '_, (&mut Dismissing, &mut MessageSender<Dismissed>)>,
+        mut links: Query<'_, '_, (&mut Self, &mut MessageSender<Dismissed>)>,
     ) {
         for (mut dismissing, mut sender) in &mut links {
             if dismissing.told.is_none() {
@@ -126,7 +126,7 @@ impl Dismissing {
     /// Ends each dismissed link whose client was told `LINGER` ago and has not ended it.
     pub(crate) fn end(
         time: Res<'_, Time<Real>>,
-        links: Query<'_, '_, (Entity, &Dismissing), Without<Unlinked>>,
+        links: Query<'_, '_, (Entity, &Self), Without<Unlinked>>,
         mut commands: Commands<'_, '_>,
     ) {
         let now = time.elapsed();
@@ -135,7 +135,7 @@ impl Dismissing {
                 .told
                 .is_some_and(|told| now.saturating_sub(told) >= LINGER)
             {
-                commands.entity(link).remove::<Dismissing>();
+                commands.entity(link).remove::<Self>();
                 commands.trigger(CloseLink {
                     entity: link,
                     code: dismissing.dismissed.code().app(),
@@ -177,7 +177,7 @@ impl Offered {
     /// `CloseCode::Unanswered`.
     pub(crate) fn close_silent(
         time: Res<'_, Time<Real>>,
-        links: Query<'_, '_, (Entity, &Offered), (ToAnswer, Without<Unlinked>)>,
+        links: Query<'_, '_, (Entity, &Self), (ToAnswer, Without<Unlinked>)>,
         mut commands: Commands<'_, '_>,
     ) {
         let now = time.elapsed();
@@ -203,10 +203,17 @@ pub(crate) struct CheckedJoins {
     pub(crate) refused: Vec<(Entity, JoinError)>,
 }
 
+/// When an offer goes out: the server's tick, and its real time.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OfferTime {
+    pub(crate) tick: NetTick,
+    pub(crate) real: Duration,
+}
+
 impl Offering {
     /// The offering of a session of `terms` on the server of `server`.
-    pub(crate) fn new(terms: SessionTerms, server: &ServerSetup) -> Offering {
-        Offering {
+    pub(crate) fn new(terms: SessionTerms, server: &ServerSetup) -> Self {
+        Self {
             terms,
             times: server.times,
             clock: server.os.clock.clone(),
@@ -216,16 +223,15 @@ impl Offering {
     }
 
     /// Offers the terms and a fresh challenge to each connected link that has none, and the same
-    /// offer again every `RESEND_TICKS` until it answers: a client may not yet receive messages
-    /// when the link connects, and then the first offer is lost. `now` is the tick, `real` the
-    /// server's real time.
+    /// offer again every `RESEND_TICKS` until it answers, at `at`: a client may not yet receive
+    /// messages when the link connects, and then the first offer is lost.
     pub(crate) fn offer(
         &self,
-        now: NetTick,
-        real: Duration,
+        at: OfferTime,
         links: &mut OfferLinks<'_, '_>,
         commands: &mut Commands<'_, '_>,
     ) {
+        let OfferTime { tick: now, real } = at;
         for (link, offered, binding, mut sender) in links {
             let challenge = match offered {
                 Some(offered) if now.0.wrapping_sub(offered.sent.0) < RESEND_TICKS => continue,
@@ -260,14 +266,18 @@ impl Offering {
 
     /// Offers the terms to each connected link that has no offer, as `offer` does, from the
     /// offering `H` holds: the lobby's before the start, the door's after it.
-    pub(crate) fn offer_links<H: Resource + AsRef<Offering>>(
+    pub(crate) fn offer_links<H: Resource + AsRef<Self>>(
         holder: Res<'_, H>,
         timeline: Res<'_, LocalTimeline>,
         time: Res<'_, Time<Real>>,
         mut links: OfferLinks<'_, '_>,
         mut commands: Commands<'_, '_>,
     ) {
-        H::as_ref(&holder).offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
+        let at = OfferTime {
+            tick: timeline.tick(),
+            real: time.elapsed(),
+        };
+        H::as_ref(&holder).offer(at, &mut links, &mut commands);
     }
 
     /// The join an offered link sent, with the link and its offer; none when it sent none.
@@ -290,7 +300,11 @@ impl Offering {
 
     /// The delegation of `join`, when its session key answered the challenge `offered` over the
     /// link's channel binding, and it grants this session, not expired by the server's clock.
-    pub(crate) fn check(&self, offered: &Offered, join: &Join) -> Result<Delegation, JoinError> {
+    pub(crate) fn check(
+        &mut self,
+        offered: &Offered,
+        join: &Join,
+    ) -> Result<Delegation, JoinError> {
         let delegation = Delegation::parse(&join.delegation).map_err(JoinError::Delegation)?;
         let answer = ConnectAnswer {
             challenge: &offered.challenge,
@@ -298,7 +312,7 @@ impl Offering {
         };
         answer
             .check(
-                &self.verifier,
+                &mut self.verifier,
                 &self.terms,
                 &delegation,
                 &join.answer,
@@ -312,7 +326,7 @@ impl Offering {
     /// gives the links in the order of its tables, which changes from run to run once Lightyear
     /// iterates them in parallel, so the answered ones go in an order of what they sent.
     pub(crate) fn check_all(
-        &self,
+        &mut self,
         joins: impl Iterator<Item = (Entity, Offered, Join)>,
         checked: &mut CheckedJoins,
     ) {

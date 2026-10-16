@@ -4,7 +4,7 @@ use campfire_actions::{CostTarget, SlotKind};
 use campfire_capabilities::{BookError, Books};
 use campfire_mode::{ModeMap, ModeNames};
 use campfire_progression::TrackBook;
-use campfire_units::UnitTypeBook;
+use campfire_units::UnitTypes;
 use campfire_values::{Names, PathId, ResourceId, Team, TrackId, TypeScope};
 
 use crate::mode_packages::ModePackages;
@@ -37,7 +37,7 @@ pub(crate) struct NameTables<'a> {
     slot_kinds: &'a Names<SlotKind>,
     /// The engine's tags, then every tag the packages name; each package's unit types in its
     /// scope, the mode's and the avatars in the mode's.
-    types: UnitTypeBook,
+    types: UnitTypes,
     teams: Names<Team>,
     /// The map's paths, each a name of the first that names it: the map's resolve refuses a
     /// repeat, and a path id counts more paths than a map file holds.
@@ -45,7 +45,7 @@ pub(crate) struct NameTables<'a> {
 }
 
 impl<'a> NameTables<'a> {
-    pub(crate) fn of(packages: &'a ModePackages) -> Result<NameTables<'a>, BookError> {
+    pub(crate) fn of(packages: &'a ModePackages) -> Result<Self, BookError> {
         let data = &packages.data;
         let book_packages = packages.book_packages();
         let types = Books::unit_types(packages.tag_names(), &book_packages);

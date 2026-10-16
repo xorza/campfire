@@ -4,14 +4,14 @@ use serde::Deserialize;
 use tracing::warn;
 
 /// A checkpoint was due at the boundary before tick `tick`, past the seed chain's last segment:
-/// the session ends there, aborted.
+/// the session ends there.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct SeedsRanOut {
     pub tick: Tick,
 }
 
 impl LogEvent for SeedsRanOut {
-    const MESSAGE: &'static str = "the seed chain ran out; the session ends aborted";
+    const MESSAGE: &'static str = "the seed chain ran out; the session ends";
 
     fn log(&self) {
         warn!(tick = self.tick.get(), "{}", Self::MESSAGE);

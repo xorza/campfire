@@ -8,22 +8,27 @@ use crate::package_index::PackageIndex;
 #[serde(transparent)]
 pub struct ActionId(u32);
 
-impl ActionId {
-    /// The action at `index` of the book.
-    pub const fn new(index: u32) -> ActionId {
-        ActionId(index)
-    }
-}
-
 impl NameId for ActionId {
     type Scope = PackageIndex;
     const LIMIT: usize = 1 << u32::BITS;
 
-    fn at(index: usize) -> ActionId {
-        ActionId(u32::try_from(index).expect("actions fit u32"))
+    fn at(index: usize) -> Self {
+        Self(u32::try_from(index).expect("actions fit u32"))
     }
 
     fn index(self) -> usize {
         self.0 as usize
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::action_id::ActionId;
+
+    impl ActionId {
+        /// The action at `index` of the book.
+        pub const fn new(index: u32) -> Self {
+            Self(index)
+        }
     }
 }

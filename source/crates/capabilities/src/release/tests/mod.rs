@@ -1,5 +1,6 @@
 use std::any::type_name;
 use std::fmt::Debug;
+use std::num::NonZeroU64;
 use std::path::Path;
 
 use Capability::{
@@ -15,7 +16,7 @@ use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::PlayerResources;
-use campfire_script::{ScriptLimits, View};
+use campfire_script::{ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::internals::SourceFiles;
@@ -302,15 +303,21 @@ fn each_capability_crate_is_listed_one_layer_above_its_highest_dependency() {
     assert_eq!(misplaced, Vec::<String>::new());
 }
 
-/// Each capability of the release's list, with what it needs and what it uses.
+/// Each capability of the release's list, with what it needs and what it uses: the mode's as
+/// its scripted part states them, which the mode's core, a part of its crate, builds on none of.
 #[derive(Debug, Default)]
 struct Edges(Vec<(Capability, &'static [Capability], &'static [Capability])>);
 
 impl ModuleVisitor for Edges {
     fn module<M: Module>(&mut self) {
-        if let Some(capability) = M::CAPABILITY {
+        if let Some(capability) = M::CAPABILITY.filter(|&capability| capability != Mode) {
             self.0.push((capability, M::NEEDS, M::USES));
         }
+    }
+
+    fn scripted<M: Module>(&mut self) {
+        let capability = M::CAPABILITY.expect("the scripted part is the mode's");
+        self.0.push((capability, M::NEEDS, M::USES));
     }
 }
 
@@ -438,12 +445,12 @@ fn no_module_names_another_modules_sets() {
     assert_eq!(named, Vec::<String>::new());
 }
 
-/// Every lookup by name that the production code calls, by file: a method or function whose
-/// name ends in `named`, as each lookup of an id by its name is spelled, a table's `named` the
-/// most. Each runs in a script call, which resolves the names it is given once, as its arguments'
-/// types take them, or in the load, which resolves the packages' names once. The test fails when a
-/// lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 38] = [
+/// Every lookup by name that the production code of the capabilities and the network calls, by
+/// file: a method or function whose name ends in `named`, as each lookup of an id by its name is
+/// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
+/// given once, as its arguments' types take them, in the load, which resolves the packages' names
+/// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
+const LOOKUPS: [(&str, &str); 44] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
@@ -460,11 +467,14 @@ const LOOKUPS: [(&str, &str); 38] = [
     ("stats/modifier_spec.rs", "named"),
     ("stats/param_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
-    ("units/unit_type_book.rs", "named"),
+    ("units/unit_types.rs", "named"),
+    ("values/block.rs", "deserialize_named"),
     ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
     ("visibility/setting/mod.rs", "named"),
+    // A bot's script, each unit type it names resolved once as its bot starts.
+    ("net/bot_script/mod.rs", "named"),
     // The load, and a filter a script names.
     ("script/scripts/view/filter.rs", "named"),
     ("values/filter_data.rs", "named"),
@@ -473,11 +483,15 @@ const LOOKUPS: [(&str, &str); 38] = [
     ("actions/slot_kind.rs", "named"),
     ("mode/choice_id.rs", "named"),
     ("mode/marker_tag.rs", "named"),
+    ("mode/mode_api.rs", "loadout_ability_named"),
+    ("mode/mode_api.rs", "offer_named"),
+    ("mode/mode_call.rs", "param_named"),
+    ("mode/mode_hooks.rs", "input_type_named"),
     ("mode/mode_schema.rs", "named"),
     ("mode/roster.rs", "named"),
+    ("mode/roster.rs", "offer_named"),
     ("script/scripts/id_args.rs", "named"),
     ("script/scripts/script_api/api_builder.rs", "named"),
-    ("script/scripts/script_arg.rs", "named"),
     ("script/scripts/script_names.rs", "named"),
     ("script/scripts/state_decl/state_schema.rs", "named"),
     ("script/scripts/view/tag_names.rs", "named"),
@@ -498,9 +512,9 @@ const ROLES: [(&str, &str, &str); 4] = [
     ("struct ", "Api", "api"),
 ];
 
-/// The types that hold a role but are named for what they are: the orders' effect, which is the
-/// order to a unit, and the core's script API, which spans `units`, `scripts` and `players`.
-const ROLE_EXCEPTIONS: [&str; 2] = ["UnitOrder", "CoreApi"];
+/// The types that hold a role but are named for what they are: the core's script API, which spans
+/// `units`, `scripts` and `players`.
+const ROLE_EXCEPTIONS: [&str; 1] = ["CoreApi"];
 
 /// The types of `code`, the file `file` of the module `module`, that hold a role and are not
 /// named `<Module><Role>` in `<module>_<role>.rs`, as `(file, type)`; a `mod.rs` is named by its
@@ -614,6 +628,12 @@ fn each_role_of_a_module_takes_the_modules_name() {
             "orders",
             "unit_order",
             "impl Effect for UnitOrder {".to_owned(),
+            vec![("unit_order", "UnitOrder")],
+        ),
+        (
+            "orders",
+            "orders_effect",
+            "impl Effect for OrdersEffect {".to_owned(),
             vec![],
         ),
         (
@@ -717,7 +737,7 @@ fn a_book_and_a_data_table_take_their_suffix() {
 #[test]
 fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
     let mut found = Vec::new();
-    capability_sources(&mut |path, code| {
+    let mut visit = |path: &str, code: &str| {
         let file = path.to_owned();
         for line in code.lines() {
             if line.trim_start().starts_with("//") {
@@ -733,7 +753,11 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
                 }
             }
         }
-    });
+    };
+    capability_sources(&mut visit);
+    // The network's crate, whose bots name unit types.
+    let net = Path::new(env!("CARGO_MANIFEST_DIR")).join("../network/net/src");
+    production(&net, &mut |path, code| visit(&format!("net/{path}"), code));
     found.sort();
     found.dedup();
     let mut known: Vec<(String, String)> = LOOKUPS
@@ -776,16 +800,15 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
     let scheduled = |declared: &[Capability]| {
         let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
         let world = Match::new(
-            MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE)
-                .capabilities(Release::capability_set(declared).unwrap())
-                .role(Role::Server(Some(budgets))),
+            MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets))
+                .set(Release::capability_set(declared).unwrap()),
         );
         let schedules = world.resource::<Schedules>();
         let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();
         let names: Vec<String> = systems
             .map(|(_, system)| system.name().to_string())
             .collect();
-        ["learn_ranks", "apply_production_orders", "trade_items"]
+        ["learn_ranks", "apply_cancels", "trade_items"]
             .map(|wanted| names.iter().any(|name| name.contains(wanted)))
     };
     let with = |extra: &[Capability]| [&[Stats][..], extra].concat();

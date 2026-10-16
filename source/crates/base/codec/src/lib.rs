@@ -6,7 +6,8 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![expect(
     clippy::disallowed_methods,
-    reason = "the one crate that calls the formats, which clippy.toml denies the others"
+    clippy::disallowed_types,
+    reason = "the one crate that calls the formats and holds their values, which clippy.toml denies the others"
 )]
 
 mod batch;
@@ -19,6 +20,9 @@ mod json;
 mod json_value;
 mod sink;
 mod toml;
+#[cfg(feature = "internals")]
+mod toml_document;
+mod toml_table;
 
 pub use crate::binary::{Binary, Taken};
 pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError};
@@ -26,3 +30,11 @@ pub use crate::json::Json;
 pub use crate::json_value::JsonValue;
 pub use crate::sink::Sink;
 pub use crate::toml::Toml;
+pub use crate::toml_table::TomlTable;
+
+/// What the tests of the engine's crates use of the formats: a TOML document they edit, and its
+/// values.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::toml_document::{TomlDocument, TomlNode};
+}

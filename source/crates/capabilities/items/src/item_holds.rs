@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::StableId;
-use campfire_stats::{Grant, Grants, Hold, ModifierBook, ModifierParams, Modifiers};
+use campfire_stats::{Grant, GrantFrom, Grants, Hold, ModifierBook, ModifierParams, Modifiers};
 use campfire_values::{ModifierId, Rank};
 
 use crate::inventory::Inventory;
@@ -48,6 +48,7 @@ impl ItemHolds {
                 let holds = held.binary_search(&modifier).is_ok();
                 grants.push(Grant {
                     modifier,
+                    from: GrantFrom::Itself,
                     hold: Hold::Passive,
                     action: None,
                     rank: holds.then_some(Rank::FIRST),

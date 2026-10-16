@@ -69,8 +69,8 @@ impl Order {
 }
 
 impl<K> Default for BodyGrid<K> {
-    fn default() -> BodyGrid<K> {
-        BodyGrid {
+    fn default() -> Self {
+        Self {
             levels: CellLevels::new(Num::ONE),
             widest: Vec::new(),
             entries: Vec::new(),

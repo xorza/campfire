@@ -37,8 +37,8 @@ const LIFETIME: u64 = 86_400;
 
 impl FixedSession {
     /// A session of `packages` at `tick_hz` for `players` players, with roomy input limits.
-    pub fn new(packages: ModePackages, tick_hz: NonZeroU32, players: u32) -> FixedSession {
-        FixedSession::with_rules(packages, tick_hz, players, InputRules::ROOMY)
+    pub fn new(packages: ModePackages, tick_hz: NonZeroU32, players: u32) -> Self {
+        Self::with_rules(packages, tick_hz, players, InputRules::ROOMY)
     }
 
     /// A session of `packages` at `tick_hz` for `players` players, its inputs within `rules`.
@@ -47,10 +47,10 @@ impl FixedSession {
         tick_hz: NonZeroU32,
         players: u32,
         rules: InputRules,
-    ) -> FixedSession {
+    ) -> Self {
         let players = usize::try_from(players).expect("players fit usize");
         let plan = iter::repeat_n(SlotPlan::Player, players);
-        FixedSession::planned(packages, tick_hz, rules, plan)
+        Self::planned(packages, tick_hz, rules, plan)
     }
 
     /// A session of `packages` at `tick_hz`, its inputs within `rules`, its slots as `plan` opens
@@ -60,7 +60,7 @@ impl FixedSession {
         tick_hz: NonZeroU32,
         rules: InputRules,
         plan: impl IntoIterator<Item = SlotPlan>,
-    ) -> FixedSession {
+    ) -> Self {
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();
         let terms = session_rules
@@ -73,7 +73,7 @@ impl FixedSession {
                 visibility,
             })
             .unwrap();
-        FixedSession { packages, terms }
+        Self { packages, terms }
     }
 
     pub const fn packages(&self) -> &ModePackages {
@@ -96,7 +96,7 @@ impl FixedSession {
         let slots = (0..)
             .zip(&terms.slots)
             .map(|(slot, plan)| match plan {
-                SlotPlan::Player => SlotStart::player(FixedSession::delegation(&terms, slot)),
+                SlotPlan::Player => SlotStart::player(Self::delegation(&terms, slot)),
                 SlotPlan::Bot => SlotStart::Bot,
                 SlotPlan::Open => SlotStart::Open,
             })
@@ -123,7 +123,7 @@ impl FixedSession {
     pub fn start(&self) -> FixedMatch {
         let log = LogCheck::start();
         let chains = (0..self.slots())
-            .map(|slot| FixedSession::chain(&self.terms, slot))
+            .map(|slot| Self::chain(&self.terms, slot))
             .collect();
         let signers = TestKey::players()[..usize::try_from(self.slots()).unwrap()]
             .iter()
@@ -131,9 +131,8 @@ impl FixedSession {
             .collect();
         let source = SessionSource {
             log: self.log(),
-            seeds: FixedSession::seeds(),
+            seeds: Self::seeds(),
             packages: &self.packages,
-            signer: Some(FixedSession::server_signer()),
         };
         let game = Session::start_match(source).unwrap();
         FixedMatch::new(game, chains, signers, self.terms.clone(), log)
@@ -146,7 +145,7 @@ impl FixedSession {
 
     /// Player `slot`'s chain, as they start it in a session of `terms`, from its first input.
     pub(crate) fn chain(terms: &SessionTerms, slot: u32) -> InputChain {
-        let root = FixedSession::delegation(terms, slot).chain_root();
+        let root = Self::delegation(terms, slot).chain_root();
         InputChain::new(PlayerSlot::new(slot), root)
     }
 

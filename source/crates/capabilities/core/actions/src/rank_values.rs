@@ -94,7 +94,7 @@ impl RankValues {
             {
                 return Err(ActionProblem::Global(kind));
             }
-            loaded.values.push(RankValues {
+            loaded.values.push(Self {
                 range: fields.range,
                 cooldown: ticks(fields.cooldown_ms)?,
                 cost: fields.cost,

@@ -1,5 +1,7 @@
 use super::*;
 use crate::harness::test_key::TestKey;
+use crate::session_id::SessionId;
+use crate::verifier::Verifier;
 
 #[test]
 fn a_results_signature_holds_only_over_it() {
@@ -11,14 +13,15 @@ fn a_results_signature_holds_only_over_it() {
         outcome: Outcome::Won { team: 1 },
         state_hash: StateHash::new([3; 32]),
     };
-    let signature = result.sign(&TestKey::signer(server), id);
-    assert!(result.signed_by(&mut Verifier::new(), &key, id, &signature));
-    assert!(!result.signed_by(
-        &mut Verifier::new(),
-        &key,
-        SessionId::new([9; 32]),
-        &signature
-    ));
+    let signature = TestKey::signer(server).sign(&InSession {
+        session_id: id,
+        record: &result,
+    });
+    let signed_by = |record: &SessionResult, session_id| {
+        Verifier::new().verifies(&signature, &key, &InSession { session_id, record })
+    };
+    assert!(signed_by(&result, id));
+    assert!(!signed_by(&result, SessionId::new([9; 32])));
     let others = [
         SessionResult {
             tick: Tick::new(8),
@@ -38,9 +41,6 @@ fn a_results_signature_holds_only_over_it() {
         },
     ];
     for other in others {
-        assert!(
-            !other.signed_by(&mut Verifier::new(), &key, id, &signature),
-            "{other:?}"
-        );
+        assert!(!signed_by(&other, id), "{other:?}");
     }
 }

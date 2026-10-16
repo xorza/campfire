@@ -51,10 +51,10 @@ enum Command {
 impl Mode {
     /// The mode the command line clap read as `line` names: `[<run root>]`, or `verify
     /// [--verifier <verifier>] <run directory>`.
-    pub(crate) fn of(line: CommandLine) -> Mode {
+    pub(crate) fn of(line: CommandLine) -> Self {
         match line.command {
-            Some(Command::Verify { dir, verifier }) => Mode::Verify { dir, verifier },
-            None => Mode::Play {
+            Some(Command::Verify { dir, verifier }) => Self::Verify { dir, verifier },
+            None => Self::Play {
                 root: line
                     .root
                     .unwrap_or_else(|| env::temp_dir().join("campfire-lan-check")),

@@ -45,7 +45,7 @@ pub(crate) fn num(c: &mut Criterion) {
     group.bench_function("saturating_mul", |b| {
         b.iter(|| {
             for (&x, &y) in small.iter().zip(&other) {
-                black_box(black_box(x).saturating_mul(y));
+                black_box(black_box(x).saturating_mul(y, Rounding::NearestEven));
             }
         });
     });

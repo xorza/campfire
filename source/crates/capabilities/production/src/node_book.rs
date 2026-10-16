@@ -1,7 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::{Book, ByType};
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{ResourceId, UnitType};
 
 use crate::resource_set::ResourceSet;
@@ -28,7 +27,6 @@ impl NodeBook {
 }
 
 impl Book for NodeBook {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

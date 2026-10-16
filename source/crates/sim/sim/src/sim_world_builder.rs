@@ -69,7 +69,7 @@ impl SimWorldBuilder<'_> {
 
 impl<'w> SimWorldBuilder<'w> {
     /// Starts the build of a sim in `world`, a new world, at `rate`, drawing from `seed`.
-    pub fn new(world: &'w mut World, seed: SegmentSeed, rate: TickRate) -> SimWorldBuilder<'w> {
+    pub fn new(world: &'w mut World, seed: SegmentSeed, rate: TickRate) -> Self {
         SimUpdate::prepare(world, seed, rate);
         SimWorldBuilder {
             world,
@@ -81,7 +81,7 @@ impl<'w> SimWorldBuilder<'w> {
 
     /// Opens `world`, a sim world built before, again, for an install after the build, as a mode
     /// installs into a match whose capabilities are in place.
-    pub fn reopen(world: &'w mut World) -> SimWorldBuilder<'w> {
+    pub fn reopen(world: &'w mut World) -> Self {
         let schedule = world
             .resource_mut::<Schedules>()
             .remove(SimUpdate)

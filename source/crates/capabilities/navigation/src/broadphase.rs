@@ -41,9 +41,9 @@ struct Cell {
 }
 
 impl Entry {
-    fn new(cell: CellKey, index: usize) -> Entry {
+    fn new(cell: CellKey, index: usize) -> Self {
         let index = u64::try_from(index).expect("colliders fit u64");
-        Entry((u128::from(cell.to_bits()) << 64) | u128::from(index))
+        Self((u128::from(cell.to_bits()) << 64) | u128::from(index))
     }
 
     const fn cell(self) -> CellKey {
@@ -63,7 +63,7 @@ impl Broadphase {
         self.entries.clear();
         self.cells.clear();
         self.contacts.clear();
-        let Some(levels) = Broadphase::levels(colliders) else {
+        let Some(levels) = Self::levels(colliders) else {
             return &self.contacts;
         };
         let walkers = colliders
@@ -97,7 +97,7 @@ impl Broadphase {
             let run = &self.entries[cell.start..cell.end];
             for (offset, a) in run.iter().enumerate() {
                 for b in &run[offset + 1..] {
-                    Broadphase::check(colliders, a.index(), b.index(), &mut self.contacts);
+                    Self::check(colliders, a.index(), b.index(), &mut self.contacts);
                 }
             }
             let key = cell.key;
@@ -113,7 +113,7 @@ impl Broadphase {
                 .iter()
                 .take_while(|other| other.key <= last);
             for other in right.into_iter().chain(under) {
-                Broadphase::pair(
+                Self::pair(
                     colliders,
                     run,
                     &self.entries[other.start..other.end],
@@ -121,10 +121,10 @@ impl Broadphase {
                 );
             }
             if at == level_end {
-                level_end = at + Broadphase::level_len(&self.cells[at..]);
+                level_end = at + Self::level_len(&self.cells[at..]);
             }
             let coarser = &self.cells[level_end..];
-            Broadphase::across(colliders, coarser, &self.entries, cell, &mut self.contacts);
+            Self::across(colliders, coarser, &self.entries, cell, &mut self.contacts);
         }
         for (index, collider) in walkers {
             statics.near(collider.layer, collider.point, collider.radius(), |body| {
@@ -132,7 +132,7 @@ impl Broadphase {
                     .binary_search_by_key(&body.id, |collider| collider.id)
                     .expect("a static body of the index is among the colliders");
                 debug_assert!(!colliders[other].movable);
-                Broadphase::check(colliders, index, other, &mut self.contacts);
+                Self::check(colliders, index, other, &mut self.contacts);
             });
         }
         self.contacts.sort_unstable();
@@ -170,10 +170,10 @@ impl Broadphase {
                 let start = level.partition_point(|other| other.key < from);
                 let near = level[start..].iter().take_while(|other| other.key <= to);
                 for other in near {
-                    Broadphase::pair(colliders, run, &entries[other.start..other.end], contacts);
+                    Self::pair(colliders, run, &entries[other.start..other.end], contacts);
                 }
             }
-            level = &level[Broadphase::level_len(level)..];
+            level = &level[Self::level_len(level)..];
         }
     }
 
@@ -189,7 +189,7 @@ impl Broadphase {
     fn pair(colliders: &[Collider], run: &[Entry], others: &[Entry], contacts: &mut Vec<Contact>) {
         for a in run {
             for b in others {
-                Broadphase::check(colliders, a.index(), b.index(), contacts);
+                Self::check(colliders, a.index(), b.index(), contacts);
             }
         }
     }

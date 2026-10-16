@@ -1,3 +1,4 @@
+use campfire_sim::Capability;
 use serde::Deserialize;
 
 use crate::files::mode_manifest::ModeManifest;
@@ -9,7 +10,7 @@ use crate::files::package_header::PackageHeader;
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub(crate) enum Manifest {
-    Mode(ModeManifest),
+    Mode(ModeManifest<Vec<Capability>>),
     Avatar(PackageHeader),
     Loadout(PackageHeader),
     Locale(LocaleManifest),
@@ -20,11 +21,9 @@ pub(crate) enum Manifest {
 impl Manifest {
     pub(crate) const fn header(&self) -> &PackageHeader {
         match self {
-            Manifest::Mode(mode) => &mode.header,
-            Manifest::Avatar(header) | Manifest::Loadout(header) | Manifest::Rules(header) => {
-                header
-            }
-            Manifest::Locale(locale) => &locale.header,
+            Self::Mode(mode) => &mode.header,
+            Self::Avatar(header) | Self::Loadout(header) | Self::Rules(header) => header,
+            Self::Locale(locale) => &locale.header,
         }
     }
 }

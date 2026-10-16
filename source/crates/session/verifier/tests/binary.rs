@@ -10,7 +10,7 @@ use campfire_protocol::{SessionLog, SnapshotFingerprint};
 use campfire_sim::StateRegistry;
 use campfire_store::InputFile;
 use campfire_store::internals::Scratch;
-use campfire_verifier::{Verification, Verified};
+use campfire_verifier::{Verified, verify_file};
 
 /// The pinned file `name` of the fixtures, at most `max` bytes.
 fn fixture(name: &str, max: usize) -> Vec<u8> {
@@ -40,7 +40,7 @@ fn the_binary_logs_the_last_state_hash() {
     };
     // Every package of the workspace: what the verifier holds.
     let packages = PackageDir::workspace("");
-    let hash = Verification::file(&packages, Path::new(&path), None).unwrap();
+    let hash = verify_file(&packages, Path::new(&path), None).unwrap();
     let packages = packages.to_str().unwrap();
     let success = format!("{} file={path} hash={hash}\n", Verified::MESSAGE);
     // With no snapshot, and with the checkpoint's snapshot named by its fingerprint.

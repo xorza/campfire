@@ -58,14 +58,14 @@ impl Os {
     }
 
     pub(crate) fn exposure(file: &File) -> io::Result<Option<String>> {
-        Ok(Os::exposure_of(&file.metadata()?))
+        Ok(Self::exposure_of(&file.metadata()?))
     }
 
     /// Who besides the process's user may open a file of `metadata`.
     fn exposure_of(metadata: &Metadata) -> Option<String> {
         // SAFETY: `geteuid` reads the process's effective user, and has no failure.
         let user = unsafe { libc::geteuid() };
-        Os::exposed(metadata.mode(), metadata.uid(), user)
+        Self::exposed(metadata.mode(), metadata.uid(), user)
     }
 
     /// Who besides `user` may open a file of `mode` whose owner is `owner`: the group and others
@@ -105,7 +105,7 @@ impl Os {
     /// down, as `signal-hook` has it.
     pub(crate) fn catch_stop(received: &Arc<AtomicBool>) -> io::Result<()> {
         for signal in STOP {
-            if Os::ignored(signal)? {
+            if Self::ignored(signal)? {
                 continue;
             }
             let code = c_int::from(StopSignals::EXIT_CODE);
@@ -180,7 +180,7 @@ pub(crate) mod internals {
         }
 
         pub(crate) fn exposure_at(path: &Path) -> io::Result<Option<String>> {
-            Ok(Os::exposure_of(&fs::metadata(path)?))
+            Ok(Self::exposure_of(&fs::metadata(path)?))
         }
     }
 }

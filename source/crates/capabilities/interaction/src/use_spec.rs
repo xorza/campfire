@@ -1,6 +1,5 @@
 use campfire_declare::PerType;
 use campfire_script::Filter;
-use campfire_sim::Capability;
 use campfire_values::{ActionId, Relation, TagSet};
 
 /// An object type's use as a match reads it, package data and not state: the action of the `use`
@@ -12,8 +11,8 @@ pub struct UseSpec {
 }
 
 impl UseSpec {
-    pub const fn new(action: ActionId, users: Filter) -> UseSpec {
-        UseSpec { action, users }
+    pub const fn new(action: ActionId, users: Filter) -> Self {
+        Self { action, users }
     }
 
     pub const fn action(self) -> ActionId {
@@ -28,6 +27,5 @@ impl UseSpec {
 }
 
 impl PerType for UseSpec {
-    const OWNER: Option<Capability> = Some(Capability::Interaction);
     const SCRIPTS_ONLY: bool = false;
 }

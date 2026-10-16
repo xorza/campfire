@@ -15,21 +15,23 @@ use crate::verifier::Verifier;
 /// packet with its session key, and the log checks it once per packet.
 pub(crate) fn chain_head(c: &mut Criterion) {
     let signer = Signer::new(TestKey::of(7), Entropy::Fixed(0));
-    let verifier = Verifier::new();
+    let mut verifier = Verifier::new();
+    let mut scratch = Vec::new();
     let public_key = signer.public_key();
     let session_id = SessionId::new([5; 32]);
 
     let mut chain = InputChain::new(PlayerSlot::new(3), InputHash::new([1; 32]));
     chain.extend(Tick::new(40), b"an order");
-    let signature = chain.sign(&signer, session_id);
+    let signature = signer.sign(&chain.signed_head(session_id));
 
     let mut group = c.benchmark_group("atomic/chain_head");
     group.bench_function("sign", |b| {
-        b.iter(|| chain.sign(&signer, black_box(session_id)));
+        b.iter(|| signer.sign_with(&chain.signed_head(black_box(session_id)), &mut scratch));
     });
     group.bench_function("check", |b| {
         b.iter(|| {
-            assert!(chain.signed_by(&verifier, &public_key, session_id, black_box(&signature)));
+            let head = chain.signed_head(session_id);
+            assert!(verifier.verifies(black_box(&signature), &public_key, &head));
         });
     });
     group.finish();

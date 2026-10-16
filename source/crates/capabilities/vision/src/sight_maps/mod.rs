@@ -39,8 +39,8 @@ impl SightMaps {
 
     /// Clears what the tick before revealed and detected.
     pub(crate) fn begin_tick(&mut self) {
-        SightMaps::clear_set(&mut self.revealed, &mut self.set_revealed);
-        SightMaps::clear_set(&mut self.detected, &mut self.set_detected);
+        Self::clear_set(&mut self.revealed, &mut self.set_revealed);
+        Self::clear_set(&mut self.detected, &mut self.set_detected);
     }
 
     /// Clears each word of `words` that `set` marks, and the marks.

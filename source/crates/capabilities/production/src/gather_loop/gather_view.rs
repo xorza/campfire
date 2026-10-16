@@ -85,6 +85,13 @@ struct Seeker<'a> {
     relations: &'a Relations,
 }
 
+/// A load a worker of `owner` brings: its resource, which a drop-off of the player takes or not.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Delivery {
+    pub(crate) owner: PlayerSlot,
+    pub(crate) resource: ResourceId,
+}
+
 /// A node the loop found: its entity, and where it stands.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct FoundNode {
@@ -96,12 +103,12 @@ impl GatherView<'_, '_> {
     /// The gather in `slot` of `slots`; `None` for a slot that holds none, or holds one not yet
     /// learned.
     pub(crate) fn gather(&self, slots: &ActionSlots, slot: u8) -> Option<Gather> {
-        let held = slots.slot(slot)?;
-        let action = self.book.get(held.action?)?;
+        let action_slot = slots.slot(slot)?;
+        let action = self.book.get(action_slot.action?)?;
         let (KindSpec::Gather(spec), Aim::Unit(filter)) = (action.kind, action.aim) else {
             return None;
         };
-        let rank = held.rank?;
+        let rank = action_slot.rank?;
         let range = slots.meters_in(&self.book, slot);
         let ticks = action.values(rank).windup.get().max(1);
         Some(Gather {
@@ -120,10 +127,10 @@ impl GatherView<'_, '_> {
 
     /// The node of `row`, when `seeker`'s gather gathers it for it, as `node` finds one.
     fn found(&self, row: NodeRow<'_>, seeker: Seeker<'_>) -> Option<FoundNode> {
-        let (entity, _, &at, body, &unit_type, held, &node_team, tags) = row;
+        let (entity, _, &at, body, &unit_type, node, &node_team, tags) = row;
         let relation = seeker.relations.between(seeker.team, node_team);
         let tags = tags.map_or_default(|tags| tags.tags);
-        let ours = held.amount() > 0
+        let ours = node.amount() > 0
             && self.nodes_book.resource(unit_type) == Some(seeker.gather.spec.resource)
             && seeker.gather.filter.selects(relation, tags);
         ours.then_some(FoundNode {
@@ -158,48 +165,29 @@ impl GatherView<'_, '_> {
             .map(|(_, node, at)| NodeAt { node, pos: at })
     }
 
-    /// Whether a drop-off of `unit_type` that `drop_owner` owns takes `resource` from a worker
-    /// of `owner`: one of the same player that takes that resource.
-    pub(crate) fn takes(
-        &self,
-        drop_owner: Owner,
-        unit_type: UnitType,
-        owner: PlayerSlot,
-        resource: ResourceId,
-    ) -> bool {
-        drop_owner.slot() == owner && self.nodes_book.takes(unit_type, resource)
+    /// Whether a drop-off of `unit_type` that `drop_owner` owns takes `delivery`: one of the
+    /// worker's player that takes its resource.
+    pub(crate) fn takes(&self, drop_owner: Owner, unit_type: UnitType, delivery: Delivery) -> bool {
+        drop_owner.slot() == delivery.owner && self.nodes_book.takes(unit_type, delivery.resource)
     }
 
-    /// Where the living, complete drop-off `id` stands, when it takes `resource` from a worker
-    /// of `owner`.
-    fn drop_off_place(
-        &self,
-        id: StableId,
-        owner: PlayerSlot,
-        resource: ResourceId,
-    ) -> Option<Place> {
+    /// Where the living, complete drop-off `id` stands, when it takes `delivery`.
+    fn drop_off_place(&self, id: StableId, delivery: Delivery) -> Option<Place> {
         let (_, &at, body, &unit_type, drop_owner) =
             self.drop_offs.get(self.index.get(id)?).ok()?;
-        self.takes(*drop_owner, unit_type, owner, resource)
+        self.takes(*drop_owner, unit_type, delivery)
             .then_some(Place {
                 pos: at.get(),
                 body: body.copied(),
             })
     }
 
-    /// The nearest living, complete drop-off of `owner` that takes `resource`, to a worker at
-    /// `from`: by the distance to its body, the lower stable id on a tie.
-    pub(super) fn drop_off(
-        &self,
-        from: Vec3,
-        owner: PlayerSlot,
-        resource: ResourceId,
-    ) -> Option<StableId> {
+    /// The nearest living, complete drop-off that takes `delivery`, to a worker at `from`: by
+    /// the distance to its body, the lower stable id on a tie.
+    pub(super) fn drop_off(&self, from: Vec3, delivery: Delivery) -> Option<StableId> {
         self.drop_offs
             .iter()
-            .filter(|&(.., &unit_type, drop_owner)| {
-                self.takes(*drop_owner, unit_type, owner, resource)
-            })
+            .filter(|&(.., &unit_type, drop_owner)| self.takes(*drop_owner, unit_type, delivery))
             .map(|(&id, &at, body, ..)| {
                 let place = Place {
                     pos: at.get(),
@@ -223,18 +211,12 @@ impl GatherView<'_, '_> {
             .is_some_and(|resources| resources.takes(slice::from_ref(&amount)))
     }
 
-    /// Whether a worker at `from` with a body of `body` and a gather of `gather` reaches `at`.
-    pub(super) fn reaches(
-        &self,
-        from: Vec3,
-        body: Option<&Body>,
-        gather: Gather,
-        at: Place,
-    ) -> bool {
-        let shape = Body::shape_of(body);
+    /// Whether `worker`, with a gather of `gather`, reaches `at`.
+    pub(super) fn reaches(&self, worker: Place, gather: Gather, at: Place) -> bool {
+        let shape = Body::shape_of(worker.body.as_ref());
         let to = Body::shape_of(at.body.as_ref());
         self.map.metric.reaches(
-            Placed::new(from, shape),
+            Placed::new(worker.pos, shape),
             gather.range,
             Placed::new(at.pos, to),
         )
@@ -243,7 +225,7 @@ impl GatherView<'_, '_> {
     /// What the worker of `entity` does in its loop this tick, with the match's `relations`, which
     /// the caller reads once for each read of the view.
     pub(crate) fn step(&self, entity: Entity, relations: &Relations) -> Step {
-        let Ok((_, _, &from, body, &team, owner, slots, gatherer, destination, arrived, tags)) =
+        let Ok((_, &id, &from, body, &team, owner, slots, gatherer, destination, arrived, tags)) =
             self.workers.get(entity)
         else {
             return Step::Hold;
@@ -259,8 +241,12 @@ impl GatherView<'_, '_> {
             team,
             relations,
         };
+        let worker = Place {
+            pos: from.get(),
+            body: body.copied(),
+        };
         let node = self.node(order.node.node, seeker);
-        if UnitTags::properties_of(tags).blocks(Block::Use) {
+        if tags.is_some_and(|tags| tags.properties.blocks(Block::Use)) {
             return match (order.step, node) {
                 (GatherStep::Gathering { .. }, Some(node)) => Step::Interrupt(node.entity),
                 _ => Step::Hold,
@@ -280,7 +266,7 @@ impl GatherView<'_, '_> {
                 let Some(FoundNode { entity, place }) = node else {
                     return search();
                 };
-                if !self.reaches(from.get(), body, gather, place) {
+                if !self.reaches(worker, gather, place) {
                     return place.walk_from(from.get(), destination, arrived);
                 }
                 let (.., node, _, _) = self.nodes.get(entity).expect("a node found this tick");
@@ -300,6 +286,12 @@ impl GatherView<'_, '_> {
                 let Some(FoundNode { entity, .. }) = node else {
                     return search();
                 };
+                // No two workers gather one node at once: one another worker holds is not this
+                // one's. A predicting client holds the node's holder as the server sent it.
+                let (.., node, _, _) = self.nodes.get(entity).expect("a node found this tick");
+                if node.holder().is_some_and(|holder| holder != id) {
+                    return search();
+                }
                 if self.tick.start() >= since.after(Ticks::new(gather.time)) {
                     Step::Collect(entity)
                 } else {
@@ -314,14 +306,18 @@ impl GatherView<'_, '_> {
                 let Some(owner) = owner.copied().map(Owner::slot) else {
                     return Step::Stand;
                 };
-                let chosen = drop_off.and_then(|id| self.drop_off_place(id, owner, load.resource));
+                let delivery = Delivery {
+                    owner,
+                    resource: load.resource,
+                };
+                let chosen = drop_off.and_then(|id| self.drop_off_place(id, delivery));
                 let Some(place) = chosen else {
-                    return match self.drop_off(from.get(), owner, load.resource) {
+                    return match self.drop_off(from.get(), delivery) {
                         Some(next) => Step::Choose(next),
                         None => Step::Stand,
                     };
                 };
-                if !self.reaches(from.get(), body, gather, place) {
+                if !self.reaches(worker, gather, place) {
                     return place.walk_from(from.get(), destination, arrived);
                 }
                 if !self.joins(owner, load) {
@@ -382,7 +378,11 @@ impl GatherView<'_, '_> {
             );
         }
         let returns = gatherer.load().zip(owner).is_some_and(|(load, owner)| {
-            let place = self.drop_off_place(target, owner.slot(), load.resource);
+            let delivery = Delivery {
+                owner: owner.slot(),
+                resource: load.resource,
+            };
+            let place = self.drop_off_place(target, delivery);
             place.is_some()
         });
         if !returns {

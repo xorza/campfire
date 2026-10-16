@@ -7,20 +7,23 @@ use bevy_ecs::world::World;
 use campfire_common::Version;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate, Signer};
+use campfire_protocol::{JournalFrames, SessionId, SessionLog, SessionPrivate, Signer};
 use campfire_runner::{ResumeAt, Session, SessionSource, SessionWorld};
 use campfire_sim::StateRegistry;
 use campfire_store::{
-    AppendOpenError, DirEntries, DurableDir, DurableError, DurableFile, InputFile, PathError,
+    AppendOpenError, DirEntries, DurableDir, DurableDirError, DurableFile, InputFile, PathError,
     ReadError, Stamped,
 };
 
 use crate::events::session_aborted::SessionAborted;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::error::RestoreMatchError;
-use crate::sim_server::journal_watch::JournalWatch;
+use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
 use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::session_dir::error::{AbortError, FindError, RestoreError, WaitingError};
+use crate::sim_server::server_signer::ServerSigner;
+use crate::sim_server::session_dir::error::{
+    AbortError, FindError, PublishError, RestoreError, SessionCreateError, WaitingError,
+};
 use crate::sim_server::session_journal::SessionJournal;
 use crate::sim_server::snapshot_dir::SnapshotDir;
 
@@ -51,6 +54,8 @@ pub struct RestoredSession {
     pub log: SessionLog,
     /// Its journal, cut to its whole frames, open to append, and its snapshots.
     pub files: SessionFiles,
+    /// The bytes its journal holds: the tag and the whole frames.
+    pub journal_len: u64,
     /// When the journal was last written.
     pub modified: SystemTime,
 }
@@ -67,14 +72,11 @@ pub struct Publisher<'a> {
 impl SessionDir {
     /// Makes the directory of the session whose terms `private` holds, under `data`, and writes
     /// `private` into it.
-    pub fn create(
-        data: &ServerDir,
-        private: &SessionPrivate,
-    ) -> Result<SessionDir, PathError<DurableError>> {
+    pub fn create(data: &ServerDir, private: &SessionPrivate) -> Result<Self, SessionCreateError> {
         DurableDir::create(&data.layout().sessions_dir())?;
         let path = data.layout().session_dir(private.terms.session_id());
         DurableDir::create(&path)?;
-        let dir = SessionDir { path };
+        let dir = Self { path };
         let mut bytes = Vec::new();
         private.encode(&mut bytes);
         DurableFile::write(&dir.private(), &bytes)?;
@@ -106,7 +108,7 @@ impl SessionDir {
     /// session id. The sessions and the published logs are each listed once, so every answer
     /// comes from one moment, and in the order of their names, so a directory with several
     /// flaws gives the same error on every OS.
-    pub fn find(data: &ServerDir) -> Result<Option<SessionDir>, FindError> {
+    pub fn find(data: &ServerDir) -> Result<Option<Self>, FindError> {
         let layout = data.layout();
         let listed = |path: &Path| match DirEntries::read(path) {
             Ok(entries) => Ok(entries),
@@ -135,7 +137,7 @@ impl SessionDir {
             if found.is_some() {
                 return Err(FindError::Several);
             }
-            found = Some(SessionDir {
+            found = Some(Self {
                 path: layout.session_dir(session),
             });
         }
@@ -147,7 +149,7 @@ impl SessionDir {
     /// whose directory goes. An error as `find` and `restore` give one, and for a directory that
     /// does not go.
     pub fn waiting(data: &ServerDir) -> Result<Option<RestoredSession>, WaitingError> {
-        let Some(dir) = SessionDir::find(data).map_err(WaitingError::Find)? else {
+        let Some(dir) = Self::find(data).map_err(WaitingError::Find)? else {
             return Ok(None);
         };
         let session = dir.restore().map_err(WaitingError::Restore)?;
@@ -174,7 +176,7 @@ impl SessionDir {
         }
         let path = self.journal();
         let Stamped { bytes, modified } =
-            match InputFile::read_stamped(&path, SessionLog::MAX_FILE_LEN) {
+            match InputFile::read_stamped(&path, SessionLog::MAX_JOURNAL_LEN) {
                 Ok(stamped) => stamped,
                 Err(PathError {
                     error: ReadError::Missing,
@@ -197,17 +199,18 @@ impl SessionDir {
                 journal,
                 snapshots: self.snapshots(),
             },
+            journal_len: whole,
             modified,
         }))
     }
 
     /// Removes the directory of a session whose match never started, which logged nothing.
-    pub fn remove(self) -> Result<(), PathError<DurableError>> {
-        Ok(DurableDir::remove(&self.path)?)
+    pub fn remove(self) -> Result<(), PathError<DurableDirError>> {
+        DurableDir::remove(&self.path)
     }
 
     /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
-    pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, PathError<DurableError>> {
+    pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, PublishError> {
         DurableDir::create(&data.layout().logs_dir())?;
         let file = data.layout().published_log(log.session_id());
         let mut bytes = Vec::new();
@@ -231,10 +234,11 @@ impl RestoredSession {
         signer: Signer,
         mut after_tick: impl FnMut(&mut World),
     ) -> Result<SnapshotDir, RestoreMatchError> {
-        let RestoredSession {
+        let Self {
             private,
             log,
             files: SessionFiles { journal, snapshots },
+            journal_len,
             ..
         } = self;
         let ticks = log.next_tick();
@@ -253,7 +257,6 @@ impl RestoredSession {
                 log: log.rewound(),
                 seeds,
                 packages,
-                signer: Some(signer),
             };
             let at = ResumeAt {
                 segment,
@@ -265,12 +268,11 @@ impl RestoredSession {
                 log: log.rewound(),
                 seeds,
                 packages,
-                signer: Some(signer),
             };
             Session::start(world, source).map_err(RestoreMatchError::Start)?;
         }
-        world.insert_resource(JournalWatch(journal.watch()));
-        world.session_mut().resume_journal(Box::new(journal));
+        world.insert_resource(ServerSigner(signer));
+        JournalWatch::keep(world, journal, JournalFrom::End { len: journal_len });
         let resumed = world.session().log().next_tick();
         world.replay_to(ticks, |world| {
             if world.session().log().next_tick() > resumed {
@@ -281,11 +283,12 @@ impl RestoredSession {
         Ok(snapshots)
     }
 
-    /// Ends the session aborted, as a server back past the restore window does, unless it
-    /// ended before the crash: replays the log, of the mode `publisher` names, as `replay` does,
-    /// to the state its last tick left; logs an aborted result there, into the journal too; and
-    /// publishes the log under the publisher's data directory, its seed revealed, and logs
-    /// `SessionAborted`. The publisher's key signs what it logs. The published file's path.
+    /// Ends the session, as a server back past the restore window does, unless it ended before the
+    /// crash: replays the log, of the mode `publisher` names, as `replay` does, to the state its
+    /// last tick left; logs the result there, aborted unless the mode ended the match, into the
+    /// journal too; and publishes the log under the publisher's data directory, its seed revealed,
+    /// and logs `SessionAborted`. The publisher's key signs what it logs. The published file's
+    /// path.
     pub fn abort(self, publisher: Publisher<'_>) -> Result<PathBuf, AbortError> {
         let Publisher {
             data,
@@ -296,10 +299,10 @@ impl RestoredSession {
         self.replay(&mut world, packages, signer.clone(), |_| {})
             .map_err(AbortError::Replay)?;
         if world.session().log().result().is_none() {
-            let result = world.session_result_as(Outcome::Aborted);
+            let result = world.session_result();
             world
                 .session_mut()
-                .record_result(result)
+                .record_result(result, signer)
                 .expect("the server's own result holds");
         }
         world.session_mut().reveal_seed();
@@ -347,7 +350,7 @@ mod tests {
                 seed_commitment: seed_chain.commitment(),
                 release: Version::ENGINE,
                 mode: PackageFingerprint::new([1; 32]),
-                map: MapName::new("lane").unwrap(),
+                map: MapName::parse("lane").unwrap(),
                 dependencies: Vec::new(),
                 slots: vec![SlotPlan::Open],
                 visibility: Visibility::DEFAULT.encode(),

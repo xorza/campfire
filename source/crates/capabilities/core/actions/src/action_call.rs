@@ -20,9 +20,10 @@ pub struct ActionCall {
 }
 
 impl ActionCall {
-    /// Whether each of its places lies within the world's bound, as a restore checks it.
-    pub(crate) fn within_bound(self) -> bool {
-        self.aim.target.within_bound() && self.start.within_bound()
+    /// Whether its target lies within the world's bound and its start holds what one can, as a
+    /// restore checks them.
+    pub(crate) fn check(self) -> bool {
+        self.aim.target.within_bound() && self.start.check()
     }
 }
 

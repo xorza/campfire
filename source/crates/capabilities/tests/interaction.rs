@@ -1,10 +1,10 @@
 use campfire_abilities::Abilities;
 use campfire_actions::{
-    ActionData, ActionKind, ActionRange, ActionSlots, ActionTarget, Actions, ChannelData,
-    RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
+    ActionData, ActionKind, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions,
+    ChannelData, RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_capabilities::internals::*;
-use campfire_capabilities::{Match, Order};
+use campfire_capabilities::{Match, Order, Release};
 use campfire_combat::Combat;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_interaction::{UseSlot, UseSpec};
@@ -15,7 +15,7 @@ use campfire_players::Players;
 use campfire_script::internals::FailedCall;
 use campfire_script::{Filter, ScriptBudgets, ScriptFailures, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, SimWorld, StableId};
+use campfire_sim::{Capability, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::Stats;
 use campfire_units::{Owner, UnitTypeCore, Units};
 use campfire_values::{
@@ -55,8 +55,15 @@ struct Objects {
 
 impl Objects {
     /// A match of `stats`, `combat`, `navigation`, `abilities`, `orders` and `interaction`,
-    /// with its objects and users loaded, and no unit.
-    fn load() -> (Match, Objects) {
+    /// with its objects and users loaded, its two players, and no unit.
+    fn load() -> (Match, Self) {
+        let (mut game, objects) = Self::books();
+        Players::spawn(&mut game, 2, 1);
+        (game, objects)
+    }
+
+    /// The match `load` gives, with no player: one a snapshot restores into.
+    fn books() -> (Match, Self) {
         let declared = [
             Capability::Stats,
             Capability::Combat,
@@ -67,7 +74,6 @@ impl Objects {
         ];
         let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 2));
         Units::name_kinds(&game, &["true"], &["health", "mana", "rage"], &[]);
-        Players::spawn(&mut game, 2, 1);
         Abilities::load_types(&mut game);
         Abilities::load_stats(&mut game);
         for user in ["walking caster", "caster"] {
@@ -95,7 +101,7 @@ impl Objects {
         let shrine = object("shrine", pray, "all");
         let well = object("well", draw, "all");
         let altar = object("altar", offer, "allies");
-        let objects = Objects {
+        let objects = Self {
             shrine,
             well,
             altar,
@@ -155,7 +161,7 @@ fn held(game: &Match, user: StableId) -> Option<ActionId> {
 
 /// Whether something is under way from the slots of `user`.
 fn busy(game: &Match, user: StableId) -> bool {
-    game.part::<ActionSlots>(user).in_progress().is_some()
+    game.part::<ActionProgress>(user).in_progress().is_some()
 }
 
 fn failed(game: &Match) -> Vec<FailedCall> {
@@ -249,7 +255,7 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
     let owner = Owner::new(PlayerSlot::new(0));
     let unslotted = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), owner);
     order(&mut game, unslotted, use_of(shrine));
-    assert_eq!(game.part::<ActionSlots>(unslotted).in_progress(), None);
+    assert_eq!(game.part::<ActionProgress>(unslotted).in_progress(), None);
     // An altar of team 1 admits its allies alone, and the user is of team 0: its slot stays
     // empty. An altar of the user's team admits it: ordered in tick 2, its offering resolves in
     // tick 5.
@@ -294,6 +300,24 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
     game.step();
     assert_eq!(Stats::health(&game, shrine), 499);
     assert_eq!(failed(&game), []);
+
+    // The match restores; one whose user of a type with a use slot holds none, or two, is
+    // refused, where its use would fill a slot of no use.
+    Release::restore_into(&game, &mut Objects::books().0);
+    for slots in [
+        ActionSlots::new([]),
+        ActionSlots::new([]).with_empty(USES, 2),
+    ] {
+        let (mut game, _) = Objects::load();
+        let parts = (Owner::new(PlayerSlot::new(0)), TimedSlots::new(slots));
+        let id = Mode::spawn_named(&mut game, "caster", (0, 0, 0), Team::new(0), parts);
+        let refused = SnapshotError::Invalid {
+            ty: ActionSlots::NAME,
+            id: Some(id),
+        };
+        let restored = Release::refusal_into(&game, &mut Objects::books().0);
+        assert_eq!(restored, Some(refused));
+    }
 }
 
 #[test]

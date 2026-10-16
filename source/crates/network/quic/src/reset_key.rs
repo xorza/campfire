@@ -15,20 +15,20 @@ pub(crate) struct ResetKey(hmac::Key);
 
 impl ResetKey {
     /// The reset key of the server whose own key's secret is `secret`.
-    pub(crate) fn derive(secret: &Zeroizing<[u8; 32]>) -> ResetKey {
-        ResetKey::new(&DerivedSecret::ResetKey.of(secret))
+    pub(crate) fn derive(secret: &Zeroizing<[u8; 32]>) -> Self {
+        Self::new(&DerivedSecret::ResetKey.of(secret))
     }
 
-    fn new(secret: &Zeroizing<[u8; 32]>) -> ResetKey {
-        ResetKey(hmac::Key::new(hmac::HMAC_SHA256, secret.as_slice()))
+    fn new(secret: &Zeroizing<[u8; 32]>) -> Self {
+        Self(hmac::Key::new(hmac::HMAC_SHA256, secret.as_slice()))
     }
 
-    pub(crate) fn random() -> ResetKey {
+    pub(crate) fn random() -> Self {
         let mut secret = Zeroizing::new([0; 32]);
         SystemRandom::new()
             .fill(secret.as_mut_slice())
             .expect("the OS gives random bytes");
-        ResetKey::new(&secret)
+        Self::new(&secret)
     }
 
     pub(crate) fn into_hmac(self) -> Arc<dyn HmacKey> {

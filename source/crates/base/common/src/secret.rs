@@ -12,8 +12,8 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub struct Secret<const N: usize>([u8; N]);
 
 impl<const N: usize> Secret<N> {
-    pub const fn new(bytes: [u8; N]) -> Secret<N> {
-        Secret(bytes)
+    pub const fn new(bytes: [u8; N]) -> Self {
+        Self(bytes)
     }
 
     pub const fn as_bytes(&self) -> &[u8; N] {
@@ -38,7 +38,7 @@ impl<const N: usize> Serialize for Secret<N> {
 }
 
 impl<'de, const N: usize> Deserialize<'de> for Secret<N> {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Secret<N>, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_tuple(N, SecretVisitor(PhantomData))
     }
 }

@@ -4,7 +4,6 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{DeclaredName, Names, Stat};
 
 use crate::pool_data::PoolData;
@@ -38,7 +37,7 @@ impl PoolBook {
         names: Arc<Names<PoolId>>,
         life: Option<PoolId>,
         stat: impl Fn(&DeclaredName, &Stat) -> Result<StatId, E>,
-    ) -> Result<PoolBook, E> {
+    ) -> Result<Self, E> {
         assert_eq!(names.len(), pools.len(), "a pool has a name");
         let pools = pools.iter().map(|(name, pool)| {
             Ok(PoolStats {
@@ -50,7 +49,7 @@ impl PoolBook {
                     .transpose()?,
             })
         });
-        Ok(PoolBook {
+        Ok(Self {
             names,
             pools: pools.collect::<Result<_, E>>()?,
             life,
@@ -72,7 +71,6 @@ impl PoolBook {
 }
 
 impl Book for PoolBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {

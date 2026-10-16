@@ -53,7 +53,7 @@ impl ProductionFixtures for Production {
     }
 
     fn tick_ordering(world: &mut World, slot: u32, id: StableId, action: impl Into<Action>) {
-        Production::give_orders(world, slot, &[(id, action.into())]);
+        Self::give_orders(world, slot, &[(id, action.into())]);
     }
 
     fn give_orders<A: Into<Action> + Copy>(world: &mut World, slot: u32, orders: &[(StableId, A)]) {
@@ -71,7 +71,7 @@ impl ProductionFixtures for Production {
             z: Num::int(z),
             angle: Num::ZERO,
         };
-        Production::tick_ordering(world, 0, builder, OrdersAction::Build { slot: 0, target });
+        Self::tick_ordering(world, 0, builder, OrdersAction::Build { slot: 0, target });
     }
 
     fn gather_at(world: &mut World, workers: &[StableId], node: StableId) {
@@ -80,7 +80,7 @@ impl ProductionFixtures for Production {
             .iter()
             .map(|&unit| (unit, OrdersAction::Slot { slot: 0, target }))
             .collect();
-        Production::give_orders(world, 0, &orders);
+        Self::give_orders(world, 0, &orders);
     }
 
     fn yard_walker(

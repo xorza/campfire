@@ -15,7 +15,7 @@ pub enum ConstructData {
 /// `"alone"`, `"builder"`, or `{ builders = [...] }`, a positive rate for each count, one at
 /// least.
 impl<'de> Deserialize<'de> for ConstructData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ConstructData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "snake_case")]
         enum Style {
@@ -34,11 +34,11 @@ impl<'de> Deserialize<'de> for ConstructData {
             Table(Table),
         }
         match Written::deserialize(deserializer)? {
-            Written::Style(Style::Alone) => Ok(ConstructData::Alone),
-            Written::Style(Style::Builder) => Ok(ConstructData::Builder),
+            Written::Style(Style::Alone) => Ok(Self::Alone),
+            Written::Style(Style::Builder) => Ok(Self::Builder),
             Written::Table(Table { builders }) => {
                 if !builders.is_empty() && builders.iter().all(|&rate| rate > Num::ZERO) {
-                    Ok(ConstructData::Builders(builders))
+                    Ok(Self::Builders(builders))
                 } else {
                     Err(D::Error::custom(
                         "a builders table holds a positive rate for each count, one at least",

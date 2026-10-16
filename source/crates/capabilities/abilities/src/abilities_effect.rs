@@ -30,9 +30,9 @@ impl Effect for AbilitiesEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
         let unit = match self {
-            AbilitiesEffect::ReduceCooldown { unit, .. }
-            | AbilitiesEffect::ReduceCooldowns { unit, .. }
-            | AbilitiesEffect::AddCharge { unit, .. } => unit,
+            Self::ReduceCooldown { unit, .. }
+            | Self::ReduceCooldowns { unit, .. }
+            | Self::AddCharge { unit, .. } => unit,
         };
         let Some(entity) = world.entity_of(unit) else {
             return;
@@ -43,13 +43,13 @@ impl Effect for AbilitiesEffect {
             .get_components_mut::<(&ActionSlots, &mut SlotTimes)>()
             .expect("a unit the view held with the ability has slots");
         match self {
-            AbilitiesEffect::ReduceCooldown { action, cut, .. } => {
+            Self::ReduceCooldown { action, cut, .. } => {
                 times.cut_cooldown(slots, action, cut, now);
             }
-            AbilitiesEffect::ReduceCooldowns { kind, fraction, .. } => {
+            Self::ReduceCooldowns { kind, fraction, .. } => {
                 times.cut_cooldowns(slots, kind, fraction, now);
             }
-            AbilitiesEffect::AddCharge { action, .. } => {
+            Self::AddCharge { action, .. } => {
                 times.add_charge(slots, action, &book);
             }
         }

@@ -14,7 +14,7 @@ autotests = false
 campfire-actions = { workspace = true, features = ["internals"] }
 campfire-areas = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-codec.workspace = true
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-combat = { workspace = true, features = ["internals"] }
 campfire-common = { workspace = true, features = ["internals"] }
 campfire-declare = { workspace = true, features = ["internals"] }
@@ -52,7 +52,6 @@ bevy_time.workspace = true
 criterion.workspace = true
 lightyear.workspace = true
 secp256k1.workspace = true
-toml.workspace = true
 
 [dev-dependencies]
 campfire-verifier = { workspace = true, features = ["internals"] }

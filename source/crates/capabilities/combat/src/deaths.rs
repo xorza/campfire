@@ -4,7 +4,6 @@ use bevy_ecs::resource::Resource;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_declare::Report;
 use campfire_sim::StableId;
-use campfire_units::Owner;
 use campfire_values::Team;
 
 /// The units that died in the tick `tick`, in the order they died, each with its team, its owner,
@@ -30,12 +29,14 @@ struct Death {
     assisters: Range<usize>,
 }
 
-/// A unit that died, as it was when it died: its team, and the player who owned it, if any.
+/// A unit that died, as it was when it died: its team, the player who owned it, if any, and
+/// whether it was that player's avatar.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fallen {
     pub id: StableId,
     pub team: Option<Team>,
     pub owner: Option<PlayerSlot>,
+    pub avatar: bool,
 }
 
 /// A death as `Deaths` gives it.
@@ -44,17 +45,6 @@ pub struct DeathView<'a> {
     pub fallen: Fallen,
     pub killer: Option<StableId>,
     pub assisters: &'a [StableId],
-}
-
-impl Fallen {
-    /// `id` as it dies: of `team`, and owned by `owner`, if it has them.
-    pub fn of(id: StableId, team: Option<&Team>, owner: Option<&Owner>) -> Fallen {
-        Fallen {
-            id,
-            team: team.copied(),
-            owner: owner.map(|owner| owner.slot()),
-        }
-    }
 }
 
 impl Deaths {
@@ -124,8 +114,8 @@ impl Deaths {
 }
 
 impl Report for Deaths {
-    fn installed() -> Option<Deaths> {
-        Some(Deaths::default())
+    fn installed() -> Option<Self> {
+        Some(Self::default())
     }
 }
 
@@ -142,7 +132,12 @@ mod tests {
         let mut ids = IdAllocator::default();
         let units: [StableId; 10] = array::from_fn(|_| ids.allocate());
         let unit = |at: usize| units[at];
-        let fallen = |at: usize| Fallen::of(unit(at), None, None);
+        let fallen = |at: usize| Fallen {
+            id: unit(at),
+            team: None,
+            owner: None,
+            avatar: false,
+        };
         let mut deaths = Deaths::default();
         deaths.clear(Tick::new(1));
         // Killed out of id order: 5, 2, 9.

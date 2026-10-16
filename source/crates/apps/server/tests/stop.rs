@@ -122,14 +122,14 @@ struct ClientState {
 
 impl ClientApp {
     /// A client that connects to the server `listening` names.
-    fn connect(listening: &Listening) -> ClientApp {
+    fn connect(listening: &Listening) -> Self {
         let quic = QuicEndpoint::client(listening.address, &listening.tls_key, LinkTimes::CAMPFIRE)
             .unwrap();
         let mut app = App::new();
         app.add_plugins(QuicPlugin);
         let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
         app.world_mut().trigger(LinkStart { entity });
-        ClientApp { app, entity }
+        Self { app, entity }
     }
 
     /// Runs a frame.

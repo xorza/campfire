@@ -7,8 +7,8 @@ use crate::scripts::script_value::ScriptValue;
 pub struct ScriptMap(Map);
 
 impl ScriptMap {
-    pub(crate) const fn of_engine(map: Map) -> ScriptMap {
-        ScriptMap(map)
+    pub(crate) const fn of_engine(map: Map) -> Self {
+        Self(map)
     }
 
     /// The table in the engine's form.
@@ -18,8 +18,8 @@ impl ScriptMap {
 }
 
 impl<'a> FromIterator<(&'a str, ScriptValue)> for ScriptMap {
-    fn from_iter<I: IntoIterator<Item = (&'a str, ScriptValue)>>(entries: I) -> ScriptMap {
-        ScriptMap(
+    fn from_iter<I: IntoIterator<Item = (&'a str, ScriptValue)>>(entries: I) -> Self {
+        Self(
             entries
                 .into_iter()
                 .map(|(name, value)| (name.into(), value.into_engine()))

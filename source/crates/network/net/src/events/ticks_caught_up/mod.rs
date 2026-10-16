@@ -15,11 +15,11 @@ pub struct TicksCaughtUp {
 impl TicksCaughtUp {
     /// The ticks of a frame that started with `next` the next tick and ended with `after`; none
     /// for a frame that ran one tick or none.
-    pub const fn of(next: Tick, after: Tick) -> Option<TicksCaughtUp> {
+    pub const fn of(next: Tick, after: Tick) -> Option<Self> {
         if after.get() <= next.get() + 1 {
             return None;
         }
-        Some(TicksCaughtUp {
+        Some(Self {
             first: next,
             last: Tick::new(after.get() - 1),
         })

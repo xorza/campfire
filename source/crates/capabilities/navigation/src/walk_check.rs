@@ -11,8 +11,7 @@ use crate::pathing_grid::PathingGrid;
 use crate::route_planner::Walkable;
 use crate::segment::Segment;
 use crate::terrain::Terrain;
-use crate::walker::Walker;
-use crate::walls::Walls;
+use crate::walker_kinds::WalkerKinds;
 
 /// What a map's walk check reads: its ground, with the bounds; its paths and walls; its pathing
 /// cells, none for a map with no `[navigation]`; each kind of unit that walks; the bodies of its
@@ -22,7 +21,7 @@ pub struct WalkCheck<'a> {
     pub ground: &'a MapBook,
     pub navigation: &'a NavigationBook,
     pub cells: Option<Grid>,
-    pub walkers: &'a [Walker],
+    pub walkers: &'a WalkerKinds,
     pub placed: &'a [PlacedBody],
     pub spawns: &'a [MarkerPoint],
 }
@@ -69,8 +68,8 @@ impl WalkCheck<'_> {
             let Shape::Box(boxed) = body.shape else {
                 continue;
             };
-            if !Walls::room_for(None, *bounds, body.pos, &boxed, body.layer) {
-                return Err(MapProblem::BoxBlocked {
+            if !bounds.holds_box(body.pos, &boxed) {
+                return Err(MapProblem::BoxOutside {
                     unit: placed.unit,
                     unit_type: name_of(placed.unit_type),
                 });
@@ -81,17 +80,14 @@ impl WalkCheck<'_> {
         };
         let walkers = self.walkers;
         let terrain = Terrain::new(&cells, placed_walls.walls());
-        debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
-        let widest = walkers
-            .chunk_by(|a, b| a.layer == b.layer)
-            .map(|layer| *layer.last().expect("a chunk is never empty"));
         let widest_radius = walkers.iter().map(|walker| walker.radius).max();
         let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
         statics.update(&structures);
+        let widest: WalkerKinds = walkers.widest().collect();
         let mut grid = PathingGrid::new(cells, widest.clone(), &terrain);
         grid.update(&statics);
         let declared = |name: &str| DeclaredName::new(name).expect("the map's names are declared");
-        for walker in widest {
+        for &walker in &widest {
             let clearance = grid.clearance(walker);
             let walkable = Walkable::of(clearance, &statics);
             let stands = |pos: Vec3| !walkable.blocks(Segment::new(pos, pos));

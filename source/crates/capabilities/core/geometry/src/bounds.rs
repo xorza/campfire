@@ -1,7 +1,9 @@
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::body_box::BodyBox;
 
 /// A map's bounds: the closed rectangle from `min` to `max` on the ground plane, each `[x, z]`.
 /// No unit is ever outside them. A map's `[bounds]` writes them as `min` and `max`.
@@ -13,14 +15,14 @@ pub struct Bounds {
 
 impl Bounds {
     /// The whole world, within `Position::BOUND`: the bounds of a match without a map.
-    pub const WORLD: Bounds = Bounds {
+    pub const WORLD: Self = Self {
         min: [Num::from_bits(-Position::BOUND.to_bits()); 2],
         max: [Position::BOUND; 2],
     };
 
     /// The bounds from `min` to `max`; `None` unless `min` is below `max` on both axes and both
     /// are within the world's bound.
-    pub const fn new(min: [Num; 2], max: [Num; 2]) -> Option<Bounds> {
+    pub const fn new(min: [Num; 2], max: [Num; 2]) -> Option<Self> {
         let bound = Position::BOUND.to_bits();
         let mut axis = 0;
         while axis < 2 {
@@ -30,7 +32,7 @@ impl Bounds {
             }
             axis += 1;
         }
-        Some(Bounds { min, max })
+        Some(Self { min, max })
     }
 
     pub const fn min(self) -> [Num; 2] {
@@ -51,10 +53,26 @@ impl Bounds {
             && pos.y.to_bits().unsigned_abs() <= Position::BOUND.to_bits().unsigned_abs()
     }
 
+    /// Whether the box `body` at `pos` lies within the bounds on the ground plane, its edges on
+    /// theirs among them.
+    pub fn holds_box(self, pos: Vec3, body: &BodyBox) -> bool {
+        let extent = body.extent();
+        let ground = [pos.x, pos.z];
+        (0..2).all(|axis| {
+            ground[axis]
+                .checked_sub(extent[axis])
+                .is_some_and(|low| low >= self.min[axis])
+                && ground[axis]
+                    .checked_add(extent[axis])
+                    .is_some_and(|high| high <= self.max[axis])
+        })
+    }
+
     /// How far a straight path from `from` along the unit vector `direction` stays within the
     /// bounds on the ground plane, and within the world's bound in height: 0 from a point
-    /// outside. An axis the path barely moves along cannot be the one it leaves by, so a ratio
-    /// too large to hold is never the nearest.
+    /// outside. Each axis's distance rounds toward the start, so the path that far reaches no
+    /// edge's far side. An axis the path barely moves along cannot be the one it leaves by, so a
+    /// ratio too large to hold is never the nearest.
     pub fn exit(self, from: Vec3, direction: Vec3) -> Num {
         if !self.contains(from) {
             return Num::ZERO;
@@ -68,7 +86,7 @@ impl Bounds {
         .into_iter()
         .filter_map(|(at, moves, min, max)| {
             let edge = if moves > Num::ZERO { max } else { min };
-            (edge - at).checked_div(moves)
+            (edge - at).checked_div(moves, Rounding::Floor)
         })
         .min()
         .expect("a unit vector moves along an axis")
@@ -98,7 +116,7 @@ impl Bounds {
 
 /// A map's `[bounds]`: `min` and `max` as `[x, z]`, refused unless they make bounds.
 impl<'de> Deserialize<'de> for Bounds {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Bounds, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -106,7 +124,7 @@ impl<'de> Deserialize<'de> for Bounds {
             max: [Num; 2],
         }
         let Fields { min, max } = Fields::deserialize(deserializer)?;
-        Bounds::new(min, max).ok_or_else(|| {
+        Self::new(min, max).ok_or_else(|| {
             D::Error::custom("bounds need min below max, both within the world's bound")
         })
     }
@@ -161,6 +179,21 @@ mod tests {
             assert_eq!(Bounds::new(min, max), None, "{min:?} {max:?}");
         }
         assert!(Bounds::WORLD.contains(Vec3::from((-Position::BOUND, 0, Position::BOUND))));
+        // A box of 2 × 1 m, half extents of 1 and 0.5, lies within them from x = −1 to 3 and
+        // z = −0.5 to 2.5, its edges on theirs; a bit past either end is out.
+        let boxed = BodyBox::new([Num::int(2), Num::ONE], Num::ZERO).unwrap();
+        let half = Num::HALF;
+        for (x, z, held) in [
+            (Num::int(-1), -half, true),
+            (Num::int(3), Num::int(3) - half, true),
+            (Num::int(3) + e, Num::ZERO, false),
+            (Num::int(-1) - e, Num::ZERO, false),
+            (Num::ZERO, Num::int(3) - half + e, false),
+            (Num::ZERO, -half - e, false),
+        ] {
+            let pos = Vec3::new(x, Num::ZERO, z);
+            assert_eq!(bounds.holds_box(pos, &boxed), held, "{x:?} {z:?}");
+        }
         for height in [Position::BOUND, -Position::BOUND] {
             assert!(bounds.contains(Vec3::new(Num::ZERO, height, Num::ZERO)));
         }
@@ -184,5 +217,20 @@ mod tests {
             assert_eq!(bounds.exit(past, direction), Num::ZERO, "{direction:?}");
         }
         assert_eq!(bounds.exit(origin, up), Position::BOUND);
+        // Along (0.6, 0, 0.8), each rounded once, the right edge lies 3 / 0.600 000 02 =
+        // 4.999 999 8 m on, 3 · 2⁴⁸ / 10 066 330 = 83 886 076.67 bits, rounded down, as the
+        // nearest, 83 886 077, would carry the path a hair past it: the distance times the
+        // step's x stays within the 3 m.
+        let slant = Vec3::new(
+            Num::from_bits(10_066_330),
+            Num::ZERO,
+            Num::from_bits(13_421_773),
+        );
+        let from = Vec3::from((1, 0, -1));
+        let exit = bounds.exit(from, slant);
+        assert_eq!(exit, Num::from_bits(83_886_076));
+        let reached = i128::from(exit.to_bits()) * i128::from(slant.x.to_bits());
+        assert!(reached <= 3 << 48);
+        assert!(reached + i128::from(slant.x.to_bits()) > 3 << 48);
     }
 }

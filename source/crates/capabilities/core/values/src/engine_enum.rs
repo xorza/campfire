@@ -15,8 +15,8 @@ impl EngineEnum {
     /// The enum as scripts name it, the module of its members.
     pub const fn name(self) -> &'static str {
         match self {
-            EngineEnum::Relation => "Relation",
-            EngineEnum::PathEnd => "PathEnd",
+            Self::Relation => "Relation",
+            Self::PathEnd => "PathEnd",
         }
     }
 }

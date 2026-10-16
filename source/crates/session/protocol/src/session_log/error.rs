@@ -35,7 +35,7 @@ pub enum InputError {
     /// each tick up to the max input lead past the next.
     #[error("more inputs than the ticks up to the max input lead hold")]
     AheadOfTime,
-    /// The log's positions, which fit a `u32`, do not reach past the packet.
+    /// The log's file or its journal has no room for the packet and the session's end after it.
     #[error("session log full")]
     LogFull,
     /// The player's session key did not sign the chain head after the packet: the signature is
@@ -45,10 +45,10 @@ pub enum InputError {
 }
 
 impl From<StampError> for InputError {
-    fn from(error: StampError) -> InputError {
+    fn from(error: StampError) -> Self {
         match error {
-            StampError::Back => InputError::StampBack,
-            StampError::TooMany => InputError::TooManyInputs,
+            StampError::Back => Self::StampBack,
+            StampError::TooMany => Self::TooManyInputs,
         }
     }
 }
@@ -79,6 +79,9 @@ pub enum ServerInputError {
     /// A join of a slot reserved for the player who left it, by another player.
     #[error("join of a slot reserved for the player who left it")]
     Reserved,
+    /// A join by a main key whose player controls another slot: one slot for each main key.
+    #[error("join by a player who controls another slot")]
+    MainKeyHeld,
     /// A renewal, a leave or a link's change for a slot no player controls.
     #[error("server input for a slot no player controls")]
     NotPlayer,
@@ -88,7 +91,7 @@ pub enum ServerInputError {
     /// The delegation of a join or a renewal grants another session.
     #[error("delegation refused")]
     Scope(#[source] ScopeError),
-    /// The log's positions, which fit a `u32`, do not reach past the input.
+    /// The log's file or its journal has no room for the input and the session's end after it.
     #[error("session log full")]
     LogFull,
 }
@@ -170,6 +173,10 @@ pub enum HeaderError {
     /// The slot `slot` starts otherwise than the terms plan it: a player, a bot or open.
     #[error("slot {} starts otherwise than the terms plan", .slot.get())]
     PlanMismatch { slot: PlayerSlot },
+    /// The player in `slot` holds the main key of a player in an earlier slot: one slot for each
+    /// main key.
+    #[error("slot {} starts the main key of an earlier slot's player", .slot.get())]
+    MainKeyRepeated { slot: PlayerSlot },
     /// The file starts the slot `slot` as no known kind of start.
     #[error("slot {} starts as no known kind", .slot.get())]
     UnknownStart { slot: PlayerSlot },
@@ -185,6 +192,9 @@ pub enum LogLoadError {
     /// The log holds no checkpoint that starts the segment.
     #[error("no checkpoint starts the segment")]
     NoCheckpoint,
+    /// The journal has no room for the load's record and the session's end after it.
+    #[error("session log full")]
+    LogFull,
 }
 
 /// Why bytes do not decode to a session log. A log file is untrusted, so every flaw is an error.

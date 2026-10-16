@@ -20,8 +20,8 @@ use crate::unit_entity::UnitEntity;
 pub struct Owner(PlayerSlot);
 
 impl Owner {
-    pub const fn new(slot: PlayerSlot) -> Owner {
-        Owner(slot)
+    pub const fn new(slot: PlayerSlot) -> Self {
+        Self(slot)
     }
 
     pub const fn slot(self) -> PlayerSlot {

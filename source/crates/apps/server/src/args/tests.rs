@@ -45,7 +45,7 @@ fn the_command_line_reads_its_flags_in_any_order_or_its_flaw() {
     assert_eq!(bots, [(PlayerSlot::new(1), PathBuf::from("bot.toml"))]);
     assert_eq!(args.takeover, Some(PathBuf::from("takeover.toml")));
     assert_eq!(args.mode, PathBuf::from("mode"));
-    assert_eq!(args.map, MapName::new("lane"));
+    assert_eq!(args.map, MapName::parse("lane"));
     assert_eq!(args.address, SocketAddr::from(([0, 0, 0, 0], 4433)));
     assert!(!args.port_map);
     // The defaults, with no flag but `--data`.

@@ -18,7 +18,7 @@ pub struct Paths {
 
 impl Paths {
     /// The paths named `names`, by id, of the waypoints `paths`, each of one at the least.
-    pub fn of(names: Names<PathId>, paths: &[Vec<Vec3>]) -> Paths {
+    pub fn of(names: Names<PathId>, paths: &[Vec<Vec3>]) -> Self {
         assert_eq!(names.len(), paths.len(), "a path has a name");
         let mut points = Vec::with_capacity(paths.iter().map(Vec::len).sum());
         let mut ranges = Vec::with_capacity(paths.len());
@@ -29,7 +29,7 @@ impl Paths {
             let end = u32::try_from(points.len()).expect("waypoints fit u32");
             ranges.push(start..end);
         }
-        Paths {
+        Self {
             names: Arc::new(names),
             points,
             ranges,
@@ -81,14 +81,14 @@ pub(crate) mod internals {
 
     impl Paths {
         /// Paths of `(name, path)`, each path of at least one waypoint, each name its own.
-        pub fn new<'a>(paths: impl IntoIterator<Item = (&'a str, &'a [Vec3])>) -> Paths {
+        pub fn new<'a>(paths: impl IntoIterator<Item = (&'a str, &'a [Vec3])>) -> Self {
             let mut names = Names::default();
             let mut points = Vec::new();
             for (name, path) in paths {
                 names.add(name);
                 points.push(path.to_vec());
             }
-            Paths::of(names, &points)
+            Self::of(names, &points)
         }
     }
 }

@@ -47,7 +47,7 @@ fn on_mode_input(ctx, player, name, value) {
             errors[..],
             [
                 CallError::Script(ScriptError::CallLimit),
-                CallError::Script(ScriptError::TickBudget)
+                CallError::PoolSpent
             ]
         ),
         "{errors:?}"
@@ -136,16 +136,19 @@ fn on_level_up(ctx, unit, track, level) {
     for grunt in grunts {
         game.entity_mut(grunt).insert(OnDeath::Despawn);
         let target = *game.get::<StableId>(grunt).unwrap();
-        game.resource_mut::<PassQueue>().push_damage(Damage {
-            source: tower,
-            target,
-            amount: Num::int(10),
-            kind: DamageKind::new(0),
-            cause: DamageCause::Effect,
-            action: None,
-            depth: 0,
-            hit: None,
-        });
+        DamagePass::queue(
+            &mut game,
+            PassEntry::Damage(Damage {
+                source: tower,
+                target,
+                amount: Num::int(10),
+                kind: DamageKind::new(0),
+                cause: DamageCause::Effect,
+                action: None,
+                depth: 0,
+                hit: None,
+            }),
+        );
     }
     let waiting = |game: &Match| {
         let deaths = game.resource::<UnansweredDeaths>().iter().count();

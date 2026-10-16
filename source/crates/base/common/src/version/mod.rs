@@ -21,13 +21,13 @@ pub struct Version {
 
 impl Version {
     /// This build's engine release: the workspace's version.
-    pub const ENGINE: Version = match Version::parse(env!("CARGO_PKG_VERSION")) {
+    pub const ENGINE: Self = match Self::parse(env!("CARGO_PKG_VERSION")) {
         Some(version) => version,
         None => panic!("the workspace's version is a version"),
     };
 
-    pub const fn new(major: u32, minor: u32, patch: u32) -> Version {
-        Version {
+    pub const fn new(major: u32, minor: u32, patch: u32) -> Self {
+        Self {
             major,
             minor,
             patch,
@@ -36,7 +36,7 @@ impl Version {
 
     /// `text` as a version; `None` unless it is three decimals joined by dots, each with no
     /// leading zero but a lone one.
-    pub const fn parse(text: &str) -> Option<Version> {
+    pub const fn parse(text: &str) -> Option<Self> {
         let bytes = text.as_bytes();
         let mut parts = [0_u32; 3];
         let mut part = 0;
@@ -68,15 +68,15 @@ impl Version {
         if part != 2 || digits == 0 {
             return None;
         }
-        Some(Version::new(parts[0], parts[1], parts[2]))
+        Some(Self::new(parts[0], parts[1], parts[2]))
     }
 }
 
 impl FromStr for Version {
     type Err = NotVersion;
 
-    fn from_str(text: &str) -> Result<Version, NotVersion> {
-        Version::parse(text).ok_or(NotVersion)
+    fn from_str(text: &str) -> Result<Self, NotVersion> {
+        Self::parse(text).ok_or(NotVersion)
     }
 }
 
@@ -89,10 +89,9 @@ impl Serialize for Version {
 
 /// A log, a message or a manifest is untrusted, so a text `parse` refuses fails to decode.
 impl<'de> Deserialize<'de> for Version {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Version, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        Version::parse(&text)
-            .ok_or_else(|| D::Error::custom(format!("{text:?} is not major.minor.patch")))
+        Self::parse(&text).ok_or_else(|| D::Error::custom(NotVersion))
     }
 }
 

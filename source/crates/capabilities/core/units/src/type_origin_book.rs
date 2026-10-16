@@ -1,7 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{NameId, PackageIndex, UnitType};
 
 /// Where each unit type of the match comes from, by type: the package that declares it, by its
@@ -21,15 +20,15 @@ pub struct TypeOrigin {
 }
 
 impl FromIterator<TypeOrigin> for TypeOriginBook {
-    fn from_iter<I: IntoIterator<Item = TypeOrigin>>(origins: I) -> TypeOriginBook {
-        TypeOriginBook {
+    fn from_iter<I: IntoIterator<Item = TypeOrigin>>(origins: I) -> Self {
+        Self {
             origins: origins.into_iter().collect(),
         }
     }
 }
 
 impl<const N: usize> From<[TypeOrigin; N]> for TypeOriginBook {
-    fn from(origins: [TypeOrigin; N]) -> TypeOriginBook {
+    fn from(origins: [TypeOrigin; N]) -> Self {
         origins.into_iter().collect()
     }
 }
@@ -54,7 +53,6 @@ impl TypeOriginBook {
 }
 
 impl Book for TypeOriginBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

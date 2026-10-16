@@ -7,8 +7,8 @@ use campfire_actions::{
     ActionDataField, ActionField, ActionKind, DoesData, EffectData, EffectTo, HealFields,
     LaunchFields, ListHook, PlannedEffect, PurgeFields,
 };
-use campfire_capabilities::{Release, UnitStartError};
-use campfire_codec::Toml;
+use campfire_capabilities::{CapabilityError, Release, UnitStartError};
+use campfire_codec::internals::{TomlDocument, TomlNode};
 use campfire_common::MapName;
 use campfire_geometry::Metric;
 use campfire_mode::ModeError;
@@ -261,7 +261,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
 /// The 3v3 as its packages hold it.
 fn three_v_three() -> ModePackages {
     PackageDir::new(moba().join(MODE_DIR))
-        .mode_packages(&two_lanes())
+        .mode_packages(Some(&two_lanes()))
         .unwrap()
 }
 
@@ -445,23 +445,57 @@ static DATA_FLAWS: &[Flaw] = &[
         "hero-husk",
         |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "1.1"),
     ),
+    // A newer package's manifest may hold a field this release does not know: its version is
+    // read first, so it fails as `OtherApi`, the mode's and a dependency's alike.
+    Flaw {
+        file: MANIFEST,
+        edit: Edit::Set("api", r#""1.1""#),
+        also: &[(MANIFEST, Edit::Set("future", "true"))],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "1.1"),
+    },
+    Flaw {
+        file: "heroes/husk/manifest.toml",
+        edit: Edit::Set("api", r#""2.0""#),
+        also: &[("heroes/husk/manifest.toml", Edit::Set("future", "true"))],
+        package: "hero-husk",
+        refused: |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "2.0"),
+    },
     flaw(
         MANIFEST,
         Edit::Replace(r#"["combat","#, r#"["mode", "combat","#),
         MODE_DIR,
-        |problem| manifest_fails(problem, "declares mode, which every match has"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Capabilities(CapabilityError::DeclaresMode)
+            )
+        },
     ),
     flaw(
         MANIFEST,
         Edit::Replace(r#"["combat","#, r#"["combat", "combat","#),
         MODE_DIR,
-        |problem| manifest_fails(problem, "declares Combat twice"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Capabilities(CapabilityError::Repeated(Capability::Combat))
+            )
+        },
     ),
     flaw(
         MANIFEST,
         Edit::Replace(r#", "navigation""#, ""),
         MODE_DIR,
-        |problem| manifest_fails(problem, "declares Orders without Navigation"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Capabilities(CapabilityError::Needs {
+                    capability: Capability::Orders,
+                    needs: Capability::Navigation,
+                })
+            )
+        },
     ),
     // A section of the mode's data or of its map is its capability's, declared or refused: the
     // map's vision grid without `vision`, its pathing grid without `navigation`, `[supply]`
@@ -1152,6 +1186,15 @@ static SCRIPT_FLAWS: &[Flaw] = &[
     ),
     flaw(
         CREEP_AI,
+        Edit::Replace(
+            "if target == () {\n        ctx.order_follow_path",
+            "if supply_cap(ctx, 0) > 0 {\n        ctx.order_follow_path",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Script(path) } if path.as_str() == "scripts/creep_ai.rhai"),
+    ),
+    flaw(
+        CREEP_AI,
         Edit::Replace("fn on_think(ctx, unit)", "fn on_think(ctx, unit, more)"),
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_think"),
@@ -1500,6 +1543,20 @@ static ACTION_FLAWS: &[Flaw] = &[
         Edit::Replace("ctx.find(", "ctx.finds("),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "finds"),
+    ),
+    // A call with `ctx` first is a call of `ctx`, as Rhai calls it, and a string literal index a
+    // name of data, as a property is.
+    flaw(
+        LASH_OUT,
+        Edit::Replace("ctx.find(", "finds(ctx, "),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "finds"),
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace("ctx.p.radius", r#"ctx.p["radiuss"]"#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, name, .. } if name == "radiuss"),
     ),
     // An AI's order in the mode's script.
     flaw(
@@ -2835,7 +2892,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Gather(GatherProblem::Bounce(action)) if action == "mine"),
+        refused: |problem| read_fails(problem, "data/mode.toml", "a distance is a number from 0"),
     },
     Flaw {
         file: MODE_DATA,
@@ -3122,7 +3179,7 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
 
     // A hero is no mode.
     let husk = PackageDir::new(moba().join("heroes/husk"))
-        .mode_packages(&two_lanes())
+        .mode_packages(Some(&two_lanes()))
         .unwrap_err();
     assert!(matches!(*husk.problem, LoadProblem::WrongKind), "{husk}");
 }
@@ -3131,9 +3188,9 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
 /// `pos` and a `points` list to y = 0, and a region from y = 0 to 10, as a spatial region is a
 /// box with height; not the bounds, which stay on the ground plane.
 fn raised(map: &str) -> String {
-    fn raise(value: &mut toml::Value, height: Option<i64>) {
+    fn raise(value: &mut TomlNode, height: Option<i64>) {
         match value {
-            toml::Value::Table(table) => {
+            TomlNode::Table(table) => {
                 let region = table.contains_key("min") && !table.contains_key("cell");
                 for (key, inner) in table.iter_mut() {
                     let height = match key.as_str() {
@@ -3145,28 +3202,28 @@ fn raised(map: &str) -> String {
                     raise(inner, height);
                 }
             }
-            toml::Value::Array(items) => match height {
-                Some(y) if !items[0].is_array() => items.insert(1, toml::Value::Integer(y)),
+            TomlNode::List(items) => match height {
+                Some(y) if !matches!(items[0], TomlNode::List(_)) => {
+                    items.insert(1, TomlNode::Integer(y));
+                }
                 _ => {
                     for item in items {
                         raise(item, height);
                     }
                 }
             },
-            _ => {}
+            TomlNode::Integer(_) | TomlNode::Float(_) | TomlNode::Text(_) | TomlNode::Flag(_) => {}
         }
     }
-    let mut table = Toml::parse::<toml::Table>(map).unwrap();
-    for (key, value) in &mut table {
+    let mut document = TomlDocument::parse(map);
+    let table = document.table_mut();
+    for (key, value) in table.iter_mut() {
         if key != "bounds" {
             raise(value, None);
         }
     }
-    table.insert(
-        "metric".to_owned(),
-        toml::Value::String("spatial".to_owned()),
-    );
-    Toml::write(&table)
+    table.insert("metric".to_owned(), TomlNode::Text("spatial".to_owned()));
+    document.text()
 }
 
 #[test]
@@ -3212,22 +3269,22 @@ fn a_mode_loads_the_map_its_session_names() {
     // and a third is no map of the mode.
     let map = PackageTree::of(TestMode::Moba3v3).text(MAP).to_owned();
     let raised = raised(&map);
-    let second = MapName::new("second").unwrap();
+    let second = MapName::parse("second").unwrap();
     let two = edited([("modes/3v3/map/second/map.toml", Edit::Create(&raised))]);
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
     assert_eq!(planar.map().metric, Metric::Planar);
-    let spatial = two.mode_packages(&second).unwrap();
+    let spatial = two.mode_packages(Some(&second)).unwrap();
     assert_eq!(spatial.map_name(), &second);
     assert_eq!(spatial.map().metric, Metric::Spatial);
-    let third = MapName::new("third").unwrap();
-    let error = two.mode_packages(&third).unwrap_err();
+    let third = MapName::parse("third").unwrap();
+    let error = two.mode_packages(Some(&third)).unwrap_err();
     assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));
 
     // With no map named, the only map; of two, neither, and the error names both in order.
-    assert_eq!(edited([]).choose_map(None).unwrap(), two_lanes());
-    assert_eq!(two.choose_map(Some(third.clone())).unwrap(), third);
-    let error = two.choose_map(None).unwrap_err();
+    let only = edited([]).mode_packages(None).unwrap();
+    assert_eq!(only.map_name(), &two_lanes());
+    let error = two.mode_packages(None).unwrap_err();
     assert!(
         matches!(&*error.problem, LoadProblem::MapNeeded(maps) if *maps == [second, two_lanes()]),
         "{error:?}"

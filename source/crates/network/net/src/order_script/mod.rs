@@ -1,22 +1,19 @@
 use std::path::Path;
 
 use campfire_actions::ActionTarget;
-use campfire_capabilities::{Action, Order};
+use campfire_capabilities::Action;
 use campfire_codec::Toml;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_mode::{InputValue, ModeInput};
 use campfire_orders::OrdersAction;
-use campfire_players::OrderUnits;
 use campfire_production::BuildTarget;
 use campfire_progression::ProgressionAction;
 use campfire_sim::StableId;
 use campfire_store::InputFile;
-use campfire_units::PlayerUnits;
-use campfire_values::{DeclaredName, Names, TypeScope, UnitType};
+use campfire_values::DeclaredName;
 use serde::Deserialize;
 
-use crate::events::bot_units_missing::UnitsMissing;
 use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 
 pub(crate) mod error;
@@ -90,36 +87,6 @@ impl ScriptedInput {
     }
 }
 
-impl ScriptedOrder {
-    /// The order it gives for the player of `slot`: its action for its units as `players` holds
-    /// them now, a type's by its name in `types`, gathered in `scratch`; why it has none.
-    pub(crate) fn order(
-        &self,
-        slot: PlayerSlot,
-        players: &PlayerUnits<'_, '_>,
-        types: &Names<UnitType>,
-        scratch: &mut Vec<StableId>,
-    ) -> Result<Order, UnitsMissing> {
-        let units = match &self.units {
-            ScriptedUnits::Avatar => {
-                let avatar = players.avatar(slot).ok_or(UnitsMissing::NoAvatar)?;
-                OrderUnits::one(avatar.id)
-            }
-            ScriptedUnits::Typed(name) => {
-                let unit_type = types
-                    .named((TypeScope::Mode, name.as_str()))
-                    .ok_or(UnitsMissing::UnknownType)?;
-                players.typed(slot, unit_type, scratch);
-                OrderUnits::new(scratch).ok_or(UnitsMissing::NoUnit)?
-            }
-        };
-        Ok(Order {
-            units,
-            action: self.action,
-        })
-    }
-}
-
 impl OrderScript {
     /// The most bytes an order script's file may hold: a TOML line or two for each order, a few
     /// kilobytes for a match's script, so a mebibyte holds thousands of orders and refuses a file
@@ -128,10 +95,10 @@ impl OrderScript {
 
     /// The script in the file at `path`; an error for a file that does not read, and for text
     /// `parse` refuses.
-    pub fn read(path: &Path) -> Result<OrderScript, OrderScriptReadError> {
-        let text = InputFile::read_text(path, OrderScript::MAX_FILE_LEN)
-            .map_err(OrderScriptReadError::Read)?;
-        OrderScript::parse(&text).map_err(|error| OrderScriptReadError::Script {
+    pub fn read(path: &Path) -> Result<Self, OrderScriptReadError> {
+        let text =
+            InputFile::read_text(path, Self::MAX_FILE_LEN).map_err(OrderScriptReadError::Read)?;
+        Self::parse(&text).map_err(|error| OrderScriptReadError::Script {
             path: path.to_owned(),
             error,
         })
@@ -141,7 +108,7 @@ impl OrderScript {
     /// no action or two, or a target without a cast, when a coordinate is past what a sim number
     /// holds, when the ticks of its orders or of its inputs do not grow, or when the script ends
     /// before an order or an input.
-    pub fn parse(text: &str) -> Result<OrderScript, OrderScriptError> {
+    pub fn parse(text: &str) -> Result<Self, OrderScriptError> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct File {
@@ -257,7 +224,7 @@ impl OrderScript {
         {
             return Err(OrderScriptError::EndsEarly { end: end.get() });
         }
-        Ok(OrderScript {
+        Ok(Self {
             orders,
             inputs,
             end,

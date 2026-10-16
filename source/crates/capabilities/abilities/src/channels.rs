@@ -1,13 +1,17 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryState};
-use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionCall, ActionSlots, ChannelCall, ChannelStep, UseGroup};
+use campfire_actions::{
+    ActionBook, ActionCall, ActionProgress, ActionSlot, ActionSlots, Caster, ChannelCall,
+    ChannelStep, UseGroup,
+};
 use campfire_common::{Tick, Ticks};
-use campfire_script::{CallStart, Hook, Pool, ScriptBatch, ScriptsWorld};
+use campfire_script::{CallStart, Hook, HookCall, Pool, ScriptBatch, ScriptsWorld};
 use campfire_sim::{Keyed, Ordered, SimTick, StableId};
+use campfire_stats::{Held, HeldModifiers};
 use campfire_units::{ForcedMove, Owner};
-use campfire_values::UnitTags;
+use campfire_values::{Motion, UnitTags};
 
 use crate::Abilities;
 
@@ -21,16 +25,17 @@ impl Channels {
     /// cut one's `on_interrupt`, then a due tick's `on_channel_tick`, each a call of the channel's
     /// action at its rank from the unit, in its player's pool; and one at its end ends. A unit
     /// whose tags keep it from casting has its channel cut. A channel's calls share one snapshot of
-    /// the units, read as the batch begins.
+    /// the units, read as the batch begins. A channel that still runs holds its action's `hold`
+    /// on its unit this tick, from the unit at its rank.
     pub(super) fn run_channels(
         world: &mut World,
-        units: &mut QueryState<(Entity, &StableId, &ActionSlots)>,
+        units: &mut QueryState<(Entity, &StableId, &ActionProgress)>,
         (mut order, mut due): (Local<'_, Ordered>, Local<'_, Vec<Keyed>>),
     ) {
         let now = world.resource::<SimTick>().start();
         let running = units
             .iter(world)
-            .filter(|(.., slots)| slots.channel_due())
+            .filter(|(.., progress)| progress.channel_due())
             .map(|(entity, &id, _)| Keyed { id, entity });
         due.clear();
         due.extend_from_slice(order.sort(running));
@@ -50,6 +55,29 @@ impl Channels {
                 }
             }
         });
+        for &Keyed { id, entity } in &*due {
+            let progress = world.get::<ActionProgress>(entity);
+            let held = progress.and_then(|progress| {
+                Self::channel_hold(world.resource::<ActionBook>(), progress, id)
+            });
+            if let Some(held) = held {
+                world.resource_mut::<HeldModifiers>().0.push(held);
+            }
+        }
+    }
+
+    /// The `hold` the channel `progress` runs holds on its unit `id`, from the unit at its rank;
+    /// none with no channel running or no hold.
+    fn channel_hold(book: &ActionBook, progress: &ActionProgress, id: StableId) -> Option<Held> {
+        let channel = progress.in_progress()?.channel_call()?;
+        let hold = book.get(channel.action)?.hold?;
+        Some(Held {
+            target: id,
+            modifier: hold,
+            source: Some(id),
+            action: Some(channel.action),
+            rank: channel.rank,
+        })
     }
 
     /// Runs the channel of `entity` at `now`, as `run_channels` does, and gives back the hooks due.
@@ -58,14 +86,21 @@ impl Channels {
         let slots = unit
             .get::<ActionSlots>()
             .expect("a unit whose channel runs has slots");
+        let progress = unit
+            .get::<ActionProgress>()
+            .expect("a unit whose channel runs has progress");
         let forced = unit.contains::<ForcedMove>();
         let book = world.resource::<ActionBook>();
-        let blocked = Self::blocked(slots, unit.get(), forced, unit.get(), book);
-        let tick = Self::channel_tick(book, slots);
-        world
-            .get_mut::<ActionSlots>(entity)
-            .expect("a unit whose channel runs has slots")
-            .step_channel(now, blocked, tick)
+        let channel = Self::channel(slots, progress);
+        let blocked = Caster::of(unit.get(), Motion::of(forced), unit.get()).blocked(channel, book);
+        let tick = Self::channel_tick(book, channel);
+        let mut progress = world
+            .get_mut::<ActionProgress>(entity)
+            .expect("a unit whose channel runs has progress");
+        if blocked {
+            progress.cut_channel();
+        }
+        progress.step_channel(now, tick)
     }
 
     /// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, of its action at its
@@ -100,20 +135,25 @@ impl Channels {
         let pool = Pool::of(owner);
         let target = Abilities::target(ctx.view(), aim.target);
         batch.hook_call(start, hook, Some(caster), |batch| {
-            batch.call_hook(pool, script, hook, (ctx.clone(), handle, target))
+            let args = (ctx.clone(), handle, target);
+            batch.call(pool, HookCall { script, hook, args }).map(drop)
         });
     }
 
     /// Runs each channel of a unit a client predicts as the server does, with no call: a cut one's
-    /// record clears, and one at its end ends, as the hooks' effects come from the server.
+    /// record clears, and one at its end ends, as the hooks' effects come from the server; one
+    /// that still runs holds its `hold`, as on the server.
     pub(super) fn predict_channels(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
+        mut held: ResMut<'_, HeldModifiers>,
         mut units: Query<
             '_,
             '_,
             (
-                &mut ActionSlots,
+                &StableId,
+                &ActionSlots,
+                &mut ActionProgress,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
                 Option<&UseGroup>,
@@ -121,35 +161,29 @@ impl Channels {
         >,
     ) {
         let now = tick.start();
-        for (mut slots, tags, forced, used) in &mut units {
-            if !slots.channel_due() {
+        for (&id, slots, mut progress, tags, forced, used) in &mut units {
+            if !progress.channel_due() {
                 continue;
             }
-            let blocked = Self::blocked(&slots, tags, forced, used, &book);
-            let tick = Self::channel_tick(&book, &slots);
-            slots.step_channel(now, blocked, tick);
+            let channel = Self::channel(slots, &progress);
+            let blocked = Caster::of(tags, Motion::of(forced), used).blocked(channel, &book);
+            let tick = Self::channel_tick(&book, channel);
+            if blocked {
+                progress.cut_channel();
+            }
+            progress.step_channel(now, tick);
+            held.0.extend(Self::channel_hold(&book, &progress, id));
         }
     }
 
-    /// Whether the tags of a unit that holds `slots` keep its channel from running, as its slot
-    /// and its action in `book` say, under a forced move when `forced`, and of the use group
-    /// `used`.
-    fn blocked(
-        slots: &ActionSlots,
-        tags: Option<&UnitTags>,
-        forced: bool,
-        used: Option<&UseGroup>,
-        book: &ActionBook,
-    ) -> bool {
-        let channel = slots.channeling().and_then(|slot| slots.slot(slot));
-        Abilities::blocked(tags, forced, used, channel, book)
+    /// The slot of `slots` whose channel `progress` runs, if one runs.
+    fn channel(slots: &ActionSlots, progress: &ActionProgress) -> Option<ActionSlot> {
+        slots.slot(progress.channeling()?)
     }
 
-    /// The time between the ticks of the channel `slots` runs, if one runs.
-    fn channel_tick(book: &ActionBook, slots: &ActionSlots) -> Ticks {
-        slots
-            .channeling()
-            .and_then(|slot| slots.slot(slot))
+    /// The time between the ticks of the channel of `channel`, if one runs.
+    fn channel_tick(book: &ActionBook, channel: Option<ActionSlot>) -> Ticks {
+        channel
             .and_then(|slot| slot.values_in(book)?.channel)
             .map_or(Ticks::ZERO, |rule| rule.tick)
     }

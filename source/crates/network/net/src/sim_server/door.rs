@@ -2,29 +2,31 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryState;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
+use campfire_log::ErrorReport;
 use campfire_mode::ModeWorld;
-use campfire_protocol::{Controller, Delegation, LeaveReason, ServerInput};
+use campfire_protocol::{Controller, Delegation, LeaveReason, ServerInput, ServerInputError};
 use campfire_quic::CloseLink;
 use campfire_runner::{ServerInputRefused, Session, SlotRuleError};
 use lightyear::prelude::{Connected, MessageReceiver, MessageSender};
 use tracing::info;
 
 use crate::close_code::CloseCode;
-use crate::events::join_refused::error::JoinError;
-use crate::join::Join;
-use crate::leave_match::LeaveMatch;
+use crate::error::JoinError;
 use crate::match_clock::MatchClock;
-use crate::match_start::{ChainHead, MatchStart};
 use crate::net_protocol::MatchChannel;
+use crate::net_protocol::join::Join;
+use crate::net_protocol::leave_match::LeaveMatch;
+use crate::net_protocol::match_start::{ChainHead, MatchStart, SeatChain};
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{
     CheckedJoins, Dismissing, JoinLink, Joined, Offered, Offering, ToAnswer,
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
+use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::spectators::spectators_world::SpectatorsWorldCrate;
 
 /// The session's door after the start: it offers the terms to every new link, and seats each
@@ -39,12 +41,11 @@ pub(crate) struct Door {
     offering: Offering,
 }
 
-/// What the door seats a player in: the slot, and their chain as the log holds it, or none for a
-/// chain that starts from their delegation.
+/// What the door seats a player in: the slot, and the chain they sign.
 #[derive(Debug, Clone, Copy)]
 struct SeatIn {
     slot: PlayerSlot,
-    chain: Option<ChainHead>,
+    chain: SeatChain,
 }
 
 impl AsRef<Offering> for Door {
@@ -54,8 +55,8 @@ impl AsRef<Offering> for Door {
 }
 
 impl Door {
-    pub(crate) const fn new(offering: Offering) -> Door {
-        Door { offering }
+    pub(crate) const fn new(offering: Offering) -> Self {
+        Self { offering }
     }
 
     /// Seats the player of each offered link that answered, or refuses them; the joins of one
@@ -68,22 +69,22 @@ impl Door {
     ) {
         joins.extend(links.iter_mut(world).filter_map(Offering::received));
         world
-            .resource::<Door>()
+            .resource_mut::<Self>()
             .offering
             .check_all(joins.drain(..), &mut checked);
         for (link, error) in checked.refused.drain(..) {
-            Door::refuse(world, link, error);
+            Self::refuse(world, link, error);
         }
         let visibility = world.resource::<MatchVisibility>().0;
         for link in checked.watching.drain(..) {
             if let Err(error) = world.admit_spectator(link, &visibility) {
-                Door::refuse(world, link, error);
+                Self::refuse(world, link, error);
             }
         }
         for (link, delegation) in checked.answered.drain(..) {
-            match Door::seat_player(world, link, delegation) {
-                Ok(seat) => Door::seat(world, link, seat),
-                Err(error) => Door::refuse(world, link, error),
+            match Self::seat_player(world, link, delegation) {
+                Ok(seat) => Self::seat(world, link, seat),
+                Err(error) => Self::refuse(world, link, error),
             }
         }
     }
@@ -113,7 +114,7 @@ impl Door {
         if let Some((slot, session_key, chain)) = own {
             let renewed = session_key != delegation.terms().session_key;
             if renewed {
-                Door::serve(world, ServerInput::Renew { slot, delegation })?;
+                Self::serve(world, ServerInput::Renew { slot, delegation })?;
             }
             let seat = world.resource::<Seats>().get(slot);
             match seat.link {
@@ -127,7 +128,7 @@ impl Door {
                     world.flush();
                 }
                 _ if seat.gone_since.is_some() => {
-                    Door::serve(world, ServerInput::Connected { slot })?;
+                    Self::serve(world, ServerInput::Connected { slot })?;
                 }
                 _ => {}
             }
@@ -138,7 +139,7 @@ impl Door {
             };
             return Ok(SeatIn {
                 slot,
-                chain: Some(head),
+                chain: SeatChain::Held(head),
             });
         }
         let log = world.resource::<Session>().log();
@@ -147,8 +148,8 @@ impl Door {
                 && !matches!(log.controller(slot), Some(Controller::Player { .. }))
         });
         if let Some(slot) = left {
-            Door::serve(world, ServerInput::Join { slot, delegation })?;
-            return Ok(SeatIn { slot, chain: None });
+            Self::serve(world, ServerInput::Join { slot, delegation })?;
+            return Ok(Self::joined(world, slot));
         }
         for wanted in [Controller::Open, Controller::Bot] {
             let log = world.resource::<Session>().log();
@@ -160,8 +161,8 @@ impl Door {
                     slot,
                     delegation: delegation.clone(),
                 };
-                match Door::serve(world, join) {
-                    Ok(()) => return Ok(SeatIn { slot, chain: None }),
+                match Self::serve(world, join) {
+                    Ok(()) => return Ok(Self::joined(world, slot)),
                     Err(JoinError::Refused(ServerInputRefused::Rule(
                         SlotRuleError::LateJoin | SlotRuleError::BotTakeover,
                     ))) => {}
@@ -170,6 +171,22 @@ impl Door {
             }
         }
         Err(JoinError::NoSlot)
+    }
+
+    /// Seats `link` in `slot`, which the log just gave its player: in its new chain, as `seat`
+    /// does, as the match starts.
+    pub(super) fn seat_new(world: &mut World, link: Entity, slot: PlayerSlot) {
+        let seat = Self::joined(world, slot);
+        Self::seat(world, link, seat);
+    }
+
+    /// Where the player whose join of `slot` the log just took sits: in its new chain.
+    fn joined(world: &World, slot: PlayerSlot) -> SeatIn {
+        let log = world.resource::<Session>().log();
+        SeatIn {
+            slot,
+            chain: SeatChain::new_of(log, slot),
+        }
     }
 
     /// Seats `link` as `seat` says: it carries that slot's inputs, learns the match from the
@@ -212,10 +229,10 @@ impl Door {
 
     /// Logs `input`, signed by the server.
     fn serve(world: &mut World, input: ServerInput<'_>) -> Result<(), JoinError> {
-        world
-            .resource_mut::<Session>()
-            .serve(input)
-            .map_err(JoinError::Refused)
+        world.resource_scope(|world, mut session: Mut<'_, Session>| {
+            let signer = &world.resource::<ServerSigner>().0;
+            session.serve(input, signer).map_err(JoinError::Refused)
+        })
     }
 
     /// Watches the seated links: a link that failed logs its slot `Disconnected`, and the grace
@@ -224,13 +241,13 @@ impl Door {
     /// and their link ends.
     pub(crate) fn watch(world: &mut World) {
         let now = world.resource::<Time<Real>>().elapsed();
-        let grace = world.resource::<Door>().offering.times.grace;
+        let grace = world.resource::<Self>().offering.times.grace;
         let slots = world.resource::<Session>().log().slot_count();
         for slot in (0..slots).map(PlayerSlot::new) {
             let seat = world.resource::<Seats>().get(slot);
             if let Some(link) = seat.link {
-                if Door::asked_to_leave(world, link) {
-                    Door::leave(world, slot, LeaveReason::Asked);
+                if Self::asked_to_leave(world, link) {
+                    Self::leave(world, slot, LeaveReason::Asked);
                     world.resource_mut::<Seats>().set(slot, Seat::default());
                     if let Ok(mut gone) = world.get_entity_mut(link) {
                         gone.remove::<PlayerLink>();
@@ -251,8 +268,7 @@ impl Door {
                     slot = slot.get(),
                     "a player's link failed; their grace period runs"
                 );
-                Door::serve(world, ServerInput::Disconnected { slot })
-                    .expect("a seated slot has its player");
+                Self::serve_unless_full(world, ServerInput::Disconnected { slot });
                 if let Ok(mut gone) = world.get_entity_mut(link) {
                     gone.remove::<PlayerLink>();
                 }
@@ -270,7 +286,7 @@ impl Door {
                     Some(Controller::Player { .. })
                 );
                 if player {
-                    Door::leave(world, slot, LeaveReason::Grace);
+                    Self::leave(world, slot, LeaveReason::Grace);
                 }
                 world.resource_mut::<Seats>().set(slot, Seat::default());
             }
@@ -288,15 +304,25 @@ impl Door {
     fn leave(world: &mut World, slot: PlayerSlot, reason: LeaveReason) {
         let becomes = world.resource::<Session>().after_leave();
         info!(slot = slot.get(), ?reason, ?becomes, "a player left");
-        Door::serve(
+        Self::serve_unless_full(
             world,
             ServerInput::Leave {
                 slot,
                 reason,
                 becomes,
             },
-        )
-        .expect("a player's slot takes their leave");
+        );
+    }
+
+    /// Logs `input`, a change of a link or a leave, which its slot's player always allows,
+    /// signed by the server; none when the log is full, as the session then ends at the next
+    /// boundary, before the tick it would apply in.
+    pub(crate) fn serve_unless_full(world: &mut World, input: ServerInput<'_>) {
+        match Self::serve(world, input) {
+            Ok(())
+            | Err(JoinError::Refused(ServerInputRefused::Log(ServerInputError::LogFull))) => {}
+            Err(error) => panic!("the server's own input holds: {}", ErrorReport::of(&error)),
+        }
     }
 
     /// Whether every slot a player controlled has left, and no player holds a link: the session

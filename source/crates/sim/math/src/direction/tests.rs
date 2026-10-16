@@ -81,7 +81,7 @@ fn divided<const N: usize>(vector: [i128; N]) -> Option<Direction<N>> {
         let axis = Rounding::NearestEven.divide(axis << (FRACTION + fine), root);
         i64::try_from(axis).unwrap()
     });
-    let length = Rounding::NearestEven.shift_right(root << 1, fine + 1);
+    let length = square.nearest_root().cast_signed();
     Some(Direction { unit, length })
 }
 
@@ -119,6 +119,12 @@ fn a_direction_is_the_exact_division() {
     for vector in vectors {
         assert_eq!(Direction::of(vector), divided(vector), "{vector:?}");
     }
+    // (2⁴⁰ + 1, 2²⁰, 1) squares to 2⁸⁰ + 3 · 2⁴⁰ + 2, a quarter below (2⁴⁰ + 1.5)², so its
+    // length is 2⁴⁰ + 1, where the root at 2^fine lands on the half, which ties to even would
+    // take up to 2⁴⁰ + 2.
+    let near_half = [(1 << 40) + 1, 1 << 20, 1];
+    assert_eq!(Direction::of(near_half).unwrap().length(), (1 << 40) + 1);
+    assert_eq!(Direction::of(near_half), divided(near_half));
 }
 
 #[test]

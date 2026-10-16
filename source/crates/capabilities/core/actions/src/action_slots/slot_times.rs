@@ -1,6 +1,5 @@
 use std::iter;
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -9,7 +8,7 @@ use campfire_math::{Num, Rounding};
 use campfire_script::LivingUnit;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_stats::PoolMetersMut;
+use campfire_stats::{PoolCost, PoolMetersMut};
 use campfire_units::UnitEntity;
 use campfire_values::{ActionId, Relation, Team};
 use serde::de::Error;
@@ -65,13 +64,6 @@ pub struct ActionCheck<'b, 'a, R, L> {
     pub living: L,
 }
 
-/// A unit's slots with their times, each ready at once, as a unit gains slots.
-#[derive(Bundle, Debug)]
-pub struct TimedSlots {
-    times: SlotTimes,
-    slots: ActionSlots,
-}
-
 impl SlotCharges {
     /// One charge more, up to `max`: a slot that holds its most, even 255, holds it still, and
     /// one that holds more, as a rank's rule may give fewer, holds the most.
@@ -82,7 +74,7 @@ impl SlotCharges {
 
 impl SlotTime {
     /// Ready at once, with no charges and no toggle on.
-    const READY: SlotTime = SlotTime {
+    const READY: Self = Self {
         ready_at: Tick::ZERO,
         charges: None,
         toggle: None,
@@ -108,15 +100,6 @@ impl SlotTime {
             charges.next = charges.next.after(rule.recharge);
         }
         Some(charges)
-    }
-}
-
-impl TimedSlots {
-    pub fn new(slots: ActionSlots) -> TimedSlots {
-        TimedSlots {
-            times: SlotTimes::ready(&slots),
-            slots,
-        }
     }
 }
 
@@ -177,8 +160,8 @@ impl SlotTimes {
     }
 
     /// The times of `slots`, each ready at once, with no charges and no toggle on.
-    pub fn ready(slots: &ActionSlots) -> SlotTimes {
-        SlotTimes(vec![SlotTime::READY; slots.len()])
+    pub fn ready(slots: &ActionSlots) -> Self {
+        Self(vec![SlotTime::READY; slots.len()])
     }
 
     pub fn slot(&self, slot: u8) -> Option<SlotTime> {
@@ -293,7 +276,7 @@ impl SlotTimes {
     }
 
     /// Sets the charges of `slot`.
-    pub fn set_charges(&mut self, slot: u8, charges: Option<SlotCharges>) {
+    pub(crate) fn set_charges(&mut self, slot: u8, charges: Option<SlotCharges>) {
         self.0[usize::from(slot)].charges = charges;
     }
 
@@ -308,13 +291,14 @@ impl SlotTimes {
     }
 
     /// Pays the cost of each toggle of `slots` that is on and pays as each attack goes off, from
-    /// `pools`, as `book` gives it at the slot's rank; one that `pools` cannot pay turns off
-    /// instead.
+    /// `pools`, as `book` gives it at the slot's rank, in slot order; one that `pools` cannot pay
+    /// with `keep` left for the attack's own cost turns off instead, so the attack still strikes.
     pub fn pay_attack_toggles(
         &mut self,
         slots: &ActionSlots,
         book: &ActionBook,
         pools: &mut PoolMetersMut<'_>,
+        keep: &PoolCost,
     ) {
         for (held, time) in slots.iter().zip(&mut self.0) {
             if time.toggle.is_none() {
@@ -327,7 +311,8 @@ impl SlotTimes {
             if toggle.per != TogglePer::Attack {
                 continue;
             }
-            if pools.read().affords(&toggle.cost) {
+            let both = toggle.cost.checked_add(keep);
+            if both.is_some_and(|both| pools.read().affords(&both)) {
                 pools.pay(&toggle.cost);
             } else {
                 time.toggle = None;
@@ -380,12 +365,12 @@ impl SlotTimes {
 
 /// A snapshot is untrusted, so times past the most slots a unit holds fail to decode.
 impl<'de> Deserialize<'de> for SlotTimes {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<SlotTimes, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let times = Vec::<SlotTime>::deserialize(deserializer)?;
         if times.len() > ActionSlots::LIMIT {
             return Err(D::Error::custom("a unit's slots are at most 256"));
         }
-        Ok(SlotTimes(times))
+        Ok(Self(times))
     }
 }
 
@@ -420,6 +405,18 @@ impl SimComponent for SlotTimes {
 impl Replication for SlotTimes {
     const KIND: DataKind = DataKind::Cooldowns;
     type Sending = SentPredicted;
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::action_slots::slot_times::{SlotCharges, SlotTimes};
+
+    impl SlotTimes {
+        /// Sets the charges of `slot`, whatever its action's rule, as a restore may read them.
+        pub fn force_charges(&mut self, slot: u8, charges: Option<SlotCharges>) {
+            self.set_charges(slot, charges);
+        }
+    }
 }
 
 #[cfg(test)]

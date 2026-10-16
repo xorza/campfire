@@ -1,5 +1,4 @@
-use bevy_ecs::entity::Entity;
-use bevy_ecs::query::QueryState;
+use bevy_ecs::query::{Has, QueryState};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::{CallError, CallPart, CallStart, Commit};
@@ -16,8 +15,8 @@ use crate::seated::{Seated, Seating};
 /// none.
 #[derive(Debug, Default)]
 pub struct PlayersCall {
-    /// The players and their resources, once the match registers the resources.
-    players: Option<QueryState<(Entity, &'static Player, &'static PlayerResources)>>,
+    /// The players, their resources, and whether each slot was held, made at the first call.
+    players: Option<QueryState<(&'static Player, &'static PlayerResources, Has<Seated>)>>,
     resources: Vec<PlayerResources>,
     seatings: Vec<Seating>,
     written: bool,
@@ -43,18 +42,12 @@ impl CallPart for PlayersCall {
 
     fn begin(&mut self, world: &World, _: &CallStart) -> Result<(), CallError> {
         self.written = false;
-        if self.players.is_none() {
-            let Some(players) = QueryState::try_new(world) else {
-                self.resources.clear();
-                self.seatings.clear();
-                return Ok(());
-            };
-            self.players = Some(players);
-        }
-        let players = self.players.as_mut().expect("the players' query was built");
+        let players = self.players.get_or_insert_with(|| {
+            QueryState::try_new(world).expect("the install registers every declared component")
+        });
         players.update_archetypes(world);
         let (mut count, mut slots) = (0, 0);
-        for (entity, player, held) in players.iter_manual(world) {
+        for (player, held, seated) in players.iter_manual(world) {
             let at = player.slot().index();
             if at >= self.resources.len() {
                 self.resources
@@ -64,12 +57,7 @@ impl CallPart for PlayersCall {
                 self.seatings.resize(at + 1, Seating::Open);
             }
             self.resources[at].clone_from(held);
-            // A match registers the mark only as a held slot's player spawns with it.
-            self.seatings[at] = if world.entity(entity).contains::<Seated>() {
-                Seating::Held
-            } else {
-                Seating::Open
-            };
+            self.seatings[at] = if seated { Seating::Held } else { Seating::Open };
             count += 1;
             slots = slots.max(at + 1);
         }

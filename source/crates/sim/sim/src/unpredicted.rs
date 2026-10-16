@@ -13,7 +13,7 @@ pub struct Unpredicted;
 impl Unpredicted {
     /// Hides every unit of `world` with the marker from the queries that do not name it.
     pub fn register(world: &mut World) {
-        let id = world.register_component::<Unpredicted>();
+        let id = world.register_component::<Self>();
         world
             .resource_mut::<DefaultQueryFilters>()
             .register_disabling_component(id);

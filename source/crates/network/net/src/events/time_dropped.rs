@@ -15,12 +15,12 @@ pub struct TimeDropped {
 impl TimeDropped {
     /// The time a frame of `real` length drops past `bound`, the most one may advance; none for
     /// a frame within it.
-    pub fn of(real: Duration, bound: Duration) -> Option<TimeDropped> {
+    pub fn of(real: Duration, bound: Duration) -> Option<Self> {
         let dropped = real
             .checked_sub(bound)
             .filter(|dropped| !dropped.is_zero())?;
         let dropped_ns = u64::try_from(dropped.as_nanos()).unwrap_or(u64::MAX);
-        Some(TimeDropped { dropped_ns })
+        Some(Self { dropped_ns })
     }
 }
 

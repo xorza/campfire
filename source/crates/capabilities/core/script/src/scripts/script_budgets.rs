@@ -17,9 +17,9 @@ pub struct ScriptBudgets {
 
 impl ScriptBudgets {
     /// Full budgets within `limits`, one for each of `players` player slots.
-    pub fn new(limits: ScriptLimits, players: u32) -> ScriptBudgets {
+    pub fn new(limits: ScriptLimits, players: u32) -> Self {
         let players = usize::try_from(players).expect("a slot count fits usize");
-        ScriptBudgets {
+        Self {
             limits,
             players: vec![Budget::new(limits.player); players],
             think: Budget::new(limits.think),

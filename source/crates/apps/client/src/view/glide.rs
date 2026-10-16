@@ -46,11 +46,11 @@ pub(crate) struct TickClock {
 
 impl Follows {
     /// What a drawing follows of a unit the client only receives, if `received`.
-    pub(crate) const fn of(received: bool) -> Follows {
+    pub(crate) const fn of(received: bool) -> Self {
         if received {
-            Follows::Receipts
+            Self::Receipts
         } else {
-            Follows::Ticks
+            Self::Ticks
         }
     }
 }
@@ -58,9 +58,9 @@ impl Follows {
 impl Spot {
     /// The spot `share` of the way from it to `to`: the place along the line, the yaw the
     /// shorter way round.
-    pub(crate) fn lerp(self, to: Spot, share: f32) -> Spot {
+    pub(crate) fn lerp(self, to: Self, share: f32) -> Self {
         let turn = (to.yaw - self.yaw + PI).rem_euclid(TAU) - PI;
-        Spot {
+        Self {
             point: self.point.lerp(to.point, share),
             yaw: self.yaw + turn * share,
         }
@@ -70,24 +70,24 @@ impl Spot {
 impl Glide {
     /// A drawing at rest at `spot` that follows `follows`: a received unit's from `time` of app
     /// time.
-    pub(crate) const fn rest(spot: Spot, follows: Follows, time: Duration) -> Glide {
+    pub(crate) const fn rest(spot: Spot, follows: Follows, time: Duration) -> Self {
         match follows {
-            Follows::Ticks => Glide::ticked(spot),
-            Follows::Receipts => Glide::timed(spot, time),
+            Follows::Ticks => Self::ticked(spot),
+            Follows::Receipts => Self::timed(spot, time),
         }
     }
 
     /// A predicted unit's drawing at rest at `spot`.
-    pub(crate) const fn ticked(spot: Spot) -> Glide {
-        Glide::Ticked {
+    pub(crate) const fn ticked(spot: Spot) -> Self {
+        Self::Ticked {
             before: spot,
             last: spot,
         }
     }
 
     /// A received unit's drawing at rest at `spot`, from `since` of app time.
-    pub(crate) const fn timed(spot: Spot, since: Duration) -> Glide {
-        Glide::Timed {
+    pub(crate) const fn timed(spot: Spot, since: Duration) -> Self {
+        Self::Timed {
             from: spot,
             to: spot,
             since,
@@ -98,18 +98,18 @@ impl Glide {
     /// starts at `spot`, as the unit became predicted.
     pub(crate) const fn tick(&mut self, spot: Spot) {
         *self = match *self {
-            Glide::Ticked { last, .. } => Glide::Ticked {
+            Self::Ticked { last, .. } => Self::Ticked {
                 before: last,
                 last: spot,
             },
-            Glide::Timed { .. } => Glide::ticked(spot),
+            Self::Timed { .. } => Self::ticked(spot),
         };
     }
 
     /// Starts a glide from `drawn`, where the drawing stands, to the received unit's new spot
     /// `to`, at `now` of app time.
     pub(crate) const fn head(&mut self, drawn: Spot, to: Spot, now: Duration) {
-        *self = Glide::Timed {
+        *self = Self::Timed {
             from: drawn,
             to,
             since: now,
@@ -121,8 +121,8 @@ impl Glide {
     /// times becomes an `f32`, so a long session loses no precision.
     pub(crate) fn at(&self, now: Duration, clock: TickClock) -> Spot {
         match *self {
-            Glide::Ticked { before, last } => before.lerp(last, clock.fraction.clamp(0.0, 1.0)),
-            Glide::Timed { from, to, since } => {
+            Self::Ticked { before, last } => before.lerp(last, clock.fraction.clamp(0.0, 1.0)),
+            Self::Timed { from, to, since } => {
                 if clock.timestep.is_zero() {
                     return to;
                 }

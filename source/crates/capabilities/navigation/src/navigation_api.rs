@@ -1,6 +1,7 @@
 use campfire_math::{Num, Vec3};
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DataTable, MemberSpec, ScriptPosition, Unit,
+    ApiBuilder, ApiError, ApiOwner, Checked, Ctx, DataTable, MemberSpec, ScriptLasting,
+    ScriptPosition, Unit,
 };
 use campfire_units::DashTo;
 
@@ -21,7 +22,7 @@ impl NavigationApi {
             "the name of the path it walks, `()` with none",
         );
         api.bind(path, |unit: &mut Unit| NavigationColumn::path(unit));
-        NavigationApi::register_forced(api);
+        Self::register_forced(api);
     }
 
     /// `ctx.dash`, `ctx.knock_back` and `ctx.teleport`.
@@ -46,19 +47,19 @@ impl NavigationApi {
         api.call(
             dash,
             move |ctx: &mut Ctx, of: Unit, to: ScriptPosition, speed: Num| {
-                NavigationApi::dash(ctx, &of, point(to.get()), speed)
+                Self::dash(ctx, &of, point(to.get()), speed)
             },
         )
         .call(
             dash,
             move |ctx: &mut Ctx, of: Unit, to: Unit, speed: Num| {
-                NavigationApi::dash(ctx, &of, unit(to), speed)
+                Self::dash(ctx, &of, unit(to), speed)
             },
         )
         .call(
             knock_back,
-            |ctx: &mut Ctx, of: Unit, from: ScriptPosition, distance: Num, ms: i64| {
-                NavigationApi::knock_back(ctx, &of, from.get(), distance, ms)
+            |ctx: &mut Ctx, of: Unit, from: ScriptPosition, distance: Num, ms: ScriptLasting| {
+                Self::knock_back(ctx, &of, from.get(), distance, ms)
             },
         )
         .call(teleport, |ctx: &mut Ctx, of: Unit, to: ScriptPosition| {
@@ -74,7 +75,13 @@ impl NavigationApi {
         ctx.queue(dash.map_err(ApiError::fail)?)
     }
 
-    fn knock_back(ctx: &Ctx, unit: &Unit, from: Vec3, distance: Num, ms: i64) -> Checked<()> {
+    fn knock_back(
+        ctx: &Ctx,
+        unit: &Unit,
+        from: Vec3,
+        distance: Num,
+        ms: ScriptLasting,
+    ) -> Checked<()> {
         let knock_back = NavigationEffect::knock_back(ctx.view(), unit.id, from, distance, ms);
         ctx.queue(knock_back.map_err(ApiError::fail)?)
     }

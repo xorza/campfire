@@ -1,5 +1,6 @@
-use crate::process::Process;
 use derive_more::Display;
+
+use crate::process::Process;
 
 /// Which session of a run a session log is: the LAN match's, or the local match's.
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
@@ -14,16 +15,16 @@ impl SessionKind {
     /// The process that wrote the session's log.
     pub(crate) const fn host(self) -> Process {
         match self {
-            SessionKind::Lan => Process::ServerAgain,
-            SessionKind::Local => Process::Local,
+            Self::Lan => Process::ServerAgain,
+            Self::Local => Process::Local,
         }
     }
 
     /// The verifier that replays the session's log.
     pub(crate) const fn verifier(self) -> Process {
         match self {
-            SessionKind::Lan => Process::Verifier,
-            SessionKind::Local => Process::LocalVerifier,
+            Self::Lan => Process::Verifier,
+            Self::Local => Process::LocalVerifier,
         }
     }
 }

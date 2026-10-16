@@ -13,9 +13,9 @@ pub struct ScriptNames<I: NameId> {
 }
 
 impl<I: NameId> ScriptNames<I> {
-    pub fn new(names: Arc<Names<I>>) -> ScriptNames<I> {
+    pub fn new(names: Arc<Names<I>>) -> Self {
         let text = names.texts().map(ScriptText::from).collect();
-        ScriptNames { names, text }
+        Self { names, text }
     }
 
     /// The table of the names.
@@ -35,8 +35,8 @@ impl<I: NameId> ScriptNames<I> {
 }
 
 impl<I: NameId> Default for ScriptNames<I> {
-    fn default() -> ScriptNames<I> {
-        ScriptNames::new(Arc::default())
+    fn default() -> Self {
+        Self::new(Arc::default())
     }
 }
 

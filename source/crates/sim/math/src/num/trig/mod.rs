@@ -66,28 +66,19 @@ pub(super) const fn pi_bits(frac_bits: u32) -> i64 {
     Num::from_wide_bits(rounded.cast_signed()).to_bits()
 }
 
-impl SinCos {
-    /// The sine and the cosine of `angle` degrees: exact at each multiple of 90°, and else those
-    /// `Num::sin_cos` gives of its radians, the angle taken modulo 360° first, so a turn by any
-    /// whole number of turns more turns alike.
-    pub fn of_degrees(angle: Num) -> SinCos {
-        const FULL: i64 = 360 << Num::FRAC_BITS;
-        const QUARTER: i64 = 90 << Num::FRAC_BITS;
-        let degrees = angle.to_bits().rem_euclid(FULL);
-        if degrees % QUARTER == 0 {
-            let [sin, cos] = match degrees / QUARTER {
-                0 => [Num::ZERO, Num::ONE],
-                1 => [Num::ONE, Num::ZERO],
-                2 => [Num::ZERO, -Num::ONE],
-                _ => [-Num::ONE, Num::ZERO],
-            };
-            return SinCos { sin, cos };
-        }
-        let radians = Num::from_bits(degrees)
-            .checked_mul_div_int(Num::PI, 180)
-            .expect("an angle below 360° fits in radians");
-        radians.sin_cos()
-    }
+/// The sine and the cosine of `angle` degrees, as `SinCos::of_degrees` says: the angle taken
+/// modulo 360° and less its nearest quarter turn, exactly, its rest within ±45° turned to
+/// radians at 2⁻⁶² by `HALF_PI_WIDE` over 90°, rounded once, then the kernel, rounded once.
+pub(super) fn sin_cos_degrees(angle: Num) -> SinCos {
+    const FULL: i64 = 360 << Num::FRAC_BITS;
+    const QUARTER: i64 = 90 << Num::FRAC_BITS;
+    let degrees = angle.to_bits().rem_euclid(FULL);
+    let quadrant = (degrees + QUARTER / 2) / QUARTER;
+    let rest = degrees - quadrant * QUARTER;
+    // The rest is within 45 · 2²⁴ < 2³⁰, and π/2 at 2⁻⁶² below 2⁶³, so the product fits `i128`.
+    let radians =
+        Rounding::NearestEven.divide(i128::from(rest) * HALF_PI_WIDE, i128::from(QUARTER));
+    quarter_turned(quadrant, kernel(to_i64(radians)))
 }
 
 pub(super) const fn sin_cos(angle: Num) -> SinCos {
@@ -100,8 +91,14 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     let rest = (x as i128)
         .wrapping_shl(REDUCE_BITS - Num::FRAC_BITS)
         .wrapping_sub(quadrant.wrapping_mul(HALF_PI_REDUCE));
-    let r = to_i64(rest >> (REDUCE_BITS - WIDE_BITS));
+    quarter_turned(
+        quadrant as i64,
+        kernel(to_i64(rest >> (REDUCE_BITS - WIDE_BITS))),
+    )
+}
 
+/// The sine and the cosine of `r` radians at 2⁻⁶², within a hair past ±π/4, at 2⁻⁶².
+const fn kernel(r: i64) -> [i64; 2] {
     // Every value from here is at most 1 in magnitude, 2⁶², so no sum, difference or negation of
     // two wraps: the wrapping steps skip the checks a release build makes.
     let index =
@@ -135,10 +132,15 @@ pub(super) const fn sin_cos(angle: Num) -> SinCos {
     ));
     let sin = mul(sin_a, cos_b).wrapping_add(mul(cos_a, sin_b));
     let cos = mul(cos_a, cos_b).wrapping_sub(mul(sin_a, sin_b));
+    [sin, cos]
+}
 
+/// The sine and the cosine, each rounded once, of an angle `quadrant` quarter turns past the one
+/// whose sine and cosine at 2⁻⁶² are `[sin, cos]`.
+const fn quarter_turned(quadrant: i64, [sin, cos]: [i64; 2]) -> SinCos {
     // Quadrants 0 to 3 give (sin, cos), (cos, −sin), (−sin, −cos) and (−cos, sin): an odd one
     // swaps the two, the upper two negate the first, and the middle two the second.
-    let quadrant = quadrant as i64 & 3;
+    let quadrant = quadrant & 3;
     let (sin, cos) = if quadrant & 1 == 1 {
         (cos, sin)
     } else {

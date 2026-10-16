@@ -10,33 +10,32 @@ pub struct HealHandle {
 }
 
 impl HealHandle {
-    pub const fn new(heal: Heal, view: View) -> HealHandle {
-        HealHandle { heal, view }
+    pub const fn new(heal: Heal, view: View) -> Self {
+        Self { heal, view }
     }
 
     /// The `Heal` handle's fields.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let field = |name, description| MemberSpec::field(ApiOwner::Heal, name, description);
-        api.ty::<HealHandle>("Heal")
+        api.ty::<Self>("Heal")
             .bind(
                 field("source", "the unit that gave it, `()` when gone or none"),
-                |h: &mut HealHandle| h.view.unit_value(h.heal.source),
+                |h: &mut Self| h.view.unit_value(h.heal.source),
             )
-            .bind(
-                field("target", "the unit it heals"),
-                |h: &mut HealHandle| h.view.unit_value(Some(h.heal.target)),
-            )
+            .bind(field("target", "the unit it heals"), |h: &mut Self| {
+                h.view.unit_value(Some(h.heal.target))
+            })
             .bind(
                 field("amount", "before `calc_heal` and the heal scale"),
-                |h: &mut HealHandle| h.heal.amount,
+                |h: &mut Self| h.heal.amount,
             )
             .bind(
                 field("leech", "whether its source's leech gave it"),
-                |h: &mut HealHandle| h.heal.cause == HealCause::Leech,
+                |h: &mut Self| h.heal.cause == HealCause::Leech,
             )
             .bind(
                 field("ability", "the ability that gave it, `()` for none"),
-                |h: &mut HealHandle| h.view.ability_value(h.heal.action),
+                |h: &mut Self| h.view.ability_value(h.heal.action),
             );
     }
 }

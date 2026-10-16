@@ -15,11 +15,11 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for ProjectilesRefusal {
     const OWNER: Capability = Capability::Projectiles;
-    const CASES: &'static [ProjectilesRefusal] = &ProjectilesRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            ProjectilesRefusal::OtherFlight => {
+            Self::OtherFlight => {
                 "a homing projectile flies at a unit, and a line projectile along a direction"
             }
         }

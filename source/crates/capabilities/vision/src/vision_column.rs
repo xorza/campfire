@@ -41,14 +41,14 @@ impl VisionColumn {
     /// Whether `team` sees the unit of row `row` of the view of `columns`; every team does in a
     /// view with no vision.
     fn sees(columns: &ViewColumns, row: usize, team: Team) -> bool {
-        let column = columns.get::<VisionColumn>();
+        let column = columns.get::<Self>();
         column.is_none_or(|column| column.rows.now()[row].contains(team))
     }
 
     /// `unit.can_see(other)`: whether `unit`'s team sees `other`.
     pub(crate) fn can_see(unit: &Unit, other: &Unit) -> bool {
         let team = unit.read(|row| row.team);
-        VisionColumn::sees(unit.view().rows().columns(), other.row_index(), team)
+        Self::sees(unit.view().rows().columns(), other.row_index(), team)
     }
 
     /// `ctx.find_visible`: `ctx.find`, of the units `of`'s team sees.
@@ -56,7 +56,7 @@ impl VisionColumn {
         let team = of.read(|row| row.team);
         of.view()
             .find(of, pos, radius.get(), filter, |columns, row| {
-                VisionColumn::sees(columns, row, team)
+                Self::sees(columns, row, team)
             })
     }
 
@@ -65,15 +65,12 @@ impl VisionColumn {
     pub(crate) fn nearest(of: &Unit, radius: ScriptRadius, filter: &Filter) -> ScriptValue {
         let team = of.read(|row| row.team);
         of.view().nearest(of, radius.get(), filter, |columns, row| {
-            VisionColumn::sees(columns, row, team)
+            Self::sees(columns, row, team)
         })
     }
 
     /// Fills a row of the script view with the teams that see the unit.
-    pub(super) fn fill_row(
-        parts: ROQueryItem<'_, '_, RowReads>,
-        fill: &mut RowFill<'_, VisionColumn>,
-    ) {
+    pub(super) fn fill_row(parts: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
         let seen_by = Self::seen_by(parts, fill.relations);
         fill.column.push(seen_by);
     }

@@ -1,6 +1,7 @@
 use secp256k1::{Secp256k1, VerifyOnly, XOnlyPublicKey, schnorr};
 
 use crate::signature::Signature;
+use crate::signed::{self, Signed};
 
 /// The context that checks signatures, and the scratch a message of no fixed length is written
 /// into, cleared and refilled, so no check allocates.
@@ -11,40 +12,30 @@ pub struct Verifier {
 }
 
 impl Verifier {
-    pub fn new() -> Verifier {
-        Verifier {
+    pub fn new() -> Self {
+        Self {
             secp: Secp256k1::verification_only(),
             message: Vec::new(),
         }
     }
 
-    /// Whether `signature` is `key`'s over `message`.
-    pub(crate) fn verifies(
-        &self,
-        signature: Signature,
-        key: &XOnlyPublicKey,
-        message: &[u8],
-    ) -> bool {
-        let signature = schnorr::Signature::from_byte_array(signature.to_bytes());
-        self.secp.verify_schnorr(&signature, message, key).is_ok()
-    }
-
-    /// Whether `signature` is `key`'s over the message `write` writes into the scratch, which
-    /// it holds alone.
-    pub(crate) fn verifies_written(
+    /// Whether `signature` is `key`'s over `record`, whose message it writes into its scratch.
+    pub fn verifies(
         &mut self,
-        signature: Signature,
+        signature: &Signature,
         key: &XOnlyPublicKey,
-        write: impl FnOnce(&mut Vec<u8>),
+        record: &impl Signed,
     ) -> bool {
-        self.message.clear();
-        write(&mut self.message);
-        self.verifies(signature, key, &self.message)
+        signed::write_message(record, &mut self.message);
+        let signature = schnorr::Signature::from_byte_array(signature.to_bytes());
+        self.secp
+            .verify_schnorr(&signature, &self.message, key)
+            .is_ok()
     }
 }
 
 impl Default for Verifier {
-    fn default() -> Verifier {
-        Verifier::new()
+    fn default() -> Self {
+        Self::new()
     }
 }

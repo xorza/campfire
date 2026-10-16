@@ -2,10 +2,10 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
 use bevy_ecs::world::Mut;
 use campfire_common::Tick;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::{Position, SimEdge, SimSet, SimUpdate};
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_death_reaches_the_mode_and_a_respawn_brings_the_unit_back_at_its_spawn() {
@@ -39,7 +39,8 @@ fn on_mode_input(ctx, player, name, value) {
     // grunt 2 struck it in the same tick, within the window of 10 ticks.
     let victim = Mode::entity_by_id(&game, 1);
     *game.get_mut::<Position>(victim).unwrap() = Position::from((3, 0, 0));
-    game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(10));
+    game.resource_mut::<CombatBook>()
+        .set_assist_window(Some(Ticks::new(10)));
     let ids: Vec<_> = game
         .resource::<EntityIndex>()
         .iter()
@@ -48,18 +49,21 @@ fn on_mode_input(ctx, player, name, value) {
     let (one, two, four) = (ids[1], ids[2], ids[4]);
     game.resource_scope(|world, index: Mut<'_, EntityIndex>| {
         let mut attackers = world.get_mut::<RecentAttackers>(victim).unwrap();
-        attackers.struck(two, Tick::new(0), &index);
+        attackers.record(two, Tick::new(0), &index);
     });
-    game.resource_mut::<PassQueue>().push_damage(Damage {
-        source: Some(four),
-        target: one,
-        amount: Num::int(10),
-        kind: DamageKind::new(0),
-        cause: DamageCause::Effect,
-        action: None,
-        depth: 0,
-        hit: None,
-    });
+    DamagePass::queue(
+        &mut game,
+        PassEntry::Damage(Damage {
+            source: Some(four),
+            target: one,
+            amount: Num::int(10),
+            kind: DamageKind::new(0),
+            cause: DamageCause::Effect,
+            action: None,
+            depth: 0,
+            hit: None,
+        }),
+    );
     Mode::tick_inputs(&mut game, &[]);
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
     // end of tick 0, 1, plus 3 ticks: the start of tick 4.
@@ -196,4 +200,32 @@ fn on_mode_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("phase", "draw"))]);
     let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
     assert_eq!(game.match_end(), Some(draw));
+}
+
+#[test]
+fn a_save_asks_for_the_boundary_that_ends_its_tick() {
+    // The start asks for a save at boundary 0, before the first tick, and sets a timer of 1 ms,
+    // which fires at the end of tick 0 and asks for boundary 1; an input in tick 1, whose call
+    // counts its time from the tick's start, asks for the boundary that ends its tick, 2.
+    let script = r#"
+fn on_match_start(ctx) {
+    ctx.save();
+    ctx.timer("later", 1, false, ());
+}
+
+fn on_timer(ctx, name, data) {
+    ctx.save();
+}
+
+fn on_mode_input(ctx, player, name, value) {
+    ctx.save();
+}
+"#;
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    assert_eq!(game.save_asked(), Some(Tick::new(0)));
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(game.save_asked(), Some(Tick::new(1)));
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "a"))]);
+    assert_eq!(Mode::failures(&game), []);
+    assert_eq!(game.save_asked(), Some(Tick::new(2)));
 }

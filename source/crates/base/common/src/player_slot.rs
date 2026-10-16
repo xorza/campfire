@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct PlayerSlot(u32);
 
 impl PlayerSlot {
-    pub const fn new(index: u32) -> PlayerSlot {
-        PlayerSlot(index)
+    pub const fn new(index: u32) -> Self {
+        Self(index)
     }
 
     pub const fn get(self) -> u32 {

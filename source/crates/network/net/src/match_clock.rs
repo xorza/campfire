@@ -13,8 +13,8 @@ pub struct MatchClock {
 
 impl MatchClock {
     /// The clock of a match that runs sim tick `first` in `start`.
-    pub const fn new(start: NetTick, first: Tick) -> MatchClock {
-        MatchClock { start, first }
+    pub const fn new(start: NetTick, first: Tick) -> Self {
+        Self { start, first }
     }
 
     /// The Lightyear tick of the sim tick `tick`, at or after `first`.

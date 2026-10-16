@@ -11,6 +11,7 @@ use lightyear::prelude::MessageSender;
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::seats::Seats;
+use crate::sim_server::server_signer::ServerSigner;
 
 /// How often the server gives receipts.
 const INTERVAL: Duration = Duration::from_secs(1);
@@ -27,9 +28,9 @@ pub(crate) struct Receipts {
 }
 
 impl Receipts {
-    pub(crate) fn new(slots: u32) -> Receipts {
-        Receipts {
-            given: vec![None; slots as usize],
+    pub(crate) fn new(slots: u32) -> Self {
+        Self {
+            given: vec![None; usize::try_from(slots).expect("slots fit usize")],
             next: Duration::ZERO,
         }
     }
@@ -37,8 +38,9 @@ impl Receipts {
     /// Gives each seated player whose durable head moved a receipt of it, once a second.
     pub(crate) fn give(
         time: Res<'_, Time<Real>>,
-        mut receipts: ResMut<'_, Receipts>,
+        mut receipts: ResMut<'_, Self>,
         mut session: ResMut<'_, Session>,
+        signer: Res<'_, ServerSigner>,
         journal: Option<Res<'_, JournalWatch>>,
         seats: Res<'_, Seats>,
         mut links: Query<'_, '_, &mut MessageSender<SignedReceipt>>,
@@ -63,10 +65,10 @@ impl Receipts {
             let Ok(mut sender) = links.get_mut(link) else {
                 continue;
             };
-            let receipt = Receipts::receipt(log.session_id(), slot, log.next_tick(), head);
+            let receipt = Self::receipt(log.session_id(), slot, log.next_tick(), head);
             sender.send::<MatchChannel>(SignedReceipt {
                 receipt,
-                signature: session.sign_receipt(&receipt),
+                signature: signer.0.sign(&receipt),
             });
             *given = Some(head);
         }

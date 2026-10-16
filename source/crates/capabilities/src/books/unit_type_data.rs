@@ -89,7 +89,7 @@ impl UnitTypeData {
     /// Each field of its table by name, in the table's order, and whether it gives it: a list or
     /// a map only when it is not empty.
     pub fn fields(&self) -> [(&'static str, bool); 22] {
-        let UnitTypeData {
+        let Self {
             tags,
             params,
             state,

@@ -8,17 +8,18 @@ use serde::{Deserialize, Serialize};
 
 use crate::rally_target::RallyTarget;
 
-/// A producer's rally point, where the units it trains go; a producer with none has no component.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// A producer's rally point, where the units it trains go, or none: a part of every producer,
+/// which a rally order writes in place.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Rally(RallyTarget);
+pub struct Rally(Option<RallyTarget>);
 
 impl Rally {
-    pub const fn new(target: RallyTarget) -> Rally {
-        Rally(target)
+    pub const fn new(target: Option<RallyTarget>) -> Self {
+        Self(target)
     }
 
-    pub const fn get(self) -> RallyTarget {
+    pub const fn get(self) -> Option<RallyTarget> {
         self.0
     }
 }

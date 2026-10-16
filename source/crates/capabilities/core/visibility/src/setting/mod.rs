@@ -1,10 +1,12 @@
 use std::fmt;
 use std::str::FromStr;
 
+use campfire_common::NamedEnum;
 use campfire_state_types::{DataKind, Recipients};
 
+use crate::out_view::OutView;
 use crate::setting::error::VisibilityError;
-use crate::{OutView, SpectatorFog};
+use crate::spectator_fog::SpectatorFog;
 
 pub(crate) mod error;
 
@@ -32,15 +34,15 @@ pub enum SettingValue {
 impl Setting {
     /// The setting of the name `name`; an error for no setting's, and for a kind whose audience
     /// no mode sets.
-    pub fn named(name: &str) -> Result<Setting, VisibilityError> {
+    pub fn named(name: &str) -> Result<Self, VisibilityError> {
         match name {
-            "spectators" => Ok(Setting::Spectators),
-            "out" => Ok(Setting::Out),
+            "spectators" => Ok(Self::Spectators),
+            "out" => Ok(Self::Out),
             name => match DataKind::named(name) {
                 Some(kind) if kind.settable() == Recipients::NONE => {
                     Err(VisibilityError::NotSettable(kind))
                 }
-                Some(kind) => Ok(Setting::Kind(kind)),
+                Some(kind) => Ok(Self::Kind(kind)),
                 None => Err(VisibilityError::UnknownSetting(name.to_owned())),
             },
         }
@@ -48,9 +50,9 @@ impl Setting {
 
     pub const fn name(self) -> &'static str {
         match self {
-            Setting::Kind(kind) => kind.name(),
-            Setting::Spectators => "spectators",
-            Setting::Out => "out",
+            Self::Kind(kind) => kind.name(),
+            Self::Spectators => "spectators",
+            Self::Out => "out",
         }
     }
 
@@ -73,11 +75,9 @@ impl Setting {
             }
         };
         match self {
-            Setting::Spectators => {
-                one(|name| SpectatorFog::named(name).map(SettingValue::Spectators))
-            }
-            Setting::Out => one(|name| OutView::named(name).map(SettingValue::Out)),
-            Setting::Kind(kind) => {
+            Self::Spectators => one(|name| SpectatorFog::named(name).map(SettingValue::Spectators)),
+            Self::Out => one(|name| OutView::named(name).map(SettingValue::Out)),
+            Self::Kind(kind) => {
                 let mut recipients = Recipients::NONE;
                 for name in names {
                     let recipient = Recipients::named(name).ok_or_else(|| unknown(name))?;
@@ -101,9 +101,9 @@ impl fmt::Display for Setting {
 impl SettingValue {
     pub const fn setting(self) -> Setting {
         match self {
-            SettingValue::Audience(kind, _) => Setting::Kind(kind),
-            SettingValue::Spectators(_) => Setting::Spectators,
-            SettingValue::Out(_) => Setting::Out,
+            Self::Audience(kind, _) => Setting::Kind(kind),
+            Self::Spectators(_) => Setting::Spectators,
+            Self::Out(_) => Setting::Out,
         }
     }
 }
@@ -111,7 +111,7 @@ impl SettingValue {
 impl FromStr for SettingValue {
     type Err = VisibilityError;
 
-    fn from_str(text: &str) -> Result<SettingValue, VisibilityError> {
+    fn from_str(text: &str) -> Result<Self, VisibilityError> {
         let (name, value) = text
             .split_once('=')
             .ok_or_else(|| VisibilityError::NotHostSetting(text.to_owned()))?;

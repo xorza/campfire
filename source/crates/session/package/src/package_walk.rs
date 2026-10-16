@@ -1,14 +1,15 @@
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 use std::io::{self, Read};
 
-use campfire_common::{ContentHash, ContentHasher};
+use campfire_common::{ContentHash, ContentHashMeaning, ContentHasher};
 use campfire_values::PackagePath;
 
 use crate::error::ContentError;
-use crate::file_index::{FileIndex, FileRow};
+use crate::file_index::{EncodedIndex, FileIndex, FileRow};
 
 /// One walk over a package's files, as a package is packed: each file's size and SHA-256, hashed
-/// as it streams past and not kept, into the package's index.
+/// as it streams past and not kept, into the package's index. A path it took before is refused.
 #[derive(Debug, Default)]
 pub struct PackageWalk {
     rows: BTreeMap<PackagePath, FileRow>,
@@ -16,43 +17,63 @@ pub struct PackageWalk {
     stream: Vec<u8>,
 }
 
+/// A file's size and SHA-256, as a walk hashed it, for the walk to take as a path's row once
+/// the file is written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HashedFile(FileRow);
+
 /// The size of the buffer a file passes through.
 const STREAM_CHUNK: usize = 64 * 1024;
 
 impl PackageWalk {
-    pub const fn new() -> PackageWalk {
-        PackageWalk {
+    pub const fn new() -> Self {
+        Self {
             rows: BTreeMap::new(),
             stream: Vec::new(),
         }
     }
 
-    /// Takes the file at `path` whose bytes `file` gives, to its end; their SHA-256.
-    pub fn add(
-        &mut self,
-        path: PackagePath,
-        mut file: impl Read,
-    ) -> Result<ContentHash, ContentError> {
+    /// The size and SHA-256 of the bytes `file` gives, to its end, which no path takes yet; the
+    /// reader's own error, for its owner to name, as a failed read is no flaw of the package.
+    pub fn hash(&mut self, mut file: impl Read) -> io::Result<HashedFile> {
         self.stream.resize(STREAM_CHUNK, 0);
-        let mut hasher = ContentHasher::default();
+        let mut hasher = ContentHasher::<ContentHashMeaning>::new();
         let mut size = 0_u64;
         loop {
             let count = match file.read(&mut self.stream) {
                 Ok(0) => break,
                 Ok(count) => count,
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
-                Err(error) => return Err(ContentError::Io { path, error }),
+                Err(error) => return Err(error),
             };
             hasher.update(&self.stream[..count]);
             size += u64::try_from(count).expect("a read count fits u64");
         }
-        let sha256 = hasher.finish();
-        self.rows.insert(path, FileRow { size, sha256 });
-        Ok(sha256)
+        Ok(HashedFile(FileRow {
+            size,
+            sha256: hasher.finish(),
+        }))
     }
 
-    /// The index of every file taken.
-    pub fn finish(self) -> Result<FileIndex, ContentError> {
-        FileIndex::new(self.rows)
+    /// Takes `hashed` as the row of `path`, a path it took no row of.
+    pub fn insert(&mut self, path: PackagePath, hashed: HashedFile) -> Result<(), ContentError> {
+        match self.rows.entry(path) {
+            Entry::Vacant(row) => {
+                row.insert(hashed.0);
+                Ok(())
+            }
+            Entry::Occupied(row) => Err(ContentError::Repeated(row.key().clone())),
+        }
+    }
+
+    /// The index of every file taken, and its encoding.
+    pub fn finish(self) -> Result<EncodedIndex, ContentError> {
+        FileIndex::encode(self.rows)
+    }
+}
+
+impl HashedFile {
+    pub const fn sha256(self) -> ContentHash {
+        self.0.sha256
     }
 }

@@ -44,8 +44,8 @@ impl ModeSync for SyncAll {
 }
 
 impl<S: ModeSync> ModeState<S> {
-    pub const fn new(values: Vec<StateValue>) -> ModeState<S> {
-        ModeState {
+    pub const fn new(values: Vec<StateValue>) -> Self {
+        Self {
             values,
             sync: PhantomData,
         }
@@ -61,8 +61,8 @@ impl<S: ModeSync> ModeState<S> {
 
     /// The fields of its class that `schema` declares, each at its first value, in the order of
     /// their names.
-    pub(crate) fn initial(schema: &ModeSchema) -> ModeState<S> {
-        ModeState::new(schema.state.initial_of(S::SYNC).cloned().collect())
+    pub(crate) fn initial(schema: &ModeSchema) -> Self {
+        Self::new(schema.state.initial_of(S::SYNC).cloned().collect())
     }
 }
 

@@ -1,8 +1,8 @@
 use campfire_actions::{ActionDataField, ActionRange, ActionsColumn, SlotKind};
 use campfire_math::{Num, Vec3};
 use campfire_script::{
-    ApiBuilder, ApiError, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec,
-    RoleSet, ScriptValue, Status, Unit,
+    ApiBuilder, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet,
+    ScriptCut, ScriptValue, Status, Unit,
 };
 use campfire_sim::Capability;
 use campfire_values::{ActionId, Block, TagProperty};
@@ -29,18 +29,18 @@ impl AbilitiesApi {
                 "range",
                 "the ability's range at its rank in meters, `()` for a global one",
             ),
-            |ctx: &mut Ctx| Ok(AbilitiesApi::range(ctx)),
+            |ctx: &mut Ctx| Ok(Self::range(ctx)),
         )
         .call(
             cast(
                 "charge",
                 "the share of its most a charged action charged, from 0 to 1",
             ),
-            |ctx: &mut Ctx| AbilitiesApi::charge(ctx),
+            |ctx: &mut Ctx| Self::charge(ctx),
         )
         .call(
             cast("origin", "where the action's unit stood as it started"),
-            |ctx: &mut Ctx| AbilitiesApi::origin(ctx),
+            |ctx: &mut Ctx| Self::origin(ctx),
         )
         .call(
             call(
@@ -48,14 +48,14 @@ impl AbilitiesApi {
                 &[&["unit", "id", "ms"]],
                 "takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package",
             ),
-            |ctx: &mut Ctx, unit: Unit, id: ActionId, ms: i64| {
-                AbilitiesApi::reduce_cooldown(ctx, &unit, id, ms)
+            |ctx: &mut Ctx, unit: Unit, id: ActionId, ms: ScriptCut| {
+                Self::reduce_cooldown(ctx, &unit, id, ms)
             },
         )
         .call(
             cut,
             |ctx: &mut Ctx, unit: Unit, kind: SlotKind, fraction: Num| {
-                AbilitiesApi::reduce_cooldowns(ctx, &unit, kind, fraction)
+                Self::reduce_cooldowns(ctx, &unit, kind, fraction)
             },
         )
         .call(
@@ -64,7 +64,7 @@ impl AbilitiesApi {
                 &[&["unit", "id"]],
                 "gives `unit`'s ability `id`, of the script's package, a charge, up to its most",
             ),
-            |ctx: &mut Ctx, unit: Unit, id: ActionId| AbilitiesApi::add_charge(ctx, &unit, id),
+            |ctx: &mut Ctx, unit: Unit, id: ActionId| Self::add_charge(ctx, &unit, id),
         );
         api.tag_property(
             TagProperty::Blocks(Block::Cast),
@@ -107,11 +107,11 @@ impl AbilitiesApi {
         }
     }
 
-    /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `action` of the
-    /// script's package, which it holds.
-    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, action: ActionId, ms: i64) -> Checked<()> {
-        AbilitiesApi::check_held(ctx, unit, action)?;
-        let cut = ctx.view().ticks(ms).map_err(ApiError::fail)?;
+    /// Queues `ms` off the cooldown of `unit`'s action `action` of the script's package, which
+    /// it holds.
+    fn reduce_cooldown(ctx: &Ctx, unit: &Unit, action: ActionId, ms: ScriptCut) -> Checked<()> {
+        Self::check_held(ctx, unit, action)?;
+        let cut = ms.get();
         ctx.queue(AbilitiesEffect::ReduceCooldown {
             unit: unit.id,
             action,
@@ -122,7 +122,7 @@ impl AbilitiesApi {
     /// Queues a charge more of `unit`'s action `action` of the script's package, which it holds and
     /// which has charges.
     fn add_charge(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<()> {
-        AbilitiesApi::check_held(ctx, unit, action)?;
+        Self::check_held(ctx, unit, action)?;
         if !ActionsColumn::has_charges(ctx.view(), action) {
             return Err(AbilitiesRefusal::NoCharges.fail().into());
         }

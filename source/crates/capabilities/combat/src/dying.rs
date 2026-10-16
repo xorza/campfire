@@ -1,10 +1,10 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{With, Without};
+use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use campfire_actions::ActionSlots;
+use campfire_actions::ActionProgress;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, UnitPools};
-use campfire_units::{Dead, Owner, SpawnPoint};
+use campfire_units::{Avatar, Dead, Owner, SpawnPoint};
 use campfire_values::Team;
 
 use crate::deaths::{Deaths, Fallen};
@@ -32,11 +32,12 @@ impl Dying {
                 Entity,
                 &StableId,
                 &Life,
-                Option<&mut ActionSlots>,
+                Option<&mut ActionProgress>,
                 Option<&Team>,
                 Option<&Owner>,
+                Has<Avatar>,
             ),
-            (With<OnDeath>, Without<Dead>),
+            (With<OnDeath>, Without<Dead>, Changed<Life>),
         >,
         mut order: Local<'_, Ordered>,
     ) {
@@ -46,15 +47,21 @@ impl Dying {
             .filter(|(_, _, life, ..)| life.is_empty())
             .map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(dying) {
-            let (_, _, _, slots, team, owner) =
+            let (_, _, _, progress, team, owner, avatar) =
                 units.get_mut(entity).expect("a dying unit of the order");
-            if let Some(mut slots) = slots {
-                slots.set_attack_target(None);
-                slots.stop();
+            if let Some(mut progress) = progress {
+                progress.set_attack_target(None);
+                progress.stop();
             }
             commands.entity(entity).insert(Dead);
             if !deaths.killed(id) {
-                deaths.push(Fallen::of(id, team, owner), None, []);
+                let fallen = Fallen {
+                    id,
+                    team: team.copied(),
+                    owner: owner.map(|owner| owner.slot()),
+                    avatar,
+                };
+                deaths.push(fallen, None, []);
             }
         }
     }

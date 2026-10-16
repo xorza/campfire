@@ -29,22 +29,31 @@ pub struct Timer {
     pub data: Option<StateValue>,
 }
 
+/// A timer a call sets: the name and data `on_timer` receives, the ticks until it is first due,
+/// and its period, when it repeats.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TimerStart {
+    pub name: String,
+    pub after: Ticks,
+    pub every: Option<Ticks>,
+    /// `None` for `()`.
+    pub data: Option<StateValue>,
+}
+
 impl Timers {
-    /// Sets a timer `ticks` after `now`, and again every `ticks` if it repeats.
-    pub fn set(
-        &mut self,
-        now: Tick,
-        name: String,
-        ticks: Ticks,
-        repeat: bool,
-        data: Option<StateValue>,
-    ) {
-        let due = now.after(ticks);
+    /// Sets the timer `start` gives, `after` ticks from `now`.
+    pub fn set(&mut self, now: Tick, start: TimerStart) {
+        let TimerStart {
+            name,
+            after,
+            every,
+            data,
+        } = start;
         let timer = Timer {
             name,
-            due,
+            due: now.after(after),
             seq: self.next_seq,
-            every: repeat.then_some(ticks),
+            every,
             data,
         };
         self.next_seq += 1;

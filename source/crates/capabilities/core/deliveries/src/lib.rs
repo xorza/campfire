@@ -37,6 +37,16 @@ pub struct Deliveries {
     ended: Vec<Entity>,
 }
 
+/// The end of a dash that delivers `dash`, aimed at `target` if a unit, whose unit stands at
+/// `pos` after a last step in `direction`.
+#[derive(Debug, Clone, Copy)]
+pub struct DashEnd {
+    pub dash: DashDelivery,
+    pub target: Option<StableId>,
+    pub pos: Vec3,
+    pub direction: Option<Vec3>,
+}
+
 campfire_common::enum_all! {
     /// The steps of `deliveries`.
     #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -51,11 +61,11 @@ campfire_common::enum_all! {
 
 impl ModuleSet for DeliverySet {
     const CAPABILITY: Option<Capability> = None;
-    const ALL: &'static [DeliverySet] = &DeliverySet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            DeliverySet::Deliver => Phase::Deliver,
+            Self::Deliver => Phase::Deliver,
         })
     }
 }
@@ -67,8 +77,8 @@ impl Module for Deliveries {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<DeliverySet>();
-        d.scratch::<Deliveries>();
-        d.check::<ForcedMove>(Deliveries::dashes_known);
+        d.scratch::<Self>();
+        d.check::<ForcedMove>(Self::dashes_known);
         d.api(DeliveriesApi::register);
     }
 
@@ -94,16 +104,15 @@ impl Deliveries {
         self.ended.push(entity);
     }
 
-    /// Records the end of a dash that delivers `dash`, aimed at `target` if a unit, whose unit
-    /// stands at `pos` after a last step in `direction`: an end with no delivery unit, after
-    /// the meters the dash went, whose hooks are its action's.
-    pub fn end_dash(
-        &mut self,
-        dash: DashDelivery,
-        target: Option<StableId>,
-        pos: Vec3,
-        direction: Option<Vec3>,
-    ) {
+    /// Records `end`, the end of a dash that delivers an action: an end with no delivery unit,
+    /// after the meters the dash went, whose hooks are its action's.
+    pub fn end_dash(&mut self, end: DashEnd) {
+        let DashEnd {
+            dash,
+            target,
+            pos,
+            direction,
+        } = end;
         let by = Delivering {
             source: dash.source,
             action: dash.action,

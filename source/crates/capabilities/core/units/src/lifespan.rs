@@ -17,8 +17,8 @@ pub struct Lifespan {
 }
 
 impl Lifespan {
-    pub const fn until(ends: Tick) -> Lifespan {
-        Lifespan { ends }
+    pub const fn until(ends: Tick) -> Self {
+        Self { ends }
     }
 
     pub const fn ends(self) -> Tick {

@@ -72,37 +72,33 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for StatsRefusal {
     const OWNER: Capability = Capability::Stats;
-    const CASES: &'static [StatsRefusal] = &StatsRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            StatsRefusal::ParamMissing => {
-                "a param of the modifier, as the call applies it, is not given"
-            }
-            StatsRefusal::ParamShort => {
+            Self::ParamMissing => "a param of the modifier, as the call applies it, is not given",
+            Self::ParamShort => {
                 "a param of the modifier has no value at the rank the call applies it at"
             }
-            StatsRefusal::ParamOverflow => "a param of the modifier is past what a number holds",
-            StatsRefusal::ParamScalingTime => "a time of the modifier reads a scaling param",
-            StatsRefusal::ParamTime => {
-                "a time of the modifier is negative or too large to count in ticks"
-            }
-            StatsRefusal::NegativeStacks => "a count of a modifier's stacks is negative",
-            StatsRefusal::NoPool => "unit has no such pool",
-            StatsRefusal::NoStats => "unit has no stats",
+            Self::ParamOverflow => "a param of the modifier is past what a number holds",
+            Self::ParamScalingTime => "a time of the modifier reads a scaling param",
+            Self::ParamTime => "a time of the modifier is negative or too large to count in ticks",
+            Self::NegativeStacks => "a count of a modifier's stacks is negative",
+            Self::NoPool => "unit has no such pool",
+            Self::NoStats => "unit has no stats",
         }
     }
 }
 
 impl StatsRefusal {
     /// The refusal of a modifier's param that does not hold for `problem`.
-    pub const fn param(problem: ParamProblem) -> StatsRefusal {
+    pub const fn param(problem: ParamProblem) -> Self {
         match problem {
-            ParamProblem::Missing => StatsRefusal::ParamMissing,
-            ParamProblem::Short => StatsRefusal::ParamShort,
-            ParamProblem::Overflow => StatsRefusal::ParamOverflow,
-            ParamProblem::ScalingTime => StatsRefusal::ParamScalingTime,
-            ParamProblem::Time => StatsRefusal::ParamTime,
+            ParamProblem::Missing => Self::ParamMissing,
+            ParamProblem::Short => Self::ParamShort,
+            ParamProblem::Overflow => Self::ParamOverflow,
+            ParamProblem::ScalingTime => Self::ParamScalingTime,
+            ParamProblem::Time => Self::ParamTime,
         }
     }
 }

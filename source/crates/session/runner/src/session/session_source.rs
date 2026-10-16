@@ -1,15 +1,13 @@
 use campfire_package::ModePackages;
-use campfire_protocol::{ServerSeeds, SessionLog, Signer};
+use campfire_protocol::{ServerSeeds, SessionLog};
 
 /// What a session's match is built from: its log, rewound to replay its ticks, the seeds its
-/// server draws from, the packages of its mode, and the server's signer, which a server alone
-/// holds: a replay or a verifier signs nothing.
+/// server draws from, and the packages of its mode.
 #[derive(Debug)]
 pub struct SessionSource<'p> {
     pub log: SessionLog,
     pub seeds: ServerSeeds,
     pub packages: &'p ModePackages,
-    pub signer: Option<Signer>,
 }
 
 /// A checkpoint a session's match resumes at: the segment it starts, and its snapshot.

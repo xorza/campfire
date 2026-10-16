@@ -10,7 +10,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
 use campfire_stats::Life;
 use campfire_units::{BodyForm, Dead, UnitTypeCore, Units, UnitsWorld};
-use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope};
+use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope, VisionShare};
 use campfire_vision::*;
 
 /// A match of three teams.
@@ -115,7 +115,12 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // A new unit is seen by its whole group before its first Vision stage, as that stage gives
     // it: teams 1 and 2 become friends that share vision.
     let relations = &mut game.relations_mut();
-    relations.set(Team::new(1), Team::new(2), Relation::Friendly, true);
+    relations.set(
+        Team::new(1),
+        Team::new(2),
+        Relation::Friendly,
+        VisionShare::Shared,
+    );
     let new = Vision::spawn_seer(&mut game, 9, 9, Team::new(2), None);
     assert_eq!(Vision::seen_by(&game, new), team(2).with(Team::new(1)));
     game.step();
@@ -143,8 +148,18 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
     let [zero, forty, sixty_three, one] = units;
     // 0 and 40 friends that share vision, 0 and 63 friends with vision off.
     let mut relations = game.relations_mut();
-    relations.set(Team::new(0), Team::new(40), Relation::Friendly, true);
-    relations.set(Team::new(63), Team::new(0), Relation::Friendly, false);
+    relations.set(
+        Team::new(0),
+        Team::new(40),
+        Relation::Friendly,
+        VisionShare::Shared,
+    );
+    relations.set(
+        Team::new(63),
+        Team::new(0),
+        Relation::Friendly,
+        VisionShare::Apart,
+    );
     let teams = |list: &[u8]| {
         list.iter()
             .fold(TeamSet::NONE, |set, &team| set.with(Team::new(team)))
@@ -158,7 +173,12 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
 
     // With vision off between 0 and 40, as between 0 and 63, each team sees alone.
     let mut relations = game.relations_mut();
-    relations.set(Team::new(0), Team::new(40), Relation::Friendly, false);
+    relations.set(
+        Team::new(0),
+        Team::new(40),
+        Relation::Friendly,
+        VisionShare::Apart,
+    );
     game.step();
     assert_eq!(Vision::seen_by(&game, zero), teams(&[0]));
     assert_eq!(Vision::seen_by(&game, forty), teams(&[40]));

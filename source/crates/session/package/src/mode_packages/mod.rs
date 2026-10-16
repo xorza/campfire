@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use std::{fmt, iter};
 
 use campfire_actions::ActionData;
@@ -8,16 +9,16 @@ use campfire_capabilities::{
 use campfire_common::{MapName, PackageFingerprint};
 use campfire_mode::{MapData, ModeData};
 use campfire_script::{ScriptHost, ScriptId, UnknownName};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_stats::{EdgeError, StatGraph, StatId};
 use campfire_units::ScriptBook;
-use campfire_values::{DeclaredName, EngineTag, PackageIndex, PackagePath};
+use campfire_values::{DeclaredName, EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
+use crate::error::LoadError;
 use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
-use crate::error::{LoadError, PackageRef};
 use crate::file_index::FileIndex;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
@@ -61,28 +62,7 @@ pub struct ModePackages {
 }
 
 impl ModePackages {
-    /// The map of the mode whose index is `index`, the package `package`, that a session plays:
-    /// `map` when it names one, else the mode's only map; an error when it names none and the
-    /// mode has no map, or several.
-    pub fn choose_map(
-        index: &FileIndex,
-        package: &PackageRef,
-        map: Option<MapName>,
-    ) -> Result<MapName, LoadError> {
-        if let Some(map) = map {
-            return Ok(map);
-        }
-        let fail = |problem| LoadError::new(package.clone(), problem);
-        let mut maps = maps_of(index).map_err(fail)?;
-        match maps.pop() {
-            Some(only) if maps.is_empty() => Ok(only),
-            other => Err(fail(LoadProblem::MapNeeded(
-                maps.into_iter().chain(other).collect(),
-            ))),
-        }
-    }
-
-    pub const fn fingerprint(&self) -> PackageFingerprint {
+    pub fn fingerprint(&self) -> PackageFingerprint {
         self.mode.fingerprint()
     }
 
@@ -151,6 +131,12 @@ impl ModePackages {
             .expect("the load built the books at the fastest rate")
     }
 
+    /// The names of its unit types, each in its scope, as a match's books number them.
+    pub fn unit_types(&self) -> Arc<Names<UnitType>> {
+        let types = Books::unit_types(self.tag_names(), &self.book_packages());
+        Arc::clone(types.expect("the load declared every type").types())
+    }
+
     /// Compiles every script of its packages by `compile`, in the order a match compiles them,
     /// which must number each at its place, as its book of hooks holds it; the load parsed each
     /// one, so none fails.
@@ -208,7 +194,7 @@ impl ModePackages {
             map: &self.map,
             teams: &self.manifest.teams,
             max_move_speed: self.manifest.max_move_speed,
-            progression: self.manifest.capabilities.contains(Capability::Progression),
+            set: self.manifest.capabilities,
             tag_names: &self.tag_names,
             packages: self.book_packages(),
             scripts: &self.scripts,
@@ -369,15 +355,16 @@ impl ModePackages {
         &self.dependencies
     }
 
-    /// The mode of `files`, whose manifest is `manifest`, on its map `map_name`, with each
-    /// package its manifest names in `dependencies`, in the order of their names: checked as a
-    /// match loads them, each file the load reads parsed once.
+    /// The mode of `files`, whose manifest is `manifest`, on its map `map`, or its only map when
+    /// `map` names none, with each package its manifest names in `dependencies`, in the order of
+    /// their names: checked as a match loads them, each file the load reads parsed once. A mode
+    /// of several maps and none named fails, its error naming them all.
     pub fn new(
         files: &PackageFiles,
         manifest: ModeManifest,
-        map_name: &MapName,
+        map: Option<&MapName>,
         dependencies: &[(PackageName, &PackageFiles)],
-    ) -> Result<ModePackages, LoadError> {
+    ) -> Result<Self, LoadError> {
         let mut parser = ScriptHost::new(manifest.script_limits.per_call);
         let api = Release::bind_script_api(&mut parser);
         let name = manifest.header.name.clone();
@@ -398,13 +385,23 @@ impl ModePackages {
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         content.units = units.units;
-        if !maps_of(files.index()).map_err(fail)?.contains(map_name) {
-            return Err(fail(LoadProblem::NoMap(map_name.clone())));
-        }
+        let mut maps = maps_of(files.index()).map_err(fail)?;
+        let map_name = match map {
+            Some(map) if maps.contains(map) => map.clone(),
+            Some(map) => return Err(fail(LoadProblem::NoMap(map.clone()))),
+            None => match maps.pop() {
+                Some(only) if maps.is_empty() => only,
+                other => {
+                    let named = maps.into_iter().chain(other).collect();
+                    return Err(fail(LoadProblem::MapNeeded(named)));
+                }
+            },
+        };
         let map_data = PackagePath::parse(&format!("map/{map_name}/map.toml"))
             .expect("a map's name is a package path's name");
         let map = files
-            .read_file_data(&map_data)
+            .reader()
+            .read_data(&map_data)
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let mode = Package::read(files, &manifest.header, &parser, &api)?;
@@ -422,14 +419,14 @@ impl ModePackages {
             }
         }
         let dependents = dependencies.iter().map(|dependent| &dependent.package);
-        let scripts = ModePackages::read_hooks(iter::once(&mode).chain(dependents));
-        let tag_names = ModePackages::collect_tag_names((&data, &content), &dependencies);
-        let mut packages = ModePackages {
+        let scripts = Self::read_hooks(iter::once(&mode).chain(dependents));
+        let tag_names = Self::collect_tag_names((&data, &content), &dependencies);
+        let mut packages = Self {
             mode,
             manifest,
             script,
             data,
-            map_name: map_name.clone(),
+            map_name,
             map,
             content,
             tag_names,
@@ -454,6 +451,6 @@ fn maps_of(index: &FileIndex) -> Result<Vec<MapName>, LoadProblem> {
                 .strip_suffix("/map.toml")?;
             (!name.contains('/')).then_some(name)
         })
-        .map(|name| MapName::new(name).ok_or_else(|| LoadProblem::MapDirName(name.to_owned())))
+        .map(|name| MapName::parse(name).ok_or_else(|| LoadProblem::MapDirName(name.to_owned())))
         .collect()
 }

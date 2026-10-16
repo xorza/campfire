@@ -1,10 +1,10 @@
 use campfire_values::PackagePath;
 
 use super::*;
-use crate::zero_hour::terrain::{ClassTexture, CliffUv, TextureClass};
+use crate::zero_hour::format::map::terrain::{CliffUv, TextureClass};
+use crate::zero_hour::terrain_atlas::ClassTexture;
 
 const COLUMNS: usize = 5;
-const COLUMNS_U32: u32 = 5;
 const ROWS: usize = 4;
 
 /// 5 × 4 samples, 4 × 3 cells, all flat at 0: class 0, `Sand`, of 2 × 2 tiles with a texture,
@@ -13,17 +13,17 @@ const ROWS: usize = 4;
 /// source tile 2's south-west quarter.
 struct Fixture {
     parts: TerrainParts,
-    samples: Vec<u8>,
+    heights: MapHeights,
+    textures: Vec<Option<ClassTexture>>,
 }
 
 impl Fixture {
-    fn new() -> Fixture {
+    fn new() -> Self {
         let class = |first_tile, tiles, width, name: &str| TextureClass {
             first_tile,
             tiles,
             width,
             name: name.to_owned(),
-            texture: None,
         };
         let cell = TerrainCell {
             tile: 8,
@@ -32,14 +32,13 @@ impl Fixture {
             cliff_uv: None,
             cliff: false,
         };
-        let mut sand = class(0, 4, 2, "Sand");
-        sand.texture = Some(ClassTexture {
+        let sand = class(0, 4, 2, "Sand");
+        let sand_texture = ClassTexture {
             path: PackagePath::parse("client/textures/art/terrain/sand.ktx2").unwrap(),
             size: UVec2::splat(128),
-        });
-        Fixture {
+        };
+        Self {
             parts: TerrainParts {
-                columns: COLUMNS_U32,
                 cells: vec![cell; COLUMNS * ROWS],
                 tiles: 5,
                 classes: vec![sand, class(4, 1, 1, "Bare")],
@@ -48,17 +47,23 @@ impl Fixture {
                 blends: Vec::new(),
                 cliffs: Vec::new(),
             },
-            samples: vec![0; COLUMNS * ROWS],
+            heights: MapHeights {
+                width: COLUMNS,
+                depth: ROWS,
+                border: 0,
+                samples: vec![0; COLUMNS * ROWS],
+            },
+            textures: vec![Some(sand_texture), None],
         }
     }
 
-    /// The package's index of the game's `[x, y]`: its rows run from the game's north.
+    /// The index of the game's `[x, y]`: its rows run from the game's south.
     const fn at([x, y]: [usize; 2]) -> usize {
-        (ROWS - 1 - y) * COLUMNS + x
+        y * COLUMNS + x
     }
 
     fn cell(&mut self, at: [usize; 2]) -> &mut TerrainCell {
-        &mut self.parts.cells[Fixture::at(at)]
+        &mut self.parts.cells[Self::at(at)]
     }
 
     /// Sets the heights of the cell `[x, y]`'s corners, in the game's order.
@@ -67,18 +72,18 @@ impl Fixture {
             .into_iter()
             .zip(heights)
         {
-            self.samples[Fixture::at(corner)] = height;
+            self.heights.samples[Self::at(corner)] = height;
         }
     }
 
     fn atlas(&self) -> TerrainAtlas {
-        TerrainAtlas::new(&self.parts)
+        TerrainAtlas::new(&self.parts, &self.textures)
     }
 
     /// What the cell `at` draws, with `game`'s settings.
     fn draw(&self, at: [usize; 2], game: GameData) -> CellDraw {
         let atlas = self.atlas();
-        TerrainCells::new(&self.parts, &self.samples, &atlas, game).cell(at)
+        TerrainCells::new(&self.parts, &self.heights, &atlas, game).cell(at)
     }
 }
 
@@ -148,8 +153,8 @@ fn a_tile_draws_its_quarter_of_its_source_tile_and_one_with_no_texture_none() {
 fn each_blend_is_opaque_at_its_corners_and_splits_its_cell_along_its_fade() {
     let fixture = Fixture::new();
     let atlas = fixture.atlas();
-    let cells = TerrainCells::new(&fixture.parts, &fixture.samples, &atlas, ADJUSTED);
-    let plain = TerrainCells::new(&fixture.parts, &fixture.samples, &atlas, PLAIN);
+    let cells = TerrainCells::new(&fixture.parts, &fixture.heights, &atlas, ADJUSTED);
+    let plain = TerrainCells::new(&fixture.parts, &fixture.heights, &atlas, PLAIN);
     let horizontal = BlendShape::Horizontal;
     let vertical = BlendShape::Vertical;
     let right = |long| BlendShape::RightDiagonal { long };
@@ -300,7 +305,7 @@ fn the_file_s_quads_turn_the_game_s_cells_to_its_rows_and_count_those_with_no_te
     fixture.cell([3, 2]).blend = Some(1);
     fixture.cell([3, 2]).extra_blend = Some(1);
     let atlas = fixture.atlas();
-    let quads = TerrainCells::new(&fixture.parts, &fixture.samples, &atlas, ADJUSTED).quads();
+    let quads = TerrainCells::new(&fixture.parts, &fixture.heights, &atlas, ADJUSTED).quads();
     // 4 × 3 cells, rows from the game's north: the game's [x, y] is the file's [x, 2 − y].
     assert_eq!((quads.columns, quads.ground.len()), (5, 12));
     // The game's [0, 0], the file's [0, 2], cell 8: its tile's corners from the north-west, and
@@ -332,13 +337,13 @@ fn the_file_s_quads_turn_the_game_s_cells_to_its_rows_and_count_those_with_no_te
     );
     assert_eq!(quads.overlays[0].uv, quads.ground[3].uv);
     // Without third blends, cell 3 has its blend alone.
-    let plain = TerrainCells::new(&fixture.parts, &fixture.samples, &atlas, PLAIN).quads();
+    let plain = TerrainCells::new(&fixture.parts, &fixture.heights, &atlas, PLAIN).quads();
     assert_eq!(plain.overlays.len(), 2);
     // Every tile has its texture; a tile of `Bare`, which has none, leaves its cell untextured,
     // as a blend of it does, and a third blend of it does when the game draws third blends.
     let untextured = |fixture: &Fixture, game| {
         let atlas = fixture.atlas();
-        TerrainCells::new(&fixture.parts, &fixture.samples, &atlas, game).untextured()
+        TerrainCells::new(&fixture.parts, &fixture.heights, &atlas, game).untextured()
     };
     assert_eq!(untextured(&fixture, ADJUSTED), 0);
     fixture.cell([2, 1]).tile = 16;
@@ -354,7 +359,7 @@ fn the_file_s_quads_turn_the_game_s_cells_to_its_rows_and_count_those_with_no_te
     // texture leaves its cell textured.
     let before = {
         let atlas = fixture.atlas();
-        TerrainCells::new(&fixture.parts, &fixture.samples, &atlas, ADJUSTED).quads()
+        TerrainCells::new(&fixture.parts, &fixture.heights, &atlas, ADJUSTED).quads()
     };
     fixture.parts.blends.push(BlendTile {
         custom_edge: Some(0),
@@ -362,7 +367,7 @@ fn the_file_s_quads_turn_the_game_s_cells_to_its_rows_and_count_those_with_no_te
     });
     fixture.cell([0, 0]).extra_blend = Some(3);
     let atlas = fixture.atlas();
-    let after = TerrainCells::new(&fixture.parts, &fixture.samples, &atlas, ADJUSTED).quads();
+    let after = TerrainCells::new(&fixture.parts, &fixture.heights, &atlas, ADJUSTED).quads();
     assert_eq!(after.overlays, before.overlays);
     assert_eq!(untextured(&fixture, ADJUSTED), 3);
 }

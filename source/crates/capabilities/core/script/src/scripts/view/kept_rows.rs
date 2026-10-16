@@ -80,8 +80,8 @@ pub struct RunMove {
 
 impl RunMove {
     /// The move of runs that started at `from` to the end of a buffer of `to` items.
-    pub fn new(from: u32, to: usize) -> RunMove {
-        RunMove {
+    pub fn new(from: u32, to: usize) -> Self {
+        Self {
             from,
             to: u32::try_from(to).expect("a view's runs fit u32"),
         }
@@ -101,7 +101,7 @@ impl RunMove {
 /// Rows of one value each, as a column with no runs holds them.
 impl<T: Clone + PartialEq + fmt::Debug> ColumnRows for Vec<T> {
     fn clear(&mut self) {
-        Vec::clear(self);
+        Self::clear(self);
     }
 
     fn push_from(&mut self, from: &Self, rows: Range<usize>) {
@@ -109,6 +109,6 @@ impl<T: Clone + PartialEq + fmt::Debug> ColumnRows for Vec<T> {
     }
 
     fn len(&self) -> usize {
-        Vec::len(self)
+        Self::len(self)
     }
 }

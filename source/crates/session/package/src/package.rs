@@ -44,7 +44,7 @@ impl Package {
         header: &PackageHeader,
         host: &ScriptHost,
         api: &ScriptApi,
-    ) -> Result<Package, LoadError> {
+    ) -> Result<Self, LoadError> {
         let name = header.name.clone();
         let fail = |problem| LoadError::of(&name, problem);
         let mut scripts = Vec::new();
@@ -65,7 +65,7 @@ impl Package {
             });
         }
         let text = PackageText::read(files, &header.language).map_err(fail)?;
-        Ok(Package {
+        Ok(Self {
             header: header.clone(),
             scripts,
             text,
@@ -74,7 +74,7 @@ impl Package {
     }
 
     /// The fingerprint of its files' index.
-    pub const fn fingerprint(&self) -> PackageFingerprint {
+    pub fn fingerprint(&self) -> PackageFingerprint {
         self.files.fingerprint()
     }
 

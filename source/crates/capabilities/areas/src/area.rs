@@ -27,8 +27,8 @@ pub struct Area {
 }
 
 impl Area {
-    pub const fn new(by: Delivering, aimed: Option<StableId>, ends_at: Tick) -> Area {
-        Area { by, aimed, ends_at }
+    pub const fn new(by: Delivering, aimed: Option<StableId>, ends_at: Tick) -> Self {
+        Self { by, aimed, ends_at }
     }
 
     pub(crate) const fn by(&self) -> Delivering {
@@ -73,7 +73,7 @@ impl SimComponent for Area {
         });
         let applies = |modifier| Stats::modifier_has_way(world, modifier, Some(action), rank);
         let holds = |spec: &AreaSpec| spec.inside.modifiers().all(applies);
-        let start = self.by.start.is_none_or(ActionStart::within_bound);
+        let start = self.by.start.is_none_or(ActionStart::check);
         by && launched && spec.is_some_and(holds) && start
     }
 }

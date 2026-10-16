@@ -30,7 +30,7 @@ struct Done<J, A> {
 
 impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
     /// Starts the worker `name`, which does each job with `work`.
-    pub fn start(name: &str, mut work: impl FnMut(&mut J) -> A + Send + 'static) -> Exchange<J, A> {
+    pub fn start(name: &str, mut work: impl FnMut(&mut J) -> A + Send + 'static) -> Self {
         // One job is out at a time, so a channel of one slot each way never makes a send wait,
         // and, bounded, holds its slot in a buffer it made once.
         let (jobs, received) = mpsc::sync_channel::<J>(1);
@@ -43,7 +43,7 @@ impl<J: Default + Send + 'static, A: Send + 'static> Exchange<J, A> {
                 }
             }
         });
-        Exchange {
+        Self {
             jobs: Some(jobs),
             done: WorkerLock::new(done),
             spare: J::default(),

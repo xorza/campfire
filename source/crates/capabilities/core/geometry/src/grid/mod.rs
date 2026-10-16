@@ -6,7 +6,7 @@ use campfire_math::{Flat, FloorRoot, I64x4, Num, Rounding, Vec3};
 
 use crate::body_box::BodyBox;
 use crate::bounds::Bounds;
-use crate::halves::Halves;
+use crate::halves;
 use crate::polygon::Polygon;
 
 #[cfg(feature = "internals")]
@@ -27,7 +27,7 @@ impl Grid {
 
     /// The grid of `cell`-meter cells over `bounds`; `None` unless `cell` is positive and at most
     /// the world's bound, and the cells are at most `MAX_CELLS`.
-    pub fn new(cell: Num, bounds: Bounds) -> Option<Grid> {
+    pub fn new(cell: Num, bounds: Bounds) -> Option<Self> {
         if cell <= Num::ZERO || cell > Position::BOUND {
             return None;
         }
@@ -38,10 +38,10 @@ impl Grid {
             let cells = span.div_ceil(cell.to_bits().unsigned_abs());
             size[axis] = u32::try_from(cells).ok()?;
         }
-        if u64::from(size[0]) * u64::from(size[1]) > Grid::MAX_CELLS {
+        if u64::from(size[0]) * u64::from(size[1]) > Self::MAX_CELLS {
             return None;
         }
-        Some(Grid { cell, bounds, size })
+        Some(Self { cell, bounds, size })
     }
 
     pub const fn cells(&self) -> usize {
@@ -81,7 +81,7 @@ impl Grid {
         let step = self.cell.to_bits();
         let min = self.bounds.min();
         let index = |index: usize| i64::try_from(index).expect("a cell of the grid");
-        let at = Halves::ground(pos);
+        let at = halves::ground(pos);
         let offset = |axis: usize| {
             let first = min[axis].to_bits().wrapping_mul(2);
             let center = |index: i64| {
@@ -130,13 +130,13 @@ impl Grid {
     /// Calls `reveal` with each row's run of the cells whose centers are within `radius` of `pos`
     /// on the ground plane, exactly, as every range is; rows in order.
     pub fn spans_within(&self, pos: Vec3, radius: Num, reveal: impl FnMut(Range<usize>)) {
-        self.spans(pos, radius, false, reveal);
+        self.spans(pos, radius, DiscEdge::In, reveal);
     }
 
     /// Calls `mark` with each row's run of the cells whose centers are closer than `radius` to
     /// `pos` on the ground plane, exactly: a center at `radius` is not closer. Rows in order.
     pub fn spans_closer(&self, pos: Vec3, radius: Num, mark: impl FnMut(Range<usize>)) {
-        self.spans(pos, radius, true, mark);
+        self.spans(pos, radius, DiscEdge::Out, mark);
     }
 
     /// Calls `mark` with each row's run of the cells whose centers come closer than `reach` to
@@ -151,12 +151,12 @@ impl Grid {
         reach: Num,
         mut mark: impl FnMut(Range<usize>),
     ) {
-        let center = Halves::ground(pos);
+        let center = halves::ground(pos);
         let point = center.to_array();
         let extent = body.extent();
         // The cells whose centers lie within the rectangle grown by the reach.
         let span = |axis: usize| {
-            let grow = Halves::of(extent[axis]) + Halves::of(reach);
+            let grow = halves::of(extent[axis]) + halves::of(reach);
             let (low, high) = (point[axis] - grow, point[axis] + grow);
             self.cells_along(axis, low, high, CellPart::Center)
         };
@@ -197,12 +197,12 @@ impl Grid {
     /// Calls `mark` with each row's run of the cells whose squares a box's inside shares a point
     /// with, `body` at `pos`: the cells it covers, touching not counted. Rows in order.
     pub fn box_covers(&self, pos: Vec3, body: &BodyBox, mut mark: impl FnMut(Range<usize>)) {
-        let center = Halves::ground(pos);
+        let center = halves::ground(pos);
         let point = center.to_array();
         let extent = body.extent();
         // The cells whose squares the rectangle meets.
         let span = |axis: usize| {
-            let half = Halves::of(extent[axis]);
+            let half = halves::of(extent[axis]);
             let (low, high) = (point[axis] - half, point[axis] + half);
             self.cells_along(axis, low, high, CellPart::Square)
         };
@@ -248,11 +248,10 @@ impl Grid {
         }
     }
 
-    /// The runs of `spans_within`, or of `spans_closer` when `strict`: with whole half-bits, a
-    /// square below `reach²` is one at most `reach² − 1`. Four rows a step in lanes when every
-    /// square fits them, else one row at a time.
-    fn spans(&self, pos: Vec3, radius: Num, strict: bool, mut reveal: impl FnMut(Range<usize>)) {
-        let rows = self.disc_rows(pos, radius, strict);
+    /// The runs of `spans_within`, or of `spans_closer` when a center at the reach is `Out`.
+    /// Four rows a step in lanes when every square fits them, else one row at a time.
+    fn spans(&self, pos: Vec3, radius: Num, edge: DiscEdge, mut reveal: impl FnMut(Range<usize>)) {
+        let rows = self.disc_rows(pos, radius, edge);
         if rows.fit_lanes(self.cell.to_bits()) {
             self.rows_in_lanes(&rows, &mut reveal);
         } else {
@@ -261,14 +260,14 @@ impl Grid {
     }
 
     /// The rows a disc of `radius` around `pos` may reach, in halves of a bit.
-    fn disc_rows(&self, pos: Vec3, radius: Num, strict: bool) -> Rows {
+    fn disc_rows(&self, pos: Vec3, radius: Num, edge: DiscEdge) -> Rows {
         let cell = self.cell.to_bits();
         // In halves of a bit, so each cell's center, half a cell from its edge, is whole. A
         // position and `min` are within 2⁴⁴ bits of the origin and a center within 2⁴⁶, so every
         // center is within 8 bounds: 2⁴⁸ halves, which leaves i64 room for sums, and i128 for
         // squares.
         let twice = |value: Num| {
-            i64::try_from(Halves::of(value)).expect("a coordinate within the bound fits i64")
+            i64::try_from(halves::of(value)).expect("a coordinate within the bound fits i64")
         };
         let reach = 2 * radius.to_bits().min(8 * Position::BOUND.to_bits());
         let min = self.bounds.min();
@@ -276,7 +275,7 @@ impl Grid {
         Rows {
             from,
             reach,
-            strict,
+            edge,
             first: (from[1] - reach).div_euclid(2 * cell).max(0),
             last: (from[1] + reach)
                 .div_euclid(2 * cell)
@@ -289,13 +288,13 @@ impl Grid {
         let Rows {
             from,
             reach,
-            strict,
+            edge,
             first,
             last,
         } = *rows;
         for z in first..=last {
             let dz = i128::from(from[1] - cell * (2 * z + 1));
-            let rest = i128::from(reach).pow(2) - i128::from(strict) - dz * dz;
+            let rest = i128::from(reach).pow(2) - i128::from(edge.cut()) - dz * dz;
             if rest < 0 {
                 continue;
             }
@@ -319,13 +318,13 @@ impl Grid {
         let Rows {
             from,
             reach,
-            strict,
+            edge,
             first,
             last,
         } = *rows;
         let pitch = 2 * cell;
         let zero = I64x4::splat(0);
-        let top = I64x4::splat(reach * reach - i64::from(strict));
+        let top = I64x4::splat(reach * reach - edge.cut());
         let along = I64x4::from_array([0, pitch, 2 * pitch, 3 * pitch]);
         let right = I64x4::splat(i64::from(self.size[0]) - 1);
         let mut z = first;
@@ -374,7 +373,7 @@ impl Grid {
 
     /// The center along `axis`, 0 for x and 1 for z, of the cells at `index`, in halves of a bit.
     fn center_twice_along(&self, axis: usize, index: i128) -> i128 {
-        Halves::of(self.bounds.min()[axis]) + i128::from(self.cell.to_bits()) * (2 * index + 1)
+        halves::of(self.bounds.min()[axis]) + i128::from(self.cell.to_bits()) * (2 * index + 1)
     }
 
     /// Whether `hit` is true of a cell of the grid whose closed square the segment from `from` to
@@ -463,16 +462,16 @@ impl Grid {
         high: i128,
         part: CellPart,
     ) -> RangeInclusive<i128> {
-        let min = Halves::of(self.bounds.min()[axis]);
+        let min = halves::of(self.bounds.min()[axis]);
         let cell = i128::from(self.cell.to_bits());
         let (first, end) = match part {
             CellPart::Center => (
                 Rounding::Ceiling.divide(low - min - cell, 2 * cell),
-                Grid::floor_halves(high - min - cell, 2 * cell),
+                Self::floor_halves(high - min - cell, 2 * cell),
             ),
             CellPart::Square => (
-                Grid::floor_halves(low - min, 2 * cell),
-                Grid::floor_halves(high - min, 2 * cell),
+                Self::floor_halves(low - min, 2 * cell),
+                Self::floor_halves(high - min, 2 * cell),
             ),
         };
         first.max(0)..=end.min(i128::from(self.size[axis]) - 1)
@@ -486,7 +485,7 @@ impl Grid {
     }
 
     /// The index along `axis`, 0 for x and 1 for z, of `at`, which is within the bounds.
-    pub fn index(&self, axis: usize, at: Num) -> usize {
+    pub(crate) fn index(&self, axis: usize, at: Num) -> usize {
         let offset = at.to_bits() - self.bounds.min()[axis].to_bits();
         let index = (offset / self.cell.to_bits()).min(i64::from(self.size[axis]) - 1);
         usize::try_from(index).expect("a point within the bounds is past their min")
@@ -500,13 +499,31 @@ enum CellPart {
     Square,
 }
 
+/// Whether a cell whose center lies at a disc's reach is in the disc.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiscEdge {
+    In,
+    Out,
+}
+
+impl DiscEdge {
+    /// What a square at most the reach's square takes off it: with whole half-bits, a square
+    /// below `reach²` is one at most `reach² − 1`.
+    const fn cut(self) -> i64 {
+        match self {
+            Self::In => 0,
+            Self::Out => 1,
+        }
+    }
+}
+
 /// The rows a disc may reach on a grid, in halves of a bit: its center from the grid's min, its
-/// reach, whether a center at the reach is out, and the first and last row.
+/// reach, whether a center at the reach is in it, and the first and last row.
 #[derive(Debug, Clone, Copy)]
 struct Rows {
     from: [i64; 2],
     reach: i64,
-    strict: bool,
+    edge: DiscEdge,
     first: i64,
     last: i64,
 }
@@ -537,9 +554,9 @@ impl Run {
     fn of_row(
         low: i128,
         high: i128,
-        near: Option<Run>,
+        near: Option<Self>,
         hits: impl Fn(i128) -> bool,
-    ) -> Option<Run> {
+    ) -> Option<Self> {
         let first = near
             .and_then(|near| {
                 let (first, end) = (near.first.clamp(low, high), near.end.clamp(low, high));
@@ -568,7 +585,7 @@ impl Run {
                 .find(|&column| hits(column))
                 .expect("the first is hit")
         };
-        Some(Run { first, end })
+        Some(Self { first, end })
     }
 }
 
@@ -584,12 +601,12 @@ impl Quotient {
     /// `value` over `by`, which is positive. A segment's values within the world's bound stay
     /// below 2¹⁰⁰, and every floor and rest within them, so the wrapping steps here skip the
     /// checks a release build makes.
-    fn of(value: i128, by: i128) -> Quotient {
+    fn of(value: i128, by: i128) -> Self {
         // The floor of a positive divisor's quotient, as `div_euclid` gives it: `Rounding`'s
         // division takes one native division for magnitudes within 64 bits, where `i128`'s is a
         // library call.
         let floor = Rounding::Floor.divide(value, by);
-        Quotient {
+        Self {
             floor,
             rest: value.wrapping_sub(floor.wrapping_mul(by)),
         }
@@ -601,10 +618,10 @@ impl Quotient {
     }
 
     /// The sum of the values of `self` and `other`, over the same `by`.
-    const fn plus(self, other: Quotient, by: i128) -> Quotient {
+    const fn plus(self, other: Self, by: i128) -> Self {
         let rest = self.rest.wrapping_add(other.rest);
         let carry = rest >= by;
-        Quotient {
+        Self {
             floor: self
                 .floor
                 .wrapping_add(other.floor)

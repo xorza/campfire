@@ -25,7 +25,7 @@ struct Relinked(Relinks);
 impl Plugin for LocalRelink {
     fn build(&self, app: &mut App) {
         app.insert_resource(Relinked(self.relinks.clone()));
-        app.add_systems(Update, LocalRelink::take);
+        app.add_systems(Update, Self::take);
     }
 }
 

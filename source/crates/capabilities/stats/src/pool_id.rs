@@ -6,14 +6,14 @@ use campfire_values::NameId;
 pub struct PoolId(u8);
 
 impl PoolId {
-    pub const FIRST: PoolId = PoolId(0);
+    pub const FIRST: Self = Self(0);
 
     /// `None` past `PoolId::LIMIT`.
-    pub const fn new(index: u8) -> Option<PoolId> {
-        if index as usize >= <PoolId as NameId>::LIMIT {
+    pub const fn new(index: u8) -> Option<Self> {
+        if index as usize >= <Self as NameId>::LIMIT {
             return None;
         }
-        Some(PoolId(index))
+        Some(Self(index))
     }
 
     /// Its place among the mode's pools.
@@ -27,8 +27,8 @@ impl NameId for PoolId {
     /// The most pools a mode declares, and so a unit holds.
     const LIMIT: usize = 8;
 
-    fn at(index: usize) -> PoolId {
-        PoolId::new(u8::try_from(index).expect("pools fit u8")).expect("a pool below the limit")
+    fn at(index: usize) -> Self {
+        Self::new(u8::try_from(index).expect("pools fit u8")).expect("a pool below the limit")
     }
 
     fn index(self) -> usize {

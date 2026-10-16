@@ -5,6 +5,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::Num;
+use campfire_script::StateValue;
 use campfire_sim::{SimComponent, StableId, TickRate};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
@@ -108,11 +109,20 @@ impl Modifiers {
     }
 
     /// Applies `application`: a new instance, its clock among `clocks`, or one more application
-    /// of the instance its source holds, as its `reapply` says. `refresh` takes the new numbers,
-    /// shield and end and keeps the stacks; `stack` does too, and adds a stack up to the limit, a
-    /// stack past it ending the stack that ends soonest in its place; `ignore` leaves the
-    /// instance. The script state stays.
-    pub fn apply(&mut self, clocks: &mut ModifierClocks, application: Application) -> Touched {
+    /// of the instance its source holds, as its `reapply` says, the application's hold joining
+    /// the instance whatever it says. `refresh` takes the new numbers, shield and end and keeps
+    /// the stacks; `stack` does too, and adds a stack up to the limit, a stack past it ending the
+    /// stack that ends soonest in its place; `ignore` leaves the rest of the instance. The script
+    /// state stays.
+    pub fn apply<S, T>(
+        &mut self,
+        clocks: &mut ModifierClocks,
+        application: Application<S, T>,
+    ) -> Touched
+    where
+        S: IntoIterator<Item = StatShare, IntoIter: ExactSizeIterator>,
+        T: IntoIterator<Item = StateValue, IntoIter: ExactSizeIterator>,
+    {
         let Application {
             instance: new,
             reapply,
@@ -129,7 +139,16 @@ impl Modifiers {
             }
         };
         match reapply {
-            Reapply::Ignore => Touched::default(),
+            Reapply::Ignore => {
+                let held = &mut self.instances[at].lifetime;
+                let joined = held.held_too(new.lifetime);
+                let changed = joined != *held;
+                *held = joined;
+                Touched {
+                    stats: changed,
+                    clocks: false,
+                }
+            }
             Reapply::Refresh => {
                 self.renew(clocks, at, new);
                 Touched {
@@ -139,7 +158,7 @@ impl Modifiers {
             }
             Reapply::Stack => {
                 let stacks = reapply.stacks(self.instances[at].stacks, max_stacks);
-                let added = new.stack_ends.first().map(|end| end.until);
+                let added = new.stack_end.map(|end| end.until);
                 self.renew(clocks, at, new);
                 if let Some(until) = added {
                     if stacks == self.instances[at].stacks {
@@ -154,12 +173,6 @@ impl Modifiers {
                 }
             }
         }
-    }
-
-    /// Lets `hold` keep the instance of `id` from `source` too, which it carries.
-    pub(crate) fn hold(&mut self, id: ModifierId, source: Option<StableId>, hold: Hold) {
-        let at = self.find(id, source).expect("an instance it carries");
-        self.instances[at].lifetime.hold(hold);
     }
 
     /// Lets go of `hold` on the instance of `id` from `source`, which ends, with its clock, when
@@ -396,9 +409,14 @@ impl Modifiers {
     }
 
     /// Puts `new` at `at`, and its clock among `clocks`.
-    fn insert(&mut self, clocks: &mut ModifierClocks, at: usize, new: NewInstance) {
+    fn insert<S, T>(&mut self, clocks: &mut ModifierClocks, at: usize, new: NewInstance<S, T>)
+    where
+        S: IntoIterator<Item = StatShare, IntoIter: ExactSizeIterator>,
+        T: IntoIterator<Item = StateValue, IntoIter: ExactSizeIterator>,
+    {
         let starts = self.starts(at);
         let run = |len: usize| u16::try_from(len).expect("an instance's run fits u16");
+        let stats = new.stats.into_iter();
         let instance = Instance {
             id: new.id,
             source: new.source,
@@ -408,11 +426,11 @@ impl Modifiers {
             aura_radius: new.aura_radius,
             stacks: new.stacks,
             stack_life: new.stack_life,
-            ends: run(new.stack_ends.len()),
-            shares: run(new.stats.len()),
+            ends: run(usize::from(new.stack_end.is_some())),
+            shares: run(stats.len()),
         };
-        self.ends.splice(starts.ends..starts.ends, new.stack_ends);
-        self.shares.splice(starts.shares..starts.shares, new.stats);
+        self.ends.splice(starts.ends..starts.ends, new.stack_end);
+        self.shares.splice(starts.shares..starts.shares, stats);
         self.instances.insert(at, instance);
         clocks.insert(at, new.interval, new.shield, new.state);
     }
@@ -436,8 +454,12 @@ impl Modifiers {
     /// the instance at `at`, and joins its lifetime, keeping the stacks, when they end, and the
     /// script state. Its interval takes the new length from the next on, and the next keeps its
     /// tick, so no refresh puts it off.
-    fn renew(&mut self, clocks: &mut ModifierClocks, at: usize, instance: NewInstance) {
+    fn renew<S, T>(&mut self, clocks: &mut ModifierClocks, at: usize, instance: NewInstance<S, T>)
+    where
+        S: IntoIterator<Item = StatShare, IntoIter: ExactSizeIterator>,
+    {
         let starts = self.starts(at);
+        let stats = instance.stats.into_iter();
         let held = &mut self.instances[at];
         held.action = instance.action;
         held.rank = instance.rank;
@@ -445,8 +467,8 @@ impl Modifiers {
         held.stack_life = instance.stack_life;
         held.aura_radius = instance.aura_radius;
         let shares = starts.shares..starts.shares + usize::from(held.shares);
-        held.shares = u16::try_from(instance.stats.len()).expect("an instance's run fits u16");
-        self.shares.splice(shares, instance.stats);
+        held.shares = u16::try_from(stats.len()).expect("an instance's run fits u16");
+        self.shares.splice(shares, stats);
         clocks.renew(at, instance.interval, instance.shield);
     }
 
@@ -556,7 +578,7 @@ impl Replication for Modifiers {
 /// buffers, stack ends out of order, empty, or that do not count an instance's stacks, and a
 /// negative aura radius fail to decode.
 impl<'de> Deserialize<'de> for Modifiers {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Modifiers, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             instances: Vec<Instance>,
@@ -579,7 +601,7 @@ impl<'de> Deserialize<'de> for Modifiers {
         {
             return Err(D::Error::custom("runs that cover the buffers exactly"));
         }
-        let modifiers = Modifiers {
+        let modifiers = Self {
             instances,
             ends,
             shares,
@@ -621,7 +643,7 @@ pub(crate) mod internals {
     impl Modifiers {
         /// A unit's modifiers and their clocks, of `applications` applied in order.
         pub fn bundle(applications: impl IntoIterator<Item = Application>) -> impl Bundle {
-            let (mut modifiers, mut clocks) = (Modifiers::default(), ModifierClocks::default());
+            let (mut modifiers, mut clocks) = (Self::default(), ModifierClocks::default());
             for application in applications {
                 modifiers.apply(&mut clocks, application);
             }

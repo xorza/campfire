@@ -25,7 +25,7 @@ impl Mine {
     /// of a half meter. Its minerals are nodes of gold, boxes of 2 by 1 m of the neutral team 2; its
     /// hall, player 0's, a box of 4 by 2 m, takes gold. A worker's gather takes 5 a trip in 3
     /// ticks, within 1 m of its body's edge, and looks 4 m from its node for another.
-    fn place(game: &mut Match, shop: Shop) -> Mine {
+    fn place(game: &mut Match, shop: Shop) -> Self {
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
         game.resource_mut::<MapBook>().bounds = bounds;
         let walker = Walker {
@@ -56,7 +56,7 @@ impl Mine {
         Units::give_type(game, worker, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, worker, Gatherer::default());
         Mode::load_test_units(game);
-        Mine {
+        Self {
             gather,
             mineral,
             worker,
@@ -465,7 +465,7 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
         train,
         TrainQueue::default(),
     );
-    game.insert_parts(barracks, Rally::new(RallyTarget::Unit(node)));
+    game.insert_parts(barracks, Rally::new(Some(RallyTarget::Unit(node))));
     Production::order_train(&mut game, barracks);
     game.step();
     let index = game.resource::<EntityIndex>();
@@ -505,4 +505,36 @@ fn a_predicting_clients_gather_loop_reads_only_what_it_holds() {
         let worker = mine.worker(game, halves(1, 6), 0);
         Production::gather_at(game, &[worker], node);
     });
+}
+
+#[test]
+fn a_worker_that_dies_or_loses_its_node_ends_its_gather_and_frees_the_node() {
+    // As in the first test, tick 0 walks the worker to the mineral and tick 1 takes it. In tick
+    // 2 the worker dies: its order ends, as a dead unit takes none, and the mineral frees, so the
+    // worker gathers from no node as it respawns. Or the mineral dies: the worker finds no node
+    // it gathers near it and stops, and frees the mineral in that tick's step.
+    for worker_dies in [true, false] {
+        let mut game = ordering_match();
+        let shop = Shop::place(&mut game);
+        let mine = Mine::place(&mut game, shop);
+        shop.hall(&mut game, halves(0, 0));
+        let node = mine.mineral(&mut game, halves(0, 12), 12);
+        let worker = mine.worker(&mut game, halves(1, 6), 0);
+        Production::gather_at(&mut game, &[worker], node);
+        game.step();
+        game.step();
+        assert!(matches!(
+            Production::gather_step(&game, worker),
+            Some(GatherStep::Gathering { .. })
+        ));
+        assert_eq!(game.part::<Node>(node).holder(), Some(worker));
+        game.insert_parts(if worker_dies { worker } else { node }, Dead);
+        game.step();
+        assert_eq!(
+            Production::gather_step(&game, worker),
+            None,
+            "{worker_dies}"
+        );
+        assert_eq!(game.part::<Node>(node).holder(), None, "{worker_dies}");
+    }
 }

@@ -15,8 +15,8 @@ use crate::area::Area;
 pub struct AreaTrigger(Tick);
 
 impl AreaTrigger {
-    pub const fn at(tick: Tick) -> AreaTrigger {
-        AreaTrigger(tick)
+    pub const fn at(tick: Tick) -> Self {
+        Self(tick)
     }
 
     pub const fn get(self) -> Tick {

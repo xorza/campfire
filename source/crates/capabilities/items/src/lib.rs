@@ -7,7 +7,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, CastSpends, SlotTimes, UseGroup};
+use campfire_actions::{ActionProgress, ActionSlots, CastSpends, SlotTimes, SlotsMut, UseGroup};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
@@ -62,13 +62,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for ItemsSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Items);
-    const ALL: &'static [ItemsSet] = &ItemsSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            ItemsSet::Commands => Phase::Trade,
-            ItemsSet::HoldAtInputs => Phase::HoldItems,
-            ItemsSet::Want => Phase::Resolve,
+            Self::Commands => Phase::Trade,
+            Self::HoldAtInputs => Phase::HoldItems,
+            Self::Want => Phase::Resolve,
         })
     }
 }
@@ -80,7 +80,7 @@ impl Module for Items {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ItemsSet>();
-        d.callback::<CastSpends>((), Items::spend_use);
+        d.callback::<CastSpends>((), Self::spend_use);
         d.component::<Inventory>();
         d.component::<UseGroup>();
         d.require::<Inventory, UseGroup>();
@@ -114,12 +114,20 @@ impl Items {
     fn spend_use(world: &mut World, entity: Entity, slot: u8) {
         let book = world.resource::<ItemBook>().clone();
         let mut caster = world.entity_mut(entity);
-        let carried = caster
-            .get_components_mut::<(&mut Inventory, &UseGroup, &mut ActionSlots, &mut SlotTimes)>();
-        if let Ok((mut inventory, &group, mut slots, mut times)) = carried {
+        let carried = caster.get_components_mut::<(
+            &mut Inventory,
+            &UseGroup,
+            &mut ActionSlots,
+            &mut SlotTimes,
+            &mut ActionProgress,
+        )>();
+        if let Ok((mut inventory, &group, mut slots, mut times, mut progress)) = carried {
             let carrier = CarrierSlots {
-                slots: &mut slots,
-                times: &mut times,
+                unit: SlotsMut {
+                    slots: &mut slots,
+                    times: &mut times,
+                    progress: &mut progress,
+                },
                 group,
             };
             inventory.spend_use(&book, carrier, slot);

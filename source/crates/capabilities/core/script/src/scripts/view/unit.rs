@@ -14,8 +14,8 @@ pub struct Unit {
 
 impl Unit {
     /// Only the view makes a handle, of a unit it read: `View::unit` for any other code.
-    pub(crate) const fn new(id: StableId, row: usize, view: View) -> Unit {
-        Unit { id, row, view }
+    pub(crate) const fn new(id: StableId, row: usize, view: View) -> Self {
+        Self { id, row, view }
     }
 
     pub const fn view(&self) -> &View {
@@ -52,7 +52,7 @@ pub(crate) mod internals {
             };
             units
                 .into_iter()
-                .map(|unit| unit.try_cast::<Unit>().unwrap().id)
+                .map(|unit| unit.try_cast::<Self>().unwrap().id)
                 .collect()
         }
     }

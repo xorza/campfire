@@ -14,13 +14,17 @@ use crate::action::Action;
 use crate::action_book::ActionBook;
 use crate::action_range::ActionRange;
 use crate::action_slots::ActionSlots;
+use crate::action_slots::action_progress::ActionProgress;
 use crate::delivery::Delivery;
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
 use crate::slot_kinds::SlotKinds;
 
 /// The part of a unit the actions read into its row: its slots.
-pub(super) type RowReads = Option<&'static ActionSlots>;
+pub(super) type RowReads = (
+    Option<&'static ActionSlots>,
+    Option<&'static ActionProgress>,
+);
 
 /// What the action pipeline adds to the script view: the match's actions and slot kinds, and each
 /// unit's ability slots, the unit its attacks aim at, and the range of its first weapon, a row
@@ -121,7 +125,7 @@ impl ActionsRows {
 impl ActionsColumn {
     /// Adds the row of a unit with `slots`, or with none: each slot's rank, its action's ranks
     /// and its weapon filter, the attack target, and the range of its first weapon.
-    pub fn push(&mut self, slots: Option<&ActionSlots>) {
+    pub fn push(&mut self, slots: Option<&ActionSlots>, progress: Option<&ActionProgress>) {
         let (book, rows) = (&self.book, self.rows.now_mut());
         let start = u32::try_from(rows.slots.len()).expect("slots fit u32");
         let Some(slots) = slots else {
@@ -153,7 +157,7 @@ impl ActionsColumn {
         }));
         let end = u32::try_from(rows.slots.len()).expect("slots fit u32");
         rows.rows.push(ActionsRow {
-            target: slots.attack_target(),
+            target: progress.and_then(ActionProgress::attack_target),
             attack_range,
             slots: start..end,
         });
@@ -161,7 +165,7 @@ impl ActionsColumn {
 
     /// Whether action `id` has charges.
     pub fn has_charges(view: &View, id: ActionId) -> bool {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             let action = column.book.get(id).expect("an action of the match");
             action.ranks.iter().any(|values| values.charges.is_some())
         })
@@ -169,25 +173,25 @@ impl ActionsColumn {
 
     /// Whether the unit in row `row` holds action `id` in a slot.
     pub fn holds(view: &View, row: usize, id: ActionId) -> bool {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column.run(row).iter().any(|slot| slot.action == Some(id))
         })
     }
 
     /// How many ranks an action in `kind` has.
     pub fn kind_ranks(view: &View, kind: SlotKind) -> u8 {
-        ActionsColumn::read(view, |column| column.kinds.ranks(kind))
+        Self::read(view, |column| column.kinds.ranks(kind))
     }
 
     /// The rank an action in `kind` has as it is granted: the first for a kind with no `ranks`,
     /// none for one whose ranks are learned.
     pub fn first_rank(view: &View, kind: SlotKind) -> Option<Rank> {
-        ActionsColumn::read(view, |column| column.kinds.first_rank(kind))
+        Self::read(view, |column| column.kinds.first_rank(kind))
     }
 
     /// The range of action `id` at `rank`, one of its ranks.
     pub fn range(view: &View, id: ActionId, rank: Rank) -> ActionRange {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column
                 .book
                 .get(id)
@@ -198,29 +202,29 @@ impl ActionsColumn {
     }
 
     /// What `read` gives of the column, which every match's pipeline adds.
-    fn read<R>(view: &View, read: impl FnOnce(&ActionsColumn) -> R) -> R {
+    fn read<R>(view: &View, read: impl FnOnce(&Self) -> R) -> R {
         view.column(read)
             .expect("the action pipeline adds its column to every match's view")
     }
 
     /// The unit the attacks of the unit in row `row` aim at.
     pub fn target(view: &View, row: usize) -> Option<StableId> {
-        ActionsColumn::read(view, |column| column.rows.now().rows[row].target)
+        Self::read(view, |column| column.rows.now().rows[row].target)
     }
 
     /// The range of the first weapon of the unit in row `row`, in meters; none with no weapon.
     pub fn attack_range(view: &View, row: usize) -> Option<Num> {
-        ActionsColumn::read(view, |column| column.rows.now().rows[row].attack_range)
+        Self::read(view, |column| column.rows.now().rows[row].attack_range)
     }
 
     /// How many ability slots the unit in row `row` has.
     pub fn slot_count(view: &View, row: usize) -> usize {
-        ActionsColumn::read(view, |column| column.rows.now().rows[row].slots.len())
+        Self::read(view, |column| column.rows.now().rows[row].slots.len())
     }
 
     /// Ability slot `slot` of the unit in row `row`, when it has one.
     pub fn slot(view: &View, row: usize, slot: u8) -> Option<SlotRow> {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column.run(row).get(usize::from(slot)).copied()
         })
     }
@@ -229,7 +233,7 @@ impl ActionsColumn {
     pub fn armed_against(view: &View, row: usize, unit: &UnitRow, target: &UnitRow) -> bool {
         let relation = view.relation(unit.team, target.team);
         let target = Some((relation, target.tags.tags));
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column
                 .run(row)
                 .iter()
@@ -239,7 +243,7 @@ impl ActionsColumn {
 
     /// How action `id` delivers, if other than at once.
     pub fn delivers(view: &View, id: ActionId) -> Option<Delivery> {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column
                 .book
                 .get(id)
@@ -254,7 +258,10 @@ impl ActionsColumn {
     }
 
     /// Adds a unit's actions to the actions' column of the script view.
-    pub fn fill_row(slots: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, ActionsColumn>) {
-        fill.column.push(slots);
+    pub fn fill_row(
+        (slots, progress): ROQueryItem<'_, '_, RowReads>,
+        fill: &mut RowFill<'_, Self>,
+    ) {
+        fill.column.push(slots, progress);
     }
 }

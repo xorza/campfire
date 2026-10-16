@@ -12,15 +12,14 @@ pub(crate) struct ActionsEffect {
 }
 
 impl Effect for ActionsEffect {
-    // The unit spawns with the id the call took, and lives `life` ticks from this one.
+    // The unit spawns with the id the call took, and its lifespan of `life` ticks from this one
+    // with it, so it spawns whole.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
         let spawner = world.non_send::<Spawner>().clone();
-        let entity = spawner.spawn(world, self.at, ());
-        if let Some(life) = self.life {
-            world
-                .entity_mut(entity)
-                .insert(Lifespan::until(now.after(life)));
-        }
+        match self.life {
+            Some(life) => spawner.spawn(world, self.at, Lifespan::until(now.after(life))),
+            None => spawner.spawn(world, self.at, ()),
+        };
     }
 }

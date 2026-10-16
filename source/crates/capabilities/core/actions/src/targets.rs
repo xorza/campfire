@@ -87,7 +87,7 @@ impl Targets<'_, '_> {
     /// and its tags let it be one. This is the one rule of a target, which the script view reads
     /// too.
     pub fn targetable(life: Option<&Life>, tags: Option<&UnitTags>) -> bool {
-        life.is_some() && !UnitTags::properties_of(tags).blocks(Block::Target)
+        life.is_some() && !tags.is_some_and(|tags| tags.properties.blocks(Block::Target))
     }
 
     /// The unit of `entity`, when a living unit with the life pool, whose tags may block it as a

@@ -4,9 +4,11 @@ use campfire_values::DeclaredName;
 use serde::Serialize;
 
 use crate::zero_hour::error::TypeError;
-use crate::zero_hour::locomotor_ini::LocomotorIni;
-use crate::zero_hour::object_ini::fight_data::BodyKind;
-use crate::zero_hour::object_ini::{GeometryShape, IniObject};
+use crate::zero_hour::format::game_float;
+use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
+use crate::zero_hour::format::ini::object_ini::fight_data::BodyKind;
+use crate::zero_hour::format::ini::object_ini::{GeometryShape, IniObject};
+use crate::zero_hour::import_name::ImportName;
 
 /// An object's unit type as the import writes it in `data/units.toml` (design 17, D1, D4; design
 /// 19, D5, D7): the speed and the turn rate of its first normal locomotor that drives on the
@@ -82,10 +84,7 @@ impl ImportedType {
     /// The unit type of `object`, its locomotors found in `locomotors`; an error for a locomotor
     /// no file defines, as the game refuses one, a number past what the engine holds, or a body
     /// a unit type's load refuses.
-    pub(crate) fn of(
-        object: &IniObject,
-        locomotors: &LocomotorIni,
-    ) -> Result<ImportedType, TypeError> {
+    pub(crate) fn of(object: &IniObject, locomotors: &LocomotorIni) -> Result<Self, TypeError> {
         let mut drive = None;
         for name in object.locomotors() {
             let locomotor = locomotors
@@ -132,20 +131,13 @@ impl ImportedType {
             .filter(|body| body.max > 0.0)
             .map(|body| base(body.max))
             .transpose()?;
-        let combat = match stats.life {
-            Some(_) => {
-                let armor = fight.starting_armor().map(|armor| {
-                    DeclaredName::new(&armor.to_ascii_lowercase())
-                        .ok_or_else(|| TypeError::ArmorName(armor.to_owned()))
-                });
-                Some(TypeCombat {
-                    on_death: "despawn",
-                    armor: armor.transpose()?,
-                })
-            }
-            None => None,
-        };
-        Ok(ImportedType {
+        let combat = stats.life.map(|_| TypeCombat {
+            on_death: "despawn",
+            armor: fight
+                .starting_armor()
+                .map(|armor| ImportName::latin(armor).declared()),
+        });
+        Ok(Self {
             pools: stats.life.map(|_| [LIFE]),
             tags: object.counts_for_victory().then_some([VICTORY]),
             stats,
@@ -205,14 +197,14 @@ impl TypeStats {
 
 /// `value` exactly as a `Num`; an error for one that is not finite, or past what a `Num` holds.
 fn num(value: f32) -> Result<Num, TypeError> {
-    Num::try_from(value).map_err(|_| TypeError::Number)
+    game_float::to_num(value).map_err(|_| TypeError::Number)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
-    use crate::zero_hour::object_ini::ObjectIni;
+    use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::format::ini::object_ini::ObjectIni;
 
     /// The objects of each kind D4 tells apart.
     const OBJECTS: &str = "Object Tank

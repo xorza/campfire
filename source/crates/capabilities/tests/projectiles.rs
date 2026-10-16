@@ -15,7 +15,7 @@ use campfire_script::{Effect, Frame, ScriptBudgets, ScriptLimits};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::{Life, Stats};
-use campfire_units::{BodyForm, DashTo, Dead, UnitTypeCore, Units};
+use campfire_units::{BodyForm, DashTo, Dead, MapBook, UnitTypeCore, Units};
 use campfire_values::{FilterData, Team, TypeScope, UnitType};
 use campfire_vision::{SeenBy, Sight, Vision};
 
@@ -55,6 +55,9 @@ fn volley_match() -> Match {
 
 /// A match of `declared`, with combat and projectiles among them, and the stat book a weapon
 /// reads.
+/// The unit vector along +x, the way `Projectiles::fire_line` fires most lines.
+const ALONG_X: Vec3 = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
+
 fn volley_match_of(declared: &[Capability]) -> Match {
     let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
     let mut game = Match::server(declared, budgets);
@@ -84,7 +87,7 @@ struct Volley {
 impl Volley {
     /// Loads the projectile types into `game`, a match with combat and projectiles, then the
     /// unit types.
-    fn place(game: &mut Match) -> Volley {
+    fn place(game: &mut Match) -> Self {
         let types = [
             ("bolt", projectile(true, Num::ZERO, None, false)),
             (
@@ -113,7 +116,7 @@ impl Volley {
         Units::give_type(game, round, BodyForm::circle(Num::ONE).unwrap());
         let block_body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
         Units::give_type(game, block, block_body);
-        Volley {
+        Self {
             shooter,
             target,
             round,
@@ -394,7 +397,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
         (),
     );
     let lance = volley.lance;
-    Projectiles::fire_line(&mut game, source, lance);
+    Projectiles::fire_line(&mut game, source, lance, ALONG_X);
 
     // It launches in tick 0 and flies half a meter a tick from tick 1: 6 m is ticks 1 to 12, and
     // it ends in tick 12, as its range runs out. After tick 11 it is at 5.5 m.
@@ -442,7 +445,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     ]
     .map(|at| Mode::spawn(&mut game, volley.target, at, Team::new(1), ()));
     let dart = volley.dart;
-    Projectiles::fire_line(&mut game, source, dart);
+    Projectiles::fire_line(&mut game, source, dart, ALONG_X);
     for _ in 0..6 {
         game.step();
     }
@@ -471,7 +474,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
         (),
     );
     let dot = Mode::spawn(&mut game, volley.target, near("2.6", "0"), Team::new(1), ());
-    Projectiles::fire_line(&mut game, source, dart);
+    Projectiles::fire_line(&mut game, source, dart, ALONG_X);
     for _ in 0..7 {
         game.step();
     }
@@ -501,7 +504,7 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     game.resource_mut::<ByType<Sight>>().set(scout, sight);
     let source = Mode::spawn(&mut game, volley.target, (0, 0, -9), Team::new(0), ());
     let enemy = Mode::spawn(&mut game, volley.target, (5, 0, 0), Team::new(1), ());
-    Projectiles::fire_line(&mut game, source, scout);
+    Projectiles::fire_line(&mut game, source, scout, ALONG_X);
     let seen = |game: &Match| {
         game.part::<SeenBy>(enemy)
             .get()
@@ -518,6 +521,49 @@ fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_wher
     assert_eq!(seen_in, [10, 11]);
     assert_eq!(Projectiles::projectiles(&game), []);
     assert_eq!(Stats::health(&game, enemy), 100);
+}
+
+#[test]
+fn a_line_that_reaches_the_bounds_ends_on_their_edge_and_its_sight_stays_within_them() {
+    // The scout flies 6 m from the origin along (0.6, 0, 0.8), each axis rounded once, toward
+    // the edge at x = 3, with sight over a grid of the bounds, which `see` takes every unit to
+    // stand within. The edge lies 3 / 0.600 000 02 = 4.999 999 8 m on, 83 886 076.67 bits,
+    // rounded down, as `Bounds::exit` takes it: half a meter a tick, it flies 4.5 m, then the
+    // last 0.499 999 8 m to that place, x = 2.999 999 95, z = 3.999 999 8, and ends there. Each
+    // place is the origin plus the direction times the distance, rounded once: a step added to
+    // the last place would carry each step's rounding on, 4 bits short in z by 4.5 m.
+    let mut game = volley_match_of(&[
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Projectiles,
+        Capability::Vision,
+    ]);
+    let volley = Volley::place(&mut game);
+    let scout = volley.scout;
+    let bounds = Bounds::new([Num::int(-5), Num::int(-5)], [Num::int(3), Num::int(5)]).unwrap();
+    game.resource_mut::<MapBook>().bounds = bounds;
+    Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 2);
+    let sight = Sight::new(Num::ONE).unwrap();
+    game.resource_mut::<ByType<Sight>>().set(scout, sight);
+    let source = Mode::spawn(&mut game, volley.target, (0, 0, -4), Team::new(0), ());
+    let slant = Vec3::new(
+        Num::from_bits(10_066_330),
+        Num::ZERO,
+        Num::from_bits(13_421_773),
+    );
+    Projectiles::fire_line(&mut game, source, scout, slant);
+    let mut flown = Vec::new();
+    for _ in 0..12 {
+        game.step();
+        flown.extend(Projectiles::projectiles(&game));
+    }
+    // Aloft at the origin as it launches, then 0.5 m on each tick to 4.5 m: 4.5 · 10 066 330 =
+    // 45 298 485 bits, and 4.5 · 13 421 773 = 60 397 978.5, to the even 60 397 978.
+    assert_eq!(flown.len(), 10);
+    assert_eq!(flown[0], Vec3::ZERO);
+    let last = flown[9].to_bits();
+    assert_eq!([last[0], last[2]], [45_298_485, 60_397_978]);
+    assert!(flown.iter().all(|&at| bounds.contains(at)));
 }
 
 #[test]

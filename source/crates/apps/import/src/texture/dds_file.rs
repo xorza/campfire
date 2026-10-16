@@ -22,7 +22,7 @@ const MIPMAPCOUNT: u32 = 0x2_0000;
 impl<'a> DdsFile<'a> {
     /// The DDS `bytes` hold, refused unless its levels are whole blocks of DXT1, DXT3 or DXT5, no
     /// more than its full chain, and its bytes end with them.
-    pub(crate) fn read(bytes: &'a [u8]) -> Result<DdsFile<'a>, TextureError> {
+    pub(crate) fn read(bytes: &'a [u8]) -> Result<Self, TextureError> {
         let word = |at: usize| u32::from_le_bytes(bytes[at..at + 4].try_into().expect("4 bytes"));
         if bytes.len() < 4 + HEADER
             || &bytes[..4] != MAGIC

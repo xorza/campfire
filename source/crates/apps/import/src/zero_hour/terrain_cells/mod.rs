@@ -1,8 +1,9 @@
 use bevy_math::{UVec2, Vec2};
 use campfire_client_files::{GroundQuad, Overlay, TerrainQuads};
 
+use crate::zero_hour::format::map::map_file::MapHeights;
+use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile, TerrainCell, TerrainParts};
 use crate::zero_hour::game_data::GameData;
-use crate::zero_hour::terrain::{BlendShape, BlendTile, TerrainCell, TerrainParts};
 use crate::zero_hour::terrain_atlas::TerrainAtlas;
 
 /// What each cell of Zero Hour's terrain draws, as `WorldHeightMap` gives it to the heightmap's
@@ -13,7 +14,7 @@ use crate::zero_hour::terrain_atlas::TerrainAtlas;
 #[derive(Debug)]
 pub(crate) struct TerrainCells<'a> {
     terrain: &'a TerrainParts,
-    /// The heights, rows from the game's north, the package's order.
+    /// The heights, rows from the game's south, as the map holds them and the terrain's cells.
     samples: &'a [u8],
     columns: usize,
     rows: usize,
@@ -65,20 +66,19 @@ const DIAMOND_STRETCH_LIMIT: f32 = 2.4;
 const OPAQUE: u8 = 255;
 
 impl<'a> TerrainCells<'a> {
-    /// The cells of `terrain` over `samples`, `columns` wide, with `atlas` and `game`'s settings.
+    /// The cells of `terrain` over `heights`, the map's, with `atlas` and `game`'s settings.
     pub(crate) fn new(
         terrain: &'a TerrainParts,
-        samples: &'a [u8],
+        heights: &'a MapHeights,
         atlas: &'a TerrainAtlas,
         game: GameData,
-    ) -> TerrainCells<'a> {
-        let columns = usize::try_from(terrain.columns).expect("a u32 fits usize");
-        debug_assert_eq!(samples.len(), terrain.cells.len());
+    ) -> Self {
+        debug_assert_eq!(heights.samples.len(), terrain.cells.len());
         TerrainCells {
             terrain,
-            samples,
-            columns,
-            rows: samples.len() / columns,
+            samples: &heights.samples,
+            columns: heights.width,
+            rows: heights.depth,
             atlas,
             game,
         }
@@ -218,9 +218,9 @@ impl<'a> TerrainCells<'a> {
         [[x, y], [x + 1, y], [x + 1, y + 1], [x, y + 1]].map(|at| self.height(at))
     }
 
-    /// The package's index of the game's sample `[x, y]`.
+    /// The index of the game's sample `[x, y]`.
     const fn at(&self, [x, y]: [usize; 2]) -> usize {
-        (self.rows - 1 - y) * self.columns + x
+        y * self.columns + x
     }
 
     fn terrain_cell(&self, at: [usize; 2]) -> &TerrainCell {

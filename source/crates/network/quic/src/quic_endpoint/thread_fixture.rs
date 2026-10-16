@@ -9,6 +9,7 @@ use quinn_proto::{Endpoint, EndpointConfig, ServerConfig};
 use quinn_udp::BATCH_SIZE;
 use zeroize::Zeroizing;
 
+use crate::LINK_MIN_MTU;
 use crate::address_limit::AddressLimit;
 use crate::endpoint_state::{EndpointState, News};
 use crate::link_times::LinkTimes;
@@ -19,7 +20,6 @@ use crate::quic_endpoint::QuicEndpoint;
 use crate::recv_batch::RecvBatch;
 use crate::reset_key::ResetKey;
 use crate::server_key::ServerKey;
-use crate::{CID_LEN, LINK_MIN_MTU};
 
 /// The fixture clock's step from one read to the next: a frame at 60 Hz.
 const STEP: Duration = Duration::from_millis(16);
@@ -59,20 +59,20 @@ impl ThreadFixture {
     const LIMIT: AddressLimit = AddressLimit::new(NonZeroU32::MIN, Duration::from_secs(60));
 
     /// The two ends, their handshake complete.
-    pub fn connected() -> ThreadFixture {
+    pub fn connected() -> Self {
         let secret = Zeroizing::new([7; 32]);
         let server_key = ServerKey::derive(&secret);
         let server = QuicEndpoint::server_config(server_key.server_config(), LinkTimes::CAMPFIRE);
         let mut server = FixtureEnd::new(
-            QuicEndpoint::endpoint_config(ResetKey::derive(&secret), CID_LEN),
+            QuicEndpoint::endpoint_config(ResetKey::derive(&secret)),
             Some(Arc::new(server)),
             [1; 32],
             SERVER,
         );
         let now = Instant::now();
-        server.state.start_accepting(ThreadFixture::LIMIT, now);
+        server.state.start_accepting(Self::LIMIT, now);
         let mut client = FixtureEnd::new(
-            QuicEndpoint::endpoint_config(ResetKey::random(), CID_LEN),
+            QuicEndpoint::endpoint_config(ResetKey::random()),
             None,
             [2; 32],
             CLIENT,
@@ -85,7 +85,7 @@ impl ThreadFixture {
             .state
             .connect(now, config, SERVER, Entity::PLACEHOLDER)
             .expect("a client connects to an address");
-        let mut fixture = ThreadFixture {
+        let mut fixture = Self {
             server,
             client,
             key,
@@ -169,11 +169,11 @@ impl FixtureEnd {
         server: Option<Arc<ServerConfig>>,
         seed: [u8; 32],
         address: SocketAddr,
-    ) -> FixtureEnd {
+    ) -> Self {
         let payload =
             usize::try_from(config.get_max_udp_payload_size()).expect("a UDP payload fits usize");
         let endpoint = Endpoint::new(Arc::new(config), server, true, Some(seed));
-        FixtureEnd {
+        Self {
             state: EndpointState::new(endpoint, SEGMENTS),
             batch: RecvBatch::detached(payload * SEGMENTS),
             filled: 0,
@@ -192,13 +192,13 @@ impl FixtureEnd {
     /// `BATCH_SIZE` slots, 1 where `quinn-udp` reads one datagram at a time, as on macOS and
     /// Windows, so `to` passes over a full read at `now` before the next, as its thread does.
     /// How many slots it delivered.
-    fn deliver_to(&mut self, to: &mut FixtureEnd, now: Instant) -> usize {
+    fn deliver_to(&mut self, to: &mut Self, now: Instant) -> usize {
         self.deliver_among(&mut [to], now)
     }
 
     /// What the last pass sent, each transmit to the end of `ends` at its destination, as
     /// `deliver_to` delivers it: how many slots it delivered.
-    pub(super) fn deliver_among(&mut self, ends: &mut [&mut FixtureEnd], now: Instant) -> usize {
+    pub(super) fn deliver_among(&mut self, ends: &mut [&mut Self], now: Instant) -> usize {
         let from = self.address;
         let mut delivered = 0;
         self.outbox.drain(|destination, bytes, stride| {

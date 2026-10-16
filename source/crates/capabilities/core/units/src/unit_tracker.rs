@@ -5,7 +5,7 @@ use bevy_ecs::change_detection::{CheckChangeTicks, DetectChanges, Ref, Tick};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::{Allow, QueryFilter};
+use bevy_ecs::query::{Allow, Changed, Or, QueryFilter};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut, SystemChangeTick, SystemParam};
 use campfire_declare::Cache;
@@ -70,12 +70,28 @@ where
         ),
         (<T as TrackedUnits>::Filter, Allow<Unpredicted>),
     >,
+    /// The units whose stable id, place or body changed since this reader's last run, among
+    /// them every one that changed since the last take, which a reader of another run took.
+    changed: Query<
+        'w,
+        's,
+        (
+            Ref<'static, StableId>,
+            Ref<'static, Position>,
+            Option<Ref<'static, Body>>,
+        ),
+        (
+            <T as TrackedUnits>::Filter,
+            Allow<Unpredicted>,
+            Or<(Changed<StableId>, Changed<Position>, Changed<Body>)>,
+        ),
+    >,
     ticks: SystemChangeTick,
 }
 
 impl<T> Default for UnitTracker<T> {
-    fn default() -> UnitTracker<T> {
-        UnitTracker {
+    fn default() -> Self {
+        Self {
             taken: None,
             checked: None,
             marked: false,
@@ -85,8 +101,8 @@ impl<T> Default for UnitTracker<T> {
 }
 
 impl<T: TrackedUnits> Cache for UnitTracker<T> {
-    fn installed() -> Option<UnitTracker<T>> {
-        Some(UnitTracker::default())
+    fn installed() -> Option<Self> {
+        Some(Self::default())
     }
 }
 
@@ -99,14 +115,14 @@ impl<T: TrackedUnits> UnitTracker<T> {
     /// The observer of Bevy's check of change ticks, which clamps old ones and wraps none: a take
     /// or a check older than the maximum change age reads no change as newer, and a run's tick
     /// may come again.
-    pub fn aged(_: On<'_, '_, CheckChangeTicks>, mut tracker: ResMut<'_, UnitTracker<T>>) {
+    pub fn aged(_: On<'_, '_, CheckChangeTicks>, mut tracker: ResMut<'_, Self>) {
         tracker.marked = true;
         tracker.checked = None;
     }
 
     /// The observer of a body lost, which no change tick shows: a unit of the group that holds
     /// its body as a part it may lack.
-    pub fn lost_body(_: On<'_, '_, Remove, Body>, mut tracker: ResMut<'_, UnitTracker<T>>) {
+    pub fn lost_body(_: On<'_, '_, Remove, Body>, mut tracker: ResMut<'_, Self>) {
         tracker.marked = true;
     }
 }
@@ -136,7 +152,10 @@ impl<T: TrackedUnits> Tracking<'_, '_, T> {
     }
 
     /// Whether the units differ from the last take, as a reader in the run of `this_run` sees
-    /// them.
+    /// them: a unit changed since the take, or another count of them. It visits the units that
+    /// changed since its own last run alone, which hold every change since the take, as each run
+    /// of each reader came before the change, or saw it and took the units, or found them as
+    /// taken.
     fn changed(&self, this_run: Tick) -> bool {
         let Some(taken) = self.tracker.taken.filter(|_| !self.tracker.marked) else {
             return true;
@@ -144,15 +163,13 @@ impl<T: TrackedUnits> Tracking<'_, '_, T> {
         // A run's tick is the world's before it, so a change stamped with the take's tick came
         // before the take, and its reader's deferred commands stamp a later one.
         let newer = |tick: Tick| tick.is_newer_than(taken.tick, this_run);
-        let mut count = 0;
-        for (_, id, pos, body) in &self.units {
-            let body = body.is_some_and(|body| newer(body.last_changed()));
-            if body || newer(id.last_changed()) || newer(pos.last_changed()) {
-                return true;
-            }
-            count += 1;
-        }
-        count != taken.units
+        let moved = self.changed.iter().any(|(id, pos, body)| {
+            body.is_some_and(|body| newer(body.last_changed()))
+                || newer(id.last_changed())
+                || newer(pos.last_changed())
+        });
+        // An archetypal filter counts by the archetypes' lengths, not unit by unit.
+        moved || self.units.count() != taken.units
     }
 
     /// The units as they stand, for a reader that takes them.

@@ -1,10 +1,10 @@
 use campfire_abilities::AbilitiesRefusal;
 use campfire_actions::SlotTimes;
 use campfire_common::Tick;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_script_cuts_cooldowns_by_time_and_by_share_down_to_now() {
@@ -13,6 +13,10 @@ fn on_input(ctx, player, name, value) {
     let x = ctx.avatars("a")[0];
     if value == "cut" {
         ctx.reduce_cooldown(x, "strike", 1000);
+    } else if value == "part" {
+        ctx.reduce_cooldown(x, "strike", 250);
+    } else if value == "zero" {
+        ctx.reduce_cooldown(x, "strike", 0);
     } else if value == "half" {
         ctx.reduce_cooldowns(x, "basic", num(1) / 2);
     } else if value == "all" {
@@ -45,12 +49,18 @@ fn on_input(ctx, player, name, value) {
         .cool_down(0, Tick::new(start + 50));
     Mode::tick_inputs(&mut game, &[(0, input("probe", "cut"))]);
     assert_eq!(ready(&game), start + 40);
-    // A tick later 39 are left; half of them is 19.5, which rounds up to 20 kept.
+    // A cut rounds down, so it ends no wait early: 250 ms is 2.5 ticks, down to 2; 0 ms cuts
+    // nothing.
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "part"))]);
+    assert_eq!(ready(&game), start + 38);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "zero"))]);
+    assert_eq!(ready(&game), start + 38);
+    // Three ticks later 35 are left; half of them is 17.5, which rounds up to 18 kept.
     Mode::tick_inputs(&mut game, &[(0, input("probe", "half"))]);
-    assert_eq!(ready(&game), start + 1 + 20);
+    assert_eq!(ready(&game), start + 3 + 18);
     // A cut past what is left makes it ready in the call's tick, no earlier.
     Mode::tick_inputs(&mut game, &[(0, input("probe", "all"))]);
-    assert_eq!(ready(&game), start + 2);
+    assert_eq!(ready(&game), start + 4);
     assert_eq!(Mode::failures(&game), []);
     let refused = [
         ("unknown", ApiError::Unknown(NameKind::Ability)),

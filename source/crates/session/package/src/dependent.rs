@@ -2,8 +2,8 @@ use campfire_capabilities::PackageContent;
 use campfire_script::{ScriptApi, ScriptHost};
 
 use crate::avatar_unit::AvatarUnit;
-use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
+use crate::error::{LoadError, PackageRef};
 use crate::files::avatar_file::AvatarFile;
 use crate::files::manifest::Manifest;
 use crate::files::package_name::PackageName;
@@ -38,12 +38,9 @@ impl Dependent {
         files: &PackageFiles,
         host: &ScriptHost,
         api: &ScriptApi,
-    ) -> Result<Dependent, LoadError> {
+    ) -> Result<Self, LoadError> {
         let fail = |problem| LoadError::of(name, problem);
-        let manifest: Manifest = files
-            .read_data(&PackageFiles::engine_path(PackageFiles::MANIFEST))
-            .map_err(LoadProblem::Content)
-            .map_err(fail)?;
+        let manifest = files.manifest(&PackageRef::Name(name.clone()))?;
         let header = manifest.header();
         if header.name != *name {
             return Err(fail(LoadProblem::OtherName(header.name.clone())));
@@ -70,7 +67,7 @@ impl Dependent {
             Manifest::Mode(_) | Manifest::Locale(_) => return Err(fail(LoadProblem::WrongKind)),
         };
         let package = Package::read(files, header, host, api)?;
-        Ok(Dependent {
+        Ok(Self {
             package,
             content,
             kind,

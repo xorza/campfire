@@ -14,8 +14,8 @@ pub struct SimTick(Tick);
 impl SimTick {
     /// A predicting client sets the tick it runs from its network timeline, which a rollback
     /// winds back.
-    pub const fn new(tick: Tick) -> SimTick {
-        SimTick(tick)
+    pub const fn new(tick: Tick) -> Self {
+        Self(tick)
     }
 
     /// The time the tick starts at, in ticks from the match start: the time of its first stages,

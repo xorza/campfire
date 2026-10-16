@@ -1,6 +1,4 @@
 use super::*;
-use crate::journal::journal_frames::JournalFrames;
-use crate::journal::tests::MemorySink;
 
 /// The checkpoint record of the segment after `log`'s last, at its next tick, carrying its own
 /// state, with a state hash and a snapshot fingerprint of `byte`.
@@ -16,7 +14,10 @@ fn checkpoint(log: &SessionLog, byte: u8) -> Checkpoint {
 
 /// The signature of `record` by `key`, in the session of `terms()`.
 fn signed_by(record: &Checkpoint, key: &Keypair) -> Signature {
-    record.sign(&TestKey::signer(*key), session_id())
+    TestKey::signer(*key).sign(&InSession {
+        session_id: session_id(),
+        record,
+    })
 }
 
 /// The result of `log` that stops before its next tick, ended as `outcome`.
@@ -119,7 +120,10 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     // The session ends before tick 4. The file holds both segments, the reveal of segment 1's
     // seed and the result, decodes to the same bytes, and replays the same ticks.
     let ended = result(&log, Outcome::Won { team: 1 });
-    let signature = ended.sign(&TestKey::signer(TestKey::server()), session_id());
+    let signature = TestKey::signer(TestKey::server()).sign(&InSession {
+        session_id: session_id(),
+        record: &ended,
+    });
     log.record_result(ended, &signature).unwrap();
     log.reveal_seed(SEED_CHAIN.seed(1));
     assert_eq!(
@@ -183,7 +187,10 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
 
     // A result signed by another key, or at another tick than the next.
     let ended = result(&log, Outcome::Draw);
-    let forged = ended.sign(&TestKey::signer(stranger), session_id());
+    let forged = TestKey::signer(stranger).sign(&InSession {
+        session_id: session_id(),
+        record: &ended,
+    });
     assert_eq!(
         log.record_result(ended, &forged),
         Err(ResultError::BadSignature)
@@ -192,7 +199,10 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
         tick: Tick::new(1),
         ..ended
     };
-    let signature = early.sign(&TestKey::signer(TestKey::server()), session_id());
+    let signature = TestKey::signer(TestKey::server()).sign(&InSession {
+        session_id: session_id(),
+        record: &early,
+    });
     assert_eq!(log.record_result(early, &signature), Err(ResultError::Tick));
     assert_eq!(log.result(), None);
 }
@@ -287,9 +297,17 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     for segment in [0, 2] {
         assert_eq!(log.load(segment), Err(LogLoadError::NoCheckpoint));
     }
+    // The load's record, 4 + 1 + 1 + 32 = 38 bytes framed, needs its room and the end's in the
+    // journal.
+    let journal = log.journal.as_ref().unwrap().len();
+    log.bounds.journal = journal + 38 + 4 * log.unit - 1;
+    assert_eq!(log.load(1), Err(LogLoadError::LogFull));
+    log.bounds.journal += 1;
     // The load of segment 1: the log is the one saved, at tick 2 again, its y due again there
     // and z gone; and the journal rebuilds the log loaded.
     log.load(1).unwrap();
+    assert_eq!(log.journal.as_ref().unwrap().len(), journal + 38);
+    log.bounds = Bounds::MAX;
     assert_eq!(encoded(&log), saved);
     assert_eq!((log.next_tick(), log.segment()), (Tick::new(2), 1));
     assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));

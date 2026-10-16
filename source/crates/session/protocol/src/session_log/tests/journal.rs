@@ -1,6 +1,4 @@
 use super::*;
-use crate::journal::journal_frames::JournalFrames;
-use crate::journal::tests::MemorySink;
 
 /// The records of the journal `file` holds.
 fn records(file: &[u8]) -> Vec<&[u8]> {
@@ -15,6 +13,7 @@ fn a_journal_rebuilds_the_log_it_followed() {
     log.keep_journal(file.boxed());
     play_minimal(&mut log);
     let bytes = encoded(&log);
+    assert_eq!(log.journal.as_ref().unwrap().len(), len(file.bytes().len()));
     drop(log);
     let journal = file.bytes();
     let rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
@@ -113,7 +112,7 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     let journal = file.bytes();
     let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
     assert_eq!(rebuilt.durable_head(slot), None);
-    rebuilt.resume_journal(MemorySink::new().boxed());
+    rebuilt.resume_journal(MemorySink::new().boxed(), len(journal.len()));
     assert_eq!(rebuilt.durable_head(slot), Some(head));
     assert_eq!(rebuilt.durable_head(PlayerSlot::new(0)), None);
 }
@@ -151,6 +150,6 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
     drop(log);
     let journal = file.bytes();
     let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
-    rebuilt.resume_journal(MemorySink::new().boxed());
+    rebuilt.resume_journal(MemorySink::new().boxed(), len(journal.len()));
     assert_eq!(rebuilt.durable_head(slot), None);
 }

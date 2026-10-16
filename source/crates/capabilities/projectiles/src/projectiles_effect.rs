@@ -42,6 +42,7 @@ impl Effect for ProjectilesEffect {
                 let range = Projectiles::line_range(world, self.by, self.unit_type);
                 let bounds = world.resource::<MapBook>().bounds;
                 Flight::line(
+                    from,
                     direction,
                     Projectiles::reach(bounds, range, from, direction),
                     None,

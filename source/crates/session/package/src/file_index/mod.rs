@@ -13,13 +13,19 @@ use crate::error::ContentError;
 /// lowercase hex digits, the size in decimal digits with no leading zero, each line ending in
 /// LF. The SHA-256 of those bytes, the tag included, is the package's fingerprint: it names every
 /// byte of the package, as git's tree names its blobs, and no two versions of the format share
-/// one. A read checks each file against its row.
-#[derive(Debug, Clone)]
+/// one. A read checks each file against its row. It keeps no copy of its encoding, which its
+/// builder hands to the writer of `package.index`.
+#[derive(Debug)]
 pub struct FileIndex {
     rows: BTreeMap<PackagePath, FileRow>,
-    /// Its one encoding, as `package.index` holds it.
-    bytes: Vec<u8>,
     fingerprint: PackageFingerprint,
+}
+
+/// An index its builder made, and its one encoding, as `package.index` holds it.
+#[derive(Debug)]
+pub struct EncodedIndex {
+    pub index: FileIndex,
+    pub bytes: Vec<u8>,
 }
 
 /// A file's size and SHA-256, as its row lists them.
@@ -27,6 +33,13 @@ pub struct FileIndex {
 pub(crate) struct FileRow {
     pub(crate) size: u64,
     pub(crate) sha256: ContentHash,
+}
+
+/// A path, or a directory on its way, as a check of an index's paths first met it.
+#[derive(Debug, Clone, Copy)]
+struct Spelled<'a> {
+    text: &'a str,
+    dir: bool,
 }
 
 /// The first line of an index, which names its format and its version.
@@ -42,28 +55,34 @@ impl FileIndex {
 
     /// The most bytes a file of a package holds, which its read allocates: 2 GiB, past any
     /// texture or model an importer writes.
-    pub const MAX_FILE_LEN: u64 = 1 << 31;
+    const MAX_FILE_LEN: u64 = 1 << 31;
 
-    /// The index of `rows`, which hold no two paths that differ only in case and not the
-    /// index's own path, as a package's builder makes it.
-    pub(crate) fn new(rows: BTreeMap<PackagePath, FileRow>) -> Result<FileIndex, ContentError> {
-        FileIndex::check_spellings(rows.keys())?;
-        if rows.keys().any(|path| path.as_str() == FileIndex::PATH) {
-            return Err(ContentError::IndexListsItself);
+    /// The index of `rows` and its encoding, refused unless every package reads it back: no row
+    /// of the index's own path or under it in any case, no two paths or directories on their way
+    /// that differ only in case, no path both a file and a directory, no file larger than
+    /// `MAX_FILE_LEN`, and an encoding of at most `MAX_LEN` bytes.
+    pub(crate) fn encode(
+        rows: BTreeMap<PackagePath, FileRow>,
+    ) -> Result<EncodedIndex, ContentError> {
+        Self::check_paths(rows.keys())?;
+        if let Some((path, _)) = rows.iter().find(|(_, row)| row.size > Self::MAX_FILE_LEN) {
+            return Err(ContentError::IndexFileLen(path.clone()));
         }
-        let bytes = FileIndex::encode_rows(&rows);
+        let bytes = Self::encode_rows(&rows);
+        if u64::try_from(bytes.len()).expect("a length fits u64") > Self::MAX_LEN {
+            return Err(ContentError::IndexLen);
+        }
         let fingerprint = PackageFingerprint::of(&bytes);
-        Ok(FileIndex {
-            rows,
+        Ok(EncodedIndex {
+            index: Self { rows, fingerprint },
             bytes,
-            fingerprint,
         })
     }
 
     /// The index `bytes` hold, refused unless they are this version's tag and the one encoding of
     /// rows in strict order of their paths' bytes, each a package path, none the index's own, of
     /// a file no larger than `MAX_FILE_LEN`, and no two that differ only in case.
-    pub fn decode(bytes: &[u8]) -> Result<FileIndex, ContentError> {
+    pub fn decode(bytes: &[u8]) -> Result<Self, ContentError> {
         let body = bytes
             .strip_prefix(INDEX_TAG.as_bytes())
             .and_then(|rest| rest.strip_prefix(b"\n"))
@@ -81,24 +100,21 @@ impl FileIndex {
             let (sha256, rest) = line.split_once(' ').ok_or_else(flawed)?;
             let (size, path) = rest.split_once(' ').ok_or_else(flawed)?;
             let sha256 = sha256.parse::<ContentHash>().map_err(|_| flawed())?;
-            let size = FileIndex::size(size).ok_or_else(flawed)?;
+            let size = Self::size(size).ok_or_else(flawed)?;
             let parsed =
                 PackagePath::parse(path).ok_or_else(|| ContentError::IndexPath(path.to_owned()))?;
             if previous.is_some_and(|previous| previous.as_bytes() >= path.as_bytes()) {
                 return Err(ContentError::IndexOrder(parsed));
             }
             previous = Some(path);
-            if size > FileIndex::MAX_FILE_LEN {
-                return Err(ContentError::IndexFileLen(parsed));
-            }
             rows.insert(parsed, FileRow { size, sha256 });
         }
-        let index = FileIndex::new(rows)?;
+        let encoded = Self::encode(rows)?;
         debug_assert_eq!(
-            index.bytes, bytes,
+            encoded.bytes, bytes,
             "an index reads from its one encoding alone"
         );
-        Ok(index)
+        Ok(encoded.index)
     }
 
     /// The size `digits` write in decimal, with no sign and no leading zero; none for any other
@@ -114,11 +130,6 @@ impl FileIndex {
 
     pub const fn fingerprint(&self) -> PackageFingerprint {
         self.fingerprint
-    }
-
-    /// Its bytes, as `package.index` holds them.
-    pub fn bytes(&self) -> &[u8] {
-        &self.bytes
     }
 
     /// The row of the file at `path`, if the package holds one.
@@ -141,28 +152,41 @@ impl FileIndex {
         text.into_bytes()
     }
 
-    /// Refuses two of `paths`, or two directories on their way, that differ only in case: a
-    /// package path is ASCII, so its ASCII lowercase is the one name every file system that
-    /// ignores case gives it. Of two spellings, the first in path order is kept and the second
-    /// refused.
-    fn check_spellings<'a>(
-        paths: impl Iterator<Item = &'a PackagePath>,
-    ) -> Result<(), ContentError> {
-        let mut spellings: BTreeMap<String, &str> = BTreeMap::new();
+    /// Refuses a path of `paths` at the index's own path or under it, two of them, or two
+    /// directories on their way, that differ only in case, and a path both a file's and a
+    /// directory's: a package path is ASCII, so its ASCII lowercase is the one name every file
+    /// system that ignores case gives it. Of two spellings, the first in path order is kept and
+    /// the second refused.
+    fn check_paths<'a>(paths: impl Iterator<Item = &'a PackagePath>) -> Result<(), ContentError> {
+        let mut spellings: BTreeMap<String, Spelled<'_>> = BTreeMap::new();
         for path in paths {
             let text = path.as_str();
-            let ends = text.match_indices('/').map(|(at, _)| at);
-            for end in ends.chain([text.len()]) {
-                let spelled = &text[..end];
-                match spellings.entry(spelled.to_ascii_lowercase()) {
+            let root = text.split('/').next().expect("a path has a first name");
+            if root.eq_ignore_ascii_case(Self::PATH) {
+                return Err(ContentError::IndexListsItself);
+            }
+            let ends = text.match_indices('/').map(|(at, _)| (at, true));
+            for (end, dir) in ends.chain([(text.len(), false)]) {
+                let spelled = Spelled {
+                    text: &text[..end],
+                    dir,
+                };
+                let other =
+                    |held: &str| PackagePath::parse(held).expect("a path's start is a path");
+                match spellings.entry(spelled.text.to_ascii_lowercase()) {
                     Entry::Vacant(entry) => {
                         entry.insert(spelled);
                     }
-                    Entry::Occupied(entry) if *entry.get() != spelled => {
+                    Entry::Occupied(entry) if entry.get().text != spelled.text => {
                         return Err(ContentError::CaseClash {
                             path: path.clone(),
-                            other: PackagePath::parse(entry.get())
-                                .expect("a path's start is a path"),
+                            other: other(entry.get().text),
+                        });
+                    }
+                    Entry::Occupied(entry) if entry.get().dir != spelled.dir => {
+                        return Err(ContentError::FileAndDir {
+                            path: path.clone(),
+                            name: other(spelled.text),
                         });
                     }
                     Entry::Occupied(_) => {}

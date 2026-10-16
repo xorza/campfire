@@ -10,7 +10,7 @@ pub(crate) struct Compare<'a> {
 }
 
 impl<'a> Compare<'a> {
-    pub(crate) const fn new(read: &'a [u8]) -> Compare<'a> {
+    pub(crate) const fn new(read: &'a [u8]) -> Self {
         Compare { read, at: 0 }
     }
 }

@@ -204,7 +204,7 @@ pub(crate) fn snapshot(c: &mut Criterion) {
 /// untimed.
 pub(crate) fn state_delta(c: &mut Criterion) {
     let mut world = units_world();
-    let registry = units_registry();
+    let mut registry = units_registry();
     let mut delta = StateDelta::default();
     registry.track(&mut world, &mut delta);
     let mut copy = World::new();

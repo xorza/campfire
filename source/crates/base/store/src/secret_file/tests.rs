@@ -7,9 +7,9 @@ fn a_secret_file_reads_its_owners_bytes_alone_and_says_why_it_refuses() {
     let secret = |name| SecretFile::at(scratch.path(name));
     let refused = |file: &SecretFile, max_len| file.read(max_len).map(|_| ()).unwrap_err().error;
     let file = secret("player.nsec");
-    file.create(b"secret\n").unwrap();
+    file.create_new(b"secret\n").unwrap();
     assert!(matches!(
-        file.create(b"other\n"),
+        file.create_new(b"other\n"),
         Err(PathError {
             error: DurableCreateError::Exists,
             ..
@@ -21,7 +21,7 @@ fn a_secret_file_reads_its_owners_bytes_alone_and_says_why_it_refuses() {
     assert_eq!(file.read(7).unwrap().capacity(), 8);
     assert!(matches!(refused(&file, 6), ReadError::TooLarge { max: 6 }));
     let empty = secret("empty");
-    empty.create(b"").unwrap();
+    empty.create_new(b"").unwrap();
     assert_eq!(*empty.read(0).unwrap(), b"");
     assert_eq!(scratch.exposure("player.nsec"), None);
 

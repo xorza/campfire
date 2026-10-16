@@ -4,7 +4,6 @@ use std::sync::Arc;
 use campfire_declare::PerType;
 use campfire_math::{Num, Rounding};
 use campfire_script::{NameKind, UnknownName};
-use campfire_sim::Capability;
 use campfire_values::{DamageKind, DeclaredName, NameId, Names};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -26,7 +25,7 @@ impl Armor {
     pub fn of(
         shares: &BTreeMap<DeclaredName, ArmorShare>,
         kinds: &Names<DamageKind>,
-    ) -> Result<Armor, UnknownName> {
+    ) -> Result<Self, UnknownName> {
         let mut table = vec![Num::ONE; kinds.len()];
         for (kind, share) in shares {
             let kind = kinds
@@ -34,7 +33,7 @@ impl Armor {
                 .ok_or_else(|| UnknownName::new(NameKind::DamageKind, kind))?;
             table[kind.index()] = share.0;
         }
-        Ok(Armor(table.into()))
+        Ok(Self(table.into()))
     }
 
     /// What a unit of it takes of `amount` of `kind`, a kind of the mode it was resolved by: the
@@ -50,21 +49,20 @@ impl Armor {
 
 impl ArmorShare {
     /// The share `share`; none below 0.
-    pub fn new(share: Num) -> Option<ArmorShare> {
-        (share >= Num::ZERO).then_some(ArmorShare(share))
+    pub fn new(share: Num) -> Option<Self> {
+        (share >= Num::ZERO).then_some(Self(share))
     }
 }
 
 impl PerType for Armor {
-    const OWNER: Option<Capability> = Some(Capability::Combat);
     const SCRIPTS_ONLY: bool = false;
 }
 
 /// A package is untrusted, so a share below 0, which would heal by damage, fails to read.
 impl<'de> Deserialize<'de> for ArmorShare {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ArmorShare, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let share = Num::deserialize(deserializer)?;
-        ArmorShare::new(share).ok_or_else(|| D::Error::custom("an armor's share is at least 0"))
+        Self::new(share).ok_or_else(|| D::Error::custom("an armor's share is at least 0"))
     }
 }
 

@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use campfire_codec::TomlError;
 use campfire_store::{PathError, ReadError};
+use campfire_values::DeclaredName;
 use thiserror::Error;
 
 /// Why an order script does not read.
@@ -37,4 +38,11 @@ pub enum OrderScriptReadError {
         #[source]
         error: OrderScriptError,
     },
+}
+
+/// A bot's script names a unit type the mode does not have.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("the orders name the unit type {name}, which the mode does not have")]
+pub struct UnknownUnitType {
+    pub name: DeclaredName,
 }

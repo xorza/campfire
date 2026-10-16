@@ -1,11 +1,11 @@
+use crate::session_log::at;
+
 /// Byte strings, each in one piece, in pages that never move: a page holds `PAGE` bytes, or one
 /// string longer than that alone, so a push never copies the bytes before it, and each string
 /// reads as one slice.
 #[derive(Debug, Default)]
 pub(crate) struct PagedBytes {
     pages: Vec<Vec<u8>>,
-    /// The bytes held, without the room a page left at its end.
-    len: usize,
 }
 
 /// Where a string sits: its page, its start in it, and its length.
@@ -20,11 +20,6 @@ pub(crate) struct BytesAt {
 const PAGE: usize = 64 * 1024;
 
 impl PagedBytes {
-    /// The bytes held.
-    pub(crate) const fn len(&self) -> usize {
-        self.len
-    }
-
     /// Adds `bytes` after the last page's, or at the start of a new page when they do not fit
     /// in the room it has left.
     pub(crate) fn push(&mut self, bytes: &[u8]) -> BytesAt {
@@ -38,7 +33,6 @@ impl PagedBytes {
         let page = self.pages.last_mut().expect("a page with room");
         let start = page.len();
         page.extend_from_slice(bytes);
-        self.len += bytes.len();
         let narrow = |value: usize| u32::try_from(value).expect("a log's positions fit u32");
         BytesAt {
             page: narrow(self.pages.len() - 1),
@@ -47,9 +41,9 @@ impl PagedBytes {
         }
     }
 
-    pub(crate) fn get(&self, at: BytesAt) -> &[u8] {
-        let start = at.start as usize;
-        &self.pages[at.page as usize][start..start + at.len as usize]
+    pub(crate) fn get(&self, place: BytesAt) -> &[u8] {
+        let start = at(place.start);
+        &self.pages[at(place.page)][start..start + at(place.len)]
     }
 }
 
@@ -82,6 +76,5 @@ mod tests {
         assert_eq!(bytes.get(long), vec![9; PAGE + 1]);
         // Only the last page takes more: the long string's is full, so "q" starts a fourth.
         assert_eq!((after.page, after.start), (3, 0));
-        assert_eq!(bytes.len(), 3 + (PAGE - 3) + 1 + (PAGE + 1) + 1);
     }
 }

@@ -22,7 +22,7 @@ const MAX_MESSAGE_LEN: usize = DOMAIN.len() + 4 + RngStream::MAX_LEN + 8 + 8;
 
 /// The random sequence of one (stream, entity, tick): keyed BLAKE3 extended output, so the draws
 /// a client sees do not reveal the seed.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Rng {
     reader: OutputReader,
     block: [u8; BLOCK_LEN],
@@ -33,7 +33,7 @@ impl Rng {
     /// The sequence of `stream` for `entity` in `tick`, keyed by `seed`. Its message is `DOMAIN ‖
     /// u32 stream length ‖ stream ‖ u64 entity ‖ u64 tick`, little-endian; the length prefix keeps
     /// two fields from running together.
-    pub fn new(seed: &SegmentSeed, stream: RngStream, entity: u64, tick: Tick) -> Rng {
+    pub fn new(seed: &SegmentSeed, stream: RngStream, entity: u64, tick: Tick) -> Self {
         let stream = stream.as_bytes();
         let stream_len = u32::try_from(stream.len()).expect("a stream's name has at most 64 bytes");
         // The whole message in one update, as each update pays its own checks and copies.
@@ -51,7 +51,7 @@ impl Rng {
         }
         let mut hasher = Hasher::new_keyed(seed.as_bytes());
         hasher.update(&message[..at]);
-        Rng {
+        Self {
             reader: hasher.finalize_xof(),
             block: [0; BLOCK_LEN],
             used: BLOCK_LEN,

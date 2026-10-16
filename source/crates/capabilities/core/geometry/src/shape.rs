@@ -13,21 +13,21 @@ pub enum Shape {
 }
 
 impl Shape {
-    pub const POINT: Shape = Shape::Circle(Radius::ZERO);
+    pub const POINT: Self = Self::Circle(Radius::ZERO);
 
     /// The radius of the least circle round the position that holds it.
     pub const fn bound(&self) -> Num {
         match self {
-            Shape::Circle(radius) => radius.get(),
-            Shape::Box(body) => body.bound(),
+            Self::Circle(radius) => radius.get(),
+            Self::Box(body) => body.bound(),
         }
     }
 
     /// How far it reaches from the position along x and along z.
     pub fn extent(&self) -> [Num; 2] {
         match self {
-            Shape::Circle(radius) => [radius.get(); 2],
-            Shape::Box(body) => body.extent(),
+            Self::Circle(radius) => [radius.get(); 2],
+            Self::Box(body) => body.extent(),
         }
     }
 
@@ -37,9 +37,9 @@ impl Shape {
     pub fn nearest_point(&self, pos: Vec3, to: Vec3) -> Vec3 {
         let ground = Vec3::new(to.x, pos.y, to.z);
         match self {
-            Shape::Box(body) => body.nearest_point(pos, ground),
-            Shape::Circle(radius) if pos.within_ground(ground, radius.get()) => ground,
-            Shape::Circle(radius) => pos.step_toward(ground, radius.get()),
+            Self::Box(body) => body.nearest_point(pos, ground),
+            Self::Circle(radius) if pos.within_ground(ground, radius.get()) => ground,
+            Self::Circle(radius) => pos.step_toward(ground, radius.get()),
         }
     }
 }

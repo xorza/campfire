@@ -2,7 +2,6 @@ use std::num::NonZeroU32;
 
 use campfire_codec::Binary;
 use campfire_common::Ticks;
-use campfire_script::StateValue;
 use campfire_sim::IdAllocator;
 use campfire_values::NameId;
 
@@ -32,7 +31,7 @@ fn applied(
                 until.map_or(Ends::Never, |until| Ends::At(Tick::new(until))),
             ),
             stack_life,
-            stack_ends: stack_ends.into_iter().collect(),
+            stack_end: stack_ends,
             stats: vec![StatShare {
                 value: Num::int(armor),
                 live: None,
@@ -43,6 +42,27 @@ fn applied(
         reapply,
         max_stacks: max_stacks.and_then(NonZeroU32::new),
     }
+}
+
+/// Lets `hold` keep the instance of `id` from `source` too, as a held application that
+/// changes nothing else, `ignore`, joins it.
+fn hold(
+    (modifiers, clocks): (&mut Modifiers, &mut ModifierClocks),
+    id: ModifierId,
+    source: Option<StableId>,
+    hold: Hold,
+) {
+    let mut held = Application {
+        instance: NewInstance::bare(id, source),
+        reapply: Reapply::Ignore,
+        max_stacks: None,
+    };
+    held.instance.lifetime = Lifetime::held(hold);
+    assert!(
+        modifiers.get(id, source).is_some(),
+        "an instance it carries"
+    );
+    modifiers.apply(clocks, held);
 }
 
 fn stacks(modifiers: &Modifiers) -> Vec<(u16, u32)> {
@@ -83,12 +103,35 @@ fn a_hold_and_a_timed_application_of_one_instance_keep_both_lifetimes() {
     // aura lets go, it ends.
     let (mut modifiers, mut clocks) = (Modifiers::default(), ModifierClocks::default());
     modifiers.apply(&mut clocks, timed());
-    modifiers.hold(id, a, Hold::Held);
+    hold((&mut modifiers, &mut clocks), id, a, Hold::Held);
     modifiers.expire(&mut clocks, Tick::new(8));
     let kept = modifiers.get(id, a).unwrap();
     assert_eq!(kept.lifetime.until(), None);
     assert!(modifiers.release_held(&mut clocks, |_, _| false));
     assert!(modifiers.get(id, a).is_none());
+    // Of a modifier that ignores a second application: applied until tick 6, then held by an
+    // aura's application, whose hold joins it all the same, and its numbers stay: past tick 6
+    // the hold keeps it, with its 1 armor.
+    let (mut modifiers, mut clocks) = (Modifiers::default(), ModifierClocks::default());
+    modifiers.apply(
+        &mut clocks,
+        applied(0, a, Reapply::Ignore, None, 1, Some(6), None),
+    );
+    let mut aura = applied(0, a, Reapply::Ignore, None, 5, None, None);
+    aura.instance.lifetime = Lifetime::held(Hold::Held);
+    let touched = modifiers.apply(&mut clocks, aura.clone());
+    assert_eq!(
+        touched,
+        Touched {
+            stats: true,
+            clocks: false
+        }
+    );
+    assert_eq!(modifiers.apply(&mut clocks, aura), Touched::default());
+    modifiers.expire(&mut clocks, Tick::new(8));
+    let kept = modifiers.get(id, a).unwrap();
+    assert!(kept.lifetime.held_by(Hold::Held));
+    assert_eq!(kept.shares[0].value, Num::ONE);
     // A passive whose rank no longer keeps it lets go of its hold alone: an application of
     // its own, with no end, keeps it.
     let (mut modifiers, mut clocks) = (Modifiers::default(), ModifierClocks::default());
@@ -96,7 +139,7 @@ fn a_hold_and_a_timed_application_of_one_instance_keep_both_lifetimes() {
         &mut clocks,
         applied(0, a, Reapply::Refresh, None, 1, None, None),
     );
-    modifiers.hold(id, a, Hold::Passive);
+    hold((&mut modifiers, &mut clocks), id, a, Hold::Passive);
     modifiers.release(&mut clocks, id, a, Hold::Passive);
     assert!(modifiers.get(id, a).is_some());
 }
@@ -235,56 +278,56 @@ fn modifiers_refresh_stack_to_their_limit_ignore_and_end() {
         &mut clocks,
         applied(3, a, Reapply::Stack, None, 1, None, Some((16, 2))),
     );
-    modifiers.hold(ModifierId::new(3), a, Hold::Passive);
+    hold(
+        (&mut modifiers, &mut clocks),
+        ModifierId::new(3),
+        a,
+        Hold::Passive,
+    );
     assert!(modifiers.expire(&mut clocks, Tick::new(19)).stats);
     assert_eq!(modifiers.get(ModifierId::new(3), a).unwrap().stacks, 0);
 
     // Removing one, then a death, which keeps only passives.
     assert!(modifiers.remove(&mut clocks, ModifierId::new(0), b));
     assert!(!modifiers.remove(&mut clocks, ModifierId::new(0), b));
-    modifiers.hold(ModifierId::new(0), a, Hold::Passive);
+    hold(
+        (&mut modifiers, &mut clocks),
+        ModifierId::new(0),
+        a,
+        Hold::Passive,
+    );
     modifiers.clear_on_death(&mut clocks);
     assert_eq!(stacks(&modifiers), [(0, 1), (3, 0)]);
 }
 
 #[test]
 fn modifiers_decode_only_with_ordered_ends_that_count_their_stacks() {
-    let decode = |instance: &NewInstance| {
-        let (mut modifiers, mut clocks) = (Modifiers::default(), ModifierClocks::default());
-        let application = Application {
-            instance: instance.clone(),
-            reapply: Reapply::Refresh,
-            max_stacks: None,
-        };
-        modifiers.apply(&mut clocks, application);
-        let bytes = Binary::encode(&modifiers);
+    let decode = |modifiers: &Modifiers| {
+        let bytes = Binary::encode(modifiers);
         Binary::decode::<Modifiers>(&bytes).is_ok()
     };
-    let mut instance = applied(0, None, Reapply::Stack, None, 1, None, Some((0, 4))).instance;
-    instance.stacks = 3;
-    instance.stack_ends = vec![
-        StackEnd {
-            until: Tick::new(5),
-            count: 1,
-        },
-        StackEnd {
-            until: Tick::new(9),
-            count: 2,
-        },
-    ];
-    assert!(decode(&instance));
+    // Stacks of 4 ticks applied in ticks 0, 4 and 4, each ending as the tick after its last
+    // starts: ends in tick 5, of one stack, and in tick 9, of two, for its 3 stacks.
+    let (mut modifiers, mut clocks) = (Modifiers::default(), ModifierClocks::default());
+    for now in [0, 4, 4] {
+        let stack = applied(0, None, Reapply::Stack, None, 1, None, Some((now, 4)));
+        modifiers.apply(&mut clocks, stack);
+    }
+    let ends = |modifiers: &Modifiers| ends(modifiers.get(ModifierId::new(0), None).unwrap());
+    assert_eq!(ends(&modifiers), [(5, 1), (9, 2)]);
+    assert!(decode(&modifiers));
     // Uncounted, unordered, with an empty end, and lifeless.
-    let flaws: [fn(&mut NewInstance); 4] = [
-        |bad| bad.stacks = 4,
-        |bad| bad.stack_ends.swap(0, 1),
+    let flaws: [fn(&mut Modifiers); 4] = [
+        |bad| bad.instances[0].stacks = 4,
+        |bad| bad.ends.swap(0, 1),
         |bad| {
-            bad.stack_ends[0].count = 0;
-            bad.stacks = 2;
+            bad.ends[0].count = 0;
+            bad.instances[0].stacks = 2;
         },
-        |bad| bad.stack_life = None,
+        |bad| bad.instances[0].stack_life = None,
     ];
     for flaw in flaws {
-        let mut bad = instance.clone();
+        let mut bad = modifiers.clone();
         flaw(&mut bad);
         assert!(!decode(&bad), "{bad:?}");
     }

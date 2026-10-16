@@ -18,11 +18,11 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for ProductionRefusal {
     const OWNER: Capability = Capability::Production;
-    const CASES: &'static [ProductionRefusal] = &ProductionRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            ProductionRefusal::NoSupply => "the mode counts no supply",
+            Self::NoSupply => "the mode counts no supply",
         }
     }
 }

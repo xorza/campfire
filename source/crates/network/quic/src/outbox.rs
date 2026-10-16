@@ -46,7 +46,7 @@ impl Outbox {
         for send in self.sends.drain(..) {
             let transmit = quinn_udp::Transmit {
                 destination: send.destination,
-                ecn: send.ecn.map(Outbox::udp_ecn),
+                ecn: send.ecn.map(Self::udp_ecn),
                 contents: &self.bytes[send.bytes],
                 segment_size: send.segment_size,
                 src_ip: send.src_ip,

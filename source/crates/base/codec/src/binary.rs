@@ -1,5 +1,3 @@
-use std::mem;
-
 use postcard::ser_flavors::Flavor;
 use serde::{Deserialize, Serialize};
 
@@ -24,17 +22,19 @@ pub struct Taken<'a, T> {
 impl Binary {
     /// The bytes of `value`.
     pub fn encode<T: Serialize + ?Sized>(value: &T) -> Vec<u8> {
-        postcard::to_allocvec(value).expect("a value encodes in postcard")
+        let mut out = Vec::new();
+        Self::encode_to(value, &mut out);
+        out
     }
 
     /// Appends the bytes of `value` to `out`.
     pub fn encode_into<T: Serialize + ?Sized>(value: &T, out: &mut Vec<u8>) {
-        *out = postcard::to_extend(value, mem::take(out)).expect("a value encodes in postcard");
+        Self::encode_to(value, out);
     }
 
     /// Writes the bytes of `value` into `sink`, in batches.
     pub fn encode_to<T: Serialize + ?Sized>(value: &T, sink: &mut dyn Sink) {
-        Binary::encode_each_to([value], sink);
+        Self::encode_each_to([value], sink);
     }
 
     /// Writes the bytes of each of `values` into `sink`, one after another, in batches.
@@ -55,7 +55,7 @@ impl Binary {
 
     /// The value `bytes` hold, all of them.
     pub fn decode<'a, T: Deserialize<'a> + Serialize>(bytes: &'a [u8]) -> Result<T, BinaryError> {
-        let taken = Binary::take(bytes)?;
+        let taken = Self::take(bytes)?;
         if !taken.rest.is_empty() {
             return Err(BinaryError::NotCanonical);
         }
@@ -67,7 +67,7 @@ impl Binary {
     pub fn encode_tagged<T: Serialize + ?Sized>(tag: &[u8], value: &T, out: &mut Vec<u8>) {
         out.clear();
         out.extend_from_slice(tag);
-        Binary::encode_into(value, out);
+        Self::encode_into(value, out);
     }
 
     /// The value of a file's `bytes` that `encode_tagged` wrote with `tag`: an error for bytes of
@@ -77,7 +77,7 @@ impl Binary {
         bytes: &'a [u8],
     ) -> Result<T, TaggedError> {
         let value = bytes.strip_prefix(tag).ok_or(TaggedError::OtherTag)?;
-        Ok(Binary::decode(value)?)
+        Ok(Self::decode(value)?)
     }
 
     /// The value at the front of `bytes`, and the bytes after it.
@@ -111,7 +111,7 @@ pub(crate) mod internals {
     impl Binary {
         /// How many `Some`s `value` holds, each nested one that its outer one holds among them.
         pub fn options<T: Serialize + ?Sized>(value: &T) -> usize {
-            Binary::without_option(value, usize::MAX).seen
+            Self::without_option(value, usize::MAX).seen
         }
 
         /// The bytes of `value` with its `Some` at `at`, in the order it encodes them, written as
@@ -120,7 +120,7 @@ pub(crate) mod internals {
             value: &T,
             at: usize,
         ) -> Option<Vec<u8>> {
-            let dropped = Binary::without_option(value, at);
+            let dropped = Self::without_option(value, at);
             (dropped.seen > at).then_some(dropped.bytes)
         }
 
@@ -221,21 +221,21 @@ mod tests {
     }
 
     #[test]
-    fn every_encode_writes_the_same_bytes() {
-        // A value longer than a batch of 64, so the sink takes it in more than one call.
+    fn an_encode_appends_its_bytes_and_each_value_follows_the_last() {
+        // A value longer than a batch of 64: 1 + 100 bytes of the list, 300 in 2, and "end" in
+        // 1 + 3, after the 9 `out` held.
         let value = (vec![7_u8; 100], 300_u32, "end");
-        let bytes = Binary::encode(&value);
-        assert_eq!(bytes.len(), 1 + 100 + 2 + 1 + 3);
         let mut appended = vec![9];
         Binary::encode_into(&value, &mut appended);
-        assert_eq!(appended, [&[9][..], &bytes].concat());
-        let mut sunk = Vec::new();
-        Binary::encode_to(&value, &mut sunk);
-        assert_eq!(sunk, bytes);
+        assert_eq!(appended.len(), 1 + 1 + 100 + 2 + 1 + 3);
+        assert_eq!(appended[..2], [9, 100]);
+        assert_eq!(
+            Binary::decode::<(Vec<u8>, u32, &str)>(&appended[1..]),
+            Ok(value)
+        );
         let mut each = Vec::new();
         Binary::encode_each_to([1_u8, 2, 3], &mut each);
         assert_eq!(each, [1, 2, 3]);
-        assert_eq!(Binary::decode::<(Vec<u8>, u32, &str)>(&bytes), Ok(value));
     }
 
     /// A value with options at each depth: a field, a tuple's inside a `Some`, a vector's

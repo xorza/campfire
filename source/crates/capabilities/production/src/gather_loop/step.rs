@@ -36,7 +36,7 @@ impl Step {
     pub(super) const fn goes_on(self) -> bool {
         matches!(
             self,
-            Step::Retarget(_) | Step::Collect(_) | Step::Choose(_) | Step::Deliver(_)
+            Self::Retarget(_) | Self::Collect(_) | Self::Choose(_) | Self::Deliver(_)
         )
     }
 }

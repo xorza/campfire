@@ -1,13 +1,12 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_actions::BuildStart;
+use campfire_actions::{ActionBook, ActionSlots, BuildStart, KindSpec};
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{Filter, View};
-use campfire_sim::Capability;
 use campfire_units::BodyForm;
-use campfire_values::{ActionId, Share};
+use campfire_values::{ActionId, Share, UnitType};
 
 /// What each build places, when it starts and how its site grows, by action, its rates and its
 /// placement's rules one run after another: package data, not state.
@@ -71,6 +70,14 @@ pub struct BuildSpec<'a> {
     pub(crate) away: &'a [PlacementCheck],
 }
 
+/// A builder's build of a slot: the building's type, its spec, and its range.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Building<'a> {
+    pub(crate) unit_type: UnitType,
+    pub(crate) spec: BuildSpec<'a>,
+    pub(crate) range: Num,
+}
+
 /// What one build loads with.
 #[derive(Debug, Clone)]
 pub struct NewBuild<'a> {
@@ -112,6 +119,27 @@ impl BuildBook {
             near: near..away,
             away: away..run(self.rules.len()),
         });
+    }
+
+    /// The build in `slot` of `slots`, as `book` holds its action; `None` for a slot that holds
+    /// no build. It borrows the books alone, so a placement's test may run beside it.
+    pub(crate) fn building(
+        &self,
+        book: &ActionBook,
+        slots: &ActionSlots,
+        slot: u8,
+    ) -> Option<Building<'_>> {
+        let action = slots.slot(slot)?.action?;
+        let KindSpec::Build(unit_type) = book.get(action)?.kind else {
+            return None;
+        };
+        let range = slots.meters_in(book, slot);
+        let spec = self.of(action).expect("a build's spec is in the book");
+        Some(Building {
+            unit_type,
+            spec,
+            range,
+        })
     }
 
     /// The build of `action`; `None` for an action that builds nothing.
@@ -158,7 +186,6 @@ impl BuildSpec<'_> {
 }
 
 impl Book for BuildBook {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

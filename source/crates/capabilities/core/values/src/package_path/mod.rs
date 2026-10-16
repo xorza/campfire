@@ -13,10 +13,10 @@ pub struct PackagePath(String);
 
 impl PackagePath {
     /// `text` as a path in a package; `None` when it does not hold to the grammar.
-    pub fn parse(text: &str) -> Option<PackagePath> {
+    pub fn parse(text: &str) -> Option<Self> {
         text.split('/')
-            .all(PackagePath::portable)
-            .then(|| PackagePath(text.to_owned()))
+            .all(Self::portable)
+            .then(|| Self(text.to_owned()))
     }
 
     /// Whether `name` is one name of a path, which every OS holds as the same file's: printable
@@ -58,9 +58,9 @@ impl PackagePath {
 }
 
 impl<'de> Deserialize<'de> for PackagePath {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<PackagePath, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        PackagePath::parse(&text)
+        Self::parse(&text)
             .ok_or_else(|| D::Error::custom(format!("{text:?}: no path in the package")))
     }
 }

@@ -14,7 +14,8 @@ pub(crate) enum DoesSpec {
     Purge {
         tag: Tag,
     },
-    /// A unit of the mode's type `unit_type`, despawning `duration_ms` after it spawns when given.
+    /// A unit of the type `unit_type` of the action's package, despawning `duration_ms` after it
+    /// spawns when given.
     Spawn {
         unit_type: UnitType,
         duration_ms: Option<Amount>,

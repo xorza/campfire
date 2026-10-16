@@ -4,7 +4,7 @@ use campfire_sim::{IdAllocator, StableId};
 use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank};
 
 use crate::scripts::call_part::{CallParams, CallPart, CallParts, Commit};
-use crate::scripts::call_start::CallStart;
+use crate::scripts::call_start::{CallStart, Purity};
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::frame::effects::{Effect, Effects};
 use crate::scripts::script_limits::ScriptLimits;
@@ -19,11 +19,9 @@ pub(crate) mod effects;
 /// again, so a call allocates none of them.
 #[derive(Debug, Default)]
 pub struct Frame {
-    /// How the running call started: its role, acting unit, action and the rest; none before
-    /// the first call.
+    /// How the running call started: its role, purity, acting unit, action and the rest; none
+    /// before the first call.
     call: Option<CallStart>,
-    /// Whether it is a pure hook's, whose `ctx` only reads.
-    pure: bool,
     /// The stable ids as the call takes them for the units it creates, and whether it took one.
     ids: IdAllocator,
     ids_taken: bool,
@@ -33,7 +31,6 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// How the running call started.
     /// The tick the running call runs in, which its effects apply in.
     pub const fn now(&self) -> Tick {
         self.running().now
@@ -80,8 +77,8 @@ impl Frame {
     }
 
     /// Whether the running call is a pure hook's, whose `ctx` only reads.
-    pub const fn pure(&self) -> bool {
-        self.pure
+    pub fn pure(&self) -> bool {
+        self.call.is_some_and(|call| call.purity == Purity::Reads)
     }
 
     /// Adds `part`, which every call readies, and which commits what a call wrote to it.
@@ -105,24 +102,6 @@ impl Frame {
         self.parts.get_mut()
     }
 
-    /// Starts `on_think` for `id` in `world`, in tick `now`.
-    pub fn begin_think(&mut self, world: &World, id: StableId, now: Tick) {
-        let start = CallStart {
-            acting: Some(id),
-            ..CallStart::mode(ScriptRole::Ai, now)
-        };
-        self.begin(world, start)
-            .expect("a call with no params overflows none");
-    }
-
-    /// Starts a mode call in tick `now`, with the stable ids as `world` holds them,
-    /// for the call to read and write; `pure` for a hook whose `ctx` only reads.
-    pub fn begin_mode(&mut self, world: &World, pure: bool, now: Tick) {
-        self.begin(world, CallStart::mode(ScriptRole::Mode, now))
-            .expect("a call with no params overflows none");
-        self.pure = pure;
-    }
-
     /// Takes the stable id of a unit the call creates, which the unit spawns with once the call
     /// applies, so the call can hold it before then.
     pub const fn take_id(&mut self) -> StableId {
@@ -140,7 +119,6 @@ impl Frame {
         self.ids.clone_from(world.resource::<IdAllocator>());
         self.ids_taken = false;
         self.call = Some(start);
-        self.pure = false;
         self.effects.clear();
         self.parts.begin(world, &start)
     }
@@ -153,6 +131,11 @@ impl Frame {
     /// The effects of type `E` the call queued, in order.
     pub fn queued<E: Effect>(&self) -> impl Iterator<Item = &E> {
         self.effects.queued()
+    }
+
+    /// The effects of type `E` the call queued, in order, to change.
+    pub fn queued_mut<E: Effect>(&mut self) -> impl Iterator<Item = &mut E> {
+        self.effects.queued_mut()
     }
 
     /// Commits what the call that ran wrote and applies the effects it queued: the ids it took,
@@ -196,10 +179,10 @@ pub(crate) mod internals {
     impl Frame {
         /// A frame whose mode call runs in tick `now`, as a test applies an effect in: it reads
         /// no world.
-        pub fn in_tick(now: Tick) -> Frame {
-            Frame {
+        pub fn in_tick(now: Tick) -> Self {
+            Self {
                 call: Some(CallStart::mode(ScriptRole::Mode, now)),
-                ..Frame::default()
+                ..Self::default()
             }
         }
     }

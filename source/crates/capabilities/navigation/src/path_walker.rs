@@ -1,12 +1,16 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_common::NamedEnum;
+use campfire_math::Vec3;
 use campfire_script::enum_script_arg;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{EngineEnum, ScriptEnum};
 use serde::{Deserialize, Serialize};
+
+use crate::party::{Party, PartyKey};
 
 /// A unit walking the path its `OnPath` names, such as a creep: it walks to the path's waypoints
 /// from the end it starts at while it has no other order, and stays at the last. It keeps the
@@ -22,34 +26,37 @@ pub struct PathWalker {
     group: StableId,
 }
 
-/// The end of a path a unit walks it from, as a placed unit's or a spawn group's `from` names it:
-/// a MOBA's two sides walk each path from their own end, and a third team either way.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PathEnd {
-    Start,
-    End,
+campfire_common::enum_all! {
+    /// The end of a path a unit walks it from, as a placed unit's or a spawn group's `from`
+    /// names it: a MOBA's two sides walk each path from their own end, and a third team either
+    /// way.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum PathEnd {
+        Start,
+        End,
+    }
+    const ALL;
+    const IDENTS;
 }
 
-/// `PathEnd::Start` and `PathEnd::End` in scripts, `start` and `end` in data.
+/// `start` and `end` in data.
+impl NamedEnum for PathEnd {
+    const ALL: &'static [Self] = &Self::ALL;
+    const NAMES: &'static [&'static str] = &["start", "end"];
+}
+
+/// `PathEnd::Start` and `PathEnd::End` in scripts.
 impl ScriptEnum for PathEnd {
     const ENUM: EngineEnum = EngineEnum::PathEnd;
-    const MEMBERS: &'static [(&'static str, PathEnd)] =
-        &[("Start", PathEnd::Start), ("End", PathEnd::End)];
-
-    fn data_name(self) -> &'static str {
-        match self {
-            PathEnd::Start => "start",
-            PathEnd::End => "end",
-        }
-    }
+    const SCRIPT_NAMES: &'static [&'static str] = &Self::IDENTS;
 }
 
 impl PathWalker {
     /// A walker of `group` at the end `from` of its path, bound for its second waypoint from
     /// there.
-    pub const fn start(from: PathEnd, group: StableId) -> PathWalker {
-        PathWalker {
+    pub const fn start(from: PathEnd, group: StableId) -> Self {
+        Self {
             from,
             next: 1,
             left: false,
@@ -61,8 +68,15 @@ impl PathWalker {
         self.from
     }
 
-    pub(crate) const fn group(self) -> StableId {
-        self.group
+    /// The party it asks a route to `goal` as: its spawn group's, unless it left its path.
+    pub(crate) const fn party(self, goal: Vec3) -> Option<Party> {
+        if self.left {
+            return None;
+        }
+        Some(Party {
+            key: PartyKey::Spawn(self.group),
+            goal,
+        })
     }
 
     pub const fn next(self) -> u32 {

@@ -65,13 +65,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for ProjectilesSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
-    const ALL: &'static [ProjectilesSet] = &ProjectilesSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            ProjectilesSet::Fly => Phase::Fly,
-            ProjectilesSet::TakeShots => Phase::Fire,
-            ProjectilesSet::Launch => Phase::Launch,
+            Self::Fly => Phase::Fly,
+            Self::TakeShots => Phase::Fire,
+            Self::Launch => Phase::Launch,
         })
     }
 }
@@ -82,13 +82,13 @@ impl Module for Projectiles {
     const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.engine_tags(&[Projectiles::TAG]);
+        d.engine_tags(&[Self::TAG]);
         d.sets::<ProjectilesSet>();
         d.component::<Projectile>();
         d.component::<FlightState>();
         d.resource::<StruckUnits>();
         d.scratch::<Launches>();
-        d.callback::<Deliverers>(DeliveryKind::Projectile, Projectiles::deliver);
+        d.callback::<Deliverers>(DeliveryKind::Projectile, Self::deliver);
         d.require::<Projectile, FlightState>();
         d.observer(Flying::lose_teleported);
         d.book::<ByType<ProjectileSpec>>();
@@ -139,7 +139,7 @@ impl Projectiles {
             .expect("a delivery's projectile type has a spec");
         if let (ActionTarget::Unit(unit), true) = (target, spec.homing) {
             let homing = Flight::homing(unit);
-            Projectiles::push(world, by, unit_type, from, None, [homing]);
+            Self::push(world, by, unit_type, from, None, [homing]);
             return;
         }
         let Some(at) = target.pos(world) else {
@@ -149,7 +149,7 @@ impl Projectiles {
         let Some(aim) = offset.normalized() else {
             return;
         };
-        let range = Projectiles::range(&spec, action.values(by.rank).range);
+        let range = Self::range(&spec, action.values(by.rank).range);
         let distance = offset.length();
         let range = if to_point {
             Some(range.map_or(distance, |range| range.min(distance)))
@@ -159,10 +159,10 @@ impl Projectiles {
         let bounds = world.resource::<MapBook>().bounds;
         let flights = (0..fan.count.get()).map(|at| {
             let direction = aim.rotated_y(fan.turn(at).sin_cos());
-            let reach = Projectiles::reach(bounds, range, from, direction);
-            Flight::line(direction, reach, target.unit())
+            let reach = Self::reach(bounds, range, from, direction);
+            Flight::line(from, direction, reach, target.unit())
         });
-        Projectiles::push(world, by, unit_type, from, None, flights);
+        Self::push(world, by, unit_type, from, None, flights);
     }
 
     /// The range of a line projectile of `spec`: its type's, or else `range`, its action's at
@@ -184,7 +184,7 @@ impl Projectiles {
             .resource::<ByType<ProjectileSpec>>()
             .get(unit_type)
             .expect("a delivery's projectile type has a spec");
-        Projectiles::range(spec, action.values(by.rank).range)
+        Self::range(spec, action.values(by.rank).range)
     }
 
     /// How far a line of `range` flies from `from` along `direction`: up to the edge of the map's
@@ -230,10 +230,11 @@ impl Projectiles {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
+    use campfire_actions::ShotDamage;
     use campfire_declare::ByType;
     use campfire_math::{Num, Vec3};
     use campfire_sim::{EntityIndex, Position, StableId, TickRate};
-    use campfire_units::UnitTypeBook;
+    use campfire_units::{MapBook, UnitTypeBook, Units};
     use campfire_values::{ActionId, DamageKind, Rank, UnitType};
 
     use crate::Projectiles;
@@ -247,9 +248,9 @@ pub mod internals {
         /// the match's rate: its `hits` filter names tags of the match's.
         pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
             let rate = *world.resource::<TickRate>();
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            types.give_tag(unit_type, Projectiles::TAG.tag());
-            let spec = ProjectileSpec::of(data, world.resource::<UnitTypeBook>(), rate)
+            Units::change_types(world, |_, types| types.give_tag(unit_type, Self::TAG.tag()));
+            let tags = world.resource::<UnitTypeBook>().tags();
+            let spec = ProjectileSpec::of(data, tags, rate)
                 .expect("a test's projectile hits tags its match has");
             world
                 .resource_mut::<ByType<ProjectileSpec>>()
@@ -257,27 +258,34 @@ pub mod internals {
         }
 
         /// Launches a projectile of the line type `unit_type` from `source` at the origin along
-        /// +x, carrying 10 damage, from the next tick.
-        pub fn fire_line(world: &mut World, source: StableId, unit_type: UnitType) {
+        /// the unit vector `direction`, up to the map's bounds as a cast flies, carrying 10
+        /// damage, from the next tick.
+        pub fn fire_line(
+            world: &mut World,
+            source: StableId,
+            unit_type: UnitType,
+            direction: Vec3,
+        ) {
             let range = world
                 .resource::<ByType<ProjectileSpec>>()
                 .get(unit_type)
                 .unwrap()
-                .range
-                .unwrap();
+                .range;
+            let bounds = world.resource::<MapBook>().bounds;
+            let reach = Self::reach(bounds, range, Vec3::ZERO, direction);
             world.resource_mut::<Launches>().push(Launch {
                 id: None,
                 source,
                 from: Vec3::ZERO,
                 unit_type,
-                flight: Flight::line(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO), range, None),
-                payload: LaunchPayload::Attack {
+                flight: Flight::line(Vec3::ZERO, direction, reach, None),
+                payload: LaunchPayload::Attack(ShotDamage {
                     action: ActionId::new(0),
                     rank: Rank::FIRST,
                     amount: Num::int(10),
                     kind: DamageKind::new(0),
                     roll: Num::ZERO,
-                },
+                }),
             });
         }
 
@@ -287,7 +295,7 @@ pub mod internals {
             projectiles
                 .filter_map(|(_, entity)| world.get::<Projectile>(entity))
                 .map(|projectile| match projectile.payload() {
-                    Payload::Attack { roll, .. } => roll,
+                    Payload::Attack(damage) => damage.roll,
                     Payload::Action { .. } => panic!("an attack's projectile"),
                 })
                 .collect()

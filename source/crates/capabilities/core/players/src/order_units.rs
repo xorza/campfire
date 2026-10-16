@@ -15,16 +15,16 @@ enum Units {
 }
 
 impl OrderUnits {
-    pub const fn one(id: StableId) -> OrderUnits {
-        OrderUnits(Units::One(id))
+    pub const fn one(id: StableId) -> Self {
+        Self(Units::One(id))
     }
 
     /// The list `units`; `None` unless it has one at least and rises strictly.
-    pub fn new(units: &[StableId]) -> Option<OrderUnits> {
+    pub fn new(units: &[StableId]) -> Option<Self> {
         match units {
             [] => None,
-            &[unit] => Some(OrderUnits::one(unit)),
-            _ => OrderUnits::rises(units).then(|| OrderUnits(Units::Many(units.into()))),
+            &[unit] => Some(Self::one(unit)),
+            _ => Self::rises(units).then(|| Self(Units::Many(units.into()))),
         }
     }
 

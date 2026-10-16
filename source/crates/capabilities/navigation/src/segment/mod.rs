@@ -9,8 +9,8 @@ pub struct Segment {
 }
 
 impl Segment {
-    pub const fn new(from: Vec3, to: Vec3) -> Segment {
-        Segment { from, to }
+    pub const fn new(from: Vec3, to: Vec3) -> Self {
+        Self { from, to }
     }
 
     pub(crate) const fn start(self) -> Vec3 {
@@ -24,9 +24,7 @@ impl Segment {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::cmp::Ordering;
-
-    use campfire_geometry::Approach;
+    use campfire_geometry::internals::path_comes_closer;
     use campfire_math::{Num, Vec3};
 
     use crate::segment::Segment;
@@ -37,7 +35,7 @@ pub(crate) mod internals {
         pub fn comes_closer(self, pos: Vec3, reach: Num) -> bool {
             let path = self.from.ground_offset(self.to);
             let off = self.from.ground_offset(pos);
-            Approach::nearest_of(path, off, reach) == Ordering::Less
+            path_comes_closer(path, off, reach)
         }
     }
 }

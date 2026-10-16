@@ -1,5 +1,4 @@
 use campfire_declare::PerType;
-use campfire_sim::Capability;
 use campfire_values::{NameId, TrackId};
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.
@@ -7,8 +6,8 @@ use campfire_values::{NameId, TrackId};
 pub struct TrackSet(u32);
 
 impl FromIterator<TrackId> for TrackSet {
-    fn from_iter<I: IntoIterator<Item = TrackId>>(tracks: I) -> TrackSet {
-        let mut set = TrackSet::default();
+    fn from_iter<I: IntoIterator<Item = TrackId>>(tracks: I) -> Self {
+        let mut set = Self::default();
         for track in tracks {
             set.0 |= 1 << track.index();
         }
@@ -17,7 +16,7 @@ impl FromIterator<TrackId> for TrackSet {
 }
 
 impl<const N: usize> From<[TrackId; N]> for TrackSet {
-    fn from(tracks: [TrackId; N]) -> TrackSet {
+    fn from(tracks: [TrackId; N]) -> Self {
         tracks.into_iter().collect()
     }
 }
@@ -33,15 +32,13 @@ impl TrackSet {
 
     /// Its tracks, in the order of their ids.
     pub fn iter(self) -> impl Iterator<Item = TrackId> {
-        (0..=u8::MAX)
-            .take(TrackId::LIMIT)
-            .map(TrackId::new)
+        (0..TrackId::LIMIT)
+            .map(TrackId::at)
             .filter(move |&track| self.contains(track))
     }
 }
 
 impl PerType for TrackSet {
-    const OWNER: Option<Capability> = Some(Capability::Progression);
     const SCRIPTS_ONLY: bool = false;
 }
 

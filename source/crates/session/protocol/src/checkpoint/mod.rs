@@ -1,22 +1,15 @@
 use campfire_codec::{Binary, Taken};
 use campfire_common::{StateHash, Tick};
-use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::checkpoint::log_carry::{CarryWire, LogCarry};
-use crate::session_id::SessionId;
-use crate::signature::Signature;
-use crate::signer::Signer;
+use crate::signed::{InSession, SignatureDomain, Signed};
 use crate::snapshot_fingerprint::SnapshotFingerprint;
-use crate::verifier::Verifier;
 
 pub(crate) mod checkpoint_begun;
 pub(crate) mod error;
 pub(crate) mod log_carry;
-
-/// Starts every signed checkpoint record, so no other signature of the server key counts as one.
-const SIGNATURE_DOMAIN: &[u8] = b"campfire/checkpoint/v1";
 
 /// A checkpoint record, which starts segment `segment` at the boundary before tick `tick`: the
 /// state hash there, the fingerprint of the snapshot of that state, and the log's own state there.
@@ -56,10 +49,10 @@ impl Checkpoint {
 
     /// The record at the front of `bytes`, and the bytes after it; an error for bytes that do
     /// not decode, and for a delegation that does not parse.
-    pub(crate) fn take(bytes: &[u8]) -> Result<Taken<'_, Checkpoint>, CheckpointDecodeError> {
+    pub(crate) fn take(bytes: &[u8]) -> Result<Taken<'_, Self>, CheckpointDecodeError> {
         let Taken { value: wire, rest } =
             Binary::take::<Wire<'_>>(bytes).map_err(CheckpointDecodeError::Malformed)?;
-        let record = Checkpoint {
+        let record = Self {
             segment: wire.segment,
             tick: wire.tick,
             state_hash: wire.state_hash,
@@ -71,32 +64,15 @@ impl Checkpoint {
             rest,
         })
     }
+}
 
-    /// The server key's signature over the record, `server`'s.
-    pub fn sign(&self, server: &Signer, session_id: SessionId) -> Signature {
-        let mut message = Vec::new();
-        self.write_message(session_id, &mut message);
-        server.sign(&message)
-    }
+/// `domain ‖ session id ‖ postcard of the record`, as the server key signs a checkpoint.
+impl Signed for InSession<'_, Checkpoint> {
+    const DOMAIN: SignatureDomain = SignatureDomain::new("campfire/checkpoint/v1");
 
-    /// Whether `signature` is `server_key`'s over the record.
-    pub(crate) fn signed_by(
-        &self,
-        verifier: &mut Verifier,
-        server_key: &XOnlyPublicKey,
-        session_id: SessionId,
-        signature: &Signature,
-    ) -> bool {
-        verifier.verifies_written(*signature, server_key, |message| {
-            self.write_message(session_id, message);
-        })
-    }
-
-    /// Appends `domain ‖ session id ‖ postcard of the record` to `message`.
-    fn write_message(&self, session_id: SessionId, message: &mut Vec<u8>) {
-        message.extend_from_slice(SIGNATURE_DOMAIN);
-        message.extend_from_slice(session_id.as_bytes());
-        self.encode(message);
+    fn write_body(&self, message: &mut Vec<u8>) {
+        message.extend_from_slice(self.session_id.as_bytes());
+        self.record.encode(message);
     }
 }
 

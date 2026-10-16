@@ -7,9 +7,9 @@ use campfire_visibility::{SpectatorFog, Visibility};
 use lightyear::prelude::{Connected, MessageReceiver};
 use tracing::info;
 
-use crate::events::join_refused::error::JoinError;
+use crate::error::JoinError;
+use crate::net_protocol::watch_teams::WatchTeams;
 use crate::sim_server::viewer::{Viewer, Watching};
-use crate::watch_teams::WatchTeams;
 
 pub(crate) mod spectators_world;
 
@@ -35,8 +35,9 @@ impl Spectators {
     }
 
     /// How many links of `viewers` watch.
-    pub(crate) fn count<'v>(viewers: impl Iterator<Item = &'v Viewer>) -> usize {
+    pub(crate) fn count<'v>(viewers: impl IntoIterator<Item = &'v Viewer>) -> usize {
         viewers
+            .into_iter()
             .filter(|viewer| matches!(viewer, Viewer::Spectator(_)))
             .count()
     }

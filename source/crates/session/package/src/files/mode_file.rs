@@ -1,4 +1,5 @@
 use campfire_capabilities::PackageContent;
+use campfire_codec::TomlTable;
 use campfire_mode::ModeData;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -16,18 +17,18 @@ pub(crate) struct ModeFile {
 }
 
 impl<'de> Deserialize<'de> for ModeFile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModeFile, D::Error> {
-        let mut table = toml::Table::deserialize(deserializer)?;
-        if table.contains_key("units") {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut table = TomlTable::deserialize(deserializer)?;
+        if table.holds("units") {
             return Err(D::Error::custom("units are in data/units.toml"));
         }
-        let script = table
-            .remove("script")
-            .ok_or_else(|| D::Error::missing_field("script"))?;
-        let script = ModeScript::deserialize(script).map_err(D::Error::custom)?;
+        let script: ModeScript = table
+            .take("script")
+            .ok_or_else(|| D::Error::missing_field("script"))?
+            .map_err(D::Error::custom)?;
         let content = ContentTable::take(&mut table)?;
-        let data = ModeData::deserialize(toml::Value::Table(table)).map_err(D::Error::custom)?;
-        Ok(ModeFile {
+        let data: ModeData = table.read().map_err(D::Error::custom)?;
+        Ok(Self {
             script,
             data,
             content,

@@ -12,21 +12,21 @@ pub enum Scalar {
 impl Scalar {
     pub const fn to_num(self) -> Option<Num> {
         match self {
-            Scalar::Int(value) => Num::from_int(value),
-            Scalar::Decimal(value) => Some(value),
+            Self::Int(value) => Num::from_int(value),
+            Self::Decimal(value) => Some(value),
         }
     }
 }
 
 impl From<i64> for Scalar {
-    fn from(value: i64) -> Scalar {
-        Scalar::Int(value)
+    fn from(value: i64) -> Self {
+        Self::Int(value)
     }
 }
 
 impl From<Num> for Scalar {
-    fn from(value: Num) -> Scalar {
-        Scalar::Decimal(value)
+    fn from(value: Num) -> Self {
+        Self::Decimal(value)
     }
 }
 

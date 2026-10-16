@@ -118,8 +118,8 @@ impl ModeParam {
     pub fn to_value(&self) -> ScriptValue {
         let text = |text: &str| ScriptValue::of(ScriptText::from(text));
         match self {
-            ModeParam::Value(value) => ScriptValue::from(*value),
-            ModeParam::List(entries) => ScriptValue::of::<ScriptList>(
+            Self::Value(value) => ScriptValue::from(*value),
+            Self::List(entries) => ScriptValue::of::<ScriptList>(
                 entries
                     .iter()
                     .map(|entry| match entry {
@@ -128,7 +128,7 @@ impl ModeParam {
                     })
                     .collect(),
             ),
-            ModeParam::Text(value) => text(value),
+            Self::Text(value) => text(value),
         }
     }
 }

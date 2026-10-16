@@ -14,8 +14,8 @@ pub struct TagEffect {
 
 impl TagEffect {
     /// The test on a unit immune to `immune`, where `granting` makes immune.
-    pub const fn new(granting: TagSet, immune: TagSet) -> TagEffect {
-        TagEffect { granting, immune }
+    pub const fn new(granting: TagSet, immune: TagSet) -> Self {
+        Self { granting, immune }
     }
 
     /// Whether a modifier that grants `tags` takes effect on the unit.
@@ -25,11 +25,11 @@ impl TagEffect {
 
     /// Which modifiers take effect on the unit of `entity`: every one in a match whose tag book
     /// is empty, or on a unit with no tags.
-    pub fn of(world: &World, entity: Entity) -> TagEffect {
+    pub fn of(world: &World, entity: Entity) -> Self {
         let granting = world.resource::<TagBook>().granting();
         let immune = world
             .get::<UnitTags>(entity)
             .map_or_else(TagSet::default, |tags| tags.immune);
-        TagEffect::new(granting, immune)
+        Self::new(granting, immune)
     }
 }

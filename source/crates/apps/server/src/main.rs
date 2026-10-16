@@ -10,10 +10,10 @@
 //! `debug` by default) with the directives of `CAMPFIRE_LOG_FILTER_EXTRA` added.
 
 use std::env;
-use std::error::Error;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
+use std::time::SystemTime;
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
 use bevy_ecs::lifecycle::Add;
@@ -26,27 +26,26 @@ use campfire_common::{ExitStatus, TlsKey};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, PendingRestore,
-    ProcessExit, Publisher, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionTimes,
-    SimServerPlugins, SimServerWorld,
+    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, PendingRestore,
+    Publisher, RestoredSession, ServerDir, ServerSetup, SimServerPlugins, SimServerWorld,
+    StopRequest, exit_code,
 };
-use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use campfire_protocol::Signer;
 use campfire_quic::{AddressLimit, LinkTimes, PortMap, ServerSocket};
 use campfire_store::StopSignals;
-use campfire_visibility::HostVisibility;
 use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
-use secp256k1::Keypair;
 use tracing::{error, info};
 use zeroize::Zeroizing;
 
 use crate::args::{Args, CommandLine};
+use crate::error::StartError;
 use crate::opening::error::OpeningError;
-use crate::opening::{Opened, Opening, OpeningSetup};
+use crate::opening::{Opened, Opening, OpeningSetup, RestoreWindow};
 
 mod args;
+mod error;
 mod opening;
 
 /// What the terminal shows when `RUST_LOG` does not say.
@@ -63,26 +62,22 @@ fn main() -> ExitCode {
     }
     .start();
     match run() {
-        Ok(code) | Err(code) => code,
+        Ok(code) => code,
+        Err(error) => {
+            refused(&error);
+            ExitCode::from(error.status())
+        }
     }
 }
 
-/// Starts the server and runs it: the exit code of its end, or of the refusal that ended its
-/// start, which it logged.
-fn run() -> Result<ExitCode, ExitCode> {
+/// Starts the server and runs it: the exit code of its end, or the refusal that ended its start.
+fn run() -> Result<ExitCode, StartError> {
     // Caught first, so a signal during the start stops the server at its first frame.
-    let stop = StopSignals::catch().map_err(|error| {
-        refused(
-            ExitStatus::Failure,
-            &error,
-            "the stop's signals are not caught",
-        )
-    })?;
-    let line = Logging::command_line::<CommandLine>(env::args_os()).map_err(ExitCode::from)?;
+    let stop = StopSignals::catch()?;
+    let line =
+        Logging::command_line::<CommandLine>(env::args_os()).map_err(StartError::CommandLine)?;
     let args = Args::from(line);
-    let bots = args
-        .server_bots()
-        .map_err(|error| refused(ExitStatus::Usage, &error, "a bot's orders do not read"))?;
+    let bots = args.server_bots()?;
     let Args {
         data,
         times,
@@ -93,47 +88,37 @@ fn run() -> Result<ExitCode, ExitCode> {
         port_map,
         ..
     } = args;
-    let data = ServerDir::open(&data).map_err(|error| {
-        refused(
-            ExitStatus::Failure,
-            &error,
-            "the data directory does not open",
-        )
-    })?;
-    let key_file = data.layout().key_file();
-    let key = KeyFile::read_or_create(&key_file, Os::SYSTEM.entropy).map_err(|error| {
-        error!(key = %key_file, error = %ErrorReport::of(&error), "the server's key does not open");
-        ExitCode::from(ExitStatus::Failure)
-    })?;
+    let data = ServerDir::open(&data)?;
+    let key = KeyFile::read_or_create(&data.layout().key_file(), Os::SYSTEM.entropy)?;
     // The socket binds before any session opens, so a port in use ends the start and leaves the
     // data as it was.
     let secret = Zeroizing::new(key.secret_bytes());
-    let socket = ServerSocket::bind(address, &secret, LinkTimes::CAMPFIRE).map_err(|error| {
-        error!(%address, error = %ErrorReport::of(&error), "the server's socket does not open");
-        ExitCode::from(ExitStatus::Failure)
-    })?;
+    let socket = ServerSocket::bind(address, &secret, LinkTimes::CAMPFIRE)?;
     drop(secret);
     let tls_key = socket.tls_key();
+    let no_session = |error| StartError::Session {
+        data: data.layout().path().to_owned(),
+        error,
+    };
     // A waiting session names its own map, which its restore, or its end, replays.
-    let waiting = Opening::waiting(&data).and_then(|waiting| {
-        let journal = waiting.as_ref().map(|session| &session.private.terms.map);
-        let map = Opening::map(journal, map)?;
-        Ok((waiting, map))
-    });
-    let (waiting, map) = waiting.map_err(|error| {
-        error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
-        ExitCode::from(ExitStatus::Failure)
-    })?;
-    let mode_dir = PackageDir::new(&mode);
-    let packages = mode_dir
-        .choose_map(map)
-        .and_then(|map| mode_dir.mode_packages(&map))
-        .map_err(|error| {
-            error!(mode = %mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
-            ExitCode::from(ExitStatus::Failure)
-        })?;
+    let waiting = Opening::waiting(&data).map_err(no_session)?;
+    let journal = waiting.as_ref().map(|session| &session.private.terms.map);
+    let map = Opening::map(journal, map).map_err(no_session)?;
+    let packages = PackageDir::new(&mode).mode_packages(map.as_ref())?;
+    bots.check(&packages.unit_types())?;
     let capabilities = packages.manifest().capabilities;
-    let opening = open(&data, waiting, packages, key, times, bots, host)?;
+    let setup = OpeningSetup {
+        data: &data,
+        packages,
+        server: ServerSetup {
+            key,
+            times,
+            os: Os::SYSTEM,
+        },
+        bots,
+        host,
+    };
+    let opening = open(waiting, setup).map_err(no_session)?;
     let local = socket.local_address();
     let limit = AddressLimit::new(opening.seats(), opening.server().times.grace);
     let listening = announce(&opening, &mode, local, tls_key);
@@ -146,59 +131,43 @@ fn run() -> Result<ExitCode, ExitCode> {
     // request's 10 s, which no client waits for (design 15, D12).
     drop(app);
     drop(port_map);
-    Ok(ProcessExit::code(exit))
+    Ok(exit_code(exit))
 }
 
-/// Logs `error` under `message`, one of the start's refusals, and gives `status`'s exit code.
-fn refused(status: ExitStatus, error: &(dyn Error + 'static), message: &str) -> ExitCode {
-    error!(error = %ErrorReport::of(error), "{message}");
-    ExitCode::from(status)
+/// Logs `error`, the refusal that ended the start: a journal that keeps no files as the event a
+/// check reads, a command line not at all, as its parser printed it.
+fn refused(error: &StartError) {
+    match error {
+        StartError::CommandLine(_) => {}
+        StartError::Session {
+            error: error @ OpeningError::Open(LobbyOpenError::KeepFiles(_)),
+            ..
+        } => JournalFailed {
+            error: ErrorReport::of(error).to_string(),
+        }
+        .log(),
+        error => error!(error = %ErrorReport::of(error), "the server does not start"),
+    }
 }
 
-/// The session `waiting` in the data directory `data` to restore, or a new one of the mode
-/// `packages` holds, with `bots` and the visibility `host` sets, on the server of `key` and
-/// `times`. The exit code when it fails.
+/// The session `waiting` in the data directory to restore, or a new one of the mode `setup`
+/// holds, with its bots, its visibility and its server.
 fn open(
-    data: &ServerDir,
     waiting: Option<RestoredSession>,
-    packages: ModePackages,
-    key: Keypair,
-    times: SessionTimes,
-    bots: ServerBots,
-    host: HostVisibility,
-) -> Result<Opening, ExitCode> {
-    let no_session = |error: OpeningError| {
-        error!(data = %data.layout().path().display(), error = %ErrorReport::of(&error), "no session starts");
-        ExitCode::from(ExitStatus::Failure)
-    };
-    let signer = Signer::new(key, Os::SYSTEM.entropy);
+    setup: OpeningSetup<'_>,
+) -> Result<Opening, OpeningError> {
+    let signer = Signer::new(setup.server.key, Os::SYSTEM.entropy);
     let publisher = Publisher {
-        data,
-        packages: &packages,
+        data: setup.data,
+        packages: &setup.packages,
         signer: &signer,
     };
-    let found = Opening::find(waiting, times.restore_window, publisher).map_err(no_session)?;
-    let setup = OpeningSetup {
-        data,
-        packages,
-        server: ServerSetup {
-            key,
-            times,
-            os: Os::SYSTEM,
-        },
-        bots,
-        host,
+    let window = RestoreWindow {
+        length: setup.server.times.restore_window,
+        now: SystemTime::now(),
     };
-    Opening::of(found, setup).map_err(|error| match error {
-        OpeningError::Open(LobbyOpenError::KeepFiles(_)) => {
-            JournalFailed {
-                error: ErrorReport::of(&error).to_string(),
-            }
-            .log();
-            ExitCode::from(ExitStatus::Storage)
-        }
-        error => no_session(error),
-    })
+    let found = Opening::find(waiting, window, publisher)?;
+    Opening::of(found, setup)
 }
 
 /// The server's app: its plugins at the rate of the session of `opening`, that session, a
@@ -217,6 +186,7 @@ fn server_app(
         SimServerPlugins {
             tick_hz: opening.terms().tick_hz,
             capabilities: set,
+            hosting: Hosting::Remote,
         },
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
@@ -276,7 +246,7 @@ fn announce(opening: &Opening, mode: &Path, address: SocketAddr, tls_key: TlsKey
 
 /// Exits as `SimServerWorld::exit_due` says: the server stops only once its session ended.
 fn exit_when_due(world: &mut World) {
-    if let Some(exit) = world.exit_due(false) {
+    if let Some(exit) = world.exit_due(StopRequest::NotAsked) {
         world.write_message(exit);
     }
 }

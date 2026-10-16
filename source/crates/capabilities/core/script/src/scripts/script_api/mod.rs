@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::collections::BTreeSet;
 
 use campfire_sim::Capability;
@@ -10,7 +11,7 @@ use crate::scripts::api_version::ApiVersion;
 use crate::scripts::data_table::DataTable;
 use crate::scripts::hook::Hook;
 use crate::scripts::member_kind::MemberKind;
-use crate::scripts::member_spec::{ArgKinds, MemberSpec, NameArgs};
+use crate::scripts::member_spec::{ArgKinds, MemberSpec};
 use crate::scripts::script_api::api_builder::ApiBuilder;
 use crate::scripts::script_api::api_member::ApiMember;
 use crate::scripts::script_api::api_reference::ApiReference;
@@ -41,6 +42,8 @@ pub struct ScriptApi {
     pub(super) data: Vec<DataField>,
     /// The engine enums, in the order they bind.
     pub(super) enums: Vec<EnumRecord>,
+    /// The types whose indexers read names the data declares, as `ctx.p` gives one.
+    indexed: Vec<TypeId>,
     /// The names of the functions the engine has before the API binds: Rhai's packages and
     /// `Num`'s, getters as `get$<field>`.
     builtins: BTreeSet<String>,
@@ -49,9 +52,9 @@ pub struct ScriptApi {
 impl ScriptApi {
     /// The script API of the release, which `bind` binds into `host` as a match's engine binds
     /// it, recorded with the names the engine has before.
-    pub fn release(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> ScriptApi {
-        let builtins = ScriptApi::functions(host.engine_mut());
-        let mut api = ScriptApi::bind(host, bind);
+    pub fn release(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> Self {
+        let builtins = Self::functions(host.engine_mut());
+        let mut api = Self::recorded(host, bind);
         api.builtins = builtins;
         api
     }
@@ -63,14 +66,21 @@ impl ScriptApi {
         names.into_iter().collect()
     }
 
-    /// Binds into `host` the script API that `bind` binds, and records it.
-    pub fn bind(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> ScriptApi {
-        let mut api = ScriptApi {
+    /// Binds into `host` the script API that `bind` binds, as a match's engine binds it, which
+    /// reads no record: the load check reads the release's.
+    pub fn bind(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) {
+        Self::recorded(host, bind);
+    }
+
+    /// Binds into `host` the script API that `bind` binds, and records it, with no builtins.
+    fn recorded(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> Self {
+        let mut api = Self {
             members: Vec::new(),
             hooks: Vec::new(),
             tag_properties: Vec::new(),
             data: Vec::new(),
             enums: Vec::new(),
+            indexed: Vec::new(),
             builtins: BTreeSet::new(),
         };
         bind(&mut ApiBuilder::new(host, &mut api));
@@ -101,10 +111,30 @@ impl ScriptApi {
             .find(|record| record.engine_enum.name() == name)
     }
 
-    /// Whether the engine has a function `name` of its own, before the API: `get$<field>` for a
-    /// field.
-    pub fn builtin(&self, name: &str) -> bool {
-        self.builtins.contains(name)
+    /// Whether the engine has a member `name` of `kind` of its own, before the API: a field's
+    /// getter, or a function.
+    pub fn builtin(&self, name: &str, kind: MemberKind) -> bool {
+        self.builtins.contains(&kind.bound_name(name))
+    }
+
+    /// Whether the field or value `name` of some owner leads to data: it gives a type whose
+    /// indexer reads names the data declares, so each name after it is data, not a member.
+    pub fn leads_to_data(&self, name: &str) -> bool {
+        self.members.iter().any(|member| {
+            member.spec.name == name
+                && matches!(member.spec.kind, MemberKind::Field | MemberKind::Value)
+                && member
+                    .output
+                    .is_some_and(|output| self.indexed.contains(&output))
+        })
+    }
+
+    /// Records that `T`'s indexer reads names the data declares.
+    pub(crate) fn record_indexed<T: 'static>(&mut self) {
+        let indexed = TypeId::of::<T>();
+        if !self.indexed.contains(&indexed) {
+            self.indexed.push(indexed);
+        }
     }
 
     /// The script API's reference, in Markdown: every name, hook, state and data field, with
@@ -166,31 +196,26 @@ impl ScriptApi {
             (planned, Status::Planned),
         ] {
             for &name in names {
-                self.record_field(table, name, status, capability);
+                self.record_field(DataField {
+                    table,
+                    name,
+                    status,
+                    capability,
+                });
             }
         }
     }
 
-    /// Records the field `name` of `table`, of `status`.
-    pub fn record_field(
-        &mut self,
-        table: DataTable,
-        name: &'static str,
-        status: Status,
-        capability: Option<Capability>,
-    ) {
+    /// Records `field`.
+    pub(crate) fn record_field(&mut self, field: DataField) {
+        let DataField { table, name, .. } = field;
         assert!(
             self.data
                 .iter()
                 .all(|held| (held.table, held.name) != (table, name)),
             "{table:?}.{name} is recorded once"
         );
-        self.data.push(DataField {
-            table,
-            name,
-            status,
-            capability,
-        });
+        self.data.push(field);
     }
 
     /// The capability that reads the field `name` of `table`, which the API records; none for
@@ -212,27 +237,28 @@ impl ScriptApi {
         Some(&self.members[at])
     }
 
-    /// What the arguments of the method `name` of any handle name: every handle with a method
-    /// of that name gives the same, so a script's literal is checked whatever value it calls it
-    /// on.
-    pub fn method_names(&self, name: &str) -> Option<NameArgs> {
-        self.members
-            .iter()
-            .find(|member| {
-                let spec = &member.spec;
-                spec.owner != ApiOwner::Ctx && spec.kind == MemberKind::Method && spec.name == name
-            })
-            .map(|member| member.spec.names)
+    /// The spec of the method `name` of any handle: every handle with a method of that name
+    /// gives the same arguments, so a script's literal is checked whatever value it calls it on.
+    pub fn method(&self, name: &str) -> Option<&MemberSpec> {
+        self.members.iter().map(|member| &member.spec).find(|spec| {
+            spec.owner != ApiOwner::Ctx && spec.kind == MemberKind::Method && spec.name == name
+        })
     }
 
     pub fn members(&self) -> &[ApiMember] {
         &self.members
     }
 
-    /// Records a binding of `spec`, written when `writable`, with `status`; another binding of a
-    /// name already recorded adds its writing and what its form's arguments name, and gives the
-    /// same spec and status otherwise.
-    pub fn record(&mut self, spec: MemberSpec, writable: bool, status: Status) {
+    /// Records a binding of `member`; another binding of a name already recorded adds its
+    /// writing, what its form's arguments name and its output, and gives the same spec and
+    /// status otherwise.
+    pub(crate) fn record(&mut self, member: ApiMember) {
+        let ApiMember {
+            spec,
+            writable,
+            status,
+            output,
+        } = member;
         let key = (spec.owner, spec.name);
         match self
             .members
@@ -250,17 +276,17 @@ impl ScriptApi {
                     spec.owner,
                     spec.name
                 );
+                assert!(
+                    held.output.is_none() || output.is_none() || held.output == output,
+                    "the forms of {:?}.{} give one type",
+                    spec.owner,
+                    spec.name
+                );
                 held.spec = held.spec.with_args(args);
                 held.writable |= writable;
+                held.output = held.output.or(output);
             }
-            Err(at) => self.members.insert(
-                at,
-                ApiMember {
-                    spec,
-                    writable,
-                    status,
-                },
-            ),
+            Err(at) => self.members.insert(at, member),
         }
     }
 }
@@ -289,9 +315,21 @@ fn merged<T: Copy + PartialEq>(
 pub(crate) mod internals {
     use crate::scripts::script_api::ScriptApi;
     use crate::scripts::script_api::api_member::ApiMember;
+    use crate::scripts::script_api::data_field::DataField;
     use crate::scripts::script_api::enum_record::EnumRecord;
 
     impl ScriptApi {
+        /// Records a binding of `member`, as a module's binding does, to test the registry's
+        /// checks.
+        pub fn record_binding(&mut self, member: ApiMember) {
+            self.record(member);
+        }
+
+        /// Records `field`, as a module's data does, to test the registry's checks.
+        pub fn record_data_field(&mut self, field: DataField) {
+            self.record_field(field);
+        }
+
         /// Its members, to change as a test changes one.
         pub const fn members_mut(&mut self) -> &mut Vec<ApiMember> {
             &mut self.members

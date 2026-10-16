@@ -173,4 +173,9 @@ fn experience_is_state_and_restores() {
     );
     assert!(!points.check(&game, game.unit_entity(held)));
     assert!(points.check(&game, game.unit_entity(id)));
+    // At level 2 it holds two points at most: a third, which no level gave, fails the check, as
+    // its next level would pass the most a `u32` counts.
+    let mut third = points;
+    third.gain(1);
+    assert!(!third.check(&game, game.unit_entity(id)));
 }

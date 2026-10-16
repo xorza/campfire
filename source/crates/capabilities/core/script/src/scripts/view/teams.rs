@@ -25,8 +25,8 @@ impl Teams {
         names: Names<Team>,
         slots: impl IntoIterator<Item = u32>,
         players: u32,
-    ) -> Option<Teams> {
-        let mut built = Teams::default();
+    ) -> Option<Self> {
+        let mut built = Self::default();
         let mut unseated = players;
         let teams = names.iter().map(|(team, _)| team).zip(slots);
         for (team, slots) in teams {
@@ -76,7 +76,7 @@ impl Teams {
     }
 
     /// Player `player`'s slot, as a script names it, when the session has it.
-    pub fn player(&self, player: i64) -> Checked<PlayerSlot> {
+    pub(crate) fn player(&self, player: i64) -> Checked<PlayerSlot> {
         u32::try_from(player)
             .ok()
             .filter(|&slot| slot < self.players())

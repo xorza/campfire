@@ -22,14 +22,16 @@ pub enum Ends {
 }
 
 /// What holds an instance beside an application: its ability's passive, which its rank keeps; an
-/// aura, an area or a player, which hold it while their rules select its carrier; or an action's
-/// `hold`, which its toggle that is on or its channel that runs keeps. Every hold from one source
-/// of one modifier is one hold: which of them holds it changes nothing.
+/// aura or an area, which hold it while their rules select its carrier; an action's `hold`,
+/// which its toggle that is on or its channel that runs keeps; or its carrier's player, which
+/// holds it while it holds the modifier and its `affects` selects the carrier. Every hold from
+/// one source of one modifier is one hold: which of them holds it changes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hold {
     Passive,
     Held,
     Running,
+    Player,
 }
 
 /// The holds that keep an instance, a bit each.
@@ -39,16 +41,16 @@ pub(crate) struct HoldSet(u8);
 
 impl Lifetime {
     /// The lifetime of an application by `hold`, which keeps it while it holds.
-    pub const fn held(hold: Hold) -> Lifetime {
-        Lifetime {
+    pub const fn held(hold: Hold) -> Self {
+        Self {
             holds: HoldSet::of(hold),
             applied: None,
         }
     }
 
     /// The lifetime of an application of its own, until `ends`.
-    pub const fn applied(ends: Ends) -> Lifetime {
-        Lifetime {
+    pub const fn applied(ends: Ends) -> Self {
+        Self {
             holds: HoldSet::NONE,
             applied: Some(ends),
         }
@@ -57,10 +59,19 @@ impl Lifetime {
     /// The lifetime once `new`, a later application of the same modifier from the same source,
     /// joins it: its holds join, and an application of its own replaces this one's, as a
     /// refresh takes the new end; a hold leaves this one's.
-    pub(crate) fn joined(self, new: Lifetime) -> Lifetime {
-        Lifetime {
+    pub(crate) fn joined(self, new: Self) -> Self {
+        Self {
             holds: self.holds.union(new.holds),
             applied: new.applied.or(self.applied),
+        }
+    }
+
+    /// The lifetime once the holds of `new`, a later application of the same modifier from the
+    /// same source that changes nothing else, join it.
+    pub(crate) const fn held_too(self, new: Self) -> Self {
+        Self {
+            holds: self.holds.union(new.holds),
+            applied: self.applied,
         }
     }
 
@@ -93,36 +104,29 @@ impl Lifetime {
         self.holds = self.holds.without(hold);
         !self.holds.is_empty() || self.applied.is_some()
     }
-
-    /// Takes `hold` on too.
-    pub(crate) const fn hold(&mut self, hold: Hold) {
-        self.holds = self.holds.with(hold);
-    }
 }
 
 impl HoldSet {
-    const NONE: HoldSet = HoldSet(0);
-    const ALL: u8 =
-        HoldSet::bit(Hold::Passive) | HoldSet::bit(Hold::Held) | HoldSet::bit(Hold::Running);
+    const NONE: Self = Self(0);
+    const ALL: u8 = Self::bit(Hold::Passive)
+        | Self::bit(Hold::Held)
+        | Self::bit(Hold::Running)
+        | Self::bit(Hold::Player);
 
-    pub(crate) const fn of(hold: Hold) -> HoldSet {
-        HoldSet(HoldSet::bit(hold))
+    pub(crate) const fn of(hold: Hold) -> Self {
+        Self(Self::bit(hold))
     }
 
-    const fn with(self, hold: Hold) -> HoldSet {
-        HoldSet(self.0 | HoldSet::bit(hold))
+    const fn without(self, hold: Hold) -> Self {
+        Self(self.0 & !Self::bit(hold))
     }
 
-    const fn without(self, hold: Hold) -> HoldSet {
-        HoldSet(self.0 & !HoldSet::bit(hold))
-    }
-
-    const fn union(self, other: HoldSet) -> HoldSet {
-        HoldSet(self.0 | other.0)
+    const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
     }
 
     pub(crate) const fn contains(self, hold: Hold) -> bool {
-        self.0 & HoldSet::bit(hold) != 0
+        self.0 & Self::bit(hold) != 0
     }
 
     pub(crate) const fn is_empty(self) -> bool {
@@ -136,12 +140,12 @@ impl HoldSet {
 
 /// A snapshot is untrusted, so a bit of no hold fails to decode.
 impl<'de> Deserialize<'de> for HoldSet {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<HoldSet, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let bits = u8::deserialize(deserializer)?;
-        if bits & !HoldSet::ALL != 0 {
+        if bits & !Self::ALL != 0 {
             return Err(D::Error::custom("a bit of no hold"));
         }
-        Ok(HoldSet(bits))
+        Ok(Self(bits))
     }
 }
 
@@ -172,8 +176,7 @@ mod tests {
         let refreshed = Lifetime::applied(at(3)).joined(Lifetime::applied(at(8)));
         assert_eq!(refreshed.until(), Some(Tick::new(8)));
         // A passive and a hold are two holds, each released alone.
-        let mut both = Lifetime::held(Hold::Passive);
-        both.hold(Hold::Held);
+        let mut both = Lifetime::held(Hold::Passive).held_too(Lifetime::held(Hold::Held));
         assert!(both.release(Hold::Held) && both.held_by(Hold::Passive));
         assert!(!both.release(Hold::Passive));
     }
@@ -182,9 +185,10 @@ mod tests {
     fn a_hold_set_decodes_only_bits_of_holds() {
         let decode = |bits: u8| Binary::decode::<HoldSet>(&[bits]).ok();
         let all = HoldSet::of(Hold::Passive)
-            .with(Hold::Held)
-            .with(Hold::Running);
-        assert_eq!(decode(0b111), Some(all));
-        assert_eq!(decode(0b1000), None);
+            .union(HoldSet::of(Hold::Held))
+            .union(HoldSet::of(Hold::Running))
+            .union(HoldSet::of(Hold::Player));
+        assert_eq!(decode(0b1111), Some(all));
+        assert_eq!(decode(0b1_0000), None);
     }
 }

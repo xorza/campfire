@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_script::{NameKind, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::{ModifierId, PackageIndex};
+use campfire_values::{Distance, ModifierId, PackageIndex};
 
 use crate::action::{Aim, Passive};
 use crate::action_data::ActionData;
@@ -40,7 +40,7 @@ impl ActionParts {
         ranks: u8,
         rate: TickRate,
         names: &impl ActionNames,
-    ) -> Result<ActionParts, ActionError> {
+    ) -> Result<Self, ActionError> {
         let passive = data.passive_modifier.as_ref().map(|name| {
             Ok::<_, UnknownName>(Passive {
                 modifier: names.modifier(package, name)?,
@@ -57,7 +57,7 @@ impl ActionParts {
             Targeting::Unit(filter) => Aim::Unit(names.filter(filter)?),
         };
         let ranks = RankValues::all(data, ranks, rate, |name| names.cost_target(name))?;
-        let kind = match KindData::of(data).map_err(ActionProblem::KindField)? {
+        let kind = match KindData::of(data)? {
             KindData::Cast => KindSpec::Cast,
             KindData::Use => KindSpec::Use,
             KindData::Attack {
@@ -85,10 +85,7 @@ impl ActionParts {
                 let Some(CostTarget::Resource(resource)) = names.cost_target(resource) else {
                     return Err(UnknownName::new(NameKind::Resource, resource).into());
                 };
-                let bounce = bounce.unwrap_or(Num::ZERO);
-                if bounce < Num::ZERO {
-                    return Err(ActionProblem::Bounce.into());
-                }
+                let bounce = bounce.map_or(Num::ZERO, Distance::get);
                 KindSpec::Gather(GatherSpec {
                     resource,
                     take,
@@ -115,7 +112,7 @@ impl ActionParts {
         let delivery = delivery.transpose()?;
         let hold = data.hold.as_ref().map(|name| names.modifier(package, name));
         let hold = hold.transpose()?;
-        Ok(ActionParts {
+        Ok(Self {
             kind,
             passive,
             hold,

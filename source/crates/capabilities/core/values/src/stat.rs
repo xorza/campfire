@@ -1,3 +1,4 @@
+use campfire_common::NamedEnum;
 use derive_more::Display;
 use serde::{Deserialize, Deserializer};
 
@@ -28,52 +29,43 @@ campfire_common::enum_all! {
     pub const ALL;
 }
 
-impl EngineStat {
-    /// The stat named `name`.
-    pub fn named(name: &str) -> Option<EngineStat> {
-        EngineStat::ALL.into_iter().find(|stat| stat.name() == name)
-    }
-
-    /// The stat as data and scripts name it.
-    pub const fn name(self) -> &'static str {
-        match self {
-            EngineStat::MoveSpeed => "move_speed",
-            EngineStat::TurnRate => "turn_rate",
-        }
-    }
+/// As data and scripts name each.
+impl NamedEnum for EngineStat {
+    const ALL: &'static [Self] = &Self::ALL;
+    const NAMES: &'static [&'static str] = &["move_speed", "turn_rate"];
 }
 
 impl Stat {
     /// The stat `name` names: an engine stat by its name, else a declared one; `None` when it is
     /// not a name at all. Whether the mode declares it is the package load's check.
-    pub fn named(name: &str) -> Option<Stat> {
+    pub fn named(name: &str) -> Option<Self> {
         EngineStat::named(name)
             .map(Stat::Engine)
-            .or_else(|| DeclaredName::new(name).map(|name| Stat::Declared(DeclaredStat(name))))
+            .or_else(|| DeclaredName::new(name).map(|name| Self::Declared(DeclaredStat(name))))
     }
 
     /// The stat as data and scripts name it.
     pub fn name(&self) -> &str {
         match self {
-            Stat::Engine(stat) => stat.name(),
-            Stat::Declared(declared) => declared.0.as_str(),
+            Self::Engine(stat) => stat.name(),
+            Self::Declared(declared) => declared.0.as_str(),
         }
     }
 
     /// The name of a stat the mode must declare; `None` for an engine stat.
     pub const fn declared(&self) -> Option<&DeclaredName> {
         match self {
-            Stat::Engine(_) => None,
-            Stat::Declared(declared) => Some(&declared.0),
+            Self::Engine(_) => None,
+            Self::Declared(declared) => Some(&declared.0),
         }
     }
 }
 
 impl<'de> Deserialize<'de> for Stat {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Stat, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let name = DeclaredName::deserialize(deserializer)?;
         let engine = EngineStat::named(name.as_str());
-        Ok(engine.map_or(Stat::Declared(DeclaredStat(name)), Stat::Engine))
+        Ok(engine.map_or(Self::Declared(DeclaredStat(name)), Stat::Engine))
     }
 }
 

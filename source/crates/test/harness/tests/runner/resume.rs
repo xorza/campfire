@@ -10,7 +10,7 @@ use campfire_harness::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::TestMode;
-use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
+use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
 use campfire_runner::{
     Replay, ResumeAt, ResumeError, Session, SessionSource, SessionWorld, SnapshotCheckError,
 };
@@ -36,7 +36,7 @@ impl Checkpointed {
         at: [u64; 3],
         ticks: u64,
         mut play: impl FnMut(&mut FixedMatch, u64),
-    ) -> Checkpointed {
+    ) -> Self {
         let mut snapshots = Vec::new();
         let mut hashes = Vec::new();
         let (mut deaths, mut respawns) = (Vec::new(), Vec::new());
@@ -73,7 +73,7 @@ impl Checkpointed {
         }
         let mut log = Vec::new();
         fixed.game().session().log().encode(&mut log);
-        Checkpointed {
+        Self {
             log,
             snapshots,
             hashes,
@@ -101,7 +101,6 @@ impl Checkpointed {
                 log,
                 seeds: FixedSession::seeds(),
                 packages,
-                signer: None,
             };
             let checkpoint_at = ResumeAt { segment, snapshot };
             let mut game = Session::resume_match(source, checkpoint_at)
@@ -166,7 +165,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
         fixed
             .game_mut()
             .session_mut()
-            .record_checkpoint(record)
+            .record_checkpoint(record, &FixedSession::server_signer())
             .unwrap();
         snapshot
     };
@@ -191,7 +190,6 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
             log,
             seeds: FixedSession::seeds(),
             packages: proving.packages(),
-            signer: None,
         };
         Session::resume_match(source, ResumeAt { segment, snapshot }).err()
     };
@@ -252,8 +250,10 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
         game.run_tick_alone();
     }
     assert_ne!(game.state_hash(), hashes[149]);
-    let result = game.session_result_as(Outcome::Aborted);
-    game.session_mut().record_result(result).unwrap();
+    let result = game.session_result();
+    game.session_mut()
+        .record_result(result, &FixedSession::server_signer())
+        .unwrap();
     game.session_mut().reveal_seed();
     let mut bytes = Vec::new();
     game.session().log().encode(&mut bytes);

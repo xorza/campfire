@@ -4,6 +4,8 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
+use crate::script_host::error::{NumError, Raised};
+use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
@@ -26,41 +28,53 @@ pub enum StateValue {
 }
 
 impl StateValue {
-    /// A script's value as a field of type `kind`; `None` when it is not of the type. An integer
-    /// is a `Num` too, and `()` is an entity field's none.
-    pub fn from_value(kind: StateType, value: &ScriptValue) -> Option<StateValue> {
+    /// A script's value as a field of type `kind`; an error when it is not of the type, or is an
+    /// integer beyond a `Num` for a `Num` field. An integer is a `Num` too, and `()` is an entity
+    /// field's none.
+    pub fn from_value(kind: StateType, value: &ScriptValue) -> Checked<Self> {
+        Self::of_kind(kind, value).ok_or_else(|| {
+            if kind == StateType::Num && value.as_int().is_some() {
+                Raised::error(NumError::IntegerBeyondNum).into()
+            } else {
+                ApiError::WrongStateType.fail().into()
+            }
+        })
+    }
+
+    /// `value` as a field of type `kind`, when it is one, as `from_value` takes it.
+    pub fn of_kind(kind: StateType, value: &ScriptValue) -> Option<Self> {
         Some(match kind {
-            StateType::Int => StateValue::Int(value.as_int()?),
-            StateType::Num => StateValue::Num(match value.as_int() {
+            StateType::Int => Self::Int(value.as_int()?),
+            StateType::Num => Self::Num(match value.as_int() {
                 Some(int) => Num::from_int(int)?,
                 None => value.clone().try_cast::<Num>()?,
             }),
-            StateType::Bool => StateValue::Bool(value.as_bool()?),
-            StateType::String => StateValue::Text(Arc::from(value.clone().into_text()?.as_str())),
-            StateType::Entity if value.is_unit() => StateValue::Entity(None),
-            StateType::Entity => StateValue::Entity(Some(value.clone().try_cast::<Unit>()?.id)),
+            StateType::Bool => Self::Bool(value.as_bool()?),
+            StateType::String => Self::Text(Arc::from(value.clone().into_text()?.as_str())),
+            StateType::Entity if value.is_unit() => Self::Entity(None),
+            StateType::Entity => Self::Entity(Some(value.clone().try_cast::<Unit>()?.id)),
             StateType::EntityList => {
                 let list = value.clone().into_list()?;
                 let ids = list
                     .into_iter()
                     .map(|unit| unit.try_cast::<Unit>().map(|unit| unit.id))
                     .collect::<Option<_>>()?;
-                StateValue::EntityList(ids)
+                Self::EntityList(ids)
             }
-            StateType::Vec => StateValue::Vec(value.clone().try_cast::<Vec3>()?),
+            StateType::Vec => Self::Vec(value.clone().try_cast::<Vec3>()?),
         })
     }
 
     /// The type of field the value is of.
     pub const fn kind(&self) -> StateType {
         match self {
-            StateValue::Int(_) => StateType::Int,
-            StateValue::Num(_) => StateType::Num,
-            StateValue::Bool(_) => StateType::Bool,
-            StateValue::Text(_) => StateType::String,
-            StateValue::Entity(_) => StateType::Entity,
-            StateValue::EntityList(_) => StateType::EntityList,
-            StateValue::Vec(_) => StateType::Vec,
+            Self::Int(_) => StateType::Int,
+            Self::Num(_) => StateType::Num,
+            Self::Bool(_) => StateType::Bool,
+            Self::Text(_) => StateType::String,
+            Self::Entity(_) => StateType::Entity,
+            Self::EntityList(_) => StateType::EntityList,
+            Self::Vec(_) => StateType::Vec,
         }
     }
 
@@ -68,18 +82,56 @@ impl StateValue {
     /// list.
     pub fn to_value(&self, view: &View) -> ScriptValue {
         match self {
-            StateValue::Int(value) => ScriptValue::of(*value),
-            StateValue::Num(value) => ScriptValue::of(*value),
-            StateValue::Bool(value) => ScriptValue::of(*value),
-            StateValue::Text(text) => ScriptValue::of(ScriptText::from(&**text)),
-            StateValue::Entity(id) => view.unit_value(*id),
-            StateValue::EntityList(ids) => ScriptValue::of(
+            Self::Int(value) => ScriptValue::of(*value),
+            Self::Num(value) => ScriptValue::of(*value),
+            Self::Bool(value) => ScriptValue::of(*value),
+            Self::Text(text) => ScriptValue::of(ScriptText::from(&**text)),
+            Self::Entity(id) => view.unit_value(*id),
+            Self::EntityList(ids) => ScriptValue::of(
                 ids.iter()
                     .filter_map(|&id| view.unit(id))
                     .map(ScriptValue::of)
                     .collect::<ScriptList>(),
             ),
-            StateValue::Vec(vec) => ScriptValue::of(*vec),
+            Self::Vec(vec) => ScriptValue::of(*vec),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::internals::FailureKind;
+    use crate::script_host::error::ScriptError;
+    use crate::scripts::error::CallError;
+
+    #[test]
+    fn a_value_takes_its_fields_type_and_an_integer_past_a_num_fails_as_the_number_apis() {
+        let kind = |field, value: i64| {
+            let error = StateValue::from_value(field, &ScriptValue::of(value)).unwrap_err();
+            CallError::from_script(ScriptError::from_eval(error)).kind()
+        };
+        // 3 is an integer, and a `Num` too; 2³⁹ is the least integer past a `Num`.
+        let three = ScriptValue::of(3_i64);
+        assert_eq!(
+            StateValue::from_value(StateType::Int, &three).unwrap(),
+            StateValue::Int(3)
+        );
+        assert_eq!(
+            StateValue::from_value(StateType::Num, &three).unwrap(),
+            StateValue::Num(Num::from_int(3).unwrap())
+        );
+        assert_eq!(
+            kind(StateType::Num, 1 << 39),
+            FailureKind::Raised(Some(NumError::IntegerBeyondNum))
+        );
+        assert_eq!(
+            StateValue::of_kind(StateType::Num, &ScriptValue::of(1_i64 << 39)),
+            None
+        );
+        assert_eq!(
+            kind(StateType::Bool, 1),
+            FailureKind::Api(ApiError::WrongStateType)
+        );
     }
 }

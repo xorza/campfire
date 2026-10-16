@@ -215,6 +215,23 @@ fn a_wide_value_rounds_to_the_nearest_num_ties_to_even() {
     }
 }
 
+/// The true sine and cosine of `degrees` by floats, far within 2⁻²⁰ of each, rounded to the
+/// nearest 2⁻²⁴, each lying past 2⁻²⁰ of a half, where the floats' error cannot cross it.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::float_arithmetic,
+    reason = "a float reference far within the bits it rounds to"
+)]
+fn true_degrees(degrees: i64) -> [i64; 2] {
+    let radians = f64::from(i32::try_from(degrees).unwrap()).to_radians();
+    [radians.sin(), radians.cos()].map(|exact| {
+        let scaled = exact * 16_777_216.0;
+        let rest = scaled - scaled.floor();
+        assert!((rest - 0.5).abs() > 1.0 / 1_048_576.0, "{degrees}");
+        scaled.round() as i64
+    })
+}
+
 #[test]
 fn a_turn_in_degrees_is_exact_at_each_quarter_and_whole_turns_turn_alike() {
     let at = |degrees: i64| SinCos::of_degrees(Num::int(degrees));
@@ -228,8 +245,19 @@ fn a_turn_in_degrees_is_exact_at_each_quarter_and_whole_turns_turn_alike() {
     assert_eq!(at(270), exact(-1, 0));
     assert_eq!(at(-90), at(270));
     assert_eq!(at(450), at(90));
-    // 30° is π/6 radians, 30 × π / 180 rounded once, whose `sin_cos` it gives.
-    let sixth = Num::int(30).checked_mul_div_int(Num::PI, 180).unwrap();
-    assert_eq!(at(30), sixth.sin_cos());
     assert_eq!(at(-330), at(30));
+    // Each whole degree is its true sine and cosine rounded once, as floats give them within
+    // far less than 2⁻²⁰ of a half, past which each lies; and an angle's sine is its
+    // complement's cosine.
+    for degrees in 0..360 {
+        let got = at(degrees);
+        assert_eq!(
+            [got.sin, got.cos].map(Num::to_bits),
+            true_degrees(degrees),
+            "{degrees}"
+        );
+    }
+    for degrees in 1..90 {
+        assert_eq!(at(degrees).sin, at(90 - degrees).cos, "{degrees}");
+    }
 }

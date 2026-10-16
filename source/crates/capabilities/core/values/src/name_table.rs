@@ -20,8 +20,8 @@ impl NameId for Entry {
     type Scope = u32;
     const LIMIT: usize = u32::MAX as usize;
 
-    fn at(index: usize) -> Entry {
-        Entry(u32::try_from(index).expect("entries fit u32"))
+    fn at(index: usize) -> Self {
+        Self(u32::try_from(index).expect("entries fit u32"))
     }
 
     fn index(self) -> usize {
@@ -74,8 +74,8 @@ impl<V> NameTable<V> {
 }
 
 impl<V> Default for NameTable<V> {
-    fn default() -> NameTable<V> {
-        NameTable {
+    fn default() -> Self {
+        Self {
             names: Names::default(),
             values: Vec::new(),
             starts: vec![0],

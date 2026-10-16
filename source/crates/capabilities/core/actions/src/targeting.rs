@@ -13,12 +13,12 @@ pub enum Targeting {
 }
 
 impl<'de> Deserialize<'de> for Targeting {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Targeting, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
         match text.as_str() {
-            "none" => Ok(Targeting::None),
-            "point" => Ok(Targeting::Point),
-            "direction" => Ok(Targeting::Direction),
+            "none" => Ok(Self::None),
+            "point" => Ok(Self::Point),
+            "direction" => Ok(Self::Direction),
             filter => FilterData::parse(filter)
                 .map(Targeting::Unit)
                 .ok_or_else(|| Error::custom(format!("unknown targeting {filter:?}"))),

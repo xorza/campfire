@@ -22,11 +22,11 @@ impl UnitDivisor {
         reason = "a float reciprocal that `unit` corrects exactly"
     )]
     #[inline]
-    pub(crate) fn new(root: u64, half_reciprocal: f64, shift: u32) -> UnitDivisor {
+    pub(crate) fn new(root: u64, half_reciprocal: f64, shift: u32) -> Self {
         debug_assert!((1 << 62..=1 << 63).contains(&root));
         debug_assert!((FRACTION..=FRACTION + 62).contains(&shift));
-        let power = f64::from_bits(u64::from(1023 + 1 + shift - UnitDivisor::COARSE) << 52);
-        UnitDivisor {
+        let power = f64::from_bits(u64::from(1023 + 1 + shift - Self::COARSE) << 52);
+        Self {
             root,
             shift,
             reciprocal: 2.0 * half_reciprocal,
@@ -65,7 +65,7 @@ impl UnitDivisor {
         let magnitude = axis.unsigned_abs() as u64;
         let numerator = u128::from(magnitude) << self.shift;
         let coarse = (magnitude.cast_signed() as f64).mul_add(self.scale, TWO_POW_52);
-        let estimate = (coarse.to_bits() - TWO_POW_52.to_bits()) << UnitDivisor::COARSE;
+        let estimate = (coarse.to_bits() - TWO_POW_52.to_bits()) << Self::COARSE;
         let rest = numerator
             .wrapping_sub(u128::from(estimate) * u128::from(self.root))
             .cast_signed();

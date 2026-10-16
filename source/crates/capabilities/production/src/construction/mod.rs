@@ -4,8 +4,8 @@ use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
 use bevy_ecs::world::{EntityMut, World};
 use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
 use campfire_declare::{ByType, RoleForm};
-use campfire_geometry::{Metric, Placed};
-use campfire_math::{Num, Vec3};
+use campfire_geometry::Placed;
+use campfire_math::Num;
 use campfire_navigation::Navigation;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
@@ -21,7 +21,6 @@ use crate::builder::{BuildOrder, Builder};
 use crate::construction::build_view::{BuildPlace, BuildView};
 use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{Start, Step};
-use crate::held::Held;
 use crate::site::Site;
 
 pub(crate) mod build_view;
@@ -34,39 +33,24 @@ pub(crate) mod step;
 pub struct Construction;
 
 impl Construction {
-    /// Whether `range` from a builder at `from` with `body` reaches the building `placed`, in
-    /// `metric`: from the edge of the one body to the edge of the other.
-    fn in_range(
-        metric: Metric,
-        from: Vec3,
-        body: Option<&Body>,
-        range: Num,
-        placed: BuildPlace,
-    ) -> bool {
-        metric.reaches(
-            Placed::new(from, Body::shape_of(body)),
-            range,
-            Placed::new(placed.pos, placed.body.shape()),
-        )
-    }
-
     /// Checks each build order that changed since the last run, in Inputs, after the orders
     /// apply, as it applies: a point's build passes its action's checks, its requirements and
     /// its placement against the match as it stands, and a site's is a living site of the same
     /// building and player; one that fails ends, and pays nothing.
     pub(crate) fn check_builds<S: TeamSight>(
         mut parts: ParamSet<'_, '_, (BuildView<'_, '_, S>, Query<'_, '_, &mut Builder>)>,
-        (mut changed, mut held): (Local<'_, Vec<Entity>>, Local<'_, Vec<Held>>),
+        mut changed: Local<'_, Vec<Entity>>,
     ) {
         changed.clear();
         {
-            let view = parts.p0();
+            let mut view = parts.p0();
             changed.extend(view.changed.iter());
             if changed.is_empty() {
                 return;
             }
-            view.held(&mut held);
-            changed.retain(|&entity| !view.applies(entity, &held));
+            view.read_holdings();
+            changed.retain(|&entity| !view.applies(entity));
+            view.holdings.forget();
         }
         let mut builders = parts.p1();
         for &entity in &*changed {
@@ -99,11 +83,7 @@ impl Construction {
         world: &mut World,
         builders: &mut QueryState<(Entity, &StableId, &Builder), Without<Dead>>,
         view: &mut SystemState<BuildView<'_, '_, S>>,
-        (mut order, mut held, mut paid): (
-            Local<'_, Ordered>,
-            Local<'_, Vec<Held>>,
-            Local<'_, Vec<ResourceAmount>>,
-        ),
+        (mut order, mut paid): (Local<'_, Ordered>, Local<'_, Vec<ResourceAmount>>),
     ) {
         let ordered = builders
             .iter(world)
@@ -113,22 +93,22 @@ impl Construction {
         if due.is_empty() {
             return;
         }
-        view.get(world)
+        view.get_mut(world)
             .expect("a build view is always valid")
-            .held(&mut held);
+            .read_holdings();
         for &Keyed { entity, .. } in due {
             let step = view
-                .get(world)
+                .get_mut(world)
                 .expect("a build view is always valid")
-                .step(entity, &held);
+                .step(entity);
             match step {
                 Step::Walk(to) => Navigation::go_to(world, entity, Some(to)),
                 Step::Build => Navigation::go_to(world, entity, None),
                 Step::Take(site) => {
                     Navigation::go_to(world, entity, None);
                     let id = *world.get::<StableId>(entity).expect("a builder has an id");
-                    let mut held = world.get_mut::<Site>(site).expect("a site to take");
-                    held.hold(id);
+                    let mut site_part = world.get_mut::<Site>(site).expect("a site to take");
+                    site_part.hold(id);
                 }
                 Step::End => {
                     let mut builder = world.get_mut::<Builder>(entity).expect("a builder");
@@ -136,7 +116,7 @@ impl Construction {
                 }
                 Step::Start(start) => {
                     Navigation::go_to(world, entity, None);
-                    Construction::spawn_site::<S>(world, entity, start, &mut paid);
+                    Self::spawn_site::<S>(world, entity, start, &mut paid);
                 }
             }
         }
@@ -179,8 +159,8 @@ impl Construction {
         match (F::PREDICTS, player) {
             (true, _) => {}
             (false, Some(player)) => {
-                let [mut unit, mut held] = world.entity_mut([entity, player]);
-                let mut resources = held.get_mut::<PlayerResources>();
+                let [mut unit, mut player] = world.entity_mut([entity, player]);
+                let mut resources = player.get_mut::<PlayerResources>();
                 pay(&mut unit, resources.as_deref_mut());
             }
             (false, None) => {
@@ -230,10 +210,10 @@ impl Construction {
         });
         let builder = *world.get::<StableId>(entity).expect("a builder has an id");
         let holder = one_holds.then_some(builder);
-        let held = Site::new(action, start.rank, gain, paid, holder);
+        let site_part = Site::new(action, start.rank, gain, paid, holder);
         let status = StatusTags::from([Production::CONSTRUCTING]);
         let spawner = world.non_send::<Spawner>().clone();
-        let site = spawner.spawn(world, at, (held, status));
+        let site = spawner.spawn(world, at, (site_part, status));
         if let Some(mut life) = world.get_mut::<Life>(site) {
             life.take(gain);
         }
@@ -313,8 +293,9 @@ impl Construction {
                 pos: at.get(),
                 body: *site_body,
             };
-            let reaches = Construction::in_range(map.metric, from.get(), body, range, placed);
-            if reaches && !UnitTags::properties_of(tags).blocks(Block::Use) {
+            let builder = Placed::new(from.get(), Body::shape_of(body));
+            let reaches = placed.reached_by(map.metric, builder, range);
+            if reaches && !tags.is_some_and(|tags| tags.properties.blocks(Block::Use)) {
                 building.push(BuildingAt {
                     site,
                     builder: builder_id,

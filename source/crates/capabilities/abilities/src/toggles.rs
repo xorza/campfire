@@ -2,11 +2,11 @@ use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, ParamSet, Query, Res};
-use campfire_actions::{ActionBook, ActionSlots, SlotTimes, TogglePer, UseGroup};
+use campfire_actions::{ActionBook, ActionSlots, Caster, SlotTimes, TogglePer, UseGroup};
 use campfire_sim::TickClock;
 use campfire_stats::{PoolBook, UnitPools};
 use campfire_units::Dead;
-use campfire_values::UnitTags;
+use campfire_values::{Motion, UnitTags};
 
 use crate::Abilities;
 
@@ -67,8 +67,9 @@ impl Toggles {
                 let Some(next) = times.slot(at).and_then(|time| time.toggle) else {
                     continue;
                 };
-                let group = UseGroup::group(used, slot, &book);
-                if dead || UnitTags::properties_of(tags).blocks(group) {
+                // A tag that blocks casting turns a toggle off; a forced move does not.
+                let caster = Caster::of(tags, Motion::Own, used);
+                if dead || caster.blocked(Some(slot), &book) {
                     times.toggle_off(at);
                     continue;
                 }

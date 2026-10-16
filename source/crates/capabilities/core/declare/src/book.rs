@@ -3,17 +3,13 @@ use std::any::type_name;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_script::View;
-use campfire_sim::Capability;
 
-use crate::capability_set::CapabilitySet;
 use crate::role::Role;
 
 /// Package data a module reads, which its declaration puts in a match empty, and the install
 /// fills from the packages, each book through `Book::load_into`. The module that declares it is its
-/// owner: the declaration audit holds the two to agree.
+/// owner, which the install knows.
 pub trait Book: Resource + Default {
-    /// The capability that declares it; none for the core.
-    const OWNER: Option<Capability>;
     /// Whether only a match that runs scripts reads it, so a client holds none.
     const SCRIPTS_ONLY: bool;
 
@@ -21,10 +17,10 @@ pub trait Book: Resource + Default {
     /// from the match as it begins.
     fn share(&self, view: &View);
 
-    /// Whether a match of the capabilities `set` and of `role` holds it: one of its owner's, as
-    /// it reads it, and one that runs scripts, when only scripts read it.
-    fn held(set: CapabilitySet, role: &Role) -> bool {
-        set.runs(Self::OWNER) && (role.scripts() || !Self::SCRIPTS_ONLY)
+    /// Whether a match of `role`, which installs its owner, holds it: one that runs scripts, when
+    /// only scripts read it.
+    fn held(role: &Role) -> bool {
+        role.scripts() || !Self::SCRIPTS_ONLY
     }
 
     /// Puts the book in place of the empty one its owner's declaration put in `world`, and gives

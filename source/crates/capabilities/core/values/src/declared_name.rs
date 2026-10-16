@@ -12,11 +12,11 @@ pub struct DeclaredName(Box<str>);
 
 impl DeclaredName {
     /// `text` as a name; `None` unless it is of that form.
-    pub fn new(text: &str) -> Option<DeclaredName> {
+    pub fn new(text: &str) -> Option<Self> {
         let mut chars = text.chars();
         let first = chars.next()?;
         let rest = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_';
-        (first.is_ascii_lowercase() && chars.all(rest)).then(|| DeclaredName(text.into()))
+        (first.is_ascii_lowercase() && chars.all(rest)).then(|| Self(text.into()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -38,9 +38,9 @@ impl Borrow<str> for DeclaredName {
 }
 
 impl<'de> Deserialize<'de> for DeclaredName {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<DeclaredName, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        DeclaredName::new(&text).ok_or_else(|| {
+        Self::new(&text).ok_or_else(|| {
             D::Error::custom(format!(
                 "{text:?} is not a name: a lowercase letter, then lowercase letters, digits and \
                  underscores"

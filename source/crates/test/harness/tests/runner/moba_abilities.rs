@@ -13,14 +13,14 @@ use campfire_actions::{
     ActionRange, ActionSlots, ActionTarget, RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_areas::Area;
-use campfire_capabilities::{Match, Order};
+use campfire_capabilities::{Match, Order, PackageContent};
 use campfire_combat::Combat;
 use campfire_common::PlayerSlot;
 use campfire_harness::Arena;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersAction;
-use campfire_package::{AvatarFile, PackageFiles};
+use campfire_package::{ModePackages, PackageFiles};
 use campfire_package_disk::PackageDir;
 use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_projectiles::Projectile;
@@ -28,8 +28,7 @@ use campfire_sim::{Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Life, PoolMeters, Pools, Stats};
 use campfire_units::{Body, ForcedMove, MoveStep, Owner};
 use campfire_values::{
-    ActionId, DeclaredName, ModifierId, Number, PackagePath, Param, Rank, Ranked, Scalar, Scaling,
-    Stat, Team,
+    ActionId, DeclaredName, ModifierId, Number, Param, Rank, Ranked, Scalar, Scaling, Stat, Team,
 };
 use campfire_vision::SeenBy;
 
@@ -43,10 +42,15 @@ fn hero(name: &str) -> PackageFiles {
     dir.files().unwrap()
 }
 
-/// The hero `name`, as its data file declares it.
-fn abilities(name: &str) -> AvatarFile {
-    let path = PackagePath::parse("data/avatar.toml").unwrap();
-    hero(name).read_data(&path).unwrap()
+/// The content of the hero `name`, as the mode of `packages` loads it.
+fn abilities<'a>(packages: &'a ModePackages, name: &str) -> &'a PackageContent {
+    let hero = format!("hero-{name}");
+    let dependent = packages
+        .dependencies()
+        .iter()
+        .find(|dependent| dependent.package.header.name.as_str() == hero)
+        .expect("a hero of the mode");
+    &dependent.content
 }
 /// The weapons of the tests' armed units: an attack within 2 m with no windup, at the rate and
 /// for the damage of its unit's stats; and one as it is with a windup of 100 ms, 3 ticks, that
@@ -162,17 +166,17 @@ enum Kit {
 impl Kit {
     const fn unit_type(self) -> &'static str {
         match self {
-            Kit::Bare => "arena_bare",
-            Kit::Mana20 => "arena_mana_20",
-            Kit::Mana100 => "arena_mana_100",
-            Kit::Mana200 => "arena_mana_200",
-            Kit::Energy100 => "arena_energy_100",
-            Kit::Energy200 => "arena_energy_200",
-            Kit::Blade => "arena_blade",
-            Kit::Archer => "arena_archer",
-            Kit::CostlyArcher => "arena_costly_archer",
-            Kit::Striker => "arena_striker",
-            Kit::EnergyStriker => "arena_energy_striker",
+            Self::Bare => "arena_bare",
+            Self::Mana20 => "arena_mana_20",
+            Self::Mana100 => "arena_mana_100",
+            Self::Mana200 => "arena_mana_200",
+            Self::Energy100 => "arena_energy_100",
+            Self::Energy200 => "arena_energy_200",
+            Self::Blade => "arena_blade",
+            Self::Archer => "arena_archer",
+            Self::CostlyArcher => "arena_costly_archer",
+            Self::Striker => "arena_striker",
+            Self::EnergyStriker => "arena_energy_striker",
         }
     }
 }
@@ -269,16 +273,18 @@ fn areas(game: &mut Match) -> usize {
 
 /// The point `x`, `z` thousandths of a meter from the origin.
 fn milli(x: i64, z: i64) -> Vec3 {
-    let at = |value: i64| Num::int(value).checked_div_int(1000).unwrap();
+    let at = |value: i64| Num::int(value) / 1000;
     Vec3::new(at(x), Num::ZERO, at(z))
 }
 
 #[test]
 fn every_moba_ability_reads_into_the_schema() {
+    let packages = TestMode::Moba3v3.packages();
+    let abilities = |name| abilities(&packages, name);
     let mut read = 0;
     for name in HEROES {
         let data = abilities(name);
-        for (action, data) in &data.content.actions {
+        for (action, data) in &data.actions {
             if let Some(script) = &data.script {
                 assert!(hero(name).read_text(script).is_ok(), "{name}.{action}");
             }
@@ -290,7 +296,7 @@ fn every_moba_ability_reads_into_the_schema() {
 
     // Husk's Lash Out reads exactly as its file writes it.
     let husk = abilities("husk");
-    let lash_out = &husk.content.actions["lash_out"];
+    let lash_out = &husk.actions["lash_out"];
     assert_eq!(lash_out.targeting, Targeting::None);
     assert_eq!(lash_out.range, None);
     let int = |value| Number::Value(Scalar::Int(value));
@@ -324,7 +330,7 @@ fn every_moba_ability_reads_into_the_schema() {
     // 28 018.
     let veil = abilities("veil");
     let Param::Scaling(Scaling { bonus, ratios, .. }) =
-        &veil.content.modifiers["dual_path"].params["spell_vamp"]
+        &veil.modifiers["dual_path"].params["spell_vamp"]
     else {
         panic!("spell vamp scales");
     };
@@ -334,11 +340,11 @@ fn every_moba_ability_reads_into_the_schema() {
     assert!(ratios.is_empty());
     // Rime's Snow Owl reaches farther at each rank.
     let rime = abilities("rime");
-    let Some(Ranked::PerRank(ranges)) = &rime.content.actions["snow_owl"].range else {
+    let Some(Ranked::PerRank(ranges)) = &rime.actions["snow_owl"].range else {
         panic!("a range per rank");
     };
     assert_eq!(ranges[1], RangeField::Range(ActionRange::Meters(half * 65)));
-    let wraps = &husk.content.actions["grasping_wraps"];
+    let wraps = &husk.actions["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
     let eleven = RangeField::Range(ActionRange::Meters(Num::int(11)));
     assert_eq!(wraps.range, Some(Ranked::One(eleven)));
@@ -626,7 +632,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let mut game = arena.start(RATE, 1);
     // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
     assert_eq!(
-        abilities("rime").content.actions["fan_of_frost"].script,
+        abilities(arena.packages(), "rime").actions["fan_of_frost"].script,
         None
     );
     let fan = arena.action(&game, "hero-rime", "fan_of_frost");
@@ -905,7 +911,10 @@ fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
 fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_while_it_lasts() {
     let arena = arena();
     let mut game = arena.start(RATE, 1);
-    assert_eq!(abilities("veil").content.actions["smoke_ring"].script, None);
+    assert_eq!(
+        abilities(arena.packages(), "veil").actions["smoke_ring"].script,
+        None
+    );
     let ring = arena.action(&game, "hero-veil", "smoke_ring");
     let cover = arena.modifier(&game, "hero-veil", "smoke_ring_cover");
     let slow = arena.modifier(&game, "hero-veil", "smoke_ring_slow");
@@ -959,7 +968,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
 
 /// A body of half a meter.
 fn body() -> Body {
-    Body::new(Num::ONE.checked_div_int(2).unwrap()).unwrap()
+    Body::new(Num::ONE / 2).unwrap()
 }
 
 /// A body of half a meter that walks a meter a tick.
@@ -992,7 +1001,7 @@ fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it(
         arena.step(&mut game);
     }
     let (x, dash) = forced(&game, veil);
-    let step = Num::int(22).checked_div_int(30).unwrap();
+    let step = Num::int(22) / 30;
     assert_eq!((x, health(&arena, &game, enemy)), (step * 6, 500));
     assert!(matches!(
         dash,

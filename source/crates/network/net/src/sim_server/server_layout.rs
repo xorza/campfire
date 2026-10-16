@@ -14,8 +14,8 @@ pub struct ServerLayout {
 }
 
 impl ServerLayout {
-    pub const fn at(root: PathBuf) -> ServerLayout {
-        ServerLayout { root }
+    pub const fn at(root: PathBuf) -> Self {
+        Self { root }
     }
 
     pub fn path(&self) -> &Path {

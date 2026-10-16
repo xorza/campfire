@@ -1,4 +1,3 @@
-use campfire_script::ScriptFn;
 use campfire_sim::StableId;
 use campfire_values::ModifierId;
 
@@ -35,7 +34,3 @@ pub enum CombatEvent {
         depth: u8,
     },
 }
-
-/// What answers each combat event: the hooks of the modifiers that hear it, which
-/// `ModifierHooks` runs with the `ctx` ability scripts get.
-pub type CombatEvents = ScriptFn<CombatEvent, ()>;

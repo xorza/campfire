@@ -3,9 +3,9 @@ use std::fmt;
 use serde::de::{Error, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
-use crate::Visibility;
 use crate::setting::error::VisibilityError;
 use crate::setting::{Setting, SettingValue};
+use crate::visibility::Visibility;
 
 /// What a session's host sets of its visibility (design 14, D14, D15): the settings it gives in
 /// place of the mode's, and the most spectators it admits, none unless it says.
@@ -24,8 +24,8 @@ pub struct ModeVisibility {
 }
 
 impl Default for ModeVisibility {
-    fn default() -> ModeVisibility {
-        ModeVisibility {
+    fn default() -> Self {
+        Self {
             settings: Visibility::DEFAULT,
             host: vec![Setting::Spectators, Setting::Out],
         }
@@ -77,7 +77,7 @@ impl ModeVisibility {
 /// Each name a setting's, each setting once, each value one its setting takes, as
 /// `VisibilityError` names a flaw; `host` a list of settings a mode may set, each once.
 impl<'de> Deserialize<'de> for ModeVisibility {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModeVisibility, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_map(ModeVisibilityVisitor)
     }
 }

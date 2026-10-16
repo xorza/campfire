@@ -21,19 +21,19 @@ pub struct SlotKinds {
 impl TryFrom<Vec<SlotKindData>> for SlotKinds {
     type Error = SlotKindsError;
 
-    fn try_from(kinds: Vec<SlotKindData>) -> Result<SlotKinds, SlotKindsError> {
-        SlotKinds::new(kinds)
+    fn try_from(kinds: Vec<SlotKindData>) -> Result<Self, SlotKindsError> {
+        Self::new(kinds)
     }
 }
 
 impl SlotKinds {
     /// The kinds of `kinds`, in order, each named by its id; an error for a kind named twice, or
     /// more kinds than an id counts.
-    pub fn new(kinds: impl IntoIterator<Item = SlotKindData>) -> Result<SlotKinds, SlotKindsError> {
-        SlotKinds::of(kinds.into_iter().collect())
+    pub fn new(kinds: impl IntoIterator<Item = SlotKindData>) -> Result<Self, SlotKindsError> {
+        Self::of(kinds.into_iter().collect())
     }
 
-    fn of(kinds: Vec<SlotKindData>) -> Result<SlotKinds, SlotKindsError> {
+    fn of(kinds: Vec<SlotKindData>) -> Result<Self, SlotKindsError> {
         let mut names = Names::default();
         for kind in &kinds {
             names
@@ -43,7 +43,7 @@ impl SlotKinds {
                     NamesError::Repeated => SlotKindsError::Repeated(kind.name.clone()),
                 })?;
         }
-        Ok(SlotKinds {
+        Ok(Self {
             kinds,
             names: Arc::new(names),
         })

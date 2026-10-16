@@ -13,8 +13,8 @@ pub(crate) mod error;
 pub(crate) struct SlotRules(PlayersData);
 
 impl SlotRules {
-    pub(crate) const fn new(players: PlayersData) -> SlotRules {
-        SlotRules(players)
+    pub(crate) const fn new(players: PlayersData) -> Self {
+        Self(players)
     }
 
     /// What a leaver's slot becomes, as the mode's `leaver` says.

@@ -47,8 +47,8 @@ impl AllocAudit {
     const MAX_WARMUP: usize = 8;
     const STABLE_RUN: usize = 2;
 
-    pub const fn new() -> AllocAudit {
-        AllocAudit {
+    pub const fn new() -> Self {
+        Self {
             warmup: Warmup::Probe,
             frames: 64,
             budget: 0,
@@ -57,13 +57,13 @@ impl AllocAudit {
 
     /// A warmup of exactly `frames`, in place of the probe.
     #[must_use]
-    pub const fn warmup(mut self, frames: usize) -> AllocAudit {
+    pub const fn warmup(mut self, frames: usize) -> Self {
         self.warmup = Warmup::Fixed(frames);
         self
     }
 
     #[must_use]
-    pub const fn frames(mut self, frames: usize) -> AllocAudit {
+    pub const fn frames(mut self, frames: usize) -> Self {
         self.frames = frames;
         self
     }
@@ -71,7 +71,7 @@ impl AllocAudit {
     /// What one measured frame may allocate. A budget above zero pins a flat cost, not an absent
     /// one: a cost that grew with the frames would pass it.
     #[must_use]
-    pub const fn budget(mut self, allocs: u64) -> AllocAudit {
+    pub const fn budget(mut self, allocs: u64) -> Self {
         self.budget = allocs;
         self
     }
@@ -122,7 +122,7 @@ impl AllocAudit {
     fn probe(self, frame: &mut impl FnMut()) -> usize {
         let mut warmup = 0;
         let mut stable = 0;
-        while warmup < AllocAudit::MAX_WARMUP && stable < AllocAudit::STABLE_RUN {
+        while warmup < Self::MAX_WARMUP && stable < Self::STABLE_RUN {
             let window = CountingAllocator::window(&mut *frame);
             warmup += 1;
             stable = if window.allocs <= self.budget {
@@ -165,7 +165,7 @@ impl AllocAudit {
 }
 
 impl Default for AllocAudit {
-    fn default() -> AllocAudit {
-        AllocAudit::new()
+    fn default() -> Self {
+        Self::new()
     }
 }

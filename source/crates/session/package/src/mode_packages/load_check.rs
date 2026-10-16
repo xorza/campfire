@@ -4,9 +4,9 @@ use std::slice;
 
 use campfire_actions::{
     ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, DamageFields, DeliveryData,
-    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, LaunchFields, ListHook,
-    MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields, SpawnFields,
-    Targeting, XpFields,
+    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, KindError, LaunchFields,
+    ListHook, MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields,
+    SpawnFields, Targeting, XpFields,
 };
 use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
 use campfire_geometry::Metric;
@@ -16,15 +16,15 @@ use campfire_mode::{ModeList, ModeNamesError, Offers};
 use campfire_progression::TrackError;
 use campfire_projectiles::ProjectileHits;
 use campfire_script::{
-    ApiOwner, ApiVersion, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
+    ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
     ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, SyncTo,
     UnknownName,
 };
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::{ModifierData, ModifierProblem, StatId};
+use campfire_stats::{ModifierData, StatId};
 use campfire_units::TypesError;
 use campfire_values::{
-    DeclaredName, EngineTag, FilterData, MessageId, Number, PackageIndex, PackagePath, Param, Stat,
+    DeclaredName, EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat,
 };
 
 use crate::dependent::{Dependent, DependentKind};
@@ -130,18 +130,6 @@ impl<'a> LoadCheck<'a> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
         let engine = Release::engine_tags();
-        let every = [&packages.mode].into_iter().chain(
-            packages
-                .dependencies
-                .iter()
-                .map(|dependent| &dependent.package),
-        );
-        for package in every {
-            if !ApiVersion::RELEASE.loads(package.header.api) {
-                let problem = LoadProblem::OtherApi(package.header.api);
-                return Err(LoadError::of(&package.header.name, problem));
-            }
-        }
         let names = NameTables::of(packages);
         let check = LoadCheck {
             packages,
@@ -527,12 +515,13 @@ impl<'a> LoadCheck<'a> {
                 .chain(by.iter().flat_map(|action| action.params.keys()))
                 .map(DeclaredName::as_str)
                 .collect();
-            if negative_radius_or_shield(modifier, &by) {
-                return Err(LoadProblem::Modifier {
+            let appliers = by.iter().map(|action| &action.params);
+            modifier
+                .check_signs(appliers)
+                .map_err(|problem| LoadProblem::Modifier {
                     modifier: id.clone(),
-                    problem: ModifierProblem::Negative,
-                });
-            }
+                    problem,
+                })?;
             if let Some(script) = &modifier.script {
                 names.serve(script, ScriptRole::Modifier, readable.iter().copied());
             }
@@ -771,16 +760,11 @@ impl<'a> LoadCheck<'a> {
         name: &str,
         kind: MemberKind,
     ) -> Result<Option<Capability>, ScriptProblem> {
-        let own = match kind {
-            MemberKind::Field => {
-                self.api.builtin(&format!("get${name}"))
-                    || facts.map_keys.iter().any(|key| key == name)
-            }
-            _ => {
-                self.api.builtin(name)
-                    || facts.functions.iter().any(|function| function.name == name)
-            }
-        };
+        let own = self.api.builtin(name, kind)
+            || match kind {
+                MemberKind::Field => facts.map_keys.iter().any(|key| key == name),
+                _ => facts.functions.iter().any(|function| function.name == name),
+            };
         if own {
             return Ok(None);
         }
@@ -920,20 +904,16 @@ impl<'a> LoadCheck<'a> {
         units: &BTreeMap<DeclaredName, UnitTypeData>,
     ) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
-        let run = matches!(
-            action.kind,
-            ActionKind::Cast
-                | ActionKind::Attack
-                | ActionKind::Use
-                | ActionKind::Train
-                | ActionKind::Build
-                | ActionKind::Gather
-        );
-        let kind = run.then(|| KindData::of(action)).transpose();
-        let kind = kind.map_err(|field| LoadProblem::KindField {
-            action: id.to_owned(),
-            field,
-        })?;
+        let kind = match KindData::of(action) {
+            Ok(kind) => Some(kind),
+            Err(KindError::NotRun(_)) => None,
+            Err(KindError::Field(field)) => {
+                return Err(LoadProblem::KindField {
+                    action: id.to_owned(),
+                    field,
+                });
+            }
+        };
         if action.clamp_to_range && action.targeting != Targeting::Point {
             return Err(LoadProblem::ClampAims(id.to_owned()));
         }
@@ -1923,7 +1903,7 @@ fn action_problem(action: DeclaredName, problem: ActionProblem) -> LoadProblem {
         ActionProblem::SlottedRanks => LoadProblem::ActionRanks(action),
         ActionProblem::Field(field) => LoadProblem::ActionField { action, field },
         ActionProblem::KindField(field) => LoadProblem::KindField { action, field },
-        ActionProblem::Bounce => LoadProblem::Gather(GatherProblem::Bounce(action)),
+        ActionProblem::NotRun(kind) => LoadProblem::KindNotRun { action, kind },
         ActionProblem::Global(MeteredKind::Gather) => {
             LoadProblem::Gather(GatherProblem::Global(action))
         }
@@ -1981,7 +1961,7 @@ impl<'a> PackageNames<'a> {
         package: &'a Package,
         modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
         actions: &'a BTreeMap<DeclaredName, ActionData>,
-    ) -> PackageNames<'a> {
+    ) -> Self {
         PackageNames {
             package,
             scripts: BTreeMap::new(),
@@ -2001,27 +1981,6 @@ impl<'a> PackageNames<'a> {
         used.roles.insert(role);
         used.params.extend(params);
     }
-}
-
-/// Whether the aura radius or the shield of `modifier` is negative: as a value, or at a rank of
-/// its own param, or, for a param it does not declare, of the param of an action `by` that
-/// applies it.
-fn negative_radius_or_shield(modifier: &ModifierData, by: &[&ActionData]) -> bool {
-    let negative = |value: Option<Num>| value.is_some_and(|value| value < Num::ZERO);
-    let numbers = [
-        modifier.aura.as_ref().map(|aura| &aura.radius),
-        modifier.shield.as_ref(),
-    ];
-    numbers.into_iter().flatten().any(|number| match number {
-        Number::Value(value) => negative(value.to_num()),
-        Number::Param(reference) => match modifier.params.get(&reference.param) {
-            Some(param) => param.numbers().any(negative),
-            None => by
-                .iter()
-                .filter_map(|action| action.params.get(&reference.param))
-                .any(|param| param.numbers().any(negative)),
-        },
-    })
 }
 
 /// The passive of each of `actions`, by its place.

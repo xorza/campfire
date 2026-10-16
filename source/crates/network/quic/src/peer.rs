@@ -38,12 +38,12 @@ enum Carrier {
 impl Peer {
     /// A connection `key` names, which a client's entity `client` carries from its connect, and a
     /// server's link from its handshake's end.
-    pub(crate) const fn new(connection: Connection, key: PeerKey, client: Option<Entity>) -> Peer {
+    pub(crate) const fn new(connection: Connection, key: PeerKey, client: Option<Entity>) -> Self {
         let carrier = match client {
             Some(entity) => Carrier::Linking(entity),
             None => Carrier::None,
         };
-        Peer {
+        Self {
             connection,
             key,
             carrier,

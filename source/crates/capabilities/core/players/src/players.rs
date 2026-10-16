@@ -2,15 +2,15 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_declare::{Declarations, EntityParts, InstallCx, KindVisitor, Module};
-use campfire_script::View;
 use campfire_sim::{Breach, Capability, StableId};
 use campfire_units::{MatchEntity, Player, UnitsWorld};
-use campfire_values::{ResourceId, Team};
+use campfire_values::Team;
 
 use crate::held_out::HeldOut;
 use crate::out_of_play::OutOfPlay;
 use crate::player_resources::PlayerResources;
 use crate::players_call::PlayersCall;
+use crate::players_world::PlayersWorld;
 use crate::seated::{Seated, Seating, SlotStart};
 
 /// The players and the match as entities: what spawns them, under every capability.
@@ -23,7 +23,7 @@ impl Module for Players {
     const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
-        Players::kinds(d);
+        Self::kinds(d);
         d.component::<MatchEntity>();
         d.component::<Player>();
         d.component::<HeldOut>();
@@ -32,10 +32,9 @@ impl Module for Players {
         d.component::<PlayerResources>();
         d.call_part::<PlayersCall>();
         d.require::<Player, Team>();
-        d.check::<MatchEntity>(Players::match_spawned);
+        d.check::<MatchEntity>(Self::match_spawned);
         d.part::<Player, PlayerResources>(|at| {
-            let resources = at.world().non_send::<View>().names().count::<ResourceId>();
-            Some(PlayerResources::new(resources))
+            Some(PlayerResources::new(at.world().declared_resources()))
         });
     }
 
@@ -59,26 +58,28 @@ impl Players {
 
     /// Spawns the match's entity, then each player's, in slot order, `slots` giving each slot's
     /// team and whether it is held, each with its named id and the parts the installed modules
-    /// declare for its kind, and a held slot's marked `Seated`.
+    /// declare for its kind.
     pub fn spawn_match(world: &mut World, slots: impl IntoIterator<Item = SlotStart>) {
         EntityParts::<MatchEntity>::give(&mut world.spawn((StableId::MATCH, MatchEntity)));
         for (slot, start) in (0..).map(PlayerSlot::new).zip(slots) {
-            let player = Players::spawn_player(world, slot, start.team);
-            if start.seating == Seating::Held {
-                world.entity_mut(player).insert(Seated);
-            }
+            Self::spawn_player(world, slot, start);
         }
     }
 
-    /// Spawns the entity of player `slot` on `team`, of its named id, with the parts the
-    /// installed modules declare for a player, in a match whose entity spawned: no player is of a
-    /// match that has none.
-    fn spawn_player(world: &mut World, slot: PlayerSlot, team: Team) -> Entity {
+    /// Spawns the entity of player `slot`, on its team as `start` gives it, of its named id, with
+    /// the parts the installed modules declare for a player, and marked `Seated` when its slot is
+    /// held, in one spawn, in a match whose entity spawned: no player is of a match that has
+    /// none.
+    fn spawn_player(world: &mut World, slot: PlayerSlot, start: SlotStart) -> Entity {
         assert!(
             world.match_entity().is_some(),
             "players join a match that started, which holds its entity"
         );
-        let mut player = world.spawn((StableId::of_player(slot), Player::new(slot), team));
+        let core = (StableId::of_player(slot), Player::new(slot), start.team);
+        let mut player = match start.seating {
+            Seating::Held => world.spawn((core, Seated)),
+            Seating::Open => world.spawn(core),
+        };
         EntityParts::<Player>::give(&mut player);
         player.id()
     }
@@ -110,7 +111,7 @@ pub(crate) mod internals {
                 team,
                 seating: Seating::Held,
             };
-            Players::spawn_match(world, teams.iter().copied().map(held));
+            Self::spawn_match(world, teams.iter().copied().map(held));
             let entity = world.match_entity().expect("the match's entity spawned");
             world.entity_mut(entity).insert(Relations::default());
             for slot in (0..).map(PlayerSlot::new).take(teams.len()) {
@@ -128,7 +129,11 @@ pub(crate) mod internals {
         /// resources, as a mode's start does.
         pub fn spawn(world: &mut World, players: u32, resources: usize) {
             for slot in (0..players).map(PlayerSlot::new) {
-                let player = Players::spawn_player(world, slot, Team::new(0));
+                let open = SlotStart {
+                    team: Team::new(0),
+                    seating: Seating::Open,
+                };
+                let player = Self::spawn_player(world, slot, open);
                 world
                     .entity_mut(player)
                     .insert(PlayerResources::new(resources));

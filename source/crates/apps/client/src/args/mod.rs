@@ -108,7 +108,7 @@ struct Remote {
 
 /// What the command line clap read as `line` names.
 impl From<CommandLine> for Args {
-    fn from(line: CommandLine) -> Args {
+    fn from(line: CommandLine) -> Self {
         let server = match line.remote {
             Some(remote) => Server::Remote {
                 address: remote.address,
@@ -122,7 +122,7 @@ impl From<CommandLine> for Args {
                 data: line.data.expect("clap takes --local only with --data"),
             },
         };
-        Args {
+        Self {
             bot: line.bot,
             spectate: line.spectate,
             watch: line.watch,

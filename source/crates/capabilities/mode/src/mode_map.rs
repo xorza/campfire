@@ -1,10 +1,10 @@
 use bevy_ecs::world::World;
 use campfire_geometry::Grid;
 use campfire_navigation::{
-    MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, Walker, Walls,
+    MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, WalkerKinds, Walls,
 };
 use campfire_units::{BodyForm, Layer, MapBook};
-use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType};
+use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType, VisionShare};
 use campfire_vision::{BrushMap, VisionBook, VisionGrid};
 
 use crate::error::ModeError;
@@ -38,6 +38,16 @@ pub struct ResolvedMap {
     pub vision: VisionBook,
 }
 
+/// What a mode's map resolves from: the map, the mode's teams and their relations, and the
+/// names of the layers its walls stand on.
+#[derive(Debug, Clone, Copy)]
+pub struct MapInput<'a> {
+    pub map: &'a MapData,
+    pub teams: &'a [TeamManifest],
+    pub relations: &'a [RelationData],
+    pub layers: &'a Names<Layer>,
+}
+
 impl ModeMap {
     /// The names of `teams`; an error for two of one name, or more than a team index counts.
     pub fn team_names(teams: &[TeamManifest]) -> Result<Names<Team>, ModeError> {
@@ -54,24 +64,26 @@ impl ModeMap {
         Ok(names)
     }
 
-    /// The map `map` of a mode with `teams` and `relations`, its placed units' types resolved by
-    /// `unit_type`, which knows the mode's types that stand. An error for what it names that the
-    /// mode does not have: teams that share a name or more than `Team::LIMIT`, or more than
-    /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
-    /// mode lacks, or of a pair named before; and in the map, grids that make no grid of its
-    /// bounds, a wall on a layer of no name `layers` holds, a wall or a brush with points that
-    /// make no simple polygon, a path with no waypoint or another's name, a placed unit of a type,
-    /// team or path it lacks, or that walks from an end of no path, a marker of another's name, a
-    /// team it lacks, or with a point and a region or a region outside the bounds, and any point
-    /// that does not fit its metric or its bounds.
+    /// The map of `input`, its placed units' types resolved by `unit_type`, which knows the mode's
+    /// types that stand. An error for what it names that the mode does not have: teams that share a
+    /// name or more than `Team::LIMIT`, or more than `VisionGrid::MAX_TEAMS` with a vision grid; a
+    /// relation of a team to itself, of a team the mode lacks, or of a pair named before; and in
+    /// the map, grids that make no grid of its bounds, a wall on a layer of no name `layers` holds,
+    /// a wall or a brush with points that make no simple polygon, a path with no waypoint or
+    /// another's name, a placed unit of a type, team or path it lacks, or that walks from an end of
+    /// no path, a marker of another's name, a team it lacks, or with a point and a region or a
+    /// region outside the bounds, and any point that does not fit its metric or its bounds.
     pub fn resolve(
-        map: &MapData,
-        teams: &[TeamManifest],
-        relations: &[RelationData],
-        layers: &Names<Layer>,
+        input: MapInput<'_>,
         unit_type: impl Fn(&str) -> Option<UnitType>,
     ) -> Result<ResolvedMap, ModeError> {
-        let team_names = ModeMap::team_names(teams)?;
+        let MapInput {
+            map,
+            teams,
+            relations,
+            layers,
+        } = input;
+        let team_names = Self::team_names(teams)?;
         let team = |name: &DeclaredName| {
             let team = team_names.named(name.as_str());
             team.ok_or_else(|| ModeError::UnknownTeam(name.clone()))
@@ -87,7 +99,12 @@ impl ModeMap {
             if a == b || relations[..at].iter().any(named) {
                 return Err(ModeError::RepeatedRelation(a.clone(), b.clone()));
             }
-            resolved.set(pair[0], pair[1], relation.relation, relation.vision);
+            let vision = if relation.vision {
+                VisionShare::Shared
+            } else {
+                VisionShare::Apart
+            };
+            resolved.set(pair[0], pair[1], relation.relation, vision);
         }
         let grid = map.grid()?;
         let brush = map.brush()?;
@@ -131,14 +148,14 @@ impl ModeMap {
                 angle: unit.angle,
             });
         }
-        let markers = ModeMap::markers(map, team)?;
+        let markers = Self::markers(map, team)?;
         let vision = grid.map(|grid| VisionGrid {
             brush: BrushMap::new(&grid, &brush),
             grid,
             teams: team_names.len(),
         });
         Ok(ResolvedMap {
-            map: ModeMap {
+            map: Self {
                 teams: team_names,
                 relations: resolved,
                 placed,
@@ -159,7 +176,7 @@ impl ModeMap {
 
     /// Gives `world` the map's pathing grid, when it has one, for the kinds of `walkers`, among the
     /// walls of its navigation book.
-    pub fn install_pathing(&self, world: &mut World, walkers: Vec<Walker>) {
+    pub fn install_pathing(&self, world: &mut World, walkers: WalkerKinds) {
         if let Some(grid) = self.pathing {
             Navigation::load_pathing(world, grid, walkers);
         }

@@ -34,8 +34,8 @@ struct CachedSight<K> {
 }
 
 impl<K> Default for SightCache<K> {
-    fn default() -> SightCache<K> {
-        SightCache {
+    fn default() -> Self {
+        Self {
             seers: Vec::new(),
             runs: Vec::new(),
             kept: Vec::new(),

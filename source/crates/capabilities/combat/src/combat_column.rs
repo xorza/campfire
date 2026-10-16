@@ -4,8 +4,8 @@ use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_actions::Targets;
 use campfire_script::{
-    AnyKeptRows, ApiError, Checked, ColumnRows, KeptRows, RowFill, RunMove, ScriptList,
-    ScriptValue, Unit, ViewColumn,
+    AnyKeptRows, ColumnRows, KeptRows, RowFill, RunMove, ScriptList, ScriptValue, ScriptWindow,
+    Unit, ViewColumn,
 };
 use campfire_stats::Life;
 use campfire_units::Dead;
@@ -109,19 +109,16 @@ impl CombatColumn {
     /// combat.
     pub fn stays(unit: &Unit) -> bool {
         let view = unit.view();
-        let stays = view.column(|column: &CombatColumn| column.rows.now().stays[unit.row_index()]);
+        let stays = view.column(|column: &Self| column.rows.now().stays[unit.row_index()]);
         stays.unwrap_or(false)
     }
 
     /// `unit.recent_attackers(ms)`: the living units that struck `unit` within the last `ms`
     /// milliseconds, rounded up to whole ticks, by stable id; none in a view with no combat.
-    pub(crate) fn recent_attackers(unit: &Unit, ms: i64) -> Checked<ScriptList> {
-        let ms = u64::try_from(ms)
-            .ok()
-            .ok_or_else(|| ApiError::NegativeTime.fail())?;
+    pub(crate) fn recent_attackers(unit: &Unit, ms: ScriptWindow) -> ScriptList {
         let view = unit.view();
-        let (window, now) = (view.window(ms), view.now());
-        let attackers = view.column(|column: &CombatColumn| {
+        let (window, now) = (ms.get(), view.now());
+        let attackers = view.column(|column: &Self| {
             column
                 .rows
                 .now()
@@ -134,16 +131,13 @@ impl CombatColumn {
                 .map(ScriptValue::of)
                 .collect()
         });
-        Ok(attackers.unwrap_or_default())
+        attackers.unwrap_or_default()
     }
 
     /// Fills a row of the script view with what combat holds: whether the unit lives and whether it
     /// may be a target, in the core's row; whether it stays when dead, and who struck it recently,
     /// in combat's column.
-    pub(super) fn fill_row(
-        parts: ROQueryItem<'_, '_, RowReads>,
-        fill: &mut RowFill<'_, CombatColumn>,
-    ) {
+    pub(super) fn fill_row(parts: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
         let (dead, life, tags, on_death, recent) = parts;
         let alive = !dead;
         fill.row.alive = alive;

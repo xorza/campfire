@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
-use campfire_actions::{ActionSlots, ActionTarget};
+use campfire_actions::{ActionProgress, ActionSlots, ActionTarget};
 use campfire_areas::Area;
 use campfire_capabilities::{Order, Release};
 use campfire_common::PlayerSlot;
@@ -68,13 +68,13 @@ struct Removals {
 }
 
 impl Removals {
-    fn of(world: &World) -> Removals {
+    fn of(world: &World) -> Self {
         let (mut held, mut written) = (0, 0);
         for (_, messages) in world.removed_components().iter() {
             held += messages.len();
             written += messages.oldest_message_count() + messages.len();
         }
-        Removals { held, written }
+        Self { held, written }
     }
 }
 
@@ -112,7 +112,7 @@ fn look(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
     look_at_boulder(fixed, tick, seen);
     if matches!(tick, 4 | 5 | 28 | 29) {
         let ((_, lancer), (sage, sage_unit)) = (hero(world, 0), hero(world, 1));
-        let target = lancer.get::<ActionSlots>().unwrap().attack_target();
+        let target = lancer.get::<ActionProgress>().unwrap().attack_target();
         let north_sees = sage_unit.get::<SeenBy>().unwrap().get().unwrap();
         seen.sage_attacked.push((
             tick,
@@ -205,7 +205,10 @@ fn look_at_boulder(fixed: &FixedMatch, tick: u64, seen: &mut Seen) {
     let box_reach = Body::reaches(from, own, LANCER_RANGE, at, Some(body));
     let bound_reach = Body::reaches_bound(from, own, LANCER_RANGE, at, Some(body));
     seen.lancer_reach.push((tick, box_reach, bound_reach));
-    let strikes = lancer.get::<ActionSlots>().and_then(ActionSlots::attacking) == Some(boulder);
+    let strikes = lancer
+        .get::<ActionProgress>()
+        .and_then(ActionProgress::attacking)
+        == Some(boulder);
     if strikes && seen.first_strike.is_none() {
         seen.first_strike = Some(tick);
     }

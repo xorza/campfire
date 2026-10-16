@@ -2,13 +2,14 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_abilities::Abilities;
 use campfire_abilities::internals::{MANA, RAGE};
-use campfire_actions::{ActionData, ActionSlots, Actions, SlotKind, TimedSlots};
+use campfire_actions::{ActionData, ActionProgress, ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_combat::OnDeath;
 use campfire_common::PlayerSlot;
+use campfire_declare::CapabilitySet;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_sim::{Capability, StableId};
 use campfire_stats::{Life, Pools};
 use campfire_units::{MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{ActionId, PackageIndex, Rank, Team, TypeScope, UnitType};
@@ -22,8 +23,8 @@ pub trait AbilitiesFixtures {
     /// caster`, a caster that walks a meter a tick.
     fn load_types(world: &mut World);
 
-    /// Gives `unit_type` a combatant's books: 500 health that stays when it dies, and no
-    /// slot.
+    /// Gives `unit_type` a combatant's books: no slot, and in a match with combat, 500 health
+    /// that stays when it dies.
     fn give_combatant(world: &mut World, unit_type: UnitType);
 
     /// Gives `unit_type` a combatant's books, and pools of `mana` and `rage`.
@@ -78,23 +79,28 @@ impl AbilitiesFixtures for Abilities {
     fn load_types(world: &mut World) {
         let core = UnitTypeCore::default();
         let combatant = Units::load_type(world, TypeScope::Mode, "combatant", &core);
-        Abilities::give_combatant(world, combatant);
+        Self::give_combatant(world, combatant);
         for name in ["caster", "walking caster"] {
             let caster = Units::load_type(world, TypeScope::Mode, name, &core);
-            Abilities::give_caster(world, caster, 100, 20);
+            Self::give_caster(world, caster, 100, 20);
         }
         let walking = Units::type_named(world, "walking caster").unwrap();
         Units::give_type(world, walking, MoveStep::new(Num::ONE).unwrap());
     }
 
     fn give_combatant(world: &mut World, unit_type: UnitType) {
-        Units::give_type(world, unit_type, Life::full(Num::int(500)));
-        Units::give_type(world, unit_type, OnDeath::Stay);
+        if world
+            .resource::<CapabilitySet>()
+            .contains(Capability::Combat)
+        {
+            Units::give_type(world, unit_type, Life::full(Num::int(500)));
+            Units::give_type(world, unit_type, OnDeath::Stay);
+        }
         Units::give_type(world, unit_type, ActionSlots::new([]));
     }
 
     fn give_caster(world: &mut World, unit_type: UnitType, mana: i64, rage: i64) {
-        Abilities::give_combatant(world, unit_type);
+        Self::give_combatant(world, unit_type);
         let pools = [(MANA, mana), (RAGE, rage)];
         let pools = Pools::new(pools.map(|(pool, max)| (pool, Num::int(max)))).unwrap();
         Units::give_type(world, unit_type, pools);
@@ -126,13 +132,13 @@ impl AbilitiesFixtures for Abilities {
         target: StableId,
     ) -> StableId {
         let id = Mode::spawn(world, unit_type, pos, team, ());
-        let mut slots = world.part_mut::<ActionSlots>(id);
-        slots.set_attack_target(Some(target));
+        let mut progress = world.part_mut::<ActionProgress>(id);
+        progress.set_attack_target(Some(target));
         id
     }
 
     fn caster(world: &mut World, action: ActionId, rank: u8) -> StableId {
-        Abilities::caster_of(world, "caster", action, rank)
+        Self::caster_of(world, "caster", action, rank)
     }
 
     fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId {
@@ -152,7 +158,7 @@ impl AbilitiesFixtures for Abilities {
     }
 
     fn walking_caster(world: &mut World, action: ActionId) -> StableId {
-        Abilities::caster_of(world, "walking caster", action, 1)
+        Self::caster_of(world, "walking caster", action, 1)
     }
 
     fn load(world: &mut World, name: &str, data: &ActionData, source: &str) -> ActionId {

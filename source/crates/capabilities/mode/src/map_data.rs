@@ -237,15 +237,15 @@ pub(crate) mod internals {
     }
 
     impl MapPoint {
-        pub const fn ground(x: i64, z: i64) -> MapPoint {
-            MapPoint::Ground([Num::int(x), Num::int(z)])
+        pub const fn ground(x: i64, z: i64) -> Self {
+            Self::Ground([Num::int(x), Num::int(z)])
         }
     }
 
     impl MarkerData {
         /// A marker `marker` with `tags` at `point`, of no team, region or param.
-        pub fn tagged(marker: &str, tags: &[&str], point: MapPoint) -> MarkerData {
-            MarkerData {
+        pub fn tagged(marker: &str, tags: &[&str], point: MapPoint) -> Self {
+            Self {
                 name: name(marker),
                 tags: tags.iter().map(|&tag| name(tag)).collect(),
                 pos: Some(point),
@@ -258,8 +258,8 @@ pub(crate) mod internals {
 
     impl PlacedUnitData {
         /// A unit of `unit_type` and `team` at `point`, on no path.
-        pub fn new(unit_type: &str, team: &str, point: MapPoint) -> PlacedUnitData {
-            PlacedUnitData {
+        pub fn new(unit_type: &str, team: &str, point: MapPoint) -> Self {
+            Self {
                 unit_type: name(unit_type),
                 team: name(team),
                 pos: point,
@@ -273,8 +273,8 @@ pub(crate) mod internals {
 
     impl MapData {
         /// A planar map of `bounds` and nothing more: no grid, path, unit or marker.
-        pub const fn planar(bounds: Bounds) -> MapData {
-            MapData {
+        pub const fn planar(bounds: Bounds) -> Self {
+            Self {
                 metric: Metric::Planar,
                 bounds,
                 grid: None,

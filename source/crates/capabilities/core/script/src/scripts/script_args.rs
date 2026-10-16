@@ -7,6 +7,9 @@ pub trait ScriptArgs {
     /// The arguments as the engine passes them.
     type Engine: FuncArgs;
 
+    /// How many arguments there are, `ctx` first among them: a hook's `params`.
+    const LEN: usize;
+
     /// The arguments in the engine's form, each as `ScriptValue::engine` gives it.
     fn into_engine(self) -> Self::Engine;
 }
@@ -19,6 +22,8 @@ macro_rules! script_args {
     ($($ty:ident $value:ident),*) => {
         impl<$($ty: ScriptType),*> ScriptArgs for ($($ty,)*) {
             type Engine = ($(script_args!(@engine $ty),)*);
+
+            const LEN: usize = [$(stringify!($ty)),*].len();
 
             fn into_engine(self) -> Self::Engine {
                 let ($($value,)*) = self;

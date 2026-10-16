@@ -23,7 +23,7 @@ pub(crate) struct WideDivision {
 impl WideDivision {
     /// `numerator / divisor` and its rest, for a divisor above 0.
     #[inline]
-    pub(crate) fn of(numerator: u128, divisor: u128) -> WideDivision {
+    pub(crate) fn of(numerator: u128, divisor: u128) -> Self {
         debug_assert!(divisor > 0);
         platform::divide(numerator, divisor)
     }

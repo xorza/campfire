@@ -21,13 +21,13 @@ pub struct StatValue {
 
 /// The section of `values`, each stat's last value standing, as `BTreeMap` collects them.
 impl FromIterator<(Stat, StatValue)> for StatsData {
-    fn from_iter<I: IntoIterator<Item = (Stat, StatValue)>>(values: I) -> StatsData {
-        StatsData(values.into_iter().collect())
+    fn from_iter<I: IntoIterator<Item = (Stat, StatValue)>>(values: I) -> Self {
+        Self(values.into_iter().collect())
     }
 }
 
 impl<const N: usize> From<[(Stat, StatValue); N]> for StatsData {
-    fn from(values: [(Stat, StatValue); N]) -> StatsData {
+    fn from(values: [(Stat, StatValue); N]) -> Self {
         values.into_iter().collect()
     }
 }

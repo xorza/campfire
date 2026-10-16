@@ -4,7 +4,6 @@ use bevy_ecs::resource::Resource;
 use campfire_actions::{ActionBook, KindSpec};
 use campfire_declare::{Book, ByType};
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{ActionId, NameId, UnitType};
 
 use crate::supply_data::SupplyData;
@@ -40,9 +39,9 @@ pub struct SupplyUnit<'a> {
 
 impl SupplyCostBook {
     /// The costs of `types`, and of the trains of `book`.
-    pub fn new(types: ByType<SupplyData>, book: &ActionBook) -> SupplyCostBook {
+    pub fn new(types: ByType<SupplyData>, book: &ActionBook) -> Self {
         let trains = (0..)
-            .map_while(|at| book.get(ActionId::new(at)))
+            .map_while(|at| book.get(ActionId::at(at)))
             .map(|action| match action.kind {
                 KindSpec::Train(made) => types.get(made).map_or(0, |supply| supply.cost),
                 KindSpec::Cast
@@ -52,7 +51,7 @@ impl SupplyCostBook {
                 | KindSpec::Gather(_) => 0,
             })
             .collect();
-        SupplyCostBook {
+        Self {
             types: Arc::new(types),
             trains,
         }
@@ -60,7 +59,7 @@ impl SupplyCostBook {
 
     /// Whether `other` is this book as one load made it, not a book of another load: the costs a
     /// row filled from it holds.
-    pub(crate) fn same(&self, other: &SupplyCostBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.types, &other.types) && Arc::ptr_eq(&self.trains, &other.trains)
     }
 
@@ -96,7 +95,6 @@ impl SupplyCostBook {
 }
 
 impl Book for SupplyCostBook {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
     /// The production column takes it from the match at each read.

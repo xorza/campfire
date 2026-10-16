@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::UnitEntity;
 use campfire_values::Block;
@@ -22,8 +22,8 @@ use crate::slot_kind_book::SlotKindBook;
 pub struct UseGroup(SlotKind);
 
 impl UseGroup {
-    pub const fn new(kind: SlotKind) -> UseGroup {
-        UseGroup(kind)
+    pub const fn new(kind: SlotKind) -> Self {
+        Self(kind)
     }
 
     pub const fn kind(self) -> SlotKind {
@@ -33,7 +33,7 @@ impl UseGroup {
     /// The group a tag blocks of the action in `slot`, a cast's or a use's, of a unit with `used`,
     /// as `book` gives its kind: `use` for a slot of its use group, whatever its action's kind,
     /// and for a use, else `cast`.
-    pub fn group(used: Option<&UseGroup>, slot: ActionSlot, book: &ActionBook) -> Block {
+    pub fn group(used: Option<&Self>, slot: ActionSlot, book: &ActionBook) -> Block {
         let kind = slot
             .action
             .and_then(|id| book.get(id))
@@ -62,6 +62,5 @@ impl Replication for UseGroup {
 }
 
 impl PerType for UseGroup {
-    const OWNER: Option<Capability> = Some(Capability::Items);
     const SCRIPTS_ONLY: bool = false;
 }

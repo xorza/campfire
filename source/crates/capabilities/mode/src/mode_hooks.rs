@@ -65,7 +65,7 @@ impl ModeHooks {
         Calls::scope(world, now, |call| {
             for input in &*inputs {
                 let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
-                    call.book().schema.input_type(name)
+                    call.book().schema.input_type_named(name)
                 }) else {
                     continue;
                 };
@@ -97,8 +97,8 @@ impl ModeHooks {
     pub(super) fn slot_events(world: &mut World, mut pending: Local<'_, PendingCalls<SlotEvent>>) {
         // A write marks the state changed, and the swap below is one, so a tick with no event to
         // answer leaves it as it is.
-        let events = world.resource::<TickInputs>().slot_events().is_empty();
-        if events && world.resource::<UnansweredSlotEvents>().0.is_empty() {
+        let none_new = world.resource::<TickInputs>().slot_events().is_empty();
+        if none_new && world.resource::<UnansweredSlotEvents>().0.is_empty() {
             return;
         }
         debug_assert!(pending.is_empty(), "the events go back after each run");
@@ -253,10 +253,7 @@ impl ModeHooks {
                 for &LevelUp { id, track, level } in &due {
                     if let Some(handle) = view.unit(id) {
                         let level = i64::from(level.get());
-                        let name = view
-                            .names()
-                            .name(track)
-                            .expect("a track of the match is named");
+                        let name = view.names().name(track);
                         let args = (call.ctx.clone(), handle, name, level);
                         if call
                             .answer(Some(id), Pool::Mode, Hook::OnLevelUp, args)

@@ -7,14 +7,14 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, Actions, GatherSpec, SlotKind, TimedSlots};
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
-use campfire_declare::Book;
+use campfire_declare::{Book, Role};
 use campfire_math::{Num, Vec3};
 use campfire_players::{Players, PlayersWorld};
 use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeBook, ResourceSet};
 use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, SimUpdate, StableId, TickRate};
 use campfire_units::{
-    Body, BodyForm, BodyUnit, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore,
+    Body, BodyForm, BodyUnit, Destination, Owner, TypeOrigin, UnitCore, UnitTypeCore, UnitTypes,
 };
 use campfire_values::{PackageIndex, Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
 use criterion::{Criterion, Throughput};
@@ -51,25 +51,25 @@ fn two_fields() -> Match {
     let rate = TickRate::new(NonZeroU32::new(30).unwrap());
     // A match without navigation runs no gather, as only navigation tests a box for room.
     let set = Release::capability_set(&[Capability::Production, Capability::Navigation]).unwrap();
-    let mut world = Match::new(MatchSpec::new(SegmentSeed::ZERO, rate).capabilities(set));
+    let mut world = Match::new(MatchSpec::new(SegmentSeed::ZERO, rate, Role::Rules).set(set));
 
     let gold = ResourceId::new(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
-    let mut types = UnitTypeBook::new(Release::engine_tags());
+    let mut types = UnitTypes::new(Release::engine_tags());
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"].map(|name| {
+        let origin = TypeOrigin {
+            package: PackageIndex::MODE,
+            name: name.into(),
+        };
         types
-            .load(
-                TypeScope::Mode,
-                PackageIndex::MODE,
-                name,
-                &UnitTypeCore::default(),
-            )
+            .load(TypeScope::Mode, origin, &UnitTypeCore::default())
             .unwrap()
     });
-    world.insert_resource(types.tag_book(&BTreeMap::new()));
-    world.insert_resource(types.state_book());
-    types.load_into(&mut world);
+    let books = types.finish(&BTreeMap::new());
+    world.insert_resource(books.tags);
+    world.insert_resource(books.states);
+    books.types.load_into(&mut world);
     let mut book = NodeBook::default();
     book.nodes.set(node_type, gold);
     book.drop_offs.set(drop_off_type, ResourceSet::from([gold]));

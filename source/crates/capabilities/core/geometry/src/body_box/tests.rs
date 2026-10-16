@@ -13,6 +13,14 @@ impl Frame {
             .iter()
             .all(|value| value.unsigned_abs() <= area)
     }
+
+    /// Whether `off` lies inside the open box, off its edges.
+    fn holds_open(&self, off: Flat) -> bool {
+        let area = self.quarter_area().cast_unsigned();
+        self.slabs(off)
+            .iter()
+            .all(|value| value.unsigned_abs() < area)
+    }
 }
 
 impl Closer {
@@ -215,9 +223,14 @@ fn a_distance_runs_to_the_nearest_edge_or_corner() {
         Ordering::Greater
     );
     assert_eq!(body.nearest(center, at("5", "4"), num("5")), Ordering::Less);
-    // Inside, 0: a reach of 0 meets it.
+    // Inside, below 0, as a signed distance measures it: closer than a reach of 0. On the
+    // edge at x = 2, 0: a reach of 0 meets it.
     assert_eq!(
         body.nearest(center, at("1", "0.5"), Num::ZERO),
+        Ordering::Less
+    );
+    assert_eq!(
+        body.nearest(center, at("2", "0.5"), Num::ZERO),
         Ordering::Equal
     );
     // Two distances compare exactly: 3 m from the edge at x = 2 and from the one at z = 1;
@@ -266,10 +279,13 @@ fn twice_the_scale_sees_halves_of_a_bit() {
     let off = Flat::new(twice(1, 1 << 24), 0);
     assert!(!body.closer_twice(Num::HALF).holds_point(off));
     assert!(body.closer_twice(Num::HALF + Num::EPSILON).holds_point(off));
-    // Half a bit past the edge: closer than a bit, not than nothing.
-    let off = Flat::new(twice(1, 1), 0);
-    assert!(body.closer_twice(Num::EPSILON).holds_point(off));
-    assert!(!body.closer_twice(Num::ZERO).holds_point(off));
+    // Half a bit past the edge: closer than a bit, not than nothing. On the edge, at 0, the
+    // same; half a bit inside it, inside the open box, closer than nothing too.
+    for (halves, at_zero) in [(1, false), (0, false), (-1, true)] {
+        let off = Flat::new(twice(1, halves), 0);
+        assert!(body.closer_twice(Num::EPSILON).holds_point(off));
+        assert_eq!(body.closer_twice(Num::ZERO).holds_point(off), at_zero);
+    }
     // A square of 1 m centered 1.5 m along x touches the box's edge; half a bit nearer, it
     // overlaps.
     let half = 1 << 24;
@@ -288,11 +304,20 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let body = made("4", "2", "0");
     let center = at("0", "0");
     let approach = |from: Vec3, to: Vec3, reach: &str| body.approach(center, from, to, num(reach));
-    // Through it along x from -10: it enters at x = -2, 8 m along the path's 20 m; from the
-    // other end, at x = 2, 8 m in too.
+    // Through it along x from -10: it enters at x = -2, 8 m along the path's 20 m, and into
+    // the open box, so closer than a reach of 0; from the other end, at x = 2, 8 m in too.
+    // Along the edge at z = 1 it meets the closed box at x = -2 and never enters the open
+    // one: at 0.
     let through = approach(at("-10", "0"), at("10", "0"), "0");
     assert_eq!(
         through,
+        Approach {
+            nearest: Ordering::Less,
+            place: num("8")
+        }
+    );
+    assert_eq!(
+        approach(at("-10", "1"), at("10", "1"), "0"),
         Approach {
             nearest: Ordering::Equal,
             place: num("8")
@@ -315,8 +340,9 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
         }
     );
     // As a yes or no through the shape, which tests the spans first: touching at the reach is
-    // not closer, a bit more reach is; through it, any reach but 0; along x = 4, 2 m off the end
-    // at x = 2, the spans alone tell.
+    // not closer, a bit more reach is; through it, any reach, 0 too; along its edge at z = 1,
+    // any reach but 0, and from inside to its edge, 0 too; along x = 4, 2 m off the end at
+    // x = 2, the spans alone tell.
     let as_shape = Shape::Box(body);
     let comes = |from: Vec3, to: Vec3, reach: Num| {
         let comes = Placed::new(center, as_shape).comes_closer(from, to, reach);
@@ -326,8 +352,10 @@ fn a_path_comes_nearest_where_it_enters_or_at_its_first_nearest_point() {
     let bit = Num::EPSILON;
     assert!(!comes(at("-10", "3"), at("10", "3"), num("2")));
     assert!(comes(at("-10", "3"), at("10", "3"), num("2") + bit));
-    assert!(!comes(at("-10", "0"), at("10", "0"), Num::ZERO));
-    assert!(comes(at("-10", "0"), at("10", "0"), bit));
+    assert!(comes(at("-10", "0"), at("10", "0"), Num::ZERO));
+    assert!(!comes(at("-10", "1"), at("10", "1"), Num::ZERO));
+    assert!(comes(at("-10", "1"), at("10", "1"), bit));
+    assert!(comes(at("0", "0"), at("0", "1"), Num::ZERO));
     assert!(!comes(at("4", "-5"), at("4", "5"), num("2")));
     assert!(comes(at("4", "-5"), at("4", "5"), num("2") + bit));
     let short = body.approach(
@@ -448,9 +476,14 @@ fn boxes_overlap_when_their_insides_meet() {
     // Side by side, they touch and do not overlap; a bit closer, they do.
     assert!(!body.overlaps(origin, &body, beside(num("2"))));
     assert!(body.overlaps(origin, &body, beside(num("2") - bit)));
+    // Touching, at 0; overlapping, closer than a reach of 0.
     assert_eq!(
         body.nearest_box(origin, &body, beside(num("2")), Num::ZERO),
         Ordering::Equal
+    );
+    assert_eq!(
+        body.nearest_box(origin, &body, beside(num("2") - bit), Num::ZERO),
+        Ordering::Less
     );
     // A 4 × 2 box turned a quarter at x = 2 spans x from 1 to 3, and z from -2 to 2.
     let upright = made("4", "2", "90");
@@ -521,7 +554,7 @@ impl Draws {
 
     /// A meter, scaled.
     const fn meter(&self) -> i64 {
-        Draws::ONE * self.scale
+        Self::ONE * self.scale
     }
 
     fn bits(&mut self, low: i64, high: i64) -> i64 {
@@ -537,9 +570,9 @@ impl Draws {
     /// A whole number of quarters, or any angle.
     fn angle(&mut self, quarters: bool) -> Num {
         if quarters {
-            Num::from_bits(self.bits(0, 4) * 90 * Draws::ONE)
+            Num::from_bits(self.bits(0, 4) * 90 * Self::ONE)
         } else {
-            Num::from_bits(self.bits(0, 360 * Draws::ONE))
+            Num::from_bits(self.bits(0, 360 * Self::ONE))
         }
     }
 
@@ -595,7 +628,9 @@ fn check_point(body: &BodyBox, center: Vec3, probe: Vec3, reach: Num) {
         polygon(body, center).holds_point([probe.x, probe.z]),
         "{body:?} {probe:?}"
     );
-    let expected = if holds {
+    let expected = if body.frame().holds_open(flat(probe) - flat(center)) {
+        Ordering::Less
+    } else if holds {
         Num::ZERO.cmp(&reach)
     } else {
         by_approaches(to_edges(body, flat(probe) - flat(center)), reach)
@@ -690,8 +725,12 @@ fn a_path_past_a_corner_near_the_reach_decides_as_the_direction_measures_it() {
 }
 
 /// How the distance from `off` to `frame` lies against `reach`, each edge's measure from its own
-/// corners and direction: inside, 0; else the nearest of the edges' orders.
+/// corners and direction: inside the open box, closer than every reach; on its edge, 0; else the
+/// nearest of the edges' orders.
 fn by_edges(frame: Frame, off: Flat, reach: i128) -> Ordering {
+    if frame.holds_open(off) {
+        return Ordering::Less;
+    }
     if frame.holds(off) {
         return 0.cmp(&reach);
     }
@@ -747,7 +786,13 @@ fn check_path(body: &BodyBox, center: Vec3, from: Vec3, to: Vec3, reach: Num) {
     if let Some(enters) = enters {
         let place = i128::from(approach.place.to_bits());
         assert!((place - enters).abs() <= 1, "{case} {place} {enters}");
-        assert_eq!(approach.nearest, Num::ZERO.cmp(&reach));
+        let inside = body.frame().meets_path(start, path, Closure::Open) && reach >= Num::ZERO;
+        let expected = if inside {
+            Ordering::Less
+        } else {
+            Num::ZERO.cmp(&reach)
+        };
+        assert_eq!(approach.nearest, expected, "{case}");
         return;
     }
     let ends = to_edges(body, start).chain(to_edges(body, start + path));
@@ -795,7 +840,9 @@ fn check_pair(body: &BodyBox, center: Vec3, other: &BodyBox, pos: Vec3, reach: N
         overlaps, by_polygon,
         "{body:?} {center:?} {other:?} {pos:?}"
     );
-    let expected = if overlaps {
+    let expected = if overlaps && reach >= Num::ZERO {
+        Ordering::Less
+    } else if overlaps {
         Num::ZERO.cmp(&reach)
     } else {
         let apart = flat(pos) - flat(center);

@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -19,11 +19,11 @@ pub struct TurnStep(Num);
 
 impl TurnStep {
     /// `None` for a negative step.
-    pub const fn new(step: Num) -> Option<TurnStep> {
+    pub const fn new(step: Num) -> Option<Self> {
         if step.to_bits() < 0 {
             return None;
         }
-        Some(TurnStep(step))
+        Some(Self(step))
     }
 
     pub const fn get(self) -> Num {
@@ -48,14 +48,13 @@ impl Replication for TurnStep {
 
 /// A snapshot is untrusted, so a negative step fails to decode.
 impl<'de> Deserialize<'de> for TurnStep {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TurnStep, D::Error> {
-        TurnStep::new(Num::deserialize(deserializer)?)
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(Num::deserialize(deserializer)?)
             .ok_or_else(|| D::Error::custom("negative turn step"))
     }
 }
 
 impl PerType for TurnStep {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 }
 

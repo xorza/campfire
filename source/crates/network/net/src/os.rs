@@ -22,7 +22,7 @@ pub enum Clock {
 
 impl Os {
     /// The operating system's clock and random bytes, which a binary's setups take.
-    pub const SYSTEM: Os = Os {
+    pub const SYSTEM: Self = Self {
         clock: Clock::System,
         entropy: Entropy::System,
     };
@@ -31,12 +31,12 @@ impl Os {
 impl Clock {
     pub fn unix_now(&self) -> u64 {
         match self {
-            Clock::System => SystemTime::now()
+            Self::System => SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("the clock is after 1970")
                 .as_secs(),
             #[cfg(feature = "internals")]
-            Clock::Manual(seconds) => seconds.load(std::sync::atomic::Ordering::Relaxed),
+            Self::Manual(seconds) => seconds.load(std::sync::atomic::Ordering::Relaxed),
         }
     }
 }
@@ -50,13 +50,13 @@ pub(crate) mod internals {
 
     impl Clock {
         /// A clock that reads `seconds` until a test sets it.
-        pub fn manual(seconds: u64) -> Clock {
-            Clock::Manual(Arc::new(AtomicU64::new(seconds)))
+        pub fn manual(seconds: u64) -> Self {
+            Self::Manual(Arc::new(AtomicU64::new(seconds)))
         }
 
         /// Sets the seconds every clone of this manual clock reads.
         pub fn set(&self, seconds: u64) {
-            let Clock::Manual(now) = self else {
+            let Self::Manual(now) = self else {
                 panic!("only a manual clock is set");
             };
             now.store(seconds, Ordering::Relaxed);

@@ -155,7 +155,7 @@ impl Proxy {
 
 /// The calls only `store` makes (design 02, Storage): those that read, list, check, write,
 /// rename or remove a file or make a directory, `Path`'s probes, and those that start a thread.
-const STORAGE_METHODS: [&str; 34] = [
+const STORAGE_METHODS: [&str; 37] = [
     "std::fs::read",
     "std::fs::read_to_string",
     "std::fs::read_dir",
@@ -186,14 +186,17 @@ const STORAGE_METHODS: [&str; 34] = [
     "std::path::Path::canonicalize",
     "tempfile::tempdir",
     "tempfile::tempfile",
+    "tempfile::tempdir_in",
+    "tempfile::tempfile_in",
     "std::thread::spawn",
     "std::thread::scope",
     "std::thread::Builder::spawn",
     "std::thread::Builder::spawn_scoped",
+    "std::thread::Builder::spawn_unchecked",
 ];
 
 /// The types only `store` holds, each banned whole so every method of it is.
-const STORAGE_TYPES: [&str; 8] = [
+const STORAGE_TYPES: [&str; 10] = [
     "std::fs::File",
     "std::fs::OpenOptions",
     "std::fs::DirBuilder",
@@ -202,11 +205,13 @@ const STORAGE_TYPES: [&str; 8] = [
     "std::fs::Metadata",
     "tempfile::TempDir",
     "tempfile::NamedTempFile",
+    "tempfile::Builder",
+    "tempfile::SpooledTempFile",
 ];
 
 /// The calls only `codec` makes (design 02, Serialization): each format's own encodes and
 /// decodes, and replicon's helpers over postcard.
-const CODEC_METHODS: [&str; 20] = [
+const CODEC_METHODS: [&str; 24] = [
     "postcard::to_allocvec",
     "postcard::to_stdvec",
     "postcard::to_extend",
@@ -225,18 +230,26 @@ const CODEC_METHODS: [&str; 20] = [
     "serde_json::to_string",
     "serde_json::to_vec",
     "serde_json::to_writer",
+    "serde_json::from_value",
+    "serde_json::to_value",
+    "toml::Value::try_into",
+    "toml::map::Map::try_into",
     "bevy_replicon::postcard_utils::to_extend_mut",
     "bevy_replicon::postcard_utils::from_buf",
 ];
 
-/// The types only `codec` holds, each banned whole so every method of it is.
-const CODEC_TYPES: [&str; 6] = [
+/// The types only `codec` holds, each banned whole so every method of it is: a value type among
+/// them, which is a deserializer of its own.
+const CODEC_TYPES: [&str; 9] = [
     "postcard::Serializer",
     "postcard::Deserializer",
     "toml::Serializer",
     "toml::Deserializer",
     "serde_json::Serializer",
     "serde_json::Deserializer",
+    "serde_json::Value",
+    "toml::Value",
+    "toml::Table",
 ];
 
 /// The calls only `schedule` makes: those that set a schedule's build settings, which can switch

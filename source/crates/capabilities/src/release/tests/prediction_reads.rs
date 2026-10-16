@@ -79,8 +79,8 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     let set = Release::capabilities();
     let mut world = World::new();
     let rate = Match::TEST_RATE;
-    let spec = MatchSpec::new(SegmentSeed::ZERO, rate).capabilities(set);
-    Release::build(&mut world, spec.clone().role(Role::Client).unbuilt());
+    let spec = |role| MatchSpec::new(SegmentSeed::ZERO, rate, role).set(set);
+    Release::build(&mut world, spec(Role::Client).unbuilt());
     let unpredicted = world.register_component::<Unpredicted>();
     let holds = ClientHolds::of(&mut world, set);
     // Each read of a type a client holds of no unit it does not predict, by system, each system
@@ -142,10 +142,10 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     assert_eq!(exclusive, EXCLUSIVE);
     // The server builds each system that computes its own state, and the client none: the pay of
     // ability and attack toggles, the forgetting of attackers, the despawns of the dead and of
-    // empty nodes, the trades, the supply's count, the trains' finish, the sight, the areas'
-    // triggers and the projectiles' flight.
+    // empty nodes, the trades, the supply's count, the rallies, the trains' finish, the sight,
+    // the areas' triggers and the projectiles' flight.
     let mut server = World::new();
-    Release::build(&mut server, spec);
+    Release::build(&mut server, spec(Role::Rules));
     let (client, server) = (system_names(&mut world), server_only(&server));
     let own = [
         "campfire_abilities::toggles::Toggles::run_toggles",
@@ -156,6 +156,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_items::trade_orders::TradeOrders::trade_items",
         "campfire_production::gather_loop::GatherLoop::despawn_empty_nodes",
         "campfire_production::player_supply::PlayerSupply::refresh",
+        "campfire_production::production_orders::ProductionOrders::set_rallies",
         "campfire_production::trains::Trains::finish_trains",
         "campfire_projectiles::flying::Flying::fly",
         "campfire_vision::seeing::Seeing::see",

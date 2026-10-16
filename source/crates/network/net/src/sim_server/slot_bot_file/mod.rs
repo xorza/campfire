@@ -31,7 +31,7 @@ impl SlotBotFile {
 impl FromStr for SlotBotFile {
     type Err = SlotBotFileError;
 
-    fn from_str(text: &str) -> Result<SlotBotFile, SlotBotFileError> {
+    fn from_str(text: &str) -> Result<Self, SlotBotFileError> {
         let (slot, path) = text
             .split_once('=')
             .ok_or_else(|| SlotBotFileError::NotPair(text.to_owned()))?;
@@ -39,7 +39,7 @@ impl FromStr for SlotBotFile {
             text: slot.to_owned(),
             error,
         })?;
-        Ok(SlotBotFile {
+        Ok(Self {
             slot: PlayerSlot::new(slot),
             path: PathBuf::from(path),
         })

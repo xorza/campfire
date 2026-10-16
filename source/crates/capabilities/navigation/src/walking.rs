@@ -1,13 +1,12 @@
-use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut, Mut};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
-use bevy_ecs::system::{Commands, If, Local, Query, Res, ResMut};
-use campfire_geometry::{Indexed, Placed};
+use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
 use campfire_units::{
     ArrivedShort, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
 };
-use campfire_values::{Block, UnitTags};
+use campfire_values::{Block, Motion, UnitTags};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::broadphase::Broadphase;
@@ -16,7 +15,7 @@ use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::Route;
 use crate::route_planner::RoutePlanner;
-use crate::steering::{Steered, Steering};
+use crate::steering::{Steered, Steering, TickBody};
 use crate::walker::Walker;
 
 /// The walkers' moves: steered round each other, a step a tick along their routes, parted where
@@ -73,23 +72,14 @@ impl Walking {
         >,
         (mut steering, mut order): (Local<'_, Steering>, Local<'_, Ordered>),
     ) {
-        let still = bodies
+        let read = bodies
             .iter()
-            .filter(|(.., destination, tags)| !Self::walks(*destination, *tags, false))
-            .map(|(&id, &at, body, ..)| IndexedBody::of(id, at.get(), body));
-        let walking = bodies
-            .iter()
-            .filter(|(.., destination, tags)| Self::walks(*destination, *tags, false))
-            .map(|(&id, &at, body, ..)| Indexed {
-                id,
-                key: body.layer(),
-                body: Placed::new(at.get(), body.shape()),
+            .map(|(&id, &at, body, destination, tags)| TickBody {
+                body: IndexedBody::of(id, at.get(), body),
+                walks: Self::walks(destination, tags, Motion::Own),
+                gathers: tags.is_some_and(|tags| tags.passes()),
             });
-        let gatherers = bodies
-            .iter()
-            .filter(|&(.., tags)| UnitTags::passes(tags))
-            .map(|(&id, ..)| id);
-        steering.read(&statics, still, walking, gatherers);
+        steering.read(&statics, read);
         let stuck_ticks = rate
             .ticks(Steering::STUCK_MS)
             .expect("a fixed time fits")
@@ -97,7 +87,7 @@ impl Walking {
         let ordered = walkers
             .iter()
             .filter(|&(_, _, _, destination, _, _, route, _, tags, forced)| {
-                Self::walks(Some(destination), tags, forced)
+                Self::walks(Some(destination), tags, Motion::of(forced))
                     && route.asked().is_none()
                     && !route.ahead().is_empty()
             })
@@ -111,7 +101,7 @@ impl Walking {
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
                 stuck: u64::from(progress.track(at.get(), step.get())) >= stuck_ticks,
-                gathering: UnitTags::passes(tags),
+                gathering: tags.is_some_and(|tags| tags.passes()),
             };
             if let Some(detour) = steering.steer(&mut planner, &grid, &statics, steered, &route) {
                 route.splice(at.get(), steering.short(), detour.skipped, detour.reached);
@@ -186,7 +176,7 @@ impl Walking {
             forced,
         ) in &mut units
         {
-            if !Self::walks(Some(&destination), tags, forced) {
+            if !Self::walks(Some(&destination), tags, Motion::of(forced)) {
                 continue;
             }
             let mut at = position.get();
@@ -270,8 +260,8 @@ impl Walking {
                         shape: body.shape(),
                         layer: body.layer(),
                         movable,
-                        walking: Self::walks(destination, tags, false),
-                        gathering: UnitTags::passes(tags),
+                        walking: Self::walks(destination, tags, Motion::Own),
+                        gathering: tags.is_some_and(|tags| tags.passes()),
                     },
                 ),
         );
@@ -305,20 +295,37 @@ impl Walking {
         }
     }
 
-    /// Whether a unit walks this tick: it has a destination, and neither its tags nor a forced
-    /// move, when `forced`, stop it. One they stop stands, to the units round it as to itself.
-    fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, forced: bool) -> bool {
+    /// Whether a unit walks this tick: it has a destination, and neither its tags nor its
+    /// `motion`, when forced, stop it. One they stop stands, to the units round it as to itself.
+    fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, motion: Motion) -> bool {
         destination.is_some_and(|destination| destination.get().is_some())
-            && !UnitTags::blocks(tags, forced, Block::Move)
+            && !tags
+                .copied()
+                .unwrap_or_default()
+                .blocks(motion, Block::Move)
     }
 
-    /// Clamps each unit that walks into the bounds; a unit already within them does not change.
+    /// Clamps each unit that walks into the bounds: those whose place changed since the last run,
+    /// as a place comes with each unit, and every one when the bounds changed; a unit already
+    /// within them does not change.
     pub(super) fn keep_in_bounds(
         map: Res<'_, MapBook>,
-        mut units: Query<'_, '_, &mut Position, With<MoveStep>>,
+        mut units: ParamSet<
+            '_,
+            '_,
+            (
+                Query<'_, '_, &mut Position, (With<MoveStep>, Changed<Position>)>,
+                Query<'_, '_, &mut Position, With<MoveStep>>,
+            ),
+        >,
     ) {
-        for mut position in &mut units {
+        let clamp = |mut position: Mut<'_, Position>| {
             position.set_if_neq(Position::from(map.bounds.clamp(position.get())));
+        };
+        if map.is_changed() {
+            units.p1().iter_mut().for_each(clamp);
+        } else {
+            units.p0().iter_mut().for_each(clamp);
         }
     }
 }

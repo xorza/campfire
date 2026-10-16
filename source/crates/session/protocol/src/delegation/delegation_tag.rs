@@ -15,11 +15,11 @@ impl DelegationTag {
     /// The tag's name, as the event writes it.
     pub const fn name(self) -> &'static str {
         match self {
-            DelegationTag::SessionKey => "session_key",
-            DelegationTag::ServerKey => "server_key",
-            DelegationTag::SessionId => "session_id",
-            DelegationTag::SeedContribution => "seed_contribution",
-            DelegationTag::Expiration => "expiration",
+            Self::SessionKey => "session_key",
+            Self::ServerKey => "server_key",
+            Self::SessionId => "session_id",
+            Self::SeedContribution => "seed_contribution",
+            Self::Expiration => "expiration",
         }
     }
 }

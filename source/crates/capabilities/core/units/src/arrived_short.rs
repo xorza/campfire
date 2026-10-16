@@ -9,8 +9,8 @@ pub struct ArrivedShort(Option<Vec3>);
 
 impl ArrivedShort {
     /// The report of a walker that arrived short of `goal`, or of none.
-    pub const fn of(goal: Option<Vec3>) -> ArrivedShort {
-        ArrivedShort(goal)
+    pub const fn of(goal: Option<Vec3>) -> Self {
+        Self(goal)
     }
 
     /// Whether it arrived short of `goal`.

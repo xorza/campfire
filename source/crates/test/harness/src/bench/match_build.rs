@@ -5,12 +5,12 @@ use std::time::{Duration, Instant};
 use campfire_capabilities::Release;
 use campfire_package_disk::PackageDir;
 use campfire_package_disk::internals::TestMode;
+use campfire_runner::MatchBuild;
 use campfire_script::ScriptHost;
 use campfire_sim::TickRate;
 use criterion::Criterion;
 
 use crate::moba_3v3::Moba3v3;
-use campfire_runner::MatchBuild;
 
 /// The load of the MOBA 3v3's packages from their files, `package_load/3v3`, as a server and each
 /// client load them for a session; and the build of a match of them, as a server builds one per
@@ -29,7 +29,7 @@ pub(crate) fn build(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 PackageDir::new(dir.clone())
-                    .mode_packages(&map)
+                    .mode_packages(Some(&map))
                     .expect("the 3v3 loads"),
             )
         });

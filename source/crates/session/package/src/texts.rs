@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
+use campfire_values::MessageId;
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::{FluentError, FluentResource};
 
@@ -12,7 +13,6 @@ use crate::files::package_name::PackageName;
 use crate::language::Language;
 use crate::locale_package::LocalePackage;
 use crate::mode_packages::ModePackages;
-use campfire_values::MessageId;
 
 type Bundle = FluentBundle<Arc<FluentResource>>;
 
@@ -33,10 +33,10 @@ struct PackageBundles {
 impl Texts {
     /// The text of `packages`, with the translations `locales` give them; an error when a
     /// translation defines a message its package's own language does not.
-    pub fn new(packages: &ModePackages, locales: &[LocalePackage]) -> Result<Texts, LoadError> {
+    pub fn new(packages: &ModePackages, locales: &[LocalePackage]) -> Result<Self, LoadError> {
         let mut locales: Vec<&LocalePackage> = locales.iter().collect();
         locales.sort_by(|a, b| a.name.cmp(&b.name));
-        let mut texts = Texts {
+        let mut texts = Self {
             packages: BTreeMap::new(),
         };
         for view in packages.packages() {
@@ -79,7 +79,12 @@ impl Texts {
 
     /// The text of message `id` of package `package` in `language`, or else in the package's
     /// own language; `None` when neither gives the message a value that formats.
-    pub fn text(&self, package: &str, id: &MessageId, language: &Language) -> Option<String> {
+    pub fn text(
+        &self,
+        package: &PackageName,
+        id: &MessageId,
+        language: &Language,
+    ) -> Option<String> {
         let package = self.packages.get(package)?;
         [language, &package.own].into_iter().find_map(|language| {
             let bundle = package.bundles.get(language)?;

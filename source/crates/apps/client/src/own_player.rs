@@ -28,7 +28,7 @@ impl OwnPlayer<'_, '_> {
     /// as `OwnPlayer::side_of` says; none before either.
     pub(crate) fn side(&self) -> Option<Team> {
         let state = self.state.as_deref()?;
-        let watching = state.watching().is_some();
+        let watching = state.watching_clock().is_some();
         OwnPlayer::side_of(
             state.team(),
             watching,

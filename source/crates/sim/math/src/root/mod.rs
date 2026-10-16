@@ -40,8 +40,8 @@ impl FloorRoot for u128 {
         reason = "left to the inliner, the call stays, and costs `atomic/root/floor_narrow` 10 % on a Ryzen and 22 % on an M2"
     )]
     #[inline(always)]
-    fn floor_root(self) -> u128 {
-        u128::from(if let Ok(narrow) = u64::try_from(self) {
+    fn floor_root(self) -> Self {
+        Self::from(if let Ok(narrow) = u64::try_from(self) {
             narrow_root(narrow)
         } else if self < NEAR_END {
             Near::of(self).floor()
@@ -52,14 +52,14 @@ impl FloorRoot for u128 {
 }
 
 impl RoundedRoot for u128 {
-    fn ceil_root(self) -> u128 {
+    fn ceil_root(self) -> Self {
         let root = self.floor_root();
         // The floor root is below 2⁶⁴, so its square fits. The step sits in an `if`: a select in
         // its place made `integration/collision/crowded` 4 % slower.
         if root * root < self { root + 1 } else { root }
     }
 
-    fn nearest_root_cmp(self, other: u128) -> Ordering {
+    fn nearest_root_cmp(self, other: Self) -> Ordering {
         debug_assert!(other <= 1 << 63);
         // `other²` is at most 2¹²⁶, and at least `other`: neither its sum with `other` nor its
         // difference wraps, and the wrapping steps skip the checks a release build makes.
@@ -83,9 +83,9 @@ impl RoundedRoot for u128 {
         reason = "the paths of `floor_root`, whose call the inliner keeps at a cost of 10 % to 22 %"
     )]
     #[inline(always)]
-    fn nearest_root(self) -> u128 {
+    fn nearest_root(self) -> Self {
         debug_assert!(self < 1 << 126);
-        u128::from(if self < NEAR_END {
+        Self::from(if self < NEAR_END {
             Near::of(self).nearest()
         } else {
             Far::of(self).nearest()
@@ -174,11 +174,11 @@ impl Near {
         clippy::cast_precision_loss,
         reason = "the parts below 2⁵², and the value's low bits, which the residuals keep"
     )]
-    fn of(value: u128) -> Near {
+    fn of(value: u128) -> Self {
         debug_assert!(value < NEAR_END);
         let high = (value >> 50) as i64 as f64;
         let low = (value & ((1 << 50) - 1)) as i64 as f64;
-        Near {
+        Self {
             value: value as u64,
             estimate: high.mul_add(TWO_POW_50, low).sqrt(),
         }
@@ -248,8 +248,8 @@ struct Far {
 
 impl Far {
     #[inline(never)]
-    fn of(value: u128) -> Far {
-        Far::inline(value)
+    fn of(value: u128) -> Self {
+        Self::inline(value)
     }
 
     /// `of` inline, for a caller whose values all take this path.
@@ -265,7 +265,7 @@ impl Far {
         reason = "the estimate of a caller that waits on it"
     )]
     #[inline(always)]
-    fn inline(value: u128) -> Far {
+    fn inline(value: u128) -> Self {
         debug_assert!(value >= NEAR_END);
         // The value's bits from 2²² up, as two parts below 2⁵³ that convert exactly, as a single
         // instruction each: the bits dropped are below 2⁻⁸⁰ of the value.
@@ -286,7 +286,7 @@ impl Far {
             ((residual >> 32) as i64 as f64).mul_add(TWO_POW_32, f64::from(residual as u32));
         // The step is within 2¹⁵ either side of 0; the estimate takes it 2¹⁵ up, from a base 2¹⁵
         // down, so its offset is never negative, and the sum stays exact in its last place.
-        Far {
+        Self {
             value,
             base: base.wrapping_sub(1 << 15),
             offset: residual.mul_add(half_reciprocal, TWO_POW_15),
@@ -306,12 +306,12 @@ impl Far {
     )]
     fn floor(self) -> u64 {
         let mut root = self.base.saturating_add(self.offset as i64 as u64);
-        while Far::square(root) > self.value {
+        while Self::square(root) > self.value {
             root -= 1;
         }
         // (root + 1)² ≤ value exactly when value − root² > 2·root, which cannot overflow, as
         // root² is at most the value; 2·root is below 2⁶⁵.
-        while self.value - Far::square(root) > 2 * u128::from(root) {
+        while self.value - Self::square(root) > 2 * u128::from(root) {
             root += 1;
         }
         root
@@ -331,7 +331,7 @@ impl Far {
             let rest = self
                 .value
                 .cast_signed()
-                .wrapping_sub(Far::square(root).cast_signed());
+                .wrapping_sub(Self::square(root).cast_signed());
             let reach = i128::from(root);
             if rest > reach {
                 root = root.wrapping_add(1);

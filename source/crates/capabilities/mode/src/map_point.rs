@@ -16,8 +16,8 @@ impl MapPoint {
     /// The place of the point, a ground point at height 0; `None` beyond the world's bound.
     pub fn pos(self) -> Option<Vec3> {
         let [x, y, z] = match self {
-            MapPoint::Ground([x, z]) => [x, Num::ZERO, z],
-            MapPoint::Space(point) => point,
+            Self::Ground([x, z]) => [x, Num::ZERO, z],
+            Self::Space(point) => point,
         };
         let point = Vec3::new(x, y, z);
         Position::from(point).within_bound().then_some(point)
@@ -27,7 +27,7 @@ impl MapPoint {
     pub const fn fits(self, metric: Metric) -> bool {
         matches!(
             (self, metric),
-            (MapPoint::Ground(_), Metric::Planar) | (MapPoint::Space(_), Metric::Spatial)
+            (Self::Ground(_), Metric::Planar) | (Self::Space(_), Metric::Spatial)
         )
     }
 }

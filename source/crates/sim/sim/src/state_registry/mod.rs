@@ -38,9 +38,9 @@ mod hash_sink;
 pub(crate) mod state_delta;
 
 /// Starts the combined hash, so no other BLAKE3 use can produce the same state hash.
-const HASH_DOMAIN: HashDomain = HashDomain::new("campfire/state/v1");
+const HASH_DOMAIN: HashDomain<StateHash> = HashDomain::new("campfire/state/v1");
 /// The domain of `StateRegistry::digest`.
-const DIGEST_DOMAIN: HashDomain = HashDomain::new("campfire/digest/v1");
+const DIGEST_DOMAIN: HashDomain<StateHash> = HashDomain::new("campfire/digest/v1");
 /// Starts every snapshot, so other bytes are refused at once.
 const SNAPSHOT_TAG: &[u8] = b"campfire/snapshot/v1";
 /// The built-in type listing every live stable id, so an entity with no registered component
@@ -58,6 +58,9 @@ const BODY_LEN_BYTES: usize = size_of::<u64>();
 pub struct StateRegistry {
     entries: Vec<Entry>,
     foreign: Vec<ForeignCheck>,
+    /// Whether a world's changes are recorded by it: the record holds each type by its place in
+    /// `entries`, so no type joins them from then on.
+    tracking: bool,
 }
 
 /// A rule of a registered state type that a capability other than its owner knows, checked as
@@ -172,14 +175,15 @@ impl StateRegistry {
     /// release changes their format, a type's layout included, as Minecraft's `DataVersion` is:
     /// a snapshot of another is refused, naming both, and the converter from the version before,
     /// which design 02's Saves plans, comes with the first release that raises it.
-    pub const DATA_VERSION: u32 = 21;
+    pub const DATA_VERSION: u32 = 26;
 
     /// A registry with the sim's own state: the entity list, the id allocator, the tick and
     /// positions.
-    pub fn new() -> StateRegistry {
-        let mut registry = StateRegistry {
+    pub fn new() -> Self {
+        let mut registry = Self {
             entries: Vec::new(),
             foreign: Vec::new(),
+            tracking: false,
         };
         let entities = Entry {
             name: ENTITIES,
@@ -293,7 +297,7 @@ impl StateRegistry {
     pub fn digest(bytes: &[u8]) -> StateHash {
         let mut hasher = DomainHasher::new(DIGEST_DOMAIN);
         hasher.update(bytes);
-        StateHash::new(hasher.finish())
+        hasher.finish()
     }
 
     pub fn hash(&self, world: &World) -> StateHash {
@@ -314,7 +318,7 @@ impl StateRegistry {
     pub fn snapshot(&self, world: &World, out: &mut Vec<u8>) -> StateHash {
         out.clear();
         out.extend_from_slice(SNAPSHOT_TAG);
-        out.extend_from_slice(&StateRegistry::DATA_VERSION.to_le_bytes());
+        out.extend_from_slice(&Self::DATA_VERSION.to_le_bytes());
         let mut total = DomainHasher::new(HASH_DOMAIN);
         for entry in &self.entries {
             out.extend_from_slice(&name_len(entry.name).to_le_bytes());
@@ -327,7 +331,7 @@ impl StateRegistry {
             let body_len = u64::try_from(body.len()).expect("snapshot above 2⁶⁴ bytes");
             out[len_at..len_at + BODY_LEN_BYTES].copy_from_slice(&body_len.to_le_bytes());
         }
-        StateHash::new(total.finish())
+        total.finish()
     }
 
     /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
@@ -351,10 +355,10 @@ impl StateRegistry {
             .split_first_chunk::<VERSION_BYTES>()
             .ok_or(SnapshotError::Truncated)?;
         let version = u32::from_le_bytes(*version);
-        if version != StateRegistry::DATA_VERSION {
+        if version != Self::DATA_VERSION {
             return Err(SnapshotError::OtherVersion {
                 found: version,
-                read: StateRegistry::DATA_VERSION,
+                read: Self::DATA_VERSION,
             });
         }
         let mut bodies = Vec::with_capacity(self.entries.len());
@@ -448,8 +452,9 @@ impl StateRegistry {
 
     /// Starts recording the changes of the state of `world` for copies of it, and writes its
     /// whole state into `delta`, which an empty world takes as the base the later changes apply
-    /// to.
-    pub fn track(&self, world: &mut World, delta: &mut StateDelta) {
+    /// to. The registry takes no more type from then on, as the record holds each by its place.
+    pub fn track(&mut self, world: &mut World, delta: &mut StateDelta) {
+        self.tracking = true;
         assert!(
             !world.contains_resource::<StateChanges>(),
             "a world records its changes once"
@@ -528,6 +533,10 @@ impl StateRegistry {
 
     fn register(&mut self, entry: Entry) {
         let name = entry.name;
+        assert!(
+            !self.tracking,
+            "state type {name:?} registered after its world's changes are tracked"
+        );
         let Err(at) = self.entries.binary_search_by(|held| held.name.cmp(name)) else {
             panic!("state type {name:?} registered twice");
         };
@@ -548,18 +557,18 @@ impl StateRegistry {
                 });
             }
         }
-        StateHash::new(total.finish())
+        total.finish()
     }
 }
 
 impl Default for StateRegistry {
-    fn default() -> StateRegistry {
-        StateRegistry::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 /// Adds the hash of the type `name` to a state hash's `total`.
-fn fold(total: &mut DomainHasher, name: &str, hash: &PartHash) {
+fn fold(total: &mut DomainHasher<StateHash>, name: &str, hash: &PartHash) {
     total
         .update(&name_len(name).to_le_bytes())
         .update(name.as_bytes())

@@ -37,7 +37,7 @@ fn playing(local: &InProcessMatch, client: usize) -> bool {
         .client(client)
         .world()
         .resource::<JoinState>()
-        .clock()
+        .playing_clock()
         .is_some()
 }
 
@@ -357,7 +357,7 @@ fn every_client_rejoins_a_restored_server() {
         local.next_tick(End::Server)
     );
     for client in [0, 1] {
-        local.play(client, OrderScript::parse(&script).unwrap());
+        local.play(client, &OrderScript::parse(&script).unwrap());
     }
     step_until(&mut local, REJOIN_STEPS, |local| {
         playing(local, 0) && playing(local, 1)

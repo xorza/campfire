@@ -28,12 +28,12 @@ pub enum ScriptError {
 impl ScriptError {
     /// The case of `error`, which a call returned: the cases a caller tells apart by what the
     /// innermost error of a function call's chain is, a raised value moved out of it.
-    pub(crate) fn from_eval(error: Box<EvalAltResult>) -> ScriptError {
+    pub(crate) fn from_eval(error: Box<EvalAltResult>) -> Self {
         match error.unwrap_inner() {
-            EvalAltResult::ErrorTooManyOperations(_) => ScriptError::CallLimit,
-            EvalAltResult::ErrorTerminated(..) => ScriptError::TickBudget,
-            EvalAltResult::ErrorRuntime(..) => ScriptError::Raised(Raised::take(*error)),
-            _ => ScriptError::Runtime(error),
+            EvalAltResult::ErrorTooManyOperations(_) => Self::CallLimit,
+            EvalAltResult::ErrorTerminated(..) => Self::TickBudget,
+            EvalAltResult::ErrorRuntime(..) => Self::Raised(Raised::take(*error)),
+            _ => Self::Runtime(error),
         }
     }
 }
@@ -55,12 +55,12 @@ impl Raised {
     }
 
     /// The value `error` raised, at the end of its chain of function calls.
-    fn take(mut error: EvalAltResult) -> Raised {
+    fn take(mut error: EvalAltResult) -> Self {
         loop {
             match error {
                 EvalAltResult::ErrorInFunctionCall(.., inner, _)
                 | EvalAltResult::ErrorInModule(.., inner, _) => error = *inner,
-                EvalAltResult::ErrorRuntime(value, _) => return Raised(value),
+                EvalAltResult::ErrorRuntime(value, _) => return Self(value),
                 other => unreachable!("a chain that ends in a raised value, not {other:?}"),
             }
         }
@@ -96,7 +96,7 @@ pub(crate) mod internals {
     impl ScriptError {
         /// The name the script uses and nothing defines, when that fails its compile.
         pub fn undefined(&self) -> Option<Undefined<'_>> {
-            let ScriptError::Compile(error) = self else {
+            let Self::Compile(error) = self else {
                 return None;
             };
             match &*error.0 {

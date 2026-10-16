@@ -33,8 +33,8 @@ pub struct Value32<K> {
 }
 
 impl<K> Value32<K> {
-    pub const fn new(bytes: [u8; 32]) -> Value32<K> {
-        Value32 {
+    pub const fn new(bytes: [u8; 32]) -> Self {
+        Self {
             bytes: Bytes32::new(bytes),
             meaning: PhantomData,
         }
@@ -50,20 +50,20 @@ impl<K> Value32<K> {
 
     /// The value the 64 lowercase hex digits `hex` write, as a literal in the code gives it; a
     /// text from outside reads by `FromStr`, which refuses a flawed one.
-    pub const fn of_hex(hex: &str) -> Value32<K> {
-        Value32::new(Bytes32::of_hex(hex).get())
+    pub const fn of_hex(hex: &str) -> Self {
+        Self::new(Bytes32::of_hex(hex).get())
     }
 }
 
 impl<K: ContentMeaning> Value32<K> {
     /// The SHA-256 of `bytes`.
-    pub fn of(bytes: &[u8]) -> Value32<K> {
-        Value32::new(Sha256::digest(bytes).into())
+    pub fn of(bytes: &[u8]) -> Self {
+        Self::new(Sha256::digest(bytes).into())
     }
 }
 
 impl<K> Clone for Value32<K> {
-    fn clone(&self) -> Value32<K> {
+    fn clone(&self) -> Self {
         *self
     }
 }
@@ -71,7 +71,7 @@ impl<K> Clone for Value32<K> {
 impl<K> Copy for Value32<K> {}
 
 impl<K> PartialEq for Value32<K> {
-    fn eq(&self, other: &Value32<K>) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.bytes == other.bytes
     }
 }
@@ -79,13 +79,13 @@ impl<K> PartialEq for Value32<K> {
 impl<K> Eq for Value32<K> {}
 
 impl<K> PartialOrd for Value32<K> {
-    fn partial_cmp(&self, other: &Value32<K>) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl<K> Ord for Value32<K> {
-    fn cmp(&self, other: &Value32<K>) -> Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.bytes.cmp(&other.bytes)
     }
 }
@@ -112,9 +112,8 @@ impl<K> fmt::Display for Value32<K> {
 impl<K> FromStr for Value32<K> {
     type Err = NotHex;
 
-    fn from_str(hex: &str) -> Result<Value32<K>, NotHex> {
-        hex.parse::<Bytes32>()
-            .map(|bytes| Value32::new(bytes.get()))
+    fn from_str(hex: &str) -> Result<Self, NotHex> {
+        hex.parse::<Bytes32>().map(|bytes| Self::new(bytes.get()))
     }
 }
 
@@ -125,8 +124,8 @@ impl<K> Serialize for Value32<K> {
 }
 
 impl<'de, K> Deserialize<'de> for Value32<K> {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Value32<K>, D::Error> {
-        Bytes32::deserialize(deserializer).map(|bytes| Value32::new(bytes.get()))
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Bytes32::deserialize(deserializer).map(|bytes| Self::new(bytes.get()))
     }
 }
 

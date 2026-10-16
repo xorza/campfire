@@ -1,3 +1,4 @@
+use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale};
 use campfire_common::ContentHash;
 use campfire_package_disk::PackageDir;
 use campfire_sim::Capability;
@@ -7,34 +8,29 @@ use serde::Deserialize;
 
 use super::*;
 use crate::texture::internals::ktx2;
-use crate::zero_hour::armor_ini::internals::ARMORS;
-use crate::zero_hour::big_archive::internals::big;
 use crate::zero_hour::combat_import::WeaponDrop;
-use crate::zero_hour::command_button_ini::internals::COMMAND_BUTTONS;
-use crate::zero_hour::command_set_ini::internals::COMMAND_SETS;
 use crate::zero_hour::error::{NameClash, VersionDifference};
-use crate::zero_hour::game_data::GameData;
-use crate::zero_hour::game_version::ArchiveHash;
+use crate::zero_hour::format::big::big_archive::internals::big;
+use crate::zero_hour::format::csf::string_table::internals::strings;
+use crate::zero_hour::format::ini::armor_ini::internals::ARMORS;
+use crate::zero_hour::format::ini::command_button_ini::internals::COMMAND_BUTTONS;
+use crate::zero_hour::format::ini::command_set_ini::internals::COMMAND_SETS;
+use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+use crate::zero_hour::format::ini::object_ini::internals::{
+    DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
+};
+use crate::zero_hour::format::ini::player_template_ini::internals::PLAYER_TEMPLATES;
+use crate::zero_hour::format::ini::weapon_ini::internals::WEAPONS;
+use crate::zero_hour::format::map::map_file::internals::map;
 use crate::zero_hour::install::internals::{fixture, packed_map};
-use crate::zero_hour::locomotor_ini::internals::LOCOMOTORS;
-use crate::zero_hour::map_file::internals::map;
 use crate::zero_hour::model_import::{Converted, ModelImport};
-use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS};
-use crate::zero_hour::player_template_ini::internals::PLAYER_TEMPLATES;
 use crate::zero_hour::production_import::DropCause;
-use crate::zero_hour::string_table::internals::strings;
-use crate::zero_hour::weapon_ini::internals::WEAPONS;
 
 /// The fixture install's version, as its archives hold their bytes now.
-fn version_of(scratch: &Scratch) -> [GameVersion; 1] {
-    let archives = ["A.big", "b.big", "c.BIG", "ZH_Generals/base.big"].map(|path| ArchiveHash {
-        path,
-        sha256: ContentHash::of(&scratch.read(format!("zh/{path}"))),
-    });
-    [GameVersion {
-        name: "fixture",
-        archives: Box::leak(Box::new(archives)),
-    }]
+fn version_of(scratch: &Scratch) -> &'static [GameVersion] {
+    let archives = ["A.big", "b.big", "c.BIG", "ZH_Generals/base.big"]
+        .map(|path| (path, ContentHash::of(&scratch.read(format!("zh/{path}")))));
+    GameVersion::fixture("fixture", archives)
 }
 
 #[test]
@@ -42,8 +38,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let scratch = Scratch::new();
     fixture(&scratch);
     let known = version_of(&scratch);
-    let zero_hour = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
-    assert_eq!(zero_hour.version().name, "fixture");
+    let zero_hour = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
+    assert_eq!(zero_hour.version().name(), "fixture");
 
     // The fixture map, in its folder `Fixture Map`, is `fixture_map`: its files are the ones
     // its import gives, and the unit types it places the package's.
@@ -51,9 +47,18 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     let fingerprint = imported.fingerprint;
     // Its terrain's sand of 2 × 1 texels holds no tile, and its grass has no texture, so each
     // of the 3 × 2 cells the game draws is untextured.
-    let named = MapName::new("fixture_map").unwrap();
-    assert_eq!(imported.untextured_cells, [(named.clone(), 6)].into());
-    assert!(imported.dropped_waypoints.is_empty());
+    let named = MapName::parse("fixture_map").unwrap();
+    assert_eq!(
+        imported.maps,
+        [(
+            named.clone(),
+            ImportedMap {
+                untextured_cells: 6,
+                dropped_waypoints: Vec::new(),
+            }
+        )]
+        .into()
+    );
     // Beside it, the rules package as the workspace holds it, which the imported mode, of
     // its manifest and mode data, depends on and loads with.
     assert_eq!(scratch.names("one"), ["game", "zero-hour"]);
@@ -77,7 +82,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // sets make. Its units drive, by stats, orders and navigation, no faster than the tank's
     // 30.5 m a second.
     let mode = PackageDir::new(scratch.path("one/game"))
-        .mode_packages(&named)
+        .mode_packages(Some(&named))
         .unwrap();
     let types: Vec<String> = mode
         .content()
@@ -374,8 +379,9 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     // The class whose type's texture the install holds names it, the sign's TGA of 2 × 1
     // texels; the other names none.
-    let mut file = MapFile::read(&map(8)).unwrap();
-    file.terrain.classes[0].texture = Some(ClassTexture {
+    let file = MapFile::read(&map(8)).unwrap();
+    let mut textures = vec![None; file.terrain.classes.len()];
+    textures[0] = Some(ClassTexture {
         path: PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap(),
         size: UVec2::new(2, 1),
     });
@@ -397,6 +403,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             adjust_cliff_textures: true,
             three_way_blends: false,
         },
+        textures: &textures,
     };
     let expected = MapImport::new(&file, sources).unwrap();
     assert_eq!(
@@ -441,7 +448,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         locomotors: &locomotors,
         strings: &strings,
     };
-    ProductionImport::of(sources, &mut names);
+    let production = ProductionImport::of(sources, &mut names);
+    let types = names.close();
     let mut weapons = WeaponIni::default();
     weapons.read(WEAPONS.as_bytes()).unwrap();
     let mut armors = ArmorIni::default();
@@ -451,8 +459,12 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         weapons: &weapons,
         armors: &armors,
     };
-    CombatImport::of(combat, &mut names).unwrap();
-    let units = names.units_file();
+    let combat = CombatImport::of(combat, &types).unwrap();
+    let units = types.units_file(TypeAdditions {
+        weapon: &combat.weapons,
+        command: &production.commands,
+        production: &production.sections,
+    });
     assert_eq!(scratch.read_text("one/game/data/units.toml"), units.text);
     let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));
     assert_eq!(camera.unwrap().field_of_view, 50.0);
@@ -505,7 +517,7 @@ fn an_install_of_two_maps_of_one_name_or_of_an_unknown_version_does_not_import()
         ]),
     );
     let known = version_of(&scratch);
-    let clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+    let clash = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
     assert!(matches!(
         clash.write(&scratch.path("three")),
         Err(ZeroHourError::MapNameClash { first, second })
@@ -516,12 +528,12 @@ fn an_install_of_two_maps_of_one_name_or_of_an_unknown_version_does_not_import()
     // An archive of other bytes is no version the importer knows.
     scratch.write("zh/c.BIG", b"BIGF");
     assert!(matches!(
-        ZeroHour::open(&scratch.path("zh"), &known),
+        ZeroHour::open_among(&scratch.path("zh"), known),
         Err(ZeroHourError::Archive { .. })
     ));
     scratch.write("zh/c.BIG", big(&[("c.ini", b"C")]));
     assert!(matches!(
-        ZeroHour::open(&scratch.path("zh"), &known),
+        ZeroHour::open_among(&scratch.path("zh"), known),
         Err(ZeroHourError::UnknownVersion {
             archive,
             difference: VersionDifference::OtherBytes,
@@ -534,16 +546,21 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     let scratch = Scratch::new();
     fixture(&scratch);
     let known = version_of(&scratch);
-    let zero_hour = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+    let zero_hour = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
     let imported = zero_hour.write(&scratch.path("one")).unwrap();
     // Each model the objects name once, as its conversion gives it; its material file; and
     // each object's models with the nodes its default look hides. The tank's turret is hidden
     // with the flash on the bone below it, which its muzzle flash hides as well; the crate's
-    // box and the marker's `NULL` draw nothing; the emitter, the absent model and the tree's,
-    // which the fixture install lacks, are skipped, in the order of their objects' names.
+    // box and the marker's `NULL` draw nothing; the tank's aggregate, the emitter, the absent
+    // model and the tree's, which the fixture install lacks, are skipped, in the order of their
+    // objects' names.
     assert_eq!(
         imported.skipped_models,
         [
+            SkippedModel {
+                name: "tank.smoke".to_owned(),
+                reason: SkipReason::Aggregate,
+            },
             SkippedModel {
                 name: "absent".to_owned(),
                 reason: SkipReason::Missing,
@@ -670,7 +687,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         ]),
     );
     let known = version_of(&scratch);
-    let clash = ZeroHour::open(&scratch.path("zh"), &known).unwrap();
+    let clash = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
     assert!(matches!(
         clash.write(&scratch.path("two")),
         Err(ZeroHourError::NameClash(NameClash { first, second }))

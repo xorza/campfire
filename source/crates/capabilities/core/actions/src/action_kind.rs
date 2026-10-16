@@ -25,17 +25,36 @@ pub enum MeteredKind {
 }
 
 impl ActionKind {
+    /// The kinds the release runs, in the order the table of action fields gives their uses.
+    pub const RUN: [Self; 6] = [
+        Self::Cast,
+        Self::Attack,
+        Self::Use,
+        Self::Train,
+        Self::Build,
+        Self::Gather,
+    ];
+
+    /// Whether the release runs actions of the kind, one of `RUN`: a planned one, as `enter`, it
+    /// does not.
+    pub const fn runs(self) -> bool {
+        let mut at = 0;
+        while at < Self::RUN.len() {
+            if Self::RUN[at] as u8 == self as u8 {
+                return true;
+            }
+            at += 1;
+        }
+        false
+    }
+
     /// The kind as one whose range is in meters at every rank, when it is one.
     pub const fn metered(self) -> Option<MeteredKind> {
         match self {
-            ActionKind::Use => Some(MeteredKind::Use),
-            ActionKind::Build => Some(MeteredKind::Build),
-            ActionKind::Gather => Some(MeteredKind::Gather),
-            ActionKind::Cast
-            | ActionKind::Attack
-            | ActionKind::Enter
-            | ActionKind::Train
-            | ActionKind::Craft => None,
+            Self::Use => Some(MeteredKind::Use),
+            Self::Build => Some(MeteredKind::Build),
+            Self::Gather => Some(MeteredKind::Gather),
+            Self::Cast | Self::Attack | Self::Enter | Self::Train | Self::Craft => None,
         }
     }
 }

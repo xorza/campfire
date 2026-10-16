@@ -8,7 +8,7 @@ use campfire_declare::ByType;
 use campfire_mode::ModeInputs;
 use campfire_navigation::{MapProblem, WalkCheck, Walker};
 use campfire_script::View;
-use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook};
+use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook, UnitTypes};
 use campfire_values::{DamageKind, DeclaredName, Names, PackageIndex, ResourceId, UnitType};
 
 use crate::books::book_builder::BookBuilder;
@@ -46,7 +46,7 @@ pub struct Books {
 impl Books {
     /// The books of `input`, which the package load checked; an error for what the check does
     /// not see and the books cannot hold.
-    pub fn build(input: &BookInput<'_>) -> Result<Books, BookError> {
+    pub fn build(input: &BookInput<'_>) -> Result<Self, BookError> {
         BookBuilder::new(input)?.build()
     }
 
@@ -58,8 +58,8 @@ impl Books {
     pub fn unit_types(
         tag_names: &[DeclaredName],
         packages: &[BookPackage<'_>],
-    ) -> Result<UnitTypeBook, TypesError> {
-        let mut types = UnitTypeBook::new(Release::engine_tags());
+    ) -> Result<UnitTypes, TypesError> {
+        let mut types = UnitTypes::new(Release::engine_tags());
         for name in tag_names {
             types.declare(name.as_str())?;
         }
@@ -115,7 +115,7 @@ impl Books {
     /// its install put an empty one. A book declared and not built, or built and not declared, is
     /// a logic error.
     pub fn install(self, world: &mut World) -> ModeInputs {
-        let Books {
+        let Self {
             mut built,
             damage_kinds,
             resources,
@@ -128,7 +128,7 @@ impl Books {
             names.set_table(damage_kinds);
             names.set_table(resources);
         }
-        Books::fill(&mut built, world);
+        Self::fill(&mut built, world);
         inputs
     }
 

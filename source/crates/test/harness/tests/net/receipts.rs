@@ -56,11 +56,7 @@ fn each_player_keeps_a_receipt_of_inputs_the_journal_holds() {
             (receipt.receipt.session_id, receipt.receipt.slot),
             (id, slot)
         );
-        assert!(
-            receipt
-                .receipt
-                .signed_by(&Verifier::new(), &server, &receipt.signature)
-        );
+        assert!(Verifier::new().verifies(&receipt.signature, &server, &receipt.receipt));
         let file = scratch
             .path("data")
             .join(format!("client-{client}"))
@@ -135,7 +131,7 @@ fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     // The client keeps its receipt and plays on.
     let state = local.client(0).world().resource::<JoinState>();
     assert!(state.receipt().is_some());
-    assert!(state.clock().is_some());
+    assert!(state.playing_clock().is_some());
     assert_eq!(scratch.kind(&place), Some(EntryKind::File));
 }
 

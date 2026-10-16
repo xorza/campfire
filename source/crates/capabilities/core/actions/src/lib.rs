@@ -36,6 +36,7 @@ mod amount;
 mod build_start;
 mod capability_does_spec;
 mod cast_spends;
+mod caster;
 mod channel_call;
 mod checked_action;
 mod construct_data;
@@ -63,8 +64,8 @@ mod purse;
 mod range_field;
 mod rank_fields;
 mod rank_values;
-mod ready_waits;
 mod requires_data;
+mod shot_damage;
 mod shot_hits;
 mod shots;
 mod slot_aim;
@@ -89,16 +90,17 @@ pub use crate::action_kind::{ActionKind, MeteredKind};
 pub use crate::action_names::ActionNames;
 pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
-pub use crate::action_slots::slot_times::{
-    ActionCheck, SlotCharges, SlotTime, SlotTimes, TimedSlots,
-};
-pub use crate::action_slots::{ActionSlot, ActionSlots};
+pub use crate::action_slots::action_progress::ActionProgress;
+pub use crate::action_slots::slot_times::{ActionCheck, SlotCharges, SlotTime, SlotTimes};
+pub use crate::action_slots::timed_slots::TimedSlots;
+pub use crate::action_slots::{ActionSlot, ActionSlots, SlotsMut};
 pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
 pub use crate::amount::Amount;
 pub use crate::build_start::BuildStart;
 pub use crate::capability_does_spec::CapabilityDoesSpec;
 pub use crate::cast_spends::CastSpends;
+pub use crate::caster::Caster;
 pub use crate::channel_call::{ChannelCall, ChannelStep};
 pub use crate::checked_action::CheckedAction;
 pub use crate::construct_data::ConstructData;
@@ -112,7 +114,7 @@ pub use crate::effect_data::{
 pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
 pub use crate::effect_queues::{EffectQueues, QueueListed};
-pub use crate::error::{ActionError, ActionProblem, SlotKindsError};
+pub use crate::error::{ActionError, ActionProblem, KindError, SlotKindsError};
 pub use crate::fan::Fan;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::in_progress::{InProgress, OrderPhase};
@@ -120,7 +122,7 @@ pub use crate::kind_data::{FromData, KindData};
 pub use crate::kind_spec::KindSpec;
 pub use crate::launch_id::LaunchId;
 pub use crate::list_hook::ListHook;
-pub use crate::lists_of::ListsOf;
+pub use crate::lists_of::{ListsOf, ReachHook};
 pub use crate::payer::Payer;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::purse::Purse;
@@ -130,6 +132,7 @@ pub use crate::rank_fields::{
 };
 pub use crate::rank_values::{ChannelRule, ChargeRule, ClipRule, LoadedRanks, RankValues};
 pub use crate::requires_data::RequiresData;
+pub use crate::shot_damage::ShotDamage;
 pub use crate::shot_hits::{ShotHit, ShotHits};
 pub use crate::shots::{Shot, Shots};
 pub use crate::slot_aim::SlotAim;
@@ -182,20 +185,20 @@ campfire_common::enum_all! {
 
 impl ModuleSet for ActionsSet {
     const CAPABILITY: Option<Capability> = None;
-    const ALL: &'static [ActionsSet] = &ActionsSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            ActionsSet::Start => Phase::Start,
-            ActionsSet::Deliver => Phase::Deliver,
-            ActionsSet::Fire => Phase::Fire,
-            ActionsSet::Launch => Phase::Launch,
-            ActionsSet::Land => Phase::Land,
-            ActionsSet::Resolve => Phase::Resolve,
-            ActionsSet::HoldAtInputs => Phase::HoldAtInputs,
-            ActionsSet::HoldAtStrike => Phase::HoldAtStrike,
-            ActionsSet::HoldAtResolve => Phase::HoldAtResolve,
-            ActionsSet::HoldAtEnd => Phase::HoldAtEnd,
+            Self::Start => Phase::Start,
+            Self::Deliver => Phase::Deliver,
+            Self::Fire => Phase::Fire,
+            Self::Launch => Phase::Launch,
+            Self::Land => Phase::Land,
+            Self::Resolve => Phase::Resolve,
+            Self::HoldAtInputs => Phase::HoldAtInputs,
+            Self::HoldAtStrike => Phase::HoldAtStrike,
+            Self::HoldAtResolve => Phase::HoldAtResolve,
+            Self::HoldAtEnd => Phase::HoldAtEnd,
         })
     }
 }
@@ -208,10 +211,12 @@ impl Module for Actions {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ActionsSet>();
         d.component::<ActionSlots>();
+        d.component::<ActionProgress>();
         d.component::<SlotTimes>();
         d.scratch::<Shots>();
         d.scratch::<ShotHits>();
         d.require::<ActionSlots, SlotTimes>();
+        d.require::<ActionSlots, ActionProgress>();
         d.book::<ActionBook>();
         d.book::<ParamBook>();
         d.book::<EffectListBook>();
@@ -222,18 +227,22 @@ impl Module for Actions {
         d.book::<ByType<ActionSlots>>();
         d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
+        d.part::<BodyUnit, ActionProgress>(|at| {
+            at.of_type::<ActionSlots>()
+                .map(|_| ActionProgress::default())
+        });
     }
 
-    /// Adds the actions to a match whose core is installed, with none loaded yet, and, in a match
-    /// with combat, the holds of every action: its charges as each tick starts, and its passives
-    /// then and as each stage that changes ranks or cooldowns ends. A match with no combat holds
-    /// none, as every action's unit target is one combat finds; the start of an action is the
-    /// abilities'.
+    /// Adds the actions to a match whose core is installed, with none loaded yet, and the holds
+    /// of every action: its charges as each tick starts, which a cast of any match draws; and,
+    /// in a match with stats, whose modifiers a passive is, its passives then and as each stage
+    /// that changes ranks or cooldowns ends. The start of an action is the abilities'.
     fn install(cx: &mut InstallCx<'_>) {
-        if cx.has(Capability::Combat) {
+        cx.systems(Holds::hold_charges.in_set(ActionsSet::HoldAtInputs));
+        if cx.has(Capability::Stats) {
             cx.systems((
-                (Holds::hold_charges, Holds::want_passives)
-                    .chain()
+                Holds::want_passives
+                    .after(Holds::hold_charges)
                     .in_set(ActionsSet::HoldAtInputs),
                 Holds::want_passives.in_set(ActionsSet::HoldAtStrike),
                 Holds::want_passives.in_set(ActionsSet::HoldAtResolve),
@@ -270,6 +279,7 @@ pub mod internals {
     use crate::fan::Fan;
     use crate::gather_spec::GatherSpec;
     use crate::kind_spec::KindSpec;
+    use crate::rank_fields::{RankToggle, TogglePer};
     use crate::rank_values::{ClipRule, RankValues};
     use crate::weapon::{Source, Weapon};
 
@@ -291,7 +301,7 @@ pub mod internals {
             range: Num,
             time: Ticks,
         ) -> ActionId {
-            Actions::push(
+            Self::push(
                 world,
                 "gather",
                 Action {
@@ -307,6 +317,42 @@ pub mod internals {
                         windup: time,
                         charges: None,
                         toggle: None,
+                        channel: None,
+                        charge: None,
+                        amount: None,
+                        period: None,
+                        clip: None,
+                    }],
+                    resource_costs: Box::default(),
+                    script: None,
+                    hooks: HookSet::default(),
+                    delivery: None,
+                },
+            )
+        }
+
+        /// Adds a toggle that pays `cost` as each attack of its caster goes off, at no other
+        /// cost, to the match's action book.
+        pub fn add_attack_toggle(world: &mut World, cost: PoolCost) -> ActionId {
+            Self::push(
+                world,
+                "toggle",
+                Action {
+                    package: PackageIndex::MODE,
+                    kind: KindSpec::Cast,
+                    passive: None,
+                    hold: None,
+                    aim: Aim::None,
+                    ranks: vec![RankValues {
+                        range: ActionRange::Meters(Num::ZERO),
+                        cooldown: Ticks::ZERO,
+                        cost: PoolCost::default(),
+                        windup: Ticks::ZERO,
+                        charges: None,
+                        toggle: Some(RankToggle {
+                            per: TogglePer::Attack,
+                            cost,
+                        }),
                         channel: None,
                         charge: None,
                         amount: None,
@@ -362,8 +408,8 @@ pub mod internals {
     impl TestWeapon {
         /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
         /// rate and damage, costing nothing.
-        pub fn new(aim: Filter, range: ActionRange, windup: Ticks) -> TestWeapon {
-            TestWeapon {
+        pub fn new(aim: Filter, range: ActionRange, windup: Ticks) -> Self {
+            Self {
                 aim,
                 range,
                 windup,
@@ -392,7 +438,7 @@ pub mod internals {
                     homes: true,
                 },
             });
-            Actions::push(
+            Self::push(
                 world,
                 "weapon",
                 Action {
@@ -452,7 +498,7 @@ pub mod internals {
             time: Ticks,
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
-            Actions::push(
+            Self::push(
                 world,
                 "train",
                 Action {
@@ -492,7 +538,7 @@ pub mod internals {
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
             let range = range.into();
-            Actions::push(
+            Self::push(
                 world,
                 "build",
                 Action {

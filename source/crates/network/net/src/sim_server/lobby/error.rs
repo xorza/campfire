@@ -1,8 +1,10 @@
 use campfire_common::PlayerSlot;
 use campfire_runner::TermsError;
-use campfire_store::{AppendOpenError, DurableError, PathError};
+use campfire_store::{AppendOpenError, PathError};
 use campfire_visibility::VisibilityError;
 use thiserror::Error;
+
+use crate::sim_server::session_dir::error::SessionCreateError;
 
 /// Why a session's lobby does not open.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
@@ -37,7 +39,7 @@ pub enum LobbyOpenError {
 pub enum KeepFilesError {
     /// The session's directory or private record was not made.
     #[error("could not make the session's directory")]
-    Dir(#[source] PathError<DurableError>),
+    Dir(#[source] SessionCreateError),
     #[error("the journal")]
     Journal(#[source] PathError<AppendOpenError>),
 }

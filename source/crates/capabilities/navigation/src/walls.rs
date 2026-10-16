@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use campfire_geometry::{BodyBox, Bounds};
+use campfire_geometry::BodyBox;
 use campfire_math::Vec3;
 use campfire_units::Layer;
 
@@ -11,8 +11,8 @@ use crate::wall::Wall;
 pub struct Walls(Arc<[Wall]>);
 
 impl Walls {
-    pub fn new(walls: &[Wall]) -> Walls {
-        Walls(walls.into())
+    pub fn new(walls: &[Wall]) -> Self {
+        Self(walls.into())
     }
 
     pub fn walls(&self) -> &[Wall] {
@@ -21,35 +21,15 @@ impl Walls {
 
     /// Whether `other` shares these walls, by their one allocation: a copy of a match's walls is
     /// them, with no compare of their points.
-    pub(crate) fn same(&self, other: &Walls) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
-    /// Whether `body`, a box on `layer` at `pos`, has room there among `walls`, none in a match
-    /// with none: it lies within `bounds`, and its inside shares no point with a wall of its
-    /// layer. The bodies that stand there are the caller's to test.
-    pub fn room_for(
-        walls: Option<&Walls>,
-        bounds: Bounds,
-        pos: Vec3,
-        body: &BodyBox,
-        layer: Layer,
-    ) -> bool {
-        let (min, max) = (bounds.min(), bounds.max());
-        let extent = body.extent();
-        let ground = [pos.x, pos.z];
-        let within = (0..2).all(|axis| {
-            ground[axis]
-                .checked_sub(extent[axis])
-                .is_some_and(|low| low >= min[axis])
-                && ground[axis]
-                    .checked_add(extent[axis])
-                    .is_some_and(|high| high <= max[axis])
-        });
-        let walls = walls.map_or(&[][..], |walls| &walls.0);
-        within
-            && !walls
-                .iter()
-                .any(|wall| wall.layer == layer && body.overlaps_polygon(pos, &wall.area))
+    /// Whether the inside of `body`, a box on `layer` at `pos`, shares a point with a wall of its
+    /// layer.
+    pub fn overlaps_box(&self, pos: Vec3, body: &BodyBox, layer: Layer) -> bool {
+        self.0
+            .iter()
+            .any(|wall| wall.layer == layer && body.overlaps_polygon(pos, &wall.area))
     }
 }

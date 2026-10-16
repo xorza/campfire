@@ -1,8 +1,8 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
-use campfire_actions::{SlotCharges, SlotTimes, TimedSlots};
+use campfire_actions::{ActionProgress, SlotCharges, SlotTimes, TimedSlots};
 use campfire_common::Tick;
-use campfire_navigation::{Party, PartyKey};
+use campfire_navigation::{Party, PartyKey, Progress, RouteAsk};
 use campfire_orders::NextThink;
 use campfire_production::{Gatherer, NodeAt};
 use campfire_progression::{LevelUp, LevelUps};
@@ -11,7 +11,7 @@ use campfire_stats::{Ends, Lifetime, StackEnd};
 use campfire_units::{
     DashTo, ForcedMove, MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState,
 };
-use campfire_values::{ActionStart, DashDelivery};
+use campfire_values::{ActionStart, DashDelivery, VisionShare};
 
 use super::*;
 
@@ -111,9 +111,9 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(slots(strike, 0).check(&game, grunt) && slots(strike, 1).check(&game, grunt));
     assert!(!slots(strike, u8::MAX).check(&game, grunt));
     assert!(!slots(ActionId::new(u32::MAX), 1).check(&game, grunt));
-    let mut ordered = slots(strike, 1);
+    let mut ordered = ActionProgress::default();
     ordered.order(1, ActionTarget::None);
-    assert!(!ordered.check(&game, grunt));
+    assert!(!ordered.check_against(&slots(strike, 1), &game));
     // Times of each slot the grunt has, one; a charge only on an action with them, which strike
     // is not.
     let times = game.get::<SlotTimes>(grunt).unwrap();
@@ -123,7 +123,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
         count: 1,
         next: Tick::ZERO,
     };
-    charged.set_charges(0, Some(one));
+    charged.force_charges(0, Some(one));
     assert!(!charged.check(&game, grunt));
     let none = SlotTimes::ready(&ActionSlots::new([]));
     assert!(!none.check(&game, grunt));
@@ -212,12 +212,22 @@ fn a_restore_check_keeps_the_match_and_its_players_to_their_entities() {
     // The relations and the match's end, on the match's entity, of the mode's teams.
     let match_id = *game.get::<StableId>(match_entity).unwrap();
     let mut relations = Relations::default();
-    relations.set(Team::new(0), Team::new(2), Relation::Friendly, true);
+    relations.set(
+        Team::new(0),
+        Team::new(2),
+        Relation::Friendly,
+        VisionShare::Shared,
+    );
     assert_eq!(
         checked_with(&mut game, match_entity, relations.clone()),
         Ok(())
     );
-    relations.set(Team::new(0), Team::new(3), Relation::Friendly, true);
+    relations.set(
+        Team::new(0),
+        Team::new(3),
+        Relation::Friendly,
+        VisionShare::Shared,
+    );
     let unknown = Err(SnapshotError::Invalid {
         ty: "units.relations",
         id: Some(match_id),
@@ -373,10 +383,16 @@ fn a_restore_keeps_each_time_within_the_limit() {
             "{at}"
         );
         let mut attackers = RecentAttackers::default();
-        attackers.struck(unit, at, game.resource::<EntityIndex>());
+        attackers.record(unit, at, game.resource::<EntityIndex>());
         assert_eq!(Match::decodes(&attackers), holds, "{at}");
         let mut route = game.get::<Route>(grunt).unwrap().clone();
-        route.ask(game.get::<Position>(grunt).unwrap().get(), at, None);
+        let goal = game.get::<Position>(grunt).unwrap().get();
+        let ask = RouteAsk {
+            goal,
+            tick: at,
+            party: None,
+        };
+        route.ask(ask, &mut Progress::default());
         assert_eq!(Match::decodes(&route), holds, "{at}");
     }
 }
@@ -439,10 +455,10 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
             stats: vec![one],
             lifetime: Lifetime::applied(Ends::At(ends)),
             stack_life: Some(life),
-            stack_ends: vec![StackEnd {
+            stack_end: Some(StackEnd {
                 until: stack_end,
                 count: 1,
-            }],
+            }),
             ..NewInstance::bare(modifier, None)
         },
         reapply: Reapply::Refresh,
@@ -504,7 +520,7 @@ fn on_unit_died(ctx, unit, killer, assisters) {}
     Mode::tick_inputs(&mut game, &[]);
     Mode::tick_inputs(&mut game, &[]);
     let mut delta = StateDelta::default();
-    game.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+    game.resource_scope(|world, mut registry: Mut<'_, StateRegistry>| {
         registry.track(world, &mut delta);
     });
     Mode::tick_inputs(&mut game, &[]);
@@ -575,20 +591,22 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
         let started = dash(DashTo::Unit(id), Some(start(point)));
         assert_eq!(started.check(&game, grunt), holds);
         let mut route = game.get::<Route>(grunt).unwrap().clone();
-        route.ask(point, Tick::new(0), None);
+        let tick = Tick::new(0);
+        let ask = |goal, party| RouteAsk { goal, tick, party };
+        route.ask(ask(point, None), &mut Progress::default());
         assert_eq!(route.check(&game, grunt), holds, "{point:?}");
-        route.ask(at, Tick::new(0), Some(party(point)));
+        route.ask(ask(at, Some(party(point))), &mut Progress::default());
         assert_eq!(route.check(&game, grunt), holds, "{point:?}");
-        let mut slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
-        slots.order(0, ActionTarget::Point(point));
-        assert_eq!(slots.check(&game, grunt), holds, "{point:?}");
-        let gatherer = Gatherer {
-            last: Some(NodeAt {
-                node: id,
-                pos: point,
-            }),
-            ..Gatherer::default()
+        let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
+        let mut progress = ActionProgress::default();
+        progress.order(0, ActionTarget::Point(point));
+        let checked = slots.check(&game, grunt) && progress.check_against(&slots, &game);
+        assert_eq!(checked, holds, "{point:?}");
+        let last = NodeAt {
+            node: id,
+            pos: point,
         };
+        let gatherer = Gatherer::of_parts(None, None, Some(last));
         assert_eq!(gatherer.check(&game, grunt), holds, "{point:?}");
     }
 }

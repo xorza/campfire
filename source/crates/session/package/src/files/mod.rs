@@ -4,6 +4,7 @@
 pub(crate) mod avatar_file;
 pub(crate) mod content_table;
 pub(crate) mod dependency;
+pub(crate) mod dependency_path;
 pub(crate) mod manifest;
 pub(crate) mod mode_file;
 pub(crate) mod mode_manifest;

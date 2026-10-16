@@ -13,11 +13,11 @@ pub struct TickRange {
 
 impl TickRange {
     /// The range from `min` to `max` with its `default`; `None` unless it holds its default.
-    pub const fn new(min: NonZeroU32, default: NonZeroU32, max: NonZeroU32) -> Option<TickRange> {
+    pub const fn new(min: NonZeroU32, default: NonZeroU32, max: NonZeroU32) -> Option<Self> {
         if min.get() > default.get() || default.get() > max.get() {
             return None;
         }
-        Some(TickRange { min, max, default })
+        Some(Self { min, max, default })
     }
 
     pub const fn contains(self, hz: NonZeroU32) -> bool {
@@ -36,7 +36,7 @@ impl TickRange {
 }
 
 impl<'de> Deserialize<'de> for TickRange {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TickRange, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -45,7 +45,7 @@ impl<'de> Deserialize<'de> for TickRange {
             default: NonZeroU32,
         }
         let Fields { min, max, default } = Fields::deserialize(deserializer)?;
-        TickRange::new(min, default, max)
+        Self::new(min, default, max)
             .ok_or_else(|| D::Error::custom("the tick rate range does not hold its default"))
     }
 }

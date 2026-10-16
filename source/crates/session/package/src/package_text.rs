@@ -17,11 +17,8 @@ impl PackageText {
     /// The text of `files`, a package of `language`: each file under `locale/` is
     /// `<language>.ftl` and reads, and another language's file defines only messages the own
     /// file defines.
-    pub(crate) fn read(
-        files: &PackageFiles,
-        language: &Language,
-    ) -> Result<PackageText, LoadProblem> {
-        let mut text = PackageText {
+    pub(crate) fn read(files: &PackageFiles, language: &Language) -> Result<Self, LoadProblem> {
+        let mut text = Self {
             language: language.clone(),
             files: BTreeMap::new(),
         };

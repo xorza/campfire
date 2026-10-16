@@ -248,6 +248,22 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         *game.get_mut::<Level>(unit).unwrap() = Level::default();
         game.step();
         assert_eq!(pools(&game)[0], full(380), "{bound}");
+
+        if bound {
+            // Its life spent, as a kill leaves it until its death: neither the rise of its maximum
+            // at level 18 nor a second of regen lifts it from 0, where its mana, spent too and no
+            // life, rises as its maximum does, by 45 × 17 = 765.
+            game.get_mut::<Life>(unit).unwrap().take(Num::int(380));
+            game.get_mut::<Pools>(unit)
+                .unwrap()
+                .take(MANA, Num::int(250));
+            *game.get_mut::<Level>(unit).unwrap() = Level::new(18).unwrap();
+            for _ in 0..30 {
+                game.step();
+            }
+            let spent = [(Num::ZERO, Num::int(1672)), (Num::int(765), Num::int(1015))];
+            assert_eq!(pools(&game), spent);
+        }
     }
 }
 
@@ -687,6 +703,15 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     assert!(holds(&game, far));
     assert_eq!(game.get::<Modifiers>(held), Some(&as_sent));
     game.entity_mut(held).remove::<Unpredicted>();
+    // The carrier's aura ends, and the far ally holds it no more; applied again, it holds it.
+    let mut presence_carrier = CarriedMut::of(&mut game, held).unwrap();
+    presence_carrier.remove(presence, Some(carrier));
+    game.step();
+    assert!(!holds(&game, far));
+    let mut presence_carrier = CarriedMut::of(&mut game, held).unwrap();
+    presence_carrier.apply(aura(presence, carrier, Num::int(2)));
+    game.step();
+    assert!(holds(&game, far));
     // The carrier dies: its aura goes, with its own modifiers.
     let dead = entity(&game, carrier);
     game.entity_mut(dead).insert(Dead);
@@ -763,6 +788,7 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let second = Rank::new(2).unwrap();
     let grant = |rank| Grant {
         modifier: inspired,
+        from: GrantFrom::Itself,
         hold: Hold::Passive,
         action: None,
         rank,
@@ -865,7 +891,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         let stats = world.get::<UnitStats>(entity).unwrap();
         assert_eq!(stats.values()[speed.index()], Num::int(2));
         let tags = world.get::<UnitTags>(entity);
-        assert!(UnitTags::properties_of(tags).blocks(Block::Move));
+        assert!(tags.is_some_and(|tags| tags.properties.blocks(Block::Move)));
     }
     assert_eq!(game.state_hash(), restored.state_hash());
 

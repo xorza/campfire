@@ -1,14 +1,18 @@
-use campfire_codec::Toml;
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use campfire_codec::{Toml, TomlTable};
 use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_store::internals::{PinnedFile, Scratch};
 
 use super::*;
+use crate::harness::tree_dir::TreeDir;
 use crate::package_store::PackageStore;
 
 /// Writes the index of the package at `dir`, under `scratch`, from its files.
 fn pack(scratch: &Scratch, dir: &str) {
     let index = PackageDir::new(scratch.path(dir)).index_files().unwrap();
-    scratch.write(format!("{dir}/{}", FileIndex::PATH), index.bytes());
+    scratch.write(format!("{dir}/{}", FileIndex::PATH), index.bytes);
 }
 
 #[test]
@@ -35,7 +39,7 @@ fn a_package_is_its_index_and_reads_through_it() {
         Err(ContentError::Missing { path }) if path.as_str() == FileIndex::PATH
     ));
     pack(&scratch, "one");
-    assert_eq!(dir.index_files().unwrap().bytes(), list);
+    assert_eq!(dir.index_files().unwrap().bytes, list);
     let read = dir.files().unwrap();
     assert_eq!(read.fingerprint(), expected);
     // The same files in memory, in a tree whose other files are outside the package, reached
@@ -48,8 +52,11 @@ fn a_package_is_its_index_and_reads_through_it() {
     .into_iter()
     .map(|(path, text)| (PathBuf::from(path), text.as_bytes().to_vec()))
     .collect();
-    let other = PackageDir::in_memory(Arc::new(PackageDir::reindexed(tree)), "pack/other");
-    let memory = other.join(Path::new("../one")).files().unwrap();
+    let other = TreeDir::new(Arc::new(TreeDir::reindexed(tree)), "pack/other");
+    let memory = other
+        .join(&DependencyPath::parse("../one").unwrap())
+        .files()
+        .unwrap();
     assert_eq!(memory.fingerprint(), expected);
     let listed: Vec<_> = memory.files_under("data").collect();
     assert_eq!(listed, [&PackagePath::parse("data/a.toml").unwrap()]);
@@ -188,7 +195,7 @@ fn a_package_refuses_what_an_os_would_hold_another_way() {
             .collect();
         assert!(
             matches!(
-                PackageDir::in_memory(Arc::new(tree), "p").index_files(),
+                TreeDir::new(Arc::new(tree), "p").index_files(),
                 Err(IndexError::Package(ContentError::CaseClash { path, other: first }))
                     if path.as_str() == "data/a.toml" && first.as_str() == other
             ),
@@ -207,7 +214,7 @@ fn a_package_reads_its_own_files_only() {
     struct Hero {
         name: String,
         slots: BTreeMap<String, Vec<String>>,
-        actions: BTreeMap<String, toml::Table>,
+        actions: BTreeMap<String, TomlTable>,
     }
     #[derive(Debug, serde::Deserialize)]
     struct Named {
@@ -266,10 +273,8 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
     )
     .into_bytes();
     let expected = PackageFingerprint::of(&list);
-    let tree = Arc::new(PackageDir::reindexed(tree));
-    let read = PackageDir::in_memory(Arc::clone(&tree), "one")
-        .files()
-        .unwrap();
+    let tree = Arc::new(TreeDir::reindexed(tree));
+    let read = TreeDir::new(Arc::clone(&tree), "one").files().unwrap();
     assert_eq!(read.fingerprint(), expected);
     // Only the files a load reads stay; an asset reads on demand, checked against its row.
     assert_eq!(read.files_under("textures").count(), 0);
@@ -284,20 +289,13 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
         read.read_file(&unlisted),
         Err(ContentError::Missing { path }) if path == unlisted
     ));
-    // No read takes a file whole: an exact bound refuses another size, an upper bound a file
-    // past it, as the index's read takes at most `FileIndex::MAX_LEN`.
-    let one = PackageDir::in_memory(Arc::clone(&tree), "one");
+    // No read takes a file whole: a read of a row's size refuses a file of another, as
+    // `ReadBound` holds.
+    let one = TreeDir::new(Arc::clone(&tree), "one");
     let len = u64::try_from(asset.len()).unwrap();
-    assert_eq!(
-        one.read_bytes(&texture, ReadBound::AtMost(len)).unwrap(),
-        asset
-    );
+    assert_eq!(one.read(&texture, len).unwrap(), asset);
     assert!(matches!(
-        one.read_bytes(&texture, ReadBound::AtMost(len - 1)),
-        Err(ContentError::Read(_))
-    ));
-    assert!(matches!(
-        one.read_bytes(&texture, ReadBound::Exact(len + 1)),
+        one.read(&texture, len + 1),
         Err(ContentError::Changed { path }) if path == texture
     ));
     // The same files on disk read the same; an asset changed after the load fails only when it
@@ -329,16 +327,12 @@ fn a_package_keeps_what_a_load_reads_and_reads_the_rest_on_demand() {
 
     // A file a load reads that is not UTF-8 reads, but not as text.
     let bad = BTreeMap::from([(PathBuf::from("two/data/bad.toml"), vec![0xFF, b'a'])]);
-    let bad = PackageDir::in_memory(Arc::new(bad), "two")
-        .index_files()
-        .unwrap();
+    let bad = TreeDir::new(Arc::new(bad), "two").index_files().unwrap();
     let tree = BTreeMap::from([
         (PathBuf::from("two/data/bad.toml"), vec![0xFF, b'a']),
-        (PathBuf::from("two/package.index"), bad.bytes().to_vec()),
+        (PathBuf::from("two/package.index"), bad.bytes),
     ]);
-    let two = PackageDir::in_memory(Arc::new(tree), "two")
-        .files()
-        .unwrap();
+    let two = TreeDir::new(Arc::new(tree), "two").files().unwrap();
     let path = PackagePath::parse("data/bad.toml").unwrap();
     assert!(matches!(
         two.read_text(&path),
@@ -372,10 +366,10 @@ fn every_workspace_package_holds_the_index_of_its_files() {
     for dir in found {
         let index = PackageDir::new(&dir).index_files().unwrap();
         let at = dir.join(FileIndex::PATH);
-        PinnedFile::new(&at).bless(index.bytes()).unwrap();
+        PinnedFile::new(&at).bless(&index.bytes).unwrap();
         let held = InputFile::read_if_present(&at, INDEX_LEN).unwrap();
         assert!(
-            held.as_deref() == Some(index.bytes()),
+            held.as_deref() == Some(index.bytes.as_slice()),
             "{} differs from its files: write it again with `./drive.py index`",
             at.display()
         );

@@ -1,5 +1,6 @@
 use std::fmt;
 
+use campfire_common::NamedEnum;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -39,8 +40,8 @@ pub struct TagTerm<'a> {
 
 impl FilterData {
     /// The filter of every unit: all relations, and no tag.
-    pub const fn all() -> FilterData {
-        FilterData {
+    pub const fn all() -> Self {
+        Self {
             relations: RelationSet::All,
             tags: Vec::new(),
         }
@@ -48,7 +49,7 @@ impl FilterData {
 
     /// `text` as a filter; `None` unless its set of relations is one of the sets and each of its
     /// tags is a name.
-    pub fn parse(text: &str) -> Option<FilterData> {
+    pub fn parse(text: &str) -> Option<Self> {
         let syntax = FilterSyntax::parse(text)?;
         let tags = syntax.tags().map(|term| {
             Some(FilterTag {
@@ -56,7 +57,7 @@ impl FilterData {
                 negated: term.negated,
             })
         });
-        Some(FilterData {
+        Some(Self {
             relations: syntax.relations,
             tags: tags.collect::<Option<_>>()?,
         })
@@ -64,9 +65,9 @@ impl FilterData {
 }
 
 impl<'de> Deserialize<'de> for FilterData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<FilterData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        FilterData::parse(&text).ok_or_else(|| D::Error::custom(format!("filter {text:?}")))
+        Self::parse(&text).ok_or_else(|| D::Error::custom(format!("filter {text:?}")))
     }
 }
 
@@ -85,7 +86,7 @@ impl fmt::Display for FilterData {
 impl<'a> FilterSyntax<'a> {
     /// `text` as a filter; `None` unless its set of relations is one of the sets and no tag of it
     /// is empty.
-    pub fn parse(text: &'a str) -> Option<FilterSyntax<'a>> {
+    pub fn parse(text: &'a str) -> Option<Self> {
         let (relations, tags, tagged) = match text.split_once(':') {
             Some((relations, tags)) => (relations, tags, true),
             None => (text, "", false),

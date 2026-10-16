@@ -1,5 +1,5 @@
 use campfire_geometry::Placed;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, SinCos, Vec3};
 use campfire_script::{
     ApiBuilder, ApiOwner, Checked, Ctx, MemberSpec, NumError, Raised, ScriptPosition, ScriptRadius,
     ScriptValue, Unit,
@@ -62,7 +62,7 @@ impl UnitsApi {
         );
         api.ty::<Vec3>("Vector")
             .method(rotated, |vector: Vec3, degrees: Num| {
-                UnitsApi::rotated(vector, degrees)
+                Self::rotated(vector, degrees)
             })
             .method(
                 distance,
@@ -77,7 +77,7 @@ impl UnitsApi {
             .method(
                 within,
                 |ctx: &Ctx, from: ScriptPosition, to: ScriptPosition, radius: ScriptRadius| {
-                    Ok(UnitsApi::within(ctx, from.get(), to.get(), radius))
+                    Ok(Self::within(ctx, from.get(), to.get(), radius))
                 },
             )
             .method(
@@ -98,17 +98,17 @@ impl UnitsApi {
         );
         api.method(
             MemberSpec::operator(ApiOwner::Vector, "+", "the sum of two vectors"),
-            |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_add(b)),
+            |a: Vec3, b: Vec3| Self::exact(a.checked_add(b)),
         )
         .method(
             MemberSpec::operator(ApiOwner::Vector, "-", "the difference of two vectors"),
-            |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_sub(b)),
+            |a: Vec3, b: Vec3| Self::exact(a.checked_sub(b)),
         )
         .method(scaled, |vector: Vec3, factor: Num| {
-            UnitsApi::exact(vector.checked_mul(factor))
+            Self::exact(vector.checked_mul(factor))
         })
         .method(scaled, |factor: Num, vector: Vec3| {
-            UnitsApi::exact(vector.checked_mul(factor))
+            Self::exact(vector.checked_mul(factor))
         });
     }
 
@@ -117,13 +117,11 @@ impl UnitsApi {
         vector.ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
     }
 
-    /// `vector` turned by `degrees` about the vertical; a turn too large to compute fails the call.
+    /// `vector` turned by `degrees` about the vertical, any number of degrees, by the sine and
+    /// cosine of the angle each rounded once; a vector turned past what a number holds fails the
+    /// call.
     fn rotated(vector: Vec3, degrees: Num) -> Checked<Vec3> {
-        let radians = degrees
-            .checked_mul(Num::PI)
-            .and_then(|turn| turn.checked_div_int(180))
-            .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))?;
-        UnitsApi::exact(vector.checked_rotated_y(radians.sin_cos()))
+        Self::exact(vector.checked_rotated_y(SinCos::of_degrees(degrees)))
     }
 
     /// Whether `to` is within `radius` of `from` in the map's metric, exactly: the reach rule

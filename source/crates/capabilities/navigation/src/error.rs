@@ -28,13 +28,9 @@ pub enum MapProblem {
                  from the one before it"
     )]
     WaypointUnreachable { path: DeclaredName, waypoint: usize },
-    /// Placed unit `unit`, of `unit_type`, a box, reaches past the bounds, or overlaps a wall of
-    /// its layer or another placed unit of its layer that cannot walk.
-    #[error(
-        "placed unit {unit}, a \"{unit_type}\" box, reaches past the bounds or overlaps a wall \
-                 or another placed unit that cannot walk"
-    )]
-    BoxBlocked {
+    /// Placed unit `unit`, of `unit_type`, a box, reaches past the bounds.
+    #[error("placed unit {unit}, a \"{unit_type}\" box, reaches past the bounds")]
+    BoxOutside {
         unit: usize,
         unit_type: DeclaredName,
     },
@@ -57,15 +53,13 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for NavigationRefusal {
     const OWNER: Capability = Capability::Navigation;
-    const CASES: &'static [NavigationRefusal] = &NavigationRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            NavigationRefusal::NotADistance => {
-                "distance is not more than 0, or beyond the world's bound"
-            }
-            NavigationRefusal::NotASpeed => "speed moves less than a bit a tick",
-            NavigationRefusal::NoWalker => "the unit does not walk",
+            Self::NotADistance => "distance is not more than 0, or beyond the world's bound",
+            Self::NotASpeed => "speed moves less than a bit a tick",
+            Self::NoWalker => "the unit does not walk",
         }
     }
 }

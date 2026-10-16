@@ -1,4 +1,5 @@
 use std::io;
+use std::path::PathBuf;
 
 use thiserror::Error;
 
@@ -6,7 +7,8 @@ use crate::durable_dir::error::DurableDirError;
 use crate::path_error::PathError;
 use crate::platform::owner_only::Exposure;
 
-/// Why a data directory did not open.
+/// Why a data directory did not open, each case with the path of its step: the directory or
+/// one above it, the directory, or its lock file.
 #[derive(Debug, Error)]
 pub enum DataDirError {
     /// It, or a directory above it, was not made.
@@ -14,13 +16,13 @@ pub enum DataDirError {
     Create(#[source] PathError<DurableDirError>),
     /// Who may open it did not read.
     #[error("could not check who may open the data directory")]
-    Inspect(#[source] io::Error),
+    Inspect(#[source] PathError<io::Error>),
     /// Others than its owner may open it, as the OS names them.
-    #[error("others may open the data directory ({0}); make it its owner's only")]
-    Exposed(Exposure),
+    #[error("others may open the data directory {} ({exposure}); make it its owner's only", .path.display())]
+    Exposed { path: PathBuf, exposure: Exposure },
     #[error("could not lock the data directory")]
-    Lock(#[source] io::Error),
+    Lock(#[source] PathError<io::Error>),
     /// Another holder, a process or this one, holds its lock.
-    #[error("another process holds the data directory")]
-    Locked,
+    #[error("another process holds the data directory {}", .path.display())]
+    Locked { path: PathBuf },
 }

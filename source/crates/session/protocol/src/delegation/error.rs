@@ -15,6 +15,11 @@ pub enum DelegationError {
     /// The JSON is not a Nostr event, of the kind nostr's error says.
     #[error("delegation is not a Nostr event")]
     NotEvent(#[source] EventError),
+    /// The JSON is an event, but not the one spelling nostr writes of it: no signature covers
+    /// its whitespace, key order, escapes or hex case, so another spelling would give one log a
+    /// second fingerprint.
+    #[error("delegation is not its event's canonical JSON")]
+    NotCanonical,
     /// The event id is not the hash of the event.
     #[error("delegation id is not the hash of the event")]
     WrongId,
@@ -61,14 +66,14 @@ pub enum EventError {
 }
 
 impl From<NostrError> for EventError {
-    fn from(error: NostrError) -> EventError {
+    fn from(error: NostrError) -> Self {
         match error.kind() {
-            ErrorKind::Malformed => EventError::Malformed,
-            ErrorKind::Invalid => EventError::Invalid,
-            ErrorKind::Missing => EventError::Missing,
-            ErrorKind::Unsupported => EventError::Unsupported,
-            ErrorKind::Crypto => EventError::Crypto,
-            _ => EventError::Other,
+            ErrorKind::Malformed => Self::Malformed,
+            ErrorKind::Invalid => Self::Invalid,
+            ErrorKind::Missing => Self::Missing,
+            ErrorKind::Unsupported => Self::Unsupported,
+            ErrorKind::Crypto => Self::Crypto,
+            _ => Self::Other,
         }
     }
 }

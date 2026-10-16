@@ -21,11 +21,11 @@ pub struct Thresholds(Box<[Num]>);
 impl Thresholds {
     /// The thresholds of `levels`; `None` for none, or for one not positive or not more than the
     /// one before.
-    pub fn new(levels: impl IntoIterator<Item = Num>) -> Option<Thresholds> {
+    pub fn new(levels: impl IntoIterator<Item = Num>) -> Option<Self> {
         let levels: Box<[Num]> = levels.into_iter().collect();
         let ascending = levels.is_sorted_by(|a, b| a < b);
         let positive = levels.first().is_some_and(|&first| first > Num::ZERO);
-        (ascending && positive).then_some(Thresholds(levels))
+        (ascending && positive).then_some(Self(levels))
     }
 
     pub fn get(&self) -> &[Num] {
@@ -35,8 +35,8 @@ impl Thresholds {
 
 /// Data is untrusted, so thresholds that are none, not positive or not ascending fail to read.
 impl<'de> Deserialize<'de> for Thresholds {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Thresholds, D::Error> {
-        Thresholds::new(Vec::<Num>::deserialize(deserializer)?).ok_or_else(|| {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(Vec::<Num>::deserialize(deserializer)?).ok_or_else(|| {
             D::Error::custom(
                 "a track has a level 2, and each level's experience is positive and more than the \
                  level before's",

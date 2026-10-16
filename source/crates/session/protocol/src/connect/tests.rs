@@ -11,6 +11,7 @@ use crate::harness::test_key::TestKey;
 use crate::input_rules::InputRules;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
+use crate::signed;
 use crate::slot_plan::SlotPlan;
 
 const EXPIRATION: u64 = TestKey::NOW + 60;
@@ -28,7 +29,7 @@ fn terms() -> SessionTerms {
         seed_commitment: SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
         release: Version::new(0, 1, 0),
         mode: PackageFingerprint::new([5; 32]),
-        map: MapName::new("lane").unwrap(),
+        map: MapName::parse("lane").unwrap(),
         dependencies: vec![PackageFingerprint::new([4; 32])],
         slots: vec![SlotPlan::Player],
         visibility: Vec::new(),
@@ -54,11 +55,10 @@ fn delegation(change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
 fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     let challenge = ConnectChallenge::new([9; 32]);
     let binding = ChannelBinding::new([7; 32]);
-    let answer = ConnectAnswer {
+    let answer = TestKey::signer(TestKey::of(2)).sign(&ConnectAnswer {
         challenge: &challenge,
         binding: &binding,
-    }
-    .sign(&TestKey::signer(TestKey::of(2)));
+    });
     let good = delegation(|_| {});
     let check = |challenge: ConnectChallenge,
                  binding: ChannelBinding,
@@ -69,7 +69,7 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
             challenge: &challenge,
             binding: &binding,
         };
-        to.check(&Verifier::new(), &terms(), delegation, answer, now)
+        to.check(&mut Verifier::new(), &terms(), delegation, answer, now)
     };
     assert_eq!(
         check(challenge, binding, &good, &answer, TestKey::NOW),
@@ -105,11 +105,10 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     }
     // An answer given to another challenge, or over another TLS session's binding, as a relay
     // between two sessions gives, is refused.
-    let relayed = ConnectAnswer {
+    let relayed = TestKey::signer(TestKey::of(2)).sign(&ConnectAnswer {
         challenge: &ConnectChallenge::new([10; 32]),
         binding: &binding,
-    }
-    .sign(&TestKey::signer(TestKey::of(2)));
+    });
     let other_session = ChannelBinding::new([8; 32]);
     assert_eq!(
         check(challenge, binding, &good, &relayed, TestKey::NOW),
@@ -121,11 +120,12 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
     );
 
     // The signed message is the domain, the challenge and the binding, end to end.
-    let message = ConnectAnswer {
+    let mut message = Vec::new();
+    let answer = ConnectAnswer {
         challenge: &challenge,
         binding: &binding,
-    }
-    .message();
+    };
+    signed::write_message(&answer, &mut message);
     assert_eq!(&message[..19], b"campfire/connect/v2");
     assert_eq!(
         (&message[19..51], &message[51..]),

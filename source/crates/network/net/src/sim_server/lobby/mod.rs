@@ -17,7 +17,7 @@ use campfire_visibility::{HostVisibility, Visibility};
 use lightyear::prelude::Connected;
 use tracing::info;
 
-use crate::events::join_refused::error::JoinError;
+use crate::error::JoinError;
 use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
 use crate::sim_server::server_bots::ServerBots;
@@ -66,24 +66,17 @@ pub struct LobbyOpening {
     pub server: ServerSetup,
 }
 
-/// What a server opens a session with.
+/// What a server opens a session with: its opening, and the session's rules a new session of
+/// its own takes from the mode and the server's entropy.
 #[derive(Debug)]
 pub struct LobbySetup {
-    pub packages: Arc<ModePackages>,
+    pub opening: LobbyOpening,
     pub seed_chain: SeedChain,
     /// Ticks a second, which the mode's range must hold.
     pub tick_hz: NonZeroU32,
     pub inputs: InputRules,
     /// How many slots the session plays.
     pub slots: usize,
-    /// The bots the server plays: their slots are the bots'.
-    pub bots: ServerBots,
-    /// The slots no one takes at the start, which a late join may take; the rest but the bots'
-    /// are the players'.
-    pub open: Vec<PlayerSlot>,
-    /// What the host sets of the session's visibility, within what the mode leaves it.
-    pub host: HostVisibility,
-    pub server: ServerSetup,
 }
 
 impl AsRef<Offering> for Lobby {
@@ -99,28 +92,17 @@ impl Lobby {
     /// A new session of a server, as `new` opens it, its files kept under `data`: every slot
     /// the mode has, its seed chain fresh from the server's entropy, at the mode's default rate,
     /// its inputs within `InputRules::LAN`. An error when it does not open or keeps no files.
-    pub fn open(opening: LobbyOpening, data: &ServerDir) -> Result<Lobby, LobbyOpenError> {
-        let LobbyOpening {
-            packages,
-            bots,
-            open,
-            host,
-            server,
-        } = opening;
-        let root = server.os.entropy.random();
-        let manifest = packages.manifest();
+    pub fn open(opening: LobbyOpening, data: &ServerDir) -> Result<Self, LobbyOpenError> {
+        let root = opening.server.os.entropy.random();
+        let manifest = opening.packages.manifest();
         let slots = usize::try_from(manifest.slots()).expect("slots fit usize");
         let tick_hz = manifest.tick_hz.default();
-        let mut lobby = Lobby::new(LobbySetup {
-            packages,
-            seed_chain: SeedChain::new(root, Lobby::SEGMENTS),
+        let mut lobby = Self::new(LobbySetup {
+            opening,
+            seed_chain: SeedChain::new(root, Self::SEGMENTS),
             tick_hz,
             inputs: InputRules::LAN,
             slots,
-            bots,
-            open,
-            host,
-            server,
         })?;
         lobby.keep_files(data)?;
         Ok(lobby)
@@ -130,17 +112,20 @@ impl Lobby {
     /// not run at the setup's tick rate or has not as many slots, when a bot or an open slot
     /// names a slot the session does not have or one already named, when no slot is left to a
     /// player, and when the host sets a visibility the mode does not leave it.
-    pub fn new(setup: LobbySetup) -> Result<Lobby, LobbyError> {
+    pub fn new(setup: LobbySetup) -> Result<Self, LobbyError> {
         let LobbySetup {
-            packages,
+            opening:
+                LobbyOpening {
+                    packages,
+                    bots,
+                    open,
+                    host,
+                    server,
+                },
             seed_chain,
             tick_hz,
             inputs,
             slots,
-            bots,
-            open,
-            host,
-            server,
         } = setup;
         let mut plan = vec![SlotPlan::Player; slots];
         let named = (bots.slots.iter().map(|bot| (bot.slot, SlotPlan::Bot)))
@@ -176,7 +161,7 @@ impl Lobby {
                 visibility: &visibility,
             })
             .map_err(LobbyError::Terms)?;
-        Ok(Lobby {
+        Ok(Self {
             offering: Offering::new(terms, &server),
             seed_chain,
             packages,
@@ -222,7 +207,7 @@ impl Lobby {
     /// watch takes a spectator's place while one is free; a refused link keeps its reason. The
     /// joins of one frame take their slots in `Offering::check_all`'s order.
     pub(crate) fn take_joins(
-        mut lobby: ResMut<'_, Lobby>,
+        mut lobby: ResMut<'_, Self>,
         mut links: JoinLinks<'_, '_>,
         viewers: Query<'_, '_, &Viewer>,
         mut commands: Commands<'_, '_>,
@@ -267,10 +252,10 @@ impl Lobby {
     /// Starts the match once every slot is taken, and closes the lobby: the door takes the
     /// joins from then on.
     pub(crate) fn start_when_full(world: &mut World) {
-        if world.resource::<Lobby>().joined.len() < world.resource::<Lobby>().players {
+        if world.resource::<Self>().joined.len() < world.resource::<Self>().players {
             return;
         }
-        let lobby = world.remove_resource::<Lobby>().expect("the lobby is open");
+        let lobby = world.remove_resource::<Self>().expect("the lobby is open");
         let terms = lobby.offering.terms.clone();
         let mut joined = lobby.joined.into_iter();
         let mut links = Vec::with_capacity(lobby.players);
@@ -288,7 +273,8 @@ impl Lobby {
         }
         let header = SessionHeader { terms, slots };
         let session = header.terms.session_id();
-        let log = SessionLog::new(header).expect("every delegation names this session");
+        let log = SessionLog::new(header)
+            .expect("every delegation names this session, one main key each");
         info!(%session, players = links.len(), "every slot is taken; the match starts");
         let seeds = lobby.seed_chain.seeds();
         let start = SessionStart {
@@ -299,6 +285,7 @@ impl Lobby {
             server: &lobby.server,
             bots: lobby.bots,
             offering: lobby.offering,
+            visibility: lobby.visibility,
         };
         SimServer::start_match(world, start, &links)
             .expect("the lobby's terms come from its own packages");
@@ -308,7 +295,7 @@ impl Lobby {
     /// Frees the seat of each joined link that is no longer connected, so a match starts only
     /// with live links, and the seat goes to the next player who joins.
     pub(crate) fn free_seats(
-        mut lobby: ResMut<'_, Lobby>,
+        mut lobby: ResMut<'_, Self>,
         live: Query<'_, '_, (), (With<Connected>, With<Joined>)>,
         mut commands: Commands<'_, '_>,
     ) {

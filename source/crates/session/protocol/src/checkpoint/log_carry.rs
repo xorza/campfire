@@ -9,10 +9,10 @@ use crate::main_key::MainKey;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
 
-/// The log's own state at a checkpoint's boundary, so a segment verifies from its checkpoint
-/// alone: each slot's controller, with a player's delegation and chain, the main key of the
-/// player who left it last, its stamp counts and its spill; and the inputs logged before the
-/// boundary and due from it on, in the order they apply.
+/// The log's own state at a checkpoint's boundary, which a segment's verification from its
+/// checkpoint alone, planned, will start from: each slot's controller, with a player's delegation
+/// and chain, the main key of the player who left it last, its stamp counts and its spill; and the
+/// inputs logged before the boundary and due from it on, in the order they apply.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogCarry {
     pub(crate) slots: Vec<CarriedSlot>,
@@ -122,7 +122,7 @@ impl LogCarry {
     }
 
     /// The carry `wire` holds; an error for a delegation that does not parse.
-    pub(crate) fn from_wire(wire: CarryWire<'_>) -> Result<LogCarry, CheckpointDecodeError> {
+    pub(crate) fn from_wire(wire: CarryWire<'_>) -> Result<Self, CheckpointDecodeError> {
         let mut slots = Vec::with_capacity(wire.slots.len());
         for (slot, carried) in (0..).zip(wire.slots) {
             let control = match carried.control {
@@ -156,7 +156,7 @@ impl LogCarry {
                 payload: input.payload.0.to_vec(),
             })
             .collect();
-        Ok(LogCarry { slots, pending })
+        Ok(Self { slots, pending })
     }
 }
 
@@ -166,8 +166,8 @@ pub(crate) mod internals {
 
     impl LogCarry {
         /// A carry of no slot and no input, for a test of a checkpoint outside a log.
-        pub const fn empty() -> LogCarry {
-            LogCarry {
+        pub const fn empty() -> Self {
+            Self {
                 slots: Vec::new(),
                 pending: Vec::new(),
             }

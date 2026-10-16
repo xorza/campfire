@@ -38,9 +38,9 @@ pub(super) struct HalfDirections {
 
 impl Closer {
     /// The test of the points closer than `reach` units to `frame`.
-    pub(super) fn new(frame: Frame, reach: i128) -> Closer {
+    pub(super) fn new(frame: Frame, reach: i128) -> Self {
         let edges = Edges::of(frame);
-        Closer {
+        Self {
             edges,
             reach: Reach::of(reach),
             bounds: [0, 1].map(|half| LineBounds::of(edges.half_squares[half], reach)),
@@ -58,7 +58,7 @@ impl Closer {
     pub(crate) fn holds(&self, row: &Row, x: i64) -> bool {
         let slabs = self.edges.slabs(row, x);
         if !self.edges.outside(slabs) {
-            return self.reach.units > 0;
+            return self.reach.units > 0 || self.edges.inside(slabs);
         }
         // A slab value past the area and a line's bound puts the point at least two units past
         // the reach from the edges along the other half edge, so from the box, with no edge's
@@ -92,8 +92,8 @@ impl Lines for &Closer {
 }
 
 impl LinesOnDemand {
-    pub(super) const fn new(edges: &Edges, reach: Reach) -> LinesOnDemand {
-        LinesOnDemand {
+    pub(super) const fn new(edges: &Edges, reach: Reach) -> Self {
+        Self {
             squares: edges.half_squares,
             reach,
             bounds: [None; 2],
@@ -118,8 +118,8 @@ impl Lines for LinesOnDemand {
 }
 
 impl HalfDirections {
-    pub(super) const fn new(frame: Frame) -> HalfDirections {
-        HalfDirections {
+    pub(super) const fn new(frame: Frame) -> Self {
+        Self {
             frame,
             made: [None; 2],
         }

@@ -3,7 +3,7 @@ use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
 use crate::journal::error::NotJournal;
 
 /// Starts the hash of every frame, so no other BLAKE3 use can produce one.
-const FRAME_DOMAIN: HashDomain = HashDomain::new("campfire/journal-frame/v1");
+const FRAME_DOMAIN: HashDomain<FrameHash> = HashDomain::new("campfire/journal-frame/v1");
 /// The longest record a frame holds: a longer length is a torn or corrupted frame.
 pub(crate) const MAX_RECORD: usize = 16 << 20;
 const LEN_BYTES: usize = size_of::<u32>();
@@ -33,10 +33,10 @@ pub struct JournalFrames<'a> {
 
 impl<'a> JournalFrames<'a> {
     /// Starts every journal and states its version, so other bytes are refused at once.
-    pub const TAG: &'static [u8] = b"campfire/journal/v2";
+    pub const TAG: &'static [u8] = b"campfire/journal/v3";
 
     /// The frames of `bytes`; an error when they do not start with the journal's tag.
-    pub fn new(bytes: &'a [u8]) -> Result<JournalFrames<'a>, NotJournal> {
+    pub fn new(bytes: &'a [u8]) -> Result<Self, NotJournal> {
         if !bytes.starts_with(JournalFrames::TAG) {
             return Err(NotJournal);
         }
@@ -51,33 +51,37 @@ impl<'a> JournalFrames<'a> {
     pub const fn whole(&self) -> usize {
         self.at
     }
+}
 
-    /// Appends the frame of `record`, the bytes `out` holds from `start`, in place: its length
-    /// before it, its hash after it.
-    pub(crate) fn seal(out: &mut Vec<u8>, start: usize) {
-        let len = out.len() - start - LEN_BYTES;
-        debug_assert!(
-            len <= MAX_RECORD,
-            "a journal record of {len} bytes, past the bound its log's terms keep"
-        );
-        let len_bytes = u32::try_from(len).expect("a record within the bound fits u32");
-        out[start..start + LEN_BYTES].copy_from_slice(&len_bytes.to_le_bytes());
-        let hash = JournalFrames::hash(&out[start + LEN_BYTES..]);
-        out.extend_from_slice(hash.as_bytes());
-    }
+/// The bytes a frame takes beside its record: its length and its hash.
+pub(crate) const FRAME_OVERHEAD: usize = LEN_BYTES + HASH_BYTES;
 
-    /// Where a frame's record starts in `out`: its length's place is held first.
-    pub(crate) fn open(out: &mut Vec<u8>) -> usize {
-        let start = out.len();
-        out.extend_from_slice(&[0; LEN_BYTES]);
-        start
-    }
+/// Appends the frame of `record`, the bytes `out` holds from `start`, in place: its length
+/// before it, its hash after it.
+pub(crate) fn seal(out: &mut Vec<u8>, start: usize) {
+    let len = out.len() - start - LEN_BYTES;
+    debug_assert!(
+        len <= MAX_RECORD,
+        "a journal record of {len} bytes, past the bound its log's terms keep"
+    );
+    let len_bytes = u32::try_from(len).expect("a record within the bound fits u32");
+    out[start..start + LEN_BYTES].copy_from_slice(&len_bytes.to_le_bytes());
+    let hash = hash(&out[start + LEN_BYTES..]);
+    out.extend_from_slice(hash.as_bytes());
+}
 
-    pub(crate) fn hash(record: &[u8]) -> FrameHash {
-        let mut hasher = DomainHasher::new(FRAME_DOMAIN);
-        hasher.update(record);
-        FrameHash::new(hasher.finish())
-    }
+/// Where a frame's record starts in `out`: its length's place is held first.
+pub(crate) fn open(out: &mut Vec<u8>) -> usize {
+    let start = out.len();
+    out.extend_from_slice(&[0; LEN_BYTES]);
+    start
+}
+
+/// The hash of the frame of `record`.
+pub(crate) fn hash(record: &[u8]) -> FrameHash {
+    let mut hasher = DomainHasher::new(FRAME_DOMAIN);
+    hasher.update(record);
+    hasher.finish()
 }
 
 impl<'a> Iterator for JournalFrames<'a> {
@@ -91,7 +95,7 @@ impl<'a> Iterator for JournalFrames<'a> {
             return None;
         }
         let (record, rest) = rest.split_at(len);
-        if rest[..HASH_BYTES] != *JournalFrames::hash(record).as_bytes() {
+        if rest[..HASH_BYTES] != *hash(record).as_bytes() {
             return None;
         }
         self.at += LEN_BYTES + len + HASH_BYTES;

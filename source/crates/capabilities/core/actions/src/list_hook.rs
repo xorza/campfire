@@ -12,18 +12,18 @@ impl ListHook {
     /// Its place among an action's lists.
     pub const fn index(self) -> usize {
         match self {
-            ListHook::OnResolve => 0,
-            ListHook::OnHit => 1,
-            ListHook::OnEnd => 2,
+            Self::OnResolve => 0,
+            Self::OnHit => 1,
+            Self::OnEnd => 2,
         }
     }
 
     /// The scripts' hook it runs before.
     pub const fn hook(self) -> Hook {
         match self {
-            ListHook::OnResolve => Hook::OnResolve,
-            ListHook::OnHit => Hook::OnHit,
-            ListHook::OnEnd => Hook::OnEnd,
+            Self::OnResolve => Hook::OnResolve,
+            Self::OnHit => Hook::OnHit,
+            Self::OnEnd => Hook::OnEnd,
         }
     }
 

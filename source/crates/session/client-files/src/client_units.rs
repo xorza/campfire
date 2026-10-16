@@ -5,6 +5,8 @@ use campfire_values::{DeclaredName, PackagePath};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::client_path;
+
 /// A package's `client/units.toml`: how each unit type looks, `[units.<type>]`, and each look
 /// its maps' client objects name, `[objects.<look>]`, which a game may draw otherwise than its
 /// units (design 12, D14).
@@ -38,10 +40,17 @@ pub struct LookVariant {
     pub models: Vec<ClientModel>,
 }
 
+impl ClientUnits {
+    /// Where a package holds it.
+    pub fn path() -> PackagePath {
+        client_path::parse("client/units.toml")
+    }
+}
+
 impl ClientUnit {
     /// The look of `models`, of no variant.
-    pub const fn new(models: Vec<ClientModel>) -> ClientUnit {
-        ClientUnit {
+    pub const fn new(models: Vec<ClientModel>) -> Self {
+        Self {
             models,
             variants: Vec::new(),
             placement_angle: None,
@@ -50,8 +59,7 @@ impl ClientUnit {
 
     /// Draws, on a map of `conditions`, the models of its variant whose conditions have the most
     /// in common with the map's, of a tie the one of the fewest the map lacks, of a tie the first,
-    /// its own models counted first as of no condition; and holds no variant after. It is the
-    /// rule by which Zero Hour picks a model's condition state (`SparseMatchFinder`).
+    /// its own models counted first as of no condition; and holds no variant after.
     pub fn settle(&mut self, conditions: &[DeclaredName]) {
         let mut best = None;
         let (mut most, mut fewest) = (0, 0);
@@ -91,12 +99,12 @@ pub struct ClientModel {
 pub struct ModelScale(f32);
 
 impl ModelScale {
-    pub const ONE: ModelScale = ModelScale(1.0);
+    pub const ONE: Self = Self(1.0);
 
     /// `None` unless `factor` is positive and finite.
-    pub const fn new(factor: f32) -> Option<ModelScale> {
+    pub const fn new(factor: f32) -> Option<Self> {
         if factor.is_finite() && factor > 0.0 {
-            Some(ModelScale(factor))
+            Some(Self(factor))
         } else {
             None
         }
@@ -119,17 +127,16 @@ impl ModelScale {
 impl Eq for ModelScale {}
 
 impl Default for ModelScale {
-    fn default() -> ModelScale {
-        ModelScale::ONE
+    fn default() -> Self {
+        Self::ONE
     }
 }
 
 /// A package's file is untrusted, so a scale that is not positive and finite fails to read.
 impl<'de> Deserialize<'de> for ModelScale {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModelScale, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let factor = f32::deserialize(deserializer)?;
-        ModelScale::new(factor)
-            .ok_or_else(|| D::Error::custom("a model's scale is positive and finite"))
+        Self::new(factor).ok_or_else(|| D::Error::custom("a model's scale is positive and finite"))
     }
 }
 

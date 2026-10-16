@@ -1,3 +1,4 @@
+use campfire_declare::CapabilitySet;
 use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_sim::TickRate;
 use campfire_stats::StatId;
@@ -17,8 +18,8 @@ pub struct BookInput<'a> {
     /// The playing teams, in the manifest's order.
     pub teams: &'a [TeamManifest],
     pub max_move_speed: Speed,
-    /// Whether the mode declares `progression`, whose tracks then load.
-    pub progression: bool,
+    /// The capabilities the mode declares: with `progression`, its tracks load.
+    pub set: CapabilitySet,
     /// Every tag the packages name but the engine's, in the order a match declares them.
     pub tag_names: &'a [DeclaredName],
     /// The mode's package, then each dependency's.

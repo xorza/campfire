@@ -3,7 +3,7 @@ use std::ffi::OsString;
 use campfire_codec::TaggedError;
 use campfire_common::Version;
 use campfire_protocol::{JournalReplayError, NotJournal};
-use campfire_store::{AppendOpenError, DurableError, PathError, ReadError};
+use campfire_store::{AppendOpenError, DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
 use crate::sim_server::error::RestoreMatchError;
@@ -46,7 +46,28 @@ pub enum AbortError {
     #[error("the session's match does not replay")]
     Replay(#[source] RestoreMatchError),
     #[error("could not publish the log")]
-    Publish(#[source] PathError<DurableError>),
+    Publish(#[source] PublishError),
+}
+
+/// Why a session's log was not published, by its step, each of which its path's error names.
+#[derive(Debug, Error)]
+pub enum PublishError {
+    /// The logs' directory was not made.
+    #[error(transparent)]
+    Dir(#[from] PathError<DurableDirError>),
+    #[error(transparent)]
+    Log(#[from] PathError<DurableError>),
+}
+
+/// Why a session's directory was not made, by its step, each of which its path's error names.
+#[derive(Debug, Error)]
+pub enum SessionCreateError {
+    /// The sessions' directory or the session's was not made.
+    #[error(transparent)]
+    Dir(#[from] PathError<DurableDirError>),
+    /// The session's private record was not written.
+    #[error(transparent)]
+    Private(#[from] PathError<DurableError>),
 }
 
 /// Why the session a stop left under a data directory does not read back.
@@ -58,5 +79,5 @@ pub enum WaitingError {
     Restore(#[source] RestoreError),
     /// The directory of a session whose match never started did not go.
     #[error("could not remove a session that never started")]
-    Remove(#[source] PathError<DurableError>),
+    Remove(#[source] PathError<DurableDirError>),
 }

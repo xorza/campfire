@@ -9,6 +9,10 @@ use campfire_values::MessageId;
 
 use crate::package::moba::{edited, edited_at, load};
 
+fn named(name: &str) -> PackageName {
+    PackageName::new(name).unwrap()
+}
+
 fn language(text: &str) -> Language {
     Language::parse(text).unwrap()
 }
@@ -25,7 +29,8 @@ fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
     let packages = load(&edited([])).unwrap();
     let name = MessageId::new("hero-name").unwrap();
     let texts = Texts::new(&packages, &[german([]).unwrap()]).unwrap();
-    let text = |package, language_text| texts.text(package, &name, &language(language_text));
+    let text =
+        |package, language_text| texts.text(&named(package), &name, &language(language_text));
     // German from the locale package; English, the hero's own; French, which no package gives,
     // in the hero's own.
     assert_eq!(text("hero-husk", "de").as_deref(), Some("Hülse"));
@@ -34,13 +39,18 @@ fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
     assert_eq!(text("hero-husk", "fr").as_deref(), Some("Husk"));
     // No message of that id, and no package of that name, give none.
     let title = MessageId::new("hero-title").unwrap();
-    assert_eq!(texts.text("hero-husk", &title, &language("en")), None);
+    assert_eq!(
+        texts.text(&named("hero-husk"), &title, &language("en")),
+        None
+    );
     assert_eq!(text("hero-nobody", "en"), None);
 
     // Without the locale package, German is the hero's own language.
     let texts = Texts::new(&packages, &[]).unwrap();
     assert_eq!(
-        texts.text("hero-husk", &name, &language("de")).as_deref(),
+        texts
+            .text(&named("hero-husk"), &name, &language("de"))
+            .as_deref(),
         Some("Husk")
     );
 
@@ -52,11 +62,15 @@ fn a_heros_name_reads_in_the_players_language_or_else_in_the_heros_own() {
     let packages = load(&edited([own])).unwrap();
     let texts = Texts::new(&packages, &[german([]).unwrap()]).unwrap();
     assert_eq!(
-        texts.text("hero-husk", &name, &language("de")).as_deref(),
+        texts
+            .text(&named("hero-husk"), &name, &language("de"))
+            .as_deref(),
         Some("Hüllenwesen")
     );
     assert_eq!(
-        texts.text("hero-gale", &name, &language("de")).as_deref(),
+        texts
+            .text(&named("hero-gale"), &name, &language("de"))
+            .as_deref(),
         Some("Bö")
     );
 }

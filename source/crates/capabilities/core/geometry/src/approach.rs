@@ -5,8 +5,8 @@ use campfire_math::{Direction, FloorRoot, Num, RoundedRoot, Vec3};
 /// How near a straight path comes to a body: its nearest distance against a reach, and the place
 /// along the path of its nearest point, both to the nearest bit (design 09, D9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Approach {
-    pub nearest: Ordering,
+pub(crate) struct Approach {
+    pub(crate) nearest: Ordering,
     pub(crate) place: Num,
 }
 
@@ -23,40 +23,40 @@ impl Approach {
     /// The approach of the path `path` to a circle of `radius` centered `center` from its start,
     /// against `reach`: to the center against the sum, which past every number reaches every
     /// distance.
-    pub(crate) fn of_circle(path: Vec3, center: Vec3, reach: Num, radius: Num) -> Approach {
-        Approach::of(path, center, Approach::circle_reach(reach, radius))
+    pub(crate) fn of_circle(path: Vec3, center: Vec3, reach: Num, radius: Num) -> Self {
+        Self::of(path, center, Self::circle_reach(reach, radius))
     }
 
     /// `of_circle`'s order alone, which takes no direction where the path comes nearest at an
     /// end.
     pub(crate) fn nearest_of_circle(path: Vec3, center: Vec3, reach: Num, radius: Num) -> Ordering {
-        Approach::nearest_of(path, center, Approach::circle_reach(reach, radius))
+        Self::nearest_of(path, center, Self::circle_reach(reach, radius))
     }
 
     /// The approach of the path `path`, the offset from its start to its end, to the point `off`
     /// from its start, against `reach`; a negative reach is nearer than any distance. Beyond an
     /// end the distance is the end's, its nearest root measured against the reach with no root;
     /// between them it is the distance from the path's line.
-    pub fn of(path: Vec3, off: Vec3, reach: Num) -> Approach {
-        let Some(reach) = Approach::units(reach) else {
-            return Approach {
+    pub(crate) fn of(path: Vec3, off: Vec3, reach: Num) -> Self {
+        let Some(reach) = Self::units(reach) else {
+            return Self {
                 nearest: Ordering::Greater,
                 place: Num::ZERO,
             };
         };
         let place = |bits: i128| Num::from_bits(i64::try_from(bits).expect("a place on a path"));
-        match Approach::stretch(path, off) {
-            Stretch::Start => Approach {
+        match Self::stretch(path, off) {
+            Stretch::Start => Self {
                 nearest: off.length_squared_bits().nearest_root_cmp(reach),
                 place: Num::ZERO,
             },
-            Stretch::End => Approach {
+            Stretch::End => Self {
                 nearest: (off - path).length_squared_bits().nearest_root_cmp(reach),
-                place: place(Approach::direction(path).length()),
+                place: place(path.length_squared_bits().nearest_root().cast_signed()),
             },
             Stretch::Between => {
-                let direction = Approach::direction(path);
-                Approach {
+                let direction = Self::direction(path);
+                Self {
                     nearest: direction.apart(off.to_bits()).cast_unsigned().cmp(&reach),
                     place: place(direction.along(off.to_bits())),
                 }
@@ -65,14 +65,14 @@ impl Approach {
     }
 
     /// `of`'s order alone, which takes no direction where the path comes nearest at an end.
-    pub fn nearest_of(path: Vec3, off: Vec3, reach: Num) -> Ordering {
-        let Some(reach) = Approach::units(reach) else {
+    pub(crate) fn nearest_of(path: Vec3, off: Vec3, reach: Num) -> Ordering {
+        let Some(reach) = Self::units(reach) else {
             return Ordering::Greater;
         };
-        match Approach::stretch(path, off) {
+        match Self::stretch(path, off) {
             Stretch::Start => off.length_squared_bits().nearest_root_cmp(reach),
             Stretch::End => (off - path).length_squared_bits().nearest_root_cmp(reach),
-            Stretch::Between => Approach::between(path, off, reach),
+            Stretch::Between => Self::between(path, off, reach),
         }
     }
 
@@ -107,7 +107,7 @@ impl Approach {
         } else if reach >= 2 && sum < (reach - 2).wrapping_mul(root) {
             Ordering::Less
         } else {
-            let apart = Approach::direction(path).apart(off.to_bits());
+            let apart = Self::direction(path).apart(off.to_bits());
             apart.cast_unsigned().cmp(&reach)
         }
     }
@@ -143,6 +143,22 @@ impl Approach {
     /// A reach and a radius, summed, which past every number reaches every distance.
     fn circle_reach(reach: Num, radius: Num) -> Num {
         reach.checked_add(radius).unwrap_or(Num::MAX)
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::cmp::Ordering;
+
+    use campfire_math::{Num, Vec3};
+
+    use crate::approach::Approach;
+
+    /// Whether the path `path`, the offset from its start to its end, comes closer than `reach`
+    /// to the point `off` from its start, exactly: the test that a crate's own of a path and a
+    /// circle must agree with.
+    pub fn path_comes_closer(path: Vec3, off: Vec3, reach: Num) -> bool {
+        Approach::nearest_of(path, off, reach) == Ordering::Less
     }
 }
 

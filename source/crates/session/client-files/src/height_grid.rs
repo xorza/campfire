@@ -1,7 +1,11 @@
+use campfire_common::MapName;
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
+use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::client_path;
 
 /// A map's ground, `map/<name>/heights.bin`, through `Binary`: samples `cell` meters apart, the one of
 /// `column` and `row` at `[x, z] = origin + [column, row] · cell`, row after row from the first,
@@ -16,6 +20,11 @@ pub struct HeightGrid {
 }
 
 impl HeightGrid {
+    /// The file of the map `map`.
+    pub fn path(map: &MapName) -> PackagePath {
+        client_path::parse(&format!("map/{map}/heights.bin"))
+    }
+
     /// The grid; `None` unless `cell` and `step` are positive, `samples` fill at least two whole
     /// rows of at least two columns, and every sample, at its highest, lies within the world's
     /// bound.
@@ -25,7 +34,7 @@ impl HeightGrid {
         step: Num,
         columns: u32,
         samples: Vec<u8>,
-    ) -> Option<HeightGrid> {
+    ) -> Option<Self> {
         let width = usize::try_from(columns).ok()?;
         if cell <= Num::ZERO
             || step <= Num::ZERO
@@ -38,7 +47,7 @@ impl HeightGrid {
         if rows < 2 {
             return None;
         }
-        let grid = HeightGrid {
+        let grid = Self {
             origin,
             cell,
             step,
@@ -96,7 +105,7 @@ impl HeightGrid {
 
 /// A package's file is untrusted, so a grid `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for HeightGrid {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<HeightGrid, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             origin: [Num; 2],
@@ -106,7 +115,7 @@ impl<'de> Deserialize<'de> for HeightGrid {
             samples: Vec<u8>,
         }
         let fields = Fields::deserialize(deserializer)?;
-        HeightGrid::new(
+        Self::new(
             fields.origin,
             fields.cell,
             fields.step,

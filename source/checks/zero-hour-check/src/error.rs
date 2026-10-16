@@ -30,7 +30,7 @@ pub(crate) enum CheckError {
     Load(#[source] LoadError),
     /// A file of the imported package does not read.
     #[error("a file of the imported package does not read")]
-    Read(#[source] ContentError),
+    Read(#[from] ContentError),
     #[error("a grid of the imported package does not decode")]
     Decode(#[source] BinaryError),
 }

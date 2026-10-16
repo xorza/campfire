@@ -14,6 +14,6 @@ impl Avatar {
 
     /// Whether the unit of `row` is tagged an avatar.
     pub(crate) const fn tagged(row: &UnitRow) -> bool {
-        row.tags.tags.contains(Avatar::TAG.tag())
+        row.tags.tags.contains(Self::TAG.tag())
     }
 }

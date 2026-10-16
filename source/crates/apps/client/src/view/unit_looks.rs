@@ -47,11 +47,7 @@ pub(crate) struct ModelParts {
 
 impl UnitLooks {
     /// The looks of every type of `origins`: the models of the type's key in its package's units.
-    pub(crate) fn of(
-        origins: &TypeOriginBook,
-        data: &ClientData,
-        assets: &AssetServer,
-    ) -> UnitLooks {
+    pub(crate) fn of(origins: &TypeOriginBook, data: &ClientData, assets: &AssetServer) -> Self {
         let looks = origins
             .iter()
             .map(|(_, origin)| {
@@ -65,7 +61,7 @@ impl UnitLooks {
                     })
             })
             .collect();
-        UnitLooks { looks }
+        Self { looks }
     }
 
     /// The models of `unit_type`'s look; `None` for a type of no look in the client data.
@@ -84,14 +80,10 @@ impl UnitLooks {
 
 impl LookModel {
     /// The models of `look`, a look of the package at `package`, each loading.
-    pub(crate) fn all(
-        package: PackageIndex,
-        look: &ClientUnit,
-        assets: &AssetServer,
-    ) -> Vec<LookModel> {
+    pub(crate) fn all(package: PackageIndex, look: &ClientUnit, assets: &AssetServer) -> Vec<Self> {
         look.models
             .iter()
-            .map(|model| LookModel {
+            .map(|model| Self {
                 scene: assets.load(
                     GltfAssetLabel::Scene(0)
                         .from_asset(PackageSource::asset_path(package, &model.model)),

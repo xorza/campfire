@@ -72,32 +72,28 @@ const STRUCTURE: Shape = Shape {
 
 impl ShapeKind {
     /// The kind of a unit that is a player's avatar if `avatar`, and walks if `walks`.
-    pub(crate) const fn of(avatar: bool, walks: bool) -> ShapeKind {
+    pub(crate) const fn of(avatar: bool, walks: bool) -> Self {
         match (avatar, walks) {
-            (true, _) => ShapeKind::Avatar,
-            (false, true) => ShapeKind::Creep,
-            (false, false) => ShapeKind::Structure,
+            (true, _) => Self::Avatar,
+            (false, true) => Self::Creep,
+            (false, false) => Self::Structure,
         }
     }
 
     /// Its shape with no body.
     const fn shape(self) -> Shape {
         match self {
-            ShapeKind::Avatar => AVATAR,
-            ShapeKind::Creep => CREEP,
-            ShapeKind::Structure => STRUCTURE,
+            Self::Avatar => AVATAR,
+            Self::Creep => CREEP,
+            Self::Structure => STRUCTURE,
         }
     }
 }
 
 impl Condition {
     /// The condition of a unit that is dead if `dead`.
-    pub(crate) const fn of(dead: bool) -> Condition {
-        if dead {
-            Condition::Dead
-        } else {
-            Condition::Alive
-        }
+    pub(crate) const fn of(dead: bool) -> Self {
+        if dead { Self::Dead } else { Self::Alive }
     }
 }
 
@@ -134,7 +130,7 @@ impl Look {
 impl Shape {
     /// The shape of a unit of `kind` that has `body`: its kind's, at its body's radius, its
     /// kind's length between the caps, or on its box, or its kind's own with no body.
-    pub(crate) fn of(kind: ShapeKind, body: Option<&Body>) -> Shape {
+    pub(crate) fn of(kind: ShapeKind, body: Option<&Body>) -> Self {
         let kind = kind.shape();
         let footing = match (
             body.and_then(|body| body.radius()),
@@ -154,7 +150,7 @@ impl Shape {
             Footing::Circle(radius) => radius,
             Footing::Box { .. } => kind.radius,
         };
-        Shape {
+        Self {
             radius,
             height: kind.length() + 2.0 * radius,
             footing,

@@ -95,9 +95,9 @@ pub(crate) struct Planned {
 
 impl Window {
     /// The cells up to `half` cells from `cell` along each axis, within `grid`.
-    pub(crate) fn around(grid: &Grid, cell: usize, half: usize) -> Window {
+    pub(crate) fn around(grid: &Grid, cell: usize, half: usize) -> Self {
         let (column, row) = (cell % grid.columns(), cell / grid.columns());
-        Window {
+        Self {
             low: [column.saturating_sub(half), row.saturating_sub(half)],
             high: [
                 (column + half).min(grid.columns() - 1),
@@ -123,7 +123,7 @@ impl Window {
 impl<'a> Walkable<'a> {
     /// What a route may cross, for any route: the cells of `clearance`, past the bodies of
     /// `statics`.
-    pub(crate) const fn of(clearance: Clearance<'a>, statics: &'a BodyIndex) -> Walkable<'a> {
+    pub(crate) const fn of(clearance: Clearance<'a>, statics: &'a BodyIndex) -> Self {
         Walkable {
             clearance,
             statics,
@@ -158,9 +158,9 @@ impl RoutePlanner {
     const DIAGONAL: u32 = 14;
 
     /// A planner for routes on `grid`'s cells.
-    pub fn new(grid: &Grid) -> RoutePlanner {
+    pub fn new(grid: &Grid) -> Self {
         let cells = grid.cells();
-        RoutePlanner {
+        Self {
             marks: vec![0; cells],
             costs: vec![0; cells],
             came_from: vec![0; cells],
@@ -250,17 +250,16 @@ impl RoutePlanner {
         self.routes += 1;
         let search = Search {
             to: target,
-            at: RoutePlanner::place(grid, target),
+            at: Self::place(grid, target),
             seen: 2 * self.routes,
             done: 2 * self.routes + 1,
         };
         self.open.clear();
         self.marks[from] = search.seen;
         self.costs[from] = 0;
-        self.came_from[from] = RoutePlanner::number(from);
-        let estimate = RoutePlanner::estimate(RoutePlanner::place(grid, from), search.at);
-        self.open
-            .push(estimate, estimate, RoutePlanner::number(from));
+        self.came_from[from] = Self::number(from);
+        let estimate = Self::estimate(Self::place(grid, from), search.at);
+        self.open.push(estimate, estimate, Self::number(from));
         self.expanded.clear();
         let mut found = false;
         while let Some(cell) = self.open.pop() {
@@ -290,10 +289,10 @@ impl RoutePlanner {
         };
         self.cells.clear();
         let mut at = end;
-        self.cells.push(RoutePlanner::number(at));
+        self.cells.push(Self::number(at));
         while at != from {
             at = self.came_from[at] as usize;
-            self.cells.push(RoutePlanner::number(at));
+            self.cells.push(Self::number(at));
         }
         let reached = found && clear && !replaced;
         let last = if reached {
@@ -302,7 +301,7 @@ impl RoutePlanner {
             grid.center(end, goal.y)
         };
         work += self.smooth(walkable, start, last, waypoints);
-        let expanded = RoutePlanner::number(self.expanded.len());
+        let expanded = Self::number(self.expanded.len());
         Planned {
             #[cfg(test)]
             cost: self.costs[end],
@@ -438,7 +437,7 @@ impl RoutePlanner {
         let mut best: Option<(u128, usize)> = None;
         let mut visit = |best: &mut Option<(u128, usize)>, x: usize, z: usize| {
             *work += 1;
-            if !RoutePlanner::passable(&self.overlay, walkable, x, z) {
+            if !Self::passable(&self.overlay, walkable, x, z) {
                 return;
             }
             let at = z * columns + x;
@@ -491,9 +490,7 @@ impl RoutePlanner {
         let grid = walkable.clearance.grid();
         let columns = grid.columns();
         let (column, row) = (at % columns, at / columns);
-        let open = |column: usize, row: usize| {
-            RoutePlanner::passable(&self.overlay, walkable, column, row)
-        };
+        let open = |column: usize, row: usize| Self::passable(&self.overlay, walkable, column, row);
         let mut reached = [None; 8];
         for (slot, (dx, dz)) in [
             (-1, -1),
@@ -517,9 +514,9 @@ impl RoutePlanner {
                 if !open(x, row) || !open(column, z) {
                     continue;
                 }
-                RoutePlanner::DIAGONAL
+                Self::DIAGONAL
             } else {
-                RoutePlanner::STRAIGHT
+                Self::STRAIGHT
             };
             reached[slot] = Some((z * columns + x, [x, z], step));
         }
@@ -531,10 +528,10 @@ impl RoutePlanner {
             }
             self.marks[next] = search.seen;
             self.costs[next] = cost;
-            self.came_from[next] = RoutePlanner::number(at);
-            let estimate = RoutePlanner::estimate(place, search.at);
+            self.came_from[next] = Self::number(at);
+            let estimate = Self::estimate(place, search.at);
             self.open
-                .push(cost + estimate, estimate, RoutePlanner::number(next));
+                .push(cost + estimate, estimate, Self::number(next));
         }
     }
 
@@ -549,8 +546,7 @@ impl RoutePlanner {
         let dx = a[0].abs_diff(b[0]);
         let dz = a[1].abs_diff(b[1]);
         let (long, short) = (dx.max(dz), dx.min(dz));
-        RoutePlanner::STRAIGHT * RoutePlanner::number(long - short)
-            + RoutePlanner::DIAGONAL * RoutePlanner::number(short)
+        Self::STRAIGHT * Self::number(long - short) + Self::DIAGONAL * Self::number(short)
     }
 
     fn number(cell: usize) -> u32 {
@@ -560,7 +556,7 @@ impl RoutePlanner {
 
 /// The map's install builds it, of the map's walkers.
 impl Cache for RoutePlanner {
-    fn installed() -> Option<RoutePlanner> {
+    fn installed() -> Option<Self> {
         None
     }
 }

@@ -5,13 +5,15 @@ use campfire_common::Tick;
 use campfire_math::Vec3;
 use campfire_sim::{Position, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_units::{ArrivedShort, Facing, UnitEntity};
+use campfire_units::{ArrivedShort, Body, Facing, UnitEntity};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::party::Party;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
+use crate::segment::Segment;
+use crate::walker::Walker;
 
 /// A walker's long route to its destination: the goal it serves, with its ask while it waits for
 /// the planner, the waypoints of the route planned last, the next one first among those left,
@@ -44,6 +46,14 @@ struct Ask {
     party: Option<Party>,
 }
 
+/// A walker's ask for a route: to `goal`, in `tick`, as one of `party` when it has one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RouteAsk {
+    pub goal: Vec3,
+    pub tick: Tick,
+    pub party: Option<Party>,
+}
+
 impl Route {
     pub fn goal(&self) -> Option<Vec3> {
         self.goal.map(|goal| goal.pos)
@@ -70,24 +80,30 @@ impl Route {
             && self.ahead().is_empty()
     }
 
-    /// Asks the planner in `tick` for a route to `goal`, as one of `party` when it has one; the
-    /// walker keeps to the route it has until the planner answers. An ask while one waits changes
-    /// the goal and the party and keeps the first tick, so a walker whose goal moves each tick
-    /// keeps its place among the routes that wait.
-    pub fn ask(&mut self, goal: Vec3, tick: Tick, party: Option<Party>) {
+    /// Asks the planner for the route `ask` names, and forgets the walker's `progress` along the
+    /// route it had; the walker keeps to that route until the planner answers. An ask while one
+    /// waits changes the goal and the party and keeps the first tick, so a walker whose goal moves
+    /// each tick keeps its place among the routes that wait.
+    pub fn ask(&mut self, ask: RouteAsk, progress: &mut Progress) {
+        let RouteAsk { goal, tick, party } = ask;
         let tick = self.asked().unwrap_or(tick);
         self.goal = Some(Goal {
             pos: goal,
             asked: Some(Ask { tick, party }),
         });
+        progress.restart();
     }
 
-    /// Asks in `tick` for a route to `goal` again, if there is one, and forgets `progress`: a
-    /// unit a forced move left elsewhere walks to it from there.
+    /// Asks in `tick` for a route to `goal` again, if there is one, as `ask` does: a unit a forced
+    /// move left elsewhere walks to it from there.
     pub(crate) fn ask_again(&mut self, goal: Option<Vec3>, progress: &mut Progress, tick: Tick) {
         if let Some(goal) = goal {
-            self.ask(goal, tick, None);
-            progress.restart();
+            let ask = RouteAsk {
+                goal,
+                tick,
+                party: None,
+            };
+            self.ask(ask, progress);
         }
     }
 
@@ -134,6 +150,15 @@ impl Route {
         &self.waypoints[self.next as usize..]
     }
 
+    /// The legs of the route the walker has yet to walk, from where the leg to the next waypoint
+    /// began: the route's own, whatever the place the walker stands at on the way.
+    pub(crate) fn legs(&self) -> impl Iterator<Item = Segment> + '_ {
+        let starts = self.from.into_iter().chain(self.ahead().iter().copied());
+        starts
+            .zip(self.ahead())
+            .map(|(from, &to)| Segment::new(from, to))
+    }
+
     /// Goes by `short` in place of the next `skipped` waypoints, from the walker's place `from`.
     /// When it replaces the last, the route ends on the goal only if `reached`: if `short` ends
     /// on it.
@@ -176,8 +201,9 @@ impl SimComponent for Route {
     type Host = UnitEntity;
 
     // Its decode keeps the next waypoint within the route; a route is planned over the cells of
-    // its unit's kind of walker, which must be one the mode has; each of its places lies within
-    // the world's bound, as every place does.
+    // its unit's kind of walker, which must be one the mode has, as every pass that reads a
+    // walking unit's cells takes it to be; each of its places lies within the world's bound, as
+    // every place does.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let within = |point: Vec3| Position::from(point).within_bound();
         let goal = |goal: Goal| {
@@ -187,7 +213,11 @@ impl SimComponent for Route {
         let places = self.goal.is_none_or(goal)
             && self.from.is_none_or(within)
             && self.waypoints.iter().copied().all(within);
-        PathingGrid::serves(world, entity) && places
+        let served = world.get_resource::<PathingGrid>().is_none_or(|grid| {
+            Walker::of(world.get::<Body>(entity))
+                .is_some_and(|walker| grid.serving(walker).is_some())
+        });
+        served && places
     }
 }
 
@@ -199,7 +229,7 @@ impl Replication for Route {
 /// A snapshot is untrusted, so a next waypoint past the last, or waypoints ahead with no place
 /// their leg began, fail to decode.
 impl<'de> Deserialize<'de> for Route {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Route, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             goal: Option<Goal>,
@@ -221,13 +251,38 @@ impl<'de> Deserialize<'de> for Route {
         if from.is_none() && (next as usize) < waypoints.len() {
             return Err(D::Error::custom("a route's leg with no start"));
         }
-        Ok(Route {
+        Ok(Self {
             goal,
             waypoints,
             next,
             reached,
             from,
         })
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_common::Tick;
+    use campfire_math::Vec3;
+
+    use crate::progress::Progress;
+    use crate::route::{Route, RouteAsk};
+
+    impl Route {
+        /// The route to `goal` that the planner gave from `from` by `waypoints`, the last the
+        /// goal: for a test that holds a route no plan of its match would give.
+        pub fn planned(goal: Vec3, from: Vec3, waypoints: &[Vec3]) -> Self {
+            let mut route = Self::default();
+            let ask = RouteAsk {
+                goal,
+                tick: Tick::new(0),
+                party: None,
+            };
+            route.ask(ask, &mut Progress::default());
+            route.answer(from, waypoints, waypoints.last() == Some(&goal));
+            route
+        }
     }
 }
 
@@ -242,18 +297,35 @@ mod tests {
     fn a_route_faces_each_legs_way_from_where_the_leg_began() {
         let at = |x: i16, z: i16| Vec3::from((x, 0, z));
         let degrees = |route: &Route| route.way().map(Facing::degrees);
+        let legs = |route: &Route| route.legs().collect::<Vec<_>>();
         let mut route = Route::default();
         assert_eq!(degrees(&route), None);
+        assert_eq!(legs(&route), []);
         // From (0, 0), to (0, 0) again, then (4, 0), then (4, −3): the leg of no length is passed
-        // over, so the way is along `x`, 0°.
-        route.ask(at(4, -3), Tick::new(0), None);
+        // over, so the way is along `x`, 0°. Its legs are its own three.
+        let ask = RouteAsk {
+            goal: at(4, -3),
+            tick: Tick::new(0),
+            party: None,
+        };
+        route.ask(ask, &mut Progress::default());
         route.answer(at(0, 0), &[at(0, 0), at(4, 0), at(4, -3)], true);
         assert_eq!(degrees(&route), Some(Num::ZERO));
+        let leg = |from, to| Segment::new(from, to);
+        assert_eq!(
+            legs(&route),
+            [
+                leg(at(0, 0), at(0, 0)),
+                leg(at(0, 0), at(4, 0)),
+                leg(at(4, 0), at(4, -3))
+            ]
+        );
         // Past (0, 0) and (4, 0), the leg from (4, 0) to (4, −3) is along `−z`, 90°, wherever
-        // the walker stands on it.
+        // the walker stands on it, and the one leg left.
         route.advance();
         route.advance();
         assert_eq!(degrees(&route), Some(Num::int(90)));
+        assert_eq!(legs(&route), [leg(at(4, 0), at(4, -3))]);
         // A detour from (5, −1) to (4, −1), along `−x`, 180°, in place of the next waypoint.
         route.splice(at(5, -1), &[at(4, -1)], 0, false);
         assert_eq!(degrees(&route), Some(Num::int(180)));
@@ -268,7 +340,12 @@ mod tests {
     #[test]
     fn a_route_of_waypoints_ahead_and_no_leg_start_does_not_decode() {
         let mut route = Route::default();
-        route.ask(Vec3::from((1, 0, 0)), Tick::new(0), None);
+        let ask = RouteAsk {
+            goal: Vec3::from((1, 0, 0)),
+            tick: Tick::new(0),
+            party: None,
+        };
+        route.ask(ask, &mut Progress::default());
         route.answer(Vec3::from((0, 0, 0)), &[Vec3::from((1, 0, 0))], true);
         assert_eq!(
             Binary::decode::<Route>(&Binary::encode(&route)).ok(),

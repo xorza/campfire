@@ -18,9 +18,9 @@ impl SlotPlan {
     /// The byte the session id hashes it as.
     pub const fn code(self) -> u8 {
         match self {
-            SlotPlan::Player => 0,
-            SlotPlan::Bot => 1,
-            SlotPlan::Open => 2,
+            Self::Player => 0,
+            Self::Bot => 1,
+            Self::Open => 2,
         }
     }
 }
@@ -29,11 +29,11 @@ impl SlotPlan {
 impl TryFrom<u8> for SlotPlan {
     type Error = NotSlotPlan;
 
-    fn try_from(code: u8) -> Result<SlotPlan, NotSlotPlan> {
+    fn try_from(code: u8) -> Result<Self, NotSlotPlan> {
         match code {
-            0 => Ok(SlotPlan::Player),
-            1 => Ok(SlotPlan::Bot),
-            2 => Ok(SlotPlan::Open),
+            0 => Ok(Self::Player),
+            1 => Ok(Self::Bot),
+            2 => Ok(Self::Open),
             _ => Err(NotSlotPlan(code)),
         }
     }

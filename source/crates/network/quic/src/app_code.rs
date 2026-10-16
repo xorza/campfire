@@ -10,29 +10,26 @@ pub struct AppCode(u64);
 
 impl AppCode {
     /// The link ended with no reason given, as a removed link entity ends it.
-    pub const ENDED: AppCode = AppCode(0);
+    pub const ENDED: Self = Self(0);
     /// The endpoint dropped, as its app exited.
-    pub const STOPPED: AppCode = AppCode(1);
+    pub const STOPPED: Self = Self(1);
     /// The connection's datagrams cannot carry a link's minimum MTU.
-    pub const UNFIT: AppCode = AppCode(2);
+    pub const UNFIT: Self = Self(2);
     /// The first code an app may name.
     pub const FIRST: u32 = 16;
 
     /// The app's code `code`, `FIRST` or more.
-    pub const fn new(code: u32) -> AppCode {
-        assert!(
-            code >= AppCode::FIRST,
-            "the codes below FIRST are quic's own"
-        );
-        AppCode(code as u64)
+    pub const fn new(code: u32) -> Self {
+        assert!(code >= Self::FIRST, "the codes below FIRST are quic's own");
+        Self(code as u64)
     }
 
     pub const fn get(self) -> u64 {
         self.0
     }
 
-    pub(crate) const fn of(code: VarInt) -> AppCode {
-        AppCode(code.into_inner())
+    pub(crate) const fn of(code: VarInt) -> Self {
+        Self(code.into_inner())
     }
 
     pub(crate) fn varint(self) -> VarInt {

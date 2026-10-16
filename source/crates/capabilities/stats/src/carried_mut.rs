@@ -7,8 +7,10 @@ use campfire_script::StateValue;
 use campfire_sim::StableId;
 use campfire_values::ModifierId;
 
-use crate::application::Application;
+use crate::application::{Adding, Application, ApplyAt};
+use crate::instance::StatShare;
 use crate::lifetime::Hold;
+use crate::modifier_book::ModifierBook;
 use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::modifiers::{Modifiers, Touched};
 
@@ -21,10 +23,7 @@ pub struct CarriedMut<'w> {
 }
 
 impl<'w> CarriedMut<'w> {
-    pub const fn new(
-        modifiers: Mut<'w, Modifiers>,
-        clocks: Mut<'w, ModifierClocks>,
-    ) -> CarriedMut<'w> {
+    pub const fn new(modifiers: Mut<'w, Modifiers>, clocks: Mut<'w, ModifierClocks>) -> Self {
         CarriedMut { modifiers, clocks }
     }
 
@@ -33,15 +32,20 @@ impl<'w> CarriedMut<'w> {
     }
 
     /// See `Modifiers::apply`.
-    pub fn apply(&mut self, application: Application) {
+    pub fn apply<S, T>(&mut self, application: Application<S, T>)
+    where
+        S: IntoIterator<Item = StatShare, IntoIter: ExactSizeIterator>,
+        T: IntoIterator<Item = StateValue, IntoIter: ExactSizeIterator>,
+    {
         let Parts { modifiers, clocks } = self.parts();
         let touched = modifiers.apply(clocks, application);
         self.mark(touched);
     }
 
-    /// See `Modifiers::hold`.
-    pub(crate) fn hold(&mut self, id: ModifierId, source: Option<StableId>, hold: Hold) {
-        self.modifiers.hold(id, source, hold);
+    /// Applies `adding` as `book` makes it `at`, as `Modifiers::apply` does: a new instance, or
+    /// one more application of the one its source holds, whose hold joins it.
+    pub(crate) fn add(&mut self, book: &ModifierBook, at: ApplyAt<'_>, adding: Adding<'_>) {
+        self.apply(book.application(at, adding));
     }
 
     /// See `Modifiers::release`.
@@ -210,7 +214,7 @@ mod tests {
                 aura_radius: None,
                 stacks: 1,
                 stack_life: None,
-                stack_ends: Vec::new(),
+                stack_end: None,
                 interval: Some(Interval {
                     every: Ticks::new(2),
                     next: Tick::new(2),

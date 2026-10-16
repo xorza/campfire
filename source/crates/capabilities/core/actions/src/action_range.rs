@@ -1,4 +1,5 @@
 use campfire_math::Num;
+use campfire_values::Distance;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -8,8 +9,11 @@ pub enum ActionRange {
     Meters(Num),
     Global,
 }
+
+/// Every value that is not a range fails with the one message, a word or a number past what a
+/// number holds as a negative number does.
 impl<'de> Deserialize<'de> for ActionRange {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ActionRange, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "snake_case")]
         enum Word {
@@ -21,10 +25,12 @@ impl<'de> Deserialize<'de> for ActionRange {
             Meters(Num),
             Word(Word),
         }
-        match Written::deserialize(deserializer) {
-            Ok(Written::Meters(meters)) if meters >= Num::ZERO => Ok(ActionRange::Meters(meters)),
-            Ok(Written::Word(Word::Global)) => Ok(ActionRange::Global),
-            _ => Err(Error::custom("a range is meters from 0, or global")),
+        let refused = || D::Error::custom("a range is meters from 0, or global");
+        match Written::deserialize(deserializer).map_err(|_| refused())? {
+            Written::Meters(meters) => Distance::new(meters)
+                .map(|meters| Self::Meters(meters.get()))
+                .ok_or_else(refused),
+            Written::Word(Word::Global) => Ok(Self::Global),
         }
     }
 }
@@ -52,7 +58,11 @@ mod tests {
         assert_eq!(read("0").unwrap(), ActionRange::Meters(Num::ZERO));
         assert_eq!(read("\"global\"").unwrap(), ActionRange::Global);
         for refused in ["-1", "\"-0.5\"", "\"far\"", "1.5", "1099511627776"] {
-            assert!(read(refused).is_err(), "{refused}");
+            let error = read(refused).unwrap_err().to_string();
+            assert!(
+                error.contains("a range is meters from 0, or global"),
+                "{refused}: {error}"
+            );
         }
     }
 }

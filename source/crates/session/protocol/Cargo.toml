@@ -29,8 +29,6 @@ blake3.workspace = true
 campfire-protocol = { workspace = true, features = ["internals"] }
 # A test reads and writes the pinned log files.
 campfire-store = { workspace = true, features = ["internals"] }
-# A test names the postcard error a decode keeps.
-postcard.workspace = true
 
 # Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]

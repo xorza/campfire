@@ -132,7 +132,7 @@ impl Replication for TrainQueue {
 /// A snapshot is untrusted, so a head time without a head or without one, or paid amounts that
 /// are not the entries' runs, fail to decode.
 impl<'de> Deserialize<'de> for TrainQueue {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TrainQueue, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             entries: Vec<Queued>,
@@ -151,7 +151,7 @@ impl<'de> Deserialize<'de> for TrainQueue {
         if runs != paid.len() {
             return Err(D::Error::custom("an entry's paid run for each entry"));
         }
-        Ok(TrainQueue {
+        Ok(Self {
             entries,
             head_done,
             paid,

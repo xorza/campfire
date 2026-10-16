@@ -10,7 +10,7 @@ impl RngStream {
 
     /// The stream `name`: from 1 to 64 bytes of lowercase ASCII letters, digits, `_` and `.`.
     /// Another name is a bug of the code that names it, and fails to compile in a constant.
-    pub const fn new(name: &'static str) -> RngStream {
+    pub const fn new(name: &'static str) -> Self {
         let bytes = name.as_bytes();
         assert!(
             !bytes.is_empty() && bytes.len() <= Self::MAX_LEN,
@@ -25,7 +25,7 @@ impl RngStream {
             );
             at += 1;
         }
-        RngStream(name)
+        Self(name)
     }
 
     pub(crate) const fn as_bytes(self) -> &'static [u8] {

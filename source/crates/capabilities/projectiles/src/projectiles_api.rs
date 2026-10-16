@@ -27,13 +27,13 @@ impl ProjectilesApi {
         api.call(
             projectile,
             |ctx: &mut Ctx, from: ScriptPosition, direction: Vec3| {
-                ProjectilesApi::launch(ctx, from.get(), Toward::Direction(direction))
+                Self::launch(ctx, from.get(), Toward::Direction(direction))
             },
         )
         .call(
             projectile,
             |ctx: &mut Ctx, from: ScriptPosition, unit: Unit| {
-                ProjectilesApi::launch(ctx, from.get(), Toward::Unit(unit.id))
+                Self::launch(ctx, from.get(), Toward::Unit(unit.id))
             },
         )
         .action_fields(ActionDataField::of(Some(Capability::Projectiles)))

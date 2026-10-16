@@ -53,7 +53,7 @@ struct Rules<'a> {
 }
 
 impl<'a> Rules<'a> {
-    const fn of(style: Style<'a>) -> Rules<'a> {
+    const fn of(style: Style<'a>) -> Self {
         Rules {
             start: BuildStart::Arrival,
             style,
@@ -76,7 +76,7 @@ impl Yard {
     /// `walls`, for walkers of a half meter. Its depot is a box of 4 by 2 m of 100 life; its build,
     /// within 1 m, takes 4 ticks and 15 gold, its site starting at 0.1 of its life, a cancel giving
     /// back 0.5. Player 0 holds 100 gold.
-    fn place(game: &mut Match, shop: Shop, rules: Rules<'_>) -> Yard {
+    fn place(game: &mut Match, shop: Shop, rules: Rules<'_>) -> Self {
         let depot = shop.depot;
         let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
         Shop::give(game, depot, form);
@@ -120,7 +120,7 @@ impl Yard {
         Units::give_type(game, builder, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, builder, Builder::default());
         Mode::load_test_units(game);
-        Yard { build, builder }
+        Self { build, builder }
     }
 
     /// A builder of `team`, owned by player `owner`, at `pos`, of a half meter, that walks a
@@ -506,32 +506,48 @@ fn a_placement_refuses_walls_static_bodies_seen_enemies_the_bounds_and_its_rules
         );
         assert_eq!(Production::order_of(&game, builder), None, "{case}");
     }
-    // The controls: the plain yard, and the near rule met by an enemy 1 m from the box's edge.
+    // The control: the plain yard.
     let mut game = ordering_match();
     let shop = Shop::place(&mut game);
     let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
     let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
     Production::build_at(&mut game, builder, 0, 0);
     assert_eq!((shop.depots(&mut game).len(), shop.gold(&game)), (1, 85));
-    let mut game = ordering_match();
-    let shop = Shop::place(&mut game);
-    let near = Rules {
+    // An enemy at (0, 3), its edge 1.5 m from the box's, within the rules' 2 m: a rule reads it
+    // only when team 0 sees it. So the near rule passes and the away rule refuses by the seen
+    // enemy alone, and the hidden one, seen by its own team, is as no enemy.
+    let near = || Rules {
         near: vec![rule(RelationSet::Enemies)],
         ..Rules::of(Style::Alone)
     };
-    let yard = Yard::place(&mut game, shop, near);
-    let enemy = BodyForm::circle(Num::HALF).unwrap();
-    Navigation::spawn_unit(
-        &mut game,
-        halves(0, 6),
-        Team::new(1),
-        None,
-        None,
-        Some(enemy),
-    );
-    let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
-    Production::build_at(&mut game, builder, 0, 0);
-    assert_eq!(shop.depots(&mut game).len(), 1);
+    let away = || Rules {
+        away: vec![rule(RelationSet::Enemies)],
+        ..Rules::of(Style::Alone)
+    };
+    let (seen, hidden) = (TeamSet::of(Team::new(0)), TeamSet::of(Team::new(1)));
+    for (case, rules, seers, depots) in [
+        ("near, seen", near(), seen, 1),
+        ("near, hidden", near(), hidden, 0),
+        ("away, seen", away(), seen, 0),
+        ("away, hidden", away(), hidden, 1),
+    ] {
+        let mut game = ordering_match();
+        let shop = Shop::place(&mut game);
+        let yard = Yard::place(&mut game, shop, rules);
+        let form = BodyForm::circle(Num::HALF).unwrap();
+        let enemy = Navigation::spawn_unit(
+            &mut game,
+            halves(0, 6),
+            Team::new(1),
+            None,
+            None,
+            Some(form),
+        );
+        game.insert_parts(enemy, SeenBy::new(seers));
+        let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
+        Production::build_at(&mut game, builder, 0, 0);
+        assert_eq!(shop.depots(&mut game).len(), depots, "{case}");
+    }
 }
 
 #[test]

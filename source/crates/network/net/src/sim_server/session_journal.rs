@@ -10,13 +10,13 @@ pub struct SessionJournal(pub(crate) AppendWriter);
 
 impl SessionJournal {
     /// A new journal at `path`, holding its tag alone, written durably as a whole file.
-    pub fn create(path: &Path) -> Result<SessionJournal, PathError<AppendOpenError>> {
+    pub fn create(path: &Path) -> Result<Self, PathError<AppendOpenError>> {
         AppendWriter::create("journal", path, JournalFrames::TAG).map(SessionJournal)
     }
 
     /// The journal at `path`, cut to its first `whole` bytes, the tag and the frames a read found
     /// whole.
-    pub fn reopen(path: &Path, whole: u64) -> Result<SessionJournal, PathError<AppendOpenError>> {
+    pub fn reopen(path: &Path, whole: u64) -> Result<Self, PathError<AppendOpenError>> {
         AppendWriter::reopen("journal", path, whole).map(SessionJournal)
     }
 

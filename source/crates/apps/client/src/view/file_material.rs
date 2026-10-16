@@ -88,7 +88,7 @@ impl FileBlend {
                 cull_mode: (!file.double_sided).then_some(Face::Back),
                 ..StandardMaterial::default()
             },
-            extension: FileBlend {
+            extension: Self {
                 cutoff,
                 factors,
                 depth_write: file.depth_write,
@@ -106,11 +106,11 @@ impl Factors {
             operation: BlendOperation::Add,
         };
         let color = match self {
-            Factors::Replace => return None,
-            Factors::Alpha => color(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha),
-            Factors::Add => color(BlendFactor::One, BlendFactor::One),
-            Factors::Multiply => color(BlendFactor::Zero, BlendFactor::Src),
-            Factors::Screen => color(BlendFactor::One, BlendFactor::OneMinusSrc),
+            Self::Replace => return None,
+            Self::Alpha => color(BlendFactor::SrcAlpha, BlendFactor::OneMinusSrcAlpha),
+            Self::Add => color(BlendFactor::One, BlendFactor::One),
+            Self::Multiply => color(BlendFactor::Zero, BlendFactor::Src),
+            Self::Screen => color(BlendFactor::One, BlendFactor::OneMinusSrc),
         };
         Some(BlendState {
             color,
@@ -120,8 +120,8 @@ impl Factors {
 }
 
 impl From<&FileBlend> for FileBlendKey {
-    fn from(blend: &FileBlend) -> FileBlendKey {
-        FileBlendKey {
+    fn from(blend: &FileBlend) -> Self {
+        Self {
             factors: blend.factors,
             depth_write: blend.depth_write,
         }

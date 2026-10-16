@@ -58,11 +58,11 @@ campfire_common::enum_all! {
 
 impl ModuleSet for ProgressionSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Progression);
-    const ALL: &'static [ProgressionSet] = &ProgressionSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            ProgressionSet::Commands => Phase::Learn,
+            Self::Commands => Phase::Learn,
         })
     }
 }

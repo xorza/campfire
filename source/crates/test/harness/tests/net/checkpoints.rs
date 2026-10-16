@@ -12,8 +12,8 @@ use campfire_common::{ExitStatus, StateHash, Tick};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
-    AbortError, CheckpointFailed, Publisher, RestoreMatchError, SeedsRanOut, ServerDir, SessionDir,
-    SimServerWorld, TickHashes,
+    AbortError, CheckpointFailed, LogFilled, Publisher, RestoreMatchError, SeedsRanOut, ServerDir,
+    SessionDir, SimServerWorld, StopRequest, TickHashes,
 };
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, JournalFrames, Outcome, SeedChain, SessionLog, Signer};
@@ -74,17 +74,20 @@ fn snapshots(scratch: &Scratch, local: &InProcessMatch) -> PathBuf {
 /// snapshots in `snapshots`: each snapshot is the one its checkpoint fingerprints and restores to
 /// its state hash, and the replay from tick 0 meets each checkpoint's hash and the result.
 fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
-    local
-        .server_mut()
-        .world_mut()
-        .end_session(Outcome::Aborted)
-        .unwrap();
+    local.server_mut().world_mut().end_session().unwrap();
     let file =
         SessionDir::publish(local.server().world().resource::<ServerDir>(), log(local)).unwrap();
     let published =
         SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
     let mut replay = Replay::of(published, local.packages()).unwrap();
-    for record in replay.game().session().log().checkpoints() {
+    let records: Vec<_> = replay
+        .game()
+        .session()
+        .log()
+        .checkpoints()
+        .cloned()
+        .collect();
+    for record in &records {
         let file = snapshots.join(record.snapshot.to_string());
         let snapshot = InputFile::read(&file, StateRegistry::MAX_SNAPSHOT_LEN).unwrap();
         assert_eq!(replay.check_snapshot(record, &snapshot), Ok(()));
@@ -205,7 +208,7 @@ fn a_checkpoint_cut_between_its_begin_and_its_record_is_taken_again() {
 }
 
 #[test]
-fn a_checkpoint_past_the_seed_chain_ends_the_session_aborted() {
+fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
     // A chain of one segment: the checkpoint before tick 30 would start a second.
     let scratch = Scratch::new();
     let mut local = InProcessMatch::new(MatchSetup::duo(
@@ -233,6 +236,35 @@ fn a_checkpoint_past_the_seed_chain_ends_the_session_aborted() {
             tick: Tick::new(30)
         }]
     );
+
+    // A log full once tick 9 ran, as weeks of play would leave it, past the frame that passed the
+    // boundary before tick 10: the session ends at the next boundary, before tick 11, and its
+    // log, within its file's bound, decodes.
+    let scratch = Scratch::new();
+    let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    local.keep_data(scratch.path("data"));
+    local.start_match();
+    while local.next_tick(End::Server) < 10 {
+        local.step();
+    }
+    local.server_mut().world_mut().session_mut().fill_log();
+    for _ in 0..30 {
+        local.step();
+    }
+    let result = *log(&local).result().unwrap();
+    assert_eq!(
+        (result.tick, result.outcome),
+        (Tick::new(11), Outcome::Aborted)
+    );
+    assert_eq!(
+        local.log().take::<LogFilled>(),
+        [LogFilled {
+            tick: Tick::new(11)
+        }]
+    );
+    let mut bytes = Vec::new();
+    log(&local).encode(&mut bytes);
+    SessionLog::decode(&bytes).unwrap();
 }
 
 #[test]
@@ -256,8 +288,11 @@ fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     let world = local.server_mut().world_mut();
     world.settle_checkpoint();
     let code = NonZeroU8::new(ExitStatus::Storage.code()).unwrap();
-    assert_eq!(world.exit_due(false), Some(AppExit::Error(code)));
-    assert_eq!(world.exit_due(false), None);
+    assert_eq!(
+        world.exit_due(StopRequest::NotAsked),
+        Some(AppExit::Error(code))
+    );
+    assert_eq!(world.exit_due(StopRequest::NotAsked), None);
     assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);
     assert_eq!(local.log().take::<CheckpointFailed>().len(), 1);
     assert_eq!(scratch.kind(&place), Some(EntryKind::File));

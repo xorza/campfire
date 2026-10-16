@@ -53,35 +53,35 @@ impl DataKind {
     /// Its name in a mode's `[visibility]` and a host's settings.
     pub const fn name(self) -> &'static str {
         match self {
-            DataKind::Unit => "unit",
-            DataKind::Life => "life",
-            DataKind::Pools => "pools",
-            DataKind::Modifiers => "modifiers",
-            DataKind::Cooldowns => "cooldowns",
-            DataKind::Progression => "progression",
-            DataKind::Inventory => "inventory",
-            DataKind::Match => "match",
-            DataKind::ModeState => "mode_state",
-            DataKind::Resources => "resources",
-            DataKind::Supply => "supply",
-            DataKind::Queues => "queues",
-            DataKind::PlayerModifiers => "player_modifiers",
-            DataKind::Prediction => "prediction",
-            DataKind::UnitStateOwner => "unit_state_owner",
-            DataKind::UnitStateTeam => "unit_state_team",
-            DataKind::UnitStateAll => "unit_state_all",
-            DataKind::Server => "server",
+            Self::Unit => "unit",
+            Self::Life => "life",
+            Self::Pools => "pools",
+            Self::Modifiers => "modifiers",
+            Self::Cooldowns => "cooldowns",
+            Self::Progression => "progression",
+            Self::Inventory => "inventory",
+            Self::Match => "match",
+            Self::ModeState => "mode_state",
+            Self::Resources => "resources",
+            Self::Supply => "supply",
+            Self::Queues => "queues",
+            Self::PlayerModifiers => "player_modifiers",
+            Self::Prediction => "prediction",
+            Self::UnitStateOwner => "unit_state_owner",
+            Self::UnitStateTeam => "unit_state_team",
+            Self::UnitStateAll => "unit_state_all",
+            Self::Server => "server",
         }
     }
 
     /// The kind of the name `name`; `None` for no kind's.
-    pub fn named(name: &str) -> Option<DataKind> {
-        DataKind::ALL.into_iter().find(|kind| kind.name() == name)
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|kind| kind.name() == name)
     }
 
     /// Whether a client receives state of this kind.
     pub const fn is_sent(self) -> bool {
-        !matches!(self, DataKind::Server)
+        !matches!(self, Self::Server)
     }
 
     /// Who beside the owner receives this kind unless the mode says (design 14, D4): every
@@ -89,24 +89,24 @@ impl DataKind {
     /// for the server's, which `is_sent` tells. Vision decides who holds a unit.
     pub const fn audience(self) -> Recipients {
         match self {
-            DataKind::Unit
-            | DataKind::Life
-            | DataKind::Modifiers
-            | DataKind::Match
-            | DataKind::ModeState
-            | DataKind::PlayerModifiers
-            | DataKind::UnitStateAll => Recipients::ALL,
-            DataKind::UnitStateTeam => Recipients::ALLIES,
-            DataKind::Pools
-            | DataKind::Cooldowns
-            | DataKind::Progression
-            | DataKind::Inventory
-            | DataKind::Resources
-            | DataKind::Supply
-            | DataKind::Queues
-            | DataKind::Prediction
-            | DataKind::UnitStateOwner
-            | DataKind::Server => Recipients::NONE,
+            Self::Unit
+            | Self::Life
+            | Self::Modifiers
+            | Self::Match
+            | Self::ModeState
+            | Self::PlayerModifiers
+            | Self::UnitStateAll => Recipients::ALL,
+            Self::UnitStateTeam => Recipients::ALLIES,
+            Self::Pools
+            | Self::Cooldowns
+            | Self::Progression
+            | Self::Inventory
+            | Self::Resources
+            | Self::Supply
+            | Self::Queues
+            | Self::Prediction
+            | Self::UnitStateOwner
+            | Self::Server => Recipients::NONE,
         }
     }
 
@@ -115,23 +115,20 @@ impl DataKind {
     /// decides, the owner's prediction, and the server's.
     pub const fn settable(self) -> Recipients {
         match self {
-            DataKind::Life
-            | DataKind::Modifiers
-            | DataKind::PlayerModifiers
-            | DataKind::ModeState => Recipients::ENEMIES.union(Recipients::SPECTATORS),
-            DataKind::Pools
-            | DataKind::Cooldowns
-            | DataKind::Progression
-            | DataKind::Inventory
-            | DataKind::Resources
-            | DataKind::Supply
-            | DataKind::Queues => Recipients::ALL,
-            DataKind::UnitStateOwner | DataKind::UnitStateTeam | DataKind::UnitStateAll => {
+            Self::Life | Self::Modifiers | Self::PlayerModifiers | Self::ModeState => {
+                Recipients::ENEMIES.union(Recipients::SPECTATORS)
+            }
+            Self::Pools
+            | Self::Cooldowns
+            | Self::Progression
+            | Self::Inventory
+            | Self::Resources
+            | Self::Supply
+            | Self::Queues => Recipients::ALL,
+            Self::UnitStateOwner | Self::UnitStateTeam | Self::UnitStateAll => {
                 Recipients::SPECTATORS
             }
-            DataKind::Unit | DataKind::Match | DataKind::Prediction | DataKind::Server => {
-                Recipients::NONE
-            }
+            Self::Unit | Self::Match | Self::Prediction | Self::Server => Recipients::NONE,
         }
     }
 

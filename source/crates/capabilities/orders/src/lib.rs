@@ -23,6 +23,7 @@ mod next_think;
 mod order_inputs;
 mod orders_action;
 mod orders_api;
+mod orders_effect;
 mod resetting;
 mod thinking;
 mod unit_order;
@@ -56,13 +57,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for OrdersSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Orders);
-    const ALL: &'static [OrdersSet] = &OrdersSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            OrdersSet::Orders => Phase::Order,
-            OrdersSet::Chase => Phase::Chase,
-            OrdersSet::Think => Phase::Think,
+            Self::Orders => Phase::Order,
+            Self::Chase => Phase::Chase,
+            Self::Think => Phase::Think,
         })
     }
 }
@@ -101,8 +102,8 @@ impl Module for Orders {
     /// units it holds.
     fn install(cx: &mut InstallCx<'_>) {
         cx.by_role(
-            Orders::check_orders::<ByVision>(),
-            Orders::check_orders::<ByHolding>(),
+            Self::check_orders::<ByVision>(),
+            Self::check_orders::<ByHolding>(),
         );
         cx.systems(
             (Destinations::follow_paths, Destinations::chase)
@@ -133,7 +134,7 @@ impl Orders {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_actions::{ActionSlots, InProgress, SlotTimes};
+    use campfire_actions::{ActionProgress, InProgress, SlotTimes};
     use campfire_common::{PlayerSlot, Tick};
     use campfire_declare::ByType;
     use campfire_script::{ScriptFailures, ScriptId};
@@ -180,7 +181,7 @@ pub mod internals {
                     think_ms: 250,
                 };
                 let script = Units::compile_hooked(world, source).unwrap();
-                Orders::load_ai(world, unit_type, &ai, script).unwrap();
+                Self::load_ai(world, unit_type, &ai, script).unwrap();
             }
             unit_type
         }
@@ -195,7 +196,7 @@ pub mod internals {
         /// When the attack it winds up strikes, if one winds up.
         pub fn strikes_at(world: &World, id: StableId) -> Option<Tick> {
             world
-                .part::<ActionSlots>(id)
+                .part::<ActionProgress>(id)
                 .in_progress()
                 .and_then(InProgress::resolves_at)
         }

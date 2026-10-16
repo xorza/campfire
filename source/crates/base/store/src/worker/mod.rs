@@ -18,19 +18,28 @@ pub struct Worker {
 
 impl Worker {
     /// Starts the thread `name`, which runs `job`.
-    pub fn start(name: &str, job: impl FnOnce() + Send + 'static) -> Worker {
+    pub fn start(name: &str, job: impl FnOnce() + Send + 'static) -> Self {
         let thread = thread::Builder::new()
             .name(name.to_owned())
             .spawn(job)
             .expect("the OS starts a thread");
-        Worker {
+        Self {
             thread: Some(thread),
         }
     }
 
-    /// Joins the thread, which ended while its owner still needed it, and passes its panic on:
-    /// a worker ends early only by a panic.
-    pub(crate) fn resume_panic(&mut self) -> ! {
+    /// Passes on the panic of the thread when it ended while its owner still needs it, as a
+    /// worker ends early only by a panic; nothing while it runs. An owner whose job's channel
+    /// cannot tell it the thread ended calls it where it next needs the worker.
+    pub fn check(&mut self) {
+        if self.thread.as_ref().is_some_and(JoinHandle::is_finished) {
+            self.resume_panic();
+        }
+    }
+
+    /// Joins the thread, which ended while its owner still needed it, or which ends as it
+    /// unwinds, and passes its panic on: a worker ends early only by a panic.
+    pub fn resume_panic(&mut self) -> ! {
         let thread = self.thread.take().expect("a worker joins once");
         match thread.join() {
             Err(payload) => panic::resume_unwind(payload),

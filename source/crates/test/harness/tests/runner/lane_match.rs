@@ -30,12 +30,12 @@ struct Progress {
 }
 
 impl Progress {
-    fn of(fixed: &FixedMatch, hero: StableId) -> Progress {
+    fn of(fixed: &FixedMatch, hero: StableId) -> Self {
         let world = fixed.game();
         let unit = world.entity_ref_of(hero).unwrap();
         let slots = unit.get::<ActionSlots>().unwrap();
         let track = TrackId::new(0);
-        Progress {
+        Self {
             ranks: [0, 1, 2, 3].map(|slot| Rank::count(slots.slot(slot).unwrap().rank)),
             points: unit.get::<Points>().unwrap().get(),
             xp: unit.get::<Experience>().unwrap().get(track).unwrap().xp,

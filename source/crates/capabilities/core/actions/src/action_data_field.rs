@@ -1,6 +1,6 @@
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
-use campfire_sim::Capability::{Abilities, Combat, Production, Projectiles};
+use campfire_sim::Capability::{Abilities, Combat, Production};
 
 use crate::action_data::ActionData;
 use crate::action_data_field::FieldUse::{Needs, OneOf, Refuses, Takes};
@@ -9,7 +9,9 @@ use crate::action_kind::ActionKind;
 campfire_common::enum_all! {
     /// A field of an action's data, `[actions.<id>]`: the one table of which kinds of action take
     /// each field, which need it, which capability runs it, and whether the release runs it yet.
-    /// The load check and the script API reference both read it.
+    /// The load check reads which kinds take and need each field; the script API reference reads
+    /// each field's capability and status. A kind's own capability, and a delivery's, which each
+    /// of its forms names, the load requires as it checks the kind and the delivery.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum ActionDataField {
         Name,
@@ -64,16 +66,6 @@ pub(crate) enum FieldUse {
     OneOf(ActionDataField),
 }
 
-/// The kinds the release runs, in the order of `FieldRule::uses`.
-const KINDS: [ActionKind; 6] = [
-    ActionKind::Cast,
-    ActionKind::Attack,
-    ActionKind::Use,
-    ActionKind::Train,
-    ActionKind::Build,
-    ActionKind::Gather,
-];
-
 /// A field's row of the table: the field, its name as data writes it, the capability that runs
 /// it, none for the core's, its use by each kind the release runs, and whether data gives it: a
 /// value, a list or a table that is not empty, or a flag that is on.
@@ -82,7 +74,7 @@ struct FieldRule {
     field: ActionDataField,
     name: &'static str,
     capability: Option<Capability>,
-    uses: [FieldUse; KINDS.len()],
+    uses: [FieldUse; ActionKind::RUN.len()],
     given: fn(&ActionData) -> bool,
 }
 
@@ -203,7 +195,8 @@ const TABLE: [FieldRule; ActionDataField::ALL.len()] = [
     FieldRule {
         field: ActionDataField::Delivery,
         name: "delivery",
-        capability: Some(Projectiles),
+        // A projectile's or an area's, each form of its own capability.
+        capability: None,
         uses: [Takes, Takes, Refuses, Refuses, Refuses, Refuses],
         given: |data| data.delivery.is_some(),
     },
@@ -392,7 +385,7 @@ impl ActionDataField {
     /// The fields `capability` runs, none for the action pipeline's, each by its name with its
     /// status in the script API.
     pub fn of(capability: Option<Capability>) -> impl Iterator<Item = (&'static str, Status)> {
-        ActionDataField::ALL
+        Self::ALL
             .into_iter()
             .filter(move |field| field.capability() == capability)
             .map(|field| (field.name(), Status::Runs(ApiVersion::FIRST)))
@@ -414,7 +407,7 @@ impl ActionDataField {
 
     /// What an action of `kind`, one the release runs, does with it.
     pub(crate) fn use_by(self, kind: ActionKind) -> FieldUse {
-        let at = KINDS
+        let at = ActionKind::RUN
             .iter()
             .position(|&run| run == kind)
             .expect("a kind the release runs");
@@ -429,8 +422,8 @@ impl ActionDataField {
 
     /// The first field `data` of kind `kind` gives that its kind refuses, does not give that its
     /// kind needs, or gives with its other field of a pair its kind needs one of, or without it.
-    pub fn misused(data: &ActionData, kind: ActionKind) -> Option<ActionDataField> {
-        ActionDataField::ALL
+    pub fn misused(data: &ActionData, kind: ActionKind) -> Option<Self> {
+        Self::ALL
             .into_iter()
             .find(|field| match field.use_by(kind) {
                 Takes => false,

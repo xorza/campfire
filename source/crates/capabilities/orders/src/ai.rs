@@ -1,7 +1,7 @@
 use campfire_common::Ticks;
 use campfire_declare::PerType;
 use campfire_script::{Hook, ScriptId, ScriptRole};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_units::ScriptBook;
 
 use crate::ai_data::AiData;
@@ -23,7 +23,7 @@ impl Ai {
         script: ScriptId,
         scripts: &ScriptBook,
         rate: TickRate,
-    ) -> Result<Ai, AiError> {
+    ) -> Result<Self, AiError> {
         let thinks = scripts
             .defines(Some(script), ScriptRole::Ai)
             .contains(Hook::OnThink);
@@ -31,11 +31,10 @@ impl Ai {
         if !thinks {
             return Err(AiError::NoThink);
         }
-        Ok(Ai { script, period })
+        Ok(Self { script, period })
     }
 }
 
 impl PerType for Ai {
-    const OWNER: Option<Capability> = Some(Capability::Orders);
     const SCRIPTS_ONLY: bool = true;
 }

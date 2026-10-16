@@ -1,5 +1,4 @@
-use std::any::Any;
-use std::cell::{OnceCell, RefCell, RefMut};
+use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
@@ -25,8 +24,6 @@ pub struct Ctx(Rc<CtxParts>);
 struct CtxParts {
     frame: RefCell<Frame>,
     view: View,
-    /// The match's mode, once it installs, which only the mode reads as its own type.
-    mode: OnceCell<Rc<dyn Any>>,
 }
 
 /// `ctx.p`: the running call's params, by name: an ability's, a modifier's then its ability's,
@@ -36,11 +33,10 @@ struct CtxParts {
 pub struct Params(pub(crate) Ctx);
 
 impl Ctx {
-    pub fn new(view: View) -> Ctx {
-        Ctx(Rc::new(CtxParts {
+    pub fn new(view: View) -> Self {
+        Self(Rc::new(CtxParts {
             frame: RefCell::default(),
             view,
-            mode: OnceCell::new(),
         }))
     }
 
@@ -51,9 +47,9 @@ impl Ctx {
     }
 
     /// The `ctx` of the match whose script makes `call`: the host's tag.
-    pub(super) fn of_call(call: &NativeCallContext<'_>) -> Ctx {
+    pub(super) fn of_call(call: &NativeCallContext<'_>) -> Self {
         call.tag()
-            .and_then(Dynamic::read_lock::<Ctx>)
+            .and_then(Dynamic::read_lock::<Self>)
             .expect("the host is tagged with the ctx")
             .clone()
     }
@@ -96,16 +92,6 @@ impl Ctx {
     /// The running call's acting unit.
     pub fn acting(&self) -> Option<StableId> {
         self.frame().acting()
-    }
-
-    /// Gives the match its mode.
-    pub fn set_mode(&self, mode: Rc<dyn Any>) {
-        assert!(self.0.mode.set(mode).is_ok(), "a match has one mode");
-    }
-
-    /// The match's mode, if it installed.
-    pub fn mode(&self) -> Option<&dyn Any> {
-        self.0.mode.get().map(|mode| &**mode)
     }
 
     /// Applies the effects of the call that ran, in its tick.

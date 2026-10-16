@@ -17,8 +17,8 @@ pub(crate) struct PropertyForwards {
 }
 
 impl PropertyForwards {
-    pub(crate) const fn new() -> PropertyForwards {
-        PropertyForwards {
+    pub(crate) const fn new() -> Self {
+        Self {
             names: BTreeSet::new(),
             forwards: Vec::new(),
         }

@@ -2,6 +2,7 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::harness::test_key::TestKey;
+use crate::verifier::Verifier;
 
 /// A delegation of the main key of `main` for the session key of `byte`.
 fn delegation(main: u8, byte: u8) -> Delegation {
@@ -59,27 +60,35 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
         index: 1,
     };
     let input = &inputs[0];
-    let signature = input.sign(&TestKey::signer(server), id, place);
+    let placed = |input, session_id, place| PlacedInput {
+        input,
+        session_id,
+        place,
+    };
+    let signature = TestKey::signer(server).sign(&placed(input, id, place));
     let key = server.x_only_public_key().0;
-    assert!(input.signed_by(&mut Verifier::new(), &key, id, place, &signature));
+    let signed_by = |input, key, session_id, place, signature| {
+        Verifier::new().verifies(signature, key, &placed(input, session_id, place))
+    };
+    assert!(signed_by(input, &key, id, place, &signature));
     // At another tick or index, in another session, under another key, or over another input.
     let other_tick = InputPlace {
         tick: Tick::new(8),
         ..place
     };
     let other_index = InputPlace { index: 0, ..place };
-    assert!(!input.signed_by(&mut Verifier::new(), &key, id, other_tick, &signature));
-    assert!(!input.signed_by(&mut Verifier::new(), &key, id, other_index, &signature));
-    assert!(!input.signed_by(
-        &mut Verifier::new(),
+    assert!(!signed_by(input, &key, id, other_tick, &signature));
+    assert!(!signed_by(input, &key, id, other_index, &signature));
+    assert!(!signed_by(
+        input,
         &key,
         SessionId::new([9; 32]),
         place,
         &signature
     ));
     let stranger = TestKey::of(42).x_only_public_key().0;
-    assert!(!input.signed_by(&mut Verifier::new(), &stranger, id, place, &signature));
-    assert!(!inputs[4].signed_by(&mut Verifier::new(), &key, id, place, &signature));
+    assert!(!signed_by(input, &stranger, id, place, &signature));
+    assert!(!signed_by(&inputs[4], &key, id, place, &signature));
 
     // A delegation that does not parse, and bytes that do not decode.
     let bytes = Binary::encode(&Wire::Join {

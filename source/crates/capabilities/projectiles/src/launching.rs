@@ -21,13 +21,7 @@ impl Launching {
                 from: shot.from,
                 unit_type: shot.unit_type,
                 flight: Flight::homing(shot.target),
-                payload: LaunchPayload::Attack {
-                    action: shot.action,
-                    rank: shot.rank,
-                    amount: shot.amount,
-                    kind: shot.kind,
-                    roll: shot.roll,
-                },
+                payload: LaunchPayload::Attack(shot.damage),
             });
         }
     }
@@ -77,19 +71,7 @@ impl Launching {
                             group: first,
                         }
                     }
-                    LaunchPayload::Attack {
-                        action,
-                        rank,
-                        amount,
-                        kind,
-                        roll,
-                    } => Payload::Attack {
-                        action,
-                        rank,
-                        amount,
-                        kind,
-                        roll,
-                    },
+                    LaunchPayload::Attack(damage) => Payload::Attack(damage),
                 };
                 let projectile = Projectile::new(source, flight, payload)
                     .expect("a launch flies a range and carries what holds");

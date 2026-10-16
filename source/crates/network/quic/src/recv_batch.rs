@@ -31,12 +31,12 @@ pub(crate) struct Datagram {
 
 impl RecvBatch {
     /// A batch for `port`, whose datagrams are at most `max_payload` bytes.
-    pub(crate) fn new(port: &UdpPort, max_payload: usize) -> RecvBatch {
-        RecvBatch::with_slot(max_payload * port.gro_segments())
+    pub(crate) fn new(port: &UdpPort, max_payload: usize) -> Self {
+        Self::with_slot(max_payload * port.gro_segments())
     }
 
-    fn with_slot(slot: usize) -> RecvBatch {
-        RecvBatch {
+    fn with_slot(slot: usize) -> Self {
+        Self {
             buffer: vec![0; slot * BATCH_SIZE].into_boxed_slice(),
             meta: [RecvMeta::default(); BATCH_SIZE],
             slot,
@@ -56,7 +56,7 @@ impl RecvBatch {
     /// split there into the datagrams GRO joined in it. An empty datagram, whose stride is 0,
     /// gives none.
     pub(crate) fn datagrams(&mut self, filled: usize) -> impl Iterator<Item = Datagram> + '_ {
-        let RecvBatch {
+        let Self {
             buffer,
             meta,
             slot,
@@ -71,7 +71,7 @@ impl RecvBatch {
                     (!data.is_empty()).then(|| Datagram {
                         remote: meta.addr,
                         local_ip: meta.dst_ip,
-                        ecn: meta.ecn.map(RecvBatch::proto_ecn),
+                        ecn: meta.ecn.map(Self::proto_ecn),
                         data: data.split_to(meta.stride.min(data.len())),
                     })
                 })
@@ -95,8 +95,8 @@ pub(crate) mod internals {
 
     impl RecvBatch {
         /// A batch that reads no socket, for a fixture that fills it, each slot `slot` bytes.
-        pub(crate) fn detached(slot: usize) -> RecvBatch {
-            RecvBatch::with_slot(slot)
+        pub(crate) fn detached(slot: usize) -> Self {
+            Self::with_slot(slot)
         }
 
         /// Fills slot `index` as a read does: `bytes` from `remote`, datagrams of `stride` bytes

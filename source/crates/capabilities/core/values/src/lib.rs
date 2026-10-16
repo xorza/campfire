@@ -4,10 +4,6 @@
 //! and the teams' relations.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
 
 mod action_id;
 mod action_start;
@@ -16,6 +12,7 @@ mod block;
 mod damage_kind;
 mod dash_delivery;
 mod declared_name;
+mod distance;
 mod engine_enum;
 mod engine_tag;
 mod error;
@@ -59,6 +56,7 @@ pub use crate::block::Block;
 pub use crate::damage_kind::DamageKind;
 pub use crate::dash_delivery::DashDelivery;
 pub use crate::declared_name::DeclaredName;
+pub use crate::distance::Distance;
 pub use crate::engine_enum::EngineEnum;
 pub use crate::engine_tag::EngineTag;
 pub use crate::error::{NamesError, TimeTooLarge};
@@ -77,7 +75,7 @@ pub use crate::rank::Rank;
 pub use crate::ranked::Ranked;
 pub use crate::relation::Relation;
 pub use crate::relation_set::RelationSet;
-pub use crate::relations::Relations;
+pub use crate::relations::{Relations, VisionShare};
 pub use crate::resource_id::ResourceId;
 pub use crate::scalar::Scalar;
 pub use crate::script_enum::ScriptEnum;
@@ -92,7 +90,7 @@ pub use crate::team::Team;
 pub use crate::team_set::TeamSet;
 pub use crate::track_id::TrackId;
 pub use crate::type_scope::TypeScope;
-pub use crate::unit_tags::UnitTags;
+pub use crate::unit_tags::{Motion, UnitTags};
 pub use crate::unit_type::UnitType;
 
 #[cfg(feature = "internals")]

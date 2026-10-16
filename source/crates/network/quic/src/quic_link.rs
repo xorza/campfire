@@ -21,8 +21,8 @@ pub(crate) struct QuicLink {
 }
 
 impl QuicLink {
-    pub(crate) const fn new(endpoint: Weak<SharedEndpoint>, key: PeerKey) -> QuicLink {
-        QuicLink { endpoint, key }
+    pub(crate) const fn new(endpoint: Weak<SharedEndpoint>, key: PeerKey) -> Self {
+        Self { endpoint, key }
     }
 
     /// Closes the connection with `code`, while its endpoint holds it.
@@ -36,7 +36,7 @@ impl QuicLink {
 
     fn on_discard(world: DeferredWorld<'_>, context: HookContext) {
         world
-            .get::<QuicLink>(context.entity)
+            .get::<Self>(context.entity)
             .expect("a hook of QuicLink runs on an entity that holds one")
             .close(AppCode::ENDED);
     }

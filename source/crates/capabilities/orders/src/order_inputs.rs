@@ -174,7 +174,7 @@ impl OrderInputs {
         for (entity, order) in checked.0.drain(..) {
             debug_assert_ne!(order, UnitOrder::Reset, "a player orders no reset");
             let parts = units.get_mut(entity).expect("a checked order's unit");
-            order.apply(parts, &map.bounds, now);
+            order.give(parts, &map.bounds, now);
         }
     }
 }

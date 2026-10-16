@@ -4,6 +4,7 @@
 //! on from it, and the published log's segments verify. A save due as the server stopped begins
 //! as its restore reaches the boundary.
 
+use std::iter;
 use std::num::NonZeroU32;
 
 use bevy_time::{Time, Virtual};
@@ -15,7 +16,7 @@ use campfire_net::{
     InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefusal, SaveRefused,
     ServerDir, SessionDir, SimServerWorld,
 };
-use campfire_protocol::{InputRules, JournalFrames, Outcome, SeedChain, SessionLog};
+use campfire_protocol::{InputRules, JournalFrames, SeedChain, SessionLog};
 use campfire_runner::{Replay, Session};
 use campfire_sim::{SimWorld, TickRate};
 use campfire_store::InputFile;
@@ -62,10 +63,26 @@ fn log(local: &InProcessMatch) -> &SessionLog {
     local.server().world().resource::<Session>().log()
 }
 
+/// How many loads the journal of `local`'s session, kept in `scratch`, records.
+fn loads(scratch: &Scratch, local: &InProcessMatch) -> usize {
+    let id = log(local).session_id().to_string();
+    let journal = scratch
+        .path("data")
+        .join("sessions")
+        .join(id)
+        .join("journal");
+    let bytes = scratch.read(&journal);
+    let mut frames = JournalFrames::new(&bytes).unwrap();
+    // A load's record is the journal's kind 7.
+    iter::from_fn(|| frames.next())
+        .filter(|record| record[0] == 7)
+        .count()
+}
+
 fn playing_on(local: &InProcessMatch) -> bool {
     (0..2).all(|client| {
         let state = local.client(client).world().resource::<JoinState>();
-        state.clock().is_some()
+        state.playing_clock().is_some()
     })
 }
 
@@ -104,9 +121,11 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     }
     assert!(log(&local).next_tick() > save.tick);
 
-    // The quick load, at speed 2: the server starts again on its data, at that speed, the match
-    // at the save's tick and in its state, the log holding nothing after it.
+    // The quick load, at speed 2, pressed twice in one frame: the server loads once, and starts
+    // again on its data, at that speed, the match at the save's tick and in its state, the log
+    // holding nothing after it.
     local.pace().set_speed(PaceSpeed::Double);
+    command(&mut local, SaveCommand::LoadLatest);
     command(&mut local, SaveCommand::LoadLatest);
     for _ in 0..10 {
         local.step();
@@ -124,6 +143,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     assert_eq!(world.resource::<TickDuration>().0, tick / 2);
     assert_eq!(world.resource::<Time<Virtual>>().max_delta(), tick / 2 * 9);
     assert_eq!(log(&local).checkpoints().collect::<Vec<_>>(), [&save]);
+    assert_eq!(loads(&scratch, &local), 1);
 
     // Every client comes back and plays on from the save.
     for _ in 0..300 {
@@ -144,11 +164,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     );
 
     // The published log holds the segment before the save and the one after it, and verifies.
-    local
-        .server_mut()
-        .world_mut()
-        .end_session(Outcome::Aborted)
-        .unwrap();
+    local.server_mut().world_mut().end_session().unwrap();
     let file =
         SessionDir::publish(local.server().world().resource::<ServerDir>(), log(&local)).unwrap();
     let published =

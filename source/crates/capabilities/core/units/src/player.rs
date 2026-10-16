@@ -18,8 +18,8 @@ use crate::entity_kinds::EntityKinds;
 pub struct Player(PlayerSlot);
 
 impl Player {
-    pub const fn new(slot: PlayerSlot) -> Player {
-        Player(slot)
+    pub const fn new(slot: PlayerSlot) -> Self {
+        Self(slot)
     }
 
     pub const fn slot(self) -> PlayerSlot {
@@ -36,7 +36,7 @@ impl EntityKind for Player {
 
 impl SimComponent for Player {
     const NAME: &'static str = "players.player";
-    type Host = Player;
+    type Host = Self;
 
     // A slot the session lacks has no place in the players' tables, and an id not the slot's
     // would hide the player's state from where it is looked for; and an entity is of one kind.

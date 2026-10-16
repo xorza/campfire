@@ -1,14 +1,13 @@
 use bevy_app::AppExit;
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_protocol::Outcome;
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
-use campfire_store::{DurableError, PathError};
 use tracing::error;
 
 use crate::events::session_written::SessionWritten;
 use crate::faults::Faults;
+use crate::faults::error::SnapshotWriteError;
 use crate::faults::fault::Fault;
 use crate::match_clock::MatchClock;
 use crate::sim_server::Reload;
@@ -16,16 +15,18 @@ use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::server_dir::ServerDir;
+use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::SessionDir;
 
 /// What the sim server module gives a world, for every crate.
 pub trait SimServerWorld {
-    /// Ends the session before the next tick as `outcome`: logs the record of the
-    /// checkpoint on its thread first; then the result, which the server key signs; reveals the
-    /// seed; and from then on runs no tick and logs nothing, as each such system checks that the
-    /// session runs. The server then publishes the log. An error when the checkpoint's snapshot
-    /// was not written, as the log can then not be published: the session ends with no result.
-    fn end_session(&mut self, outcome: Outcome) -> Result<(), PathError<DurableError>>;
+    /// Ends the session before the next tick, as the mode ended the match or aborted when it did
+    /// not: logs the record of the checkpoint on its thread first; then the result, which the
+    /// server key signs; reveals the seed; and from then on runs no tick and logs nothing, as each
+    /// such system checks that the session runs. The server then publishes the log. An error when
+    /// the checkpoint's snapshot was not written, as the log can then not be published: the session
+    /// ends with no result.
+    fn end_session(&mut self) -> Result<(), SnapshotWriteError>;
 
     /// Whether the session went back to a save, and its server is to start again on
     /// its data, which restores the match from it.
@@ -35,9 +36,17 @@ pub trait SimServerWorld {
     /// says, once a worker failed, which for its journal or a checkpoint's snapshot is with
     /// `ExitStatus::Storage`; before the match started, at once when `stop` asks it to. Once the
     /// match started, when `stop` asks it to or every player left, it ends the session, as the
-    /// mode ended the match or aborted; it then publishes the log in its `ServerDir`, and exits,
-    /// with an error when the log is not written, as the session it holds is lost.
-    fn exit_due(&mut self, stop: bool) -> Option<AppExit>;
+    /// mode ended the match or aborted, and closes its journal, whose last sync's failure ends it
+    /// as one in a frame does; it then publishes the log in its `ServerDir`, and exits, with an
+    /// error when the log is not written, as the session it holds is lost.
+    fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit>;
+}
+
+/// Whether the server's owner asked it to stop, as a local server's client does as it ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopRequest {
+    Asked,
+    NotAsked,
 }
 
 /// What the sim server module gives a world, for its own crate.
@@ -47,21 +56,23 @@ pub(crate) trait SimServerWorldCrate {
     /// says, which the journal logs. The match then runs no tick and logs nothing: its server
     /// starts again on its data, which restores the match from the save, once `reload_wanted`
     /// says so. An error when the checkpoint's snapshot was not written.
-    fn load_session_save(&mut self, segment: u32) -> Result<(), PathError<DurableError>>;
+    fn load_session_save(&mut self, segment: u32) -> Result<(), SnapshotWriteError>;
 }
 
 impl SimServerWorld for World {
-    fn end_session(&mut self, outcome: Outcome) -> Result<(), PathError<DurableError>> {
+    fn end_session(&mut self) -> Result<(), SnapshotWriteError> {
         if self.contains_resource::<Checkpoints>() {
             Checkpoints::settle(self)?;
             self.remove_resource::<Checkpoints>();
         }
-        let result = self.session_result_as(outcome);
-        let mut session = self.session_mut();
-        session
-            .record_result(result)
-            .expect("the server's own result holds");
-        session.reveal_seed();
+        let result = self.session_result();
+        self.resource_scope(|world, mut session: Mut<'_, Session>| {
+            let signer = &world.resource::<ServerSigner>().0;
+            session
+                .record_result(result, signer)
+                .expect("the server's own result holds");
+            session.reveal_seed();
+        });
         Ok(())
     }
 
@@ -69,24 +80,28 @@ impl SimServerWorld for World {
         self.contains_resource::<Reload>()
     }
 
-    fn exit_due(&mut self, stop: bool) -> Option<AppExit> {
+    fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit> {
         JournalWatch::report_failure(self);
         if let Some(exit) = Faults::apply(self) {
             return Some(exit);
         }
         if !self.contains_resource::<MatchClock>() {
-            return stop.then_some(AppExit::Success);
+            return (stop == StopRequest::Asked).then_some(AppExit::Success);
         }
         if self.resource::<Session>().log().result().is_none() {
             // Every slot a player controlled left, and no player holds a link.
-            if !stop && !Door::empty(self) {
+            if stop == StopRequest::NotAsked && !Door::empty(self) {
                 return None;
             }
-            let outcome = self.outcome();
-            if let Err(error) = self.end_session(outcome) {
+            if let Err(error) = self.end_session() {
                 self.resource_mut::<Faults>().report(Fault::Snapshot(error));
                 return Faults::apply(self);
             }
+        }
+        self.session_mut().close_journal();
+        JournalWatch::report_failure(self);
+        if let Some(exit) = Faults::apply(self) {
+            return Some(exit);
         }
         let session = self.resource::<Session>();
         let id = session.log().session_id();
@@ -111,7 +126,7 @@ impl SimServerWorld for World {
 }
 
 impl SimServerWorldCrate for World {
-    fn load_session_save(&mut self, segment: u32) -> Result<(), PathError<DurableError>> {
+    fn load_session_save(&mut self, segment: u32) -> Result<(), SnapshotWriteError> {
         Checkpoints::settle(self)?;
         self.resource_mut::<Session>()
             .load(segment)
@@ -127,22 +142,20 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_common::{PlayerSlot, Tick};
     use campfire_runner::SessionWorld;
+    use campfire_units::UnitTypeBook;
 
+    use crate::bot_script::BotScript;
     use crate::faults::Faults;
     use crate::faults::fault::Fault;
+    use crate::order_script::OrderScript;
     use crate::sim_server::bot_driver::BotDriver;
     use crate::sim_server::checkpoints::Checkpoints;
-    use crate::sim_server::local_session::LocalSession;
     use crate::sim_server::player_link::PlayerLink;
     use crate::sim_server::receipts::Receipts;
     use crate::sim_server::server_bots::SlotBot;
 
     /// What a server's world gives the tests and benches of any crate.
     pub trait SimServerWorldInternals {
-        /// Makes the server a local one, which runs on a thread of its one player's client, as
-        /// the client's local server makes it.
-        fn host_locally(&mut self);
-
         /// Makes the server give its receipts in its next update, as if their second passed.
         fn give_receipts(&mut self);
 
@@ -172,10 +185,6 @@ pub(crate) mod internals {
     }
 
     impl SimServerWorldInternals for World {
-        fn host_locally(&mut self) {
-            self.insert_resource(LocalSession);
-        }
-
         fn give_receipts(&mut self) {
             self.resource_mut::<Receipts>().due_now();
         }
@@ -185,7 +194,9 @@ pub(crate) mod internals {
         }
 
         fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot> {
-            let planned = BotDriver::planned(slots, self.session().log(), next);
+            let types = self.resource::<UnitTypeBook>().types();
+            let script = |script: &OrderScript| BotScript::new(script, types).unwrap();
+            let planned = BotDriver::planned(slots, self.session().log(), next, script);
             planned.iter().map(|driven| driven.slot).collect()
         }
 

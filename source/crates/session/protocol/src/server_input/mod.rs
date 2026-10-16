@@ -1,20 +1,14 @@
 use campfire_codec::{Binary, Taken};
 use campfire_common::{AfterLeave, PlayerSlot, Tick};
-use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::bytes::Bytes;
 use crate::delegation::Delegation;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::session_id::SessionId;
-use crate::signature::Signature;
-use crate::signer::Signer;
-use crate::verifier::Verifier;
+use crate::signed::{SignatureDomain, Signed};
 
 pub(crate) mod error;
-
-/// Starts every signed server input, so no other signature of the server key counts as one.
-const SIGNATURE_DOMAIN: &[u8] = b"campfire/server-input/v1";
 
 /// An input the server makes and signs with its key, logged before the tick it applies in: a
 /// bot's commands, and each change of who controls a slot or of a player's link. A bot's payload
@@ -84,6 +78,26 @@ enum Wire<'a> {
     },
 }
 
+/// A server input as the server key signs it, logged at `place` in session `session_id`.
+#[derive(Debug, Clone, Copy)]
+pub struct PlacedInput<'i> {
+    pub input: &'i ServerInput<'i>,
+    pub session_id: SessionId,
+    pub place: InputPlace,
+}
+
+/// `domain ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, little-endian.
+impl Signed for PlacedInput<'_> {
+    const DOMAIN: SignatureDomain = SignatureDomain::new("campfire/server-input/v1");
+
+    fn write_body(&self, message: &mut Vec<u8>) {
+        message.extend_from_slice(self.session_id.as_bytes());
+        message.extend_from_slice(&self.place.tick.get().to_le_bytes());
+        message.extend_from_slice(&self.place.index.to_le_bytes());
+        self.input.encode(message);
+    }
+}
+
 impl<'a> ServerInput<'a> {
     /// The slot it is about.
     pub const fn slot(&self) -> PlayerSlot {
@@ -104,9 +118,7 @@ impl<'a> ServerInput<'a> {
 
     /// The input at the front of `bytes`, and the bytes after it; an error for bytes that do not
     /// decode, and for a delegation that does not parse.
-    pub(crate) fn take(
-        bytes: &'a [u8],
-    ) -> Result<Taken<'a, ServerInput<'a>>, ServerInputDecodeError> {
+    pub(crate) fn take(bytes: &'a [u8]) -> Result<Taken<'a, Self>, ServerInputDecodeError> {
         let Taken { value: wire, rest } =
             Binary::take::<Wire<'a>>(bytes).map_err(ServerInputDecodeError::Malformed)?;
         let delegation =
@@ -150,43 +162,6 @@ impl<'a> ServerInput<'a> {
             },
         };
         Ok(Taken { value: input, rest })
-    }
-
-    /// The server key's signature over the input, `server`'s, logged at `place`.
-    pub fn sign(&self, server: &Signer, session_id: SessionId, place: InputPlace) -> Signature {
-        let mut message = Vec::new();
-        self.write_message(session_id, place, &mut message);
-        server.sign(&message)
-    }
-
-    /// Whether `signature` is `server_key`'s over the input at `place`.
-    pub(crate) fn signed_by(
-        &self,
-        verifier: &mut Verifier,
-        server_key: &XOnlyPublicKey,
-        session_id: SessionId,
-        place: InputPlace,
-        signature: &Signature,
-    ) -> bool {
-        verifier.verifies_written(*signature, server_key, |message| {
-            self.write_message(session_id, place, message);
-        })
-    }
-
-    /// Writes `domain ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, little-endian, into
-    /// `message`, in place of what it held.
-    pub(crate) fn write_message(
-        &self,
-        session_id: SessionId,
-        place: InputPlace,
-        message: &mut Vec<u8>,
-    ) {
-        message.clear();
-        message.extend_from_slice(SIGNATURE_DOMAIN);
-        message.extend_from_slice(session_id.as_bytes());
-        message.extend_from_slice(&place.tick.get().to_le_bytes());
-        message.extend_from_slice(&place.index.to_le_bytes());
-        self.encode(message);
     }
 
     fn wire(&self) -> Wire<'_> {

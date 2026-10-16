@@ -8,6 +8,7 @@
 
 mod camera_file;
 mod client_objects;
+mod client_path;
 mod client_units;
 mod error;
 mod height_grid;

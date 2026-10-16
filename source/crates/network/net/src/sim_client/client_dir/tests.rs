@@ -22,10 +22,7 @@ fn each_path_is_as_stage_6_names_it_and_a_second_client_is_refused() {
     // directory of its own, is not held by the client's lock.
     assert!(matches!(
         ClientDir::open(&path),
-        Err(PathError {
-            error: DataDirError::Locked,
-            ..
-        })
+        Err(DataDirError::Locked { .. })
     ));
     let local = DataDir::open(&layout.local_server_dir()).unwrap();
     drop((local, data));

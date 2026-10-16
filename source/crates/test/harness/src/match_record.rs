@@ -21,7 +21,7 @@ pub struct MatchRecord<'p> {
 impl<'p> MatchRecord<'p> {
     /// The record of `game`, a match of `packages` for `players` players, from its state as it
     /// stands.
-    pub fn of(game: &mut Match, packages: &'p ModePackages, players: u32) -> MatchRecord<'p> {
+    pub fn of(game: &mut Match, packages: &'p ModePackages, players: u32) -> Self {
         MatchRecord {
             packages,
             copy: CopyCheck::of(game),

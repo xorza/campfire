@@ -91,7 +91,13 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
         client.update();
         thread::sleep(NetProtocol::FRAME);
     };
-    let playing = |client: &App| client.world().resource::<JoinState>().clock().is_some();
+    let playing = |client: &App| {
+        client
+            .world()
+            .resource::<JoinState>()
+            .playing_clock()
+            .is_some()
+    };
     let mut played = 0;
     while played < 30 {
         frame(&mut client);

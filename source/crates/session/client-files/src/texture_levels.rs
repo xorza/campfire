@@ -18,13 +18,13 @@ pub struct TextureLevels {
 impl TextureLevels {
     /// A texture of `size` texels and its first `levels` levels, `data` their texels, one level
     /// after another, the largest first.
-    pub fn new(size: UVec2, levels: u32, data: Vec<u8>) -> TextureLevels {
+    pub fn new(size: UVec2, levels: u32, data: Vec<u8>) -> Self {
         assert!(
             size.cmpgt(UVec2::ZERO).all() && levels > 0,
             "a texel and a level"
         );
-        let texture = TextureLevels { size, levels, data };
-        let bytes = (0..levels).map(|level| TextureLevels::level_len(size, level));
+        let texture = Self { size, levels, data };
+        let bytes = (0..levels).map(|level| Self::level_len(size, level));
         assert_eq!(
             Some(texture.data.len()),
             bytes.sum::<Option<usize>>(),
@@ -35,7 +35,7 @@ impl TextureLevels {
 
     /// The first `levels` levels of a KTX2 file's `bytes`: a 2D texture of `R8G8B8A8_SRGB`, of no
     /// supercompression, with at least `levels` levels, each of its size's bytes.
-    pub fn of_ktx2(bytes: &[u8], levels: u32) -> Result<TextureLevels, TextureLevelsError> {
+    pub fn of_ktx2(bytes: &[u8], levels: u32) -> Result<Self, TextureLevelsError> {
         debug_assert!(levels > 0, "a level wanted");
         if bytes.get(..IDENTIFIER.len()) != Some(&IDENTIFIER[..]) {
             return Err(TextureLevelsError::NotKtx2);
@@ -70,13 +70,13 @@ impl TextureLevels {
         for level in 0..levels {
             let entry = LEVEL_INDEX + LEVEL_ENTRY * level as usize;
             let [at, len] = [wide(entry)?, wide(entry + 8)?];
-            if Some(len) != TextureLevels::level_len(UVec2::new(width, height), level) {
+            if Some(len) != Self::level_len(UVec2::new(width, height), level) {
                 return Err(TextureLevelsError::LevelBytes(level));
             }
             let end = at.checked_add(len).ok_or(TextureLevelsError::Short)?;
             data.extend_from_slice(bytes.get(at..end).ok_or(TextureLevelsError::Short)?);
         }
-        Ok(TextureLevels {
+        Ok(Self {
             size: UVec2::new(width, height),
             levels,
             data,
@@ -99,7 +99,7 @@ impl TextureLevels {
     }
 
     fn level_bytes(&self, level: u32) -> usize {
-        TextureLevels::level_len(self.size, level).expect("a texture's levels fit memory")
+        Self::level_len(self.size, level).expect("a texture's levels fit memory")
     }
 
     /// The bytes of level `level` of a texture of `size` texels, four to a texel; none past what

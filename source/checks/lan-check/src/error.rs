@@ -26,9 +26,6 @@ pub(crate) enum CheckError {
     /// The file a process writes its text log to is not made.
     #[error("a process's text log is not made")]
     TextLog(#[source] PathError<io::Error>),
-    /// No UDP port on `127.0.0.1` was free for the server to listen on.
-    #[error("no free port on the loopback address")]
-    Port(#[source] io::Error),
     #[error("{process} did not start")]
     Start {
         process: Process,

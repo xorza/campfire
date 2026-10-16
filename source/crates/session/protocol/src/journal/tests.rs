@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::journal::error::NotJournal;
+use crate::journal::journal_frames::JournalFrames;
 use crate::journal::journal_frames::MAX_RECORD;
 
 /// A journal's file in memory, which a test reads back as it likes.
@@ -10,8 +11,8 @@ pub(crate) struct MemorySink(pub(crate) Arc<Mutex<Vec<u8>>>);
 
 impl MemorySink {
     /// A file that holds the journal's tag alone, as a new journal does.
-    pub(crate) fn new() -> MemorySink {
-        MemorySink(Arc::new(Mutex::new(JournalFrames::TAG.to_vec())))
+    pub(crate) fn new() -> Self {
+        Self(Arc::new(Mutex::new(JournalFrames::TAG.to_vec())))
     }
 
     pub(crate) fn bytes(&self) -> Vec<u8> {
@@ -30,17 +31,24 @@ impl RecordSink for MemorySink {
     }
 }
 
+fn len(len: usize) -> u64 {
+    u64::try_from(len).unwrap()
+}
+
 /// Three records, the second empty.
 const RECORDS: [&[u8]; 3] = [b"first", b"", b"third record"];
 
 /// The journal file of `RECORDS`, written in turn.
 fn journal_of_records() -> Vec<u8> {
     let file = MemorySink::new();
-    let mut journal = Journal::new(file.boxed());
+    let mut journal = Journal::new(file.boxed(), len(JournalFrames::TAG.len()));
     for record in RECORDS {
         journal.append(|out| out.extend_from_slice(record));
     }
     assert_eq!(journal.written(), 3);
+    // The tag, then each record's 4 + 32 bytes beside its own: 19 + 41 + 36 + 48.
+    assert_eq!(journal.len(), 144);
+    assert_eq!(journal.len(), len(file.bytes().len()));
     file.bytes()
 }
 
@@ -119,10 +127,10 @@ fn a_flipped_byte_or_a_length_past_the_bound_stops_the_read_at_its_frame() {
     }
     // A length one past the bound, with that many bytes after it, is a bad frame.
     let mut long = JournalFrames::TAG.to_vec();
-    let start = JournalFrames::open(&mut long);
+    let start = journal_frames::open(&mut long);
     long.resize(long.len() + MAX_RECORD + 1, 0);
     let len = u32::try_from(MAX_RECORD + 1).unwrap();
     long[start..start + 4].copy_from_slice(&len.to_le_bytes());
-    long.extend_from_slice(JournalFrames::hash(&long[start + 4..]).as_bytes());
+    long.extend_from_slice(journal_frames::hash(&long[start + 4..]).as_bytes());
     assert_eq!(read(&long), Some((Vec::new(), JournalFrames::TAG.len())));
 }

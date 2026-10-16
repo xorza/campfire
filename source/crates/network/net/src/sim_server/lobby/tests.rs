@@ -15,7 +15,7 @@ use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
 
 use super::*;
-use crate::join::{Join, JoinRole};
+use crate::net_protocol::join::{Join, JoinRole};
 use crate::order_script::OrderScript;
 use crate::os::{Clock, Os};
 use crate::session_times::SessionTimes;
@@ -24,13 +24,20 @@ use crate::sim_server::server_bots::SlotBot;
 
 /// A session of the lane mode's 2 slots, with bots in slots `bots` and slots `open` open.
 fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
-    let script = OrderScript::parse("end = 1").unwrap();
     LobbySetup {
-        packages: Arc::new(TestMode::Lane.packages()),
+        opening: opening(bots, open),
         seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
         tick_hz: NonZeroU32::new(30).unwrap(),
         inputs: InputRules::LAN,
         slots: 2,
+    }
+}
+
+/// The opening of a session of the lane mode, with bots in slots `bots` and slots `open` open.
+fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
+    let script = OrderScript::parse("end = 1").unwrap();
+    LobbyOpening {
+        packages: Arc::new(TestMode::Lane.packages()),
         bots: ServerBots {
             slots: bots
                 .iter()
@@ -71,7 +78,7 @@ fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
     // out of play sees, and no kind.
     let hosted = |settings: &[&str], max_spectators| {
         let mut setup = setup(&[], &[]);
-        setup.host = HostVisibility {
+        setup.opening.host = HostVisibility {
             settings: settings.iter().map(|text| text.parse().unwrap()).collect(),
             max_spectators,
         };
@@ -104,7 +111,7 @@ struct Joining {
 }
 
 impl Joining {
-    fn new(lobby: &Lobby) -> Joining {
+    fn new(lobby: &Lobby) -> Self {
         let granted = DelegationTerms {
             session_key: TestKey::of(2).x_only_public_key().0,
             server_key: TestKey::server().x_only_public_key().0,
@@ -112,7 +119,7 @@ impl Joining {
             seed_contribution: SeedContribution::new([6; 32]),
             expiration: TestKey::NOW + 60,
         };
-        Joining {
+        Self {
             granted,
             offered: Offered {
                 challenge: ConnectChallenge::new([9; 32]),
@@ -137,11 +144,10 @@ impl Joining {
     fn join(&self, json: &str, session: u8, binding: u8) -> Join {
         Join {
             delegation: json.to_owned(),
-            answer: ConnectAnswer {
+            answer: TestKey::signer(TestKey::of(session)).sign(&ConnectAnswer {
                 challenge: &self.offered.challenge,
                 binding: &ChannelBinding::new([binding; 32]),
-            }
-            .sign(&TestKey::signer(TestKey::of(session))),
+            }),
             role: JoinRole::Play,
         }
     }
@@ -165,7 +171,7 @@ fn one_frames_joins_go_in_the_order_of_their_keys_however_a_query_gives_them() {
     // In either order, the answered joins go in the order of their main keys, then their
     // session keys, and the join over another session's binding is refused. The x-only keys begin
     // 46… for byte 4 and 53… for byte 3, and the session keys 4d… for byte 2 and f9… for byte 8.
-    let lobby = Lobby::new(setup(&[], &[])).unwrap();
+    let mut lobby = Lobby::new(setup(&[], &[])).unwrap();
     let joining = Joining::new(&lobby);
     let links = links(&mut World::new());
     let frame = [
@@ -257,23 +263,7 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
 fn a_servers_new_session_opens_every_slot_by_the_lan_rules_and_keeps_its_files() {
     let scratch = Scratch::new();
     let data = ServerDir::open(&scratch.path("data")).unwrap();
-    let opening = |bots: &[u32]| {
-        let LobbySetup {
-            packages,
-            bots,
-            open,
-            host,
-            server,
-            ..
-        } = setup(bots, &[]);
-        LobbyOpening {
-            packages,
-            bots,
-            open,
-            host,
-            server,
-        }
-    };
+    let opening = |bots: &[u32]| opening(bots, &[]);
     // The lane mode's 2 slots, both players', at its default and only rate of 30 Hz; the seed
     // chain of 1024 segments from the server's entropy, every byte 5.
     let lobby = Lobby::open(opening(&[]), &data).unwrap();

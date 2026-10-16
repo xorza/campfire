@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::action_data::error::{ActionField, EffectRule};
 use crate::action_data_field::ActionDataField;
-use crate::action_kind::MeteredKind;
+use crate::action_kind::{ActionKind, MeteredKind};
 use crate::list_hook::ListHook;
 
 /// Why an action's data makes no action of a match: a rule of design 08's checks that its data
@@ -27,9 +27,9 @@ pub enum ActionProblem {
     /// A field its kind needs is missing, or one its kind refuses is given.
     #[error("its kind needs or refuses `{}`", .0.name())]
     KindField(ActionDataField),
-    /// A gather's `bounce` is no distance from 0.
-    #[error("its bounce is no distance from 0")]
-    Bounce,
+    /// Its kind is none the release runs.
+    #[error("its kind {0:?} is none the release runs")]
+    NotRun(ActionKind),
     /// A use, a build or a gather reaches globally at a rank, where it needs meters.
     #[error("its range is global at a rank, where its kind needs meters")]
     Global(MeteredKind),
@@ -69,7 +69,33 @@ pub enum ActionError {
 }
 
 impl From<TimeTooLarge> for ActionError {
-    fn from(error: TimeTooLarge) -> ActionError {
-        ActionError::Problem(ActionProblem::Time(error))
+    fn from(error: TimeTooLarge) -> Self {
+        Self::Problem(ActionProblem::Time(error))
+    }
+}
+
+impl From<KindError> for ActionError {
+    fn from(error: KindError) -> Self {
+        Self::Problem(error.into())
+    }
+}
+
+/// Why an action's data gives no `KindData`: its kind is none the release runs, or a field its
+/// kind needs is missing, or one its kind refuses is given.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum KindError {
+    #[error("its kind {0:?} is none the release runs")]
+    NotRun(ActionKind),
+    #[error("its kind needs or refuses `{}`", .0.name())]
+    Field(ActionDataField),
+}
+
+/// A kind's problem as the action's.
+impl From<KindError> for ActionProblem {
+    fn from(error: KindError) -> Self {
+        match error {
+            KindError::NotRun(kind) => Self::NotRun(kind),
+            KindError::Field(field) => Self::KindField(field),
+        }
     }
 }

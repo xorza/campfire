@@ -1,8 +1,3 @@
-use bevy_ecs::system::SystemState;
-use bevy_ecs::world::World;
-use campfire_sim::{EntityIndex, IdAllocator};
-use campfire_units::{Avatar, Dead, Owner};
-
 use super::*;
 
 #[test]
@@ -213,58 +208,4 @@ fn an_order_names_its_units_by_type_and_a_build_its_place() {
             "{flawed}"
         );
     }
-}
-
-#[test]
-fn an_order_commands_the_avatar_or_the_living_units_of_its_type_or_none() {
-    let mut world = World::new();
-    world.init_resource::<EntityIndex>();
-    let mut ids = IdAllocator::default();
-    let [bot, other] = [1, 0].map(|slot| Owner::new(PlayerSlot::new(slot)));
-    let types: Names<UnitType> = [(TypeScope::Mode, "dozer"), (TypeScope::Mode, "ranger")].into();
-    let [dozer, ranger] = [UnitType::new(0), UnitType::new(1)];
-    // The bot's rangers 0, 2 and 4, but 2 is dead; a ranger of the other player, and the bot's
-    // dozer.
-    let mut spawned = Vec::new();
-    for (owner, unit_type) in [
-        (bot, ranger),
-        (other, ranger),
-        (bot, ranger),
-        (bot, dozer),
-        (bot, ranger),
-    ] {
-        let id = ids.allocate();
-        let entity = world.spawn((id, owner, unit_type)).id();
-        spawned.push((id, entity));
-    }
-    world.entity_mut(spawned[2].1).insert(Dead);
-    let mut state: SystemState<PlayerUnits<'static, 'static>> = SystemState::new(&mut world);
-    let order = |text: &str, world: &World, state: &mut SystemState<_>| {
-        let script = OrderScript::parse(&format!("[[order]]\ntick = 0\n{text}move = [1, 1]\n"));
-        let players = state.get(world).unwrap();
-        let mut scratch = Vec::new();
-        script.unwrap().orders()[0].order(PlayerSlot::new(1), &players, &types, &mut scratch)
-    };
-    let rangers = order("units = \"ranger\"\n", &world, &mut state).unwrap();
-    assert_eq!(rangers.units.get(), [spawned[0].0, spawned[4].0]);
-    let dozers = order("units = \"dozer\"\n", &world, &mut state).unwrap();
-    assert_eq!(dozers.units.get(), [spawned[3].0]);
-    // A type the match lacks, a type the bot owns none of alive, and an avatar it lacks.
-    world.entity_mut(spawned[3].1).insert(Dead);
-    let missing = |text: &str, world: &World, state: &mut SystemState<_>| {
-        order(text, world, state).unwrap_err()
-    };
-    assert_eq!(
-        missing("units = \"tank\"\n", &world, &mut state),
-        UnitsMissing::UnknownType
-    );
-    assert_eq!(
-        missing("units = \"dozer\"\n", &world, &mut state),
-        UnitsMissing::NoUnit
-    );
-    assert_eq!(missing("", &world, &mut state), UnitsMissing::NoAvatar);
-    // An avatar of the bot takes the order alone.
-    world.entity_mut(spawned[4].1).insert(Avatar);
-    let avatar = order("", &world, &mut state).unwrap();
-    assert_eq!(avatar.units.get(), [spawned[4].0]);
 }

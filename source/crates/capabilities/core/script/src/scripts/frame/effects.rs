@@ -32,7 +32,7 @@ trait Queue: Slot + Debug {
 
 impl<E: Effect> Queue for VecDeque<E> {
     fn clear(&mut self) {
-        VecDeque::clear(self);
+        Self::clear(self);
     }
 }
 
@@ -44,12 +44,18 @@ impl Effects {
             .index_of::<VecDeque<E>>()
             .unwrap_or_else(|| self.queues.add(Box::new(VecDeque::<E>::new())));
         self.queues.typed_mut::<VecDeque<E>>(at).push_back(effect);
-        self.order.push(Effects::apply_first::<E>);
+        self.order.push(Self::apply_first::<E>);
     }
 
     /// The effects of type `E` queued and not applied yet, first first.
     pub fn queued<E: Effect>(&self) -> impl Iterator<Item = &E> {
         self.queues.get::<VecDeque<E>>().into_iter().flatten()
+    }
+
+    /// The effects of type `E` queued and not applied yet, first first, to change: a later call
+    /// may add to an effect it finds, as a grant to a unit the call spawns joins the spawn.
+    pub fn queued_mut<E: Effect>(&mut self) -> impl Iterator<Item = &mut E> {
+        self.queues.get_mut::<VecDeque<E>>().into_iter().flatten()
     }
 
     /// The apply of each effect, in the order queued.
@@ -163,10 +169,14 @@ mod tests {
         let hits: Vec<_> = frame.effects.queued::<Hit>().collect();
         assert_eq!(hits, [&Hit(1), &Hit(3)]);
         assert_eq!(frame.effects.queued::<Heal>().count(), 1);
+        // A change to a queued effect applies, in its place: the second hit, 3, becomes 30.
+        if let Some(hit) = frame.effects.queued_mut::<Hit>().nth(1) {
+            hit.0 = 30;
+        }
         frame.apply(&mut world);
         assert_eq!(
             world.resource::<Applied>().0,
-            ["early", "hit 1 at 7", "heal 2 at 7", "hit 3 at 7", "late"]
+            ["early", "hit 1 at 7", "heal 2 at 7", "hit 30 at 7", "late"]
         );
         // Applied, the frame holds no effect; a type never queued has none, and a queue made
         // by an earlier call serves the next.

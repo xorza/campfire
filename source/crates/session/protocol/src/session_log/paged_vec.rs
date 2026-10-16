@@ -12,8 +12,8 @@ pub(crate) struct PagedVec<T> {
 const PAGE: usize = 4096;
 
 impl<T> Default for PagedVec<T> {
-    fn default() -> PagedVec<T> {
-        PagedVec {
+    fn default() -> Self {
+        Self {
             pages: Vec::new(),
             len: 0,
         }

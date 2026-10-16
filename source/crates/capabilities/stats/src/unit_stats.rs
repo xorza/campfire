@@ -9,8 +9,8 @@ pub struct UnitStats {
 }
 
 impl UnitStats {
-    pub const fn new(values: Vec<Num>) -> UnitStats {
-        UnitStats { values }
+    pub const fn new(values: Vec<Num>) -> Self {
+        Self { values }
     }
 
     pub fn values(&self) -> &[Num] {

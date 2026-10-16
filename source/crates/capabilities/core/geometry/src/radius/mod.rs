@@ -13,14 +13,14 @@ pub(crate) mod error;
 pub struct Radius(Num);
 
 impl Radius {
-    pub const ZERO: Radius = Radius(Num::ZERO);
+    pub const ZERO: Self = Self(Num::ZERO);
 
     /// `radius`; `None` below 0 or past `MAX_BOUND`.
-    pub const fn new(radius: Num) -> Option<Radius> {
+    pub const fn new(radius: Num) -> Option<Self> {
         if radius.to_bits() < 0 || radius.to_bits() > MAX_BOUND.to_bits() {
             return None;
         }
-        Some(Radius(radius))
+        Some(Self(radius))
     }
 
     pub const fn get(self) -> Num {
@@ -31,13 +31,13 @@ impl Radius {
 impl TryFrom<Num> for Radius {
     type Error = NotRadius;
 
-    fn try_from(radius: Num) -> Result<Radius, NotRadius> {
-        Radius::new(radius).ok_or(NotRadius(radius))
+    fn try_from(radius: Num) -> Result<Self, NotRadius> {
+        Self::new(radius).ok_or(NotRadius(radius))
     }
 }
 
 impl From<Radius> for Num {
-    fn from(radius: Radius) -> Num {
+    fn from(radius: Radius) -> Self {
         radius.0
     }
 }

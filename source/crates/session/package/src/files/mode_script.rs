@@ -18,22 +18,22 @@ impl ModeScript {
     /// The script's path in its package.
     pub(crate) const fn path(&self) -> &PackagePath {
         match self {
-            ModeScript::Own(path) | ModeScript::Rules { path, .. } => path,
+            Self::Own(path) | Self::Rules { path, .. } => path,
         }
     }
 
     /// The rules package that holds it; none for the mode's own.
     pub(crate) const fn package(&self) -> Option<&PackageName> {
         match self {
-            ModeScript::Own(_) => None,
-            ModeScript::Rules { package, .. } => Some(package),
+            Self::Own(_) => None,
+            Self::Rules { package, .. } => Some(package),
         }
     }
 }
 
 /// A path alone, or a table of a package and a path.
 impl<'de> Deserialize<'de> for ModeScript {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModeScript, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(untagged)]
         enum Written {
@@ -47,8 +47,8 @@ impl<'de> Deserialize<'de> for ModeScript {
             path: PackagePath,
         }
         Ok(match Written::deserialize(deserializer)? {
-            Written::Own(path) => ModeScript::Own(path),
-            Written::Rules(Named { package, path }) => ModeScript::Rules { package, path },
+            Written::Own(path) => Self::Own(path),
+            Written::Rules(Named { package, path }) => Self::Rules { package, path },
         })
     }
 }

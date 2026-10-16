@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_sim::{Capability, SimComponent, TickRate};
+use campfire_sim::{SimComponent, TickRate};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
@@ -13,14 +13,14 @@ use crate::pool_book::PoolBook;
 
 /// A unit's life: its meter of the mode's life pool, which every client that sees the unit
 /// receives, where its other pools are `Pools`, of another kind. A unit holds it exactly when it
-/// has combat, and lives while it is above 0.
+/// has combat; `lives` says when the unit lives.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Life(Meter);
 
 impl Life {
-    pub const fn new(meter: Meter) -> Life {
-        Life(meter)
+    pub const fn new(meter: Meter) -> Self {
+        Self(meter)
     }
 
     pub const fn current(self) -> Num {
@@ -58,6 +58,15 @@ impl Life {
     }
 }
 
+/// Whether a unit lives: it is not `dead`, and its `life`, when it has one, is above 0. A life
+/// reaches 0 in a tick before the unit's death, at the next deaths, marks it `Dead`; from then on
+/// the unit lives no more, though not yet dead: nothing but its respawn lifts its life, and it
+/// takes no damage or heal and starts or strikes no attack or cast. Every pass that asks whether a
+/// unit lives asks this.
+pub(crate) fn lives(dead: bool, life: Option<&Life>) -> bool {
+    !dead && life.is_none_or(|life| !life.is_empty())
+}
+
 impl SimComponent for Life {
     const NAME: &'static str = "stats.life";
     type Host = UnitEntity;
@@ -79,7 +88,6 @@ impl Replication for Life {
 }
 
 impl PerType for Life {
-    const OWNER: Option<Capability> = Some(Capability::Combat);
     const SCRIPTS_ONLY: bool = false;
 }
 
@@ -93,14 +101,14 @@ pub(crate) mod internals {
     impl Life {
         /// The same life with `amount` of it spent.
         #[must_use]
-        pub fn spent(mut self, amount: Num) -> Life {
+        pub fn spent(mut self, amount: Num) -> Self {
             self.take(amount);
             self
         }
 
         /// A full life of `max`, which is positive.
-        pub const fn full(max: Num) -> Life {
-            Life(Meter::new(max).expect("a positive maximum"))
+        pub const fn full(max: Num) -> Self {
+            Self(Meter::new(max).expect("a positive maximum"))
         }
     }
 }

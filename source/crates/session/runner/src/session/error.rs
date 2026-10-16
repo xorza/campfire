@@ -1,7 +1,5 @@
 use campfire_common::StateHash;
-use campfire_protocol::{
-    CheckpointError, LogLoadError, Outcome, SeedError, ServerInputError, SlotChange,
-};
+use campfire_protocol::{CheckpointError, Outcome, SeedError, ServerInputError, SlotChange};
 use campfire_script::CallError;
 use campfire_sim::SnapshotError;
 use serde::{Deserialize, Serialize};
@@ -59,9 +57,10 @@ pub enum ResumeError {
     NoCheckpoint,
     #[error(transparent)]
     Snapshot(SnapshotCheckError),
-    /// The log does not load the save.
+    /// The log does not load the save, as a test loads one.
+    #[cfg(feature = "internals")]
     #[error("the save does not load")]
-    Load(#[source] LogLoadError),
+    Load(#[source] campfire_protocol::LogLoadError),
 }
 
 /// Why a session begins no checkpoint at a boundary.

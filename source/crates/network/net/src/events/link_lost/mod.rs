@@ -29,18 +29,18 @@ pub enum LinkLossCause {
 
 impl LinkLossCause {
     /// The cause a link's `end` gives, Campfire's own codes named; none for an in-process link.
-    pub(crate) fn of(end: Option<&LinkEnd>) -> LinkLossCause {
+    pub(crate) fn of(end: Option<&LinkEnd>) -> Self {
         match end {
-            None => LinkLossCause::InProcess,
+            None => Self::InProcess,
             Some(&LinkEnd::ClosedByPeer(code)) => CloseCode::of(code).map_or(
-                LinkLossCause::Link(LinkEnd::ClosedByPeer(code)),
+                Self::Link(LinkEnd::ClosedByPeer(code)),
                 LinkLossCause::ServerClosed,
             ),
             Some(&LinkEnd::Closed(code)) => CloseCode::of(code).map_or(
-                LinkLossCause::Link(LinkEnd::Closed(code)),
+                Self::Link(LinkEnd::Closed(code)),
                 LinkLossCause::ClientClosed,
             ),
-            Some(&end) => LinkLossCause::Link(end),
+            Some(&end) => Self::Link(end),
         }
     }
 }

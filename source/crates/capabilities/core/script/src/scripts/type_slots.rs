@@ -84,8 +84,8 @@ impl<T: ?Sized + Slot> TypeSlots<T> {
 }
 
 impl<T: ?Sized> Default for TypeSlots<T> {
-    fn default() -> TypeSlots<T> {
-        TypeSlots {
+    fn default() -> Self {
+        Self {
             types: Vec::new(),
             items: Vec::new(),
         }

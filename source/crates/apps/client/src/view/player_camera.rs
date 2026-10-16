@@ -47,14 +47,12 @@ const PIXELS_PER_NOTCH: f32 = 50.0;
 
 impl Plugin for PlayerCamera {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, PlayerCamera::spawn);
+        app.add_systems(Startup, Self::spawn);
         app.add_systems(
             Update,
-            (PlayerCamera::steer, PlayerCamera::place)
-                .chain()
-                .before(ViewSystems),
+            (Self::steer, Self::place).chain().before(ViewSystems),
         );
-        app.add_systems(Update, PlayerCamera::confine);
+        app.add_systems(Update, Self::confine);
     }
 }
 

@@ -5,22 +5,22 @@ use campfire_values::{Bits256, NameId, ResourceId};
 pub struct ResourceSet(Bits256);
 
 impl FromIterator<ResourceId> for ResourceSet {
-    fn from_iter<I: IntoIterator<Item = ResourceId>>(resources: I) -> ResourceSet {
+    fn from_iter<I: IntoIterator<Item = ResourceId>>(resources: I) -> Self {
         let bits = resources
             .into_iter()
             .fold(Bits256::NONE, |bits, resource| bits.with(resource.index()));
-        ResourceSet(bits)
+        Self(bits)
     }
 }
 
 impl<const N: usize> From<[ResourceId; N]> for ResourceSet {
-    fn from(resources: [ResourceId; N]) -> ResourceSet {
+    fn from(resources: [ResourceId; N]) -> Self {
         resources.into_iter().collect()
     }
 }
 
 impl ResourceSet {
-    pub const fn contains(self, resource: ResourceId) -> bool {
-        self.0.contains(resource.get() as usize)
+    pub fn contains(self, resource: ResourceId) -> bool {
+        self.0.contains(resource.index())
     }
 }

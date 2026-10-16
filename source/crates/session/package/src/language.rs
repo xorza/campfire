@@ -19,9 +19,9 @@ pub struct Language {
 
 impl Language {
     /// `text` as a language; `None` unless it is an identifier in its canonical spelling.
-    pub fn parse(text: &str) -> Option<Language> {
+    pub fn parse(text: &str) -> Option<Self> {
         let identifier: LanguageIdentifier = text.parse().ok()?;
-        (identifier == text).then(|| Language {
+        (identifier == text).then(|| Self {
             text: text.into(),
             identifier,
         })
@@ -38,7 +38,7 @@ impl Language {
 
 /// One spelling for each identifier, so the spelling alone decides.
 impl PartialEq for Language {
-    fn eq(&self, other: &Language) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         self.text == other.text
     }
 }
@@ -46,13 +46,13 @@ impl PartialEq for Language {
 impl Eq for Language {}
 
 impl PartialOrd for Language {
-    fn partial_cmp(&self, other: &Language) -> Option<Ordering> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
 impl Ord for Language {
-    fn cmp(&self, other: &Language) -> Ordering {
+    fn cmp(&self, other: &Self) -> Ordering {
         self.text.cmp(&other.text)
     }
 }
@@ -64,9 +64,9 @@ impl Hash for Language {
 }
 
 impl<'de> Deserialize<'de> for Language {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Language, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        Language::parse(&text).ok_or_else(|| {
+        Self::parse(&text).ok_or_else(|| {
             D::Error::custom(format!(
                 "{text:?} is not a language identifier in its canonical spelling"
             ))

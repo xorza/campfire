@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 pub struct SlotKind(u8);
 
 impl SlotKind {
-    pub const fn new(index: u8) -> SlotKind {
-        SlotKind(index)
+    pub const fn new(index: u8) -> Self {
+        Self(index)
     }
 }
 
@@ -18,8 +18,8 @@ impl NameId for SlotKind {
     type Scope = ();
     const LIMIT: usize = 1 << u8::BITS;
 
-    fn at(index: usize) -> SlotKind {
-        SlotKind(u8::try_from(index).expect("slot kinds fit u8"))
+    fn at(index: usize) -> Self {
+        Self(u8::try_from(index).expect("slot kinds fit u8"))
     }
 
     fn index(self) -> usize {

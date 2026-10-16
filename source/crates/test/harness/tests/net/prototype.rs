@@ -6,7 +6,7 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::EntityRef;
-use campfire_actions::ActionSlots;
+use campfire_actions::ActionProgress;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Tick, Ticks};
@@ -21,7 +21,7 @@ use campfire_orders::OrdersAction;
 use campfire_package_disk::internals::TestMode;
 use campfire_players::{PlayerResources, PlayersWorld};
 use campfire_projectiles::Projectile;
-use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
+use campfire_protocol::{InputError, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::{Replay, Session};
 use campfire_script::StateValue;
@@ -203,14 +203,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     // A message whose signature the player's session key did not make, stamped for the next tick
     // so that only its signature is wrong: the server refuses it, and ends the link.
     let next_tick = Tick::new(local.next_tick(End::Server));
-    let forged = InputMessage::new(
-        [PlayerInput {
-            slot: PlayerSlot::new(0),
-            stamp: next_tick,
-            payload: b"",
-        }],
-        Signature::from_bytes([0; 64]),
-    );
+    let forged = InputMessage::new([(next_tick, &b""[..])], Signature::from_bytes([0; 64]));
     let world = local.client_mut(0).world_mut();
     let mut senders = world.query_filtered::<&mut MessageSender<InputMessage>, With<Client>>();
     senders
@@ -253,8 +246,8 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
         let units = || world.resource::<EntityIndex>().iter();
         let aimed = units().any(|(_, entity)| {
             let unit = world.entity(entity);
-            unit.get::<ActionSlots>()
-                .and_then(ActionSlots::attack_target)
+            unit.get::<ActionProgress>()
+                .and_then(ActionProgress::attack_target)
                 == Some(hero_id)
                 && !unit.contains::<MoveStep>()
         });
@@ -328,7 +321,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
             .client(spectator)
             .world()
             .resource::<JoinState>()
-            .watching()
+            .watching_clock()
             .is_some()
         {
             break;
@@ -348,7 +341,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
         .insert(frail);
     // The tower, at (8, -3), stands out of the walker's sight at (0, -2): an attack on it does
     // nothing, on the server and on the client, which does not hold it.
-    let slots = |app: &App| app.world().get::<ActionSlots>(hero_entity(app)).cloned();
+    let slots = |app: &App| app.world().get::<ActionProgress>(hero_entity(app)).copied();
     let attacking = |app: &App| slots(app)?.attacking();
     let start = hero(local.server());
     local.order(0, OrdersAction::Attack { target: tower });
@@ -487,7 +480,7 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
     let world = local.server_mut().world_mut();
     let pos = world.get::<Position>(entity).unwrap().get();
     let to = Vec3::new(pos.x - Num::int(6), pos.y, pos.z);
-    let step = Num::ONE.checked_div_int(5).unwrap();
+    let step = Num::ONE / 5;
     world.entity_mut(entity).insert(ForcedMove::Dash {
         to: DashTo::Point(to),
         step,
@@ -517,7 +510,11 @@ fn the_client_takes_the_relations_a_script_sets() {
     let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The client holds the relations from its first replication, on the match's entity.
-    let relations = |app: &App| app.world().held_relations().cloned();
+    let relations = |app: &App| {
+        let world = app.world();
+        let entity = world.match_entity()?;
+        world.get::<Relations>(entity).cloned()
+    };
     while relations(local.client(0)).is_none() {
         local.step();
     }
@@ -679,8 +676,8 @@ impl Handoff {
     }
 
     /// Steps every end until `done`.
-    fn step_until(&mut self, done: impl Fn(&Handoff) -> bool) {
-        for _ in 0..Handoff::FRAMES {
+    fn step_until(&mut self, done: impl Fn(&Self) -> bool) {
+        for _ in 0..Self::FRAMES {
             if done(self) {
                 return;
             }
@@ -690,8 +687,8 @@ impl Handoff {
     }
 
     /// Steps the server and the first client alone until `done`.
-    fn step_first_until(&mut self, done: impl Fn(&Handoff) -> bool) {
-        for _ in 0..Handoff::FRAMES {
+    fn step_first_until(&mut self, done: impl Fn(&Self) -> bool) {
+        for _ in 0..Self::FRAMES {
             if done(self) {
                 return;
             }

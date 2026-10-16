@@ -11,6 +11,7 @@ use super::*;
 use crate::pathing_grid::PathingGrid;
 use crate::terrain::Terrain;
 use crate::walker::Walker;
+use crate::walker_kinds::WalkerKinds;
 
 /// The point `(x, z)` in quarters of a meter.
 fn quarters(x: i64, z: i64) -> Vec3 {
@@ -42,7 +43,7 @@ fn walled(rows: &[&str]) -> Walled {
     let bounds = Bounds::new([Num::ZERO; 2], [size(rows[0].len()), size(rows.len())]);
     let mut grid = PathingGrid::new(
         Grid::new(Num::ONE, bounds.unwrap()).unwrap(),
-        vec![walker()],
+        WalkerKinds::from([walker()]),
         &Terrain::default(),
     );
     let mut ids = IdAllocator::default();

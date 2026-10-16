@@ -1,9 +1,9 @@
 use campfire_common::Tick;
+use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_stats::StatsRefusal;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_mode_applies_a_modifier_writes_its_handle_and_sees_it_end() {
@@ -133,7 +133,7 @@ fn on_mode_input(ctx, player, name, value) {
             };
             if let Some(instance) = modifiers.get(drill, None) {
                 assert!(
-                    instance.lifetime.held_by(Hold::Held) && instance.lifetime.until().is_none()
+                    instance.lifetime.held_by(Hold::Player) && instance.lifetime.until().is_none()
                 );
                 held.push(id.get());
             }
@@ -148,6 +148,21 @@ fn on_mode_input(ctx, player, name, value) {
     // A grunt of player 1 spawned later holds it from its first Resolve.
     Mode::tick_inputs(&mut game, &[(1, input("probe", "another"))]);
     assert_eq!(drilled(&game), [1, 4]);
+    // Grunt 1 goes to player 0, and holds the drill no more. Grunt 4 dies, and its modifiers
+    // but its passives end, the drill among them; it holds it again once it lives.
+    let unit = |game: &Match, number| {
+        let index = game.resource::<EntityIndex>();
+        index.iter().find(|(id, _)| id.get() == number).unwrap()
+    };
+    let (first, _) = unit(&game, 1);
+    let (fourth, revived) = unit(&game, 4);
+    game.insert_parts(first, Owner::new(PlayerSlot::new(0)));
+    game.insert_parts(fourth, Dead);
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(drilled(&game), Vec::<u64>::new());
+    game.entity_mut(revived).remove::<Dead>();
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(drilled(&game), [4]);
     let held = |slot| {
         let entity = game.player_entity(PlayerSlot::new(slot)).unwrap();
         game.get::<PlayerModifiers>(entity)

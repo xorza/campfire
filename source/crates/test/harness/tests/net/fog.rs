@@ -187,7 +187,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     let second = local.add_client(0);
     let playing = |local: &InProcessMatch| {
         let state = local.client(second).world().resource::<JoinState>();
-        state.clock().is_some()
+        state.playing_clock().is_some()
     };
     for _ in 0..300 {
         if playing(&local) {
@@ -202,7 +202,11 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     let units = held(&mut local, second);
     assert!(units.contains(&hero), "{units:?}");
     assert!(!units.contains(&tower), "{units:?}");
-    let relations = |app: &App| app.world().held_relations().cloned();
+    let relations = |app: &App| {
+        let world = app.world();
+        let entity = world.match_entity()?;
+        world.get::<Relations>(entity).cloned()
+    };
     assert_ne!(relations(local.server()), Some(Relations::default()));
     assert_eq!(relations(local.client(second)), relations(local.server()));
     assert_eq!(local.log().take::<LinkLost>().len(), 1);
@@ -217,7 +221,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
             .client(stranger)
             .world()
             .resource::<JoinState>()
-            .clock()
+            .playing_clock()
             .is_none()
     );
     assert_eq!(held(&mut local, stranger), []);

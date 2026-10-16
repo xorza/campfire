@@ -36,7 +36,7 @@ impl UnitStart {
     /// move and turn steps are the book's at level 1 at the rate, as a refresh computes them; a
     /// type turns only when it walks. A type has
     /// `combat` exactly when it has the life pool: a unit that can die is one that combat kills.
-    pub(crate) fn new(of: StartOf<'_>) -> Result<UnitStart, UnitStartError> {
+    pub(crate) fn new(of: StartOf<'_>) -> Result<Self, UnitStartError> {
         let StartOf {
             book,
             life,
@@ -92,7 +92,7 @@ impl UnitStart {
                 .expect("a type gives only a stat the mode declares");
             TurnStep::new(turn).expect("the book's turn step is never negative")
         });
-        Ok(UnitStart {
+        Ok(Self {
             life: full_life,
             pools,
             on_death,

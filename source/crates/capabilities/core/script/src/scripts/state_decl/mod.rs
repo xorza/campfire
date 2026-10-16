@@ -29,9 +29,8 @@ pub enum StateDefault {
 
 impl StateDecl {
     /// A field of `kind` that starts at `default`, or at its type's zero without one; `None` when
-    /// the default is not of the type. An entity, a list, a position or a vector takes no
-    /// default.
-    pub fn new(kind: StateType, default: Option<StateDefault>) -> Option<StateDecl> {
+    /// the default is not of the type. An entity, a list or a vector takes no default.
+    pub fn new(kind: StateType, default: Option<StateDefault>) -> Option<Self> {
         let initial = match (kind, default) {
             (StateType::Int, None) => StateValue::Int(0),
             (StateType::Num, None) => StateValue::Num(Num::ZERO),
@@ -53,7 +52,7 @@ impl StateDecl {
             }
             _ => return None,
         };
-        Some(StateDecl { initial })
+        Some(Self { initial })
     }
 
     /// Its type: its first value's.
@@ -66,15 +65,15 @@ impl StateDecl {
     }
 
     /// `new`, as a read takes it: a default not of the type fails it.
-    pub fn of<E: Error>(kind: StateType, default: Option<StateDefault>) -> Result<StateDecl, E> {
-        StateDecl::new(kind, default)
+    pub fn of<E: Error>(kind: StateType, default: Option<StateDefault>) -> Result<Self, E> {
+        Self::new(kind, default)
             .ok_or_else(|| E::custom(format!("a default not of the type {kind:?}")))
     }
 }
 
 /// A default not of its field's type fails to read, where the data enters.
 impl<'de> Deserialize<'de> for StateDecl {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<StateDecl, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -83,7 +82,7 @@ impl<'de> Deserialize<'de> for StateDecl {
             default: Option<StateDefault>,
         }
         let Fields { kind, default } = Fields::deserialize(deserializer)?;
-        StateDecl::of::<D::Error>(kind, default)
+        Self::of::<D::Error>(kind, default)
     }
 }
 

@@ -2,7 +2,6 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Res;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 
 use crate::vision_grid::VisionGrid;
 
@@ -17,13 +16,12 @@ impl VisionBook {
     }
 
     /// The run condition of what sees: whether the map has a grid.
-    pub(crate) fn has_grid(book: Res<'_, VisionBook>) -> bool {
+    pub(crate) fn has_grid(book: Res<'_, Self>) -> bool {
         book.0.is_some()
     }
 }
 
 impl Book for VisionBook {
-    const OWNER: Option<Capability> = Some(Capability::Vision);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

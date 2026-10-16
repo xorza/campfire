@@ -5,7 +5,6 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::DeferredWorld;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{NameId, Tag, TagProperties, TagSet, UnitTags, UnitType};
 
 use crate::avatar::Avatar;
@@ -40,7 +39,7 @@ impl TagBook {
             .get::<UnitType>(entity)
             .expect("the hook's own component");
         let tags = world
-            .get_resource::<TagBook>()
+            .get_resource::<Self>()
             .map_or_else(UnitTags::default, |book| {
                 book.unit_tags(unit_type, iter::empty())
             });
@@ -62,10 +61,10 @@ impl TagBook {
         engine_count: usize,
         tags: impl IntoIterator<Item = (TagProperties, TagSet)>,
         types: impl IntoIterator<Item = (UnitType, TagSet)>,
-    ) -> TagBook {
-        let mut book = TagBook {
+    ) -> Self {
+        let mut book = Self {
             engine_count,
-            ..TagBook::default()
+            ..Self::default()
         };
         for (properties, immune) in tags {
             if immune != TagSet::NONE {
@@ -139,7 +138,6 @@ impl TagBook {
 }
 
 impl Book for TagBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

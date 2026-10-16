@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_common::{Tick, Ticks};
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::{HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, UnknownName, View};
-use campfire_sim::{Capability, TickRate};
-use campfire_units::{ScriptBook, StatusTags, UnitTypeBook};
+use campfire_script::{
+    HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName, View,
+};
+use campfire_sim::TickRate;
+use campfire_units::{ScriptBook, StatusTags};
 use campfire_values::{
     ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet,
 };
 
-use crate::application::{Application, NewInstance};
-use crate::applier::Applier;
+use crate::application::{Adding, Application, ApplyAt, NewInstance};
 use crate::applier_param::ApplierParam;
 use crate::error::ModifierError;
 use crate::instance::{Instance, StackEnd, StatShare};
@@ -30,6 +30,10 @@ use crate::stat_id::StatId;
 /// the entries, as the script view reads them.
 #[derive(Resource, Debug, Clone, Default)]
 pub struct ModifierBook {
+    #[expect(
+        clippy::rc_buffer,
+        reason = "the load grows the book through `Arc::make_mut`; the clones after it share it"
+    )]
     entries: Arc<Vec<ModifierEntry>>,
     /// Each modifier's name in its package.
     names: Arc<Names<ModifierId>>,
@@ -49,12 +53,12 @@ pub struct ModifierEntry {
     pub tags: TagSet,
 }
 
-/// What a package's modifiers load with: the hooks each script defines, the unit types that
-/// declare the tags they grant and resolve their filters, each stat's place, and the tick rate.
+/// What a package's modifiers load with: the hooks each script defines, the match's tags, which
+/// name the tags they grant and resolve their filters, each stat's place, and the tick rate.
 #[derive(Debug)]
 pub struct ModifierLoad<'a, S> {
     pub scripts: &'a ScriptBook,
-    pub types: &'a mut UnitTypeBook,
+    pub tags: &'a TagNames,
     pub stat: S,
     pub rate: TickRate,
 }
@@ -80,7 +84,7 @@ impl ModifierBook {
     ) -> Result<(), ModifierError> {
         let ModifierLoad {
             scripts,
-            types,
+            tags,
             stat,
             rate,
         } = load;
@@ -89,7 +93,7 @@ impl ModifierBook {
             modifiers.is_sorted_by(|a, b| a.name < b.name),
             "a package's modifiers load by name"
         );
-        let last = start.checked_sub(1).map(ModifierBook::id_at);
+        let last = start.checked_sub(1).map(ModifierId::at);
         if let (Some(last), Some(first)) = (last, modifiers.first()) {
             let held = (self.names.scope(last), self.names.name(last));
             assert!(
@@ -97,24 +101,24 @@ impl ModifierBook {
                 "modifiers load by package, then name"
             );
         }
-        let tags: Vec<TagSet> = modifiers
+        let granted: Vec<TagSet> = modifiers
             .iter()
             .map(|modifier| {
-                let declare = |name: &DeclaredName| {
-                    let tag = types.declare(name.as_str());
+                let declared = |name: &DeclaredName| {
+                    let tag = tags.named(name.as_str());
                     tag.expect("a match declares each tag its packages name before their modifiers")
                 };
-                modifier.data.tags.iter().map(declare).collect()
+                modifier.data.tags.iter().map(declared).collect()
             })
             .collect();
         let names = SpecNames {
             stat,
-            types: &*types,
+            tags,
             rate,
             modifier: |name: &str| {
                 let at = modifiers.binary_search_by(|modifier| modifier.name.as_str().cmp(name));
                 match at {
-                    Ok(at) => Ok(ModifierBook::id_at(start + at)),
+                    Ok(at) => Ok(ModifierId::at(start + at)),
                     Err(_) => self
                         .names
                         .named((package, name))
@@ -132,7 +136,7 @@ impl ModifierBook {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let entries = modifiers.iter().zip(specs).zip(tags);
+        let entries = modifiers.iter().zip(specs).zip(granted);
         let book = Arc::make_mut(&mut self.entries);
         let names = Arc::make_mut(&mut self.names);
         for ((modifier, spec), tags) in entries {
@@ -149,7 +153,7 @@ impl ModifierBook {
     }
 
     /// Whether `other` is this book as one load made it, not a book of another load.
-    pub(crate) fn same(&self, other: &ModifierBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.entries, &other.entries)
             && Arc::ptr_eq(&self.names, &other.names)
             && Arc::ptr_eq(&self.appliers, &other.appliers)
@@ -163,11 +167,6 @@ impl ModifierBook {
     /// The names of the params its modifiers read from the abilities that apply them.
     pub fn appliers(&self) -> &Names<ApplierParam> {
         &self.appliers
-    }
-
-    /// The id of the modifier at `at` of the book, which numbers at most `u16` of them.
-    pub fn id_at(at: usize) -> ModifierId {
-        ModifierId::new(u16::try_from(at).expect("modifiers fit u16"))
     }
 
     /// The modifier `id`, when the book holds it.
@@ -237,25 +236,34 @@ impl ModifierBook {
             && self.check_way(id, action, rank, params, rate).is_ok()
     }
 
-    /// `id` as applied in tick `now` from `source`, by `ability` at its rank or by none, a way
-    /// checked: its numbers resolved by `param`, from its own params, then the ability's, of its
-    /// source as it is now, its times in ticks at `rate`; a stat change that reads a scaling
-    /// table keeps reading it, live. Its duration is `duration` when a call names one. A passive
-    /// or an aura holds while its ability or carrier keeps it, so it has no duration, and a
-    /// passive applied again at another rank refreshes; a passive whose stacks end one by one
-    /// counts them from none.
-    pub(crate) fn application(
-        &self,
-        id: ModifierId,
-        from: Applier,
-        duration: Option<Ticks>,
-        now: Tick,
-        rate: TickRate,
-        param: impl Fn(ParamPlace) -> ParamRead,
-    ) -> Application {
+    /// `adding` as applied `at`, by its applier's ability at its rank or by none, a way
+    /// checked: its numbers resolved from its own params, then the ability's, of its source as
+    /// it is now, its times in ticks at `at`'s rate; a stat change that reads a scaling table
+    /// keeps reading it, live. Its duration is the one a call names, when it names one. A
+    /// passive or an aura holds while its ability or carrier keeps it, so it has no duration,
+    /// and a passive applied again at another rank refreshes; a passive whose stacks end one by
+    /// one counts them from none.
+    pub(crate) fn application<'a>(
+        &'a self,
+        at: ApplyAt<'a>,
+        adding: Adding<'a>,
+    ) -> Application<
+        impl ExactSizeIterator<Item = StatShare> + 'a,
+        impl ExactSizeIterator<Item = StateValue> + 'a,
+    > {
+        let Adding {
+            id,
+            applier: from,
+            source,
+            duration,
+        } = adding;
+        let ApplyAt { now, rate, params } = at;
+        let param = move |place: ParamPlace| {
+            params.modifier_param(id, from.action, from.rank, place, source)
+        };
         let entry = self.get(id);
         let spec = &entry.spec;
-        let read = |number: &SpecNumber| match number {
+        let read = move |number: &SpecNumber| match number {
             SpecNumber::Value(value) => ParamRead {
                 value: *value,
                 live: None,
@@ -277,7 +285,7 @@ impl ModifierBook {
             every,
             next: now.after(every),
         });
-        let shares = spec.stats.iter().map(|change| {
+        let shares = spec.stats.iter().map(move |change| {
             let read = read(&change.value);
             StatShare {
                 value: read.value,
@@ -304,11 +312,11 @@ impl ModifierBook {
             aura_radius: not_negative(spec.aura.as_ref().map(|aura| &aura.radius)),
             stacks: u32::from(!counts),
             stack_life,
-            stack_ends: first.into_iter().collect(),
+            stack_end: first,
             interval,
             shield: not_negative(spec.shield.as_ref()),
-            stats: shares.collect(),
-            state: spec.state.initial().to_vec(),
+            stats: shares,
+            state: spec.state.initial().iter().cloned(),
         };
         Application {
             instance,
@@ -323,7 +331,6 @@ impl ModifierBook {
 }
 
 impl Book for ModifierBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {

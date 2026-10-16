@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_geometry::{BodyBox, Radius, Shape};
+use campfire_geometry::{BodyBox, Metric, Radius, Shape};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
@@ -9,6 +9,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::layer::Layer;
+use crate::map_book::MapBook;
 use crate::unit_entity::UnitEntity;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
@@ -24,22 +25,22 @@ pub struct Body {
 impl Body {
     /// A circle on the first layer; `None` unless `radius` is positive and at most
     /// `MAX_BOUND`.
-    pub const fn new(radius: Num) -> Option<Body> {
+    pub const fn new(radius: Num) -> Option<Self> {
         if radius.to_bits() <= 0 {
             return None;
         }
         let Some(radius) = Radius::new(radius) else {
             return None;
         };
-        Some(Body {
+        Some(Self {
             shape: Shape::Circle(radius),
             layer: Layer::FIRST,
         })
     }
 
     /// The body of the built box `body`, on the first layer.
-    pub const fn of_box(body: BodyBox) -> Body {
-        Body {
+    pub const fn of_box(body: BodyBox) -> Self {
+        Self {
             shape: Shape::Box(body),
             layer: Layer::FIRST,
         }
@@ -47,8 +48,8 @@ impl Body {
 
     /// The body on `layer`.
     #[must_use]
-    pub(crate) const fn on(self, layer: Layer) -> Body {
-        Body { layer, ..self }
+    pub(crate) const fn on(self, layer: Layer) -> Self {
+        Self { layer, ..self }
     }
 
     pub const fn shape(self) -> Shape {
@@ -76,7 +77,7 @@ impl Body {
     }
 
     /// The shape of a unit with `body`, or a point for a unit with none.
-    pub const fn shape_of(body: Option<&Body>) -> Shape {
+    pub const fn shape_of(body: Option<&Self>) -> Shape {
         match body {
             Some(body) => body.shape,
             None => Shape::POINT,
@@ -84,7 +85,7 @@ impl Body {
     }
 
     /// The layer of a unit with `body`, or the first for a unit with none.
-    pub const fn layer_of(body: Option<&Body>) -> Layer {
+    pub const fn layer_of(body: Option<&Self>) -> Layer {
         match body {
             Some(body) => body.layer,
             None => Layer::FIRST,
@@ -96,9 +97,11 @@ impl SimComponent for Body {
     const NAME: &'static str = "units.body";
     type Host = UnitEntity;
 
-    // Its decode bounds its radius or its box; a layer only compares with another.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        true
+    // Its decode bounds its radius or its box; a layer only compares with another. A box only on
+    // a planar map, as the load gives one, which a spatial map's measures do not take.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        matches!(self.shape, Shape::Circle(_))
+            || world.resource::<MapBook>().metric == Metric::Planar
     }
 }
 
@@ -110,7 +113,7 @@ impl Replication for Body {
 /// A snapshot is untrusted, so a radius `new` refuses fails to decode, and a box its own decode
 /// refuses.
 impl<'de> Deserialize<'de> for Body {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Body, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             shape: Shape,
@@ -118,9 +121,9 @@ impl<'de> Deserialize<'de> for Body {
         }
         let fields = Fields::deserialize(deserializer)?;
         let body = match fields.shape {
-            Shape::Circle(radius) => Body::new(radius.get())
+            Shape::Circle(radius) => Self::new(radius.get())
                 .ok_or_else(|| D::Error::custom("a body radius not positive or beyond 2,048 m"))?,
-            Shape::Box(body) => Body::of_box(body),
+            Shape::Box(body) => Self::of_box(body),
         };
         Ok(body.on(fields.layer))
     }
@@ -128,8 +131,6 @@ impl<'de> Deserialize<'de> for Body {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::cmp::Ordering;
-
     use campfire_geometry::{Metric, Placed, Radius, Shape};
     use campfire_math::{Num, Vec3};
 
@@ -140,36 +141,36 @@ pub(crate) mod internals {
         /// at `to`, on a planar map, by the reach rule; a unit with no body is a point.
         pub fn reaches(
             from: Vec3,
-            from_body: Option<&Body>,
+            from_body: Option<&Self>,
             range: Num,
             to: Vec3,
-            to_body: Option<&Body>,
+            to_body: Option<&Self>,
         ) -> bool {
-            let from = Placed::new(from, Body::shape_of(from_body));
-            Metric::Planar.reaches(from, range, Placed::new(to, Body::shape_of(to_body)))
+            let from = Placed::new(from, Self::shape_of(from_body));
+            Metric::Planar.reaches(from, range, Placed::new(to, Self::shape_of(to_body)))
         }
 
         /// Whether `range` from the edge of `from_body` at `from` reaches the least circle round
         /// `to` that holds `to_body`, as a body measured by its bound would be reached.
         pub fn reaches_bound(
             from: Vec3,
-            from_body: Option<&Body>,
+            from_body: Option<&Self>,
             range: Num,
             to: Vec3,
-            to_body: Option<&Body>,
+            to_body: Option<&Self>,
         ) -> bool {
-            let bound = Radius::new(Body::shape_of(to_body).bound()).expect("a bound is a radius");
+            let bound = Radius::new(Self::shape_of(to_body).bound()).expect("a bound is a radius");
             let bound = Placed::new(to, Shape::Circle(bound));
-            Metric::Planar.reaches(Placed::new(from, Body::shape_of(from_body)), range, bound)
+            Metric::Planar.reaches(Placed::new(from, Self::shape_of(from_body)), range, bound)
         }
 
         /// Whether this circle at `pos` overlaps the box `body` at `center`: a body collision
         /// left inside the box.
-        pub fn sinks_into(&self, pos: Vec3, body: &Body, center: Vec3) -> bool {
+        pub fn sinks_into(&self, pos: Vec3, body: &Self, center: Vec3) -> bool {
             let (Shape::Circle(radius), Shape::Box(boxed)) = (self.shape(), body.shape()) else {
                 panic!("a circle and a box");
             };
-            boxed.nearest(center, pos, radius.get()) == Ordering::Less
+            boxed.closer(center, pos, radius.get())
         }
     }
 }
@@ -209,6 +210,20 @@ mod tests {
         assert_eq!(Body::layer_of(None), Layer::FIRST);
         let decoded = Binary::decode::<Body>(&Binary::encode(&air));
         assert_eq!(decoded.ok(), Some(air));
+        // A restore keeps a box only on a planar map, and a circle on either.
+        let boxed = BodyForm::box_sized([Num::int(4), Num::int(2)])
+            .unwrap()
+            .at(Num::ZERO);
+        let on = |metric| {
+            let mut world = World::new();
+            world.insert_resource(MapBook {
+                metric,
+                ..MapBook::default()
+            });
+            [circle, boxed].map(|body| body.check(&world, Entity::PLACEHOLDER))
+        };
+        assert_eq!(on(Metric::Planar), [true, true]);
+        assert_eq!(on(Metric::Spatial), [true, false]);
         // A form spawns its body: a circle as it is, a box of 4 × 2 m turned by the spawn's
         // angle, which keeps the form's layer; the box has half edges and no radius.
         let form = BodyForm::circle(Num::int(2)).unwrap();

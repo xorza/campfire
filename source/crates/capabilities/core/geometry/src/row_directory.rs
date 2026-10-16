@@ -40,8 +40,8 @@ pub enum RowEntries {
 }
 
 impl<L> Default for RowDirectory<L> {
-    fn default() -> RowDirectory<L> {
-        RowDirectory {
+    fn default() -> Self {
+        Self {
             layers: Vec::new(),
             starts: Vec::new(),
         }
@@ -79,7 +79,7 @@ impl<L: Copy + Eq> RowDirectory<L> {
         let mut rows = rows.peekable();
         for layer in &mut self.layers {
             let entries = (layer.entries.end - layer.entries.start) as usize;
-            let spread = RowDirectory::<L>::SPREAD * entries as u64 + RowDirectory::<L>::ROWS;
+            let spread = Self::SPREAD * entries as u64 + Self::ROWS;
             if layer.last.abs_diff(layer.first) >= spread {
                 rows.by_ref().take(entries).for_each(drop);
                 continue;

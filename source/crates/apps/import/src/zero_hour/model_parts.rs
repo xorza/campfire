@@ -1,4 +1,4 @@
-use crate::zero_hour::object_ini::{StateLook, WeaponBones};
+use crate::zero_hour::format::ini::object_ini::{StateLook, WeaponBones};
 
 /// What a model's default look reads of it: its sub-objects, in the HLOD's order, each with its
 /// full name, its pivot, whether the model has a node of it, and whether its mesh is hidden by
@@ -132,7 +132,7 @@ impl ModelParts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::zero_hour::object_ini::HideShow;
+    use crate::zero_hour::format::ini::object_ini::HideShow;
 
     /// A tank's pivots, each with its parent: the root; the turret; two numbered flashes, a
     /// barrel and a bare flash on the turret; and on the root, a bare flash and a slot's

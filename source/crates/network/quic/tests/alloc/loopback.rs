@@ -52,12 +52,12 @@ pub(crate) struct ClientApp {
 
 impl ClientApp {
     /// A client that connects to the server at `server`, whose key is `key`.
-    pub(crate) fn connect(server: SocketAddr, key: &TlsKey) -> ClientApp {
+    pub(crate) fn connect(server: SocketAddr, key: &TlsKey) -> Self {
         let quic = QuicEndpoint::client(server, key, LinkTimes::CAMPFIRE).unwrap();
         let mut app = app();
         let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
         app.world_mut().trigger(LinkStart { entity });
-        ClientApp { app, entity }
+        Self { app, entity }
     }
 
     pub(crate) fn is_linked(&self) -> bool {

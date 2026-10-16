@@ -67,7 +67,7 @@ impl SimUpdate {
     /// to share, and Bevy's parallel executor, which its `multi_threaded` feature turns on
     /// wherever a workspace build enables it, made a 3v3 tick cost 2.5 times as much.
     pub(crate) fn schedule() -> Schedule {
-        let mut schedule = StrictSchedule::of(SimUpdate);
+        let mut schedule = StrictSchedule::of(Self);
         schedule.set_executor(SingleThreadedExecutor::new());
         schedule.configure_sets(SimEdge::Start.before(SimSet::Inputs));
         for stages in SimSet::ALL.windows(2) {

@@ -20,7 +20,7 @@ use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_actions::{ActionSlots, SlotCharges, SlotTimes};
+use campfire_actions::{ActionProgress, ActionSlots, SlotCharges, SlotTimes};
 use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use campfire_stats::{Level, Life, Pools};
@@ -100,7 +100,7 @@ impl GaugeScratch {
     /// rank ticks of each ability that ranks up; and the charge ticks of each ability with
     /// charges.
     fn ability_rows(&mut self, mut row: u8) {
-        let GaugeScratch {
+        let Self {
             kinds,
             ranks,
             slots,
@@ -260,18 +260,18 @@ const ABOVE: f32 = 0.35;
 
 impl Plugin for Hud {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, Hud::set_palette);
+        app.add_systems(Startup, Self::set_palette);
         app.add_systems(
             Update,
             (
-                Hud::regauge,
-                Hud::add_gauges,
-                Hud::lift_stands,
-                Hud::face_camera,
-                Hud::mark_hits,
-                Hud::fill_gauges,
-                Hud::widen_rings,
-                Hud::mark_target,
+                Self::regauge,
+                Self::add_gauges,
+                Self::lift_stands,
+                Self::face_camera,
+                Self::mark_hits,
+                Self::fill_gauges,
+                Self::widen_rings,
+                Self::mark_target,
             )
                 .chain()
                 .after(ViewSystems),
@@ -629,7 +629,7 @@ impl Hud {
         index: Res<'_, EntityIndex>,
         palette: Res<'_, HudPalette>,
         own: OwnPlayer<'_, '_>,
-        slots: Query<'_, '_, &ActionSlots>,
+        slots: Query<'_, '_, &ActionProgress>,
         units: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
         shapes: Query<'_, '_, &Shape>,
         mut marked: Local<'_, Option<Marked>>,
@@ -638,7 +638,7 @@ impl Hud {
         let target = own
             .avatar()
             .and_then(|avatar| slots.get(avatar.entity).ok())
-            .and_then(ActionSlots::attack_target)
+            .and_then(ActionProgress::attack_target)
             .and_then(|target| index.get(target))
             .and_then(|target| units.get(target).ok())
             .and_then(|drawing| Some((drawing.root(), shapes.get(drawing.root()).ok()?)));

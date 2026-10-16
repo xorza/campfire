@@ -2,12 +2,10 @@ use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::query::Allow;
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
-use campfire_values::{ActionId, ModifierId, Rank, UnitType};
+use campfire_values::UnitType;
 
 use crate::level::Level;
-use crate::modifier_spec::ParamPlace;
 use crate::param_book::ParamBook;
-use crate::param_read::ParamRead;
 use crate::param_source::ParamSource;
 use crate::stat_book::StatBook;
 use crate::unit_stats::UnitStats;
@@ -39,18 +37,8 @@ impl ModifierParams<'_, '_> {
         Some(ParamSource::of_parts(&self.stats, unit_type, level, stats))
     }
 
-    /// The param at `place` of `modifier`, held by `action` at `rank`, from `source`, as
-    /// `ParamBook::modifier_param` reads it.
-    pub(crate) fn modifier_param(
-        &self,
-        modifier: ModifierId,
-        action: Option<ActionId>,
-        rank: Rank,
-        place: ParamPlace,
-        source: Option<&ParamSource<'_>>,
-    ) -> ParamRead {
-        self.params
-            .modifier_param(modifier, action, rank, place, source)
+    pub(crate) fn book(&self) -> &ParamBook {
+        &self.params
     }
 
     /// Whether the param book changed since the system last ran.

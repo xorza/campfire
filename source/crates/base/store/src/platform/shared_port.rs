@@ -15,11 +15,11 @@ pub struct SharedPort {
 }
 
 impl SharedPort {
-    pub fn bind(address: SocketAddrV4) -> io::Result<SharedPort> {
+    pub fn bind(address: SocketAddrV4) -> io::Result<Self> {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
         Os::share_port(&socket)?;
         socket.bind(&SocketAddr::V4(address).into())?;
-        Ok(SharedPort {
+        Ok(Self {
             socket: socket.into(),
         })
     }

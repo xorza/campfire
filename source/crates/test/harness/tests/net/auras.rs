@@ -71,7 +71,7 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     let hidden = "\n[visibility]\nmodifiers = [\"spectators\"]\n";
     let mut local = InProcessMatch::of_mode(setup, short_3v3(&AURAS, hidden));
     local.open_match();
-    local.play(0, OrderScript::parse(PICKS[0]).unwrap());
+    local.play(0, &OrderScript::parse(PICKS[0]).unwrap());
     local.await_avatars(SPAWN_FRAMES);
     for _ in 0..WALK_FRAMES {
         local.step();

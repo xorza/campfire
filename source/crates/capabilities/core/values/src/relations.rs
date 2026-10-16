@@ -29,7 +29,14 @@ struct RelationPair {
     a: Team,
     b: Team,
     relation: Relation,
-    vision: bool,
+    vision: VisionShare,
+}
+
+/// Whether two friendly teams see as one, sharing what each sees, or each alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum VisionShare {
+    Shared,
+    Apart,
 }
 
 impl Relations {
@@ -44,11 +51,11 @@ impl Relations {
     }
 
     /// Sets how the two teams, which differ, regard each other, and whether, friendly, they
-    /// share vision.
-    pub fn set(&mut self, of: Team, other: Team, relation: Relation, vision: bool) {
+    /// share `vision`.
+    pub fn set(&mut self, of: Team, other: Team, relation: Relation, vision: VisionShare) {
         debug_assert_ne!(of, other, "a team's relation to itself is friendly");
         let (a, b) = (of.min(other), of.max(other));
-        let default = relation == Relation::Hostile && vision;
+        let default = relation == Relation::Hostile && vision == VisionShare::Shared;
         match (self.find(a, b), default) {
             (Ok(at), true) => drop(self.pairs.remove(at)),
             (Ok(at), false) => {
@@ -73,7 +80,7 @@ impl Relations {
         let vision = self
             .find(of, other)
             .ok()
-            .is_none_or(|at| self.pairs[at].vision);
+            .map_or(VisionShare::Shared, |at| self.pairs[at].vision);
         self.set(of, other, relation, vision);
     }
 
@@ -86,7 +93,9 @@ impl Relations {
     pub(crate) fn vision_pairs(&self) -> impl Iterator<Item = (Team, Team)> + '_ {
         self.pairs
             .iter()
-            .filter(|pair| pair.relation == Relation::Friendly && pair.vision)
+            .filter(|pair| {
+                pair.relation == Relation::Friendly && pair.vision == VisionShare::Shared
+            })
             .map(|pair| (pair.a, pair.b))
     }
 
@@ -149,20 +158,21 @@ impl Replication for Relations {
 /// A snapshot is untrusted, so pairs out of order, of a team with itself, or that are the
 /// default fail to decode.
 impl<'de> Deserialize<'de> for Relations {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Relations, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let pairs = Vec::<RelationPair>::deserialize(deserializer)?;
         let ordered = pairs
             .windows(2)
             .all(|two| (two[0].a, two[0].b) < (two[1].a, two[1].b));
         let held = |pair: &RelationPair| {
-            pair.a < pair.b && !(pair.relation == Relation::Hostile && pair.vision)
+            pair.a < pair.b
+                && !(pair.relation == Relation::Hostile && pair.vision == VisionShare::Shared)
         };
         if !ordered || !pairs.iter().all(held) {
             return Err(D::Error::custom(
                 "relations out of order or held needlessly",
             ));
         }
-        Ok(Relations { pairs })
+        Ok(Self { pairs })
     }
 }
 
@@ -180,21 +190,21 @@ mod tests {
         assert_eq!(relations.between(a, b), Relation::Hostile);
         assert_eq!(relations.vision_pairs().count(), 0);
         // Set either way round, a pair reads the same both ways.
-        relations.set(c, a, Relation::Friendly, true);
-        relations.set(b, a, Relation::Neutral, true);
+        relations.set(c, a, Relation::Friendly, VisionShare::Shared);
+        relations.set(b, a, Relation::Neutral, VisionShare::Shared);
         assert_eq!(relations.between(a, c), Relation::Friendly);
         assert_eq!(relations.between(b, a), Relation::Neutral);
         assert_eq!(relations.vision_pairs().collect::<Vec<_>>(), [(a, c)]);
         // Vision off holds through a change of relation; back to hostile with vision on, the pair
         // is the default and no longer held.
-        relations.set(a, c, Relation::Friendly, false);
+        relations.set(a, c, Relation::Friendly, VisionShare::Apart);
         relations.set_keeping_vision(c, a, Relation::Neutral);
         relations.set_keeping_vision(c, a, Relation::Friendly);
         assert_eq!(relations.vision_pairs().count(), 0);
-        relations.set(a, b, Relation::Hostile, true);
+        relations.set(a, b, Relation::Hostile, VisionShare::Shared);
         assert_eq!(relations.pairs.len(), 1);
         // A snapshot that holds a default pair fails to decode.
-        let bytes = Binary::encode(&vec![(a, b, Relation::Hostile, true)]);
+        let bytes = Binary::encode(&vec![(a, b, Relation::Hostile, VisionShare::Shared)]);
         assert!(Binary::decode::<Relations>(&bytes).is_err());
         let bytes = Binary::encode(&relations);
         assert_eq!(Binary::decode::<Relations>(&bytes).ok(), Some(relations));

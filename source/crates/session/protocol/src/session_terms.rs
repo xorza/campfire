@@ -11,7 +11,7 @@ use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
-const SESSION_ID_DOMAIN: HashDomain = HashDomain::new("campfire/session-id/v3");
+const SESSION_ID_DOMAIN: HashDomain<SessionId> = HashDomain::new("campfire/session-id/v3");
 
 /// The most bytes postcard writes for a `u64`, and for a `u32` or a length.
 const VARINT_64: u64 = 10;
@@ -84,7 +84,7 @@ impl SessionTerms {
         hasher
             .update(&len(self.visibility.len()).to_le_bytes())
             .update(&self.visibility);
-        SessionId::new(hasher.finish())
+        hasher.finish()
     }
 
     /// The most bytes a journal record of a session of these terms can hold; `None` past a

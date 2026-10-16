@@ -4,9 +4,9 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_script::{NameKind, UnknownName, View};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_values::{EngineStat, NameId, Names, Stat, UnitType};
 
 use crate::stat_id::StatId;
@@ -46,7 +46,7 @@ struct Growth {
 impl StatBook {
     /// The book of the stats `rules` declares, with no unit type's values yet, under the cap
     /// `max_move_speed`.
-    pub fn new(rules: &BTreeMap<Stat, StatRule>, max_move_speed: Num) -> StatBook {
+    pub fn new(rules: &BTreeMap<Stat, StatRule>, max_move_speed: Num) -> Self {
         let names: Names<StatId> = rules.keys().map(Stat::name).collect();
         let count = names.len();
         let stats_len = u16::try_from(count).expect("stats fit u16");
@@ -56,7 +56,7 @@ impl StatBook {
                 engine[*stat as usize] = Some(at);
             }
         }
-        StatBook {
+        Self {
             order: (0..count).map(StatId::at).collect(),
             names: Arc::new(names),
             rules: rules.values().copied().collect(),
@@ -91,7 +91,7 @@ impl StatBook {
     /// The book with the stats in `order`, a permutation of their places, as a stat graph of
     /// the mode gives it.
     #[must_use]
-    pub fn with_order(self, order: impl IntoIterator<Item = StatId>) -> StatBook {
+    pub fn with_order(self, order: impl IntoIterator<Item = StatId>) -> Self {
         let order: Vec<StatId> = order.into_iter().collect();
         let mut sorted = order.clone();
         sorted.sort_unstable();
@@ -106,7 +106,7 @@ impl StatBook {
         for (position, &at) in (0..).zip(&order) {
             positions[at.index()] = position;
         }
-        StatBook {
+        Self {
             order,
             positions,
             ..self
@@ -194,7 +194,11 @@ impl StatBook {
             .engine(values, EngineStat::MoveSpeed)?
             .clamp(Num::ZERO, self.max_move_speed);
         let hz = NonZeroI64::from(rate.hz()).get();
-        Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
+        Some(
+            speed
+                .checked_div_int(hz, Rounding::NearestEven)
+                .expect("a speed a tick fits"),
+        )
     }
 
     /// How far a unit with `values` turns a tick at `rate`, in degrees: its `turn_rate`, at
@@ -203,12 +207,14 @@ impl StatBook {
     pub fn turn_step(&self, values: &[Num], rate: TickRate) -> Option<Num> {
         let turn = self.engine(values, EngineStat::TurnRate)?.max(Num::ZERO);
         let hz = NonZeroI64::from(rate.hz()).get();
-        Some(turn.checked_div_int(hz).expect("a turn a tick fits"))
+        Some(
+            turn.checked_div_int(hz, Rounding::NearestEven)
+                .expect("a turn a tick fits"),
+        )
     }
 }
 
 impl Book for StatBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {

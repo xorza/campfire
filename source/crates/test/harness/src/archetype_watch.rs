@@ -38,16 +38,16 @@ impl KindVisitor for KindStates {
 
 impl ArchetypeWatch {
     /// The watch of `world`'s match, its kinds' states as the release declares them.
-    pub fn of(world: &World) -> ArchetypeWatch {
+    pub fn of(world: &World) -> Self {
         let mut kinds = KindStates::default();
         Release::kinds(&mut kinds);
         let components = world.components();
         let states = kinds.0.into_iter().filter_map(|(kind, state)| {
             Some((components.get_id(kind)?, components.get_id(state)?))
         });
-        ArchetypeWatch {
+        Self {
             states: states.collect(),
-            ..ArchetypeWatch::default()
+            ..Self::default()
         }
     }
 

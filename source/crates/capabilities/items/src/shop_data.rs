@@ -18,7 +18,7 @@ pub struct ShopData {
 
 /// Data is untrusted, so a negative reach fails to read.
 impl<'de> Deserialize<'de> for ShopData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ShopData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -34,7 +34,7 @@ impl<'de> Deserialize<'de> for ShopData {
                 "a shop's reach is a number that is not negative",
             ));
         }
-        Ok(ShopData {
+        Ok(Self {
             items: fields.items,
             resource: fields.resource,
             reach: fields.reach,

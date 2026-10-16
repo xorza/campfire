@@ -1,13 +1,14 @@
-use bevy_ecs::bundle::Bundle;
-use bevy_ecs::event::Event;
-use bevy_ecs::lifecycle::ComponentHook;
-use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::panic::{self, AssertUnwindSafe};
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
+use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::resource::Resource;
+use bevy_ecs::schedule::SystemCondition;
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use campfire_combat::CombatBook;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
@@ -31,7 +32,6 @@ use crate::release::r#match::Match;
 struct StrayBook;
 
 impl Book for StrayBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}
@@ -104,11 +104,15 @@ impl Declarations for EveryBook {
 
     fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {}
 
+    fn non_send_loaded<R: 'static>(&mut self) {}
+
+    fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
+
     fn server_part<H: Component, C: Component + Default>(&mut self) {}
 
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 
-    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {}
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {}
 }
 
 /// Every book a module declares, built empty.
@@ -126,23 +130,13 @@ fn panic_of(run: impl FnOnce()) -> String {
 
 #[test]
 fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
-    let stats = Release::capability_set(&[Capability::Stats]).unwrap();
-    let none = Release::capability_set(&[]).unwrap();
-    let orders = Release::capability_set(&[
-        Capability::Stats,
-        Capability::Combat,
-        Capability::Navigation,
-        Capability::Orders,
-    ])
-    .unwrap();
-    // A capability's book is held with its owner; an AI's with orders and scripts both; a core
-    // book in every match.
-    let scripts = Role::Server(Some(ScriptBudgets::new(ScriptLimits::ROOMY, 1)));
-    let (unscripted, client) = (Role::Server(None), Role::Client);
-    assert!(ModifierBook::held(stats, &client) && !ModifierBook::held(none, &scripts));
-    assert!(ByType::<Ai>::held(orders, &scripts) && !ByType::<Ai>::held(orders, &unscripted));
-    assert!(!ByType::<Ai>::held(orders, &client) && !ByType::<Ai>::held(stats, &scripts));
-    assert!(ParamBook::held(none, &client));
+    // A book only scripts read, as an AI's, is held where scripts run; any other in every role,
+    // of a module the match installs.
+    let scripts = Role::Server(ScriptBudgets::new(ScriptLimits::ROOMY, 1));
+    let (unscripted, client) = (Role::Rules, Role::Client);
+    assert!(ByType::<Ai>::held(&scripts) && !ByType::<Ai>::held(&unscripted));
+    assert!(!ByType::<Ai>::held(&client));
+    assert!(ModifierBook::held(&client) && ParamBook::held(&client));
     // The install puts each book the match holds and drops the rest: a match of stats holds the
     // stat book, which no longer is the empty one its declaration put, and no combat book.
     let mut game = Match::unscripted(&[Capability::Stats]);

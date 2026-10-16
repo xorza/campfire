@@ -12,7 +12,7 @@ internals = [
     "campfire-store/internals",
     "campfire-values/internals",
     "dep:campfire-codec",
-    "dep:toml",
+    "campfire-codec/internals",
 ]
 
 [dependencies]
@@ -23,7 +23,6 @@ campfire-store.workspace = true
 campfire-values.workspace = true
 
 thiserror.workspace = true
-toml = { workspace = true, optional = true }
 
 [dev-dependencies]
 campfire-package-disk = { workspace = true, features = ["internals"] }

@@ -1,6 +1,9 @@
 use bevy_math::Vec2;
+use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::client_path;
 
 /// A package's `client/camera.toml`: how the player's camera looks at the map and moves over it,
 /// as an RTS's does. It looks down at a point of the ground from a height above it, turned about
@@ -38,12 +41,14 @@ pub struct CameraHeight {
 
 impl CameraFile {
     /// Where a package holds it.
-    pub const PATH: &'static str = "client/camera.toml";
+    pub fn path() -> PackagePath {
+        client_path::parse("client/camera.toml")
+    }
 
     /// The camera, unless a value is one no camera takes: a pitch not above 0° or not below 90°,
     /// a field of view not above 0° or not below 180°, a least height not above 0 or past the
     /// most, a yaw or a speed not finite, or a negative speed.
-    pub fn checked(self) -> Option<CameraFile> {
+    pub fn checked(self) -> Option<Self> {
         self.holds().then_some(self)
     }
 
@@ -72,7 +77,7 @@ impl CameraFile {
 
 /// A package's file is untrusted, so a camera whose values no camera takes fails to read.
 impl<'de> Deserialize<'de> for CameraFile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<CameraFile, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -97,7 +102,7 @@ impl<'de> Deserialize<'de> for CameraFile {
             zoom_notch,
             zoom_key,
         } = Fields::deserialize(deserializer)?;
-        let file = CameraFile {
+        let file = Self {
             pitch,
             yaw,
             field_of_view,

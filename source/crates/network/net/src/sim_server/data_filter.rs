@@ -233,8 +233,8 @@ pub(crate) struct DataFilter<K: FilteredKind> {
 }
 
 impl<K: FilteredKind> Default for DataFilter<K> {
-    fn default() -> DataFilter<K> {
-        DataFilter {
+    fn default() -> Self {
+        Self {
             owner: None,
             team: None,
             audience: Recipients::NONE,
@@ -244,12 +244,8 @@ impl<K: FilteredKind> Default for DataFilter<K> {
 }
 
 impl<K: FilteredKind> DataFilter<K> {
-    const fn new(
-        owner: Option<&Owner>,
-        team: Option<&Team>,
-        visibility: &MatchVisibility,
-    ) -> DataFilter<K> {
-        DataFilter {
+    const fn new(owner: Option<&Owner>, team: Option<&Team>, visibility: &MatchVisibility) -> Self {
+        Self {
             owner: match owner {
                 Some(owner) => Some(owner.slot()),
                 None => None,
@@ -266,33 +262,32 @@ impl<K: FilteredKind> DataFilter<K> {
         player: Option<&Player>,
         team: Option<&Team>,
         visibility: &MatchVisibility,
-    ) -> DataFilter<K> {
+    ) -> Self {
         let owner = owner
             .copied()
             .or_else(|| player.map(|player| Owner::new(player.slot())));
-        DataFilter::new(owner.as_ref(), team, visibility)
+        Self::new(owner.as_ref(), team, visibility)
     }
 
     /// The filter of `K`, as replicon reads it and as `keep` keeps it.
     fn register_kind(app: &mut App) {
-        app.add_visibility_filter::<DataFilter<K>>();
-        DataFilter::<K>::keep(app);
+        app.add_visibility_filter::<Self>();
+        Self::keep(app);
     }
 
     /// The hook that gives a new filter of `K` its value, and the observers that follow its
     /// entity's owner and team.
     fn keep(app: &mut App) {
         app.world_mut()
-            .register_component_hooks::<DataFilter<K>>()
-            .on_add(DataFilter::<K>::fill);
-        DataFilter::<K>::follow(app);
+            .register_component_hooks::<Self>()
+            .on_add(Self::fill);
+        Self::follow(app);
     }
 
     /// Makes `C`, one of `K`'s types, require the filter of `K`.
     fn required_by<C: Replication>(app: &mut App) {
         assert_eq!(C::KIND, K::KIND, "{} is of its filter's kind", C::NAME);
-        app.world_mut()
-            .register_required_components::<C, DataFilter<K>>();
+        app.world_mut().register_required_components::<C, Self>();
     }
 
     /// The hook that gives a filter its entity's owner and team as it comes, closed, with a type of
@@ -300,7 +295,7 @@ impl<K: FilteredKind> DataFilter<K> {
     /// place, with no move between archetypes, before replicon next reads it.
     fn fill(mut world: DeferredWorld<'_>, context: HookContext) {
         let entity = world.entity(context.entity);
-        let filter = DataFilter::<K>::of(
+        let filter = Self::of(
             entity.get::<Owner>(),
             entity.get::<Player>(),
             entity.get::<Team>(),
@@ -314,8 +309,8 @@ impl<K: FilteredKind> DataFilter<K> {
     /// insert of a filter keeps to an entity that still lives: it applies at the next flush,
     /// after a despawn queued before it, and a despawn removes the owner and team too.
     fn follow(app: &mut App) {
-        DataFilter::<K>::follow_insert::<Owner>(app);
-        DataFilter::<K>::follow_insert::<Team>(app);
+        Self::follow_insert::<Owner>(app);
+        Self::follow_insert::<Team>(app);
         // A remove's observer runs while its entity holds the component still.
         app.add_observer(
             |removed: On<'_, '_, Remove, Owner>,
@@ -323,9 +318,12 @@ impl<K: FilteredKind> DataFilter<K> {
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok((_, player, team)) = units.get(removed.entity) {
-                    commands
-                        .entity(removed.entity)
-                        .try_insert(DataFilter::<K>::of(None, player, team, &visibility));
+                    commands.entity(removed.entity).try_insert(Self::of(
+                        None,
+                        player,
+                        team,
+                        &visibility,
+                    ));
                 }
             },
         );
@@ -335,9 +333,12 @@ impl<K: FilteredKind> DataFilter<K> {
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok((owner, player, _)) = units.get(removed.entity) {
-                    commands
-                        .entity(removed.entity)
-                        .try_insert(DataFilter::<K>::of(owner, player, None, &visibility));
+                    commands.entity(removed.entity).try_insert(Self::of(
+                        owner,
+                        player,
+                        None,
+                        &visibility,
+                    ));
                 }
             },
         );
@@ -351,9 +352,12 @@ impl<K: FilteredKind> DataFilter<K> {
              visibility: Res<'_, MatchVisibility>,
              mut commands: Commands<'_, '_>| {
                 if let Ok((owner, player, team)) = units.get(inserted.entity) {
-                    commands
-                        .entity(inserted.entity)
-                        .try_insert(DataFilter::<K>::of(owner, player, team, &visibility));
+                    commands.entity(inserted.entity).try_insert(Self::of(
+                        owner,
+                        player,
+                        team,
+                        &visibility,
+                    ));
                 }
             },
         );
@@ -381,7 +385,7 @@ impl DataFilters {
     /// receives, and makes each type the lists of `set` give such a kind require its filter: no
     /// system adds a filter, so none can forget one, and a filter comes with the type it hides.
     pub(crate) fn register(app: &mut App, set: CapabilitySet) {
-        DataFilters::register_kinds(app);
+        Self::register_kinds(app);
         Release::state_types(set, &mut FilterRequirements(app));
     }
 }

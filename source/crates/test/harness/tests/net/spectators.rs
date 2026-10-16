@@ -13,7 +13,7 @@ use campfire_net::{
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
 use campfire_stats::Life;
 use campfire_units::{SpawnPoint, UnitsWorld};
-use campfire_values::{Team, TeamSet};
+use campfire_values::{Relations, Team, TeamSet};
 use lightyear::prelude::Replicate;
 
 /// Steps a spectator may take to link, answer the offer and watch.
@@ -59,7 +59,9 @@ fn replicated(app: &mut App) -> BTreeSet<StableId> {
 /// A spectator that joins `local` and steps until it watches; its index.
 fn watching(local: &mut InProcessMatch) -> usize {
     let spectator = local.add_spectator();
-    step_until(local, |local| state(local, spectator).watching().is_some());
+    step_until(local, |local| {
+        state(local, spectator).watching_clock().is_some()
+    });
     for _ in 0..5 {
         local.step();
     }
@@ -88,7 +90,8 @@ fn a_spectator_watches_every_unit_holds_what_spectators_may_and_only_one_finds_a
     let world = local.client(spectator).world();
     let hero = world.entity(world.resource::<EntityIndex>().get(hero).unwrap());
     assert!(hero.contains::<Life>() && !hero.contains::<SpawnPoint>());
-    assert!(world.held_relations().is_some());
+    let relations = world.match_entity().map(|entity| world.entity(entity));
+    assert!(relations.is_some_and(|entity| entity.contains::<Relations>()));
 
     // The one place is taken: a second spectator is refused, told, and stops.
     let second = local.add_spectator();
@@ -138,7 +141,7 @@ fn a_spectator_of_the_teams_views_watches_the_teams_it_chooses() {
     step_until(&mut local, |local| state(local, spectator).rejoining());
     local.mend_link(spectator);
     step_until(&mut local, |local| {
-        state(local, spectator).watching().is_some()
+        state(local, spectator).watching_clock().is_some()
     });
     for _ in 0..5 {
         local.step();

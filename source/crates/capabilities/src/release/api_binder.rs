@@ -1,10 +1,11 @@
-use bevy_ecs::bundle::Bundle;
-use bevy_ecs::event::Event;
-use bevy_ecs::lifecycle::ComponentHook;
-use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use std::fmt::Debug;
 
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
+use bevy_ecs::event::Event;
+use bevy_ecs::lifecycle::ComponentHook;
+use bevy_ecs::schedule::SystemCondition;
+use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
@@ -85,9 +86,13 @@ impl Declarations for ApiBinder<'_, '_> {
 
     fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {}
 
+    fn non_send_loaded<R: 'static>(&mut self) {}
+
+    fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
+
     fn server_part<H: Component, C: Component + Default>(&mut self) {}
 
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 
-    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {}
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {}
 }

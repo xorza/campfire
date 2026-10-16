@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::rc::Rc;
 
 use campfire_values::EngineEnum;
@@ -17,8 +18,14 @@ use crate::scripts::script_value::{ScriptType, ScriptValue};
 /// integer form, with an integer for each `Num`; a call in a role it does not serve fails before
 /// it runs.
 pub trait CtxFn<Args, R> {
+    /// How many arguments it takes, `ctx` aside.
+    const ARITY: usize;
+
     /// What each argument names, and the engine enum each takes, by place.
     fn args() -> ArgKinds;
+
+    /// The type of the value it gives.
+    fn output() -> TypeId;
 
     fn register(self, engine: &mut Engine, name: &str, roles: RoleSet);
 }
@@ -27,8 +34,14 @@ pub trait CtxFn<Args, R> {
 /// arguments, each a `ScriptArg` as the handle is, and the call's `ctx` before both when its marker
 /// `M` is `WithCtx`. Rhai calls it as `CtxFn` says, the handle a number too in the integer form.
 pub trait MethodFn<M, H, Args, R> {
+    /// How many arguments it takes, the handle and `ctx` aside.
+    const ARITY: usize;
+
     /// What each argument names, and the engine enum each takes, by place.
     fn args() -> ArgKinds;
+
+    /// The type of the value it gives.
+    fn output() -> TypeId;
 
     fn register(self, engine: &mut Engine, name: &str);
 }
@@ -37,12 +50,18 @@ pub trait MethodFn<M, H, Args, R> {
 /// call's `ctx` before it when its marker `M` is `WithCtx`. It gives its value `O`: a value, or
 /// one that fails the call when its marker `K` is `Fallible`.
 pub trait GetFn<M, H, O, K> {
+    /// The type of the value it gives.
+    fn output() -> TypeId;
+
     fn register(self, engine: &mut Engine, name: &str);
 }
 
 /// What a form gives: its value, or with the marker `Fallible`, its value or the error that
 /// fails the call.
 pub(crate) trait ScriptReturn<K> {
+    /// The type of the value.
+    type Value: 'static;
+
     /// The value in the engine's form, or the error.
     fn checked(self) -> Checked<Dynamic>;
 }
@@ -56,12 +75,16 @@ pub struct Plain;
 pub struct Fallible;
 
 impl<R: ScriptType> ScriptReturn<Plain> for R {
+    type Value = R;
+
     fn checked(self) -> Checked<Dynamic> {
         Ok(ScriptValue::engine(self))
     }
 }
 
 impl<R: ScriptType> ScriptReturn<Fallible> for Checked<R> {
+    type Value = R;
+
     fn checked(self) -> Checked<Dynamic> {
         self.map(ScriptValue::engine)
     }
@@ -73,6 +96,10 @@ where
     H: ScriptType,
     O: ScriptReturn<K>,
 {
+    fn output() -> TypeId {
+        TypeId::of::<O::Value>()
+    }
+
     fn register(self, engine: &mut Engine, name: &str) {
         engine.register_fn(name, move |handle: &mut H| self(handle).checked());
     }
@@ -84,6 +111,10 @@ where
     H: ScriptType,
     O: ScriptReturn<K>,
 {
+    fn output() -> TypeId {
+        TypeId::of::<O::Value>()
+    }
+
     fn register(self, engine: &mut Engine, name: &str) {
         engine.register_fn(name, move |call: NativeCallContext<'_>, handle: &mut H| {
             self(&Ctx::of_call(&call), handle).checked()
@@ -98,6 +129,19 @@ pub struct WithCtx;
 /// The marker of a method that reads only its handle and its arguments.
 #[derive(Debug)]
 pub struct WithoutCtx;
+
+/// How many of the arguments whose `NUMBER` is `flags` are `Num`s.
+const fn numbers(flags: &[bool]) -> usize {
+    let mut count = 0;
+    let mut at = 0;
+    while at < flags.len() {
+        if flags[at] {
+            count += 1;
+        }
+        at += 1;
+    }
+    count
+}
 
 /// What arguments that name `names` and take `enums` name and take, by place, among the
 /// arguments a spec records.
@@ -129,8 +173,17 @@ macro_rules! script_fn {
             R: ScriptType,
             $($arg: ScriptArg,)*
         {
+            const ARITY: usize = {
+                let args: &[&str] = &[$(stringify!($arg)),*];
+                args.len()
+            };
+
             fn args() -> ArgKinds {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+            }
+
+            fn output() -> TypeId {
+                TypeId::of::<R>()
             }
 
             #[expect(
@@ -153,6 +206,12 @@ macro_rules! script_fn {
                     $(let $arg = $arg::take($arg, &args)?;)*
                     each(ctx, $($arg),*).map(ScriptValue::engine)
                 });
+                const {
+                    assert!(
+                        numbers(&[$($arg::NUMBER),*]) <= 1,
+                        "a member's integer form takes each `Num` as an integer, so it takes one `Num` at most"
+                    );
+                }
                 if [$($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(name, move |ctx: &mut Ctx, $($arg: $arg::Int),*| -> Checked<Dynamic> {
                         if roles != RoleSet::ALL {
@@ -173,8 +232,17 @@ macro_rules! script_fn {
             H: ScriptArg,
             $($arg: ScriptArg,)*
         {
+            const ARITY: usize = {
+                let args: &[&str] = &[$(stringify!($arg)),*];
+                args.len()
+            };
+
             fn args() -> ArgKinds {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+            }
+
+            fn output() -> TypeId {
+                TypeId::of::<R>()
             }
 
             #[expect(
@@ -197,6 +265,12 @@ macro_rules! script_fn {
                         each(handle, $($arg),*).map(ScriptValue::engine)
                     },
                 );
+                const {
+                    assert!(
+                        numbers(&[H::NUMBER, $($arg::NUMBER),*]) <= 1,
+                        "a method's integer form takes each `Num` as an integer, so it takes one `Num` at most"
+                    );
+                }
                 if [H::NUMBER, $($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(
                         name,
@@ -218,8 +292,17 @@ macro_rules! script_fn {
             H: ScriptArg,
             $($arg: ScriptArg,)*
         {
+            const ARITY: usize = {
+                let args: &[&str] = &[$(stringify!($arg)),*];
+                args.len()
+            };
+
             fn args() -> ArgKinds {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+            }
+
+            fn output() -> TypeId {
+                TypeId::of::<R>()
             }
 
             #[expect(
@@ -242,6 +325,12 @@ macro_rules! script_fn {
                         each(args.get(), handle, $($arg),*).map(ScriptValue::engine)
                     },
                 );
+                const {
+                    assert!(
+                        numbers(&[H::NUMBER, $($arg::NUMBER),*]) <= 1,
+                        "a method's integer form takes each `Num` as an integer, so it takes one `Num` at most"
+                    );
+                }
                 if [H::NUMBER, $($arg::NUMBER),*].contains(&true) {
                     engine.register_fn(
                         name,

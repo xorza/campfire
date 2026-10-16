@@ -428,7 +428,7 @@ impl HostRule for Healthy {
     }
 
     fn kinds(kinds: &mut Vec<TypeId>) -> bool {
-        kinds.push(TypeId::of::<Healthy>());
+        kinds.push(TypeId::of::<Self>());
         true
     }
 }
@@ -628,6 +628,17 @@ fn duplicate_names_are_refused() {
 }
 
 #[test]
+#[should_panic(
+    expected = "state type \"test.clock\" registered after its world's changes are tracked"
+)]
+fn a_type_registered_once_its_world_tracks_its_changes_is_refused() {
+    // The tracking holds each type by its place, which a type registered later would move.
+    let mut registry = registry();
+    registry.track(&mut plain_world(), &mut StateDelta::default());
+    registry.register_component::<Clock>();
+}
+
+#[test]
 #[should_panic(expected = "restore needs a world without sim entities")]
 fn restore_refuses_a_populated_world() {
     let mut world = plain_world();
@@ -655,8 +666,8 @@ struct Following {
 }
 
 impl Following {
-    fn new(registry: StateRegistry, world: World) -> Following {
-        let mut following = Following {
+    fn new(registry: StateRegistry, world: World) -> Self {
+        let mut following = Self {
             registry,
             world,
             copy: World::new(),
@@ -972,7 +983,7 @@ enum Swapped {
 struct Refused<T>(T);
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Refused<T> {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Refused<T>, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         T::deserialize(deserializer)?;
         Err(D::Error::custom("refused"))
     }

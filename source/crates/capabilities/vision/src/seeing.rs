@@ -54,7 +54,7 @@ impl Seeing {
         }
         fog.begin_tick();
         for (entity, &pos, &team, sight, tags) in &seers {
-            let detects = UnitTags::properties_of(tags).detects();
+            let detects = tags.is_some_and(|tags| tags.properties.detects());
             let slot = entity.index_u32() as usize;
             fog.sight(grid, slot, pos.get(), team, sight.range(), detects);
         }
@@ -65,7 +65,7 @@ impl Seeing {
             });
         }
         for (entity, &pos, &team, body, tags, mut seen) in &mut units {
-            let hidden = UnitTags::properties_of(tags).hidden();
+            let hidden = tags.is_some_and(|tags| tags.properties.hidden());
             let boxed = match Body::shape_of(body) {
                 Shape::Box(body) => Some(body),
                 Shape::Circle(_) => None,

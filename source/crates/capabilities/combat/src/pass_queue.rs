@@ -1,16 +1,20 @@
 use std::collections::VecDeque;
 
 use bevy_ecs::resource::Resource;
+use campfire_common::Tick;
 use campfire_declare::Scratch;
 use campfire_sim::StableId;
+use serde::{Deserialize, Serialize};
 
 use crate::damage::Damage;
 use crate::heal::Heal;
 
-/// The damage and heals of the running tick, which the pass applies in Resolve: those with no
-/// source first, then by their source's stable id, then in the order they were queued; what the
-/// pass queues joins the end, but for a heal, which it deals next. Not state: it empties within
-/// the tick.
+/// The damage and heals of the running tick, which the pass applies in Resolve: the next tick's
+/// damage the tick before queued after its pass first, in the order queued, then those with no
+/// source, then by their source's stable id, then in the order they were queued; what the pass
+/// queues joins the end, but for a heal, which it deals next. Each push names its tick, which
+/// must not be one whose pass ran: what comes after the pass is the next tick's damage. Not
+/// state: it empties within the tick.
 #[derive(Resource, Debug, Default)]
 pub struct PassQueue {
     entries: Vec<Queued>,
@@ -19,10 +23,12 @@ pub struct PassQueue {
     /// The heals the running pass gave, from leech and from hooks, in the order given.
     given: VecDeque<Heal>,
     running: bool,
+    /// The tick whose pass ran last.
+    dealt: Option<Tick>,
 }
 
 /// A damage or a heal of the pass.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PassEntry {
     Damage(Damage),
     Heal(Heal),
@@ -36,30 +42,44 @@ struct Queued {
 }
 
 impl PassQueue {
-    pub fn push_damage(&mut self, damage: Damage) {
-        self.push(PassEntry::Damage(damage));
+    /// Queues `damage` for the pass of `now`, which has not run.
+    pub(crate) fn push_damage(&mut self, damage: Damage, now: Tick) {
+        self.push(PassEntry::Damage(damage), now);
     }
 
-    /// Queues `heal`: while the pass runs, to be dealt before the pass's next entry, after the
-    /// heals given before it.
-    pub fn push_heal(&mut self, heal: Heal) {
+    /// Queues `heal` for the pass of `now`, which has not run: while the pass runs, to be dealt
+    /// before the pass's next entry, after the heals given before it.
+    pub(crate) fn push_heal(&mut self, heal: Heal, now: Tick) {
         if self.running {
             self.given.push_back(heal);
         } else {
-            self.push(PassEntry::Heal(heal));
+            self.push(PassEntry::Heal(heal), now);
         }
     }
 
-    fn push(&mut self, entry: PassEntry) {
+    /// Queues `entry` for the pass of `now`, which has not run.
+    fn push(&mut self, entry: PassEntry, now: Tick) {
+        debug_assert!(
+            self.open_at(now),
+            "an entry after the tick's pass is the next tick's damage"
+        );
         let order = u32::try_from(self.entries.len()).expect("a tick's damage fits u32");
         self.entries.push(Queued { entry, order });
     }
 
-    /// Puts the queue in the order the pass applies it, and starts the pass.
-    pub fn begin(&mut self) {
+    /// Whether an entry of tick `now` reaches its pass: the pass of `now` has not run.
+    pub(crate) fn open_at(&self, now: Tick) -> bool {
+        self.dealt != Some(now)
+    }
+
+    /// Puts the queue in the order the pass applies it, the entries `carried` from the tick
+    /// before first, and starts the pass.
+    pub(crate) fn begin(&mut self, carried: Vec<PassEntry>) {
         debug_assert!(!self.running, "one pass at a time");
         self.entries
             .sort_unstable_by_key(|queued| (queued.entry.source(), queued.order));
+        let carried = carried.into_iter().map(|entry| Queued { entry, order: 0 });
+        self.entries.splice(0..0, carried);
         self.running = true;
     }
 
@@ -73,10 +93,11 @@ impl PassQueue {
         Some(queued.entry)
     }
 
-    /// Ends the pass, and empties the queue.
-    pub(crate) fn end(&mut self) {
+    /// Ends the pass of `now`, and empties the queue.
+    pub(crate) fn end(&mut self, now: Tick) {
         debug_assert!(self.given.is_empty(), "the pass deals every heal it gave");
         self.running = false;
+        self.dealt = Some(now);
         self.clear();
     }
 
@@ -94,8 +115,8 @@ impl PassQueue {
 impl PassEntry {
     const fn source(self) -> Option<StableId> {
         match self {
-            PassEntry::Damage(damage) => damage.source,
-            PassEntry::Heal(heal) => heal.source,
+            Self::Damage(damage) => damage.source,
+            Self::Heal(heal) => heal.source,
         }
     }
 }

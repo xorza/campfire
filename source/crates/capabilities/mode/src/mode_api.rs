@@ -1,12 +1,13 @@
 use campfire_actions::{ActionSlots, ActionsColumn, SlotKind, SlotKindData};
 use campfire_combat::CombatColumn;
+use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd};
 use campfire_players::{PlayersCall, Seating};
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, ArgCtx, CapabilityRefusal, Checked, Ctx, DataTable,
-    Hook, MemberSpec, NameKind, RoleSet, ScriptList, ScriptPosition, ScriptText, ScriptValue,
-    StateType, StateValue, Status, TextArg, Unit,
+    Hook, MemberSpec, NameKind, RoleSet, ScriptList, ScriptPosition, ScriptText, ScriptTicks,
+    ScriptValue, StateType, StateValue, Status, TextArg, Unit,
 };
 use campfire_sim::{Capability, StableId};
 use campfire_units::{NewUnit, SpawnAt, Units};
@@ -20,13 +21,15 @@ use crate::marker::Marker;
 use crate::marker_tag::MarkerTag;
 use crate::match_end::MatchResult;
 use crate::mode_call::ModeCall;
-use crate::mode_effect::ModeEffect;
+use crate::mode_ctx::ModeCtx;
+use crate::mode_effect::{ModeEffect, SlotGrant};
 use crate::mode_spec::ModeSpec;
 use crate::players_data::PlayersData;
 use crate::relation_data::RelationData;
 use crate::saves_data::SavesData;
 use crate::spawn_group::{GroupUnit, SpawnGroup};
 use crate::team_data::TeamData;
+use crate::timers::TimerStart;
 
 /// The script API of the mode, which every match has: the teams, the map, the avatars and the
 /// mode's state, which every role reads, and what only the mode's calls do: the players'
@@ -41,11 +44,11 @@ pub(crate) struct StateAccess(Ctx);
 impl ModeApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         api.engine_enum::<Relation>().engine_enum::<PathEnd>();
-        ModeApi::register_map(api);
-        ModeApi::register_reads(api);
-        ModeApi::register_choices(api);
-        ModeApi::register_spawns(api);
-        ModeApi::register_changes(api);
+        Self::register_map(api);
+        Self::register_reads(api);
+        Self::register_choices(api);
+        Self::register_spawns(api);
+        Self::register_changes(api);
         api.hook(Hook::OnMatchStart, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnModeInput, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnTimer, Status::Runs(ApiVersion::FIRST))
@@ -53,6 +56,7 @@ impl ModeApi {
             .hook(Hook::OnPlayerJoin, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnPlayerLeave, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnGenerate, Status::Planned)
+            .hook(Hook::OnSystem, Status::Planned)
             .call(
                 MemberSpec::mode_call("save", &[&[]], "asks for a save at the end of the tick"),
                 |ctx: &mut Ctx| ctx.queue(ModeEffect::Save),
@@ -69,6 +73,23 @@ impl ModeApi {
                 &[&["region"]],
                 "builds the map's region `region` through `on_generate`",
             ))
+            .plan(
+                MemberSpec::call(
+                    "quest_stage",
+                    &[&["player", "id", "stage"]],
+                    "sets the stage of `player`'s quest `id`",
+                )
+                .capability(Capability::Quests),
+            )
+            .plan(
+                MemberSpec::call(
+                    "quest",
+                    &[&["player", "id"]],
+                    "the stage of `player`'s quest `id`, `()` before it starts",
+                )
+                .capability(Capability::Quests),
+            )
+            .plan_hook(Hook::OnStageDone, Capability::Quests)
             .shared_data(
                 DataTable::Mode,
                 &[
@@ -104,9 +125,10 @@ impl ModeApi {
         api.call(
             MemberSpec::value("teams", "the playing teams' names, the teams with slots"),
             |ctx: &mut Ctx| -> Checked<ScriptList> {
-                let teams = &ModeSpec::of_or_fail(ctx)?.teams;
+                let book = ctx.mode_spec_or_fail()?;
+                let teams = &book.teams;
                 let names = ctx.view().names();
-                let name = |&team| names.name(team).expect("a team of the match");
+                let name = |&team| names.name(team);
                 Ok(teams
                     .playing()
                     .iter()
@@ -122,25 +144,23 @@ impl ModeApi {
             )
             .roles(RoleSet::MODE),
             |ctx: &mut Ctx| -> Checked<i64> {
-                Ok(i64::from(ModeSpec::of_or_fail(ctx)?.teams.players()))
+                Ok(i64::from(ctx.mode_spec_or_fail()?.teams.players()))
             },
         )
         .call(
             MemberSpec::mode_call("team_of", &[&["player"]], "the name of `player`'s team"),
-            |ctx: &mut Ctx, player: i64| -> Checked<ScriptValue> {
-                let book = ModeSpec::of_or_fail(ctx)?;
-                let slot = book.teams.player(player)?;
+            |ctx: &mut Ctx, slot: PlayerSlot| -> Checked<ScriptText> {
+                let book = ctx.mode_spec_or_fail()?;
                 let team = book
                     .teams
                     .of(slot)
                     .expect("a player of the session has a team");
-                let name = ctx.view().names().name(team);
-                Ok(ScriptValue::of(name.expect("a team of the match")))
+                Ok(ctx.view().names().name(team))
             },
         )
         .call(
             MemberSpec::value("map", "the map: its paths and its markers"),
-            |ctx: &mut Ctx| -> Checked<GameMap> { Ok(ModeSpec::of_or_fail(ctx)?.map()) },
+            |ctx: &mut Ctx| -> Checked<GameMap> { Ok(ctx.mode_spec_or_fail()?.map()) },
         )
         .call(
             MemberSpec::value(
@@ -156,14 +176,13 @@ impl ModeApi {
                 &[&["team"]],
                 "the one team that is `team`'s enemy, in a mode of two playing teams",
             ),
-            |ctx: &mut Ctx, team: Team| -> Checked<ScriptValue> {
-                let book = ModeSpec::of_or_fail(ctx)?;
+            |ctx: &mut Ctx, team: Team| -> Checked<ScriptText> {
+                let book = ctx.mode_spec_or_fail()?;
                 let enemy = book
                     .teams
                     .sole_enemy(team)
                     .ok_or_else(|| ModeRefusal::NoEnemyTeam.fail())?;
-                let name = ctx.view().names().name(enemy);
-                Ok(ScriptValue::of(name.expect("a team of the match")))
+                Ok(ctx.view().names().name(enemy))
             },
         );
         let avatars = MemberSpec::call(
@@ -191,7 +210,7 @@ impl ModeApi {
                 &[&["player"]],
                 "whether a player or a bot held `player`'s slot as the match started",
             ),
-            |ctx: &mut Ctx, player: i64| ModeApi::held(ctx, player),
+            |ctx: &mut Ctx, player: PlayerSlot| Ok(Self::held(ctx, player)),
         )
         .call(
             MemberSpec::mode_call(
@@ -199,13 +218,13 @@ impl ModeApi {
                 &[&["player"]],
                 "the living units `player` owns, by stable id",
             ),
-            |ctx: &mut Ctx, player: i64| ModeApi::units_of(ctx, player),
+            |ctx: &mut Ctx, player: PlayerSlot| Ok(Self::units_of(ctx, player)),
         );
         api.ty::<StateAccess>("ModeState")
-            .index(|_, state: &mut StateAccess, name: &str| ModeApi::state(&state.0, name))
+            .index(|_, state: &mut StateAccess, name: &str| Self::state(&state.0, name))
             .index_set(
                 |_, state: &mut StateAccess, name: &str, value: ScriptValue| {
-                    ModeApi::set_state(&state.0, name, &value)
+                    Self::set_state(&state.0, name, &value)
                 },
             );
     }
@@ -223,14 +242,14 @@ impl ModeApi {
         );
         api.call(
             choose,
-            |ctx: &mut Ctx, player: i64, choice: ChoiceId, values: ScriptList| {
-                ModeApi::choose(ctx, player, choice, &values)
+            |ctx: &mut Ctx, player: PlayerSlot, choice: ChoiceId, values: ScriptList| {
+                Self::choose(ctx, player, choice, &values)
             },
         )
         .call(
             choose,
-            |ctx: &mut Ctx, player: i64, choice: ChoiceId, value: ScriptText| {
-                ModeApi::choose(ctx, player, choice, &[ScriptValue::of(value)])
+            |ctx: &mut Ctx, player: PlayerSlot, choice: ChoiceId, value: ScriptText| {
+                Self::choose(ctx, player, choice, &[ScriptValue::of(value)])
             },
         )
         .call(
@@ -239,7 +258,7 @@ impl ModeApi {
                 &[&["player", "choice"]],
                 "the values `player` chose of `choice`, in order; empty before the player chose",
             ),
-            |ctx: &mut Ctx, player: i64, choice: ChoiceId| ModeApi::chosen(ctx, player, choice),
+            |ctx: &mut Ctx, player: PlayerSlot, choice: ChoiceId| Self::chosen(ctx, player, choice),
         )
         .call(
             MemberSpec::mode_call(
@@ -248,8 +267,8 @@ impl ModeApi {
                 "whether `player` may choose `value` of `choice`: no other player chose it in a \
                  unique choice",
             ),
-            |ctx: &mut Ctx, player: i64, choice: ChoiceId, value: ScriptText| {
-                ModeApi::available(ctx, player, choice, &value)
+            |ctx: &mut Ctx, player: PlayerSlot, choice: ChoiceId, value: ScriptText| {
+                Self::available(ctx, player, choice, &value)
             },
         )
         .call(
@@ -259,7 +278,7 @@ impl ModeApi {
                 "the values `choice` offers, in order: the avatars in the order of the mode's \
                  dependencies, or the loadout entries by id",
             ),
-            |ctx: &mut Ctx, choice: ChoiceId| ModeApi::offers(ctx, choice),
+            |ctx: &mut Ctx, choice: ChoiceId| Self::offers(ctx, choice),
         );
     }
 
@@ -282,28 +301,32 @@ impl ModeApi {
         api.call(
             spawn_unit,
             |ctx: &mut Ctx, unit_type: UnitType, team: Team, pos: ScriptPosition| {
-                ModeApi::spawn_unit(ctx, unit_type, team, pos.get(), None)
+                Self::spawn_unit(ctx, unit_type, team, pos.get(), None)
             },
         )
         .call(
             spawn_unit,
-            |ctx: &mut Ctx, unit_type: UnitType, team: Team, pos: ScriptPosition, player: i64| {
-                ModeApi::spawn_unit(ctx, unit_type, team, pos.get(), Some(player))
+            |ctx: &mut Ctx,
+             unit_type: UnitType,
+             team: Team,
+             pos: ScriptPosition,
+             player: PlayerSlot| {
+                Self::spawn_unit(ctx, unit_type, team, pos.get(), Some(player))
             },
         )
         .call(
             grant,
             |ctx: &mut Ctx, unit: Unit, kind: SlotKind, ids: ScriptList| {
                 let slots = ActionsColumn::slot_count(ctx.view(), unit.row_index());
-                ModeApi::grant(ctx, unit.id, slots, kind, &ids)
+                Self::grant(ctx, unit.id, slots, kind, &ids)
             },
         )
         .call(
             grant,
             |ctx: &mut Ctx, unit: NewUnit, kind: SlotKind, ids: ScriptList| {
-                let book = ModeSpec::of_or_fail(ctx)?;
+                let book = ctx.mode_spec_or_fail()?;
                 let slots = book.spawn_slots(unit.unit_type);
-                ModeApi::grant(ctx, unit.id, slots, kind, &ids)
+                Self::grant(ctx, unit.id, slots, kind, &ids)
             },
         )
         .call(
@@ -314,7 +337,7 @@ impl ModeApi {
                  there",
             ),
             |ctx: &mut Ctx, team: Team, path: PathId, from: PathEnd, types: ScriptList| {
-                ModeApi::spawn_group(ctx, team, path, from, &types)
+                Self::spawn_group(ctx, team, path, from, &types)
             },
         );
     }
@@ -333,8 +356,8 @@ impl ModeApi {
                 &[&["name", "ms", "repeat", "data"]],
                 "calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one",
             ),
-            |ctx: &mut Ctx, name: ScriptText, ms: i64, repeat: bool, data: ScriptValue| {
-                ModeApi::timer(ctx, &name, ms, repeat, &data)
+            |ctx: &mut Ctx, name: ScriptText, ms: ScriptTicks, repeat: bool, data: ScriptValue| {
+                Self::timer(ctx, &name, ms, repeat, &data)
             },
         )
         .call(
@@ -344,7 +367,7 @@ impl ModeApi {
                 "brings back `unit`, dead and of a type that stays, `ms` from the call",
             )
             .capability(Capability::Combat),
-            |ctx: &mut Ctx, unit: Unit, ms: i64| ModeApi::respawn(ctx, &unit, ms),
+            |ctx: &mut Ctx, unit: Unit, ms: ScriptTicks| Self::respawn(ctx, &unit, ms),
         )
         .call(
             MemberSpec::mode_call(
@@ -353,7 +376,7 @@ impl ModeApi {
                 "the ability in `slot` a rank more, up to its last",
             )
             .capability(Capability::Abilities),
-            |ctx: &mut Ctx, unit: Unit, slot: i64| ModeApi::learn(ctx, &unit, slot),
+            |ctx: &mut Ctx, unit: Unit, slot: i64| Self::learn(ctx, &unit, slot),
         )
         .call(
             MemberSpec::call(
@@ -361,8 +384,8 @@ impl ModeApi {
                 &[&["player", "name", "amount"]],
                 "adds `amount` of the player resource `name`, one the mode declares, to `player`",
             ),
-            |ctx: &mut Ctx, player: i64, resource: ResourceId, amount: i64| {
-                ModeApi::add_resource(ctx, player, resource, amount)
+            |ctx: &mut Ctx, player: PlayerSlot, resource: ResourceId, amount: i64| {
+                Self::add_resource(ctx, player, resource, amount)
             },
         )
         .call(
@@ -371,7 +394,7 @@ impl ModeApi {
                 &[&["player", "out"]],
                 "holds `player` out of play while `out`, as when every avatar it holds is dead",
             ),
-            |ctx: &mut Ctx, player: i64, out: bool| ModeApi::set_out(ctx, player, out),
+            |ctx: &mut Ctx, player: PlayerSlot, out: bool| Self::set_out(ctx, player, out),
         )
         .call(
             MemberSpec::call(
@@ -380,14 +403,14 @@ impl ModeApi {
                 "sets how teams `a` and `b` regard each other, their vision as it was",
             ),
             |ctx: &mut Ctx, a: Team, b: Team, relation: Relation| {
-                ModeApi::set_relation(ctx, a, b, relation)
+                Self::set_relation(ctx, a, b, relation)
             },
         )
         .call(end, |ctx: &mut Ctx, team: Team| {
-            ModeApi::end(ctx, MatchResult::Won(team))
+            Self::end(ctx, MatchResult::Won(team))
         })
         .call(end, |ctx: &mut Ctx, (): ()| {
-            ModeApi::end(ctx, MatchResult::Draw)
+            Self::end(ctx, MatchResult::Draw)
         });
     }
 
@@ -421,10 +444,8 @@ impl ModeApi {
                 field("team", "its team's name, `()` with none"),
                 |ctx: &Ctx, marker: &mut Marker| {
                     let names = ctx.view().names();
-                    marker.info().team.map_or(ScriptValue::UNIT, |team| {
-                        let name = names.name(team);
-                        ScriptValue::of(name.expect("a marker's team is the mode's"))
-                    })
+                    let team = marker.info().team;
+                    team.map_or(ScriptValue::UNIT, |team| ScriptValue::of(names.name(team)))
                 },
             )
             .bind(
@@ -434,7 +455,8 @@ impl ModeApi {
     }
 
     fn state(ctx: &Ctx, name: &str) -> Checked<ScriptValue> {
-        let field = ModeSpec::of_or_fail(ctx)?
+        let field = ctx
+            .mode_spec_or_fail()?
             .schema
             .state
             .field(name)
@@ -443,12 +465,12 @@ impl ModeApi {
     }
 
     fn set_state(ctx: &Ctx, name: &str, value: &ScriptValue) -> Checked<()> {
-        let state = &ModeSpec::of_or_fail(ctx)?.schema.state;
+        let book = ctx.mode_spec_or_fail()?;
+        let state = &book.schema.state;
         let field = state
             .field(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
-        let value = StateValue::from_value(state.kind(field), value)
-            .ok_or_else(|| ApiError::WrongStateType.fail())?;
+        let value = StateValue::from_value(state.kind(field), value)?;
         ModeCall::of_mut(&mut *ctx.write()?).state[field.index()] = value;
         Ok(())
     }
@@ -465,10 +487,14 @@ impl ModeApi {
         Ok(())
     }
 
-    /// Records `values` as what `player` chose of `choice`.
-    fn choose(ctx: &Ctx, player: i64, choice: ChoiceId, values: &[ScriptValue]) -> Checked<()> {
-        let book = ModeSpec::of_or_fail(ctx)?;
-        let slot = book.teams.player(player)?;
+    /// Records `values` as what player `slot` chose of `choice`.
+    fn choose(
+        ctx: &Ctx,
+        slot: PlayerSlot,
+        choice: ChoiceId,
+        values: &[ScriptValue],
+    ) -> Checked<()> {
+        let book = ctx.mode_spec_or_fail()?;
         let choice = book.choices.get(choice);
         if values.len() != choice.count() {
             return Err(ModeRefusal::ChoiceCount.fail().into());
@@ -478,7 +504,7 @@ impl ModeApi {
             let offer = value
                 .clone()
                 .into_text()
-                .and_then(|id| book.roster.offer(choice.offers, id.as_str()))
+                .and_then(|id| book.roster.offer_named(choice.offers, id.as_str()))
                 .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
             if offers.contains(&offer) {
                 return Err(ModeRefusal::RepeatedChoiceValue.fail().into());
@@ -495,10 +521,9 @@ impl ModeApi {
         Ok(())
     }
 
-    /// The values `player` chose of `choice`, in order, empty before the player chose.
-    fn chosen(ctx: &Ctx, player: i64, choice: ChoiceId) -> Checked<ScriptList> {
-        let book = ModeSpec::of_or_fail(ctx)?;
-        let slot = book.teams.player(player)?;
+    /// The values player `slot` chose of `choice`, in order, empty before the player chose.
+    fn chosen(ctx: &Ctx, slot: PlayerSlot, choice: ChoiceId) -> Checked<ScriptList> {
+        let book = ctx.mode_spec_or_fail()?;
         let choice = book.choices.get(choice);
         let frame = ctx.frame();
         let Some(values) = ModeCall::of(&frame)
@@ -514,7 +539,7 @@ impl ModeApi {
 
     /// The values `choice` offers, in order.
     fn offers(ctx: &Ctx, choice: ChoiceId) -> Checked<ScriptList> {
-        let book = ModeSpec::of_or_fail(ctx)?;
+        let book = ctx.mode_spec_or_fail()?;
         let choice = book.choices.get(choice);
         Ok(book
             .roster
@@ -523,15 +548,14 @@ impl ModeApi {
             .collect())
     }
 
-    /// Whether `player` may choose `value` of `choice`: it offers the value, and no other player
-    /// chose it in a unique choice.
-    fn available(ctx: &Ctx, player: i64, choice: ChoiceId, value: &str) -> Checked<bool> {
-        let book = ModeSpec::of_or_fail(ctx)?;
-        let slot = book.teams.player(player)?;
+    /// Whether player `slot` may choose `value` of `choice`: it offers the value, and no other
+    /// player chose it in a unique choice.
+    fn available(ctx: &Ctx, slot: PlayerSlot, choice: ChoiceId, value: &str) -> Checked<bool> {
+        let book = ctx.mode_spec_or_fail()?;
         let choice = book.choices.get(choice);
         let offer = book
             .roster
-            .offer(choice.offers, value)
+            .offer_named(choice.offers, value)
             .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
         let taken = ModeCall::of(&ctx.frame())
             .choices
@@ -547,20 +571,20 @@ impl ModeApi {
         Ok(unit_type)
     }
 
-    /// Queues the spawn of a unit of `unit_type` on `team` at `pos`, owned by `player` if it
+    /// Queues the spawn of a unit of `unit_type` on `team` at `pos`, owned by `owner` if it
     /// names one, who plays on `team`: the new unit, with the id the call takes for it.
     fn spawn_unit(
         ctx: &Ctx,
         unit_type: UnitType,
         team: Team,
         pos: Vec3,
-        player: Option<i64>,
+        owner: Option<PlayerSlot>,
     ) -> Checked<NewUnit> {
-        let book = ModeSpec::of_or_fail(ctx)?;
+        let book = ctx.mode_spec_or_fail()?;
         if !ctx.view().bounds().contains(pos) {
             return Err(ModeRefusal::OutOfBounds.fail().into());
         }
-        let unit_type = ModeApi::spawnable(book, unit_type)?;
+        let unit_type = Self::spawnable(&book, unit_type)?;
         let boxed = book.body(unit_type).filter(|form| form.is_box());
         let body = boxed.map(|form| form.at(Num::ZERO));
         if let Some(body) = body {
@@ -573,7 +597,6 @@ impl ModeApi {
                 return Err(ModeRefusal::NoRoom.fail().into());
             }
         }
-        let owner = player.map(|player| book.teams.player(player)).transpose()?;
         if owner.is_some_and(|slot| book.teams.of(slot) != Some(team)) {
             return Err(ModeRefusal::PlayerOffTeam.fail().into());
         }
@@ -590,12 +613,16 @@ impl ModeApi {
             owner,
             angle: Num::ZERO,
         };
-        ctx.queue(ModeEffect::SpawnUnit(spawn))?;
+        ctx.queue(ModeEffect::SpawnUnit {
+            at: spawn,
+            grants: Vec::new(),
+        })?;
         Ok(NewUnit { id, unit_type })
     }
 
     /// Queues the actions `ids` into the slot kind `kind` of `id`, which has `slots` slots
-    /// before the grants this call queued.
+    /// before the grants this call queued: with the spawn of a unit the call spawns, so it
+    /// spawns with them, or on its own for a unit that stands.
     fn grant(
         ctx: &Ctx,
         id: StableId,
@@ -603,7 +630,7 @@ impl ModeApi {
         kind: SlotKind,
         ids: &[ScriptValue],
     ) -> Checked<()> {
-        let book = ModeSpec::of_or_fail(ctx)?;
+        let book = ctx.mode_spec_or_fail()?;
         let view = ctx.view();
         if ActionsColumn::kind_ranks(view, kind) != book.loadout_ranks {
             return Err(ModeRefusal::SlotKindRanks.fail().into());
@@ -613,31 +640,39 @@ impl ModeApi {
             .iter()
             .map(|name| {
                 let name = name.clone().into_text();
-                name.and_then(|name| book.roster.loadout_ability(name.as_str()))
+                name.and_then(|name| book.roster.loadout_ability_named(name.as_str()))
                     .ok_or_else(|| ApiError::Unknown(NameKind::Ability).fail().into())
             })
             .collect::<Checked<Vec<_>>>()?;
         let mut frame = ctx.write()?;
         let queued: usize = frame
             .queued::<ModeEffect>()
-            .filter_map(|effect| match effect {
-                ModeEffect::Grant {
-                    id: granted,
-                    abilities,
-                    ..
-                } if *granted == id => Some(abilities.len()),
-                _ => None,
+            .map(|effect| match effect {
+                ModeEffect::Grant { id: granted, grant } if *granted == id => grant.abilities.len(),
+                ModeEffect::SpawnUnit { at, grants } if at.id == id => {
+                    grants.iter().map(|grant| grant.abilities.len()).sum()
+                }
+                _ => 0,
             })
             .sum();
         if slots + queued + abilities.len() > ActionSlots::LIMIT {
             return Err(ModeRefusal::TooManySlots.fail().into());
         }
-        frame.queue(ModeEffect::Grant {
-            id,
+        let grant = SlotGrant {
             kind,
             rank,
             abilities,
-        });
+        };
+        let spawn = frame
+            .queued_mut::<ModeEffect>()
+            .find_map(|effect| match effect {
+                ModeEffect::SpawnUnit { at, grants } if at.id == id => Some(grants),
+                _ => None,
+            });
+        match spawn {
+            Some(grants) => grants.push(grant),
+            None => frame.queue(ModeEffect::Grant { id, grant }),
+        }
         Ok(())
     }
 
@@ -650,13 +685,13 @@ impl ModeApi {
         from: PathEnd,
         types: &[ScriptValue],
     ) -> Checked<()> {
-        let book = ModeSpec::of_or_fail(ctx)?;
+        let book = ctx.mode_spec_or_fail()?;
         let types = types
             .iter()
             .map(|name| {
                 let name = name.clone().into_text();
                 let name = name.ok_or_else(|| ApiError::Unknown(NameKind::UnitType).fail())?;
-                ModeApi::spawnable(book, UnitType::take_text(name, &ArgCtx::Ctx(ctx))?)
+                Self::spawnable(&book, UnitType::take_text(name, &ArgCtx::Ctx(ctx))?)
             })
             .collect::<Checked<Vec<UnitType>>>()?;
         let mut frame = ctx.write()?;
@@ -677,28 +712,36 @@ impl ModeApi {
     }
 
     /// Queues a timer `ms` milliseconds from the call, rounded up to whole ticks, at least one.
-    fn timer(ctx: &Ctx, name: &str, ms: i64, repeat: bool, data: &ScriptValue) -> Checked<()> {
-        let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
-        let data = ModeApi::timer_data(data).map_err(ApiError::fail)?;
-        ctx.queue(ModeEffect::Timer {
+    fn timer(
+        ctx: &Ctx,
+        name: &str,
+        ms: ScriptTicks,
+        repeat: bool,
+        data: &ScriptValue,
+    ) -> Checked<()> {
+        let ticks = ms.get();
+        let data = Self::timer_data(data).map_err(ApiError::fail)?;
+        ctx.queue(ModeEffect::Timer(TimerStart {
             name: name.to_owned(),
-            ticks,
-            repeat,
+            after: ticks,
+            every: repeat.then_some(ticks),
             data,
-        })
+        }))
     }
 
     /// Brings back `unit`, which is dead and stays when dead, `ms` after this call, in ticks
     /// rounded up, at least one.
-    fn respawn(ctx: &Ctx, unit: &Unit, ms: i64) -> Checked<()> {
+    fn respawn(ctx: &Ctx, unit: &Unit, ms: ScriptTicks) -> Checked<()> {
         if unit.read(|row| row.alive) {
             return Err(ModeRefusal::RespawnAlive.fail().into());
         }
         if !CombatColumn::stays(unit) {
             return Err(ModeRefusal::RespawnDespawns.fail().into());
         }
-        let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
-        ctx.queue(ModeEffect::Respawn { id: unit.id, ticks })
+        ctx.queue(ModeEffect::Respawn {
+            id: unit.id,
+            ticks: ms.get(),
+        })
     }
 
     /// Queues a rank more of the ability in `slot` of `unit`: one that has a rank above its
@@ -730,37 +773,27 @@ impl ModeApi {
         ctx.queue(ModeEffect::SetRelation { a, b, relation })
     }
 
-    /// Queues `player` held out of play, or no more.
-    /// Whether a player or a bot held the slot of `player`, a slot of the session, as the match
-    /// started.
-    fn held(ctx: &Ctx, player: i64) -> Checked<bool> {
-        let book = ModeSpec::of_or_fail(ctx)?;
-        let slot = book.teams.player(player)?;
+    /// Whether a player or a bot held `slot` as the match started.
+    fn held(ctx: &Ctx, slot: PlayerSlot) -> bool {
         let frame = ctx.frame();
         let players = frame
             .part::<PlayersCall>()
             .expect("every call holds the players'");
-        Ok(players.seating(slot) == Some(Seating::Held))
+        players.seating(slot) == Some(Seating::Held)
     }
 
-    /// The living units of `player`, a slot of the session, by stable id.
-    fn units_of(ctx: &Ctx, player: i64) -> Checked<ScriptList> {
-        let book = ModeSpec::of_or_fail(ctx)?;
-        let slot = book.teams.player(player)?;
-        Ok(ctx
-            .view()
-            .units_where(|row| row.alive && row.owner == Some(slot)))
+    /// The living units of player `slot`, by stable id.
+    fn units_of(ctx: &Ctx, slot: PlayerSlot) -> ScriptList {
+        ctx.view()
+            .units_where(|row| row.alive && row.owner == Some(slot))
     }
 
-    fn set_out(ctx: &Ctx, player: i64, out: bool) -> Checked<()> {
-        let book = ModeSpec::of_or_fail(ctx)?;
-        let slot = book.teams.player(player)?;
+    /// Queues player `slot` held out of play, or no more.
+    fn set_out(ctx: &Ctx, slot: PlayerSlot, out: bool) -> Checked<()> {
         ctx.queue(ModeEffect::SetOut { slot, out })
     }
 
-    fn add_resource(ctx: &Ctx, player: i64, resource: ResourceId, amount: i64) -> Checked<()> {
-        let book = ModeSpec::of_or_fail(ctx)?;
-        let slot = book.teams.player(player)?;
+    fn add_resource(ctx: &Ctx, slot: PlayerSlot, resource: ResourceId, amount: i64) -> Checked<()> {
         let mut frame = ctx.write()?;
         let players = frame
             .part_mut::<PlayersCall>()
@@ -789,7 +822,7 @@ impl ModeApi {
             StateType::Vec,
         ]
         .into_iter()
-        .find_map(|kind| StateValue::from_value(kind, data))
+        .find_map(|kind| StateValue::of_kind(kind, data))
         .map(Some)
         .ok_or_else(|| ModeRefusal::TimerData.refused())
     }

@@ -2311,7 +2311,6 @@ dependencies = [
  "campfire-production",
  "campfire-progression",
  "campfire-projectiles",
- "campfire-protocol",
  "campfire-quic",
  "campfire-sim",
  "campfire-stats",
@@ -2333,6 +2332,7 @@ dependencies = [
  "bevy_math",
  "campfire-client-files",
  "campfire-codec",
+ "campfire-common",
  "campfire-math",
  "campfire-sim",
  "campfire-values",
@@ -2400,7 +2400,6 @@ dependencies = [
  "campfire-sim",
  "campfire-state-types",
  "campfire-values",
- "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2479,7 +2478,6 @@ dependencies = [
  "criterion 0.8.2",
  "lightyear",
  "secp256k1",
- "toml",
 ]
 
 [[package]]
@@ -2740,7 +2738,6 @@ dependencies = [
  "fluent-syntax",
  "serde",
  "thiserror 2.0.21",
- "toml",
  "unic-langid",
 ]
 
@@ -2756,7 +2753,6 @@ dependencies = [
  "campfire-values",
  "serde",
  "thiserror 2.0.21",
- "toml",
 ]
 
 [[package]]
@@ -2855,7 +2851,6 @@ dependencies = [
  "criterion 0.8.2",
  "getrandom 0.3.4",
  "nostr",
- "postcard",
  "secp256k1",
  "serde",
  "thiserror 2.0.21",
@@ -2966,7 +2961,6 @@ dependencies = [
  "campfire-visibility",
  "clap",
  "lightyear",
- "secp256k1",
  "thiserror 2.0.21",
  "tracing",
  "zeroize",
@@ -3095,6 +3089,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-codec",
+ "campfire-common",
  "campfire-state-types",
  "campfire-visibility",
  "serde",

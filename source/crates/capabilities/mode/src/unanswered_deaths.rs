@@ -76,7 +76,7 @@ impl UnansweredDeaths {
 /// A snapshot is untrusted, so runs of assisters that do not cover the assisters exactly fail to
 /// decode.
 impl<'de> Deserialize<'de> for UnansweredDeaths {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<UnansweredDeaths, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             deaths: PendingCalls<Unanswered>,
@@ -90,7 +90,7 @@ impl<'de> Deserialize<'de> for UnansweredDeaths {
         if covered != Some(assisters.len()) {
             return Err(D::Error::custom("runs that cover the assisters exactly"));
         }
-        Ok(UnansweredDeaths { deaths, assisters })
+        Ok(Self { deaths, assisters })
     }
 }
 

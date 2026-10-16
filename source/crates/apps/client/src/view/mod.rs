@@ -26,7 +26,7 @@ use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use bevy::window::Window;
 use bevy::world_serialization::WorldAssetRoot;
-use campfire_actions::ActionSlots;
+use campfire_actions::ActionProgress;
 use campfire_areas::{Area, AreaReach};
 use campfire_mode::{MatchEnd, MatchResult};
 use campfire_net::JoinState;
@@ -195,7 +195,7 @@ const LEAN: f32 = 0.35;
 
 /// The living units with actions, each with the attack it may be in.
 type Attackers<'w, 's> =
-    Query<'w, 's, (&'static Drawing, &'static ActionSlots), (Without<Dead>, Allow<Unpredicted>)>;
+    Query<'w, 's, (&'static Drawing, &'static ActionProgress), (Without<Dead>, Allow<Unpredicted>)>;
 
 /// The areas not drawn yet: where each lies, its type, and whether the client only receives it.
 type NewAreas<'w, 's> = Query<
@@ -234,27 +234,27 @@ type NewShots<'w, 's> = Query<
 
 impl Plugin for View {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, View::set_scene);
-        app.add_systems(FixedPostUpdate, View::step);
+        app.add_systems(Startup, Self::set_scene);
+        app.add_systems(FixedPostUpdate, Self::step);
         app.add_systems(
             Update,
             (
-                View::draw_new,
-                View::fit_models,
-                View::draw_shots,
-                View::draw_areas,
-                View::mourn,
-                View::follow,
-                View::glide,
-                View::lean,
+                Self::draw_new,
+                Self::fit_models,
+                Self::draw_shots,
+                Self::draw_areas,
+                Self::mourn,
+                Self::follow,
+                Self::glide,
+                Self::lean,
             )
                 .chain()
                 .in_set(ViewSystems),
         );
-        app.add_systems(Update, View::show_end);
+        app.add_systems(Update, Self::show_end);
         app.add_systems(
             Update,
-            View::ring_selection
+            Self::ring_selection
                 .after(ViewSystems)
                 .after(SelectionSystems),
         );
@@ -529,7 +529,7 @@ impl View {
         mut commands: Commands<'_, '_>,
     ) {
         for (root, mut shape) in &mut roots {
-            match View::fit(root, (&models, &nodes), &assets, &mut walk) {
+            match Self::fit(root, (&models, &nodes), &assets, &mut walk) {
                 Fit::Waits => continue,
                 Fit::Top(top) => shape.height = top.max(0.0),
                 Fit::Nothing => {}
@@ -570,7 +570,7 @@ impl View {
             let at = parent * transform.compute_affine();
             match bounds {
                 Some(bounds) => {
-                    let reach = View::bounds_top(at, bounds);
+                    let reach = Self::bounds_top(at, bounds);
                     top = Some(top.map_or(reach, |top| top.max(reach)));
                 }
                 None if mesh => return Fit::Waits,
@@ -603,7 +603,7 @@ impl View {
         roots: Query<'_, '_, (&Transform, Option<&Look>, &Shape), Without<Figure>>,
         mut figures: Query<'_, '_, &mut Transform, With<Figure>>,
     ) {
-        for (drawing, slots) in &units {
+        for (drawing, progress) in &units {
             // A unit its models draw has no figure to lean, nor a target to look up.
             let Ok((root, Some(look), shape)) = roots.get(drawing.root()) else {
                 continue;
@@ -611,7 +611,7 @@ impl View {
             let Ok(mut figure) = figures.get_mut(look.figure) else {
                 continue;
             };
-            let aim = slots
+            let aim = progress
                 .attacking()
                 .and_then(|target| index.get(target))
                 .and_then(|target| drawn.get(target).ok())
@@ -817,11 +817,11 @@ impl View {
 impl Standing {
     /// How `result` stands for the team `own`; `None` for a match someone won when the team is
     /// not known.
-    fn of(result: MatchResult, own: Option<Team>) -> Option<Standing> {
+    fn of(result: MatchResult, own: Option<Team>) -> Option<Self> {
         match (result, own) {
-            (MatchResult::Draw, _) => Some(Standing::Draw),
-            (MatchResult::Won(winner), Some(own)) if winner == own => Some(Standing::Victory),
-            (MatchResult::Won(_), Some(_)) => Some(Standing::Defeat),
+            (MatchResult::Draw, _) => Some(Self::Draw),
+            (MatchResult::Won(winner), Some(own)) if winner == own => Some(Self::Victory),
+            (MatchResult::Won(_), Some(_)) => Some(Self::Defeat),
             (MatchResult::Won(_), None) => None,
         }
     }

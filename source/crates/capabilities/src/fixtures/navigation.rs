@@ -64,7 +64,7 @@ pub trait NavigationFixtures {
 
 impl NavigationFixtures for Navigation {
     fn unit(world: &mut World, pos: impl Into<Vec3>, to: Option<Vec3>) -> StableId {
-        Navigation::spawn_unit(world, pos, Team::new(0), to, Some(Num::ONE), None)
+        Self::spawn_unit(world, pos, Team::new(0), to, Some(Num::ONE), None)
     }
 
     fn body(
@@ -75,7 +75,7 @@ impl NavigationFixtures for Navigation {
         radius: impl Into<Num>,
     ) -> StableId {
         let form = BodyForm::circle(radius.into()).unwrap();
-        Navigation::body_on(world, pos, to, step, form)
+        Self::body_on(world, pos, to, step, form)
     }
 
     fn body_on(
@@ -85,7 +85,7 @@ impl NavigationFixtures for Navigation {
         step: Option<Num>,
         form: BodyForm,
     ) -> StableId {
-        Navigation::spawn_unit(world, pos, Team::new(0), to, step, Some(form))
+        Self::spawn_unit(world, pos, Team::new(0), to, step, Some(form))
     }
 
     fn walker_type(world: &mut World) -> UnitType {
@@ -105,7 +105,7 @@ impl NavigationFixtures for Navigation {
         step: Option<Num>,
         form: Option<BodyForm>,
     ) -> StableId {
-        Navigation::spawn_turned(world, pos, Num::ZERO, team, to, step, form)
+        Self::spawn_turned(world, pos, Num::ZERO, team, to, step, form)
     }
 
     fn spawn_turned(
@@ -117,13 +117,13 @@ impl NavigationFixtures for Navigation {
         step: Option<Num>,
         form: Option<BodyForm>,
     ) -> StableId {
-        let unit_type = Navigation::walker_type(world);
+        let unit_type = Self::walker_type(world);
         let id = match form {
             Some(form) => Mode::spawn_turned(world, unit_type, pos, angle, team, form.at(angle)),
             None => Mode::spawn_turned(world, unit_type, pos, angle, team, ()),
         };
         if let Some(step) = step {
-            world.insert_parts(id, Navigation::walker(MoveStep::new(step).unwrap()));
+            world.insert_parts(id, Self::walker(MoveStep::new(step).unwrap()));
             *world.part_mut::<Destination>(id) = Destination::to(to);
         }
         id

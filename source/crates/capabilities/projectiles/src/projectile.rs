@@ -1,14 +1,14 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::ActionBook;
+use campfire_actions::{ActionBook, ShotDamage};
 use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
 use campfire_script::View;
-use campfire_sim::{SimComponent, StableId};
+use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::DeliveryEntity;
-use campfire_values::{ActionId, ActionStart, DamageKind, Rank, UnitType};
+use campfire_values::{ActionId, ActionStart, Rank, UnitType};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -25,14 +25,17 @@ pub struct Projectile {
     payload: Payload,
 }
 
-/// How a projectile flies: homing on a unit, or along a line, a unit vector on the ground or in
-/// space, for `range` meters, with the unit its action aimed at, if one.
+/// How a projectile flies: homing on a unit, or along a line from `from`, where it launched, a
+/// unit vector on the ground or in space, for `range` meters, with the unit its action aimed at,
+/// if one. Each step of a line ends at its place along the line from `from`, rounded once, so no
+/// rounding gathers over its steps, and its last ends where the line does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Flight {
     Homing {
         target: StableId,
     },
     Line {
+        from: Vec3,
         direction: Vec3,
         range: Num,
         aimed: Option<StableId>,
@@ -40,13 +43,19 @@ pub enum Flight {
 }
 
 impl Flight {
-    pub(crate) const fn homing(target: StableId) -> Flight {
-        Flight::Homing { target }
+    pub(crate) const fn homing(target: StableId) -> Self {
+        Self::Homing { target }
     }
 
-    /// A flight along `direction` for `range`, aimed at `aimed` if a unit.
-    pub(crate) const fn line(direction: Vec3, range: Num, aimed: Option<StableId>) -> Flight {
-        Flight::Line {
+    /// A flight from `from` along `direction` for `range`, aimed at `aimed` if a unit.
+    pub(crate) const fn line(
+        from: Vec3,
+        direction: Vec3,
+        range: Num,
+        aimed: Option<StableId>,
+    ) -> Self {
+        Self::Line {
+            from,
             direction,
             range,
             aimed,
@@ -59,14 +68,7 @@ impl Flight {
 /// of its cast in `group`, named by the first of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Payload {
-    Attack {
-        /// The weapon's action, which its damage names.
-        action: ActionId,
-        rank: Rank,
-        amount: Num,
-        kind: DamageKind,
-        roll: Num,
-    },
+    Attack(ShotDamage),
     Action {
         action: ActionId,
         rank: Rank,
@@ -78,18 +80,18 @@ pub enum Payload {
 impl Projectile {
     /// `None` unless a line's range is not negative, an attack's amount is not negative, and its
     /// roll is at least 0 and less than 1.
-    pub fn new(source: StableId, flight: Flight, payload: Payload) -> Option<Projectile> {
+    pub fn new(source: StableId, flight: Flight, payload: Payload) -> Option<Self> {
         let flies = match flight {
             Flight::Homing { .. } => true,
             Flight::Line { range, .. } => range >= Num::ZERO,
         };
         let carries = match payload {
-            Payload::Attack { amount, roll, .. } => {
+            Payload::Attack(ShotDamage { amount, roll, .. }) => {
                 amount >= Num::ZERO && Num::ZERO <= roll && roll < Num::ONE
             }
             Payload::Action { .. } => true,
         };
-        (flies && carries).then_some(Projectile {
+        (flies && carries).then_some(Self {
             source,
             flight,
             payload,
@@ -127,10 +129,15 @@ impl SimComponent for Projectile {
             .get::<UnitType>(entity)
             .is_some_and(|&unit_type| specs.get(unit_type).is_some());
         let book = world.resource::<ActionBook>();
+        // A line's origin lies within the world's bound, as every place does.
+        let origin = match self.flight {
+            Flight::Line { from, .. } => Position::from(from).within_bound(),
+            Flight::Homing { .. } => true,
+        };
         let carries = match self.payload {
-            Payload::Attack {
+            Payload::Attack(ShotDamage {
                 action, rank, kind, ..
-            } => {
+            }) => {
                 book.ranked(action, rank) && world.non_send::<View>().names().has_damage_kind(kind)
             }
             Payload::Action {
@@ -138,9 +145,9 @@ impl SimComponent for Projectile {
                 rank,
                 start,
                 ..
-            } => book.ranked(action, rank) && start.is_none_or(ActionStart::within_bound),
+            } => book.ranked(action, rank) && start.is_none_or(ActionStart::check),
         };
-        flies && carries
+        flies && origin && carries
     }
 }
 
@@ -151,7 +158,7 @@ impl Replication for Projectile {
 
 /// A snapshot is untrusted, so a projectile that `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Projectile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Projectile, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             source: StableId,
@@ -163,7 +170,7 @@ impl<'de> Deserialize<'de> for Projectile {
             flight,
             payload,
         } = Fields::deserialize(deserializer)?;
-        Projectile::new(source, flight, payload)
+        Self::new(source, flight, payload)
             .ok_or_else(|| D::Error::custom("projectile out of its limits"))
     }
 }

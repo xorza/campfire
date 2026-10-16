@@ -4,7 +4,7 @@ use std::panic::{self, AssertUnwindSafe};
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use bevy_ecs::component::ComponentId;
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionProgress, ActionSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::internals::Armed;
@@ -28,16 +28,19 @@ use campfire_sim::{
 use campfire_stats::{Level, Life, StatRule, Stats, StatsRefusal};
 use campfire_units::*;
 use campfire_values::{
-    Block, PackageIndex, PathId, Scalar, Stat, Team, TypeScope, UnitTags, UnitType,
+    Block, PackageIndex, PathId, Scalar, Stat, Team, TeamSet, TypeScope, UnitTags, UnitType,
 };
+use campfire_vision::SeenBy;
 
-/// A match of stats and combat, with the stat book a weapon reads, and its types: `melee`, of
-/// 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and `bare`, of
-/// 1 life and no slot.
+/// A match of stats, combat and vision, with no grid, so the teams that see each unit are the
+/// `SeenBy` a test sets, its own team's else; with the stat book a weapon reads, and its types:
+/// `melee`, of 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and
+/// `bare`, of 1 life and no slot.
 fn units_match() -> Match {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = Match::server(&[Capability::Stats, Capability::Combat], scripts);
+    let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
+    let mut game = Match::server(&declared, scripts);
     Units::name_kinds(&game, &[], &["health", "mana"], &[]);
     Combat::load_weapon_stats(&mut game);
     let core = UnitTypeCore::default();
@@ -83,6 +86,10 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     Units::set_blocks(&mut game, hidden, &[Block::Target]);
     let guarded = melee(&mut game, (-2, 0, 0), Team::new(0), ());
     Units::set_blocks(&mut game, guarded, &[Block::Target, Block::Damage]);
+    // Every team sees every enemy, for the queries of what `of`'s team sees.
+    for unit in [high, east, west, edge, far, dead, hidden, guarded] {
+        game.insert_parts(unit, SeenBy::new(TeamSet::ALL));
+    }
 
     let find = |game: &mut Match, filter: &str| {
         let source = format!(r#"fn probe(ctx, of) {{ ctx.find(of, of.pos, 5, "{filter}") }}"#);
@@ -158,15 +165,18 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
             r#"ctx.find(of, of.pos, -1, "all")"#,
             ApiError::NegativeRadius,
         ),
-        (
-            r#"ctx.nearest_visible(of, 1 << 40, "all")"#,
-            ApiError::IntegerBeyondNum,
-        ),
     ];
     for (call, refusal) in refusals {
         let error = Units::read(&mut game, call, of).unwrap_err();
         assert_eq!(error.kind(), FailureKind::Api(refusal), "{call}: {error:?}");
     }
+    // An integer beyond a `Num` fails as the number API's own does.
+    let call = r#"ctx.nearest_visible(of, 1 << 40, "all")"#;
+    let error = Units::read(&mut game, call, of).unwrap_err();
+    assert_eq!(
+        error.kind(),
+        FailureKind::Raised(Some(NumError::IntegerBeyondNum))
+    );
 }
 
 #[test]
@@ -250,6 +260,18 @@ fn vectors_add_subtract_and_scale_each_rounded_once() {
             half
         ]
     );
+    // Turned a quarter about the vertical, (x, z) goes to (z, −x), exact; 2³⁸ degrees, whose
+    // radians would pass what a number holds, turn as their 184° modulo 360° does.
+    let probe = r#"fn probe(ctx, of) {
+        let d = of.pos.direction_to(ctx.find(of, of.pos, 6, "enemies")[0].pos);
+        [d.rotated_deg(90), d.rotated_deg(1 << 38), d.rotated_deg(184)]
+    }"#;
+    let read = Units::probe(&mut game, probe, of)
+        .unwrap()
+        .cast::<ScriptList>();
+    let read: Vec<Vec3> = read.into_iter().map(ScriptValue::cast::<Vec3>).collect();
+    assert_eq!(read[0], vector(13_421_773, -10_066_330));
+    assert_eq!(read[1], read[2]);
     // 0.8 × 2³⁹ is about 4.4 × 10¹¹, within a number's 5.5 × 10¹¹; its double is past it, and
     // the sum fails the call.
     let error = Units::read(&mut game,
@@ -356,7 +378,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let range = ("aggro_range", Scalar::Decimal(Num::int(7)));
     let hero = Units::tagged_type(&mut game, &["avatar"], &[window, range]);
     arm(&mut game, hero);
-    // On a path, but the scene has no `navigation` to fill `unit.path`.
+    // On a path, but the scene has no `navigation`, which binds `unit.path`.
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
@@ -373,7 +395,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let fallen = melee(&mut game, (9, 0, 1), Team::new(1), Dead);
     let bare = spawn_named(&mut game, "bare", (9, 0, 2), Team::new(1));
     let entity = game.unit_entity(of);
-    game.get_mut::<ActionSlots>(entity)
+    game.get_mut::<ActionProgress>(entity)
         .unwrap()
         .set_attack_target(Some(near));
 
@@ -384,7 +406,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let mut attackers = RecentAttackers::default();
     // A strike later than the view's tick, as a rollback can leave, is not recent either.
     for (source, tick) in [(near, 39), (recent, 40), (fallen, 100), (bare, 101)] {
-        attackers.struck(source, Tick::new(tick), index);
+        attackers.record(source, Tick::new(tick), index);
     }
     *game.get_mut::<RecentAttackers>(entity).unwrap() = attackers;
 
@@ -393,8 +415,9 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert!(value(&mut game, "of.is_avatar").as_bool().unwrap());
     assert!(value(&mut game, "of.alive").as_bool().unwrap());
     assert_eq!(value(&mut game, "of.owner").as_int(), Some(2));
-    assert!(value(&mut game, "of.path").is_unit());
-    // With no `vision`, every team sees every unit.
+    // A match with no `navigation` binds no `unit.path`.
+    assert!(read(&mut game, "of.path").is_err());
+    // A unit's own team sees it.
     assert!(value(&mut game, "of.can_see(of)").as_bool().unwrap());
     // Its body's radius, 0.75 m; a unit with no body has none.
     let radius = |game: &mut Match, unit| {
@@ -546,15 +569,15 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
     let theirs = load(TypeScope::Package(PackageIndex::new(1)), "grunt");
     // A scope names a type once.
-    assert_eq!(
-        game.resource_mut::<UnitTypeBook>().load(
-            TypeScope::Package(PackageIndex::new(1)),
-            PackageIndex::new(1),
-            "grunt",
-            &data
-        ),
-        Err(TypesError::Repeated("grunt".to_owned()))
-    );
+    let repeated = Units::change_types(&mut game, |_, types| {
+        let scope = TypeScope::Package(PackageIndex::new(1));
+        let origin = TypeOrigin {
+            package: PackageIndex::new(1),
+            name: "grunt".into(),
+        };
+        types.load(scope, origin, &data)
+    });
+    assert_eq!(repeated, Err(TypesError::Repeated("grunt".to_owned())));
     let view = game.non_send::<View>();
     assert_eq!(
         (
@@ -580,7 +603,8 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     assert_ne!(theirs, first);
     drop(names);
     // Each type's origin: its package and its name there.
-    let origins = game.resource_mut::<UnitTypeBook>().origin_book();
+    Units::seal_once(&mut game);
+    let origins = game.resource::<TypeOriginBook>();
     let origin = |unit_type| {
         let origin = origins.of(unit_type);
         (origin.package.get(), &*origin.name)
@@ -665,9 +689,10 @@ fn a_unit_holds_its_types_tags_on_every_path_in_a_match_without_stats() {
 
 #[test]
 fn a_spawn_gives_its_declared_parts_in_one_move() {
-    // A melee unit spawns with the parts combat, stats and actions declare for it, `Life`,
-    // `Level` and `ActionSlots` among them: written at once, they reach one archetype only, the
-    // unit's, where a part put on alone would leave an archetype of each part before the last.
+    // A melee unit spawns with its core and the parts combat, stats and actions declare for it,
+    // `Life`, `Level` and `ActionSlots` among them: written at once after its kind, they reach
+    // one archetype only, the unit's, where a part or the core put on alone would leave an
+    // archetype of each before the last.
     let mut game = units_match();
     melee(&mut game, (0, 0, 0), Team::new(0), ());
     let holding = |game: &Match, id: Option<ComponentId>| {
@@ -679,11 +704,13 @@ fn a_spawn_gives_its_declared_parts_in_one_move() {
     };
     let components = game.components();
     let parts = [
+        components.component_id::<UnitType>(),
+        components.component_id::<Position>(),
         components.component_id::<Life>(),
         components.component_id::<Level>(),
         components.component_id::<ActionSlots>(),
     ];
-    assert_eq!(parts.map(|id| holding(&game, id)), [1, 1, 1]);
+    assert_eq!(parts.map(|id| holding(&game, id)), [1; 5]);
 }
 
 mod entity_kinds;

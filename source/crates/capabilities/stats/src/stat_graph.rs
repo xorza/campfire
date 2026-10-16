@@ -21,8 +21,8 @@ struct StatEdge {
 
 impl StatGraph {
     /// The graph of no edge among `stats`, the mode's stats in order.
-    pub fn new(stats: impl IntoIterator<Item = Stat>) -> StatGraph {
-        StatGraph {
+    pub fn new(stats: impl IntoIterator<Item = Stat>) -> Self {
+        Self {
             stats: stats.into_iter().collect(),
             edges: Vec::new(),
         }

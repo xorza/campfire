@@ -22,7 +22,11 @@ pub trait Module {
     fn install(cx: &mut InstallCx<'_>);
 }
 
-/// What visits the release's list of modules, each by its type.
+/// What visits the release's list of modules, each by its type: a module every match of its
+/// capability installs as it is built, or the mode's scripted part, which a match that runs
+/// scripts installs once its books are in.
 pub trait ModuleVisitor {
     fn module<M: Module>(&mut self);
+
+    fn scripted<M: Module>(&mut self);
 }

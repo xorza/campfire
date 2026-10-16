@@ -2,10 +2,9 @@ use std::num::NonZeroI64;
 
 use campfire_declare::PerType;
 use campfire_geometry::Radius;
-use campfire_math::Num;
-use campfire_script::{Filter, UnknownName};
-use campfire_sim::{Capability, TickRate};
-use campfire_units::UnitTypeBook;
+use campfire_math::{Num, Rounding};
+use campfire_script::{Filter, TagNames, UnknownName};
+use campfire_sim::TickRate;
 
 use crate::projectile_data::{ProjectileData, ProjectileHits};
 
@@ -25,20 +24,16 @@ pub struct ProjectileSpec {
 
 impl ProjectileSpec {
     /// The spec of `data`: its speed a tick at `rate`, and what it hits among the tags of
-    /// `types`; an error for a filter of a tag `types` lacks.
-    pub fn of(
-        data: &ProjectileData,
-        types: &UnitTypeBook,
-        rate: TickRate,
-    ) -> Result<ProjectileSpec, UnknownName> {
+    /// `tags`; an error for a filter of a tag `tags` lacks.
+    pub fn of(data: &ProjectileData, tags: &TagNames, rate: TickRate) -> Result<Self, UnknownName> {
         let hits = match &data.hits {
             ProjectileHits::Nothing => None,
-            ProjectileHits::Units(filter) => Some(Filter::resolve(filter, types.tags())?),
+            ProjectileHits::Units(filter) => Some(Filter::resolve(filter, tags)?),
         };
-        Ok(ProjectileSpec {
+        Ok(Self {
             speed: data
                 .speed
-                .checked_div_int(NonZeroI64::from(rate.hz()).get())
+                .checked_div_int(NonZeroI64::from(rate.hz()).get(), Rounding::NearestEven)
                 .expect("a speed over a tick rate fits"),
             half_width: Radius::new(data.width / 2)
                 .expect("the decode bounds a projectile's width"),
@@ -52,6 +47,5 @@ impl ProjectileSpec {
 }
 
 impl PerType for ProjectileSpec {
-    const OWNER: Option<Capability> = Some(Capability::Projectiles);
     const SCRIPTS_ONLY: bool = false;
 }

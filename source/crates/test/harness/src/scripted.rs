@@ -62,8 +62,8 @@ pub trait Plan: Copy {
 }
 
 impl<P: Plan> Scripted<P> {
-    pub(crate) const fn new(stamp: u64, slot: u32, plan: P) -> Scripted<P> {
-        Scripted {
+    pub(crate) const fn new(stamp: u64, slot: u32, plan: P) -> Self {
+        Self {
             stamp,
             slot,
             cue: Cue::Order(plan),
@@ -71,8 +71,8 @@ impl<P: Plan> Scripted<P> {
     }
 
     /// Player `slot` joins its slot in tick `stamp`.
-    pub(crate) const fn join(stamp: u64, slot: u32) -> Scripted<P> {
-        Scripted {
+    pub(crate) const fn join(stamp: u64, slot: u32) -> Self {
+        Self {
             stamp,
             slot,
             cue: Cue::Join,
@@ -80,8 +80,8 @@ impl<P: Plan> Scripted<P> {
     }
 
     /// Player `slot` leaves its slot in tick `stamp`, which its server reserves for it.
-    pub(crate) const fn leave(stamp: u64, slot: u32) -> Scripted<P> {
-        Scripted {
+    pub(crate) const fn leave(stamp: u64, slot: u32) -> Self {
+        Self {
             stamp,
             slot,
             cue: Cue::Leave,
@@ -90,7 +90,7 @@ impl<P: Plan> Scripted<P> {
 
     /// Runs tick `tick` of `fixed`: first logs the joins and the leaves of `script` in it, then
     /// sends its orders stamped for it, each in a packet of its own, then runs it.
-    pub(crate) fn play_tick(script: &[Scripted<P>], fixed: &mut FixedMatch, tick: u64) {
+    pub(crate) fn play_tick(script: &[Self], fixed: &mut FixedMatch, tick: u64) {
         let now = script.iter().filter(|scripted| scripted.stamp == tick);
         let refused = |error| panic!("tick {tick}: {}", ErrorReport::of(&error));
         for scripted in now.clone() {
@@ -121,10 +121,10 @@ impl Aim {
     /// The target this aim names, with the units' stable ids in `units`.
     pub(crate) fn target(self, units: MatchUnits<'_>) -> ActionTarget {
         match self {
-            Aim::Nothing => ActionTarget::None,
-            Aim::Hero { slot } => ActionTarget::Unit(units.hero(slot)),
-            Aim::HeroPoint { slot } => ActionTarget::Point(units.pos(units.hero(slot))),
-            Aim::Point { x, z } => {
+            Self::Nothing => ActionTarget::None,
+            Self::Hero { slot } => ActionTarget::Unit(units.hero(slot)),
+            Self::HeroPoint { slot } => ActionTarget::Point(units.pos(units.hero(slot))),
+            Self::Point { x, z } => {
                 let at = Vec3::new(Num::int(x), Num::ZERO, Num::int(z));
                 ActionTarget::Point(at)
             }

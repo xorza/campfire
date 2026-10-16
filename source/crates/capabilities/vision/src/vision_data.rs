@@ -13,7 +13,7 @@ pub struct VisionData {
 
 /// A sight range that is not negative, or the section fails to read.
 impl<'de> Deserialize<'de> for VisionData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<VisionData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -22,7 +22,7 @@ impl<'de> Deserialize<'de> for VisionData {
         let fields = Fields::deserialize(deserializer)?;
         let sight = Sight::new(fields.sight_range)
             .ok_or_else(|| D::Error::custom("a sight range is a number that is not negative"))?;
-        Ok(VisionData { sight })
+        Ok(Self { sight })
     }
 }
 

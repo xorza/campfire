@@ -1,6 +1,6 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Query, Res};
-use campfire_actions::{ActionBook, ActionRange, ActionSlots, Targets};
+use campfire_actions::{ActionBook, ActionProgress, ActionRange, ActionSlots, Targets};
 use campfire_geometry::Placed;
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
 use campfire_sim::Position;
@@ -25,7 +25,7 @@ impl Destinations {
                 &Position,
                 &OnPath,
                 &mut PathWalker,
-                Option<&ActionSlots>,
+                Option<&ActionProgress>,
                 &mut Destination,
                 Option<&ArrivedShort>,
                 Option<&Body>,
@@ -34,9 +34,12 @@ impl Destinations {
         >,
     ) {
         let paths = &navigation.paths;
-        for (&position, path, mut walker, slots, mut destination, arrived, body) in &mut walkers {
-            let busy = |slots: &ActionSlots| slots.attack_target().is_some() || slots.approaching();
-            if walker.left() || slots.is_some_and(busy) {
+        for (&position, path, mut walker, progress, mut destination, arrived, body) in &mut walkers
+        {
+            let busy = |progress: &ActionProgress| {
+                progress.attack_target().is_some() || progress.approaching()
+            };
+            if walker.left() || progress.is_some_and(busy) {
                 continue;
             }
             let path = path.get();
@@ -66,7 +69,7 @@ impl Destinations {
             (
                 &Position,
                 &Team,
-                &mut ActionSlots,
+                (&ActionSlots, &mut ActionProgress),
                 &mut Destination,
                 Option<&ArrivedShort>,
                 Option<&Body>,
@@ -74,11 +77,13 @@ impl Destinations {
             Without<Dead>,
         >,
     ) {
-        for (&position, &team, mut slots, mut destination, arrived, body) in &mut chasers {
-            let Some(target) = slots.attack_target() else {
+        for (&position, &team, (slots, mut progress), mut destination, arrived, body) in
+            &mut chasers
+        {
+            let Some(target) = progress.attack_target() else {
                 continue;
             };
-            if slots.attacking().is_some() || slots.approaching() {
+            if progress.attacking().is_some() || progress.approaching() {
                 continue;
             }
             let aimed = targets.enemy(team, target).and_then(|unit| {
@@ -88,7 +93,7 @@ impl Destinations {
             });
             match aimed {
                 None => {
-                    slots.set_attack_target(None);
+                    progress.set_attack_target(None);
                     Destination::walk_to(&mut destination, arrived, None);
                 }
                 Some((unit, ActionRange::Meters(range)))

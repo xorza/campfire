@@ -11,10 +11,10 @@ use serde::{Deserialize, Serialize};
 pub struct Layer(u8);
 
 impl Layer {
-    pub const FIRST: Layer = Layer(0);
+    pub const FIRST: Self = Self(0);
 
-    pub const fn new(index: u8) -> Layer {
-        Layer(index)
+    pub const fn new(index: u8) -> Self {
+        Self(index)
     }
 
     pub const fn get(self) -> u8 {
@@ -26,8 +26,8 @@ impl NameId for Layer {
     type Scope = ();
     const LIMIT: usize = 1 << u8::BITS;
 
-    fn at(index: usize) -> Layer {
-        Layer(u8::try_from(index).expect("layers fit u8"))
+    fn at(index: usize) -> Self {
+        Self(u8::try_from(index).expect("layers fit u8"))
     }
 
     fn index(self) -> usize {

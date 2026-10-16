@@ -21,7 +21,6 @@ bevy_app.workspace = true
 bevy_ecs.workspace = true
 clap.workspace = true
 lightyear.workspace = true
-secp256k1.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 zeroize.workspace = true

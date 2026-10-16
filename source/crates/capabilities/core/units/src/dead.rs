@@ -23,9 +23,9 @@ impl Dead {
     /// derived tags hold once their next refresh ran.
     pub const fn tagged(tags: TagSet, dead: bool) -> TagSet {
         if dead {
-            tags.with(Dead::TAG.tag())
+            tags.with(Self::TAG.tag())
         } else {
-            tags.without(Dead::TAG.tag())
+            tags.without(Self::TAG.tag())
         }
     }
 }

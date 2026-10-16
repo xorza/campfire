@@ -13,6 +13,8 @@ use campfire_values::{ActionId, NameId};
 #[derive(Debug)]
 pub(crate) struct ActionNames {
     pub(crate) packages: Arc<ModePackages>,
+    /// The mode's text, which the client reads once for every panel.
+    pub(crate) texts: Arc<Texts>,
 }
 
 /// Each action's name, by its id.
@@ -21,12 +23,18 @@ pub(crate) struct ActionTexts(Vec<String>);
 
 /// The packages whose action names the client shows.
 #[derive(Resource, Debug)]
-struct NamedPackages(Arc<ModePackages>);
+struct NamedPackages {
+    packages: Arc<ModePackages>,
+    texts: Arc<Texts>,
+}
 
 impl Plugin for ActionNames {
     fn build(&self, app: &mut App) {
-        app.insert_resource(NamedPackages(Arc::clone(&self.packages)));
-        app.add_systems(Startup, ActionNames::read);
+        app.insert_resource(NamedPackages {
+            packages: Arc::clone(&self.packages),
+            texts: Arc::clone(&self.texts),
+        });
+        app.add_systems(Startup, Self::read);
     }
 }
 
@@ -37,8 +45,7 @@ impl ActionNames {
         book: Res<'_, ActionBook>,
         mut commands: Commands<'_, '_>,
     ) {
-        let packages = &packages.0;
-        let texts = Texts::new(packages, &[]).expect("a mode's own text, with no translation");
+        let NamedPackages { packages, texts } = &*packages;
         let mut names: Vec<String> = book.names().iter().map(|(_, id)| id.to_owned()).collect();
         for view in packages.packages() {
             let header = &view.package.header;
@@ -49,7 +56,7 @@ impl ActionNames {
                     continue;
                 };
                 names[at.index()] = texts
-                    .text(header.name.as_str(), name, &header.language)
+                    .text(&header.name, name, &header.language)
                     .expect("the load checked each action's name");
             }
         }

@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use derive_more::Display;
 
 /// A process the check runs.
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) enum Process {
     #[display("the server")]
     Server,
@@ -38,14 +38,14 @@ impl Process {
     /// The stem of the files its logs go to.
     pub(crate) fn file_stem(self) -> String {
         match self {
-            Process::Server => "server".to_owned(),
-            Process::ServerAgain => "server-again".to_owned(),
-            Process::Bot(index) => format!("bot-{index}"),
-            Process::Rejoined(index) => format!("bot-{index}-again"),
-            Process::Impostor => "impostor".to_owned(),
-            Process::Verifier => "verifier".to_owned(),
-            Process::Local => "local".to_owned(),
-            Process::LocalVerifier => "local-verifier".to_owned(),
+            Self::Server => "server".to_owned(),
+            Self::ServerAgain => "server-again".to_owned(),
+            Self::Bot(index) => format!("bot-{index}"),
+            Self::Rejoined(index) => format!("bot-{index}-again"),
+            Self::Impostor => "impostor".to_owned(),
+            Self::Verifier => "verifier".to_owned(),
+            Self::Local => "local".to_owned(),
+            Self::LocalVerifier => "local-verifier".to_owned(),
         }
     }
 }

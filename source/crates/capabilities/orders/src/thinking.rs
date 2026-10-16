@@ -4,7 +4,7 @@ use bevy_ecs::system::{Commands, Local, Query};
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_declare::ByType;
-use campfire_script::{CallError, Hook, Pool, ScriptError, ScriptId, ScriptsWorld};
+use campfire_script::{CallError, CallStart, Hook, HookCall, Pool, ScriptId, ScriptsWorld};
 use campfire_sim::{SimTick, StableId};
 use campfire_stats::UnitPools;
 use campfire_units::{Dead, Destination};
@@ -114,16 +114,21 @@ impl Thinking {
                 let Some(unit) = ctx.view().unit(id) else {
                     continue;
                 };
-                ctx.frame().begin_think(batch.world(), id, now);
-                let next = match batch.call(Pool::Think, script, Hook::OnThink, (ctx.clone(), unit))
-                {
-                    Ok(_) => {
-                        ctx.apply(batch.world());
-                        now.after(period)
-                    }
-                    Err(ScriptError::TickBudget) => since,
+                let args = (ctx.clone(), unit);
+                let thought = batch.run(CallStart::think(id, now), |batch| {
+                    let call = HookCall {
+                        script,
+                        hook: Hook::OnThink,
+                        args,
+                    };
+                    batch.call(Pool::Think, call)
+                });
+                // A unit whose think finds the pool spent thinks again in a later tick.
+                let next = match thought {
+                    Ok(_) => now.after(period),
+                    Err(CallError::PoolSpent) => since,
                     Err(error) => {
-                        batch.record(Some(id), Hook::OnThink, CallError::from_script(error));
+                        batch.record(Some(id), Hook::OnThink, error);
                         now.after(period)
                     }
                 };

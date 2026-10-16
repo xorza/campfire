@@ -1,12 +1,12 @@
-use campfire_actions::TimedSlots;
+use campfire_actions::{ActionProgress, TimedSlots};
 use campfire_production::{
     Gatherer, Load, ModeSupplyData, ProductionRefusal, SupplyBook, SupplyCostBook, SupplyData,
 };
+use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
 use campfire_sim::internals::SimWorldInternals;
 
 use super::*;
-use campfire_script::CapabilityRefusal;
 
 #[test]
 fn a_train_pays_at_once_joins_the_queue_and_spawns_its_unit_when_its_time_ends() {
@@ -56,8 +56,8 @@ fn on_mode_input(ctx, player, name, value) {
     let mut resources = game.player_resources_mut(player).unwrap();
     resources.add(gold, 15).unwrap();
     let order = |game: &mut Match| {
-        let mut slots = game.get_mut::<ActionSlots>(producer).unwrap();
-        slots.order(0, ActionTarget::None);
+        let mut progress = game.get_mut::<ActionProgress>(producer).unwrap();
+        progress.order(0, ActionTarget::None);
     };
     let paid = |game: &Match| {
         let mana = game.get::<Pools>(producer).unwrap().current(MANA).unwrap();

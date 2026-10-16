@@ -56,16 +56,12 @@ pub trait SessionWorld {
     /// How the match ended: as the mode ended it, or aborted when it did not.
     fn outcome(&self) -> Outcome;
 
-    /// The result that ends the session before the next tick as `outcome`, with the state hash.
-    fn session_result_as(&self, outcome: Outcome) -> SessionResult;
-
     /// The result that ends the session before the next tick, as the mode ended the match or
     /// aborted when it did not.
     fn session_result(&self) -> SessionResult;
 
     /// Whether the log's result, once every tick before it ran, holds: its state hash is the
-    /// state's, and its outcome the one the mode ended the match with, unless the session
-    /// aborted.
+    /// state's, and its outcome the one the mode ended the match with, aborted when it did not.
     fn check_result(&self) -> Result<(), ResultMismatch>;
 }
 
@@ -95,11 +91,7 @@ impl SessionWorld for World {
                     .seeds
                     .seed(segment)
                     .expect("the seeds reach the log's last segment");
-                let seed = session
-                    .log
-                    .header()
-                    .segment_seed(segment, &server_seed)
-                    .expect("seeds whose first checks give every segment's");
+                let seed = session.log.header().segment_seed(segment, &server_seed);
                 world.insert_resource(SimRng::new(seed));
                 session.segment = segment;
             }
@@ -144,7 +136,7 @@ impl SessionWorld for World {
     fn replay_to<E>(
         &mut self,
         tick: Tick,
-        mut on_boundary: impl FnMut(&mut World) -> Result<(), E>,
+        mut on_boundary: impl FnMut(&mut Self) -> Result<(), E>,
     ) -> Result<(), E> {
         debug_assert!(
             self.session().log().next_tick() <= tick,
@@ -194,16 +186,12 @@ impl SessionWorld for World {
         }
     }
 
-    fn session_result_as(&self, outcome: Outcome) -> SessionResult {
+    fn session_result(&self) -> SessionResult {
         SessionResult {
             tick: self.session().log.next_tick(),
-            outcome,
+            outcome: self.outcome(),
             state_hash: self.state_hash(),
         }
-    }
-
-    fn session_result(&self) -> SessionResult {
-        self.session_result_as(self.outcome())
     }
 
     fn check_result(&self) -> Result<(), ResultMismatch> {
@@ -224,7 +212,7 @@ impl SessionWorld for World {
             });
         }
         let ended = self.outcome();
-        if result.outcome != Outcome::Aborted && result.outcome != ended {
+        if result.outcome != ended {
             return Err(ResultMismatch::Outcome {
                 logged: result.outcome,
                 ended,

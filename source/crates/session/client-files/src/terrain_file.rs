@@ -1,8 +1,10 @@
 use bevy_math::{UVec2, Vec2};
+use campfire_common::MapName;
 use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::client_path;
 use crate::error::TerrainFileError;
 use crate::height_grid::HeightGrid;
 
@@ -97,7 +99,7 @@ impl TerrainFile {
         quads: TerrainQuads,
         texture: TerrainTexture,
         surface: TerrainSurface,
-    ) -> Result<TerrainFile, TerrainFileError> {
+    ) -> Result<Self, TerrainFileError> {
         let cells = quads.columns.checked_sub(1).filter(|&cells| cells > 0);
         let Some(cells) = cells.map(|cells| cells as usize) else {
             return Err(TerrainFileError::Shape);
@@ -125,7 +127,7 @@ impl TerrainFile {
         if !factors.iter().all(|factor| (0.0..=1.0).contains(factor)) {
             return Err(TerrainFileError::Surface);
         }
-        Ok(TerrainFile {
+        Ok(Self {
             quads,
             texture,
             surface,
@@ -144,9 +146,9 @@ impl TerrainFile {
         self.surface
     }
 
-    /// The file of a map, by its name.
-    pub fn path(map: &str) -> String {
-        format!("client/maps/{map}/terrain.bin")
+    /// The file of the map `map`.
+    pub fn path(map: &MapName) -> PackagePath {
+        client_path::of_map(map, "terrain.bin")
     }
 }
 
@@ -205,7 +207,7 @@ impl TerrainTexture {
 
 /// A package's file is untrusted, so a terrain `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for TerrainFile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TerrainFile, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             quads: TerrainQuads,
@@ -217,7 +219,7 @@ impl<'de> Deserialize<'de> for TerrainFile {
             texture,
             surface,
         } = Fields::deserialize(deserializer)?;
-        TerrainFile::new(quads, texture, surface).map_err(D::Error::custom)
+        Self::new(quads, texture, surface).map_err(D::Error::custom)
     }
 }
 
@@ -279,10 +281,6 @@ mod tests {
         let file = TerrainFile::new(quads, texture, surface).unwrap();
         let read: TerrainFile = Binary::decode(&Binary::encode(&file)).unwrap();
         assert_eq!(read, file);
-        assert_eq!(
-            TerrainFile::path("tournament_desert"),
-            "client/maps/tournament_desert/terrain.bin"
-        );
         // Its two cells are those of a grid of 3 × 2 samples, not of 3 × 3 or of 2 × 2.
         let grid = |columns: u32, rows: u32| {
             let samples = vec![0; (columns * rows) as usize];

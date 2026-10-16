@@ -4,7 +4,6 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::{StateSchema, StateValue, SyncTo, View};
-use campfire_sim::Capability;
 use campfire_values::{NameId, UnitType};
 
 /// The script state each unit type declares, a schema for each type in the order of the types:
@@ -28,7 +27,7 @@ impl UnitStateBook {
     }
 
     /// Whether `other` is this book as one load made it, not a book of another load.
-    pub(crate) fn same(&self, other: &UnitStateBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
@@ -39,19 +38,19 @@ impl UnitStateBook {
 }
 
 impl Default for UnitStateBook {
-    fn default() -> UnitStateBook {
-        UnitStateBook(Arc::from([]))
+    fn default() -> Self {
+        Self(Arc::from([]))
     }
 }
 
 impl FromIterator<StateSchema> for UnitStateBook {
-    fn from_iter<I: IntoIterator<Item = StateSchema>>(schemas: I) -> UnitStateBook {
-        UnitStateBook(schemas.into_iter().collect())
+    fn from_iter<I: IntoIterator<Item = StateSchema>>(schemas: I) -> Self {
+        Self(schemas.into_iter().collect())
     }
 }
 
 impl<const N: usize> From<[StateSchema; N]> for UnitStateBook {
-    fn from(schemas: [StateSchema; N]) -> UnitStateBook {
+    fn from(schemas: [StateSchema; N]) -> Self {
         schemas.into_iter().collect()
     }
 }
@@ -66,7 +65,6 @@ impl<'a> IntoIterator for &'a UnitStateBook {
 }
 
 impl Book for UnitStateBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

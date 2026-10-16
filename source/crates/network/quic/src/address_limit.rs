@@ -11,8 +11,8 @@ pub struct AddressLimit {
 }
 
 impl AddressLimit {
-    pub const fn new(seats: NonZeroU32, refill: Duration) -> AddressLimit {
-        AddressLimit { seats, refill }
+    pub const fn new(seats: NonZeroU32, refill: Duration) -> Self {
+        Self { seats, refill }
     }
 
     pub(crate) const fn seats(self) -> NonZeroU32 {

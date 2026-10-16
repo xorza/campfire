@@ -10,8 +10,8 @@ use campfire_common::Ticks;
 pub struct TickRate(NonZeroU32);
 
 impl TickRate {
-    pub const fn new(hz: NonZeroU32) -> TickRate {
-        TickRate(hz)
+    pub const fn new(hz: NonZeroU32) -> Self {
+        Self(hz)
     }
 
     pub const fn hz(self) -> NonZeroU32 {
@@ -23,8 +23,8 @@ impl TickRate {
         Duration::from_nanos(1_000_000_000 / self.0.get() as u64)
     }
 
-    /// `ms` milliseconds in ticks, rounded up, so nothing happens early; `None` when it does not
-    /// fit a `u64`.
+    /// `ms` milliseconds in ticks, rounded up, so nothing happens early; `None` when `ms` times
+    /// the rate does not fit a `u64`.
     pub const fn ticks(self, ms: u64) -> Option<Ticks> {
         match ms.checked_mul(self.0.get() as u64) {
             Some(scaled) => Some(Ticks::new(scaled.div_ceil(1000))),
@@ -41,11 +41,20 @@ impl TickRate {
         }
     }
 
-    /// `ms` as a window back from now: in ticks, rounded up; past what a `u64` holds, every tick
-    /// there is.
+    /// `ms` as a window back from now: in ticks, rounded up; every tick there is when `ms` times
+    /// the rate does not fit a `u64`.
     pub const fn window(self, ms: u64) -> Ticks {
         match self.ticks(ms) {
             Some(ticks) => ticks,
+            None => Ticks::new(u64::MAX),
+        }
+    }
+
+    /// `ms` as a cut of a wait: in ticks, rounded down, so a cut ends no wait before its time;
+    /// every tick there is when `ms` times the rate does not fit a `u64`.
+    pub const fn cut(self, ms: u64) -> Ticks {
+        match ms.checked_mul(self.0.get() as u64) {
+            Some(scaled) => Ticks::new(scaled / 1000),
             None => Ticks::new(u64::MAX),
         }
     }

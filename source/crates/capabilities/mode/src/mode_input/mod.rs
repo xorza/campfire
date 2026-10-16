@@ -32,10 +32,7 @@ impl<'a> ModeInput<'a> {
 
     /// The input in `body`, when its name is one of `types` and its value is exactly of the
     /// type declared for it: a client can send any bytes.
-    pub fn decode(
-        body: &'a [u8],
-        types: impl Fn(&str) -> Option<InputType>,
-    ) -> Option<ModeInput<'a>> {
+    pub fn decode(body: &'a [u8], types: impl Fn(&str) -> Option<InputType>) -> Option<Self> {
         let Taken { value: name, rest } = Binary::take::<&str>(body).ok()?;
         let Taken { value, rest } = match types(name)? {
             InputType::String => {
@@ -56,19 +53,6 @@ impl<'a> ModeInput<'a> {
         rest.is_empty().then_some(ModeInput { name, value })
     }
 
-    /// A payload of `inputs`, one command each.
-    pub fn payload(inputs: &[ModeInput<'_>]) -> Vec<u8> {
-        let bodies: Vec<Vec<u8>> = inputs
-            .iter()
-            .map(|input| {
-                let mut body = Vec::new();
-                input.encode_into(&mut body);
-                body
-            })
-            .collect();
-        Command::payload(ModeInput::CAPABILITY, &bodies)
-    }
-
     /// Appends the payload of this input alone to `out`, its body written in `body`, which it
     /// clears first, as a sender keeps both so no input allocates.
     pub fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
@@ -79,6 +63,28 @@ impl<'a> ModeInput<'a> {
             body,
         };
         Command::write(&[command], out);
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_sim::Command;
+
+    use crate::mode_input::ModeInput;
+
+    impl ModeInput<'_> {
+        /// A payload of `inputs`, one command each.
+        pub fn payload(inputs: &[ModeInput<'_>]) -> Vec<u8> {
+            let bodies: Vec<Vec<u8>> = inputs
+                .iter()
+                .map(|input| {
+                    let mut body = Vec::new();
+                    input.encode_into(&mut body);
+                    body
+                })
+                .collect();
+            Command::payload(ModeInput::CAPABILITY, &bodies)
+        }
     }
 }
 

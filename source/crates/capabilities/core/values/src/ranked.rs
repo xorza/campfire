@@ -16,43 +16,43 @@ impl<T> Ranked<T> {
     /// How many ranks it has values for; `None` for one value, which fits any rank.
     pub const fn ranks(&self) -> Option<usize> {
         match self {
-            Ranked::One(_) => None,
-            Ranked::PerRank(values) => Some(values.len()),
+            Self::One(_) => None,
+            Self::PerRank(values) => Some(values.len()),
         }
     }
 
     /// Every value it holds, one or one per rank.
     pub fn values(&self) -> &[T] {
         match self {
-            Ranked::One(value) => slice::from_ref(value),
-            Ranked::PerRank(values) => values,
+            Self::One(value) => slice::from_ref(value),
+            Self::PerRank(values) => values,
         }
     }
 
     /// The value at `rank`; `None` past the last rank.
     pub fn get(&self, rank: Rank) -> Option<&T> {
         match self {
-            Ranked::One(value) => Some(value),
-            Ranked::PerRank(values) => values.get(rank.index()),
+            Self::One(value) => Some(value),
+            Self::PerRank(values) => values.get(rank.index()),
         }
     }
 }
 
 impl<T> From<T> for Ranked<T> {
-    fn from(value: T) -> Ranked<T> {
-        Ranked::One(value)
+    fn from(value: T) -> Self {
+        Self::One(value)
     }
 }
 
 /// One value for each rank of `values`, in order.
 impl<T> FromIterator<T> for Ranked<T> {
-    fn from_iter<I: IntoIterator<Item = T>>(values: I) -> Ranked<T> {
-        Ranked::PerRank(values.into_iter().collect())
+    fn from_iter<I: IntoIterator<Item = T>>(values: I) -> Self {
+        Self::PerRank(values.into_iter().collect())
     }
 }
 
 impl<T, const N: usize> From<[T; N]> for Ranked<T> {
-    fn from(values: [T; N]) -> Ranked<T> {
+    fn from(values: [T; N]) -> Self {
         values.into_iter().collect()
     }
 }

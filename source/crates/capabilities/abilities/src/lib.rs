@@ -9,13 +9,12 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionBook, ActionSlot, ActionTarget, CastSpends, UseGroup};
+use campfire_actions::{ActionTarget, CastSpends};
 use campfire_common::Ticks;
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::Deliverers;
 use campfire_script::{ScriptValue, View};
 use campfire_sim::{Capability, TickRate};
-use campfire_values::{Block, UnitTags};
 
 mod abilities_api;
 mod abilities_effect;
@@ -52,13 +51,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for AbilitiesSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
-    const ALL: &'static [AbilitiesSet] = &AbilitiesSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            AbilitiesSet::Toggles => Phase::Toggles,
-            AbilitiesSet::StartCasts => Phase::Start,
-            AbilitiesSet::Resolve => Phase::CastResolve,
+            Self::Toggles => Phase::Toggles,
+            Self::StartCasts => Phase::Start,
+            Self::Resolve => Phase::CastResolve,
         })
     }
 }
@@ -112,20 +111,6 @@ impl Abilities {
         }
     }
 
-    /// Whether a unit with `tags`, under a forced move when `forced`, of the use group `used`, is
-    /// kept from the action in `slot`, as `book` gives it: from using it, for a slot of its use
-    /// group or a use, else, and with no slot, from casting it.
-    fn blocked(
-        tags: Option<&UnitTags>,
-        forced: bool,
-        used: Option<&UseGroup>,
-        slot: Option<ActionSlot>,
-        book: &ActionBook,
-    ) -> bool {
-        let group = slot.map_or(Block::Cast, |slot| UseGroup::group(used, slot, book));
-        UnitTags::blocks(tags, forced, group)
-    }
-
     /// A second at `rate`, the time a toggle pays its cost each.
     const fn second(rate: TickRate) -> Ticks {
         rate.ticks(1000)
@@ -139,7 +124,7 @@ pub mod internals {
 
     use bevy_ecs::world::World;
     use campfire_actions::{
-        ActionSlot, ActionSlots, ActionTarget, InProgress, SlotTime, SlotTimes,
+        ActionProgress, ActionSlot, ActionSlots, ActionTarget, InProgress, SlotTime, SlotTimes,
     };
     use campfire_math::Num;
     use campfire_script::internals::FailedCall;
@@ -173,21 +158,21 @@ pub mod internals {
         }
 
         pub fn cast(world: &mut World, id: StableId, target: ActionTarget) {
-            Abilities::casts(world, &[(id, target)]);
+            Self::casts(world, &[(id, target)]);
         }
 
         /// Runs a tick in which each unit casts its first slot's ability at its target, as an order
         /// would make it.
         pub fn casts(world: &mut World, casts: &[(StableId, ActionTarget)]) {
             for &(id, target) in casts {
-                let mut slots = world.part_mut::<ActionSlots>(id);
-                slots.order(0, target);
+                let mut progress = world.part_mut::<ActionProgress>(id);
+                progress.order(0, target);
             }
             world.step();
         }
 
         pub fn pool(world: &World, id: StableId) -> i64 {
-            Abilities::pool_of(world, id, MANA)
+            Self::pool_of(world, id, MANA)
         }
 
         pub fn pool_of(world: &World, id: StableId, pool: PoolId) -> i64 {
@@ -209,8 +194,8 @@ pub mod internals {
 
         pub fn casting(world: &World, id: StableId) -> Option<InProgress> {
             let entity = world.unit_entity(id);
-            let slots = world.get::<ActionSlots>(entity).unwrap();
-            slots
+            let progress = world.get::<ActionProgress>(entity).unwrap();
+            progress
                 .in_progress()
                 .filter(|underway| matches!(underway, InProgress::Order { .. }))
         }
@@ -221,7 +206,7 @@ pub mod internals {
 
         /// Gives `id` the modifier `name` from itself.
         pub fn give(world: &mut World, id: StableId, name: &str) {
-            Abilities::give_from(world, id, id, name);
+            Self::give_from(world, id, id, name);
         }
 
         /// Gives `id` the modifier `name` of package 0, from `source`.
@@ -233,7 +218,7 @@ pub mod internals {
 
         /// Each failed call of the tick: the unit it ran for and its hook.
         pub fn calls(world: &World) -> Vec<(StableId, Hook)> {
-            let failures = Abilities::failed_calls(world).into_iter();
+            let failures = Self::failed_calls(world).into_iter();
             failures
                 .map(|failure| (failure.id.unwrap(), failure.hook))
                 .collect()

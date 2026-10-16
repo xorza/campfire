@@ -3,7 +3,6 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::{ScriptId, ScriptRole, View};
-use campfire_sim::Capability;
 use campfire_units::ScriptBook;
 use campfire_values::{ActionId, NameId, Names, PackageIndex, Rank};
 
@@ -16,6 +15,10 @@ use crate::action_parts::ActionParts;
 /// script view reads them.
 #[derive(Resource, Debug, Clone, Default)]
 pub struct ActionBook {
+    #[expect(
+        clippy::rc_buffer,
+        reason = "the load grows the book through `Arc::make_mut`; the clones after it share it"
+    )]
     actions: Arc<Vec<Action>>,
     /// Each action's name in its package.
     names: Arc<Names<ActionId>>,
@@ -35,11 +38,12 @@ pub struct PackageAction<'d> {
 impl ActionBook {
     /// Whether `other` is this book as one load made it, not a book of another load: the actions
     /// a row filled from it holds.
-    pub(crate) fn same(&self, other: &ActionBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.actions, &other.actions) && Arc::ptr_eq(&self.names, &other.names)
     }
 
-    /// Loads `action`, its hooks those `scripts` defines; see `Actions::load`.
+    /// Loads `action`, whose parts the load resolved, as the next action of the book: its hooks
+    /// those `scripts` defines for its script, which its data names exactly when it has one.
     pub fn load(&mut self, scripts: &ScriptBook, action: PackageAction<'_>) -> ActionId {
         let PackageAction {
             package,
@@ -95,7 +99,6 @@ impl ActionBook {
 }
 
 impl Book for ActionBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     /// Names the actions to scripts; the actions column takes the book from the match at each

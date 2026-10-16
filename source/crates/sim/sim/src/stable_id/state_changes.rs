@@ -27,8 +27,8 @@ pub(crate) struct Removal {
 
 impl StateChanges {
     /// Changes for a first copy of every value, of the entities `index` holds.
-    pub(crate) fn new(index: &EntityIndex) -> StateChanges {
-        StateChanges {
+    pub(crate) fn new(index: &EntityIndex) -> Self {
+        Self {
             since: None,
             gained: index.iter().map(|(id, _)| id).collect(),
             lost: Vec::new(),

@@ -70,16 +70,16 @@ pub enum BookError {
     },
     /// The mode's teams, relations or map name what the mode does not have.
     #[error(transparent)]
-    Mode(ModeError),
+    Mode(#[from] ModeError),
     /// A list of the mode's names does not load.
     #[error(transparent)]
-    Names(ModeNamesError),
+    Names(#[from] ModeNamesError),
     /// The mode's tracks do not load.
     #[error(transparent)]
-    Tracks(TrackError),
+    Tracks(#[from] TrackError),
     /// The match's unit types or tags do not load.
     #[error(transparent)]
-    Types(TypesError),
+    Types(#[from] TypesError),
     /// Data names a script at `path` that the package does not hold.
     #[error("no script {path}")]
     Script {
@@ -98,12 +98,8 @@ pub enum BookError {
 
 impl BookError {
     /// The error of `name`, which data at `at` of the package at `package` gives.
-    pub(crate) const fn unknown(
-        package: PackageIndex,
-        at: BookPlace,
-        name: UnknownName,
-    ) -> BookError {
-        BookError::Unknown { package, at, name }
+    pub(crate) const fn unknown(package: PackageIndex, at: BookPlace, name: UnknownName) -> Self {
+        Self::Unknown { package, at, name }
     }
 
     /// The error of `error`, which the data of `action` of the package at `package` gives.
@@ -111,15 +107,15 @@ impl BookError {
         package: PackageIndex,
         action: &DeclaredName,
         error: ActionError,
-    ) -> BookError {
+    ) -> Self {
         match error {
-            ActionError::Problem(problem) => BookError::Action {
+            ActionError::Problem(problem) => Self::Action {
                 package,
                 action: action.clone(),
                 problem,
             },
             ActionError::Unknown(name) => {
-                BookError::unknown(package, BookPlace::Action(action.clone()), name)
+                Self::unknown(package, BookPlace::Action(action.clone()), name)
             }
         }
     }

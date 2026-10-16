@@ -14,7 +14,7 @@ use bevy::math::Vec3;
 use campfire_actions::{ActionBook, ActionSlots, ActionTarget, Aim, UseGroup};
 use campfire_capabilities::{Action, Order};
 use campfire_interaction::Using;
-use campfire_math::{Num, Vec3 as SimVec3};
+use campfire_math::Vec3 as SimVec3;
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
 use campfire_production::{ProductionAction, RallyTarget, TrainQueue};
@@ -27,6 +27,7 @@ use crate::own_player::OwnPlayer;
 use crate::placing::Placing;
 use crate::pointer::{Pointed, Pointer};
 use crate::selection::{Selection, SelectionSystems};
+use crate::view::float_num;
 
 /// Turns the player's clicks and keys into orders: a right click on a unit the own avatar may
 /// use, with the avatar selected, orders the avatar alone to use it (design 13, D6); else, with
@@ -73,12 +74,12 @@ impl Plugin for Orders {
         app.add_systems(
             Update,
             (
-                Orders::click.run_if(
+                Self::click.run_if(
                     input_just_pressed(MouseButton::Right)
                         .and_then(not(resource_exists::<Placing>)),
                 ),
-                Orders::cast.run_if(Orders::cast_pressed),
-                Orders::stop.run_if(input_just_pressed(STOP_KEY)),
+                Self::cast.run_if(Self::cast_pressed),
+                Self::stop.run_if(input_just_pressed(STOP_KEY)),
             )
                 .in_set(OrderSystems)
                 .after(SelectionSystems),
@@ -116,7 +117,7 @@ impl Orders {
             point,
             selected: Selected::of(held),
         };
-        let order = match Orders::click_action(click, uses) {
+        let order = match Self::click_action(click, uses) {
             Some(action @ Action::Orders(OrdersAction::Use { .. })) => {
                 avatar.map(|avatar| Order::one(avatar.id, action))
             }
@@ -175,7 +176,7 @@ impl Orders {
             let target = Takes::of(aim).target(under, point);
             orders.push(Order::one(
                 avatar.id,
-                Orders::slot_action(slot, key_use, target),
+                Self::slot_action(slot, key_use, target),
             ));
         }
     }
@@ -198,8 +199,8 @@ impl Orders {
             selected,
         } = click;
         let ground = || {
-            let x = Num::try_from(point.x).ok()?;
-            let z = Num::try_from(point.z).ok()?;
+            let x = float_num::to_num(point.x)?;
+            let z = float_num::to_num(point.z)?;
             Some([x, z])
         };
         let action = match under {
@@ -266,16 +267,16 @@ struct Mover {
 
 impl Selected {
     /// What a selection of `units` holds: producers when one trains and none walks.
-    fn of(units: impl IntoIterator<Item = Mover>) -> Selected {
+    fn of(units: impl IntoIterator<Item = Mover>) -> Self {
         let (mut walks, mut trains) = (false, false);
         for unit in units {
             walks |= unit.walks;
             trains |= unit.trains;
         }
         if trains && !walks {
-            Selected::Producers
+            Self::Producers
         } else {
-            Selected::Movers
+            Self::Movers
         }
     }
 }
@@ -298,11 +299,11 @@ enum Takes {
 
 impl Takes {
     /// What an action that aims as `aim` says takes; nothing for no action.
-    const fn of(aim: Option<&Aim>) -> Takes {
+    const fn of(aim: Option<&Aim>) -> Self {
         match aim {
-            Some(Aim::Unit(_)) => Takes::Unit,
-            Some(Aim::Point { .. } | Aim::Direction) => Takes::Point,
-            Some(Aim::None) | None => Takes::Nothing,
+            Some(Aim::Unit(_)) => Self::Unit,
+            Some(Aim::Point { .. } | Aim::Direction) => Self::Point,
+            Some(Aim::None) | None => Self::Nothing,
         }
     }
 
@@ -310,18 +311,18 @@ impl Takes {
     /// it: none when the cursor shows none, which the sim refuses of an action that needs one.
     fn target(self, under: Option<StableId>, point: Option<SimVec3>) -> ActionTarget {
         let target = match self {
-            Takes::Unit => under.map(ActionTarget::Unit),
-            Takes::Point => point.map(ActionTarget::Point),
-            Takes::Nothing => None,
+            Self::Unit => under.map(ActionTarget::Unit),
+            Self::Point => point.map(ActionTarget::Point),
+            Self::Nothing => None,
         };
         target.unwrap_or(ActionTarget::None)
     }
 }
 
-/// A point of the ground as a sim position, each axis exactly as `Num::try_from` takes it;
+/// A point of the ground as a sim position, each axis as `float_num::to_num` takes it;
 /// `None` past the bound.
 fn position(point: Vec3) -> Option<SimVec3> {
-    let axes = [point.x, point.y, point.z].map(|axis| Num::try_from(axis).ok());
+    let axes = [point.x, point.y, point.z].map(float_num::to_num);
     let [Some(x), Some(y), Some(z)] = axes else {
         return None;
     };
@@ -331,6 +332,7 @@ fn position(point: Vec3) -> Option<SimVec3> {
 
 #[cfg(test)]
 mod tests {
+    use campfire_math::Num;
     use campfire_sim::IdAllocator;
 
     use super::*;

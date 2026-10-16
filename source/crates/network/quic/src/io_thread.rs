@@ -23,9 +23,9 @@ pub(crate) struct IoThread {
 }
 
 impl IoThread {
-    pub(crate) fn new(shared: Arc<SharedEndpoint>, max_payload: usize) -> IoThread {
+    pub(crate) fn new(shared: Arc<SharedEndpoint>, max_payload: usize) -> Self {
         let batch = RecvBatch::new(shared.port(), max_payload);
-        IoThread {
+        Self {
             shared,
             events: Events::new(),
             batch,
@@ -41,7 +41,8 @@ impl IoThread {
                 let timeout =
                     deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
                 if let Err(error) = self.shared.port().wait(&mut self.events, timeout) {
-                    error!(error = %ErrorReport::of(&error), "the QUIC thread cannot wait on its socket; its links end by their idle timeout");
+                    error!(error = %ErrorReport::of(&error), "the QUIC thread cannot wait on its socket; its links end");
+                    self.shared.lock().fail();
                     return;
                 }
             }

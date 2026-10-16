@@ -7,9 +7,9 @@ use campfire_values::DeclaredName;
 use serde::Serialize;
 
 use crate::zero_hour::combat_import::{CombatImport, WEAPON};
-use crate::zero_hour::damage_type::DamageType;
+use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::imported_type::{LIFE, VICTORY};
-use crate::zero_hour::map_import::START;
+use crate::zero_hour::map_import::{SLOTS, START};
 use crate::zero_hour::production_import::{COMMAND, MONEY, ProductionImport};
 use crate::zero_hour::skirmish_start::SkirmishStart;
 
@@ -26,17 +26,13 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 2] = [
     ),
 ];
 
-/// The players of a skirmish, each its own team, as the original's default skirmish holds them
-/// (design 19, D1).
-pub(crate) const PLAYERS: u8 = 8;
-
 /// The imported package's manifest: a mode of eight players, each on a team of its own, beside
 /// the `neutral` team every placed object stands on, whose units drive, are made and fight
 /// (designs 17, 18 and 19): of `stats`, `orders`, `navigation`, `abilities`, `production` and
 /// `combat`, no unit faster than `max_move_speed` meters a second, at the game's 30 logic frames a
 /// second, depending on the rules package beside it.
 pub(crate) fn mode_manifest(max_move_speed: Num) -> String {
-    let teams: Vec<String> = (1..=PLAYERS)
+    let teams: Vec<String> = (1..=SLOTS)
         .map(|player| format!("{{ name = \"player_{player}\", slots = 1 }}"))
         .chain(["{ name = \"neutral\", slots = 0 }".to_owned()])
         .collect();
@@ -94,7 +90,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .map(|kind| format!("\"{}\"", kind.kind()))
         .collect();
     let mut teams = String::new();
-    for player in 1..=PLAYERS {
+    for player in 1..=SLOTS {
         write!(
             teams,
             "[teams.player_{player}]\nname = \"team-player-{player}\"\n\n"
@@ -211,7 +207,7 @@ impl<A: Serialize> ActionsToml<'_, A> {
 /// `texts`, an action's name by its message.
 pub(crate) fn mode_text(texts: &BTreeMap<String, String>) -> String {
     let mut text = String::from("mode-name = Zero Hour\n");
-    for player in 1..=PLAYERS {
+    for player in 1..=SLOTS {
         writeln!(text, "team-player-{player} = Player {player}")
             .expect("text writes into a string");
     }

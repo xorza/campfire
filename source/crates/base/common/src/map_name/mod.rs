@@ -17,11 +17,11 @@ pub struct MapName(Box<str>);
 
 impl MapName {
     /// `text` as a map's name; `None` unless it is of that form.
-    pub fn new(text: &str) -> Option<MapName> {
+    pub fn parse(text: &str) -> Option<Self> {
         let mut chars = text.chars();
         let first = chars.next()?;
         let rest = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_';
-        (first.is_ascii_lowercase() && chars.all(rest)).then(|| MapName(text.into()))
+        (first.is_ascii_lowercase() && chars.all(rest)).then(|| Self(text.into()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -32,16 +32,16 @@ impl MapName {
 impl FromStr for MapName {
     type Err = NotMapName;
 
-    fn from_str(text: &str) -> Result<MapName, NotMapName> {
-        MapName::new(text).ok_or(NotMapName)
+    fn from_str(text: &str) -> Result<Self, NotMapName> {
+        Self::parse(text).ok_or(NotMapName)
     }
 }
 
-/// A log or a message is untrusted, so a name `new` refuses fails to decode.
+/// A log or a message is untrusted, so a name `parse` refuses fails to decode.
 impl<'de> Deserialize<'de> for MapName {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<MapName, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        MapName::new(&text).ok_or_else(|| D::Error::custom(NotMapName))
+        Self::parse(&text).ok_or_else(|| D::Error::custom(NotMapName))
     }
 }
 
@@ -60,7 +60,7 @@ mod tests {
             assert_eq!(bad.parse::<MapName>(), Err(NotMapName), "{bad:?}");
         }
         // Postcard writes a string as its length and its bytes.
-        let lane = MapName::new("lane").unwrap();
+        let lane = MapName::parse("lane").unwrap();
         let encoded = Binary::encode(&lane);
         assert_eq!(encoded, b"\x04lane");
         assert_eq!(Binary::decode::<MapName>(&encoded).unwrap(), lane);

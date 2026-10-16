@@ -99,8 +99,8 @@ impl CameraRig {
 
     /// The camera of `file`, looking at `pivot` at its start's yaw and its most height, within
     /// `bounds`.
-    pub(crate) fn new(file: CameraFile, pivot: Vec2, bounds: Option<[Vec2; 2]>) -> CameraRig {
-        let mut rig = CameraRig {
+    pub(crate) fn new(file: CameraFile, pivot: Vec2, bounds: Option<[Vec2; 2]>) -> Self {
+        let mut rig = Self {
             file,
             pivot,
             pitch: 0.0,

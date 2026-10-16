@@ -25,33 +25,33 @@ impl TestMode {
     /// it depends on.
     pub(crate) const fn tree(self) -> &'static str {
         match self {
-            TestMode::Lane | TestMode::Proving | TestMode::Ruled => "test",
-            TestMode::Moba3v3 => "test/moba",
-            TestMode::Skirmish => "",
+            Self::Lane | Self::Proving | Self::Ruled => "test",
+            Self::Moba3v3 => "test/moba",
+            Self::Skirmish => "",
         }
     }
 
     /// The mode's root within its tree.
     pub const fn root(self) -> &'static str {
         match self {
-            TestMode::Lane => "modes/lane",
-            TestMode::Proving => "modes/proving",
-            TestMode::Moba3v3 => "modes/3v3",
-            TestMode::Ruled => "modes/ruled",
-            TestMode::Skirmish => "test/modes/skirmish",
+            Self::Lane => "modes/lane",
+            Self::Proving => "modes/proving",
+            Self::Moba3v3 => "modes/3v3",
+            Self::Ruled => "modes/ruled",
+            Self::Skirmish => "test/modes/skirmish",
         }
     }
 
     /// The map the tests play the mode on.
     pub fn map(self) -> MapName {
         let name = match self {
-            TestMode::Lane => "lane",
-            TestMode::Proving => "proving",
-            TestMode::Moba3v3 => "two_lanes",
-            TestMode::Ruled => "stand",
-            TestMode::Skirmish => "field",
+            Self::Lane => "lane",
+            Self::Proving => "proving",
+            Self::Moba3v3 => "two_lanes",
+            Self::Ruled => "stand",
+            Self::Skirmish => "field",
         };
-        MapName::new(name).expect("a test map's name")
+        MapName::parse(name).expect("a test map's name")
     }
 
     /// The mode's directory on disk.
@@ -62,7 +62,7 @@ impl TestMode {
     /// The mode's packages on its map, as the workspace holds them.
     pub fn packages(self) -> ModePackages {
         PackageDir::new(self.dir())
-            .mode_packages(&self.map())
+            .mode_packages(Some(&self.map()))
             .expect("a test mode loads")
     }
 }

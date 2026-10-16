@@ -95,8 +95,8 @@ impl StateSync for SyncAll {
 }
 
 impl<S: StateSync> UnitState<S> {
-    pub const fn new(values: Vec<StateValue>) -> UnitState<S> {
-        UnitState {
+    pub const fn new(values: Vec<StateValue>) -> Self {
+        Self {
             values,
             sync: PhantomData,
         }

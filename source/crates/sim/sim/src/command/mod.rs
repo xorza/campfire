@@ -28,23 +28,11 @@ impl<'a> Command<'a> {
         Binary::encode_into(commands, out);
     }
 
-    /// A payload of `bodies`, each a command to `capability`, in order.
-    pub fn payload<B: AsRef<[u8]>>(capability: Capability, bodies: &[B]) -> Vec<u8> {
-        let commands: Vec<Command<'_>> = bodies
-            .iter()
-            .map(|body| Command {
-                capability,
-                body: body.as_ref(),
-            })
-            .collect();
-        Command::encode(&commands)
-    }
-
     /// Reads the commands of `payload` in one pass, giving each to `read` in order, with the
     /// place of its body in `payload`: whether the payload is exactly a list of commands. A
     /// client can send any bytes, so a reader of a payload with a flaw keeps none of the commands
     /// it was given.
-    pub fn read(payload: &'a [u8], mut read: impl FnMut(Command<'a>, Range<usize>)) -> bool {
+    pub fn read(payload: &'a [u8], mut read: impl FnMut(Self, Range<usize>)) -> bool {
         let Ok(Taken {
             value: count,
             mut rest,
@@ -74,6 +62,26 @@ impl<'a> Command<'a> {
 /// element sequence to reach the same encoding.
 fn serialize_body<S: Serializer>(body: &&[u8], serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_bytes(body)
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::Capability;
+    use crate::command::Command;
+
+    impl Command<'_> {
+        /// A payload of `bodies`, each a command to `capability`, in order.
+        pub fn payload<B: AsRef<[u8]>>(capability: Capability, bodies: &[B]) -> Vec<u8> {
+            let commands: Vec<Command<'_>> = bodies
+                .iter()
+                .map(|body| Command {
+                    capability,
+                    body: body.as_ref(),
+                })
+                .collect();
+            Command::encode(&commands)
+        }
+    }
 }
 
 #[cfg(test)]

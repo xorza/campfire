@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Commands, Local, Query, Res};
@@ -5,7 +6,7 @@ use campfire_players::{PlayerResources, PlayerRowsMut, ResourceAmount, TickComma
 use campfire_sim::{EntityIndex, SimTick};
 use campfire_units::{Dead, MapBook, Owner};
 use campfire_values::Team;
-use campfire_vision::{SeenTargets, TeamSight};
+use campfire_vision::{ByVision, SeenTargets, TeamSight};
 
 use crate::build_book::BuildBook;
 use crate::production_action::ProductionAction;
@@ -19,34 +20,21 @@ use crate::train_queue::TrainQueue;
 pub struct ProductionOrders;
 
 impl ProductionOrders {
-    /// Applies each production order of the tick, in input order, to each of its units by stable id
-    /// that its player controls: a cancel of a train or a rally to a unit with a train queue, dead
-    /// or not, a cancel of a build to a living site, as a dead one refunds nothing. A cancel of a
-    /// train names an entry by its place in the queue as it stands; a place past its end is
-    /// ignored. Its entry leaves the queue and its player gets back the player resources it paid; a
-    /// head's leaving starts the next one's time in this tick. A cancel of a build gives back the
+    /// Applies each cancel of the tick, in input order, to each of its units by stable id that
+    /// its player controls: a cancel of a train to a unit with a train queue, dead or not, a
+    /// cancel of a build to a living site, as a dead one refunds nothing. A cancel of a train
+    /// names an entry by its place in the queue as it stands; a place past its end is ignored.
+    /// Its entry leaves the queue and its player gets back the player resources it paid; a head's
+    /// leaving starts the next one's time in this tick. A cancel of a build gives back the
     /// build's `cancel_refund` of each player resource its build paid, each rounded down, and
-    /// despawns the site, with no death. A refund that would carry an amount past an `i64` refuses
-    /// its cancel. A rally sets the producer's rally point, a point taken into the bounds, or a
-    /// unit its player's vision group sees, or clears it; a rally to another unit is ignored. In
-    /// a predicting client's form `S`, a cancel refunds nothing and despawns no site: both are the
-    /// server's, whose word comes back.
-    pub(super) fn apply_production_orders<S: TeamSight>(
-        (tick, map, index): (Res<'_, SimTick>, Res<'_, MapBook>, Res<'_, EntityIndex>),
+    /// despawns the site, with no death. A refund that would carry an amount past an `i64`
+    /// refuses its cancel. In a predicting client's form `S`, a cancel refunds nothing and
+    /// despawns no site: both are the server's, whose word comes back.
+    pub(super) fn apply_cancels<S: TeamSight>(
+        (tick, index): (Res<'_, SimTick>, Res<'_, EntityIndex>),
         (mut orders, builds): (TickCommands<'_, '_, ProductionAction>, Res<'_, BuildBook>),
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
-        mut units: Query<
-            '_,
-            '_,
-            (
-                &Owner,
-                Option<&Team>,
-                Option<&mut TrainQueue>,
-                Option<&Site>,
-                Has<Dead>,
-            ),
-        >,
-        visible: SeenTargets<'_, '_, S>,
+        mut units: Query<'_, '_, (&Owner, Option<&mut TrainQueue>, Option<&Site>, Has<Dead>)>,
         mut commands: Commands<'_, '_>,
         (mut refund, mut cancelled): (Local<'_, Vec<ResourceAmount>>, Local<'_, Vec<Entity>>),
     ) {
@@ -67,7 +55,7 @@ impl ProductionOrders {
                 let Some(entity) = index.get(unit) else {
                     continue;
                 };
-                let Ok((owner, team, queue, site, dead)) = units.get_mut(entity) else {
+                let Ok((owner, queue, site, dead)) = units.get_mut(entity) else {
                     continue;
                 };
                 if !order.controls(*owner) {
@@ -82,26 +70,6 @@ impl ProductionOrders {
                         if refunds(paid, order.slot) {
                             queue.remove(place, now);
                         }
-                    }
-                    (
-                        ProductionAction::Rally {
-                            target: Some(RallyTarget::Unit(unit)),
-                        },
-                        Some(_),
-                        _,
-                    ) if !team.is_some_and(|&team| visible.sees(team, unit)) => {}
-                    (ProductionAction::Rally { target }, Some(_), _) => {
-                        let target = target.map(|target| match target {
-                            RallyTarget::Point { x, z } => {
-                                let [x, z] = map.bounds.clamp_ground([x, z]);
-                                RallyTarget::Point { x, z }
-                            }
-                            unit @ RallyTarget::Unit(_) => unit,
-                        });
-                        match target {
-                            Some(target) => commands.entity(entity).insert(Rally::new(target)),
-                            None => commands.entity(entity).remove::<Rally>(),
-                        };
                     }
                     (ProductionAction::CancelBuild, _, Some(site))
                         if !dead && !cancelled.contains(&entity) =>
@@ -121,6 +89,47 @@ impl ProductionOrders {
                         }
                     }
                     _ => {}
+                }
+            }
+        });
+    }
+
+    /// Applies each rally of the tick, in input order, to each of its units by stable id that
+    /// its player controls and that produces, dead or not: it sets the producer's rally point, a
+    /// point taken into the bounds, or a unit its player's vision group sees, or clears it; a
+    /// rally to another unit is ignored. A rally is the server's, which no client holds.
+    pub(super) fn set_rallies(
+        (map, index): (Res<'_, MapBook>, Res<'_, EntityIndex>),
+        mut orders: TickCommands<'_, '_, ProductionAction>,
+        mut producers: Query<'_, '_, (&Owner, Option<&Team>, &mut Rally)>,
+        visible: SeenTargets<'_, '_, ByVision>,
+    ) {
+        orders.for_each(|order| {
+            let ProductionAction::Rally { target } = order.action else {
+                return;
+            };
+            let target = target.map(|target| match target {
+                RallyTarget::Point { x, z } => {
+                    let [x, z] = map.bounds.clamp_ground([x, z]);
+                    RallyTarget::Point { x, z }
+                }
+                unit @ RallyTarget::Unit(_) => unit,
+            });
+            for &unit in order.units {
+                let Some(entity) = index.get(unit) else {
+                    continue;
+                };
+                let Ok((owner, team, mut rally)) = producers.get_mut(entity) else {
+                    continue;
+                };
+                let seen = |target| match target {
+                    Some(RallyTarget::Unit(unit)) => {
+                        team.is_some_and(|&team| visible.sees(team, unit))
+                    }
+                    _ => true,
+                };
+                if order.controls(*owner) && seen(target) {
+                    rally.set_if_neq(Rally::new(target));
                 }
             }
         });

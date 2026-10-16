@@ -44,6 +44,14 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) host: HostVisibility,
 }
 
+/// How long a session waits to restore, and the time of the start that asks: a session whose
+/// journal was written within `length` of `now` restores.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RestoreWindow {
+    pub(crate) length: Duration,
+    pub(crate) now: SystemTime,
+}
+
 impl Opening {
     /// What the server starts: `found`, the session to restore that `find` gave, or a new one,
     /// its directory, private record and journal made. An error for a session or a journal not
@@ -52,7 +60,7 @@ impl Opening {
     pub(crate) fn of(
         found: Option<RestoredSession>,
         setup: OpeningSetup<'_>,
-    ) -> Result<Opening, OpeningError> {
+    ) -> Result<Self, OpeningError> {
         let rules = SessionRules::of(&setup.packages);
         let session = match found {
             Some(session) => Opened::Restored(Box::new(PendingRestore {
@@ -61,7 +69,7 @@ impl Opening {
                 server: setup.server,
                 bots: setup.bots,
             })),
-            None => Opened::New(Box::new(Opening::open(setup)?)),
+            None => Opened::New(Box::new(Self::open(setup)?)),
         };
         let terms = session.terms();
         let visibility = rules.check(terms).map_err(OpeningError::Terms)?;
@@ -70,7 +78,7 @@ impl Opening {
             .checked_add(visibility.max_spectators())
             .expect("a session's seats fit u32");
         let seats = NonZeroU32::new(seats).expect("the rules admit a session of a slot at least");
-        Ok(Opening { session, seats })
+        Ok(Self { session, seats })
     }
 
     /// The terms of the session it starts.
@@ -118,21 +126,18 @@ impl Opening {
         }
     }
 
-    /// The session `waiting` to restore within the restore window `window`: when it is past the
-    /// window or ended, `publisher` publishes its log instead, and none restores. An error for a
-    /// session that does not end.
+    /// The session `waiting` to restore within `window`: when it is past the window or ended,
+    /// `publisher` publishes its log instead, and none restores. An error for a session that
+    /// does not end.
     pub(crate) fn find(
         waiting: Option<RestoredSession>,
-        window: Duration,
+        window: RestoreWindow,
         publisher: Publisher<'_>,
     ) -> Result<Option<RestoredSession>, OpeningError> {
         let Some(session) = waiting else {
             return Ok(None);
         };
-        let idle = SystemTime::now()
-            .duration_since(session.modified)
-            .unwrap_or_default();
-        if session.log.result().is_none() && idle <= window {
+        if session.log.result().is_none() && window.holds(session.modified) {
             return Ok(Some(session));
         }
         session.abort(publisher).map_err(OpeningError::Abort)?;
@@ -152,12 +157,21 @@ impl Opening {
     }
 }
 
+impl RestoreWindow {
+    /// Whether a journal written at `modified` is within it; one written after `now`, as a
+    /// clock set back gives, is.
+    fn holds(self, modified: SystemTime) -> bool {
+        let idle = self.now.duration_since(modified).unwrap_or_default();
+        idle <= self.length
+    }
+}
+
 impl Opened {
     /// The session's terms.
     fn terms(&self) -> &SessionTerms {
         match self {
-            Opened::New(lobby) => lobby.terms(),
-            Opened::Restored(restore) => &restore.session.log.header().terms,
+            Self::New(lobby) => lobby.terms(),
+            Self::Restored(restore) => &restore.session.log.header().terms,
         }
     }
 }
@@ -168,7 +182,7 @@ mod tests {
 
     #[test]
     fn a_waiting_sessions_map_is_loaded_and_another_asked_is_refused() {
-        let name = |name: &str| MapName::new(name).unwrap();
+        let name = |name: &str| MapName::parse(name).unwrap();
         let (lane, river) = (name("lane"), name("river"));
         // No session waits: the map asked, or none, for the mode's only map.
         assert_eq!(

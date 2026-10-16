@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use campfire_units::{DashTo, ForcedMove};
 
 use super::*;
@@ -24,7 +22,7 @@ fn sunk(pos: Vec3, radius: Num, center: Vec3, body: &Body) -> bool {
     let Shape::Box(boxed) = body.shape() else {
         panic!("a box");
     };
-    boxed.nearest(center, pos, radius - Num::from_bits(2)) == Ordering::Less
+    boxed.closer(center, pos, radius - Num::from_bits(2))
 }
 
 #[test]
@@ -221,7 +219,7 @@ fn a_placed_box_lies_within_the_bounds_and_may_overlap_the_walls_and_the_bodies_
         check_walkable(&map, &[ground(Num::HALF)], &rules, body_of)
     };
     let blocked = |unit| {
-        Err(MapProblem::BoxBlocked {
+        Err(MapProblem::BoxOutside {
             unit,
             unit_type: DeclaredName::new("crate").unwrap(),
         })

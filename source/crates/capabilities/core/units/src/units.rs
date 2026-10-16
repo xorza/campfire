@@ -8,8 +8,8 @@ use campfire_declare::{
     ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, Phase, SetPlace,
 };
 use campfire_script::{
-    CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
-    ScriptList, StatePlace, StateSchema, View, ViewApi,
+    CoreApi, Ctx, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId, ScriptList,
+    StatePlace, StateSchema, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
@@ -68,13 +68,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for UnitsSet {
     const CAPABILITY: Option<Capability> = None;
-    const ALL: &'static [UnitsSet] = &UnitsSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            UnitsSet::BeginTick => SetPlace::Phase(Phase::Begin),
-            UnitsSet::EndLifespans => SetPlace::Phase(Phase::End),
-            UnitsSet::DropUnspawned => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
+            Self::BeginTick => SetPlace::Phase(Phase::Begin),
+            Self::EndLifespans => SetPlace::Phase(Phase::End),
+            Self::DropUnspawned => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
         }
     }
 }
@@ -91,10 +91,11 @@ impl Module for Units {
     const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        Self::runtime(d);
         d.sets::<UnitsSet>();
         d.calls::<SpawnHooks>();
         d.engine_tags(&[Avatar::TAG, Dead::TAG]);
-        Units::kinds(d);
+        Self::kinds(d);
         d.component::<Body>();
         d.component::<BodyUnit>();
         d.component::<Dead>();
@@ -126,14 +127,14 @@ impl Module for Units {
         d.cache::<UnitTracker<GridUnits>>();
         d.observer(UnitTracker::<GridUnits>::aged);
         d.observer(UnitTracker::<GridUnits>::lost_body);
-        d.observer(Units::refill_view);
-        d.check::<Position>(Units::within_bounds);
+        d.observer(Self::refill_view);
+        d.check::<Position>(Self::within_bounds);
         d.host::<Position, UnitEntity>();
-        d.check::<Team>(Units::teams_known);
+        d.check::<Team>(Self::teams_known);
         d.host::<Team, Either<UnitEntity, Player>>();
-        d.check::<UnitType>(Units::types_known);
+        d.check::<UnitType>(Self::types_known);
         d.host::<UnitType, UnitEntity>();
-        d.check::<Relations>(Units::relations_known);
+        d.check::<Relations>(Self::relations_known);
         d.host::<Relations, MatchEntity>();
         d.require::<UnitEntity, Position>();
         d.require::<UnitEntity, Team>();
@@ -260,23 +261,26 @@ impl Units {
         world.non_send_mut::<ScriptHost>().compile(source)
     }
 
-    /// Opens a match for the modules' installs: the script view and its reader, and with
-    /// `budgets`, the script host the scripts run in within them, and the context of their calls.
-    /// A client runs no scripts.
-    pub fn open(world: &mut World, budgets: Option<ScriptBudgets>) {
-        let rate = *world.resource::<TickRate>();
-        let view = View::new(rate, ViewReader::read);
-        world.insert_non_send(ViewReader::default());
-        if let Some(budgets) = budgets {
-            let ctx = Ctx::new(view.clone());
+    /// The scripts' runtime, which the core's install puts in first, for the modules' installs:
+    /// the script view and its reader, and in a match that runs scripts, the context of their
+    /// calls, the script host they run in within the role's budgets, and their failures. A client
+    /// runs no scripts.
+    fn runtime<D: Declarations>(d: &mut D) {
+        d.non_send::<ViewReader>(|_, _| Some(ViewReader::default()));
+        d.non_send::<View>(|world, _| {
+            Some(View::new(*world.resource::<TickRate>(), ViewReader::read))
+        });
+        d.non_send::<Ctx>(|world, role| {
+            role.scripts()
+                .then(|| Ctx::new(world.non_send::<View>().clone()))
+        });
+        d.non_send::<ScriptHost>(|world, role| {
+            let budgets = role.budgets()?;
             let mut host = ScriptHost::new(budgets.limits().per_call);
-            ctx.tag(&mut host);
-            world.insert_non_send(ctx);
-            world.insert_non_send(host);
-            world.insert_non_send(ScriptFailures::default());
-            world.insert_resource(budgets);
-        }
-        world.insert_non_send(view);
+            world.non_send::<Ctx>().tag(&mut host);
+            Some(host)
+        });
+        d.non_send::<ScriptFailures>(|_, role| role.scripts().then(ScriptFailures::default));
     }
 }
 
@@ -301,6 +305,7 @@ pub(crate) mod internals {
 
     use bevy_ecs::change_detection::Mut;
     use bevy_ecs::world::World;
+    use campfire_common::NamedEnum;
     use campfire_declare::{Book, ByType};
     use campfire_script::{CallError, Ctx, ScriptError, ScriptHost, ScriptId, ScriptValue, View};
     use campfire_sim::StableId;
@@ -311,8 +316,10 @@ pub(crate) mod internals {
     use crate::script_book::ScriptBook;
     use crate::tag_book::TagBook;
     use crate::tag_data::TagData;
+    use crate::type_origin_book::TypeOrigin;
     use crate::unit_type_book::UnitTypeBook;
     use crate::unit_type_core::UnitTypeCore;
+    use crate::unit_types::UnitTypes;
     use crate::units::Units;
     use crate::units_world::UnitsWorld;
 
@@ -342,19 +349,43 @@ pub(crate) mod internals {
     const TEST_TAGS: usize = Block::ALL.len() + 2;
 
     impl Units {
-        /// Seals the match's unit types' tags: gives the tag book their tags and `effects`, by
-        /// tag, as a match's books take them once its packages load, and the test tags, which
-        /// it declares after every type's, with theirs.
+        /// `change` of the unit types the match loads, after which the match's book of their
+        /// names and of their state fields holds them, as a test match has no package load.
+        pub fn change_types<R>(
+            world: &mut World,
+            change: impl FnOnce(&mut World, &mut UnitTypes) -> R,
+        ) -> R {
+            let mut types = world.resource_mut::<UnitTypeBook>().take_loading();
+            let changed = change(world, &mut types);
+            let states = types.state_book();
+            types.into_book().load_into(world);
+            states.load_into(world);
+            changed
+        }
+
+        /// Finishes the match's unit types, which gives it their books, their tags with the
+        /// effects `data` gives them by name, as a match's books take them once its packages
+        /// load: after it, no type loads.
+        pub fn seal_types(world: &mut World, data: &BTreeMap<DeclaredName, TagData>) {
+            let types = world.resource_mut::<UnitTypeBook>().take_loading();
+            let books = types.finish(data);
+            books.types.load_into(world);
+            books.tags.load_into(world);
+            books.origins.load_into(world);
+            books.states.load_into(world);
+        }
+
+        /// Seals the match's unit types' tags as `seal_types` does, with `effects`, and the test
+        /// tags, which it declares after every type's, with theirs.
         pub fn seal_tags(world: &mut World, effects: &BTreeMap<DeclaredName, TagData>) {
             let mut effects = effects.clone();
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            for (name, data) in Units::test_tags() {
-                types.declare(name.as_str()).unwrap();
-                effects.insert(name, data);
-            }
-            let book = types.tag_book(&effects);
-            world.insert_resource(book);
-            UnitTypeBook::share_in(world);
+            Self::change_types(world, |_, types| {
+                for (name, data) in Self::test_tags() {
+                    types.declare(name.as_str()).unwrap();
+                    effects.insert(name, data);
+                }
+            });
+            Self::seal_types(world, &effects);
         }
 
         /// The tags a test holds on a unit, each by a modifier of its name that grants it, with
@@ -386,9 +417,9 @@ pub(crate) mod internals {
         /// Seals the match's unit types' tags as `seal_tags` does, with no effect for a tag,
         /// unless they are sealed, or the test put a tag book of its own.
         pub fn seal_once(world: &mut World) {
-            let sealed = world.resource::<UnitTypeBook>().sealed();
-            if !sealed && world.resource::<TagBook>().is_empty() {
-                Units::seal_tags(world, &BTreeMap::new());
+            let loading = world.resource::<UnitTypeBook>().is_loading();
+            if loading && world.resource::<TagBook>().is_empty() {
+                Self::seal_tags(world, &BTreeMap::new());
             }
         }
 
@@ -419,13 +450,13 @@ pub(crate) mod internals {
             expression: &str,
             of: StableId,
         ) -> Result<ScriptValue, CallError> {
-            Units::probe(world, &format!("fn probe(ctx, of) {{ {expression} }}"), of)
+            Self::probe(world, &format!("fn probe(ctx, of) {{ {expression} }}"), of)
         }
 
         /// Compiles `source`, and adds the hooks the host reads of it to the match's book, as a
         /// test match has no package load to read them.
         pub fn compile_hooked(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
-            let script = Units::compile(world, source)?;
+            let script = Self::compile(world, source)?;
             world.resource_scope(|world, mut scripts: Mut<'_, ScriptBook>| {
                 assert_eq!(script.index(), scripts.len(), "the book holds every script");
                 scripts.push(world.non_send::<ScriptHost>().functions(script));
@@ -437,11 +468,11 @@ pub(crate) mod internals {
         /// before any type, modifier or filter names one, so the tags are numbered the same however
         /// the packages load.
         pub fn declare_tags<'a>(world: &mut World, names: impl IntoIterator<Item = &'a str>) {
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            for name in names {
-                types.declare(name).unwrap();
-            }
-            UnitTypeBook::share_in(world);
+            Self::change_types(world, |_, types| {
+                for name in names {
+                    types.declare(name).unwrap();
+                }
+            });
         }
 
         /// Loads the unit type `name` of `scope`, with its core fields: its tags, its params and
@@ -458,18 +489,19 @@ pub(crate) mod internals {
                 TypeScope::Mode => PackageIndex::MODE,
                 TypeScope::Package(package) => package,
             };
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            let unit_type = types.load(scope, package, name, data).unwrap();
-            let states = types.state_book_so_far();
-            UnitTypeBook::share_in(world);
-            states.load_into(world);
-            unit_type
+            Self::change_types(world, |_, types| {
+                let origin = TypeOrigin {
+                    package,
+                    name: name.into(),
+                };
+                types.load(scope, origin, data).unwrap()
+            })
         }
 
         /// Loads `data` as the next unit type of the mode, named for its place.
         pub fn load_next_type(world: &mut World, data: &UnitTypeCore) -> UnitType {
             let name = format!("type {}", world.resource::<UnitTypeBook>().count());
-            Units::load_type(world, TypeScope::Mode, &name, data)
+            Self::load_type(world, TypeScope::Mode, &name, data)
         }
 
         pub fn tagged_type(
@@ -478,7 +510,7 @@ pub(crate) mod internals {
             params: &[(&str, Scalar)],
         ) -> UnitType {
             let data = UnitTypeCore::of(tags, params);
-            Units::load_next_type(world, &data)
+            Self::load_next_type(world, &data)
         }
     }
 }

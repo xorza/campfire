@@ -13,19 +13,18 @@ use campfire_visibility::Visibility;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
 use secp256k1::Keypair;
 
-use crate::dismissed::Dismissed;
-use crate::events::receipt_refused::error::ReceiptRefusal;
+use crate::error::ReceiptRefusal;
 use crate::hosting::Hosting;
-use crate::join::{Join, JoinRole};
 use crate::match_clock::MatchClock;
-use crate::match_start::MatchStart;
-use crate::offer::Offer;
-use crate::os::Clock;
+use crate::net_protocol::dismissed::Dismissed;
+use crate::net_protocol::join::{Join, JoinRole};
+use crate::net_protocol::match_start::{MatchStart, SeatChain};
+use crate::net_protocol::offer::Offer;
+use crate::net_protocol::watch_start::WatchStart;
 use crate::session_times::SessionTimes;
 use crate::sim_client::chain_history::ChainHistory;
 use crate::sim_client::join_state::error::TermsMismatch;
 use crate::sim_client::server_pin::ServerPin;
-use crate::watch_start::WatchStart;
 
 pub(crate) mod error;
 
@@ -37,6 +36,15 @@ const RENEW_MARGIN: u64 = 60;
 /// The first wait before a client tries its link again, and the longest: each try doubles it.
 const FIRST_WAIT: Duration = Duration::from_secs(1);
 const LONGEST_WAIT: Duration = Duration::from_secs(8);
+/// How many times the wait doubles from `FIRST_WAIT` to `LONGEST_WAIT`.
+const DOUBLINGS: u32 = {
+    let ratio = LONGEST_WAIT.as_nanos() / FIRST_WAIT.as_nanos();
+    assert!(
+        ratio.is_power_of_two() && FIRST_WAIT.as_nanos() * ratio == LONGEST_WAIT.as_nanos(),
+        "the longest wait is the first doubled"
+    );
+    ratio.ilog2()
+};
 
 /// Where the client is in its session, with the player's identity, which signs every delegation,
 /// a renewal's too.
@@ -86,19 +94,13 @@ pub enum Loss {
 }
 
 /// What answers the server's offer: the player's identity, which signs the delegation, the server
-/// they mean to reach, whether they play or watch, whether it is local, and the rules of the mode
-/// the client holds.
+/// they mean to reach, whether they play or watch, and the rules of the mode the client holds.
 #[derive(Debug)]
 pub(crate) struct Joining {
     pub(crate) main_key: Keypair,
     pub(crate) server: ServerPin,
     pub(crate) role: JoinRole,
-    /// Where the server runs: only a local server loads a save, so only its match start that
-    /// says so is taken as one.
-    pub(crate) hosting: Hosting,
     pub(crate) rules: SessionRules,
-    /// When a delegation is made, and so when it expires.
-    pub(crate) clock: Clock,
 }
 
 /// What the player's join fixed: the session its signatures name, and the terms' limits on its
@@ -207,15 +209,15 @@ pub(crate) enum Retry {
 }
 
 impl JoinState {
-    pub(crate) const fn new(player: Joining) -> JoinState {
-        JoinState {
+    pub(crate) const fn new(player: Joining) -> Self {
+        Self {
             player,
             step: Step::Waiting,
         }
     }
 
     /// The clock of the match the player plays; `None` while it does not.
-    pub const fn clock(&self) -> Option<MatchClock> {
+    pub const fn playing_clock(&self) -> Option<MatchClock> {
         match &self.step {
             Step::Playing(playing) => Some(playing.clock),
             _ => None,
@@ -223,7 +225,7 @@ impl JoinState {
     }
 
     /// The clock of the match the client watches as a spectator; `None` while it does not.
-    pub const fn watching(&self) -> Option<MatchClock> {
+    pub const fn watching_clock(&self) -> Option<MatchClock> {
         match &self.step {
             Step::Watching(watching) => Some(watching.clock),
             _ => None,
@@ -264,7 +266,7 @@ impl JoinState {
     /// to the server's, whose ticks the clock counts; `None` while it does not play or its
     /// timeline is not synced.
     pub fn sim_tick(&self, timeline: Option<&SyncedLocalTimeline<'_, '_>>) -> Option<Tick> {
-        self.clock()?.sim_tick(timeline?.tick())
+        self.playing_clock()?.sim_tick(timeline?.tick())
     }
 
     /// Why the client refused the offer, once it did.
@@ -307,21 +309,21 @@ impl JoinState {
         }
     }
 
-    /// The player's answer to `offer`, while the client waits for one or tries to take its match
-    /// up again: the delegation of the session key in the offered session, a new one with a fresh
-    /// seed contribution for a first join, or for a later one whose delegation expires within
-    /// `RENEW_MARGIN`, signed by a new session key; and the session key's signature over the
-    /// challenge and `binding`, the link's TLS session's. An error when the terms name another server, a
-    /// session the client cannot play, another rate than the listing, or, for a later join,
-    /// another session, and the client then refuses every later offer; `None` for an offer it
-    /// does not wait for.
+    /// The player's answer to `offer`, at `now` in Unix seconds, while the client waits for one or
+    /// tries to take its match up again: the delegation of the session key in the offered session,
+    /// made at `now`, a new one with a fresh seed contribution for a first join, or for a later one
+    /// whose delegation expires within `RENEW_MARGIN`, signed by a new session key; and the session
+    /// key's signature over the challenge and `binding`, the link's TLS session's. An error when
+    /// the terms name another server, a session the client cannot play, another rate than the
+    /// listing, or, for a later join, another session, and the client then refuses every later
+    /// offer; `None` for an offer it does not wait for.
     pub(crate) fn answer(
         &mut self,
         offer: &Offer,
         binding: &ChannelBinding,
         signer: &mut Signer,
+        now: u64,
     ) -> Option<Result<Join, TermsMismatch>> {
-        let now = self.player.clock.unix_now();
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Waiting => {
                 let visibility = match self.player.fits(&offer.terms) {
@@ -372,23 +374,24 @@ impl JoinState {
         };
         let join = Join {
             delegation: answered.member.delegation.json().to_owned(),
-            answer: ConnectAnswer {
+            answer: signer.sign(&ConnectAnswer {
                 challenge: &offer.challenge,
                 binding,
-            }
-            .sign(signer),
+            }),
             role: self.player.role,
         };
         self.step = Step::Answered(answered);
         Some(Ok(join))
     }
 
-    /// Plays the match `start` names, for a client that answered: the player's chain starts from
-    /// their delegation's id when the server holds none, or goes on from the server's copy, which
-    /// a client with a history finds in it and cuts its own back to, and a client with none
-    /// takes; after a load, which may drop inputs the client's history holds, every client of a
-    /// local server takes it. Sim tick `start.first` is Lightyear tick `start.start_tick`.
-    pub(crate) fn start(&mut self, start: MatchStart) -> Started {
+    /// Plays the match `start` names, for a client that answered: the player's chain starts anew
+    /// from the root the server names, whatever the client's history, or goes on from the server's
+    /// copy, which a client with a history finds in it and cuts its own back to, and a client with
+    /// none takes; after a load, which may drop inputs the client's history holds, every client of
+    /// a local server takes it: only a local server loads a save, so only the match start of a
+    /// server `hosting` says is local is taken as a load. Sim tick `start.first` is Lightyear tick
+    /// `start.start_tick`.
+    pub(crate) fn start(&mut self, start: MatchStart, hosting: Hosting) -> Started {
         let answered = match mem::replace(&mut self.step, Step::Left) {
             Step::Answered(answered) if self.player.role == JoinRole::Play => answered,
             other => {
@@ -398,37 +401,36 @@ impl JoinState {
         };
         let mut member = answered.member;
         // Any other server loads no save, so its word would let it rewrite the chain unseen.
-        let loaded = start.loaded && self.player.hosting == Hosting::Local;
+        let loaded = start.loaded && hosting == Hosting::Local;
         if loaded {
             // A receipt names inputs the load may have dropped.
             member.receipt = None;
         }
-        let last_stamp = start.chain.and_then(|head| head.last_stamp);
-        let (chain, history, discarded) = match (start.chain, answered.history) {
-            (None, _) => {
-                let chain = InputChain::new(start.slot, member.delegation.chain_root());
+        let (chain, history, discarded, last_stamp) = match (start.chain, answered.history) {
+            (SeatChain::New { root }, _) => {
+                let chain = InputChain::new(start.slot, root);
                 member.receipt = None;
-                (chain, ChainHistory::of(&chain), 0)
+                (chain, ChainHistory::of(&chain), 0, None)
             }
             // The session went back to a save: the player's chain stands where the save left it,
             // and the inputs after it never apply.
-            (Some(head), Some(history)) if loaded => {
+            (SeatChain::Held(head), Some(history)) if loaded => {
                 let discarded = history.next_seq().saturating_sub(head.next_seq);
                 let chain = InputChain::resume(start.slot, head.head, head.next_seq);
-                (chain, ChainHistory::of(&chain), discarded)
+                (chain, ChainHistory::of(&chain), discarded, head.last_stamp)
             }
-            (Some(head), Some(mut history)) => {
+            (SeatChain::Held(head), Some(mut history)) => {
                 if history.head_at(head.next_seq) != Some(head.head) {
                     self.step = Step::Lost(Loss::Rewritten);
                     return Started::Rewritten;
                 }
                 let discarded = history.cut(head.next_seq);
                 let chain = InputChain::resume(start.slot, head.head, head.next_seq);
-                (chain, history, discarded)
+                (chain, history, discarded, head.last_stamp)
             }
-            (Some(head), None) => {
+            (SeatChain::Held(head), None) => {
                 let chain = InputChain::resume(start.slot, head.head, head.next_seq);
-                (chain, ChainHistory::of(&chain), 0)
+                (chain, ChainHistory::of(&chain), 0, head.last_stamp)
             }
         };
         self.step = Step::Playing(Playing {
@@ -482,7 +484,7 @@ impl JoinState {
             history,
             lost_at: now,
             tries: 0,
-            next_try: now + JoinState::wait(0, random),
+            next_try: now + Self::wait(0, random),
         });
         LinkLoss::Rejoining
     }
@@ -504,7 +506,7 @@ impl JoinState {
             return Retry::Wait;
         }
         rejoining.tries += 1;
-        rejoining.next_try = now + JoinState::wait(rejoining.tries, random);
+        rejoining.next_try = now + Self::wait(rejoining.tries, random);
         Retry::Connect
     }
 
@@ -516,7 +518,7 @@ impl JoinState {
     pub(crate) fn take_receipt(
         &mut self,
         receipt: &SignedReceipt,
-        verifier: &Verifier,
+        verifier: &mut Verifier,
     ) -> Result<(), ReceiptRefusal> {
         let (member, slot, history) = match &mut self.step {
             Step::Playing(playing) => (
@@ -528,7 +530,7 @@ impl JoinState {
             _ => return Err(ReceiptRefusal::NotPlaying),
         };
         let signed = receipt.receipt;
-        if !signed.signed_by(verifier, &self.player.server.key, &receipt.signature) {
+        if !verifier.verifies(&receipt.signature, &self.player.server.key, &signed) {
             return Err(ReceiptRefusal::BadSignature);
         }
         if signed.session_id != member.session.id
@@ -596,9 +598,7 @@ impl JoinState {
     /// starts at `FIRST_WAIT` and doubles to `LONGEST_WAIT`, as AWS's "full jitter" does: clients
     /// that lost one server do not all come back in one instant.
     fn wait(tries: u32, random: [u8; 32]) -> Duration {
-        let bound = FIRST_WAIT
-            .checked_mul(1 << tries.min(3))
-            .map_or(LONGEST_WAIT, |bound| bound.min(LONGEST_WAIT));
+        let bound = FIRST_WAIT * (1 << tries.min(DOUBLINGS));
         let draw = u64::from_le_bytes(random[..8].try_into().expect("8 bytes"));
         let nanos = (bound.as_nanos() * u128::from(draw)) >> 64;
         Duration::from_nanos(u64::try_from(nanos).expect("below the bound"))

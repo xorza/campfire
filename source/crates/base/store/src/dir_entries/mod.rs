@@ -34,7 +34,7 @@ impl DirEntries {
     /// The entries of the directory at `path`; `Missing` when there is none, `NotDir` when the
     /// path names another kind of entry.
     pub fn read(path: &Path) -> Result<Vec<DirEntry>, PathError<ReadError>> {
-        DirEntries::read_case(path).map_err(PathError::at(path))
+        Self::read_case(path).map_err(PathError::at(path))
     }
 
     fn read_case(path: &Path) -> Result<Vec<DirEntry>, ReadError> {
@@ -67,15 +67,15 @@ impl EntryKind {
         clippy::filetype_is_file,
         reason = "the kind names a regular file, and every other kind is `Other`"
     )]
-    pub(crate) fn of(kind: FileType) -> EntryKind {
+    pub(crate) fn of(kind: FileType) -> Self {
         if kind.is_symlink() {
-            EntryKind::Link
+            Self::Link
         } else if kind.is_dir() {
-            EntryKind::Dir
+            Self::Dir
         } else if kind.is_file() {
-            EntryKind::File
+            Self::File
         } else {
-            EntryKind::Other
+            Self::Other
         }
     }
 }

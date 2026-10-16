@@ -43,14 +43,14 @@ impl CallPart for UnitsCall {
 
 impl UnitsCall {
     /// The core's part of `frame`; the core adds it as it installs a match that runs scripts.
-    pub fn of(frame: &Frame) -> &UnitsCall {
+    pub fn of(frame: &Frame) -> &Self {
         frame
             .part()
             .expect("a match that runs scripts has the core's part")
     }
 
     /// The core's part of `frame`, to change.
-    pub fn of_mut(frame: &mut Frame) -> &mut UnitsCall {
+    pub fn of_mut(frame: &mut Frame) -> &mut Self {
         frame
             .part_mut()
             .expect("a match that runs scripts has the core's part")

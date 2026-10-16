@@ -33,7 +33,7 @@ pub enum ProjectileHits {
 /// Data is untrusted, so a speed that is not positive, a width or a range that is negative, or a
 /// width whose half, the radius of the circle it flies as, is past `MAX_BOUND`, fails to read.
 impl<'de> Deserialize<'de> for ProjectileData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ProjectileData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -63,7 +63,7 @@ impl<'de> Deserialize<'de> for ProjectileData {
         if fields.range.is_some_and(|range| range < Num::ZERO) {
             return Err(D::Error::custom("a projectile's range is not negative"));
         }
-        Ok(ProjectileData {
+        Ok(Self {
             speed: fields.speed,
             width,
             range: fields.range,
@@ -78,17 +78,17 @@ impl<'de> Deserialize<'de> for ProjectileData {
 
 impl ProjectileHits {
     /// The units of `enemies`, which a projectile hits when its data names none.
-    pub const ENEMIES: ProjectileHits = ProjectileHits::Units(FilterData {
+    pub const ENEMIES: Self = Self::Units(FilterData {
         relations: RelationSet::Enemies,
         tags: Vec::new(),
     });
 }
 
 impl<'de> Deserialize<'de> for ProjectileHits {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ProjectileHits, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
         match text.as_str() {
-            "none" => Ok(ProjectileHits::Nothing),
+            "none" => Ok(Self::Nothing),
             filter => FilterData::parse(filter)
                 .map(ProjectileHits::Units)
                 .ok_or_else(|| D::Error::custom(format!("filter {filter:?}"))),
@@ -109,8 +109,8 @@ pub(crate) mod internals {
     impl ProjectileData {
         /// A projectile of `speed` m/s and nothing more, as a section that names its speed alone
         /// reads: no width, its action's range, along a line, through what it hits.
-        pub const fn flying(speed: Num) -> ProjectileData {
-            ProjectileData {
+        pub const fn flying(speed: Num) -> Self {
+            Self {
                 speed,
                 width: Num::ZERO,
                 range: None,

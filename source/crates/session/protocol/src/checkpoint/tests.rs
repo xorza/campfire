@@ -1,5 +1,6 @@
 use campfire_codec::BinaryError;
 use campfire_common::PlayerSlot;
+use secp256k1::XOnlyPublicKey;
 
 use super::*;
 use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot};
@@ -9,8 +10,21 @@ use crate::harness::test_key::TestKey;
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::main_key::MainKey;
+use crate::session_id::SessionId;
+use crate::signature::Signature;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
+use crate::verifier::Verifier;
+
+/// Whether `signature` is `key`'s over `record` of session `session_id`.
+fn signed_by(
+    record: &Checkpoint,
+    key: &XOnlyPublicKey,
+    session_id: SessionId,
+    signature: &Signature,
+) -> bool {
+    Verifier::new().verifies(signature, key, &InSession { session_id, record })
+}
 
 fn delegation() -> Delegation {
     let terms = DelegationTerms {
@@ -78,17 +92,20 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
         }
     );
     let id = SessionId::new([8; 32]);
-    let signature = record.sign(&TestKey::signer(TestKey::of(41)), id);
+    let signature = TestKey::signer(TestKey::of(41)).sign(&InSession {
+        session_id: id,
+        record: &record,
+    });
     let key = TestKey::of(41).x_only_public_key().0;
-    assert!(record.signed_by(&mut Verifier::new(), &key, id, &signature));
-    assert!(!record.signed_by(
-        &mut Verifier::new(),
+    assert!(signed_by(&record, &key, id, &signature));
+    assert!(!signed_by(
+        &record,
         &key,
         SessionId::new([9; 32]),
         &signature
     ));
     let stranger = TestKey::of(42).x_only_public_key().0;
-    assert!(!record.signed_by(&mut Verifier::new(), &stranger, id, &signature));
+    assert!(!signed_by(&record, &stranger, id, &signature));
     // A change to any field, the carry's included.
     let changes: [fn(&mut Checkpoint); 5] = [
         |record| record.segment = 2,
@@ -100,10 +117,7 @@ fn a_record_round_trips_and_its_signature_holds_only_over_it() {
     for (at, change) in changes.into_iter().enumerate() {
         let mut other = record.clone();
         change(&mut other);
-        assert!(
-            !other.signed_by(&mut Verifier::new(), &key, id, &signature),
-            "change {at}"
-        );
+        assert!(!signed_by(&other, &key, id, &signature), "change {at}");
     }
 
     // A carried delegation that does not parse, and bytes that do not decode.

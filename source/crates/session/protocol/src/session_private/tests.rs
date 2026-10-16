@@ -1,6 +1,6 @@
-use campfire_codec::BinaryError;
 use std::num::NonZeroU32;
 
+use campfire_codec::BinaryError;
 use campfire_common::{MapName, PackageFingerprint, Ticks, Version};
 
 use super::*;
@@ -26,7 +26,7 @@ fn a_private_record_round_trips_and_other_bytes_are_refused() {
             seed_commitment: seed_chain.commitment(),
             release: Version::new(0, 1, 0),
             mode: PackageFingerprint::new([1; 32]),
-            map: MapName::new("lane").unwrap(),
+            map: MapName::parse("lane").unwrap(),
             dependencies: vec![PackageFingerprint::new([2; 32])],
             slots: vec![SlotPlan::Player, SlotPlan::Open],
             visibility: Vec::new(),

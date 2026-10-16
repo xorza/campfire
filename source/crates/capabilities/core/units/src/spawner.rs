@@ -23,18 +23,18 @@ pub struct Spawner {
 
 impl Spawner {
     /// The spawner of `types`.
-    pub fn new(types: impl IntoIterator<Item = UnitType>) -> Spawner {
+    pub fn new(types: impl IntoIterator<Item = UnitType>) -> Self {
         let types: Vec<UnitType> = types.into_iter().collect();
-        Spawner::of(&types)
+        Self::of(&types)
     }
 
-    fn of(types: &[UnitType]) -> Spawner {
+    fn of(types: &[UnitType]) -> Self {
         let len = types.iter().map(|unit_type| unit_type.index() + 1).max();
         let mut spawns = vec![false; len.unwrap_or(0)];
         for unit_type in types {
             spawns[unit_type.index()] = true;
         }
-        Spawner {
+        Self {
             types: spawns.into(),
         }
     }

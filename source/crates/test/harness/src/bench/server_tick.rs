@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
 use campfire_protocol::SessionLog;
+use campfire_runner::SessionWorld;
 use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, SimWorld, StateDelta};
 use campfire_stats::{Life, Pools};
@@ -13,7 +14,6 @@ use criterion::{Criterion, Throughput};
 use crate::fixed_session::fixed_match::FixedMatch;
 use crate::moba_3v3::Moba3v3;
 use crate::scripted_mode::ScriptedMode;
-use campfire_runner::SessionWorld;
 
 /// The ticks of a measured 3v3 match: 5 minutes at 20 Hz, the pick, then a wave every 30 s from
 /// tick 2399, which fight their lanes' towers.
@@ -155,14 +155,14 @@ struct PlayedLog {
 }
 
 impl PlayedLog {
-    fn new(moba: &ScriptedMode<Moba3v3>) -> PlayedLog {
+    fn new(moba: &ScriptedMode<Moba3v3>) -> Self {
         let mut fixed = moba.start();
         for tick in 0..TICKS {
             moba.play_tick(&mut fixed, tick);
         }
         let mut file = Vec::new();
         fixed.game().session().log().encode(&mut file);
-        PlayedLog { fixed, file }
+        Self { fixed, file }
     }
 }
 
@@ -213,14 +213,14 @@ struct MatchCost {
 
 impl MatchCost {
     /// Plays `fixed` for `TICKS` ticks, each by `tick`, which runs it and gives its time.
-    fn of_match(fixed: &mut FixedMatch, mut tick: impl FnMut(&mut Match) -> Duration) -> MatchCost {
-        MatchCost::of(|| tick(fixed.game_mut()))
+    fn of_match(fixed: &mut FixedMatch, mut tick: impl FnMut(&mut Match) -> Duration) -> Self {
+        Self::of(|| tick(fixed.game_mut()))
     }
 
     /// The cost of `TICKS` ticks, each the time `tick` gives.
-    fn of(mut tick: impl FnMut() -> Duration) -> MatchCost {
+    fn of(mut tick: impl FnMut() -> Duration) -> Self {
         let first = tick();
-        let mut cost = MatchCost {
+        let mut cost = Self {
             total: first,
             first,
             worst: Duration::ZERO,

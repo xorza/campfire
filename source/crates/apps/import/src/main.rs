@@ -8,7 +8,7 @@ use std::env;
 use std::process::ExitCode;
 
 use campfire_common::ExitStatus;
-use campfire_import::{GameVersion, Imported, SkipReason, ZeroHour};
+use campfire_import::{Imported, SkipReason, ZeroHour};
 use campfire_log::{ErrorReport, Logging};
 use tracing::{error, info, warn};
 
@@ -27,9 +27,9 @@ fn main() -> ExitCode {
         Err(status) => return ExitCode::from(status),
     };
     let imported = match args.game {
-        Game::ZeroHour => ZeroHour::open(&args.install, GameVersion::KNOWN).and_then(|game| {
+        Game::ZeroHour => ZeroHour::open(&args.install).and_then(|game| {
             info!(
-                version = game.version().name,
+                version = game.version().name(),
                 "the install is a version the importer knows"
             );
             game.write(&args.out)
@@ -41,8 +41,7 @@ fn main() -> ExitCode {
             rules,
             skipped_models,
             missing_textures,
-            untextured_cells,
-            dropped_waypoints,
+            maps,
             dropped_buttons,
             dropped_weapons,
             unliving,
@@ -59,6 +58,10 @@ fn main() -> ExitCode {
                         model,
                         "an object names a particle emitter, which the importer does not convert"
                     ),
+                    SkipReason::Aggregate => warn!(
+                        model,
+                        "a model's HLOD adds an aggregate, which the importer does not convert"
+                    ),
                 }
             }
             for texture in &missing_textures {
@@ -67,17 +70,18 @@ fn main() -> ExitCode {
                     "a model names a texture no archive holds, and draws untextured"
                 );
             }
-            for (map, &cells) in &untextured_cells {
+            for (map, imported) in &maps {
+                let cells = imported.untextured_cells;
                 if cells > 0 {
                     warn!(%map, cells, "a map's terrain draws cells of a tile with no texture");
                 }
-            }
-            for (map, waypoints) in &dropped_waypoints {
-                warn!(
-                    %map,
-                    waypoints = %waypoints.join(", "),
-                    "a map's waypoints past its bounds are dropped"
-                );
+                if !imported.dropped_waypoints.is_empty() {
+                    warn!(
+                        %map,
+                        waypoints = %imported.dropped_waypoints.join(", "),
+                        "a map's waypoints past its bounds are dropped"
+                    );
+                }
             }
             for dropped in &dropped_buttons {
                 warn!(
@@ -108,7 +112,8 @@ fn main() -> ExitCode {
                 %rules,
                 skipped_models = skipped_models.len(),
                 missing_textures = missing_textures.len(),
-                untextured_cells = untextured_cells.values().sum::<usize>(),
+                maps = maps.len(),
+                untextured_cells = maps.values().map(|map| map.untextured_cells).sum::<usize>(),
                 dropped_buttons = dropped_buttons.len(),
                 dropped_weapons = dropped_weapons.len(),
                 unliving = unliving.len(),

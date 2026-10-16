@@ -18,8 +18,8 @@ use crate::names::NameId;
 pub struct Team(u8);
 
 impl Team {
-    pub const fn new(index: u8) -> Team {
-        Team(index)
+    pub const fn new(index: u8) -> Self {
+        Self(index)
     }
 
     /// The team as the wire and the session's receipt write it.
@@ -33,8 +33,8 @@ impl NameId for Team {
     /// The most teams a match holds: one bit each in a `TeamSet`, and every index a `u8` holds.
     const LIMIT: usize = Bits256::BITS;
 
-    fn at(index: usize) -> Team {
-        Team(u8::try_from(index).expect("teams fit u8"))
+    fn at(index: usize) -> Self {
+        Self(u8::try_from(index).expect("teams fit u8"))
     }
 
     fn index(self) -> usize {

@@ -14,8 +14,8 @@ use campfire_actions::{
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::{
-    CombatBindings, CombatBook, Damage, DamageCause, Heal, HealCause, ModeCombatData, OnDeath,
-    PassQueue, RecentAttackers, Respawn,
+    CombatBook, Damage, DamageCause, DamagePass, Heal, HealCause, ModeCombatData, OnDeath,
+    PassEntry, RecentAttackers, Respawn,
 };
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_declare::{Book, ByType};
@@ -26,7 +26,9 @@ use campfire_mode::{
     InputValue, MapPoint, MarkerData, MatchResult, ModeError, ModeInput, Offer, TeamManifest,
     UnansweredSlotEvents, *,
 };
-use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker};
+use campfire_navigation::{
+    ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker, WalkerKinds,
+};
 use campfire_players::{OutOfPlay, PlayerResources, PlayersWorld};
 use campfire_production::{ProductionData, Queued, TrainQueue};
 use campfire_progression::{Experience, Points, Progression, Thresholds, TrackData, TrackSet};
@@ -47,7 +49,7 @@ use campfire_stats::{
 };
 use campfire_units::{
     Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MatchEntity, MoveStep,
-    Owner, Player, SyncAll, SyncNone, UnitTypeBook, UnitTypeCore, Units, UnitsWorld,
+    Owner, Player, SyncAll, SyncNone, UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
     ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, MessageId, ModifierId, Names,
@@ -290,8 +292,8 @@ struct TestType {
 
 impl TestType {
     /// A grunt of `unit_type`: a step of 1 m, no body, track, slot or passive.
-    fn grunt(unit_type: UnitType) -> TestType {
-        TestType {
+    fn grunt(unit_type: UnitType) -> Self {
+        Self {
             unit_type,
             step: Some(MoveStep::new(Num::ONE).unwrap()),
             body: None,
@@ -315,7 +317,7 @@ impl TestType {
     }
 
     /// Loads the parts of `types` into `game`, each book as the install loads it.
-    fn load(game: &mut Match, types: &[TestType]) {
+    fn load(game: &mut Match, types: &[Self]) {
         let mut lives = ByType::default();
         let mut deaths = ByType::default();
         let mut steps = ByType::default();
@@ -711,7 +713,13 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         let relations = &data.relations;
         let unit_type = |name: &str| view.names().named((TypeScope::Mode, name));
         let layers = &mode_names.layers;
-        ModeMap::resolve(&files.map, &files.teams, relations, layers, unit_type).unwrap()
+        let input = MapInput {
+            map: &files.map,
+            teams: &files.teams,
+            relations,
+            layers,
+        };
+        ModeMap::resolve(input, unit_type).unwrap()
     };
     let stats = StatBook::new(&data.stats, Num::int(10));
     let stat = |stat: &Stat| stats.named(stat).ok_or_else(|| stat.clone());
@@ -720,24 +728,17 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     let life = life.or_else(|| game.resource::<PoolBook>().life());
     let pools = Arc::clone(&mode_names.pools);
     let pools = PoolBook::new(&data.pools, pools, life, |_, held| stat(held)).unwrap();
-    let bindings = CombatBindings::new(&data.combat, stat).unwrap();
-    let tags = {
-        let mut unit_types = game.resource_mut::<UnitTypeBook>();
+    let combat = CombatBook::new(&data.combat, RATE, stat).unwrap();
+    Units::change_types(game, |_, unit_types| {
         let bodies = types.iter().map(|unit| (unit.unit_type, unit.body));
         unit_types.tag_layers(&mode_names.layers, bodies);
-        unit_types.tag_book(&data.tags)
-    };
+    });
+    Units::seal_types(game, &data.tags);
     stats.load_into(game);
     pools.load_into(game);
-    tags.load_into(game);
     TestType::load(game, types);
     SlotKindBook(Arc::new(data.slots.clone())).load_into(game);
-    let assist_window = data.combat.assist_window_ms.map(|ms| RATE.window(ms));
-    (CombatBook {
-        bindings,
-        assist_window,
-    })
-    .load_into(game);
+    combat.load_into(game);
     let ResolvedMap {
         map,
         ground,
@@ -753,10 +754,8 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         names.set_table(mode_names.damage_kinds);
         names.set_table(mode_names.resources);
     }
-    let mut kinds: Vec<Walker> = walkers.values().copied().collect();
-    kinds.sort_unstable();
-    kinds.dedup();
-    assert_eq!(kinds, [Walker::of_form(None).unwrap()]);
+    let kinds: WalkerKinds = walkers.values().copied().collect();
+    assert_eq!(kinds, WalkerKinds::from([Walker::of_form(None).unwrap()]));
     ModeLoad {
         map,
         walkers: kinds,
@@ -802,8 +801,10 @@ fn installed_match(
         .map(DeclaredName::as_str)
         .collect();
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &resources);
+    // The mode's tags, the layers' then those of its data, as its packages name them.
     let layers = files.data.navigation.layers.iter();
-    Units::declare_tags(&mut game, layers.map(DeclaredName::as_str));
+    let tags = layers.chain(files.data.tags.keys());
+    Units::declare_tags(&mut game, tags.map(DeclaredName::as_str));
     let grunt_type = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt_data());
     let mut load = |name: &str, tag: &str| {
         let data = UnitTypeCore::tagged(&[tag]);

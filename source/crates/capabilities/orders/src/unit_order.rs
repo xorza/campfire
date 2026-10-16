@@ -1,20 +1,16 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::query::QueryData;
-use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, ActionTarget, SlotTimes};
+use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, SlotTimes, SlotsMut};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{Party, PathWalker, Progress, Route};
+use campfire_navigation::{Party, PathWalker, Progress, Route, RouteAsk};
 use campfire_production::{
     BuildOrder, BuildTarget, Builder, GatherOrder, GatherStep, Gatherer, NodeAt,
 };
-use campfire_script::{Effect, Frame};
-use campfire_sim::{Position, SimWorld, StableId};
-use campfire_units::{Destination, MapBook, SpawnPoint};
+use campfire_sim::{Position, StableId};
+use campfire_units::{Destination, SpawnPoint};
 use campfire_values::ActionId;
-
-use crate::resetting::Resetting;
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
 /// bot's input, or an order an AI call queued for the unit that thinks.
@@ -62,6 +58,7 @@ pub struct OrderedUnit {
     pub(crate) spawn: Option<&'static SpawnPoint>,
     pub(crate) slots: Option<&'static mut ActionSlots>,
     pub(crate) times: Option<&'static mut SlotTimes>,
+    pub(crate) underway: Option<&'static mut ActionProgress>,
     pub(crate) walker: Option<&'static mut PathWalker>,
     pub(crate) destination: Option<&'static mut Destination>,
     pub(crate) route: Option<&'static mut Route>,
@@ -70,50 +67,26 @@ pub struct OrderedUnit {
     pub(crate) gatherer: Option<&'static mut Gatherer>,
 }
 
-/// For the unit that thinks in the call, which checked the order against the units as the phase
-/// began; no unit dies within Think. A unit that resets takes none, and a reset marks the unit
-/// as resetting until it is home.
-impl Effect for UnitOrder {
-    fn apply(self, world: &mut World, frame: &mut Frame) {
-        let now = frame.now();
-        let id = frame
-            .acting()
-            .expect("an order comes from the unit that thinks");
-        let entity = world.entity_of(id).expect("a unit that thinks lives");
-        let bounds = world.resource::<MapBook>().bounds;
-        let mut unit = world.entity_mut(entity);
-        if unit.contains::<Resetting>() {
-            return;
-        }
-        let parts = unit
-            .get_components_mut::<OrderedUnit>()
-            .expect("an ordered unit stands");
-        self.apply(parts, &bounds, now);
-        if self == UnitOrder::Reset {
-            unit.insert(Resetting);
-        }
-    }
-}
-
 impl UnitOrder {
-    /// Applies the order, which its source checked, to `unit`, within `bounds`, in `now`: every
-    /// order of every source applies here. A move or a reset drops the unit's target and leaves its
-    /// path until it is told to follow it again; a move's point clamps to the bounds, and a slot's
-    /// point to the ground within them, at the unit's height. A group's move asks for its route at
-    /// once, as one of its party. An attack on another target cancels one in its windup; a slot's
-    /// cast or train replaces an action not resolved yet, or releases the charge of its own slot; a
-    /// use fills its slot afresh with its object's action, unless it holds it, and then starts as a
+    /// Gives the order, which its source checked, to `unit`, within `bounds`, in `now`: every order
+    /// of every source is given here. A move or a reset drops the unit's target and leaves its path
+    /// until it is told to follow it again; a move's point clamps to the bounds, and a slot's point
+    /// to the ground within them, at the unit's height. A group's move asks for its route at once,
+    /// as one of its party. An attack on another target cancels one in its windup; a slot's cast or
+    /// train replaces an action not resolved yet, or releases the charge of its own slot; a use
+    /// fills its slot afresh with its object's action, unless it holds it, and then starts as a
     /// slot's cast. A stop ends what is under way, with nothing spent, drops the target and the
     /// destination, and leaves the path; a queue of trains stays. A build becomes the unit's build
     /// order, its point taken into the bounds, and a gather its gather loop, each dropping the
     /// target and the destination; every other order ends both. Every order cuts a channel and ends
     /// a cast that walks in range, with its walk, and an attack cancels a charge.
-    pub fn apply(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) {
+    pub fn give(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) {
         let OrderedUnitItem {
             pos: &at,
             spawn,
             mut slots,
             times,
+            mut underway,
             walker,
             mut destination,
             route,
@@ -121,10 +94,10 @@ impl UnitOrder {
             mut builder,
             mut gatherer,
         } = unit;
-        if let Some(slots) = &mut slots {
-            slots.cut_channel();
-            if slots.approaching() {
-                slots.stop();
+        if let Some(underway) = &mut underway {
+            underway.cut_channel();
+            if underway.approaching() {
+                underway.stop();
                 if let Some(destination) = &mut destination {
                     destination.set_if_neq(Destination::to(None));
                 }
@@ -133,61 +106,69 @@ impl UnitOrder {
         self.set_loops(builder.as_mut(), gatherer.as_mut(), bounds, at.get());
         let ground = |x, z| bounds.ground_point([x, z], at.get());
         let to = match self {
-            UnitOrder::Attack { target } => {
-                if let Some(slots) = &mut slots {
-                    slots.cancel_charge();
-                    slots.set_attack_target(Some(target));
+            Self::Attack { target } => {
+                if let Some(underway) = &mut underway {
+                    underway.cancel_charge();
+                    underway.set_attack_target(Some(target));
                 }
                 return;
             }
-            UnitOrder::Slot { slot, target } => {
+            Self::Slot { slot, target } => {
                 let target = match target {
                     ActionTarget::Point(point) => ActionTarget::Point(ground(point.x, point.z)),
                     target => target,
                 };
-                if let Some(slots) = &mut slots {
-                    slots.order(slot, target);
+                if let Some(underway) = &mut underway {
+                    underway.order(slot, target);
                 }
                 return;
             }
-            UnitOrder::Use {
+            Self::Use {
                 slot,
                 action,
                 target,
             } => {
                 let slots = slots.as_mut().expect("a user has slots");
+                let underway = underway
+                    .as_mut()
+                    .expect("a user's slots have their progress");
                 if slots.slot(slot).and_then(|held| held.action) != Some(action) {
                     let mut times = times.expect("a user's slots have times");
-                    slots.fill(&mut times, slot, Some(action));
+                    let mut unit = SlotsMut {
+                        slots,
+                        times: &mut times,
+                        progress: underway,
+                    };
+                    unit.fill(slot, Some(action));
                 }
-                slots.order(slot, ActionTarget::Unit(target));
+                underway.order(slot, ActionTarget::Unit(target));
                 return;
             }
-            UnitOrder::FollowPath => {
-                if let Some(slots) = &mut slots {
-                    slots.set_attack_target(None);
+            Self::FollowPath => {
+                if let Some(underway) = &mut underway {
+                    underway.set_attack_target(None);
                 }
                 if let Some(mut walker) = walker {
                     walker.rejoin();
                 }
                 return;
             }
-            UnitOrder::Move { x, z, .. } => Some(ground(x, z)),
-            UnitOrder::Reset => Some(
+            Self::Move { x, z, .. } => Some(ground(x, z)),
+            Self::Reset => Some(
                 spawn
                     .expect("a unit the mode spawned holds its spawn place")
                     .get(),
             ),
-            UnitOrder::Stop => {
-                if let Some(slots) = &mut slots {
-                    slots.stop();
+            Self::Stop => {
+                if let Some(underway) = &mut underway {
+                    underway.stop();
                 }
                 None
             }
-            UnitOrder::Build { .. } | UnitOrder::Gather { .. } => None,
+            Self::Build { .. } | Self::Gather { .. } => None,
         };
-        if let Some(slots) = &mut slots {
-            slots.set_attack_target(None);
+        if let Some(underway) = &mut underway {
+            underway.set_attack_target(None);
         }
         if let Some(mut walker) = walker {
             walker.leave();
@@ -195,12 +176,16 @@ impl UnitOrder {
         if let Some(mut destination) = destination {
             destination.set_if_neq(Destination::to(to));
         }
-        if let (UnitOrder::Move { party, .. }, Some(to), Some(mut route), Some(mut progress)) =
+        if let (Self::Move { party, .. }, Some(goal), Some(mut route), Some(mut progress)) =
             (self, to, route, progress)
             && party.is_some()
         {
-            route.ask(to, now, party);
-            progress.restart();
+            let ask = RouteAsk {
+                goal,
+                tick: now,
+                party,
+            };
+            route.ask(ask, &mut progress);
         }
     }
 
@@ -215,7 +200,7 @@ impl UnitOrder {
         pos: Vec3,
     ) {
         let build = match self {
-            UnitOrder::Build { slot, target } => {
+            Self::Build { slot, target } => {
                 let target = match target {
                     BuildTarget::Point { x, z, angle } => {
                         let [x, z] = bounds.clamp_ground([x, z]);
@@ -233,7 +218,7 @@ impl UnitOrder {
             builder.set(build);
         }
         let gather = match self {
-            UnitOrder::Gather { slot, target } => Some(GatherOrder {
+            Self::Gather { slot, target } => Some(GatherOrder {
                 slot,
                 node: NodeAt { node: target, pos },
                 step: GatherStep::Ordered,

@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
-use campfire_deliveries::Deliveries;
+use campfire_deliveries::{DashEnd, Deliveries};
 use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
@@ -36,7 +36,7 @@ impl ForcedMoves {
             Res<'_, EntityIndex>,
         ),
         (grid, planner): (Option<Res<'_, PathingGrid>>, Option<Res<'_, RoutePlanner>>),
-        mut deliveries: Option<ResMut<'_, Deliveries>>,
+        mut deliveries: ResMut<'_, Deliveries>,
         mut units: ParamSet<
             '_,
             '_,
@@ -109,7 +109,7 @@ impl ForcedMoves {
                 .bounds
                 .ground_point([advanced.point.x, advanced.point.z], at.get());
             let past = to != advanced.point;
-            let clearance = grid.as_deref().and_then(|grid| grid.serving(walker));
+            let clearance = grid.as_deref().map(|grid| grid.clearance(walker));
             let step = Segment::new(at.get(), to);
             let knocked = matches!(forced, ForcedMove::KnockBack { .. });
             let walled =
@@ -141,10 +141,12 @@ impl ForcedMoves {
                         DashTo::Point(_) => None,
                     };
                     let direction = at.get().ground_offset(stands).normalized();
-                    deliveries
-                        .as_deref_mut()
-                        .expect("a dash that delivers an action runs in a match with abilities")
-                        .end_dash(*delivery, target, place, direction);
+                    deliveries.end_dash(DashEnd {
+                        dash: *delivery,
+                        target,
+                        pos: place,
+                        direction,
+                    });
                 }
             }
             if ends {

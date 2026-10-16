@@ -1,3 +1,5 @@
+use std::any::TypeId;
+
 use campfire_sim::Capability;
 use campfire_values::{ScriptEnum, TagProperty};
 use rhai::{Dynamic, ImmutableString, Module, NativeCallContext};
@@ -10,19 +12,20 @@ use crate::scripts::data_section::DataSection;
 use crate::scripts::data_table::DataTable;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
-use crate::scripts::member_kind::MemberKind;
+use crate::scripts::member_kind::{GETTER, MemberKind};
 use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
+use crate::scripts::script_api::api_member::ApiMember;
+use crate::scripts::script_api::data_field::DataField;
 use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::hook_status::HookStatus;
 use crate::scripts::script_arg::ScriptArg;
 use crate::scripts::script_value::{ScriptType, ScriptValue};
 use crate::scripts::status::Status;
 
-/// Rhai's names for a property's getter and setter, and a type's indexer, which its
-/// `register_get` and kin use and do not export.
-const GETTER: &str = "get$";
+/// Rhai's names for a property's setter, and a type's indexer, which its `register_get` and kin
+/// use and do not export.
 const SETTER: &str = "set$";
 const INDEX_GETTER: &str = "index$get$";
 const INDEX_SETTER: &str = "index$set$";
@@ -39,7 +42,7 @@ pub struct ApiBuilder<'a> {
 }
 
 impl<'a> ApiBuilder<'a> {
-    pub const fn new(host: &'a mut ScriptHost, api: &'a mut ScriptApi) -> ApiBuilder<'a> {
+    pub(crate) const fn new(host: &'a mut ScriptHost, api: &'a mut ScriptApi) -> Self {
         ApiBuilder {
             host,
             api,
@@ -82,10 +85,10 @@ impl<'a> ApiBuilder<'a> {
             .register_fn(eq, |a: T, b: T| a == b)
             .register_fn(ne, |a: T, b: T| a != b)
             .register_fn(to_string, |member: &mut T| {
-                ImmutableString::from(member.data_name())
+                ImmutableString::from(member.name())
             });
         let mut module = Module::new();
-        for &(member, value) in T::MEMBERS {
+        for (member, value) in T::members() {
             module.set_var(member, value);
         }
         let [named] = EnumRecord::FUNCTIONS;
@@ -95,7 +98,7 @@ impl<'a> ApiBuilder<'a> {
         self.host
             .engine_mut()
             .register_static_module(name, module.into());
-        let members = T::MEMBERS.iter().map(|&(member, _)| member);
+        let members = T::members().map(|(member, _)| member);
         self.api.record_enum(T::ENUM, members);
         self
     }
@@ -115,9 +118,8 @@ impl<'a> ApiBuilder<'a> {
             "`{}` serves some roles only, which `call` checks",
             spec.name
         );
-        f.register(self.host.engine_mut(), &ApiBuilder::bound_name(&spec));
-        self.api
-            .record(spec, false, Status::Runs(ApiVersion::FIRST));
+        f.register(self.host.engine_mut(), &spec.kind.bound_name(spec.name));
+        self.record_runs(spec, F::output());
         self
     }
 
@@ -131,13 +133,18 @@ impl<'a> ApiBuilder<'a> {
             "`{}` is no call or value of `ctx`",
             spec.name
         );
+        assert!(
+            spec.has_form_of(F::ARITY),
+            "a form of `{}` takes the {} arguments its function takes",
+            spec.name,
+            F::ARITY
+        );
         f.register(
             self.host.engine_mut(),
-            &ApiBuilder::bound_name(&spec),
+            &spec.kind.bound_name(spec.name),
             spec.roles,
         );
-        self.api
-            .record(spec, false, Status::Runs(ApiVersion::FIRST));
+        self.record_runs(spec, F::output());
         self
     }
 
@@ -160,18 +167,27 @@ impl<'a> ApiBuilder<'a> {
             "`{}`, a method, serves every role",
             spec.name
         );
-        f.register(self.host.engine_mut(), &ApiBuilder::bound_name(&spec));
-        self.api
-            .record(spec, false, Status::Runs(ApiVersion::FIRST));
+        if spec.kind == MemberKind::Method {
+            assert!(
+                spec.has_form_of(F::ARITY),
+                "a form of `{}` takes the {} arguments its function takes",
+                spec.name,
+                F::ARITY
+            );
+        }
+        f.register(self.host.engine_mut(), &spec.kind.bound_name(spec.name));
+        self.record_runs(spec, F::output());
         self
     }
 
-    /// The name Rhai calls `spec` by: its getter's, for a value or a field.
-    fn bound_name(spec: &MemberSpec) -> String {
-        match spec.kind {
-            MemberKind::Value | MemberKind::Field => format!("{GETTER}{}", spec.name),
-            MemberKind::Call | MemberKind::Method | MemberKind::Operator => spec.name.to_owned(),
-        }
+    /// Records `spec`, which runs, of a form that gives a value of the type `output`.
+    fn record_runs(&mut self, spec: MemberSpec, output: TypeId) {
+        self.api.record(ApiMember {
+            spec,
+            writable: false,
+            status: Status::Runs(ApiVersion::FIRST),
+            output: Some(output),
+        });
     }
 
     /// Binds `f` as the setter of `spec`, a field of a handle `H` scripts may write with a `V`.
@@ -194,14 +210,24 @@ impl<'a> ApiBuilder<'a> {
                 f(handle, V::take(value, &ArgCtx::of_call(&call))?)
             },
         );
-        self.api.record(spec, true, Status::Runs(ApiVersion::FIRST));
+        self.api.record(ApiMember {
+            spec,
+            writable: true,
+            status: Status::Runs(ApiVersion::FIRST),
+            output: None,
+        });
         self
     }
 
     /// Records `spec` as planned: design 08 gives it, and no code runs it yet.
     pub fn plan(&mut self, spec: MemberSpec) -> &mut Self {
         let spec = self.owned(spec);
-        self.api.record(spec, false, Status::Planned);
+        self.api.record(ApiMember {
+            spec,
+            writable: false,
+            status: Status::Planned,
+            output: None,
+        });
         self
     }
 
@@ -212,6 +238,16 @@ impl<'a> ApiBuilder<'a> {
             hook,
             status,
             capability: self.capability,
+        });
+        self
+    }
+
+    /// Records `hook` as planned, of `capability`, whose module does not bind yet.
+    pub fn plan_hook(&mut self, hook: Hook, capability: Capability) -> &mut Self {
+        self.api.record_hook(HookStatus {
+            hook,
+            status: Status::Planned,
+            capability: Some(capability),
         });
         self
     }
@@ -255,19 +291,25 @@ impl<'a> ApiBuilder<'a> {
         fields: impl IntoIterator<Item = (&'static str, Status)>,
     ) -> &mut Self {
         for (name, status) in fields {
-            self.api
-                .record_field(DataTable::Action, name, status, self.capability);
+            self.api.record_field(DataField {
+                table: DataTable::Action,
+                name,
+                status,
+                capability: self.capability,
+            });
         }
         self
     }
 
     /// Binds `get` as the indexer of `T`, through which scripts read names the data declares, as
     /// `ctx.p.<name>`, and as the getter of each such name scripts use: the load check reads those
-    /// names against the data. `get` has the running call's `ctx`, found when it reads it.
+    /// names against the data, and each member that gives a `T` leads to data. `get` has the
+    /// running call's `ctx`, found when it reads it.
     pub fn index<T: ScriptType>(
         &mut self,
         get: fn(&ArgCtx<'_>, &mut T, &str) -> Checked<ScriptValue>,
     ) -> &mut Self {
+        self.api.record_indexed::<T>();
         self.host.engine_mut().register_fn(
             INDEX_GETTER,
             move |call: NativeCallContext<'_>, target: &mut T, name: ImmutableString| {
@@ -293,6 +335,7 @@ impl<'a> ApiBuilder<'a> {
         &mut self,
         set: fn(&ArgCtx<'_>, &mut T, &str, ScriptValue) -> Checked<()>,
     ) -> &mut Self {
+        self.api.record_indexed::<T>();
         self.host.engine_mut().register_fn(
             INDEX_SETTER,
             move |call: NativeCallContext<'_>,

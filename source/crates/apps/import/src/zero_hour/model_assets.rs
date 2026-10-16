@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::format::w3d::w3d_file::W3dFile;
 use crate::zero_hour::install::Install;
-use crate::zero_hour::w3d_file::W3dFile;
 
 /// The install's models and textures, found as `GameFileClass::Set_Name` finds them: in the
 /// language's folder, `Data\<language>\Art\...`, then in `Art\...`. Each W3D file is read once.
@@ -15,7 +15,7 @@ pub(crate) struct ModelAssets<'a> {
 }
 
 impl<'a> ModelAssets<'a> {
-    pub(crate) fn new(install: &'a Install) -> Result<ModelAssets<'a>, ZeroHourError> {
+    pub(crate) fn new(install: &'a Install) -> Result<Self, ZeroHourError> {
         let language = install.language()?;
         Ok(ModelAssets {
             install,
@@ -24,8 +24,8 @@ impl<'a> ModelAssets<'a> {
         })
     }
 
-    /// The W3D file `<stem>.w3d`, if the install holds one.
-    pub(crate) fn file(&mut self, stem: &str) -> Result<Option<&W3dFile>, ZeroHourError> {
+    /// Reads the W3D file `<stem>.w3d` once, if the install holds one, for `file` to give.
+    pub(crate) fn load(&mut self, stem: &str) -> Result<(), ZeroHourError> {
         let stem = stem.to_ascii_lowercase();
         if !self.files.contains_key(&stem) {
             let read = match self.find("w3d", &format!("{stem}.w3d")) {
@@ -39,9 +39,15 @@ impl<'a> ModelAssets<'a> {
                 }
                 None => None,
             };
-            self.files.insert(stem.clone(), read);
+            self.files.insert(stem, read);
         }
-        Ok(self.files[&stem].as_ref())
+        Ok(())
+    }
+
+    /// The W3D file `<stem>.w3d` that `load` read; none for one the install lacks, or one not
+    /// loaded.
+    pub(crate) fn file(&self, stem: &str) -> Option<&W3dFile> {
+        self.files.get(&stem.to_ascii_lowercase())?.as_ref()
     }
 
     /// The texture a mesh names as `name`, as the loader finds it: `DDSFileClass`'s name, the

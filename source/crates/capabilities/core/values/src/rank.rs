@@ -9,12 +9,12 @@ use serde::{Deserialize, Serialize};
 pub struct Rank(NonZeroU8);
 
 impl Rank {
-    pub const FIRST: Rank = Rank(NonZeroU8::MIN);
+    pub const FIRST: Self = Self(NonZeroU8::MIN);
 
     /// Rank `rank`; `None` for 0, which is no rank.
-    pub const fn new(rank: u8) -> Option<Rank> {
+    pub const fn new(rank: u8) -> Option<Self> {
         match NonZeroU8::new(rank) {
-            Some(rank) => Some(Rank(rank)),
+            Some(rank) => Some(Self(rank)),
             None => None,
         }
     }
@@ -29,23 +29,23 @@ impl Rank {
     }
 
     /// The rank above it; `None` past the last a `u8` counts.
-    pub const fn next(self) -> Option<Rank> {
+    pub const fn next(self) -> Option<Self> {
         match self.0.checked_add(1) {
-            Some(next) => Some(Rank(next)),
+            Some(next) => Some(Self(next)),
             None => None,
         }
     }
 
     /// The count of a slot's rank, 0 before it is learned, as scripts and players read it.
-    pub fn count(rank: Option<Rank>) -> u8 {
-        rank.map_or(0, Rank::get)
+    pub fn count(rank: Option<Self>) -> u8 {
+        rank.map_or(0, Self::get)
     }
 }
 
 /// The first, the rank a call of no action, as the mode's, reads its params at.
 impl Default for Rank {
-    fn default() -> Rank {
-        Rank::FIRST
+    fn default() -> Self {
+        Self::FIRST
     }
 }
 

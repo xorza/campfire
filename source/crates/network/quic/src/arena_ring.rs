@@ -23,9 +23,9 @@ pub(crate) struct ArenaRing {
 
 impl ArenaRing {
     /// A ring whose arenas each hold at least a slot of `slot` bytes.
-    pub(crate) fn new(slot: usize) -> ArenaRing {
+    pub(crate) fn new(slot: usize) -> Self {
         let capacity = slot.max(ARENA_BYTES);
-        ArenaRing {
+        Self {
             arenas: array::from_fn(|_| BytesMut::with_capacity(capacity)),
             current: 0,
             capacity,

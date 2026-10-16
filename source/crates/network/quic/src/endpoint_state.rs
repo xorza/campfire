@@ -33,6 +33,8 @@ pub(crate) struct EndpointState {
     /// them all.
     admission: Option<Admission>,
     closing: bool,
+    /// Whether the thread ended as its socket failed.
+    failed: bool,
     max_segments: usize,
     /// Where `quinn-proto` writes one transmit, before the outbox keeps it.
     scratch: Vec<u8>,
@@ -57,20 +59,21 @@ pub(crate) enum News {
 impl News {
     const fn key(&self) -> PeerKey {
         match self {
-            News::Connected { key } | News::Lost { key, .. } => *key,
+            Self::Connected { key } | Self::Lost { key, .. } => *key,
         }
     }
 }
 
 impl EndpointState {
-    pub(crate) const fn new(endpoint: Endpoint, max_segments: usize) -> EndpointState {
-        EndpointState {
+    pub(crate) const fn new(endpoint: Endpoint, max_segments: usize) -> Self {
+        Self {
             endpoint,
             peers: Vec::new(),
             news: VecDeque::new(),
             next_id: 0,
             admission: None,
             closing: false,
+            failed: false,
             max_segments,
             scratch: Vec::new(),
             #[cfg(test)]
@@ -80,6 +83,28 @@ impl EndpointState {
 
     pub(crate) const fn closing(&self) -> bool {
         self.closing
+    }
+
+    /// Whether the thread ended, or ends after its pass: as its endpoint closed, or as its
+    /// socket failed. A thread that ended otherwise panicked.
+    pub(crate) const fn ended(&self) -> bool {
+        self.closing || self.failed
+    }
+
+    /// Ends every connection, as the thread ends with its socket failed: each entity that
+    /// carries one learns its loss, and the endpoint takes no new one.
+    pub(crate) fn fail(&mut self) {
+        self.failed = true;
+        self.admission = None;
+        for peer in self.peers.drain(..).flatten() {
+            if let Some(entity) = peer.entity() {
+                self.news.push_back(News::Lost {
+                    key: peer.key(),
+                    entity,
+                    end: LinkEnd::SocketFailed,
+                });
+            }
+        }
     }
 
     /// Takes new connections from `now`, within `limit` for each address.
@@ -147,7 +172,7 @@ impl EndpointState {
     /// one costs no state (D8); a refusal for one past its address's limit, before its handshake,
     /// so it costs no signature (D13); and the connection for any other.
     fn admit(&mut self, now: Instant, incoming: Incoming, outbox: &mut Outbox) {
-        let EndpointState {
+        let Self {
             endpoint,
             peers,
             admission,
@@ -238,7 +263,7 @@ impl EndpointState {
     /// that finds it, so every connection the frame sees between two passes carries its link
     /// (D5). A drained connection leaves the table.
     fn serve(&mut self, now: Instant, outbox: &mut Outbox) {
-        let EndpointState {
+        let Self {
             endpoint,
             peers,
             news,

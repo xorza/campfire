@@ -26,10 +26,10 @@ pub struct Match {
 
 impl Match {
     /// The match of `spec`, built in a new world.
-    pub fn new(spec: MatchSpec) -> Match {
+    pub fn new(spec: MatchSpec) -> Self {
         let mut world = World::new();
         Release::build(&mut world, spec);
-        Match {
+        Self {
             world,
             #[cfg(feature = "internals")]
             _log: None,
@@ -38,13 +38,13 @@ impl Match {
 
     /// The match in `world`, which `Release::build` built, as a session's start
     /// builds it from its log.
-    pub fn from_built(world: World) -> Match {
+    pub fn from_built(world: World) -> Self {
         assert!(
             world.contains_resource::<StateRegistry>()
                 && world.contains_resource::<CapabilitySet>(),
             "a match is a world the release built"
         );
-        Match {
+        Self {
             world,
             #[cfg(feature = "internals")]
             _log: None,
@@ -95,11 +95,11 @@ pub(crate) mod internals {
         /// The match, which fails the test that holds it on any warning `log`, started before
         /// the match's build, takes.
         #[must_use]
-        pub fn with_log(self, log: LogCheck) -> Match {
-            let Match { world, _log: None } = self else {
+        pub fn with_log(self, log: LogCheck) -> Self {
+            let Self { world, _log: None } = self else {
                 panic!("a match holds one log check");
             };
-            Match {
+            Self {
                 world,
                 _log: Some(log),
             }
@@ -118,8 +118,8 @@ pub(crate) mod internals {
             declared: &[Capability],
             rate: TickRate,
             budgets: Option<ScriptBudgets>,
-        ) -> Match {
-            let mut started = Match::test_unstarted(declared, rate, budgets);
+        ) -> Self {
+            let mut started = Self::test_unstarted(declared, rate, budgets);
             Players::start_without_mode(&mut started, [], 0);
             started
         }
@@ -129,16 +129,15 @@ pub(crate) mod internals {
             declared: &[Capability],
             rate: TickRate,
             budgets: Option<ScriptBudgets>,
-        ) -> Match {
+        ) -> Self {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let spec = MatchSpec::new(SegmentSeed::ZERO, rate)
-                .capabilities(set)
-                .role(Role::Server(budgets));
-            Match::test_of(spec)
+            let role = budgets.map_or(Role::Rules, Role::Server);
+            let spec = MatchSpec::new(SegmentSeed::ZERO, rate, role).set(set);
+            Self::test_of(spec)
         }
 
         /// The match of `spec`, as `test_unstarted` gives it.
-        fn test_of(spec: MatchSpec) -> Match {
+        fn test_of(spec: MatchSpec) -> Self {
             let log = LogCheck::start();
             let set = spec.set;
             let mut world = World::new();
@@ -154,7 +153,7 @@ pub(crate) mod internals {
             if set.contains(Capability::Combat) {
                 Combat::bind_life(&mut world, PoolId::FIRST);
             }
-            Match {
+            Self {
                 world,
                 _log: Some(log),
             }
@@ -162,26 +161,24 @@ pub(crate) mod internals {
 
         /// A server's match at `TEST_RATE` of `declared` that runs no scripts: no script host,
         /// and no system that runs scripts, as a client's.
-        pub fn unscripted(declared: &[Capability]) -> Match {
-            Match::test(declared, Match::TEST_RATE, None)
+        pub fn unscripted(declared: &[Capability]) -> Self {
+            Self::test(declared, Self::TEST_RATE, None)
         }
 
         /// A predicting client's match at `TEST_RATE` of `declared`: each of its sim's queries
         /// skips the units it holds as the server sent them, `Unpredicted`.
-        pub fn predicting(declared: &[Capability]) -> Match {
+        pub fn predicting(declared: &[Capability]) -> Self {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let spec = MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE)
-                .capabilities(set)
-                .role(Role::Client);
-            let mut started = Match::test_of(spec);
+            let spec = MatchSpec::new(SegmentSeed::ZERO, Self::TEST_RATE, Role::Client).set(set);
+            let mut started = Self::test_of(spec);
             Mode::keep_no_spawner(&mut started);
             Players::start_without_mode(&mut started, [], 0);
             started
         }
 
         /// A server's match at `TEST_RATE` of `declared`, running scripts within `budgets`.
-        pub fn server(declared: &[Capability], budgets: ScriptBudgets) -> Match {
-            Match::test(declared, Match::TEST_RATE, Some(budgets))
+        pub fn server(declared: &[Capability], budgets: ScriptBudgets) -> Self {
+            Self::test(declared, Self::TEST_RATE, Some(budgets))
         }
 
         /// Whether `value`, encoded as a snapshot holds it, decodes again: a decode keeps the
