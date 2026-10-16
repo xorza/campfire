@@ -230,7 +230,8 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::internals::TestWeapon;
     use campfire_actions::{
-        ActionBook, ActionRange, ActionSlots, Actions, InProgress, SlotKind, SlotTimes,
+        ActionBook, ActionProgress, ActionRange, ActionSlots, Actions, InProgress, SlotKind,
+        SlotTimes,
     };
     use campfire_common::{Tick, Ticks};
     use campfire_declare::ServerForm;
@@ -466,7 +467,7 @@ pub mod internals {
         pub fn attack(world: &mut World, attacker: StableId, target: StableId) {
             let entity = world.unit_entity(attacker);
             world
-                .get_mut::<ActionSlots>(entity)
+                .get_mut::<ActionProgress>(entity)
                 .unwrap()
                 .set_attack_target(Some(target));
         }
@@ -503,10 +504,11 @@ pub mod internals {
             let time = world.part::<SlotTimes>(id).slot(0).unwrap();
             let book = world.resource::<ActionBook>();
             let windup = book.get(slot.action.unwrap()).unwrap().ranks[0].windup;
-            let started = slots.attacking().and_then(|_| slots.in_progress());
+            let progress = world.part::<ActionProgress>(id);
+            let started = progress.attacking().and_then(|_| progress.in_progress());
             let started = started.and_then(InProgress::resolves_at);
             Self {
-                target: slots.attack_target(),
+                target: progress.attack_target(),
                 started: started.map(|at| Tick::new(at.get() - windup.get())),
                 ready_at: time.ready_at,
             }

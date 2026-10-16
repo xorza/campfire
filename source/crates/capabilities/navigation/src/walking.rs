@@ -6,7 +6,7 @@ use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
 use campfire_units::{
     ArrivedShort, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
 };
-use campfire_values::{Block, UnitTags};
+use campfire_values::{Block, Motion, UnitTags};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::broadphase::Broadphase;
@@ -77,7 +77,7 @@ impl Walking {
             .map(|(&id, &at, body, destination, tags)| TickBody {
                 body: IndexedBody::of(id, at.get(), body),
                 walks: Self::walks(destination, tags, false),
-                gathers: UnitTags::passes(tags),
+                gathers: tags.is_some_and(|tags| tags.passes()),
             });
         steering.read(&statics, read);
         let stuck_ticks = rate
@@ -101,7 +101,7 @@ impl Walking {
                 step: step.get(),
                 walker: Walker::walking(Some(body)),
                 stuck: u64::from(progress.track(at.get(), step.get())) >= stuck_ticks,
-                gathering: UnitTags::passes(tags),
+                gathering: tags.is_some_and(|tags| tags.passes()),
             };
             if let Some(detour) = steering.steer(&mut planner, &grid, &statics, steered, &route) {
                 route.splice(at.get(), steering.short(), detour.skipped, detour.reached);
@@ -261,7 +261,7 @@ impl Walking {
                         layer: body.layer(),
                         movable,
                         walking: Self::walks(destination, tags, false),
-                        gathering: UnitTags::passes(tags),
+                        gathering: tags.is_some_and(|tags| tags.passes()),
                     },
                 ),
         );
@@ -299,7 +299,10 @@ impl Walking {
     /// move, when `forced`, stop it. One they stop stands, to the units round it as to itself.
     fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, forced: bool) -> bool {
         destination.is_some_and(|destination| destination.get().is_some())
-            && !UnitTags::blocks(tags, forced, Block::Move)
+            && !tags.copied().unwrap_or_default().blocks(
+                if forced { Motion::Forced } else { Motion::Own },
+                Block::Move,
+            )
     }
 
     /// Clamps each unit that walks into the bounds: those whose place changed since the last run,

@@ -10,7 +10,7 @@
 mod showcase;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlot, ActionSlots, SlotKind};
+use campfire_actions::{ActionProgress, ActionSlot, ActionSlots, SlotKind};
 use campfire_capabilities::Match;
 use campfire_combat::{Deaths, Respawn};
 use campfire_common::Tick;
@@ -230,7 +230,7 @@ impl Seen {
         let [_, gale, husk, kensho, ..] = heroes;
         let target = |unit| {
             let entity = world.entity_of(unit).unwrap();
-            world.get::<ActionSlots>(entity).unwrap().attack_target()
+            world.get::<ActionProgress>(entity).unwrap().attack_target()
         };
         let xp = || heroes.map(|hero| level_xp(moba, world, hero)).to_vec();
         if [1400, 1401].contains(&tick) {

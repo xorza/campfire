@@ -13,22 +13,25 @@ pub struct UnitTags {
     pub immune: TagSet,
 }
 
+/// How a unit moves: by its own steps, or by force, as a knockback moves it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Motion {
+    Own,
+    Forced,
+}
+
 impl UnitTags {
-    /// The properties of a unit with `tags`: none for one with no tags.
-    pub fn properties_of(tags: Option<&Self>) -> TagProperties {
-        tags.map_or_else(TagProperties::default, |tags| tags.properties)
+    /// Whether a unit with these tags passes through each unit that passes too, as a worker in
+    /// its gather loop does.
+    pub const fn passes(self) -> bool {
+        self.properties.passes()
     }
 
-    /// Whether a unit with `tags` passes through each unit that passes too, as a worker in its
-    /// gather loop does.
-    pub fn passes(tags: Option<&Self>) -> bool {
-        Self::properties_of(tags).passes()
-    }
-
-    /// Whether a unit with `tags`, under a forced move when `forced`, is kept from `block`: by its
-    /// tags, or by the forced move from a step, a cast or an attack.
-    pub fn blocks(tags: Option<&Self>, forced: bool, block: Block) -> bool {
-        Self::properties_of(tags).blocks(block)
-            || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
+    /// Whether a unit with these tags, in `motion`, is kept from `block`: by its tags, or by a
+    /// forced move from a step, a cast or an attack.
+    pub const fn blocks(self, motion: Motion, block: Block) -> bool {
+        self.properties.blocks(block)
+            || matches!(motion, Motion::Forced)
+                && matches!(block, Block::Move | Block::Cast | Block::Attack)
     }
 }

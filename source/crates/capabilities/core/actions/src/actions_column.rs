@@ -14,13 +14,17 @@ use crate::action::Action;
 use crate::action_book::ActionBook;
 use crate::action_range::ActionRange;
 use crate::action_slots::ActionSlots;
+use crate::action_slots::action_progress::ActionProgress;
 use crate::delivery::Delivery;
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
 use crate::slot_kinds::SlotKinds;
 
 /// The part of a unit the actions read into its row: its slots.
-pub(super) type RowReads = Option<&'static ActionSlots>;
+pub(super) type RowReads = (
+    Option<&'static ActionSlots>,
+    Option<&'static ActionProgress>,
+);
 
 /// What the action pipeline adds to the script view: the match's actions and slot kinds, and each
 /// unit's ability slots, the unit its attacks aim at, and the range of its first weapon, a row
@@ -121,7 +125,7 @@ impl ActionsRows {
 impl ActionsColumn {
     /// Adds the row of a unit with `slots`, or with none: each slot's rank, its action's ranks
     /// and its weapon filter, the attack target, and the range of its first weapon.
-    pub fn push(&mut self, slots: Option<&ActionSlots>) {
+    pub fn push(&mut self, slots: Option<&ActionSlots>, progress: Option<&ActionProgress>) {
         let (book, rows) = (&self.book, self.rows.now_mut());
         let start = u32::try_from(rows.slots.len()).expect("slots fit u32");
         let Some(slots) = slots else {
@@ -153,7 +157,7 @@ impl ActionsColumn {
         }));
         let end = u32::try_from(rows.slots.len()).expect("slots fit u32");
         rows.rows.push(ActionsRow {
-            target: slots.attack_target(),
+            target: progress.and_then(ActionProgress::attack_target),
             attack_range,
             slots: start..end,
         });
@@ -254,7 +258,10 @@ impl ActionsColumn {
     }
 
     /// Adds a unit's actions to the actions' column of the script view.
-    pub fn fill_row(slots: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
-        fill.column.push(slots);
+    pub fn fill_row(
+        (slots, progress): ROQueryItem<'_, '_, RowReads>,
+        fill: &mut RowFill<'_, Self>,
+    ) {
+        fill.column.push(slots, progress);
     }
 }

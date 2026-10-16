@@ -6,7 +6,7 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::world::EntityRef;
-use campfire_actions::ActionSlots;
+use campfire_actions::ActionProgress;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Tick, Ticks};
@@ -246,8 +246,8 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
         let units = || world.resource::<EntityIndex>().iter();
         let aimed = units().any(|(_, entity)| {
             let unit = world.entity(entity);
-            unit.get::<ActionSlots>()
-                .and_then(ActionSlots::attack_target)
+            unit.get::<ActionProgress>()
+                .and_then(ActionProgress::attack_target)
                 == Some(hero_id)
                 && !unit.contains::<MoveStep>()
         });
@@ -341,7 +341,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
         .insert(frail);
     // The tower, at (8, -3), stands out of the walker's sight at (0, -2): an attack on it does
     // nothing, on the server and on the client, which does not hold it.
-    let slots = |app: &App| app.world().get::<ActionSlots>(hero_entity(app)).cloned();
+    let slots = |app: &App| app.world().get::<ActionProgress>(hero_entity(app)).copied();
     let attacking = |app: &App| slots(app)?.attacking();
     let start = hero(local.server());
     local.order(0, OrdersAction::Attack { target: tower });

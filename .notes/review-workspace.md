@@ -101,23 +101,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 - [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. **Skipped: see `review-workspace_QUESTIONS.md`, batch 9, item 5.**
 
-### 11. Actions: the slot table and its progress
-
-`actions`: `action_slots`, `holds`, `ready_waits`, `actions_effect`, `action_range`, `placement_data`, `action_parts`, `shots`, `shot_hits`, `fan`, `effect_list_book`, `unit_tags`; `sim`: `due_run`; `abilities`: `channels`, `toggles`, `casts`, `lib`; `combat`: `attacks`; `projectiles`: `flights`; `values`. Format, as the snapshot and the replicated types change; moves goldens.
-
-- [ ] actions/src/action_slots/mod.rs:37-41; abilities/src/channels.rs:56-68; combat/src/attacks.rs:108-146 — `ActionSlots` holds the slot table and the progress (`underway`, `attack_target`, `interrupted`). Each attack and channel step changes it, so `hold_charges` and the four `want_passives` (holds.rs:51-52, 112) visit every active unit, and replication sends the whole slot `Vec`. → The progress is its own component, as `SlotTimes` is; the hold passes key on the table and its times.
-- [ ] actions/src/holds.rs:55, sim/src/due_run.rs:19 — `hold_charges` pushes into `DueRun` on each visit, which never deduplicates: one heap entry per tick per unit until the charge is due. → Push only when the unit's next charge tick changes, or key the run by entity.
-- [ ] actions/src/holds.rs:78-137, ready_waits.rs — `want_passives` keeps a `ReadyWaits` bitset and visits each marked unit four times a tick for a whole cooldown. → A due-run revisit at `ready_at`; `ReadyWaits` goes.
-- [ ] actions/src/actions_effect.rs:20-23 — a timed spawn inserts `Lifespan` after the spawn and its hooks. → `Lifespan` in the spawn's `parts`.
-- [ ] actions/src/action_range.rs:25-27, placement_data.rs:34, action_parts.rs:89-91 — "a distance from 0" is checked in three places, with `ActionProblem::Bounce`; `action_range` swallows the inner error. → A checked non-negative distance type in `values`, read at the boundary.
-- [ ] actions/src/shots.rs:16, shot_hits.rs:16 — `Shot` and `ShotHit` repeat six fields. → One payload struct that each holds.
-- [ ] actions/src/fan/mod.rs:17, delivery_data.rs:52 — at 360°, the first and last projectiles fly one direction. → Cap the spread below a full turn, or divide a full turn by `count`.
-- [ ] actions/src/effect_list_book.rs:225 — `ListsOf::Launch` with `OnResolve` is `unreachable!`. → A launch's lists take a two-case hook.
-- [ ] abilities/src/toggles.rs:70-71 — re-implements `Abilities::blocked`. `blocked` and its kin take five or six parameters (abilities/src/lib.rs:118, channels.rs:74, 137, casts.rs:387, projectiles/src/flights.rs:119). → A `Caster` view (tags, forced, use group) that `blocked` reads.
-- [ ] Bool parameters: `ActionSlots::step_channel(…, blocked: bool, …)` (action_slots/mod.rs:486), `UnitTags::blocks(…, forced: bool, …)` (unit_tags.rs:30), `Relations::set(…, vision: bool)`; `UnitTags::properties_of`/`passes`/`blocks` take `Option<&UnitTags>` and no `self`. → Enums; methods or free fns.
-- [ ] actions/src/action_slots/slot_times.rs:296 — `set_charges` is `pub` for tests. → `pub(crate)`, with an `internals` reach-in.
-- [ ] Docs: `check_ranks`' doc on `number_rule` (action_data/mod.rs:210); "a unit of the mode's type" where the code resolves the action's package (effect_data.rs:35, does_spec.rs:17); "A train's `requires`" where `build` has it too (requires_data.rs:5); `Actions::load`, which exists only in tests (action_book.rs:42); "each of its places" for one (action_start.rs:16).
-
 ### 12. Units, geometry, visibility, values
 
 `units`: `unit_core`, `unit_type_book`, `hit_handle`, `units_world`, `forced_move`; `declare`: `entity_parts`; `deliveries`; `navigation`: `forced_moves`; `geometry`: `lib`, `halves`, `grid`, `body_box`; `visibility`; `values`; `stats`: `modifier_book`. May move goldens: the spawn order changes.

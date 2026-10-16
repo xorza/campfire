@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, Actions, SlotKind, TimedSlots};
+use campfire_actions::{ActionProgress, ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
@@ -329,7 +329,10 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     assert_eq!(held, 3);
     for id in [owned, unowned] {
         let entity = game.unit_entity(id);
-        assert_eq!(game.get::<ActionSlots>(entity).unwrap().in_progress(), None);
+        assert_eq!(
+            game.get::<ActionProgress>(entity).unwrap().in_progress(),
+            None
+        );
         assert_eq!(game.get::<TrainQueue>(entity), Some(&TrainQueue::default()));
     }
 

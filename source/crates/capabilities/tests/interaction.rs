@@ -1,7 +1,7 @@
 use campfire_abilities::Abilities;
 use campfire_actions::{
-    ActionData, ActionKind, ActionRange, ActionSlots, ActionTarget, Actions, ChannelData,
-    RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
+    ActionData, ActionKind, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions,
+    ChannelData, RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
@@ -161,7 +161,7 @@ fn held(game: &Match, user: StableId) -> Option<ActionId> {
 
 /// Whether something is under way from the slots of `user`.
 fn busy(game: &Match, user: StableId) -> bool {
-    game.part::<ActionSlots>(user).in_progress().is_some()
+    game.part::<ActionProgress>(user).in_progress().is_some()
 }
 
 fn failed(game: &Match) -> Vec<FailedCall> {
@@ -255,7 +255,7 @@ fn a_use_is_dropped_by_a_unit_with_no_use_slot_one_its_users_refuse_or_one_beyon
     let owner = Owner::new(PlayerSlot::new(0));
     let unslotted = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(0), owner);
     order(&mut game, unslotted, use_of(shrine));
-    assert_eq!(game.part::<ActionSlots>(unslotted).in_progress(), None);
+    assert_eq!(game.part::<ActionProgress>(unslotted).in_progress(), None);
     // An altar of team 1 admits its allies alone, and the user is of team 0: its slot stays
     // empty. An altar of the user's team admits it: ordered in tick 2, its offering resolves in
     // tick 5.

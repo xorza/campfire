@@ -230,6 +230,7 @@ impl Projectiles {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
+    use campfire_actions::ShotDamage;
     use campfire_declare::ByType;
     use campfire_math::{Num, Vec3};
     use campfire_sim::{EntityIndex, Position, StableId, TickRate};
@@ -278,13 +279,13 @@ pub mod internals {
                 from: Vec3::ZERO,
                 unit_type,
                 flight: Flight::line(Vec3::ZERO, direction, reach, None),
-                payload: LaunchPayload::Attack {
+                payload: LaunchPayload::Attack(ShotDamage {
                     action: ActionId::new(0),
                     rank: Rank::FIRST,
                     amount: Num::int(10),
                     kind: DamageKind::new(0),
                     roll: Num::ZERO,
-                },
+                }),
             });
         }
 
@@ -294,7 +295,7 @@ pub mod internals {
             projectiles
                 .filter_map(|(_, entity)| world.get::<Projectile>(entity))
                 .map(|projectile| match projectile.payload() {
-                    Payload::Attack { roll, .. } => roll,
+                    Payload::Attack(damage) => damage.roll,
                     Payload::Action { .. } => panic!("an attack's projectile"),
                 })
                 .collect()

@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionSlots, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf,
+    ActionBook, ActionProgress, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf,
 };
 use campfire_common::Tick;
 use campfire_declare::ByType;
@@ -229,8 +229,10 @@ impl DamagePass {
 
     /// The entity of `id`, when it is living and its tags let damage reach it.
     fn damageable(world: &World, id: StableId) -> Option<Entity> {
-        Self::living(world, id)
-            .filter(|&entity| !UnitTags::properties_of(world.get(entity)).blocks(Block::Damage))
+        Self::living(world, id).filter(|&entity| {
+            let tags = world.get::<UnitTags>(entity);
+            !tags.is_some_and(|tags| tags.properties.blocks(Block::Damage))
+        })
     }
 
     /// Runs the `on_hit` list of the weapon of `damage`, an attack's that reached its target, in
@@ -245,7 +247,7 @@ impl DamagePass {
         let world = batch.world();
         if world
             .resource::<EffectListBook>()
-            .of(ListsOf::Action(weapon), ListHook::OnHit)
+            .of(ListsOf::Action(weapon, ListHook::OnHit))
             .is_empty()
         {
             return;
@@ -265,8 +267,7 @@ impl DamagePass {
         };
         batch.hook_call(start, Hook::OnHit, Some(source), |batch| {
             let call = ListCall {
-                of: ListsOf::Action(weapon),
-                hook: ListHook::OnHit,
+                of: ListsOf::Action(weapon, ListHook::OnHit),
                 reached: ActionTarget::Unit(damage.target),
             };
             EffectListBook::queue(batch.world(), call, ctx)
@@ -335,12 +336,11 @@ impl DamagePass {
         let index = world.resource::<EntityIndex>();
         let source = damage.source.filter(|&source| index.get(source).is_some());
         let mut left = damage.amount.max(Num::ZERO);
-        let slots = world.get::<ActionSlots>(entity);
-        if left > Num::ZERO
-            && slots.is_some_and(|slots| slots.damage_cuts(world.resource::<ActionBook>()))
-        {
-            let slots = world.get_mut::<ActionSlots>(entity);
-            slots.expect("a unit whose channel runs").cut_channel();
+        let progress = world.get::<ActionProgress>(entity);
+        let book = world.resource::<ActionBook>();
+        if left > Num::ZERO && progress.is_some_and(|progress| progress.damage_cuts(book)) {
+            let progress = world.get_mut::<ActionProgress>(entity);
+            progress.expect("a unit whose channel runs").cut_channel();
         }
         let clocks = world.get::<ModifierClocks>(entity);
         if clocks.is_some_and(ModifierClocks::shielded) {

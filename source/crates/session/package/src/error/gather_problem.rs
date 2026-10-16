@@ -10,7 +10,4 @@ pub enum GatherProblem {
     /// Its range is global, which no worker walks into.
     #[error("action \"{0}\": a gather's range is in meters")]
     Global(DeclaredName),
-    /// Its bounce is no distance from 0.
-    #[error("action \"{0}\": a gather's bounce is a distance from 0")]
-    Bounce(DeclaredName),
 }

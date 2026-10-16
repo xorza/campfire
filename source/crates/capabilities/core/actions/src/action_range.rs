@@ -1,4 +1,5 @@
 use campfire_math::Num;
+use campfire_values::Distance;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -21,10 +22,11 @@ impl<'de> Deserialize<'de> for ActionRange {
             Meters(Num),
             Word(Word),
         }
-        match Written::deserialize(deserializer) {
-            Ok(Written::Meters(meters)) if meters >= Num::ZERO => Ok(Self::Meters(meters)),
-            Ok(Written::Word(Word::Global)) => Ok(Self::Global),
-            _ => Err(Error::custom("a range is meters from 0, or global")),
+        match Written::deserialize(deserializer)? {
+            Written::Meters(meters) => Distance::new(meters)
+                .map(|meters| Self::Meters(meters.get()))
+                .ok_or_else(|| Error::custom("a range is meters from 0, or global")),
+            Written::Word(Word::Global) => Ok(Self::Global),
         }
     }
 }

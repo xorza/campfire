@@ -450,11 +450,11 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 29 of a unit, items' `UseGroup`, orders'
+    // player, the mode's three of the match, the 30 of a unit, items' `UseGroup`, orders'
     // `NextThink` and the units' `StatusTags` among them, and the 47 books, 14 of the core's,
     // interaction's two and combat's armors among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 34);
+    assert_eq!(audit.parts.len(), 35);
     assert_eq!(audit.books.len(), 47);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 14);

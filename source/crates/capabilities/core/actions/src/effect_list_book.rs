@@ -50,7 +50,6 @@ pub struct EffectSpec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ListCall {
     pub of: ListsOf,
-    pub hook: ListHook,
     pub reached: ActionTarget,
 }
 
@@ -209,21 +208,15 @@ impl EffectListBook {
         Ok(DoesSpec::Capability(of_capability))
     }
 
-    /// The list of `of` that runs before its `hook`: an action's `on_resolve`, `on_hit` or
-    /// `on_end`, or a launch's `on_hit` or `on_end`.
-    pub fn of(&self, of: ListsOf, hook: ListHook) -> &[EffectSpec] {
-        let run = match (of, hook) {
-            (ListsOf::Action(action), _) => self
+    /// The list `of` names: an action's `on_resolve`, `on_hit` or `on_end`, or a launch's
+    /// `on_hit` or `on_end`.
+    pub fn of(&self, of: ListsOf) -> &[EffectSpec] {
+        let run = match of {
+            ListsOf::Action(action, hook) => self
                 .runs
                 .get(action.index())
                 .map(|runs| &runs[hook.index()]),
-            (ListsOf::Launch(launch), ListHook::OnHit | ListHook::OnEnd) => {
-                let list = usize::from(hook == ListHook::OnEnd);
-                Some(&self.launches[launch.0 as usize][list])
-            }
-            (ListsOf::Launch(_), ListHook::OnResolve) => {
-                unreachable!("a launch's area has a hit and an end alone")
-            }
+            ListsOf::Launch(launch, hook) => Some(&self.launches[launch.0 as usize][hook.index()]),
         };
         run.map_or(&[], |run| {
             &self.effects[run.start as usize..run.end as usize]
@@ -242,10 +235,10 @@ impl EffectListBook {
     /// queues as its capability declared, which can fail the call, as experience to a unit
     /// without the track fails `ctx.add_xp`.
     pub fn queue(world: &World, call: ListCall, ctx: &Ctx) -> Result<(), CallError> {
-        let ListCall { of, hook, reached } = call;
+        let ListCall { of, reached } = call;
         let mut held = ctx.frame();
         let (frame, view) = (&mut *held, ctx.view());
-        let list = world.resource::<Self>().of(of, hook);
+        let list = world.resource::<Self>().of(of);
         if list.is_empty() {
             return Ok(());
         }

@@ -581,7 +581,7 @@ impl<'a> BookBuilder<'a> {
         let check = |rule: &PlacementRule| {
             Ok(PlacementCheck {
                 filter: Filter::resolve(&rule.filter, types.tags())?,
-                distance: rule.distance,
+                distance: rule.distance.get(),
             })
         };
         let placement = data.placement.as_ref();

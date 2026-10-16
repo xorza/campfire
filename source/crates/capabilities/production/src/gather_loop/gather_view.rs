@@ -246,7 +246,7 @@ impl GatherView<'_, '_> {
             body: body.copied(),
         };
         let node = self.node(order.node.node, seeker);
-        if UnitTags::properties_of(tags).blocks(Block::Use) {
+        if tags.is_some_and(|tags| tags.properties.blocks(Block::Use)) {
             return match (order.step, node) {
                 (GatherStep::Gathering { .. }, Some(node)) => Step::Interrupt(node.entity),
                 _ => Step::Hold,

@@ -2876,7 +2876,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Gather(GatherProblem::Bounce(action)) if action == "mine"),
+        refused: |problem| read_fails(problem, "data/mode.toml", "a distance is a number from 0"),
     },
     Flaw {
         file: MODE_DATA,

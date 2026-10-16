@@ -42,7 +42,8 @@ impl ActionBook {
         Arc::ptr_eq(&self.actions, &other.actions) && Arc::ptr_eq(&self.names, &other.names)
     }
 
-    /// Loads `action`, its hooks those `scripts` defines; see `Actions::load`.
+    /// Loads `action`, whose parts the load resolved, as the next action of the book: its hooks
+    /// those `scripts` defines for its script, which its data names exactly when it has one.
     pub fn load(&mut self, scripts: &ScriptBook, action: PackageAction<'_>) -> ActionId {
         let PackageAction {
             package,

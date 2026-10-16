@@ -7,7 +7,7 @@ use std::num::NonZeroU32;
 use std::ops::Range;
 use std::path::Path;
 
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionProgress, ActionSlots};
 use campfire_capabilities::{Match, Order};
 use campfire_common::{
     AfterLeave, PackageFingerprint, PlayerSlot, StateHash, Tick, Ticks, Version,
@@ -581,8 +581,8 @@ impl Seen {
         let index = game.resource::<EntityIndex>();
         let entity = |id: u64| index.iter().find(|(unit, _)| unit.get() == id).unwrap().1;
         let targets = [0, 1, 3, 4, 5, 6].map(|id| {
-            let slots = game.entity(entity(id)).get::<ActionSlots>().unwrap();
-            slots.attack_target().map(StableId::get)
+            let progress = game.entity(entity(id)).get::<ActionProgress>().unwrap();
+            progress.attack_target().map(StableId::get)
         });
         let hero = game.entity(entity(2)).get::<Life>().unwrap();
         let projectiles = index

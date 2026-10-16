@@ -9,13 +9,12 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionBook, ActionSlot, ActionTarget, CastSpends, UseGroup};
+use campfire_actions::{ActionTarget, CastSpends};
 use campfire_common::Ticks;
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::Deliverers;
 use campfire_script::{ScriptValue, View};
 use campfire_sim::{Capability, TickRate};
-use campfire_values::{Block, UnitTags};
 
 mod abilities_api;
 mod abilities_effect;
@@ -112,20 +111,6 @@ impl Abilities {
         }
     }
 
-    /// Whether a unit with `tags`, under a forced move when `forced`, of the use group `used`, is
-    /// kept from the action in `slot`, as `book` gives it: from using it, for a slot of its use
-    /// group or a use, else, and with no slot, from casting it.
-    fn blocked(
-        tags: Option<&UnitTags>,
-        forced: bool,
-        used: Option<&UseGroup>,
-        slot: Option<ActionSlot>,
-        book: &ActionBook,
-    ) -> bool {
-        let group = slot.map_or(Block::Cast, |slot| UseGroup::group(used, slot, book));
-        UnitTags::blocks(tags, forced, group)
-    }
-
     /// A second at `rate`, the time a toggle pays its cost each.
     const fn second(rate: TickRate) -> Ticks {
         rate.ticks(1000)
@@ -139,7 +124,7 @@ pub mod internals {
 
     use bevy_ecs::world::World;
     use campfire_actions::{
-        ActionSlot, ActionSlots, ActionTarget, InProgress, SlotTime, SlotTimes,
+        ActionProgress, ActionSlot, ActionSlots, ActionTarget, InProgress, SlotTime, SlotTimes,
     };
     use campfire_math::Num;
     use campfire_script::internals::FailedCall;
@@ -180,8 +165,8 @@ pub mod internals {
         /// would make it.
         pub fn casts(world: &mut World, casts: &[(StableId, ActionTarget)]) {
             for &(id, target) in casts {
-                let mut slots = world.part_mut::<ActionSlots>(id);
-                slots.order(0, target);
+                let mut progress = world.part_mut::<ActionProgress>(id);
+                progress.order(0, target);
             }
             world.step();
         }
@@ -209,8 +194,8 @@ pub mod internals {
 
         pub fn casting(world: &World, id: StableId) -> Option<InProgress> {
             let entity = world.unit_entity(id);
-            let slots = world.get::<ActionSlots>(entity).unwrap();
-            slots
+            let progress = world.get::<ActionProgress>(entity).unwrap();
+            progress
                 .in_progress()
                 .filter(|underway| matches!(underway, InProgress::Order { .. }))
         }

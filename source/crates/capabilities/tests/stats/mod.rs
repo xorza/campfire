@@ -891,7 +891,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         let stats = world.get::<UnitStats>(entity).unwrap();
         assert_eq!(stats.values()[speed.index()], Num::int(2));
         let tags = world.get::<UnitTags>(entity);
-        assert!(UnitTags::properties_of(tags).blocks(Block::Move));
+        assert!(tags.is_some_and(|tags| tags.properties.blocks(Block::Move)));
     }
     assert_eq!(game.state_hash(), restored.state_hash());
 

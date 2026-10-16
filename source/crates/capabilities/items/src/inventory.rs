@@ -3,7 +3,7 @@ use std::num::{NonZeroU8, NonZeroU32, NonZeroUsize};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, SlotTimes, UseGroup};
+use campfire_actions::{ActionProgress, ActionSlots, SlotTimes, UseGroup};
 use campfire_declare::PerType;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
@@ -21,11 +21,13 @@ pub struct Inventory {
     slots: Vec<Option<ItemStack>>,
 }
 
-/// A carrier's action slots, their times, and the use group whose slots its inventory fills.
+/// A carrier's action slots, their times and what it has under way, and the use group whose
+/// slots its inventory fills.
 #[derive(Debug)]
 pub struct CarrierSlots<'a> {
     pub(crate) slots: &'a mut ActionSlots,
     pub(crate) times: &'a mut SlotTimes,
+    pub(crate) progress: &'a mut ActionProgress,
     pub(crate) group: UseGroup,
 }
 
@@ -196,6 +198,7 @@ impl Inventory {
         let CarrierSlots {
             slots,
             times,
+            progress,
             group,
         } = carrier;
         let first = slots.first_of(group.kind());
@@ -205,7 +208,7 @@ impl Inventory {
                 let action =
                     item.and_then(|item| book.get(item).expect("an item of the book").action);
                 let at = u8::try_from(at).expect("a slot index fits u8");
-                slots.fill(times, first + at, action);
+                slots.fill((times, progress), first + at, action);
             }
         }
     }
@@ -218,6 +221,7 @@ impl Inventory {
         let CarrierSlots {
             slots,
             times,
+            progress,
             group,
         } = carrier;
         let first = slots.first_of(group.kind());
@@ -243,7 +247,7 @@ impl Inventory {
             carried.uses = book.get(carried.item).expect("an item of the book").uses;
         } else {
             *held = None;
-            slots.fill(times, slot, None);
+            slots.fill((times, progress), slot, None);
         }
     }
 
@@ -257,11 +261,12 @@ impl Inventory {
         if let Some(CarrierSlots {
             slots,
             times,
+            progress,
             group,
         }) = carrier
         {
             let first = slots.first_of(group.kind());
-            slots.swap(times, first + from, first + to);
+            slots.swap((times, progress), first + from, first + to);
         }
     }
 }

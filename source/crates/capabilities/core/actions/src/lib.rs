@@ -36,6 +36,7 @@ mod amount;
 mod build_start;
 mod capability_does_spec;
 mod cast_spends;
+mod caster;
 mod channel_call;
 mod checked_action;
 mod construct_data;
@@ -63,8 +64,8 @@ mod purse;
 mod range_field;
 mod rank_fields;
 mod rank_values;
-mod ready_waits;
 mod requires_data;
+mod shot_damage;
 mod shot_hits;
 mod shots;
 mod slot_aim;
@@ -89,6 +90,7 @@ pub use crate::action_kind::{ActionKind, MeteredKind};
 pub use crate::action_names::ActionNames;
 pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
+pub use crate::action_slots::action_progress::ActionProgress;
 pub use crate::action_slots::slot_times::{ActionCheck, SlotCharges, SlotTime, SlotTimes};
 pub use crate::action_slots::timed_slots::TimedSlots;
 pub use crate::action_slots::{ActionSlot, ActionSlots};
@@ -98,6 +100,7 @@ pub use crate::amount::Amount;
 pub use crate::build_start::BuildStart;
 pub use crate::capability_does_spec::CapabilityDoesSpec;
 pub use crate::cast_spends::CastSpends;
+pub use crate::caster::Caster;
 pub use crate::channel_call::{ChannelCall, ChannelStep};
 pub use crate::checked_action::CheckedAction;
 pub use crate::construct_data::ConstructData;
@@ -119,7 +122,7 @@ pub use crate::kind_data::{FromData, KindData};
 pub use crate::kind_spec::KindSpec;
 pub use crate::launch_id::LaunchId;
 pub use crate::list_hook::ListHook;
-pub use crate::lists_of::ListsOf;
+pub use crate::lists_of::{ListsOf, ReachHook};
 pub use crate::payer::Payer;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::purse::Purse;
@@ -129,6 +132,7 @@ pub use crate::rank_fields::{
 };
 pub use crate::rank_values::{ChannelRule, ChargeRule, ClipRule, LoadedRanks, RankValues};
 pub use crate::requires_data::RequiresData;
+pub use crate::shot_damage::ShotDamage;
 pub use crate::shot_hits::{ShotHit, ShotHits};
 pub use crate::shots::{Shot, Shots};
 pub use crate::slot_aim::SlotAim;
@@ -207,10 +211,12 @@ impl Module for Actions {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ActionsSet>();
         d.component::<ActionSlots>();
+        d.component::<ActionProgress>();
         d.component::<SlotTimes>();
         d.scratch::<Shots>();
         d.scratch::<ShotHits>();
         d.require::<ActionSlots, SlotTimes>();
+        d.require::<ActionSlots, ActionProgress>();
         d.book::<ActionBook>();
         d.book::<ParamBook>();
         d.book::<EffectListBook>();
@@ -221,6 +227,10 @@ impl Module for Actions {
         d.book::<ByType<ActionSlots>>();
         d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
+        d.part::<BodyUnit, ActionProgress>(|at| {
+            at.of_type::<ActionSlots>()
+                .map(|_| ActionProgress::default())
+        });
     }
 
     /// Adds the actions to a match whose core is installed, with none loaded yet, and the holds

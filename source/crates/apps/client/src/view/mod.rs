@@ -26,7 +26,7 @@ use bevy::time::{Fixed, Time};
 use bevy::transform::components::Transform;
 use bevy::window::Window;
 use bevy::world_serialization::WorldAssetRoot;
-use campfire_actions::ActionSlots;
+use campfire_actions::ActionProgress;
 use campfire_areas::{Area, AreaReach};
 use campfire_mode::{MatchEnd, MatchResult};
 use campfire_net::JoinState;
@@ -195,7 +195,7 @@ const LEAN: f32 = 0.35;
 
 /// The living units with actions, each with the attack it may be in.
 type Attackers<'w, 's> =
-    Query<'w, 's, (&'static Drawing, &'static ActionSlots), (Without<Dead>, Allow<Unpredicted>)>;
+    Query<'w, 's, (&'static Drawing, &'static ActionProgress), (Without<Dead>, Allow<Unpredicted>)>;
 
 /// The areas not drawn yet: where each lies, its type, and whether the client only receives it.
 type NewAreas<'w, 's> = Query<
@@ -603,7 +603,7 @@ impl View {
         roots: Query<'_, '_, (&Transform, Option<&Look>, &Shape), Without<Figure>>,
         mut figures: Query<'_, '_, &mut Transform, With<Figure>>,
     ) {
-        for (drawing, slots) in &units {
+        for (drawing, progress) in &units {
             // A unit its models draw has no figure to lean, nor a target to look up.
             let Ok((root, Some(look), shape)) = roots.get(drawing.root()) else {
                 continue;
@@ -611,7 +611,7 @@ impl View {
             let Ok(mut figure) = figures.get_mut(look.figure) else {
                 continue;
             };
-            let aim = slots
+            let aim = progress
                 .attacking()
                 .and_then(|target| index.get(target))
                 .and_then(|target| drawn.get(target).ok())

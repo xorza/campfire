@@ -133,7 +133,7 @@ impl Orders {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_actions::{ActionSlots, InProgress, SlotTimes};
+    use campfire_actions::{ActionProgress, InProgress, SlotTimes};
     use campfire_common::{PlayerSlot, Tick};
     use campfire_declare::ByType;
     use campfire_script::{ScriptFailures, ScriptId};
@@ -195,7 +195,7 @@ pub mod internals {
         /// When the attack it winds up strikes, if one winds up.
         pub fn strikes_at(world: &World, id: StableId) -> Option<Tick> {
             world
-                .part::<ActionSlots>(id)
+                .part::<ActionProgress>(id)
                 .in_progress()
                 .and_then(InProgress::resolves_at)
         }

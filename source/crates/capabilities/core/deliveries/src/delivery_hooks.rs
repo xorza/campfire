@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionTarget, EffectListBook, ListCall, ListsOf};
+use campfire_actions::{ActionBook, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf};
 use campfire_script::{CallStart, Pool, ScriptValue, ScriptsWorld};
 use campfire_sim::{SimTick, SimWorld};
 use campfire_units::{HitHandle, Owner};
@@ -58,8 +58,8 @@ impl DeliveryHooks {
             let ctx = batch.ctx().clone();
             for delivered in due {
                 let Delivered { by, reach, hit } = *delivered;
-                let list = reach.list();
-                let hook = list.hook();
+                let reached = reach.hook();
+                let hook = ListHook::from(reached).hook();
                 let book = batch.world().resource::<ActionBook>();
                 let action = book
                     .get(by.action)
@@ -67,10 +67,11 @@ impl DeliveryHooks {
                 let script = action.hook(hook).filter(|_| by.launch.is_none());
                 let package = action.package;
                 let lists = batch.world().resource::<EffectListBook>();
-                let of = by
-                    .launch
-                    .map_or(ListsOf::Action(by.action), ListsOf::Launch);
-                if script.is_none() && lists.of(of, list).is_empty() {
+                let of = match by.launch {
+                    Some(launch) => ListsOf::Launch(launch, reached),
+                    None => ListsOf::Action(by.action, ListHook::from(reached)),
+                };
+                if script.is_none() && lists.of(of).is_empty() {
                     continue;
                 }
                 let view = ctx.view();
@@ -89,11 +90,7 @@ impl DeliveryHooks {
                 let pool = Pool::of(owner);
                 batch.hook_call(start, hook, Some(by.source), |batch| {
                     let reached = reach.unit().map_or(ActionTarget::None, ActionTarget::Unit);
-                    let call = ListCall {
-                        of,
-                        hook: list,
-                        reached,
-                    };
+                    let call = ListCall { of, reached };
                     EffectListBook::queue(batch.world(), call, &ctx)?;
                     let Some(script) = script else {
                         return Ok(());

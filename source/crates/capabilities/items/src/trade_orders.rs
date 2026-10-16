@@ -1,5 +1,5 @@
 use bevy_ecs::system::{Local, Query, Res};
-use campfire_actions::{ActionSlots, SlotTimes, UseGroup};
+use campfire_actions::{ActionProgress, ActionSlots, SlotTimes, UseGroup};
 use campfire_players::{PlayerResources, PlayerRowsMut, TickCommands};
 use campfire_sim::EntityIndex;
 use campfire_units::Owner;
@@ -22,7 +22,11 @@ type Carriers<'w, 's> = Query<
         &'static Owner,
         &'static mut Inventory,
         &'static UseGroup,
-        Option<(&'static mut ActionSlots, &'static mut SlotTimes)>,
+        Option<(
+            &'static mut ActionSlots,
+            &'static mut SlotTimes,
+            &'static mut ActionProgress,
+        )>,
     ),
 >;
 
@@ -65,9 +69,10 @@ impl TradeOrders {
                 inventory.note(&mut before);
                 match action {
                     ItemsAction::Swap { from, to } => {
-                        let carrier = slots.as_mut().map(|(slots, times)| CarrierSlots {
+                        let carrier = slots.as_mut().map(|(slots, times, progress)| CarrierSlots {
                             slots,
                             times,
+                            progress,
                             group,
                         });
                         inventory.swap_with(from, to, carrier);
@@ -107,10 +112,11 @@ impl TradeOrders {
                         }
                     }
                 }
-                if let Some((slots, times)) = &mut slots {
+                if let Some((slots, times, progress)) = &mut slots {
                     let carrier = CarrierSlots {
                         slots,
                         times,
+                        progress,
                         group,
                     };
                     inventory.follow(&book, carrier, &before);

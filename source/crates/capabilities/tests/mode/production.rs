@@ -1,4 +1,4 @@
-use campfire_actions::TimedSlots;
+use campfire_actions::{ActionProgress, TimedSlots};
 use campfire_production::{
     Gatherer, Load, ModeSupplyData, ProductionRefusal, SupplyBook, SupplyCostBook, SupplyData,
 };
@@ -56,8 +56,8 @@ fn on_mode_input(ctx, player, name, value) {
     let mut resources = game.player_resources_mut(player).unwrap();
     resources.add(gold, 15).unwrap();
     let order = |game: &mut Match| {
-        let mut slots = game.get_mut::<ActionSlots>(producer).unwrap();
-        slots.order(0, ActionTarget::None);
+        let mut progress = game.get_mut::<ActionProgress>(producer).unwrap();
+        progress.order(0, ActionTarget::None);
     };
     let paid = |game: &Match| {
         let mana = game.get::<Pools>(producer).unwrap().current(MANA).unwrap();

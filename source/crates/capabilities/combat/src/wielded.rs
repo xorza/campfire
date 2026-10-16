@@ -1,4 +1,4 @@
-use campfire_actions::{Purse, RankValues, Weapon};
+use campfire_actions::{Caster, Purse, RankValues, Weapon};
 use campfire_players::ResourceAmount;
 use campfire_values::{ActionId, Block, Rank, UnitTags, UnitType};
 
@@ -22,7 +22,7 @@ impl Wielded<'_> {
     /// `forced`: neither keeps it from attacking, and `purse` still affords its cost, as the
     /// checks run again at delivery.
     pub(super) fn strikes(&self, tags: Option<&UnitTags>, forced: bool, purse: Purse<'_>) -> bool {
-        !UnitTags::blocks(tags, forced, Block::Attack)
+        !Caster::of(tags, forced, None).blocks(Block::Attack)
             && purse.affords(&self.values.cost, self.resource_cost)
     }
 }

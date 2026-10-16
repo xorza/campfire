@@ -1,7 +1,7 @@
 use std::slice;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, SlotKind, SlotTimes, TimedSlots};
+use campfire_actions::{ActionProgress, ActionSlots, SlotKind, SlotTimes, TimedSlots};
 use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_declare::ByType;
@@ -65,15 +65,16 @@ pub(crate) struct SlotGrant {
 }
 
 impl SlotGrant {
-    fn apply(&self, slots: &mut ActionSlots, times: &mut SlotTimes) {
-        slots.grant(times, self.kind, &self.abilities, self.rank);
+    fn apply(&self, slots: &mut ActionSlots, held: (&mut SlotTimes, &mut ActionProgress)) {
+        slots.grant(held, self.kind, &self.abilities, self.rank);
     }
 
-    /// `slots` with each of `grants`, in order, every slot ready.
+    /// `slots` with each of `grants`, in order, every slot ready and nothing under way.
     fn granted(mut slots: ActionSlots, grants: &[Self]) -> TimedSlots {
         let mut times = SlotTimes::ready(&slots);
+        let mut progress = ActionProgress::default();
         for grant in grants {
-            grant.apply(&mut slots, &mut times);
+            grant.apply(&mut slots, (&mut times, &mut progress));
         }
         TimedSlots::new(slots)
     }
@@ -114,10 +115,11 @@ impl Effect for ModeEffect {
                     return;
                 };
                 let mut unit = world.entity_mut(entity);
-                if let Ok((mut slots, mut times)) =
-                    unit.get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
-                {
-                    grant.apply(&mut slots, &mut times);
+                let held = unit
+                    .get_components_mut::<(&mut ActionSlots, &mut SlotTimes, &mut ActionProgress)>(
+                    );
+                if let Ok((mut slots, mut times, mut progress)) = held {
+                    grant.apply(&mut slots, (&mut times, &mut progress));
                 } else {
                     let granted = SlotGrant::granted(ActionSlots::new([]), slice::from_ref(&grant));
                     unit.insert(granted);

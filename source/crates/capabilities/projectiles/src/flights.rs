@@ -229,20 +229,10 @@ impl Flights<'_> {
     /// action's `on_hit`.
     fn strike(&mut self, projectile: &Projectile, target: StableId, hit: Hit) {
         match projectile.payload() {
-            Payload::Attack {
-                action,
-                rank,
-                amount,
-                kind,
-                roll,
-            } => self.hits.0.push(ShotHit {
+            Payload::Attack(damage) => self.hits.0.push(ShotHit {
                 source: projectile.source(),
                 target,
-                action,
-                rank,
-                amount,
-                kind,
-                roll,
+                damage,
                 hit,
             }),
             Payload::Action {

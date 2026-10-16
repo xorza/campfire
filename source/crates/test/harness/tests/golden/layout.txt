@@ -1,6 +1,7 @@
-data_version 25
+data_version 26
+actions.progress 24b230688d34435b
 actions.slot_times 776040a47152d129
-actions.slots 7f1b07638f8a86da
+actions.slots 8792f8e9f8e71af6
 actions.use_group dbfe58d458cf8fc1
 areas.area cb0d38ac66390e3a
 areas.area_trigger 5b5d033e67c80f93
@@ -61,7 +62,7 @@ units.forced_move 4e5bb34e1c1bd6b7
 units.lifespan 5597d043d0e0b825
 units.move_step bb8f372426e16cd8
 units.owner 2ee569390c477063
-units.relations 67037a35ee547308
+units.relations 80a9d51564e1e8fc
 units.spawn_point 5c3beb7f1a49abe6
 units.state 6a5121ceb5053f8b
 units.state_all 61b2087bea684708

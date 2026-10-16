@@ -295,7 +295,7 @@ impl Construction {
             };
             let builder = Placed::new(from.get(), Body::shape_of(body));
             let reaches = placed.reached_by(map.metric, builder, range);
-            if reaches && !UnitTags::properties_of(tags).blocks(Block::Use) {
+            if reaches && !tags.is_some_and(|tags| tags.properties.blocks(Block::Use)) {
                 building.push(BuildingAt {
                     site,
                     builder: builder_id,

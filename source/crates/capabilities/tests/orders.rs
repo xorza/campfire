@@ -3,8 +3,8 @@ use std::num::NonZeroU64;
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
-    ActionRange, ActionSlots, ActionTarget, Actions, InProgress, OrderPhase, SlotAim, SlotKind,
-    SlotTimes, TimedSlots,
+    ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, InProgress, OrderPhase,
+    SlotAim, SlotKind, SlotTimes, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
@@ -307,10 +307,11 @@ fn trainer(game: &mut Match) -> TwoHeroes {
     let train = Actions::add_train(game, UnitType::new(0), Ticks::ZERO, None);
     let entity = game.unit_entity(heroes.first);
     let mut unit = game.entity_mut(entity);
-    let (mut slots, mut times) = unit
-        .get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
+    let (mut slots, mut times, mut progress) = unit
+        .get_components_mut::<(&mut ActionSlots, &mut SlotTimes, &mut ActionProgress)>()
         .unwrap();
-    slots.grant(&mut times, SlotKind::new(0), &[train], Some(Rank::FIRST));
+    let held = (&mut *times, &mut *progress);
+    slots.grant(held, SlotKind::new(0), &[train], Some(Rank::FIRST));
     heroes
 }
 
@@ -321,7 +322,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
         first: hero,
         second: other,
     } = trainer(&mut game);
-    let ordered = |game: &Match| game.part::<ActionSlots>(hero).in_progress();
+    let ordered = |game: &Match| game.part::<ActionProgress>(hero).in_progress();
     let slot = |slot| {
         Order::payload(&[Order::one(
             hero,
@@ -519,7 +520,7 @@ fn an_attack_chases_winds_up_and_strikes_each_period() {
     assert!(game.try_part::<Life>(dummy).is_none());
     // The next tick finds the target gone, drops it, and stays.
     game.run_until(23);
-    assert_eq!(game.part::<ActionSlots>(fighter).attack_target(), None);
+    assert_eq!(game.part::<ActionProgress>(fighter).attack_target(), None);
     assert_eq!(game.part::<Position>(fighter).get(), Vec3::from((4, 0, 0)));
 }
 
@@ -536,7 +537,7 @@ fn a_move_cancels_a_windup_but_not_a_back_swing() {
     game.step_with(&[(PlayerSlot::new(0), &attack(fighter, dummy))]);
     assert_eq!(Orders::strikes_at(&game, fighter), Some(Tick::new(2)));
     game.step_with(&[(PlayerSlot::new(0), &move_to(fighter, 0, 0))]);
-    assert_eq!(game.part::<ActionSlots>(fighter).attack_target(), None);
+    assert_eq!(game.part::<ActionProgress>(fighter).attack_target(), None);
     assert_eq!(Orders::strikes_at(&game, fighter), None);
     assert_eq!(Orders::ready_at(&game, fighter), Tick::new(0));
     game.step_with(&[(PlayerSlot::new(0), &attack(fighter, dummy))]);
@@ -584,7 +585,7 @@ fn attack_orders_need_a_living_enemy() {
     ] {
         game.step_with(&[(PlayerSlot::new(0), &order)]);
         assert_eq!(
-            game.part::<ActionSlots>(fighter).attack_target(),
+            game.part::<ActionProgress>(fighter).attack_target(),
             None,
             "{order:?}"
         );
@@ -602,7 +603,7 @@ fn attack_orders_need_a_living_enemy() {
         game.step_with(&[(PlayerSlot::new(0), &attack(fighter, enemy))]);
         let expected = seers.is_some_and(|seers| seers.contains(Team::new(0)));
         assert_eq!(
-            game.part::<ActionSlots>(fighter).attack_target(),
+            game.part::<ActionProgress>(fighter).attack_target(),
             expected.then_some(enemy),
             "{seers:?}"
         );
@@ -623,7 +624,7 @@ fn attack_orders_need_a_living_enemy() {
         (PlayerSlot::new(0), &attack(fighter, doomed)),
     ]);
     assert_eq!(game.part::<Position>(doomed).get(), Vec3::from((1, 0, 0)));
-    assert_eq!(game.part::<ActionSlots>(fighter).attack_target(), None);
+    assert_eq!(game.part::<ActionProgress>(fighter).attack_target(), None);
 }
 
 /// 1000 health; reaches nothing and never moves, so only its target changes.
@@ -671,7 +672,7 @@ fn a_tower_prefers_creeps_and_defends_its_heroes() {
             1 => Orders::think(&mut game, &[(PlayerSlot::new(0), &attack(foe, ally))]),
             _ => Orders::think(&mut game, &[]),
         }
-        targets.push(game.part::<ActionSlots>(tower).attack_target());
+        targets.push(game.part::<ActionProgress>(tower).attack_target());
     }
     let expected = [vec![Some(enemy_creep); 8], vec![Some(foe); 2]].concat();
     assert_eq!(targets, expected);
@@ -711,19 +712,25 @@ fn a_creep_takes_an_enemy_structure_last_and_keeps_it() {
     // The first creep thinks in tick 0: only the tower is in its 7 m, so it takes it. The second
     // thinks in tick 1: the rival creep 6 m away goes before the wall 4 m away.
     Orders::think(&mut game, &[]);
-    assert_eq!(game.part::<ActionSlots>(first).attack_target(), Some(tower));
+    assert_eq!(
+        game.part::<ActionProgress>(first).attack_target(),
+        Some(tower)
+    );
     Orders::think(&mut game, &[]);
     assert_eq!(
-        game.part::<ActionSlots>(second).attack_target(),
+        game.part::<ActionProgress>(second).attack_target(),
         Some(rival)
     );
-    assert_eq!(game.part::<ActionSlots>(wall).attack_target(), None);
+    assert_eq!(game.part::<ActionProgress>(wall).attack_target(), None);
 
     // A rival creep 3 m from the first creep comes; at its think in tick 8, it keeps the tower.
     unit(&mut game, still_creep, 1, Vec3::from((3, 0, 0)));
     game.run_until(8);
     Orders::think(&mut game, &[]);
-    assert_eq!(game.part::<ActionSlots>(first).attack_target(), Some(tower));
+    assert_eq!(
+        game.part::<ActionProgress>(first).attack_target(),
+        Some(tower)
+    );
 }
 
 #[test]
@@ -754,7 +761,7 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     let ally = unit(&mut game, hero, 0, Vec3::from((0, 0, -1)));
     // Far from everything, with a target it cannot reach.
     let lone = unit(&mut game, creep, 0, Vec3::from((0, 0, 50)));
-    game.part_mut::<ActionSlots>(lone)
+    game.part_mut::<ActionProgress>(lone)
         .set_attack_target(Some(rival));
     assert_eq!([first, second, lone].map(StableId::get), [1, 2, 5]);
 
@@ -769,8 +776,9 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
             3 => Orders::think(&mut game, &[(PlayerSlot::new(0), &attack(foe, ally))]),
             _ => Orders::think(&mut game, &[]),
         }
-        targets
-            .push([first, second, lone].map(|unit| game.part::<ActionSlots>(unit).attack_target()));
+        targets.push(
+            [first, second, lone].map(|unit| game.part::<ActionProgress>(unit).attack_target()),
+        );
     }
     let expected: Vec<_> = (0..=10)
         .map(|tick| {
@@ -837,7 +845,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     let thinker = Mode::spawn(&mut game, meddler, (0, 0, 0), Team::new(0), ());
     let ally = Mode::spawn(&mut game, still, (1, 0, 0), Team::new(0), ());
     let enemy = Mode::spawn(&mut game, still, (9, 0, 0), Team::new(1), ());
-    game.part_mut::<ActionSlots>(ally)
+    game.part_mut::<ActionProgress>(ally)
         .set_attack_target(Some(enemy));
     assert_eq!(thinker.get(), 0);
 
@@ -853,7 +861,10 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         failures[0].error,
         CallError::Api(api) if api == OrdersRefusal::OtherUnit.refused()
     ));
-    assert_eq!(game.part::<ActionSlots>(ally).attack_target(), Some(enemy));
+    assert_eq!(
+        game.part::<ActionProgress>(ally).attack_target(),
+        Some(enemy)
+    );
 
     // A unit the mode spawned holds the place it spawned at, so its reset starts.
     let homing = Mode::spawn(&mut game, resetter, (2, 0, 0), Team::new(0), ());
@@ -883,7 +894,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     game.run_until(4);
     game.step_with(&[]);
     assert_eq!(
-        game.part::<ActionSlots>(hostile).attack_target(),
+        game.part::<ActionProgress>(hostile).attack_target(),
         Some(enemy)
     );
     assert!(game.non_send::<ScriptFailures>().get().is_empty());
@@ -894,7 +905,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         (failures[0].id, &failures[0].error),
         (Some(unit), CallError::Api(ApiError::NoAttack)) if unit == friendly
     ));
-    assert_eq!(game.part::<ActionSlots>(friendly).attack_target(), None);
+    assert_eq!(game.part::<ActionProgress>(friendly).attack_target(), None);
     // A reset of another unit fails as the unit's own does not: of a delivery, which holds no
     // spawn place, as of any.
     let delivery = Deliveries::spawn_of(&mut game, homing, still, (2, 0, 1), ());
@@ -981,7 +992,7 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
     // A meter towards the second waypoint, then towards the prey until it is a meter away.
     game.step_with(&[]);
     assert_eq!(game.part::<Position>(chaser).get(), Vec3::from((1, 0, 0)));
-    game.part_mut::<ActionSlots>(chaser)
+    game.part_mut::<ActionProgress>(chaser)
         .set_attack_target(Some(prey));
     game.run_until(4);
     assert_eq!(game.part::<Position>(chaser).get(), Vec3::from((1, 0, 2)));
@@ -992,7 +1003,7 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
     let entity = game.unit_entity(prey);
     game.despawn(entity);
     game.run_until(6);
-    assert_eq!(game.part::<ActionSlots>(chaser).attack_target(), None);
+    assert_eq!(game.part::<ActionProgress>(chaser).attack_target(), None);
     assert_eq!(
         game.part::<Destination>(chaser).get(),
         Some(Vec3::from((4, 0, 0)))
@@ -1069,7 +1080,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
         Orders::think(&mut game, &[]);
     }
     assert_eq!(
-        game.part::<ActionSlots>(monster).attack_target(),
+        game.part::<ActionProgress>(monster).attack_target(),
         Some(hero)
     );
     assert!(!resets(&game));
@@ -1083,7 +1094,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     for _ in 33..=55 {
         Orders::think(&mut game, &[]);
         assert!(resets(&game));
-        assert_eq!(game.part::<ActionSlots>(monster).attack_target(), None);
+        assert_eq!(game.part::<ActionProgress>(monster).attack_target(), None);
     }
     assert_eq!(game.part::<Position>(monster).get(), home);
     assert_eq!(Stats::health(&game, monster), 40);
@@ -1092,7 +1103,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     assert!(!resets(&game));
     assert_eq!(Stats::health(&game, monster), 100);
     assert_eq!(
-        game.part::<ActionSlots>(monster).attack_target(),
+        game.part::<ActionProgress>(monster).attack_target(),
         Some(hero)
     );
 
@@ -1352,7 +1363,7 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     );
     let walker = Mode::spawn(&mut game, walker_type, (0, 0, 0), Team::new(0), parts);
     let target = Mode::spawn(&mut game, target, (1, 0, 0), Team::new(1), ());
-    game.part_mut::<ActionSlots>(walker)
+    game.part_mut::<ActionProgress>(walker)
         .set_attack_target(Some(target));
     game.step_with(&[]);
     assert!(Orders::strikes_at(&game, walker).is_some());
@@ -1360,14 +1371,14 @@ fn a_stop_ends_what_is_under_way_and_stands_the_unit_off_its_path() {
     game.step_with(&[(PlayerSlot::new(1), &stop)]);
     assert!(Orders::strikes_at(&game, walker).is_some());
     game.step_with(&[(PlayerSlot::new(0), &stop)]);
-    assert_eq!(game.part::<ActionSlots>(walker).attack_target(), None);
-    assert_eq!(game.part::<ActionSlots>(walker).in_progress(), None);
+    assert_eq!(game.part::<ActionProgress>(walker).attack_target(), None);
+    assert_eq!(game.part::<ActionProgress>(walker).in_progress(), None);
     assert_eq!(game.part::<Destination>(walker).get(), None);
     assert!(game.try_part::<PathWalker>(walker).unwrap().left());
     let place = game.part::<Position>(walker).get();
     game.step_with(&[]);
     assert_eq!(game.part::<Position>(walker).get(), place);
-    assert_eq!(game.part::<ActionSlots>(walker).attack_target(), None);
+    assert_eq!(game.part::<ActionProgress>(walker).attack_target(), None);
     // A second stop finds no destination to drop, and leaves it untouched, as a write would
     // replicate an avatar's.
     let entity = game.unit_entity(walker);

@@ -2,8 +2,8 @@ use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionSlots, ActionTarget, InProgress, Payer, Purse, Shot, ShotHits,
-    Shots, SlotAim, SlotTimes, Targets,
+    ActionBook, ActionCheck, ActionProgress, ActionSlots, ActionTarget, Caster, InProgress, Payer,
+    Purse, Shot, ShotDamage, ShotHits, Shots, SlotAim, SlotTimes, Targets,
 };
 use campfire_common::Tick;
 use campfire_declare::RoleForm;
@@ -23,10 +23,10 @@ use crate::pass_queue::PassQueue;
 use crate::volley::{GoingOff, Volley};
 use crate::wielded::Wielded;
 
-/// What tells whether a unit's attack strikes: its slots, its tags, and what it pays the cost
-/// from.
+/// What tells whether a unit's attack strikes: its slots and what it has under way, its tags,
+/// and what it pays the cost from.
 type Attacker<'a> = (
-    &'a ActionSlots,
+    (&'a ActionSlots, &'a ActionProgress),
     Option<&'a UnitTags>,
     Has<ForcedMove>,
     UnitPoolsReadOnly,
@@ -48,16 +48,17 @@ impl Attacks {
     ) {
         let now = tick.start();
         for hit in hits.0.drain(..) {
+            let shot = hit.damage;
             let damage = Damage {
                 source: Some(hit.source),
                 target: hit.target,
-                amount: hit.amount,
-                kind: hit.kind,
+                amount: shot.amount,
+                kind: shot.kind,
                 cause: DamageCause::Attack {
-                    roll: hit.roll,
-                    rank: hit.rank,
+                    roll: shot.roll,
+                    rank: shot.rank,
                 },
-                action: Some(hit.action),
+                action: Some(shot.action),
                 depth: 0,
                 hit: Some(hit.hit),
             };
@@ -81,7 +82,7 @@ impl Attacks {
             (
                 &Position,
                 &Team,
-                &mut ActionSlots,
+                (&ActionSlots, &mut ActionProgress),
                 &SlotTimes,
                 UnitPoolsReadOnly,
                 Option<&Owner>,
@@ -94,9 +95,11 @@ impl Attacks {
     ) {
         let now = tick.start();
         let life = life.life();
-        for (&position, &team, mut slots, times, pools, owner, body, tags, forced) in &mut units {
-            let blocked = UnitTags::blocks(tags, forced, Block::Attack) || !pools.lives();
-            match slots.in_progress() {
+        for (&position, &team, (slots, mut progress), times, pools, owner, body, tags, forced) in
+            &mut units
+        {
+            let blocked = Caster::of(tags, forced, None).blocks(Block::Attack) || !pools.lives();
+            match progress.in_progress() {
                 Some(
                     InProgress::Order { .. }
                     | InProgress::Charge { .. }
@@ -104,20 +107,20 @@ impl Attacks {
                 ) => {}
                 Some(InProgress::Attack { .. }) => {
                     if blocked {
-                        slots.interrupt();
-                    } else if slots
+                        progress.interrupt();
+                    } else if progress
                         .attack_target()
                         .is_none_or(|target| targets.enemy(team, target).is_none())
                     {
-                        slots.set_attack_target(None);
+                        progress.set_attack_target(None);
                     }
                 }
                 None => {
-                    let Some(target) = slots.attack_target() else {
+                    let Some(target) = progress.attack_target() else {
                         continue;
                     };
                     let Some(unit) = targets.enemy(team, target) else {
-                        slots.set_attack_target(None);
+                        progress.set_attack_target(None);
                         continue;
                     };
                     if blocked {
@@ -138,7 +141,7 @@ impl Attacks {
                         .checked_action(ActionCheck {
                             book: &book,
                             now,
-                            slots: &slots,
+                            slots,
                             purse,
                             aim,
                             relation,
@@ -147,7 +150,7 @@ impl Attacks {
                         .filter(|checked| checked.in_range(position.get(), shape, &targets))
                         .map(|checked| now.after(checked.values.windup));
                     if let Some(resolves_at) = started {
-                        slots.start_attack(slot, resolves_at);
+                        progress.start_attack(slot, resolves_at);
                     }
                 }
             }
@@ -200,7 +203,7 @@ impl Attacks {
             '_,
             '_,
             (
-                &ActionSlots,
+                (&ActionSlots, &ActionProgress),
                 &mut SlotTimes,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
@@ -223,7 +226,7 @@ impl Attacks {
             let purse = Purse::of(pools.read(), resources.of(owner));
             let wielded = Self::wielded(&book, slots);
             if wielded.strikes(tags, forced, purse) {
-                times.pay_attack_toggles(slots, &book, &mut pools, &wielded.values.cost);
+                times.pay_attack_toggles(slots.0, &book, &mut pools, &wielded.values.cost);
             }
         }
     }
@@ -258,7 +261,7 @@ impl Attacks {
             '_,
             (
                 &Position,
-                &mut ActionSlots,
+                (&ActionSlots, &mut ActionProgress),
                 &mut SlotTimes,
                 Option<&UnitStats>,
                 UnitPools,
@@ -280,17 +283,26 @@ impl Attacks {
             target,
         } in &*going
         {
-            let Ok((&from, mut slots, mut times, stats, pools, tags, forced, owner, mut clips)) =
-                attackers.get_mut(entity)
+            let Ok((
+                &from,
+                (slots, mut progress),
+                mut times,
+                stats,
+                pools,
+                tags,
+                forced,
+                owner,
+                mut clips,
+            )) = attackers.get_mut(entity)
             else {
                 continue;
             };
             let lives = pools.lives();
             let pools = pools.of(life);
             let purse = Purse::of(pools.read(), resources.of(owner));
-            let wielded = Self::wielded(&book, &slots);
+            let wielded = Self::wielded(&book, (slots, &progress));
             if !lives || !wielded.strikes(tags, forced, purse) {
-                slots.interrupt();
+                progress.interrupt();
                 continue;
             }
             let Wielded {
@@ -302,7 +314,7 @@ impl Attacks {
                 ..
             } = wielded;
             let stats = stats.map_or(&[][..], UnitStats::values);
-            let resolves_at = slots
+            let resolves_at = progress
                 .in_progress()
                 .and_then(InProgress::resolves_at)
                 .expect("an attack going off started");
@@ -314,7 +326,7 @@ impl Attacks {
                 _ => period,
             };
             times.cool_down(wielded.slot, started.after(ready));
-            slots.stop();
+            progress.stop();
             if F::PREDICTS {
                 continue;
             }
@@ -326,11 +338,13 @@ impl Attacks {
                     from: from.get(),
                     target,
                     unit_type,
-                    action,
-                    rank,
-                    amount,
-                    kind: weapon.kind,
-                    roll,
+                    damage: ShotDamage {
+                        action,
+                        rank,
+                        amount,
+                        kind: weapon.kind,
+                        roll,
+                    },
                 });
             } else {
                 let damage = Damage {
@@ -352,8 +366,11 @@ impl Attacks {
     }
 
     /// The weapon of the attack under way of a unit with `slots`.
-    fn wielded<'a>(book: &'a ActionBook, slots: &ActionSlots) -> Wielded<'a> {
-        let underway = slots.in_progress().expect("an attack is under way");
+    fn wielded<'a>(
+        book: &'a ActionBook,
+        (slots, progress): (&ActionSlots, &ActionProgress),
+    ) -> Wielded<'a> {
+        let underway = progress.in_progress().expect("an attack is under way");
         let slot = slots.slot(underway.slot()).expect("an attack's slot");
         let id = slot.action.expect("an attack's slot holds its weapon");
         let action = book.get(id).expect("a slot's action is in the book");

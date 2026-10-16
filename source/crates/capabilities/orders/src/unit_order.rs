@@ -1,7 +1,7 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::query::QueryData;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, ActionTarget, SlotTimes};
+use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, SlotTimes};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
@@ -62,6 +62,7 @@ pub struct OrderedUnit {
     pub(crate) spawn: Option<&'static SpawnPoint>,
     pub(crate) slots: Option<&'static mut ActionSlots>,
     pub(crate) times: Option<&'static mut SlotTimes>,
+    pub(crate) underway: Option<&'static mut ActionProgress>,
     pub(crate) walker: Option<&'static mut PathWalker>,
     pub(crate) destination: Option<&'static mut Destination>,
     pub(crate) route: Option<&'static mut Route>,
@@ -114,6 +115,7 @@ impl UnitOrder {
             spawn,
             mut slots,
             times,
+            mut underway,
             walker,
             mut destination,
             route,
@@ -121,10 +123,10 @@ impl UnitOrder {
             mut builder,
             mut gatherer,
         } = unit;
-        if let Some(slots) = &mut slots {
-            slots.cut_channel();
-            if slots.approaching() {
-                slots.stop();
+        if let Some(underway) = &mut underway {
+            underway.cut_channel();
+            if underway.approaching() {
+                underway.stop();
                 if let Some(destination) = &mut destination {
                     destination.set_if_neq(Destination::to(None));
                 }
@@ -134,9 +136,9 @@ impl UnitOrder {
         let ground = |x, z| bounds.ground_point([x, z], at.get());
         let to = match self {
             Self::Attack { target } => {
-                if let Some(slots) = &mut slots {
-                    slots.cancel_charge();
-                    slots.set_attack_target(Some(target));
+                if let Some(underway) = &mut underway {
+                    underway.cancel_charge();
+                    underway.set_attack_target(Some(target));
                 }
                 return;
             }
@@ -145,8 +147,8 @@ impl UnitOrder {
                     ActionTarget::Point(point) => ActionTarget::Point(ground(point.x, point.z)),
                     target => target,
                 };
-                if let Some(slots) = &mut slots {
-                    slots.order(slot, target);
+                if let Some(underway) = &mut underway {
+                    underway.order(slot, target);
                 }
                 return;
             }
@@ -156,16 +158,19 @@ impl UnitOrder {
                 target,
             } => {
                 let slots = slots.as_mut().expect("a user has slots");
+                let underway = underway
+                    .as_mut()
+                    .expect("a user's slots have their progress");
                 if slots.slot(slot).and_then(|held| held.action) != Some(action) {
                     let mut times = times.expect("a user's slots have times");
-                    slots.fill(&mut times, slot, Some(action));
+                    slots.fill((&mut times, underway), slot, Some(action));
                 }
-                slots.order(slot, ActionTarget::Unit(target));
+                underway.order(slot, ActionTarget::Unit(target));
                 return;
             }
             Self::FollowPath => {
-                if let Some(slots) = &mut slots {
-                    slots.set_attack_target(None);
+                if let Some(underway) = &mut underway {
+                    underway.set_attack_target(None);
                 }
                 if let Some(mut walker) = walker {
                     walker.rejoin();
@@ -179,15 +184,15 @@ impl UnitOrder {
                     .get(),
             ),
             Self::Stop => {
-                if let Some(slots) = &mut slots {
-                    slots.stop();
+                if let Some(underway) = &mut underway {
+                    underway.stop();
                 }
                 None
             }
             Self::Build { .. } | Self::Gather { .. } => None,
         };
-        if let Some(slots) = &mut slots {
-            slots.set_attack_target(None);
+        if let Some(underway) = &mut underway {
+            underway.set_attack_target(None);
         }
         if let Some(mut walker) = walker {
             walker.leave();

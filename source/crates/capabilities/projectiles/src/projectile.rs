@@ -1,14 +1,14 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::ActionBook;
+use campfire_actions::{ActionBook, ShotDamage};
 use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
 use campfire_script::View;
 use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::DeliveryEntity;
-use campfire_values::{ActionId, ActionStart, DamageKind, Rank, UnitType};
+use campfire_values::{ActionId, ActionStart, Rank, UnitType};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -68,14 +68,7 @@ impl Flight {
 /// of its cast in `group`, named by the first of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Payload {
-    Attack {
-        /// The weapon's action, which its damage names.
-        action: ActionId,
-        rank: Rank,
-        amount: Num,
-        kind: DamageKind,
-        roll: Num,
-    },
+    Attack(ShotDamage),
     Action {
         action: ActionId,
         rank: Rank,
@@ -93,7 +86,7 @@ impl Projectile {
             Flight::Line { range, .. } => range >= Num::ZERO,
         };
         let carries = match payload {
-            Payload::Attack { amount, roll, .. } => {
+            Payload::Attack(ShotDamage { amount, roll, .. }) => {
                 amount >= Num::ZERO && Num::ZERO <= roll && roll < Num::ONE
             }
             Payload::Action { .. } => true,
@@ -142,9 +135,9 @@ impl SimComponent for Projectile {
             Flight::Homing { .. } => true,
         };
         let carries = match self.payload {
-            Payload::Attack {
+            Payload::Attack(ShotDamage {
                 action, rank, kind, ..
-            } => {
+            }) => {
                 book.ranked(action, rank) && world.non_send::<View>().names().has_damage_kind(kind)
             }
             Payload::Action {

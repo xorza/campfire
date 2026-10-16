@@ -20,7 +20,7 @@ use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_actions::{ActionSlots, SlotCharges, SlotTimes};
+use campfire_actions::{ActionProgress, ActionSlots, SlotCharges, SlotTimes};
 use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use campfire_stats::{Level, Life, Pools};
@@ -629,7 +629,7 @@ impl Hud {
         index: Res<'_, EntityIndex>,
         palette: Res<'_, HudPalette>,
         own: OwnPlayer<'_, '_>,
-        slots: Query<'_, '_, &ActionSlots>,
+        slots: Query<'_, '_, &ActionProgress>,
         units: Query<'_, '_, &Drawing, Allow<Unpredicted>>,
         shapes: Query<'_, '_, &Shape>,
         mut marked: Local<'_, Option<Marked>>,
@@ -638,7 +638,7 @@ impl Hud {
         let target = own
             .avatar()
             .and_then(|avatar| slots.get(avatar.entity).ok())
-            .and_then(ActionSlots::attack_target)
+            .and_then(ActionProgress::attack_target)
             .and_then(|target| index.get(target))
             .and_then(|target| units.get(target).ok())
             .and_then(|drawing| Some((drawing.root(), shapes.get(drawing.root()).ok()?)));

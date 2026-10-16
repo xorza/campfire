@@ -1,10 +1,11 @@
 use std::slice;
 
 use bevy_ecs::resource::Resource;
+use campfire_actions::ShotDamage;
 use campfire_declare::Scratch;
-use campfire_math::{Num, Vec3};
+use campfire_math::Vec3;
 use campfire_sim::StableId;
-use campfire_values::{ActionId, ActionStart, DamageKind, Rank, UnitType};
+use campfire_values::{ActionId, ActionStart, Rank, UnitType};
 
 use crate::projectile::Flight;
 
@@ -35,13 +36,7 @@ pub struct Launch {
 /// tick, whose group is the first projectile of the cast, known once that one spawns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchPayload {
-    Attack {
-        action: ActionId,
-        rank: Rank,
-        amount: Num,
-        kind: DamageKind,
-        roll: Num,
-    },
+    Attack(ShotDamage),
     Action {
         action: ActionId,
         rank: Rank,

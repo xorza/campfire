@@ -9,7 +9,7 @@ use bevy_ecs::system::RunSystemOnce;
 use bevy_ecs::world::World;
 use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
-    ActionRange, ActionSlot, ActionSlots, Actions, ChannelCall, ClipRule, InProgress, SlotKind,
+    ActionProgress, ActionRange, ActionSlot, ActionSlots, Actions, ClipRule, InProgress, SlotKind,
     SlotTimes, Source, Targets, TimedSlots,
 };
 use campfire_capabilities::internals::*;
@@ -36,6 +36,7 @@ use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, U
 use campfire_values::{
     ActionId, Block, DamageKind, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex,
     Rank, Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
+    VisionShare,
 };
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
@@ -109,6 +110,20 @@ fn an_attack_winds_up_and_strikes_each_period() {
         tick: Tick::new(tick),
     };
     assert_eq!(attackers(&game), [attack(fighter, 2)]);
+    // The attack that starts in tick 5 changes what is under way, not the slots' table, which
+    // what keys on the slots does not visit for it.
+    let written = |game: &Match| {
+        let unit = game.entity(game.unit_entity(fighter));
+        (
+            unit.get_change_ticks::<ActionSlots>().unwrap().changed,
+            unit.get_change_ticks::<ActionProgress>().unwrap().changed,
+        )
+    };
+    game.run_until(5);
+    let before = written(&game);
+    game.run_until(6);
+    let after = written(&game);
+    assert_eq!((after.0 == before.0, after.1 == before.1), (true, false));
     game.run_until(8);
     assert_eq!(attackers(&game), [attack(fighter, 7)]);
     game.run_until(17);
@@ -342,8 +357,8 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     let [ground_unit, air_unit, structure, hovering] = targets;
     let healths = |game: &Match| targets.map(|target| Stats::health(game, target));
     let underway = |game: &Match| {
-        let slots = game.try_part::<ActionSlots>(id).unwrap();
-        slots.in_progress().map(InProgress::slot)
+        let progress = game.try_part::<ActionProgress>(id).unwrap();
+        progress.in_progress().map(InProgress::slot)
     };
 
     // The air unit, 4 m off, only the air weapon selects: it starts in tick 0 and strikes in
@@ -652,8 +667,18 @@ fn targets_are_living_enemies() {
     // By the relations: team 2, friendly to team 0, may not attack its units; team 3, neutral,
     // may; team 200, past the 64 teams of before and hostile as every pair not set is, may.
     let mut relations = game.relations_mut();
-    relations.set(Team::new(2), Team::new(0), Relation::Friendly, true);
-    relations.set(Team::new(3), Team::new(0), Relation::Neutral, true);
+    relations.set(
+        Team::new(2),
+        Team::new(0),
+        Relation::Friendly,
+        VisionShare::Shared,
+    );
+    relations.set(
+        Team::new(3),
+        Team::new(0),
+        Relation::Neutral,
+        VisionShare::Shared,
+    );
     let related = [2, 3, 200].map(|team| enemy_at(&mut game, Team::new(team), far));
     assert_eq!(
         related,
@@ -699,13 +724,14 @@ fn every_combat_type_is_state_and_restores() {
     let entity = restored.unit_entity(fighter);
     let past = Tick::LIMIT.get() + 1;
     let slots = |resolves_at: u64, ready_at: u64| {
-        let mut slots = restored.part::<ActionSlots>(fighter).clone();
-        slots.set_attack_target(Some(doomed));
-        slots.start_attack(0, Tick::new(resolves_at));
+        let slots = restored.part::<ActionSlots>(fighter).clone();
+        let mut progress = *restored.part::<ActionProgress>(fighter);
+        progress.set_attack_target(Some(doomed));
+        progress.start_attack(0, Tick::new(resolves_at));
         let mut times = restored.part::<SlotTimes>(fighter).clone();
         times.cool_down(0, Tick::new(ready_at));
-        let checked = slots.check(&restored, entity);
-        Match::decodes(&slots) && checked && Match::decodes(&times)
+        let checked = slots.check(&restored, entity) && progress.check_against(&slots, &restored);
+        Match::decodes(&progress) && checked && Match::decodes(&times)
     };
     assert!(slots(2, 0) && slots(Tick::LIMIT.get(), Tick::LIMIT.get()));
     assert!(!slots(1, 0));
@@ -719,10 +745,11 @@ fn every_combat_type_is_state_and_restores() {
         .action
         .unwrap();
     let ranked = |rank| {
-        let mut slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(rank))]);
-        slots.set_attack_target(Some(doomed));
-        slots.start_attack(0, Tick::new(2));
-        slots.check(&restored, entity)
+        let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(rank))]);
+        let mut progress = ActionProgress::default();
+        progress.set_attack_target(Some(doomed));
+        progress.start_attack(0, Tick::new(2));
+        slots.check(&restored, entity) && progress.check_against(&slots, &restored)
     };
     assert!(ranked(1) && !ranked(0) && !ranked(30));
     // A slot of a kind the mode lacks, kind 1 of its one, is refused; slots not kind after kind
@@ -730,15 +757,8 @@ fn every_combat_type_is_state_and_restores() {
     let lacks = ActionSlots::new([(weapon, SlotKind::new(1), Rank::new(1))]);
     assert!(!lacks.check(&restored, entity));
     let of_kind = |kind| slot_of_kind(weapon, kind);
-    let decodes = |slots: Vec<ActionSlot>| {
-        let held = (
-            slots,
-            None::<InProgress>,
-            None::<StableId>,
-            None::<ChannelCall>,
-        );
-        Binary::decode::<ActionSlots>(&Binary::encode(&held)).is_ok()
-    };
+    let decodes =
+        |slots: Vec<ActionSlot>| Binary::decode::<ActionSlots>(&Binary::encode(&slots)).is_ok();
     assert!(decodes(vec![of_kind(0), of_kind(1)]));
     assert!(!decodes(vec![of_kind(1), of_kind(0)]));
 }
@@ -1224,9 +1244,9 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     // Each attacker's windup ends in tick 0; the roll of each, by the attackers' order.
     let rolls = |game: &mut Match| {
         for &attacker in &attackers {
-            let mut slots = game.part_mut::<ActionSlots>(attacker);
-            slots.set_attack_target(Some(dummy));
-            slots.start_attack(0, Tick::new(0));
+            let mut progress = game.part_mut::<ActionProgress>(attacker);
+            progress.set_attack_target(Some(dummy));
+            progress.start_attack(0, Tick::new(0));
         }
         game.resource_mut::<PassQueue>().clear();
         Combat::strike_now(game);

@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
-use campfire_actions::ActionSlots;
+use campfire_actions::ActionProgress;
 use campfire_common::Tick;
 use campfire_declare::Scratch;
 use campfire_sim::{SimTick, StableId};
@@ -26,7 +26,7 @@ impl Volley {
     /// Reads the living units' attacks whose windup ends this tick.
     pub(crate) fn collect(
         tick: Res<'_, SimTick>,
-        attackers: Query<'_, '_, (Entity, &StableId, &ActionSlots), Without<Dead>>,
+        attackers: Query<'_, '_, (Entity, &StableId, &ActionProgress), Without<Dead>>,
         mut volley: ResMut<'_, Self>,
     ) {
         debug_assert!(
@@ -34,15 +34,17 @@ impl Volley {
             "the last tick's strikes took the volley"
         );
         let now = tick.start();
-        volley
-            .0
-            .extend(attackers.iter().filter_map(|(entity, &attacker, slots)| {
-                Some(GoingOff {
-                    attacker,
-                    entity,
-                    target: Self::target(slots, now)?,
-                })
-            }));
+        volley.0.extend(
+            attackers
+                .iter()
+                .filter_map(|(entity, &attacker, progress)| {
+                    Some(GoingOff {
+                        attacker,
+                        entity,
+                        target: Self::target(progress, now)?,
+                    })
+                }),
+        );
         volley.0.sort_unstable();
     }
 
@@ -51,10 +53,10 @@ impl Volley {
         !volley.0.is_empty()
     }
 
-    /// The target of the attack of a unit with `slots` whose windup ends by `now`, if one does.
-    pub(crate) fn target(slots: &ActionSlots, now: Tick) -> Option<StableId> {
-        let target = slots.attacking()?;
-        let resolves_at = slots.in_progress()?.resolves_at()?;
+    /// The target of the attack `progress` has under way whose windup ends by `now`, if one does.
+    pub(crate) fn target(progress: &ActionProgress, now: Tick) -> Option<StableId> {
+        let target = progress.attacking()?;
+        let resolves_at = progress.in_progress()?.resolves_at()?;
         (resolves_at <= now).then_some(target)
     }
 

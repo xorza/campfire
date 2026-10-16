@@ -30,9 +30,6 @@ pub enum ActionProblem {
     /// Its kind is none the release runs.
     #[error("its kind {0:?} is none the release runs")]
     NotRun(ActionKind),
-    /// A gather's `bounce` is no distance from 0.
-    #[error("its bounce is no distance from 0")]
-    Bounce,
     /// A use, a build or a gather reaches globally at a rank, where it needs meters.
     #[error("its range is global at a rank, where its kind needs meters")]
     Global(MeteredKind),

@@ -276,7 +276,7 @@ impl SlotTimes {
     }
 
     /// Sets the charges of `slot`.
-    pub fn set_charges(&mut self, slot: u8, charges: Option<SlotCharges>) {
+    pub(crate) fn set_charges(&mut self, slot: u8, charges: Option<SlotCharges>) {
         self.0[usize::from(slot)].charges = charges;
     }
 
@@ -405,6 +405,18 @@ impl SimComponent for SlotTimes {
 impl Replication for SlotTimes {
     const KIND: DataKind = DataKind::Cooldowns;
     type Sending = SentPredicted;
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::action_slots::slot_times::{SlotCharges, SlotTimes};
+
+    impl SlotTimes {
+        /// Sets the charges of `slot`, whatever its action's rule, as a restore may read them.
+        pub fn force_charges(&mut self, slot: u8, charges: Option<SlotCharges>) {
+            self.set_charges(slot, charges);
+        }
+    }
 }
 
 #[cfg(test)]

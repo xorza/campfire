@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_script::{NameKind, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::{ModifierId, PackageIndex};
+use campfire_values::{Distance, ModifierId, PackageIndex};
 
 use crate::action::{Aim, Passive};
 use crate::action_data::ActionData;
@@ -85,10 +85,7 @@ impl ActionParts {
                 let Some(CostTarget::Resource(resource)) = names.cost_target(resource) else {
                     return Err(UnknownName::new(NameKind::Resource, resource).into());
                 };
-                let bounce = bounce.unwrap_or(Num::ZERO);
-                if bounce < Num::ZERO {
-                    return Err(ActionProblem::Bounce.into());
-                }
+                let bounce = bounce.map_or(Num::ZERO, Distance::get);
                 KindSpec::Gather(GatherSpec {
                     resource,
                     take,

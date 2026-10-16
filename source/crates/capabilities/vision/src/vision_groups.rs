@@ -49,7 +49,7 @@ impl VisionGroups {
 
 #[cfg(test)]
 mod tests {
-    use campfire_values::Relation;
+    use campfire_values::{Relation, VisionShare};
 
     use super::*;
 
@@ -59,10 +59,10 @@ mod tests {
         // friends with vision off see apart.
         let team = Team::new;
         let mut relations = Relations::default();
-        relations.set(team(0), team(3), Relation::Friendly, true);
-        relations.set(team(4), team(3), Relation::Friendly, true);
-        relations.set(team(1), team(2), Relation::Friendly, false);
-        relations.set(team(0), team(1), Relation::Neutral, true);
+        relations.set(team(0), team(3), Relation::Friendly, VisionShare::Shared);
+        relations.set(team(4), team(3), Relation::Friendly, VisionShare::Shared);
+        relations.set(team(1), team(2), Relation::Friendly, VisionShare::Apart);
+        relations.set(team(0), team(1), Relation::Neutral, VisionShare::Shared);
         let mut groups = VisionGroups::default();
         groups.rebuild(5, &relations);
         assert_eq!(groups.count(), 3);
@@ -76,8 +76,8 @@ mod tests {
         // A chain whose later link reaches a lower team: 2 with 5, then 1 with 5, makes 1, 2
         // and 5 one group, numbered after 0's, as each team's own group says too.
         let mut relations = Relations::default();
-        relations.set(team(2), team(5), Relation::Friendly, true);
-        relations.set(team(1), team(5), Relation::Friendly, true);
+        relations.set(team(2), team(5), Relation::Friendly, VisionShare::Shared);
+        relations.set(team(1), team(5), Relation::Friendly, VisionShare::Shared);
         groups.rebuild(6, &relations);
         assert_eq!(
             [0, 1, 2, 3, 4, 5].map(|at| groups.of(team(at))),

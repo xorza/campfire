@@ -1,10 +1,11 @@
 use campfire_common::Tick;
 use campfire_math::Vec3;
 use campfire_sim::{Position, StableId};
-use campfire_values::ActionStart;
+use campfire_values::{ActionId, ActionStart, Rank};
 use serde::{Deserialize, Serialize};
 
 use crate::action_call::{ActionCall, Started};
+use crate::channel_call::ChannelCall;
 use crate::slot_aim::SlotAim;
 
 /// What a unit has under way: an attack in its windup, or an action it was ordered.
@@ -31,12 +32,15 @@ pub enum InProgress {
         released: bool,
     },
     /// The channel of the action `aim` names, which resolved at its target, as it `start`ed: it
-    /// ticks next in `next`, and ends in `ends`.
+    /// ticks next in `next`, and ends in `ends`; `action` at `rank` is what its slot held as it
+    /// began, which a cut channel keeps.
     Channel {
         aim: SlotAim,
         next: Tick,
         ends: Tick,
         start: ActionStart,
+        action: ActionId,
+        rank: Rank,
     },
 }
 
@@ -91,6 +95,24 @@ impl InProgress {
                 aim: SlotAim { slot, .. },
                 ..
             } => slot,
+        }
+    }
+
+    /// The call of a channel, at its action and rank; none of anything else.
+    pub const fn channel_call(self) -> Option<ChannelCall> {
+        match self {
+            Self::Channel {
+                aim,
+                start,
+                action,
+                rank,
+                ..
+            } => Some(ChannelCall {
+                call: ActionCall { aim, start },
+                action,
+                rank,
+            }),
+            Self::Attack { .. } | Self::Order { .. } | Self::Charge { .. } => None,
         }
     }
 

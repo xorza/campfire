@@ -32,8 +32,9 @@ pub enum DoesData {
     Launch(LaunchFields),
     /// `move = { to, speed }` or `move = { from, distance, ms }`: a forced move.
     Move(MoveData),
-    /// `spawn = { unit_type, duration_ms }`: a unit of the mode's type `unit_type` where the
-    /// effect applies, despawning `duration_ms` after it spawns when that is given.
+    /// `spawn = { unit_type, duration_ms }`: a unit of the type `unit_type` of the action's
+    /// package where the effect applies, despawning `duration_ms` after it spawns when that is
+    /// given.
     Spawn(SpawnFields),
     /// An effect the design names that the release does not run yet; the load refuses it.
     Planned(PlannedEffect),

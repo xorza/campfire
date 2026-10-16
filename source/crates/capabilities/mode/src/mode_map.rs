@@ -4,7 +4,7 @@ use campfire_navigation::{
     MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, WalkerKinds, Walls,
 };
 use campfire_units::{BodyForm, Layer, MapBook};
-use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType};
+use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType, VisionShare};
 use campfire_vision::{BrushMap, VisionBook, VisionGrid};
 
 use crate::error::ModeError;
@@ -100,7 +100,12 @@ impl ModeMap {
             if a == b || relations[..at].iter().any(named) {
                 return Err(ModeError::RepeatedRelation(a.clone(), b.clone()));
             }
-            resolved.set(pair[0], pair[1], relation.relation, relation.vision);
+            let vision = if relation.vision {
+                VisionShare::Shared
+            } else {
+                VisionShare::Apart
+            };
+            resolved.set(pair[0], pair[1], relation.relation, vision);
         }
         let grid = map.grid()?;
         let brush = map.brush()?;

@@ -3,7 +3,9 @@ use std::num::{NonZeroI64, NonZeroU8};
 use campfire_math::{Num, Rounding};
 
 /// How a delivery launches its projectiles: `count` of them, spread evenly over `spread_deg`
-/// degrees around the aim.
+/// degrees around the aim, the first and the last at its ends; over a full turn, a ring, each
+/// `360 / count` degrees on from the one before, the first at the aim, as the ends of a full turn
+/// are one direction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Fan {
     pub count: NonZeroU8,
@@ -11,15 +13,24 @@ pub struct Fan {
 }
 
 impl Fan {
-    /// The turn from the aim of projectile `at` of the fan, in radians: `spread · (2 · at −
-    /// (count − 1)) / (2 · (count − 1))` degrees, so the fan spreads evenly about the aim, rounded
-    /// once; none for a fan of one.
+    /// The turn from the aim of projectile `at` of the fan, in radians, rounded once: `spread · (2
+    /// · at − (count − 1)) / (2 · (count − 1))` degrees, so the fan spreads evenly about the aim;
+    /// `360 · at / count` degrees over a full turn; none for a fan of one.
     pub fn turn(self, at: u8) -> Num {
         let count = NonZeroI64::from(self.count).get();
         if count == 1 {
             return Num::ZERO;
         }
         debug_assert!(i64::from(at) < count);
+        if self.spread_deg == Num::int(360) {
+            return Num::PI
+                .checked_mul_div(
+                    Num::int(2 * i64::from(at)),
+                    Num::int(count),
+                    Rounding::NearestEven,
+                )
+                .expect("a ring's turn is less than a full one");
+        }
         self.spread_deg
             .checked_mul_int(2 * i64::from(at) - (count - 1))
             .and_then(|turn| {

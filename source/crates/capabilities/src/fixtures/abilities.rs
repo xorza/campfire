@@ -2,7 +2,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_abilities::Abilities;
 use campfire_abilities::internals::{MANA, RAGE};
-use campfire_actions::{ActionData, ActionSlots, Actions, SlotKind, TimedSlots};
+use campfire_actions::{ActionData, ActionProgress, ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_combat::OnDeath;
 use campfire_common::PlayerSlot;
 use campfire_declare::CapabilitySet;
@@ -132,8 +132,8 @@ impl AbilitiesFixtures for Abilities {
         target: StableId,
     ) -> StableId {
         let id = Mode::spawn(world, unit_type, pos, team, ());
-        let mut slots = world.part_mut::<ActionSlots>(id);
-        slots.set_attack_target(Some(target));
+        let mut progress = world.part_mut::<ActionProgress>(id);
+        progress.set_attack_target(Some(target));
         id
     }
 

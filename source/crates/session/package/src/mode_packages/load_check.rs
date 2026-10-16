@@ -1916,7 +1916,6 @@ fn action_problem(action: DeclaredName, problem: ActionProblem) -> LoadProblem {
         ActionProblem::Field(field) => LoadProblem::ActionField { action, field },
         ActionProblem::KindField(field) => LoadProblem::KindField { action, field },
         ActionProblem::NotRun(kind) => LoadProblem::KindNotRun { action, kind },
-        ActionProblem::Bounce => LoadProblem::Gather(GatherProblem::Bounce(action)),
         ActionProblem::Global(MeteredKind::Gather) => {
             LoadProblem::Gather(GatherProblem::Global(action))
         }

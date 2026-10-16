@@ -8,9 +8,9 @@ use campfire_abilities::internals::{MANA, RAGE, scaling_stats};
 use campfire_abilities::*;
 use campfire_actions::{
     ActionBook, ActionData, ActionDataField, ActionError, ActionField, ActionKind, ActionProblem,
-    ActionRange, ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData, ChargesData,
-    ClipData, CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectTo, FromData,
-    InProgress, KindData, KindError, LaunchFields, ModifierFields, MoveData, OrderPhase,
+    ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData,
+    ChargesData, ClipData, CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectTo,
+    FromData, InProgress, KindData, KindError, LaunchFields, ModifierFields, MoveData, OrderPhase,
     PurgeFields, RangeField, RestoreFields, SlotAim, SlotKind, SlotKindBook, SlotKindData,
     SlotKinds, SlotRanks, SlotTimes, Started, Targeting, TimedSlots, Toggle, XpFields,
 };
@@ -474,7 +474,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
         phase: OrderPhase::Ordered,
     };
     assert_eq!(
-        game.part::<ActionSlots>(caster).in_progress(),
+        game.part::<ActionProgress>(caster).in_progress(),
         Some(ordered)
     );
     game.run_until(15);
@@ -1107,7 +1107,7 @@ fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
         hopper,
         ActionTarget::Point(Vec3::from((10, 0, 0))),
     );
-    assert!(game.part::<ActionSlots>(hopper).approaching());
+    assert!(game.part::<ActionProgress>(hopper).approaching());
     game.run_until(6);
     assert_eq!(
         (game.part::<Position>(hopper).x, Stats::health(&game, still)),
@@ -1157,7 +1157,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
         slot: 0,
         target: ActionTarget::Unit(far),
     };
-    let approaching = |game: &Match| game.part::<ActionSlots>(mover).approaching();
+    let approaching = |game: &Match| game.part::<ActionProgress>(mover).approaching();
     // A move order ends the walk to jab, and the jab: the unit walks where it was told.
     send(&mut game, jab);
     assert!(approaching(&game));
@@ -1169,7 +1169,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
             z: back.z,
         },
     );
-    assert_eq!(game.part::<ActionSlots>(mover).in_progress(), None);
+    assert_eq!(game.part::<ActionProgress>(mover).in_progress(), None);
     assert_eq!(game.part::<Destination>(mover).get(), Some(back));
     // A silence keeps the jab as an order, and the unit stands until it ends; then it walks on.
     send(&mut game, jab);
@@ -1183,7 +1183,10 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
         },
         phase: OrderPhase::Ordered,
     };
-    assert_eq!(game.part::<ActionSlots>(mover).in_progress(), Some(ordered));
+    assert_eq!(
+        game.part::<ActionProgress>(mover).in_progress(),
+        Some(ordered)
+    );
     assert_eq!(game.part::<Destination>(mover).get(), None);
     Units::set_blocks(&mut game, mover, &[]);
     game.step();
@@ -1192,7 +1195,7 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
     let entity = game.unit_entity(far);
     game.entity_mut(entity).insert(Dead);
     game.step();
-    assert_eq!(game.part::<ActionSlots>(mover).in_progress(), None);
+    assert_eq!(game.part::<ActionProgress>(mover).in_progress(), None);
     assert_eq!(game.part::<Destination>(mover).get(), None);
     assert_eq!(Abilities::failed_calls(&game), []);
 }
@@ -1253,7 +1256,7 @@ fn charges_come_back(declared: &[Capability]) {
     };
     let held = |game: &Match| (charges(game), Abilities::pool(game, caster));
     let order = |game: &mut Match, slot| {
-        game.part_mut::<ActionSlots>(caster)
+        game.part_mut::<ActionProgress>(caster)
             .order(slot, ActionTarget::None);
         game.step();
     };
@@ -1308,7 +1311,7 @@ fn charges_come_back(declared: &[Capability]) {
             ])),
         ),
     );
-    game.part_mut::<ActionSlots>(learner)
+    game.part_mut::<ActionProgress>(learner)
         .order(1, ActionTarget::None);
     game.step();
     let unlearned = game.part::<ActionSlots>(learner).slot(0).unwrap();
@@ -1361,7 +1364,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
     let on_client = caster(&mut client);
     for slot in 0..3 {
         for (game, id) in [(&mut server, on_server), (&mut client, on_client)] {
-            game.part_mut::<ActionSlots>(id)
+            game.part_mut::<ActionProgress>(id)
                 .order(slot, ActionTarget::None);
             game.step();
         }
@@ -1373,7 +1376,6 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
     // Step spent a charge in tick 0, its next back in tick 30, and is ready from tick 3; Aura,
     // cast in tick 1, pays from tick 31; Drain, cast in tick 2, channels from tick 3, ticking in
     // tick 6, to tick 12.
-    let slots = server.part::<ActionSlots>(on_server);
     let times = server.part::<SlotTimes>(on_server);
     let step = times.slot(0).unwrap();
     let charges = step.charges.unwrap();
@@ -1382,7 +1384,8 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
         (2, Tick::new(30), Tick::new(3))
     );
     assert_eq!(times.slot(1).unwrap().toggle, Some(Tick::new(31)));
-    let Some(InProgress::Channel { next, ends, .. }) = slots.in_progress() else {
+    let progress = server.part::<ActionProgress>(on_server);
+    let Some(InProgress::Channel { next, ends, .. }) = progress.in_progress() else {
         panic!("Drain channels");
     };
     assert_eq!((next, ends), (Tick::new(6), Tick::new(12)));
@@ -1463,8 +1466,8 @@ fn on_interrupt(ctx, caster, target) {
     // it ticks no more; so does a stun in tick 5.
     let cut = [500, 500, 500, 490, 483, 483, 483, 483, 483, 483, 483, 483];
     let ordered = run(&mut game, 20, &|game, caster| {
-        let mut slots = game.part_mut::<ActionSlots>(caster);
-        slots.order(0, ActionTarget::None);
+        let mut progress = game.part_mut::<ActionProgress>(caster);
+        progress.order(0, ActionTarget::None);
     });
     assert_eq!(health(&ordered), cut);
     let stunned = run(&mut game, 40, &|game, caster| {
@@ -1483,10 +1486,10 @@ fn on_interrupt(ctx, caster, target) {
     let emptied = run(&mut game, 80, &|game, caster| {
         let entity = game.unit_entity(caster);
         let mut unit = game.entity_mut(entity);
-        let (mut slots, mut times) = unit
-            .get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
+        let (mut slots, mut times, mut progress) = unit
+            .get_components_mut::<(&mut ActionSlots, &mut SlotTimes, &mut ActionProgress)>()
             .unwrap();
-        slots.fill(&mut times, 0, None);
+        slots.fill((&mut times, &mut progress), 0, None);
     });
     assert_eq!(health(&emptied), cut);
 }
@@ -1536,7 +1539,7 @@ fn on_resolve(ctx, caster, target) {
         (caster, target)
     };
     let order = |game: &mut Match, id: StableId, slot: u8, target: ActionTarget| {
-        game.part_mut::<ActionSlots>(id).order(slot, target);
+        game.part_mut::<ActionProgress>(id).order(slot, target);
     };
     let run_to = |game: &mut Match, tick: u64| game.run_until(tick);
     let share = |held: i64| Num::int(held) / Num::int(90);
@@ -1599,14 +1602,15 @@ fn on_resolve(ctx, caster, target) {
     // as `ctx.charge` reads one.
     let entity = game.unit_entity(caster);
     let checked = |action, charge| {
-        let mut slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))]);
-        slots.order(0, ActionTarget::Unit(target));
+        let slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))]);
+        let mut progress = ActionProgress::default();
+        progress.order(0, ActionTarget::Unit(target));
         let start = ActionStart {
             origin: Vec3::ZERO,
             charge,
         };
-        slots.start(Tick::new(5), ActionTarget::Unit(target), start);
-        slots.check(&game, entity)
+        progress.start(Tick::new(5), ActionTarget::Unit(target), start);
+        slots.check(&game, entity) && progress.check_against(&slots, &game)
     };
     let past = [Num::ONE + Num::EPSILON, Num::ZERO - Num::EPSILON];
     assert_eq!(
@@ -2137,7 +2141,9 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         } else {
             game.step();
         }
-        let stunned = UnitTags::properties_of(game.get(entity)).blocks(Block::Move);
+        let stunned = game
+            .get::<UnitTags>(entity)
+            .is_some_and(|tags| tags.properties.blocks(Block::Move));
         seen.push((game.state_hash(), stunned));
     }
     seen
@@ -2213,7 +2219,8 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     game.step();
     let stopped = |game: &Match, id| {
         let entity = game.unit_entity(id);
-        UnitTags::properties_of(game.get(entity)).blocks(Block::Move)
+        game.get::<UnitTags>(entity)
+            .is_some_and(|tags| tags.properties.blocks(Block::Move))
     };
     assert_eq!([stopped(&game, freed), stopped(&game, held)], [true, true]);
     Abilities::casts(
@@ -2857,7 +2864,7 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
             let slots =
                 TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]));
             let attacker = Abilities::fighter(&mut game, fighter, slots);
-            game.part_mut::<ActionSlots>(attacker)
+            game.part_mut::<ActionProgress>(attacker)
                 .set_attack_target(Some(target));
             attacker
         };
@@ -2946,7 +2953,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         let pos = Vec3::from((Num::int(x) + Num::HALF * i64::from(x == 2), 0, 0));
         Abilities::spawn_combatant(&mut game, pos, Team::new(1), ())
     });
-    game.part_mut::<ActionSlots>(attacker)
+    game.part_mut::<ActionProgress>(attacker)
         .set_attack_target(Some(target));
     // Tick 0: the attack deals 40 in Resolve, and its list launches the blast on the target,
     // 1 m out, which lands then. Tick 1: the blast triggers in Hit, a tick after it landed; it
@@ -2984,7 +2991,7 @@ fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_eac
         TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))])),
     );
     let target = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
-    game.part_mut::<ActionSlots>(attacker)
+    game.part_mut::<ActionProgress>(attacker)
         .set_attack_target(Some(target));
     game.step();
     let entity = game.unit_entity(attacker);

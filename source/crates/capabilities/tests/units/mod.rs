@@ -4,7 +4,7 @@ use std::panic::{self, AssertUnwindSafe};
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use bevy_ecs::component::ComponentId;
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionProgress, ActionSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::internals::Armed;
@@ -392,7 +392,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let fallen = melee(&mut game, (9, 0, 1), Team::new(1), Dead);
     let bare = spawn_named(&mut game, "bare", (9, 0, 2), Team::new(1));
     let entity = game.unit_entity(of);
-    game.get_mut::<ActionSlots>(entity)
+    game.get_mut::<ActionProgress>(entity)
         .unwrap()
         .set_attack_target(Some(near));
 

@@ -4,7 +4,8 @@ use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionKind, ActionSlots, KindSpec, Payer, Purse, SlotTimes,
+    ActionBook, ActionCheck, ActionKind, ActionProgress, ActionSlots, KindSpec, Payer, Purse,
+    SlotTimes,
 };
 use campfire_declare::{ByType, RoleForm};
 use campfire_math::{Num, Vec3};
@@ -40,7 +41,7 @@ type Training = (
     Entity,
     &'static StableId,
     &'static UnitType,
-    &'static mut ActionSlots,
+    (&'static ActionSlots, &'static mut ActionProgress),
     &'static mut SlotTimes,
     &'static mut TrainQueue,
     UnitPools,
@@ -92,11 +93,13 @@ impl Trains {
         let now = tick.start();
         let trains = {
             let training = units.p1();
-            let ordered = training.iter().filter_map(|(entity, &id, _, slots, ..)| {
-                slots
-                    .ordered(&book, ActionKind::Train)
-                    .map(|_| Keyed { id, entity })
-            });
+            let ordered = training
+                .iter()
+                .filter_map(|(entity, &id, _, (slots, progress), ..)| {
+                    progress
+                        .ordered(slots, &book, ActionKind::Train)
+                        .map(|_| Keyed { id, entity })
+                });
             order.sort(ordered)
         };
         if trains.is_empty() {
@@ -111,20 +114,20 @@ impl Trains {
         }
         let mut training = units.p1();
         for &Keyed { entity, .. } in trains {
-            let (_, _, &unit_type, mut slots, mut times, mut queue, pools, held_by) =
+            let (_, _, &unit_type, (slots, mut progress), mut times, mut queue, pools, held_by) =
                 training.get_mut(entity).expect("a unit in the order");
             let pools = pools.of(life.as_deref().and_then(PoolBook::life));
-            let ordered = slots
-                .ordered(&book, ActionKind::Train)
+            let ordered = progress
+                .ordered(slots, &book, ActionKind::Train)
                 .expect("an ordered train");
-            slots.stop();
+            progress.stop();
             let purse = Purse::of(pools.read(), resources.of(held_by));
             let owner = held_by.map(|owner| owner.slot());
             let no_target = |_| Relation::Friendly;
             let checked = times.checked_action(ActionCheck {
                 book: &book,
                 now,
-                slots: &slots,
+                slots,
                 purse,
                 aim: ordered,
                 relation: no_target,

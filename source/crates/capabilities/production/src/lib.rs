@@ -266,7 +266,7 @@ impl Production {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_actions::{ActionBook, ActionSlots, ActionTarget};
+    use campfire_actions::{ActionBook, ActionProgress, ActionTarget};
     use campfire_declare::{Book, ByType};
     use campfire_math::Num;
     use campfire_sim::internals::SimWorldInternals;
@@ -303,8 +303,8 @@ pub mod internals {
 
         /// Orders `producer` to train what its slot 0 holds.
         pub fn order_train(world: &mut World, producer: StableId) {
-            let mut slots = world.part_mut::<ActionSlots>(producer);
-            slots.order(0, ActionTarget::None);
+            let mut progress = world.part_mut::<ActionProgress>(producer);
+            progress.order(0, ActionTarget::None);
         }
 
         /// The depot `id`'s life, and its progress while a site.

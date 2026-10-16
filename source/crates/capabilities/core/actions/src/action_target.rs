@@ -25,7 +25,7 @@ impl ActionTarget {
         }
     }
 
-    /// Whether each of its places lies within the world's bound, as a restore checks it.
+    /// Whether its point, when it is one, lies within the world's bound, as a restore checks it.
     pub(crate) fn within_bound(self) -> bool {
         match self {
             Self::Point(at) => Position::from(at).within_bound(),

@@ -7,8 +7,8 @@ use campfire_players::ResourceAmount;
 use campfire_script::{DataSection, DataTable};
 use campfire_stats::PoolCost;
 use campfire_values::{
-    DeclaredName, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked, Scalar, Share,
-    Stat,
+    DeclaredName, Distance, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked,
+    Scalar, Share, Stat,
 };
 use serde::Deserialize;
 
@@ -98,7 +98,7 @@ pub struct ActionData {
     /// The most a `gather`'s trip carries.
     pub take: Option<NonZeroU32>,
     /// How far from its node, in meters, a `gather` looks for another, none when absent.
-    pub bounce: Option<Num>,
+    pub bounce: Option<Distance>,
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,
@@ -207,7 +207,6 @@ impl ActionData {
         })
     }
 
-    /// Whether every per-rank array it holds has an entry for each of `ranks` ranks.
     /// The rule `number`, a number of one of its effects, breaks: a value at some rank, its own or
     /// its param's, past what a sim number holds, or below 0. A param it does not declare gives
     /// none, which its effects' names refuse.
@@ -242,6 +241,7 @@ impl ActionData {
         values.iter().all(whole)
     }
 
+    /// Whether every per-rank array it holds has an entry for each of `ranks` ranks.
     pub fn check_ranks(&self, ranks: usize) -> bool {
         self.rank_counts().all(|count| count == ranks)
     }

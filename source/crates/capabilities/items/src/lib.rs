@@ -7,7 +7,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, CastSpends, SlotTimes, UseGroup};
+use campfire_actions::{ActionProgress, ActionSlots, CastSpends, SlotTimes, UseGroup};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
@@ -114,12 +114,18 @@ impl Items {
     fn spend_use(world: &mut World, entity: Entity, slot: u8) {
         let book = world.resource::<ItemBook>().clone();
         let mut caster = world.entity_mut(entity);
-        let carried = caster
-            .get_components_mut::<(&mut Inventory, &UseGroup, &mut ActionSlots, &mut SlotTimes)>();
-        if let Ok((mut inventory, &group, mut slots, mut times)) = carried {
+        let carried = caster.get_components_mut::<(
+            &mut Inventory,
+            &UseGroup,
+            &mut ActionSlots,
+            &mut SlotTimes,
+            &mut ActionProgress,
+        )>();
+        if let Ok((mut inventory, &group, mut slots, mut times, mut progress)) = carried {
             let carrier = CarrierSlots {
                 slots: &mut slots,
                 times: &mut times,
+                progress: &mut progress,
                 group,
             };
             inventory.spend_use(&book, carrier, slot);
