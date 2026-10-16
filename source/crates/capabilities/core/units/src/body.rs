@@ -328,6 +328,13 @@ mod tests {
         let volume = Body::volume(Some(&tall), pos, &planar);
         assert_eq!(volume.base.pos, at(Num::HALF * 9));
         assert_eq!(volume.height, Num::int(2));
+        // A point in space gives its position back; a spatial map's are the same. The ground's
+        // one coarse cell is 4 m high, and a spatial map has no ground.
+        assert_eq!(planar.position(at(Num::HALF * 9)), pos);
+        assert_eq!(spatial.position(pos), pos);
+        let ends = [pos, Vec3::new(Num::int(9), Num::ZERO, Num::ONE)];
+        assert_eq!(planar.highest_along(ends[0], ends[1]), Some(Num::int(4)));
+        assert_eq!(spatial.highest_along(ends[0], ends[1]), None);
 
         // A height is from 0 to 2,048 m, and a snapshot is untrusted: a decoded height below 0
         // fails, one within the bound holds.

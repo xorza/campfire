@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_geometry::{Metric, Placed};
+use campfire_geometry::{Metric, Placed, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_players::OnMatch;
 use campfire_script::LivingUnit;
@@ -106,6 +106,24 @@ impl Targets<'_, '_> {
         let (_, _, _, life, _, tags) = row;
         // The query holds no unit that died.
         Targets::targetable(false, Some(life), tags).then(|| Targets::body(row))
+    }
+
+    /// The volume of `target`, when it is a living unit that may be a target, as `Body::volume`
+    /// gives it.
+    pub fn volume_of(&self, target: StableId) -> Option<Volume> {
+        self.volume_at(self.index.get(target)?)
+    }
+
+    /// The volume of the unit of `entity`, when a living unit that may be a target.
+    pub fn volume_at(&self, entity: Entity) -> Option<Volume> {
+        let (_, pos, _, life, body, tags) = self.units.get(entity).ok()?;
+        Targets::targetable(false, Some(life), tags)
+            .then(|| Body::volume(body, pos.get(), &self.map))
+    }
+
+    /// The map the units stand on.
+    pub fn map(&self) -> &MapBook {
+        &self.map
     }
 
     /// The unit of `row`.

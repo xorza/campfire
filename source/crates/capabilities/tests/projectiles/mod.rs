@@ -53,11 +53,11 @@ fn volley_match() -> Match {
     ])
 }
 
-/// A match of `declared`, with combat and projectiles among them, and the stat book a weapon
-/// reads.
 /// The unit vector along +x, the way `Projectiles::fire_line` fires most lines.
 const ALONG_X: Vec3 = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
 
+/// A match of `declared`, with combat and projectiles among them, and the stat book a weapon
+/// reads.
 fn volley_match_of(declared: &[Capability]) -> Match {
     let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
     let mut game = Match::server(declared, budgets);
@@ -425,8 +425,10 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     let checks =
         [flown(Num::int(6)), flown(Num::int(6) + e), lost].map(|state| state.check(&game, entity));
     assert_eq!(checks, [true, false, false]);
-    let decodes =
-        |meters: Num| Binary::decode::<FlightState>(&Binary::encode(&(meters, false))).is_ok();
+    let decodes = |flown: Num| {
+        let state = FlightState::Flown { flown, lost: false };
+        Binary::decode::<FlightState>(&Binary::encode(&state)).is_ok()
+    };
     assert_eq!([Num::ZERO, -e].map(decodes), [true, false]);
     game.step();
     assert_eq!(Projectiles::projectiles(&game), []);
@@ -624,3 +626,5 @@ fn a_projectile_reads_only_with_a_positive_speed_a_width_of_0_to_4096_m_and_no_n
         assert!(refusal(text).starts_with(message), "{text}");
     }
 }
+
+mod curves;

@@ -149,6 +149,45 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 #[test]
+fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_and_one_along_a_direction_not() {
+    // The tower's weapon flies a curve, 5 m/s, slower than the cap: a curve chases no one, and
+    // its end follows its target.
+    let curve = r#"{ first = ["0.3", "4"], second = ["0.7", "4"], follow = "2", life_ms = 3000 }"#;
+    let shell = format!(r#"{{ speed = "5", curve = {curve} }}"#);
+    let edit = Edit::Set("units.tower_bolt.projectile", &shell);
+    assert!(load(&edited([(UNITS, edit)])).is_ok());
+    // One that hits no unit but its target meets that by its width, so it may be wide.
+    let aimed = format!(r#"{{ speed = "5", width = "2", hits = "none", curve = {curve} }}"#);
+    let edit = Edit::Set("units.tower_bolt.projectile", &aimed);
+    assert!(load(&edited([(UNITS, edit)])).is_ok());
+    // The husk's wraps aim along a direction, which a curve does not fly.
+    let wraps = format!(r#"{{ speed = "20", width = "1.6", curve = {curve} }}"#);
+    let edit = Edit::Set("units.grasping_wraps.projectile", &wraps);
+    let error = load(&edited([(HUSK, edit)])).unwrap_err();
+    let along = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Curve(action)) if action == "grasping_wraps");
+    assert!(along(&error.problem), "{error:?}");
+    // A curve takes nothing of a line's or a homing flight's, and its points lie on the way.
+    for (projectile, message) in [
+        (format!(r#"{{ speed = "5", homing = true, curve = {curve} }}"#), "a curve takes no"),
+        (format!(r#"{{ speed = "5", stop_on_hit = true, curve = {curve} }}"#), "a curve takes no"),
+        (
+            r#"{ speed = "5", curve = { first = ["1.5", "4"], second = ["0.7", "4"] } }"#.to_owned(),
+            "a curve's point",
+        ),
+        (
+            r#"{ speed = "5", curve = { first = ["0.3", "4"], second = ["0.7", "4"], life_ms = 0 } }"#
+                .to_owned(),
+            "a curve's `life_ms`",
+        ),
+    ] {
+        let edit = Edit::Set("units.tower_bolt.projectile", &projectile);
+        let error = load(&edited([(UNITS, edit)])).unwrap_err();
+        let file = "data/units.toml";
+        assert!(read_fails(&error.problem, file, message), "{projectile}: {error:?}");
+    }
+}
+
+#[test]
 fn a_mode_state_field_is_sent_to_no_client_unless_it_says() {
     // The 3v3's `phase` is sent to all; without `sync`, or with `sync = "none"`, to none.
     let phase = |edit: Edit<'_>| {

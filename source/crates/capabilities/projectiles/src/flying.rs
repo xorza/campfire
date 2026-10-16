@@ -68,10 +68,11 @@ impl Flying {
         mut near: UnitsNear<'_, '_>,
     ) {
         flying.clear();
-        let lines = projectiles
+        // Only a line and a curve meet the units near.
+        let meet = projectiles
             .iter()
-            .any(|(.., projectile, _, _, _)| matches!(projectile.flight(), Flight::Line { .. }));
-        let grid = lines.then(|| near.current());
+            .any(|(.., projectile, _, _, _)| !matches!(projectile.flight(), Flight::Homing { .. }));
+        let grid = meet.then(|| near.current());
         let mut flights = Flights {
             hits: &mut hits,
             deliveries: &mut deliveries,

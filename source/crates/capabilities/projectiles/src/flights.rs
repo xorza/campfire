@@ -1,29 +1,53 @@
+use std::cmp::Ordering;
 use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
 use campfire_actions::{ShotHit, ShotHits, Targets};
 use campfire_deliveries::{Delivered, Deliveries, Delivering, Reached};
-use campfire_geometry::{BodyGrid, Placed, Shape};
+use campfire_geometry::{BodyGrid, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
+use campfire_script::Filter;
 use campfire_sim::{Position, StableId};
 use campfire_values::{Hit, Team};
 
+use crate::curve::Curve;
 use crate::flight_state::FlightState;
 use crate::projectile::{Flight, Payload, Projectile};
 use crate::projectile_spec::ProjectileSpec;
 use crate::struck_units::{Struck, StruckUnits};
 
 /// The flights of a tick: where their hits and ends go, the units each line struck while it
-/// flies, the bodies a line may meet, indexed as the stage began, and a scratch list
+/// flies, the bodies a line or a curve may meet, indexed as the stage began, and a scratch list
 /// of the units a line's step meets, by share of the step.
 #[derive(Debug)]
 pub(crate) struct Flights<'a> {
     pub(crate) hits: &'a mut ShotHits,
     pub(crate) deliveries: &'a mut Deliveries,
     pub(crate) struck: &'a mut StruckUnits,
-    /// The units near, when a line flies.
+    /// The units near, when a line or a curve flies.
     pub(crate) grid: Option<&'a BodyGrid<Entity>>,
     pub(crate) met: &'a mut Vec<(Num, StableId)>,
+}
+
+/// A curve a projectile flies: its first and its last control point as it launched, the unit it
+/// aimed at, if one, and its count of points.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct CurveFlight {
+    from: Vec3,
+    aimed: Option<StableId>,
+    points: u32,
+}
+
+/// A curve projectile's sphere where it stands: of radius `half` at the point in space `point`,
+/// of a projectile of `team` from `source`, aimed at `aimed`, which meets what `hits` selects.
+#[derive(Debug, Clone, Copy)]
+struct Sphere {
+    point: Vec3,
+    half: Num,
+    team: Team,
+    source: StableId,
+    aimed: Option<StableId>,
+    hits: Option<Filter>,
 }
 
 /// A line a projectile flies: its origin, its unit direction and its range.
@@ -65,10 +89,24 @@ impl Flights<'_> {
     /// hits each unit its type's `hits` selects whose body comes within half its width of this
     /// tick's path, in the order of the point of the path nearest each, then by stable id, each
     /// unit once, and once a cast for a type that says so; it ends at its first hit when its type
-    /// stops on one, and at the end of its range.
+    /// stops on one, and at the end of its range. One on a curve flies as `curve` says.
     pub(crate) fn fly(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>) -> bool {
         match aloft.projectile.flight() {
             Flight::Homing { target } => self.homing(targets, aloft, target),
+            Flight::Curve {
+                from,
+                aimed,
+                points,
+                ..
+            } => self.curve(
+                targets,
+                aloft,
+                CurveFlight {
+                    from,
+                    aimed,
+                    points,
+                },
+            ),
             Flight::Line {
                 from,
                 direction,
@@ -226,6 +264,130 @@ impl Flights<'_> {
         }
         self.end(projectile, line(to, range));
         true
+    }
+
+    /// Flies `aloft` to its curve's next point (20-zero-hour-projectiles.md, A projectile may fly a
+    /// curve; 20-zero-hour-projectiles.md, A curve meets units by its point). It ends where it is in the tick after its last
+    /// point, and as its life passes. Before its step, when it aimed at a unit that lives and
+    /// whose center lies more than √0.1 m from its end, its end moves toward that center by at
+    /// most its type's `follow`, with its count of points kept. At its point, its sphere of half
+    /// its width meets the volumes of the living units its type's `hits` selects, and of the unit
+    /// it aimed at, never its source's: the one of the lowest stable id is its hit, and it ends
+    /// there.
+    fn curve(
+        &mut self,
+        targets: &Targets<'_, '_>,
+        aloft: Aloft<'_>,
+        CurveFlight {
+            from,
+            aimed,
+            points,
+        }: CurveFlight,
+    ) -> bool {
+        let Aloft {
+            id,
+            team,
+            spec,
+            position,
+            projectile,
+            state,
+        } = aloft;
+        let FlightState::Curve {
+            flown,
+            steps,
+            mut end,
+        } = *state
+        else {
+            panic!("a curve's state is a curve's");
+        };
+        let shape = spec.curve.expect("a curve's type has a curve");
+        let map = targets.map();
+        let hit = |pos, distance, direction| Hit {
+            delivery: Some(id),
+            target: aimed,
+            pos,
+            distance,
+            direction,
+        };
+        // Its life counts from its launch, the tick before its first point.
+        let lived = u64::from(steps) + 1;
+        if steps >= points || shape.life.is_some_and(|life| lived >= life.get()) {
+            self.end(projectile, hit(position.get(), flown, None));
+            return true;
+        }
+        let aimed_center = aimed
+            .and_then(|aimed| targets.volume_of(aimed))
+            .map(|volume| volume.center());
+        if let Some(center) = aimed_center
+            && shape.follow > Num::ZERO
+            // More than √0.1 m away: 10 · d² past 1 m² in bits, 2⁴⁸.
+            && 10 * (center - end).length_squared_bits() > 1 << 48
+        {
+            end = end.step_toward(center, shape.follow);
+        }
+        let curve = Curve::new(from, end, &shape, map.highest_along(from, end));
+        let point = curve.point(steps, points);
+        let here = map.point(position.get());
+        let moved = map.position(point);
+        if !Position::from(moved).within_bound() {
+            self.end(projectile, hit(position.get(), flown, None));
+            return true;
+        }
+        let step = point - here;
+        let flown = flown + step.length();
+        *position = Position::from(moved);
+        *state = FlightState::Curve {
+            flown,
+            steps: steps + 1,
+            end,
+        };
+        let sphere = Sphere {
+            point,
+            half: spec.half_width.get(),
+            team,
+            source: projectile.source(),
+            aimed,
+            hits: spec.hits,
+        };
+        let Some(met) = self.met(targets, sphere) else {
+            return false;
+        };
+        let hit = hit(moved, flown, step.normalized());
+        self.strike(projectile, met, hit);
+        self.end(projectile, hit);
+        true
+    }
+
+    /// The unit of the lowest stable id whose volume `sphere` meets, touching included: a living
+    /// unit its `hits` selects, or the unit it aimed at, never its source.
+    fn met(&self, targets: &Targets<'_, '_>, sphere: Sphere) -> Option<StableId> {
+        let Sphere {
+            point,
+            half,
+            team,
+            source,
+            aimed,
+            hits,
+        } = sphere;
+        let meets = |volume: Option<Volume>| {
+            volume.is_some_and(|volume| volume.nearest(point, half) != Ordering::Greater)
+        };
+        let mut met = aimed.filter(|&aimed| aimed != source && meets(targets.volume_of(aimed)));
+        if let Some(hits) = hits {
+            let grid = self.grid.expect("a curve finds the units near");
+            grid.visit_near(point, half, |body| {
+                let Some(unit) = targets.target_at(body.key) else {
+                    return ControlFlow::Continue(());
+                };
+                let selects = hits.selects(targets.relation(team, unit.team), unit.tags);
+                let lower = met.is_none_or(|met| unit.id < met);
+                if selects && lower && unit.id != source && meets(targets.volume_at(body.key)) {
+                    met = Some(unit.id);
+                }
+                ControlFlow::Continue(())
+            });
+        }
+        met
     }
 
     /// What a hit of `target` delivers: an attack's shot hit, with its damage and its roll, or its

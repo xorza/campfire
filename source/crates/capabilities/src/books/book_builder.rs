@@ -4,7 +4,8 @@ use std::sync::Arc;
 
 use campfire_actions::{
     ActionData, ActionKind, ActionNames, ActionParts, ActionProblem, ActionSlots, ConstructData,
-    CostTarget, EffectNames, PackageAction, PlacementData, PlacementRule, SlotKindBook, UseGroup,
+    CostTarget, EffectNames, PackageAction, PlacementData, PlacementRule, ProjectileFlight,
+    SlotKindBook, UseGroup,
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{Armor, CombatBook, CombatData, OnDeath};
@@ -19,7 +20,7 @@ use campfire_production::{
     SupplyCostBook,
 };
 use campfire_progression::{TrackBook, TrackSet};
-use campfire_projectiles::{ProjectileSpec, Projectiles};
+use campfire_projectiles::{ProjectileData, ProjectileSpec, Projectiles};
 use campfire_script::{Filter, NameKind, ScriptId, UnknownName};
 use campfire_sim::Capability;
 use campfire_stats::{
@@ -1166,10 +1167,10 @@ impl ActionNames for BuildNames<'_> {
         unit_type.ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
     }
 
-    fn homes(&self, package: PackageIndex, name: &DeclaredName) -> Option<bool> {
+    fn flight(&self, package: PackageIndex, name: &DeclaredName) -> Option<ProjectileFlight> {
         let units = &self.input.packages[usize::from(package)].content.units;
         let projectile = units.get(name).and_then(|file| file.projectile.as_ref());
-        projectile.map(|projectile| projectile.homing)
+        projectile.map(ProjectileData::flight)
     }
 }
 

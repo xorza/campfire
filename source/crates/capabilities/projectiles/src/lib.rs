@@ -10,15 +10,18 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionRange, ActionTarget, Aim, Delivery, DeliveryShape};
+use campfire_actions::{
+    ActionBook, ActionRange, ActionTarget, Aim, Delivery, DeliveryShape, ProjectileFlight,
+};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, StableId};
-use campfire_units::MapBook;
+use campfire_sim::{Capability, Position, SimWorld, StableId};
+use campfire_units::{Body, MapBook};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
+mod curve;
 mod error;
 mod flight_state;
 mod flights;
@@ -38,7 +41,9 @@ pub use crate::flying::Flying;
 pub use crate::launches::{Launch, LaunchPayload, Launches};
 pub use crate::launching::Launching;
 pub use crate::projectile::{Flight, Payload, Projectile};
-pub use crate::projectile_data::{ProjectileData, ProjectileHits};
+
+use crate::projectile::CurveAim;
+pub use crate::projectile_data::{CurveData, ProjectileData, ProjectileHits};
 pub use crate::projectile_spec::ProjectileSpec;
 pub use crate::projectiles_api::ProjectilesApi;
 pub use crate::struck_units::{Struck, StruckUnits};
@@ -115,7 +120,8 @@ impl Projectiles {
         EngineTag::new(2, "projectile", TagProperties::NONE.with_named_only());
 
     /// Launches the fan of `launcher`, which aimed at `target` from `from`: a homing projectile
-    /// at a unit for a homing type, or the fan's projectiles along lines spread evenly over its
+    /// at a unit for a homing type; a curve from its caster's center to its unit's center or to
+    /// its point for a curve type; or the fan's projectiles along lines spread evenly over its
     /// spread around the aim, which for an action aimed at a point end there at the latest;
     /// nothing for no target, a unit that is gone, or an aim of no direction.
     fn deliver(world: &mut World, launcher: Launcher, from: Vec3, target: ActionTarget) {
@@ -142,6 +148,29 @@ impl Projectiles {
             Self::push(world, by, unit_type, from, None, [homing]);
             return;
         }
+        if spec.flight() == ProjectileFlight::Curve {
+            let map = world.resource::<MapBook>();
+            let to = match target {
+                ActionTarget::Unit(unit) => Self::center(world, unit),
+                ActionTarget::Point(at) => Some(map.point(at)),
+                ActionTarget::None => None,
+            };
+            let Some(to) = to else {
+                return;
+            };
+            let body = world
+                .entity_of(by.source)
+                .and_then(|source| world.get::<Body>(source));
+            let aim = CurveAim {
+                from: Body::center(body, from, map),
+                to,
+                aimed: target.unit(),
+            };
+            let launch = map.position(aim.from);
+            let curve = Flight::curve(aim, &spec, map);
+            Self::push(world, by, unit_type, launch, None, [curve]);
+            return;
+        }
         let Some(at) = target.pos(world) else {
             return;
         };
@@ -163,6 +192,15 @@ impl Projectiles {
             Flight::line(from, direction, reach, target.unit())
         });
         Self::push(world, by, unit_type, from, None, flights);
+    }
+
+    /// The center of the unit `id` in `world`, as `Body::center` gives it; none for a unit that is
+    /// gone.
+    fn center(world: &World, id: StableId) -> Option<Vec3> {
+        let entity = world.entity_of(id)?;
+        let pos = world.get::<Position>(entity)?.get();
+        let body = world.get::<Body>(entity);
+        Some(Body::center(body, pos, world.resource::<MapBook>()))
     }
 
     /// The range of a line projectile of `spec`: its type's, or else `range`, its action's at

@@ -5,6 +5,7 @@ use campfire_values::{
 };
 
 use crate::cost_target::CostTarget;
+use crate::delivery::ProjectileFlight;
 
 /// The match's ids of the names an action's data gives: what an action's load resolves them by,
 /// in a match's world or in the load's builder; an error for a name the match does not have.
@@ -27,7 +28,7 @@ pub trait ActionNames {
         package: PackageIndex,
         name: &DeclaredName,
     ) -> Result<UnitType, UnknownName>;
-    /// Whether the projectile type `name` of `package`, which resolved, homes on a unit; none
-    /// when it has no `projectile` section.
-    fn homes(&self, package: PackageIndex, name: &DeclaredName) -> Option<bool>;
+    /// How the projectile type `name` of `package`, which resolved, flies; none when it has no
+    /// `projectile` section.
+    fn flight(&self, package: PackageIndex, name: &DeclaredName) -> Option<ProjectileFlight>;
 }

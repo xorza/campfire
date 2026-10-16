@@ -1218,7 +1218,8 @@ impl<'a> LoadCheck<'a> {
     /// `actions`, none twice, a train only on a type with a queue; its inventory as `inventory`
     /// takes it; and a projectile or an area type a delivery type alone: a homing projectile
     /// faster than the cap, one that hits nothing neither homing, stopping, hitting once a cast
-    /// nor wide, and an area's `inside` modifiers of `modifiers`.
+    /// nor wide, but a curve, whose width meets its target, and an area's `inside` modifiers of
+    /// `modifiers`.
     fn unit_type(
         &self,
         unit_type: &UnitTypeData,
@@ -1250,7 +1251,7 @@ impl<'a> LoadCheck<'a> {
             let hits_aside = projectile.homing
                 || projectile.stop_on_hit
                 || projectile.once_per_cast
-                || projectile.width > Num::ZERO;
+                || (projectile.width > Num::ZERO && projectile.curve.is_none());
             if projectile.hits == ProjectileHits::Nothing && hits_aside {
                 return Err(LoadProblem::Delivery(DeliveryProblem::HitsNothing(
                     at.clone(),
@@ -2061,9 +2062,10 @@ fn modifier_exists(
 
 /// The `delivery` of `action`, whose id is `id` and whose script defines `on_hit` when
 /// `hooks_hit`: a unit type of its package's `units` with the section of its kind. A projectile
-/// needs an aim, homes alone and at a unit, and hits a unit when the action has an `on_hit` list
-/// or hook; an area lands on a point, a unit or the caster, not along a direction; a weapon's is
-/// a homing projectile.
+/// needs an aim, homes alone and at a unit, flies a curve alone and at a unit or a point, and hits
+/// a unit when the action has an `on_hit` list or hook, as a curve always meets the unit it aims
+/// at; an area lands on a point, a unit or the caster, not along a direction; a weapon's is a
+/// homing projectile or a curve.
 fn delivery_holds(
     id: &DeclaredName,
     action: &ActionData,
@@ -2086,7 +2088,7 @@ fn delivery_holds(
             unit_type: name.clone(),
         }))
     };
-    let homing = match delivery {
+    let flies_at_unit = match delivery {
         DeliveryData::Projectile { count, .. } => {
             let Some(projectile) = &unit_type.projectile else {
                 return wrong_section();
@@ -2098,12 +2100,17 @@ fn delivery_holds(
             if projectile.homing && (!at_unit || count.get() > 1) {
                 return fail(DeliveryProblem::Homing);
             }
+            let along = action.targeting == Targeting::Direction;
+            if projectile.curve.is_some() && (along || count.get() > 1) {
+                return fail(DeliveryProblem::Curve);
+            }
             if projectile.hits == ProjectileHits::Nothing
+                && projectile.curve.is_none()
                 && (hooks_hit || !action.on_hit.is_empty())
             {
                 return fail(DeliveryProblem::NoHit);
             }
-            projectile.homing
+            projectile.flight().at_unit()
         }
         DeliveryData::Area { .. } => {
             if unit_type.area.is_none() {
@@ -2115,7 +2122,7 @@ fn delivery_holds(
             false
         }
     };
-    if action.kind == ActionKind::Attack && !homing {
+    if action.kind == ActionKind::Attack && !flies_at_unit {
         return fail(DeliveryProblem::Weapon);
     }
     Ok(())

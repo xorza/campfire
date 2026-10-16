@@ -105,7 +105,7 @@ pub use crate::channel_call::{ChannelCall, ChannelStep};
 pub use crate::checked_action::CheckedAction;
 pub use crate::construct_data::ConstructData;
 pub use crate::cost_target::CostTarget;
-pub use crate::delivery::{Delivery, DeliveryShape};
+pub use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
 pub use crate::delivery_data::DeliveryData;
 pub use crate::effect_data::{
     DamageFields, DoesData, EffectData, EffectTo, HealFields, LaunchFields, ModifierFields,
@@ -273,7 +273,7 @@ pub mod internals {
     use crate::action_book::ActionBook;
     use crate::action_data::ActionData;
     use crate::action_range::ActionRange;
-    use crate::delivery::{Delivery, DeliveryShape};
+    use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
     use crate::effect_list_book::EffectListBook;
     use crate::effect_names::EffectNames;
     use crate::fan::Fan;
@@ -435,7 +435,7 @@ pub mod internals {
                         count: NonZeroU8::MIN,
                         spread_deg: Num::ZERO,
                     },
-                    homes: true,
+                    flight: ProjectileFlight::Homing,
                 },
             });
             Self::push(

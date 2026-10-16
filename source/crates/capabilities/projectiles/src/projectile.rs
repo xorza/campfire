@@ -1,17 +1,18 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ShotDamage};
+use campfire_actions::{ActionBook, ProjectileFlight, ShotDamage};
 use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
 use campfire_script::View;
 use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
-use campfire_units::DeliveryEntity;
+use campfire_units::{DeliveryEntity, MapBook};
 use campfire_values::{ActionId, ActionStart, Rank, UnitType};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::curve::{Curve, MAX_POINTS};
 use crate::projectile_spec::ProjectileSpec;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
@@ -25,10 +26,12 @@ pub struct Projectile {
     payload: Payload,
 }
 
-/// How a projectile flies: homing on a unit, or along a line from `from`, where it launched, a
+/// How a projectile flies: homing on a unit; along a line from `from`, where it launched, a
 /// unit vector on the ground or in space, for `range` meters, with the unit its action aimed at,
-/// if one. Each step of a line ends at its place along the line from `from`, rounded once, so no
-/// rounding gathers over its steps, and its last ends where the line does.
+/// if one; or on a curve from `from` to `to`, points in space, in `points` points, with the unit
+/// it aimed at, if one, which its end follows. Each step of a line ends at its place along the
+/// line from `from`, and each point of a curve is the curve's value, rounded once, so no rounding
+/// gathers over its steps.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Flight {
     Homing {
@@ -40,11 +43,49 @@ pub enum Flight {
         range: Num,
         aimed: Option<StableId>,
     },
+    Curve {
+        from: Vec3,
+        to: Vec3,
+        aimed: Option<StableId>,
+        points: u32,
+    },
+}
+
+/// Where a curve launches: its first and its last control point, points in space, and the unit
+/// it aims at, if one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CurveAim {
+    pub(crate) from: Vec3,
+    pub(crate) to: Vec3,
+    pub(crate) aimed: Option<StableId>,
 }
 
 impl Flight {
     pub(crate) const fn homing(target: StableId) -> Self {
         Self::Homing { target }
+    }
+
+    /// The curve of `spec`, whose type flies one, as `aim` launches it over the ground of `map`:
+    /// its count of points at the type's speed, ⌈length ÷ speed⌉.
+    pub(crate) fn curve(aim: CurveAim, spec: &ProjectileSpec, map: &MapBook) -> Self {
+        let CurveAim { from, to, aimed } = aim;
+        let shape = spec.curve.expect("a curve's type has a curve");
+        let curve = Curve::new(from, to, &shape, map.highest_along(from, to));
+        Self::Curve {
+            from,
+            to,
+            aimed,
+            points: curve.count(spec.speed),
+        }
+    }
+
+    /// How it flies, as its type does.
+    pub(crate) const fn kind(self) -> ProjectileFlight {
+        match self {
+            Self::Homing { .. } => ProjectileFlight::Homing,
+            Self::Line { .. } => ProjectileFlight::Line,
+            Self::Curve { .. } => ProjectileFlight::Curve,
+        }
     }
 
     /// A flight from `from` along `direction` for `range`, aimed at `aimed` if a unit.
@@ -78,12 +119,13 @@ pub enum Payload {
 }
 
 impl Projectile {
-    /// `None` unless a line's range is not negative, an attack's amount is not negative, and its
-    /// roll is at least 0 and less than 1.
+    /// `None` unless a line's range is not negative, a curve has from 1 to `MAX_POINTS` points,
+    /// an attack's amount is not negative, and its roll is at least 0 and less than 1.
     pub fn new(source: StableId, flight: Flight, payload: Payload) -> Option<Self> {
         let flies = match flight {
             Flight::Homing { .. } => true,
             Flight::Line { range, .. } => range >= Num::ZERO,
+            Flight::Curve { points, .. } => (1..=MAX_POINTS).contains(&points),
         };
         let carries = match payload {
             Payload::Attack(ShotDamage { amount, roll, .. }) => {
@@ -120,18 +162,21 @@ impl SimComponent for Projectile {
     const NAME: &'static str = "projectiles.projectile";
     type Host = DeliveryEntity;
 
-    // A projectile of a type with no flight, of an action the book lacks or at a rank past its
-    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit; its
-    // action's start lies within the world's bound, as every place does.
+    // A projectile of a type with no flight or another flight, of an action the book lacks or at
+    // a rank past its ranks, or of a damage kind the mode lacks, has no rules for its flight or
+    // its hit; its action's start lies within the world's bound, as every place does.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let specs = world.resource::<ByType<ProjectileSpec>>();
         let flies = world
             .get::<UnitType>(entity)
-            .is_some_and(|&unit_type| specs.get(unit_type).is_some());
+            .and_then(|&unit_type| specs.get(unit_type))
+            .is_some_and(|spec| spec.flight() == self.flight.kind());
         let book = world.resource::<ActionBook>();
-        // A line's origin lies within the world's bound, as every place does.
+        // A line's origin and a curve's ends lie within the world's bound, as every place does.
+        let within = |at: Vec3| Position::from(at).within_bound();
         let origin = match self.flight {
-            Flight::Line { from, .. } => Position::from(from).within_bound(),
+            Flight::Line { from, .. } => within(from),
+            Flight::Curve { from, to, .. } => within(from) && within(to),
             Flight::Homing { .. } => true,
         };
         let carries = match self.payload {

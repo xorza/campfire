@@ -1,3 +1,4 @@
+use campfire_actions::ProjectileFlight;
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
@@ -7,7 +8,8 @@ use serde::{Deserialize, Deserializer};
 
 /// A unit type's `projectile` section, which makes its units projectiles: they fly `speed`
 /// meters a second, `width` meters wide, for `range` meters or their action's range, homing on
-/// a unit or along a line, and hit what `hits` says, the units of `enemies` by default.
+/// a unit, along a line or on a `curve`, and hit what `hits` says, the units of `enemies` by
+/// default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectileData {
     pub speed: Num,
@@ -20,6 +22,20 @@ pub struct ProjectileData {
     pub once_per_cast: bool,
     pub hits: ProjectileHits,
     pub gravity: Option<Num>,
+    pub curve: Option<CurveData>,
+}
+
+/// A projectile's `curve`, a cubic Bézier curve from its launch to its target
+/// (20-zero-hour-projectiles.md, A projectile may fly a curve): its inner points at `first`'s and
+/// `second`'s fractions of the way, `[fraction, height]` each, their heights above the highest
+/// of its ends and the ground between them; its end following its target by `follow` meters a
+/// second; and its life, `life_ms`, none for a life that lasts its curve.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CurveData {
+    pub first: [Num; 2],
+    pub second: [Num; 2],
+    pub follow: Num,
+    pub life_ms: Option<u32>,
 }
 
 /// What a projectile hits. In data: `none`, or a filter of the units it hits.
@@ -30,8 +46,9 @@ pub enum ProjectileHits {
     Units(FilterData),
 }
 
-/// Data is untrusted, so a speed that is not positive, a width or a range that is negative, or a
-/// width whose half, the radius of the circle it flies as, is past `MAX_BOUND`, fails to read.
+/// Data is untrusted, so a speed that is not positive, a width or a range that is negative, a
+/// width whose half, the radius of the circle it flies as, is past `MAX_BOUND`, or a curve with
+/// what only a line or a homing flight takes, fails to read.
 impl<'de> Deserialize<'de> for ProjectileData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
@@ -48,6 +65,7 @@ impl<'de> Deserialize<'de> for ProjectileData {
             once_per_cast: bool,
             hits: Option<ProjectileHits>,
             gravity: Option<Num>,
+            curve: Option<CurveData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         if fields.speed <= Num::ZERO {
@@ -63,6 +81,17 @@ impl<'de> Deserialize<'de> for ProjectileData {
         if fields.range.is_some_and(|range| range < Num::ZERO) {
             return Err(D::Error::custom("a projectile's range is not negative"));
         }
+        // A curve ends at its target and at its first hit, and falls by no gravity.
+        let of_a_line = fields.homing
+            || fields.gravity.is_some()
+            || fields.range.is_some()
+            || fields.stop_on_hit
+            || fields.once_per_cast;
+        if fields.curve.is_some() && of_a_line {
+            return Err(D::Error::custom(
+                "a curve takes no `homing`, `gravity`, `range`, `stop_on_hit` or `once_per_cast`",
+            ));
+        }
         Ok(Self {
             speed: fields.speed,
             width,
@@ -72,6 +101,56 @@ impl<'de> Deserialize<'de> for ProjectileData {
             once_per_cast: fields.once_per_cast,
             hits: fields.hits.unwrap_or(ProjectileHits::ENEMIES),
             gravity: fields.gravity,
+            curve: fields.curve,
+        })
+    }
+}
+
+impl ProjectileData {
+    /// How it flies.
+    pub const fn flight(&self) -> ProjectileFlight {
+        match (self.homing, self.curve) {
+            (true, _) => ProjectileFlight::Homing,
+            (false, Some(_)) => ProjectileFlight::Curve,
+            (false, None) => ProjectileFlight::Line,
+        }
+    }
+}
+
+/// Data is untrusted, so a fraction outside 0 to 1, a height past `MAX_BOUND` either way, a
+/// negative `follow` or a life of 0 fails to read.
+impl<'de> Deserialize<'de> for CurveData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            first: [Num; 2],
+            second: [Num; 2],
+            #[serde(default)]
+            follow: Num,
+            life_ms: Option<u32>,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        let holds = |[fraction, height]: [Num; 2]| {
+            (Num::ZERO..=Num::ONE).contains(&fraction)
+                && height.to_bits().unsigned_abs() <= MAX_BOUND.to_bits().unsigned_abs()
+        };
+        if !holds(fields.first) || !holds(fields.second) {
+            return Err(D::Error::custom(
+                "a curve's point is a fraction from 0 to 1 and a height up to 2,048 m either way",
+            ));
+        }
+        if fields.follow < Num::ZERO {
+            return Err(D::Error::custom("a curve's `follow` is not negative"));
+        }
+        if fields.life_ms == Some(0) {
+            return Err(D::Error::custom("a curve's `life_ms` is positive"));
+        }
+        Ok(Self {
+            first: fields.first,
+            second: fields.second,
+            follow: fields.follow,
+            life_ms: fields.life_ms,
         })
     }
 }
@@ -119,6 +198,7 @@ pub(crate) mod internals {
                 once_per_cast: false,
                 hits: ProjectileHits::ENEMIES,
                 gravity: None,
+                curve: None,
             }
         }
     }

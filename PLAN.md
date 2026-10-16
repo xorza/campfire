@@ -6,15 +6,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): the player trains a tank, and its shells destroy the bot's command center. The systems it changes: `geometry`, `units`, `client-files`, `mode`, `package`, `capabilities`, `projectiles`, `combat`, `import`, `client`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 4. A curve's flight and its contact
-
-`projectiles`: `projectile_data.rs`, `projectile.rs`, `flights.rs`, `flight_state.rs`, a new `curve/`. Builds: a pass visits what changed.
-
-- [ ] crates/capabilities/projectiles/src/projectile.rs — a projectile flies homing or along a line (A projectile may fly a curve; A curve meets units by its point). → `Flight::Curve` of its four control points' inputs, its point count and its step; its point at step `k` from the closed form in one step; its length by the split rule; its end that follows a living target by `follow`; its end in the tick after its last point and as `life_ms` passes; after the tick's movement, its sphere at its point meets the volumes its `hits` select and its target's, never its source's, the lowest stable id first. The data section `curve`, refused with `homing` or `gravity`. The tests of [Checks](docs/design/20-zero-hour-projectiles.md#checks) for projectiles.
-
 ### 5. Splash, scatter and pitch
 
-`combat`: `attacks.rs`, the attack's data, the damage queue; `projectiles`: the end of an attack's projectile. After batch 4. Builds: what a module adds is declared once.
+`combat`: `attacks.rs`, the attack's data, the damage queue; `projectiles`: the end of an attack's projectile. Builds: what a module adds is declared once.
 
 - [ ] crates/capabilities/combat/src/attacks.rs:341-353 — an attack's projectile damages the one unit it hits, at its target always, and a shot reaches any pitch (An attack may splash, scatter and bound its pitch). → `splash`, `scatter` and `pitch_deg` in the attack's data, the first two refused without a projectile `delivery`; a projectile's end of an attack with a splash queues a damage for each living unit of its relations within its radius, in stable id order, and its hit none of its own; a scatter's two draws on their own stream give the ground point its projectile flies to, with no target to follow; a target out of the pitch bound is out of reach. The tests of [Checks](docs/design/20-zero-hour-projectiles.md#checks) for combat.
 

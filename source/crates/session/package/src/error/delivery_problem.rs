@@ -34,14 +34,18 @@ pub enum DeliveryProblem {
     /// An action's projectile homes, and the action aims at no unit, or launches more than one.
     #[error("action \"{0}\": a homing projectile flies one at a time, at a unit target")]
     Homing(DeclaredName),
+    /// An action's projectile flies a curve, and the action aims along a direction, or launches
+    /// more than one.
+    #[error("action \"{0}\": a curve flies one at a time, at a unit or a point")]
+    Curve(DeclaredName),
     /// An action that aims along a direction delivers an area, which lands on a point.
     #[error(
         "action \"{0}\": an area lands on a point, a unit or the caster, not along a \
          direction"
     )]
     AreaDirection(DeclaredName),
-    /// A weapon's delivery is no homing projectile.
-    #[error("weapon \"{0}\": its delivery is a homing projectile")]
+    /// A weapon's delivery is neither a homing projectile nor a curve.
+    #[error("weapon \"{0}\": its delivery is a homing projectile or a curve")]
     Weapon(DeclaredName),
     /// An area type has a time that does not count in ticks at the fastest rate the mode allows.
     #[error("unit type {0}: a time too large to count in ticks")]

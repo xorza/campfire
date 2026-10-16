@@ -101,8 +101,8 @@ impl ActionParts {
                     count, spread_deg, ..
                 } => DeliveryShape::Projectile {
                     fan: Fan { count, spread_deg },
-                    homes: names
-                        .homes(package, name)
+                    flight: names
+                        .flight(package, name)
                         .ok_or_else(|| ActionProblem::Section(name.clone()))?,
                 },
                 DeliveryData::Area { .. } => DeliveryShape::Area,

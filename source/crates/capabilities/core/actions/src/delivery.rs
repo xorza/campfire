@@ -9,10 +9,25 @@ pub struct Delivery {
     pub shape: DeliveryShape,
 }
 
-/// The shape of a delivery: a fan of projectiles, which home on a unit when their type does, or
-/// an area.
+/// The shape of a delivery: a fan of projectiles, which fly as their type does, or an area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeliveryShape {
-    Projectile { fan: Fan, homes: bool },
+    Projectile { fan: Fan, flight: ProjectileFlight },
     Area,
+}
+
+/// How a projectile type flies: along a line, which a script launches along a direction, or at a
+/// unit, homing on it or on a curve to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProjectileFlight {
+    Line,
+    Homing,
+    Curve,
+}
+
+impl ProjectileFlight {
+    /// Whether a script launches it at a unit, not along a direction.
+    pub const fn at_unit(self) -> bool {
+        matches!(self, Self::Homing | Self::Curve)
+    }
 }

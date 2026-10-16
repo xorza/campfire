@@ -48,7 +48,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `p` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
 | `players` | read | mode | core | since 1.0 | how many slots the session has, whatever controls each |
-| `projectile` | `(from, direction)` or `(from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick |
+| `projectile` | `(from, direction)` or `(from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, homing on `unit` for a homing type, or on a curve to `unit`'s center for a curve type; the new projectile, which spawns later in the tick |
 | `purge` | `(unit, tag)` | every role | stats | planned | ends every modifier on `unit` that grants `tag` |
 | `quest` | `(player, id)` | every role | quests | planned | the stage of `player`'s quest `id`, `()` before it starts |
 | `quest_stage` | `(player, id, stage)` | every role | quests | planned | sets the stage of `player`'s quest `id` |
@@ -449,6 +449,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `stop_on_hit` | projectiles | since 1.0 |
 | `once_per_cast` | projectiles | since 1.0 |
 | `hits` | projectiles | since 1.0 |
+| `curve` | projectiles | since 1.0 |
 | `gravity` | projectiles | planned |
 
 ### A unit type's `area`

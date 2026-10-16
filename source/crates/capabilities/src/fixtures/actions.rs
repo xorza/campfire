@@ -2,7 +2,7 @@ use bevy_ecs::change_detection::Mut;
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, CostTarget,
-    PackageAction,
+    PackageAction, ProjectileFlight,
 };
 use campfire_declare::{Book, ByType};
 use campfire_projectiles::ProjectileSpec;
@@ -69,7 +69,7 @@ impl ActionNames for MatchNames<'_> {
             .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
     }
 
-    fn homes(&self, package: PackageIndex, name: &DeclaredName) -> Option<bool> {
+    fn flight(&self, package: PackageIndex, name: &DeclaredName) -> Option<ProjectileFlight> {
         let unit_type = self
             .unit_type(package, name)
             .expect("a test loads it first");
@@ -77,7 +77,7 @@ impl ActionNames for MatchNames<'_> {
         let spec = specs.get(unit_type);
         Some(
             spec.expect("a test loads a projectile type's spec before its action")
-                .homing,
+                .flight(),
         )
     }
 

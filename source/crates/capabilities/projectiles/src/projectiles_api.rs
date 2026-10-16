@@ -21,7 +21,7 @@ impl ProjectilesApi {
         let projectile = MemberSpec::call(
             "projectile",
             &[&["from", "direction"], &["from", "unit"]],
-            "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick",
+            "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, homing on `unit` for a homing type, or on a curve to `unit`'s center for a curve type; the new projectile, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION);
         api.call(
@@ -48,6 +48,7 @@ impl ProjectilesApi {
                 "stop_on_hit",
                 "once_per_cast",
                 "hits",
+                "curve",
             ],
             &["gravity"],
         );
@@ -60,11 +61,10 @@ impl ProjectilesApi {
         let launcher = Launcher::of(ctx, |shape| {
             matches!(shape, DeliveryShape::Projectile { .. })
         })?;
-        let homes = matches!(
-            launcher.delivery.shape,
-            DeliveryShape::Projectile { homes: true, .. }
-        );
-        if homes != matches!(toward, Toward::Unit(_)) {
+        let DeliveryShape::Projectile { flight, .. } = launcher.delivery.shape else {
+            panic!("a launcher of projectiles");
+        };
+        if flight.at_unit() != matches!(toward, Toward::Unit(_)) {
             return Err(ProjectilesRefusal::OtherFlight.fail().into());
         }
         let unit_type = launcher.delivery.unit_type;
