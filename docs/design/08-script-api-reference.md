@@ -397,6 +397,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `splash` | combat | since 1.0 |
 | `scatter` | combat | since 1.0 |
 | `pitch_deg` | combat | since 1.0 |
+| `speed` | combat | since 1.0 |
 | `script` | abilities | since 1.0 |
 | `cooldown_ms` | abilities | since 1.0 |
 | `clamp_to_range` | abilities | since 1.0 |

@@ -6,15 +6,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): the player trains a tank, and its shells destroy the bot's command center. The systems it changes: `geometry`, `units`, `client-files`, `mode`, `package`, `capabilities`, `projectiles`, `combat`, `import`, `client`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 7. Slow weapons
-
-`combat`: the attack's data, a held hit. Builds: what can be forgotten is a type.
-
-- [ ] crates/capabilities/combat/src/attacks.rs:354-365 — an attack of no projectile lands its damage in the tick it fires, where Zero Hour delays it by `distance / WeaponSpeed` (A slow weapon delays its damage). → An attack's `speed`; its hit held as state until ⌈`d` ÷ `s`⌉ ticks after its shot, at once below one, on its target wherever it stands, none on a target dead by then. Takes the issue log's **Combat** item of Ready.
-
 ### 8. The import, the client's shells and the check
 
-`import`: `zero_hour/combat_import.rs`, `zero_hour/imported_type.rs`, the models' conversion; `client`: `view/mod.rs`; `zero-hour-check`: its match and `pins.rs`. After batch 7. Builds: one rendering pipeline for every game; only the importer knows its game.
+`import`: `zero_hour/combat_import.rs`, `zero_hour/imported_type.rs`, the models' conversion; `client`: `view/mod.rs`; `zero-hour-check`: its match and `pins.rs`. Builds: one rendering pipeline for every game; only the importer knows its game.
 
 - [ ] crates/apps/import/src/zero_hour/combat_import.rs:218-223 — a weapon of a `ProjectileObject`, a radius or a scatter is dropped, and no object's turret, speed or pitch is read (The import converts shells, splash, scatter, pitch, turrets and slow weapons). → The conversions of the import's decision, the causes `Missile` and `Radius` for the weapons still dropped; the shells' models into their types' looks; the turret's bone into its unit's look. A fixture's test for each.
 - [ ] crates/apps/client/src/view/mod.rs:441-471 — a projectile is drawn as one ball at a fixed height (The client draws a projectile with its look). → A projectile of a look draws its model at its point, its height included, turned along its last step; one of no look keeps the ball at its height.

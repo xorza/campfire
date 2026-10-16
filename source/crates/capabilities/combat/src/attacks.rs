@@ -13,13 +13,14 @@ use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld}
 use campfire_script::ScriptsWorld;
 use campfire_sim::{EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
-use campfire_units::{Body, Dead, Facing, ForcedMove, Owner, UnitsNear};
+use campfire_units::{Body, Dead, Facing, ForcedMove, MapBook, Owner, UnitsNear};
 use campfire_values::{Block, Motion, TagSet, Team, UnitTags, UnitType};
 
 use crate::clip_shots::ClipShots;
 use crate::combat_event::CombatEvent;
 use crate::combat_hooks::CombatHooks;
 use crate::damage::{Damage, DamageCause};
+use crate::held_hits::HeldHits;
 use crate::pass_queue::PassQueue;
 use crate::turret::Turret;
 use crate::turret::turret_angle::TurretAngle;
@@ -43,6 +44,27 @@ type Attacker<'a> = (
 pub struct Attacks;
 
 impl Attacks {
+    /// Queues the damage of each slow weapon's hit that lands this tick, in the order shot, on
+    /// its target when it still lives, whatever its tags let it be as a target by then
+    /// (20-zero-hour-projectiles.md, A slow weapon delays its damage).
+    pub(super) fn land_held(
+        (tick, targets): (Res<'_, SimTick>, Targets<'_, '_>),
+        (mut held, mut queue): (ResMut<'_, HeldHits>, ResMut<'_, PassQueue>),
+        mut due: Local<'_, Vec<Damage>>,
+    ) {
+        let now = tick.start();
+        if !held.lands_by(now) {
+            return;
+        }
+        due.clear();
+        held.land(now, &mut due);
+        for &damage in &*due {
+            if targets.lives(damage.target) {
+                queue.push_damage(damage, now);
+            }
+        }
+    }
+
     /// Queues the damage of each hit and each end of an attack's projectile this tick, in the
     /// order they came, its weapon's damage with the roll it drew: to the unit a hit struck, for
     /// a weapon of no splash; and where a projectile of a weapon of a splash ends, to each living
@@ -347,13 +369,15 @@ impl Attacks {
                 Option<&UnitTags>,
                 Has<ForcedMove>,
                 Option<&Owner>,
-                &mut ClipShots,
+                (&mut ClipShots, Option<&Body>),
             ),
             Without<Dead>,
         >,
-        (index, aims): (
+        (index, aims, map, mut held): (
             Res<'_, EntityIndex>,
-            Query<'_, '_, (&Position, Option<&UnitTags>), Without<Dead>>,
+            Query<'_, '_, (&Position, Option<&UnitTags>, Option<&Body>), Without<Dead>>,
+            Res<'_, MapBook>,
+            ResMut<'_, HeldHits>,
         ),
         mut going: Local<'_, Vec<GoingOff>>,
     ) {
@@ -375,7 +399,7 @@ impl Attacks {
                 tags,
                 forced,
                 owner,
-                mut clips,
+                (mut clips, body),
             )) = attackers.get_mut(entity)
             else {
                 continue;
@@ -422,7 +446,7 @@ impl Attacks {
                     .as_ref()
                     .zip(aimed)
                     .and_then(|(scatter, aimed)| {
-                        let (pos, tags) = aimed;
+                        let (pos, tags, _) = aimed;
                         let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
                         scatter.point(pos.get(), tags, || {
                             let mut draws = rng.open(SCATTER_STREAM, source);
@@ -453,7 +477,17 @@ impl Attacks {
                     depth: 0,
                     hit: None,
                 };
-                queue.push_damage(damage, now);
+                // A slow weapon's hit lands later, as far from its target as it shot.
+                let aimed = index.get(target).and_then(|target| aims.get(target).ok());
+                let delay = aimed.and_then(|(pos, _, aimed_body)| {
+                    let at = Body::center(aimed_body, pos.get(), &map);
+                    let distance = (at - Body::center(body, from.get(), &map)).length();
+                    weapon.delay(distance, clock.rate().hz().get())
+                });
+                match delay {
+                    Some(delay) => held.hold(now.after(delay), damage),
+                    None => queue.push_damage(damage, now),
+                }
             }
             let mut held = resources.of_mut(owner);
             let payer = Payer::of(pools, held.as_deref_mut());

@@ -40,6 +40,7 @@ pub enum ActionDataField {
     Splash,
     Scatter,
     PitchDeg,
+    Speed,
     UnitType,
     Requires,
     Construct,
@@ -290,6 +291,13 @@ const TABLE: [FieldRule; ActionDataField::ALL.len()] = [
         capability: Some(Combat),
         uses: [Refuses, Takes, Refuses, Refuses, Refuses, Refuses],
         given: |data| data.pitch_deg.is_some(),
+    },
+    FieldRule {
+        field: ActionDataField::Speed,
+        name: "speed",
+        capability: Some(Combat),
+        uses: [Refuses, Takes, Refuses, Refuses, Refuses, Refuses],
+        given: |data| data.speed.is_some(),
     },
     FieldRule {
         field: ActionDataField::UnitType,

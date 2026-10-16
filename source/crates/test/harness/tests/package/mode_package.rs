@@ -188,7 +188,7 @@ fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_and_one_along_a_di
 }
 
 #[test]
-fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_and_its_pitch_a_bound() {
+fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_its_pitch_a_bound() {
     let splash = (
         "actions.tower_attack.splash",
         r#"{ radius = "2", affects = "enemies", spares_source = false }"#,
@@ -221,6 +221,11 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_and_its_pitch_a_bound
     let error = set(&[scatter]).unwrap_err();
     let scatters = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Scatter(action)) if action == "tower_attack");
     assert!(scatters(&error.problem), "{error:?}");
+    // A melee weapon may be slow; a homing bolt flies at its own speed.
+    assert!(set(&[("actions.wolf_attack.speed", r#""40""#)]).is_ok());
+    let error = set(&[("actions.tower_attack.speed", r#""40""#)]).unwrap_err();
+    let speeds = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Speed(action)) if action == "tower_attack");
+    assert!(speeds(&error.problem), "{error:?}");
     let melee = [("actions.wolf_attack.splash", splash.1)];
     let error = set(&melee).unwrap_err();
     let splashes = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Splash(action)) if action == "wolf_attack");
@@ -246,6 +251,10 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_and_its_pitch_a_bound
         (
             ("actions.tower_attack.pitch_deg", r#"["90", "90"]"#),
             "a pitch's bound",
+        ),
+        (
+            ("actions.wolf_attack.speed", r#""0""#),
+            "a speed is a positive number",
         ),
     ] {
         let error = set(&[edit]).unwrap_err();

@@ -393,7 +393,7 @@ impl<'a> LoadCheck<'a> {
                 message(names.package, name, &at)?;
             }
             self.kind(id, action, units)?;
-            splash_and_scatter_hold(id, action, units)?;
+            weapon_fields_hold(id, action, units)?;
             requires(id, action, units)?;
             self.cost_names(id, action)?;
             let scope = EffectScope { units };
@@ -2061,11 +2061,12 @@ fn modifier_exists(
     })
 }
 
-/// The splash and the scatter of `action`, whose id is `id`: a splash goes off where a projectile
-/// of its delivery ends, and a scatter aims its delivery's curve at a point
-/// (20-zero-hour-projectiles.md, An attack may splash; 20-zero-hour-projectiles.md, An attack may
-/// scatter).
-fn splash_and_scatter_hold(
+/// The splash, the scatter and the speed of `action`, whose id is `id`: a splash goes off where a
+/// projectile of its delivery ends, a scatter aims its delivery's curve at a point, and a speed
+/// delays the hit of a weapon of no delivery (20-zero-hour-projectiles.md, An attack may splash;
+/// 20-zero-hour-projectiles.md, An attack may scatter; 20-zero-hour-projectiles.md, A slow weapon
+/// delays its damage).
+fn weapon_fields_hold(
     id: &DeclaredName,
     action: &ActionData,
     units: &BTreeMap<DeclaredName, UnitTypeData>,
@@ -2082,6 +2083,9 @@ fn splash_and_scatter_hold(
     let curve = projectile.is_some_and(|projectile| projectile.curve.is_some());
     if action.scatter.is_some() && !curve {
         return Err(LoadProblem::Delivery(DeliveryProblem::Scatter(id.clone())));
+    }
+    if action.speed.is_some() && action.delivery.is_some() {
+        return Err(LoadProblem::Delivery(DeliveryProblem::Speed(id.clone())));
     }
     Ok(())
 }

@@ -92,6 +92,14 @@ impl Targets<'_, '_> {
             && !tags.is_some_and(|tags| tags.properties.blocks(Block::Target))
     }
 
+    /// Whether `target` lives by `stats`' living test, whatever its tags let it be.
+    pub fn lives(&self, target: StableId) -> bool {
+        self.index
+            .get(target)
+            .and_then(|entity| self.living_at(entity))
+            .is_some()
+    }
+
     /// The unit of `entity`, when a living unit with the life pool, whose tags may block it as a
     /// target: one an area reaches.
     pub fn living_at(&self, entity: Entity) -> Option<LivingUnit> {

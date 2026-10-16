@@ -20,6 +20,7 @@ use campfire_stats::Life;
 use campfire_units::{BodyUnit, Dead, SpawnPoint};
 
 use crate::combat_column::RowReads;
+use crate::held_hits::HeldHits;
 use crate::next_damage::NextDamage;
 use crate::turret::aiming::Aiming;
 use crate::volley::Volley;
@@ -42,6 +43,7 @@ mod dying;
 mod error;
 mod heal;
 mod heal_handle;
+mod held_hits;
 mod interval_due;
 mod kept;
 mod mode_combat_data;
@@ -168,6 +170,7 @@ impl Module for Combat {
         d.scratch::<PassQueue>();
         d.scratch::<Volley>();
         d.resource::<NextDamage>();
+        d.resource::<HeldHits>();
         d.report::<Deaths>();
         d.non_send::<CombatHooks>(|world, role| Some(CombatHooks::install(world, role)));
         d.calls::<Weighers>();
@@ -230,6 +233,9 @@ impl Module for Combat {
                 .before(Dying::respawn)
                 .in_set(CombatSet::Respawn),
             Dying::despawn_dead.in_set(CombatSet::Despawn),
+            Attacks::land_held
+                .before(Attacks::take_hits)
+                .in_set(CombatSet::Hits),
         ));
     }
 }
@@ -253,13 +259,14 @@ pub mod internals {
     use campfire_sim::{StableId, TickRate};
     use campfire_stats::{Life, PoolBook, PoolId, StatBook, StatRule, Stats};
     use campfire_units::{UnitTypeCore, Units};
-    use campfire_values::{DamageKind, Rank, RelationSet, Stat, UnitType};
+    use campfire_values::{DamageKind, Rank, RelationSet, Speed, Stat, UnitType};
 
     use crate::Combat;
     use crate::attacks::Attacks;
     use crate::combat_book::CombatBook;
     use crate::damage::{Damage, DamageCause};
     use crate::damage_pass::DamagePass;
+    use crate::held_hits::HeldHits;
     use crate::on_death::OnDeath;
     use crate::pass_queue::PassEntry;
     use crate::volley::Volley;
@@ -306,7 +313,8 @@ pub mod internals {
 
     /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
     /// again `period` after an attack's start, deals `damage`, fires a projectile of the type
-    /// `projectile` when given, and splashes, scatters and bounds its pitch as given.
+    /// `projectile` when given, and splashes, scatters, bounds its pitch and flies its hit at a
+    /// speed as given.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Arms {
         range: Num,
@@ -317,6 +325,7 @@ pub mod internals {
         splash: Option<SplashData>,
         scatter: Option<Num>,
         pitch: Option<[Num; 2]>,
+        speed: Option<Speed>,
     }
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
@@ -349,6 +358,7 @@ pub mod internals {
                 splash: None,
                 scatter: None,
                 pitch: None,
+                speed: None,
             }
         }
 
@@ -371,6 +381,7 @@ pub mod internals {
                 splash: self.splash,
                 scatter: self.scatter,
                 pitch: self.pitch.map(|[low, high]| Pitch::of(low, high)),
+                speed: self.speed,
                 ..TestWeapon::new(
                     Filter::of_match_relations(world, RelationSet::Enemies),
                     ActionRange::Meters(self.range),
@@ -481,6 +492,20 @@ pub mod internals {
             }
         }
 
+        /// The same unit, its weapon of no projectile slow: its hit flies at `speed` meters a
+        /// second.
+        #[must_use]
+        pub const fn slow(self, speed: Num) -> Self {
+            let arms = self.arms.expect("a slow unit is armed");
+            Self {
+                arms: Some(Arms {
+                    speed: Speed::new(speed),
+                    ..arms
+                }),
+                ..self
+            }
+        }
+
         /// Loads the next unit type of the mode, of these values, as `give` gives them.
         pub fn load(self, world: &mut World) -> UnitType {
             let unit_type = Units::load_next_type(world, &UnitTypeCore::default());
@@ -502,6 +527,11 @@ pub mod internals {
     }
 
     impl Combat {
+        /// How many slow weapons' hits are on their way.
+        pub fn held_hits(world: &World) -> usize {
+            world.resource::<HeldHits>().len()
+        }
+
         /// Heals `id` at once, as the pass heals it, when it exists and its life is above zero.
         pub fn heal_unit(world: &mut World, id: StableId, amount: impl Into<Num>) {
             let amount = amount.into();

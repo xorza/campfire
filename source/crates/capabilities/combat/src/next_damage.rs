@@ -3,7 +3,6 @@ use std::mem;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_actions::ActionBook;
-use campfire_script::View;
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
@@ -37,18 +36,9 @@ impl SimResource for NextDamage {
     // action the book lacks no list to run.
     fn check(&self, world: &World) -> bool {
         let book = world.resource::<ActionBook>();
-        let names = world.get_non_send::<View>().map(View::names);
-        self.0.iter().all(|entry| {
-            let (action, kind) = match entry {
-                PassEntry::Damage(damage) => (damage.action, Some(damage.kind)),
-                PassEntry::Heal(heal) => (heal.action, None),
-            };
-            action.is_none_or(|action| book.get(action).is_some())
-                && kind.is_none_or(|kind| {
-                    names
-                        .as_ref()
-                        .is_some_and(|names| names.has_damage_kind(kind))
-                })
+        self.0.iter().all(|entry| match entry {
+            PassEntry::Damage(damage) => damage.known(world),
+            PassEntry::Heal(heal) => heal.action.is_none_or(|action| book.get(action).is_some()),
         })
     }
 }

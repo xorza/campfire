@@ -1,14 +1,14 @@
 use campfire_common::Ticks;
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_stats::StatId;
-use campfire_values::{DamageKind, NameId, Tag, TagSet};
+use campfire_values::{DamageKind, NameId, Speed, Tag, TagSet};
 
 use crate::action_data::SplashData;
 use crate::rank_values::RankValues;
 
 /// What makes an action of kind `attack` a weapon: where its rate and its damage come from, the
-/// kind of damage it deals, and its projectile's splash and scatter and its bound of pitch, if
-/// it has them.
+/// kind of damage it deals, its projectile's splash and scatter, its bound of pitch, and the
+/// speed that delays the hit of a weapon of no projectile, if it has them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Weapon {
     pub(crate) rate: Source,
@@ -17,6 +17,7 @@ pub struct Weapon {
     pub splash: Option<SplashData>,
     pub scatter: Option<Scatter>,
     pub pitch: Option<Pitch>,
+    pub speed: Option<Speed>,
 }
 
 /// How far from its target's ground point a weapon's projectile may aim
@@ -125,6 +126,20 @@ impl Weapon {
             }
         };
         Ticks::new(period.get().max(values.windup.get() + 1))
+    }
+
+    /// The ticks its hit lands after its shot at a target `distance` meters away, at `hz` ticks a
+    /// second (20-zero-hour-projectiles.md, A slow weapon delays its damage): ⌈`d` ÷ `s`⌉, for `s`
+    /// its speed a tick, and none when `d` ÷ `s` is below 1, as Zero Hour's `fireWeaponTemplate`
+    /// deals such a hit at once; none for a weapon of no speed. Exact: `d` ÷ `s` is `d · hz` over
+    /// its speed a second, in bits.
+    pub fn delay(&self, distance: Num, hz: u32) -> Option<Ticks> {
+        let speed = i128::from(self.speed?.get().to_bits());
+        let scaled = i128::from(distance.to_bits()) * i128::from(hz);
+        (scaled >= speed).then(|| {
+            let ticks = Rounding::Ceiling.divide(scaled, speed);
+            Ticks::new(u64::try_from(ticks).expect("a delay within the world's bound"))
+        })
     }
 
     /// The damage it deals for a unit of stats `stats` with the weapon's values at its rank

@@ -264,7 +264,7 @@ pub mod internals {
     use campfire_script::{Filter, HookSet, NameKind, UnknownName, View};
     use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
     use campfire_values::{
-        ActionId, DamageKind, DeclaredName, ModifierId, NameId, PackageIndex, Tag, TrackId,
+        ActionId, DamageKind, DeclaredName, ModifierId, NameId, PackageIndex, Speed, Tag, TrackId,
         TypeScope, UnitType,
     };
 
@@ -380,7 +380,7 @@ pub mod internals {
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
     /// homing projectile it fires, if it fires one, where its rate and its damage come from, its
     /// own period, amount and clip, its cost in pools and in a player resource, and its splash,
-    /// its scatter's radius and its bound of pitch.
+    /// its scatter's radius, its bound of pitch and its speed.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct TestWeapon {
         pub aim: Filter,
@@ -397,6 +397,7 @@ pub mod internals {
         pub splash: Option<SplashData>,
         pub scatter: Option<Num>,
         pub pitch: Option<Pitch>,
+        pub speed: Option<Speed>,
     }
 
     /// The names of an action's effect lists as a match's world resolves them: its view, its param
@@ -428,6 +429,7 @@ pub mod internals {
                 splash: None,
                 scatter: None,
                 pitch: None,
+                speed: None,
             }
         }
     }
@@ -460,6 +462,7 @@ pub mod internals {
                             tags: Box::new([]),
                         }),
                         pitch: weapon.pitch,
+                        speed: weapon.speed,
                     }),
                     passive: None,
                     hold: None,

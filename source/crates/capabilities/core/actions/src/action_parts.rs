@@ -88,6 +88,7 @@ impl ActionParts {
                     splash: data.splash,
                     scatter: scatter.transpose()?,
                     pitch: data.pitch_deg.map(|pitch| Pitch::of(pitch.low, pitch.high)),
+                    speed: data.speed,
                 })
             }
             KindData::Train { unit_type } => KindSpec::Train(names.unit_type(package, unit_type)?),

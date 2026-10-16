@@ -9,7 +9,7 @@ use campfire_script::{DataSection, DataTable};
 use campfire_stats::PoolCost;
 use campfire_values::{
     DeclaredName, Distance, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked,
-    RelationSet, Scalar, Share, Stat,
+    RelationSet, Scalar, Share, Speed, Stat,
 };
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -86,6 +86,9 @@ pub struct ActionData {
     pub scatter: Option<ScatterData>,
     /// The pitches a weapon's target lies within, an `attack`'s alone.
     pub pitch_deg: Option<PitchData>,
+    /// How fast a weapon of no projectile reaches its target, which delays its hit, an
+    /// `attack`'s alone (20-zero-hour-projectiles.md, A slow weapon delays its damage).
+    pub speed: Option<Speed>,
     /// The unit type of its package a `train` makes, a train's alone.
     pub unit_type: Option<DeclaredName>,
     /// What its player must hold for a `train` to join a queue, or a `build` to start.
@@ -668,6 +671,7 @@ pub(crate) mod internals {
                 splash: None,
                 scatter: None,
                 pitch_deg: None,
+                speed: None,
                 unit_type: None,
                 requires: None,
                 construct: None,

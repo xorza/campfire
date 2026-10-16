@@ -21,6 +21,7 @@ const OWN: Weapon = Weapon {
     splash: None,
     scatter: None,
     pitch: None,
+    speed: None,
 };
 
 /// A rank's values of `windup` ticks, its own period `period` and amount `amount`.
@@ -156,4 +157,24 @@ fn a_pitch_bound_holds_targets_from_its_least_to_its_most_angle_above_the_ground
             .iter()
             .all(|&to| any.holds(from, to))
     );
+}
+
+#[test]
+fn a_slow_weapons_hit_lands_its_distance_over_its_speed_a_tick_after_its_shot() {
+    // 30 m/s at 30 Hz, 1 m a tick: 7.5 m lands in ⌈7.5⌉ = 8 ticks, 1 m in exactly 1, a bit
+    // more in 2, a bit less at once, 0 m at once; a weapon of no speed at once.
+    let slow = Weapon {
+        speed: Speed::new(Num::int(30)),
+        ..OWN
+    };
+    let delay = |distance: Num| slow.delay(distance, 30);
+    let e = Num::EPSILON;
+    assert_eq!(delay(Num::int(15) / 2), Some(Ticks::new(8)));
+    assert_eq!(delay(Num::ONE), Some(Ticks::new(1)));
+    assert_eq!(delay(Num::ONE + e), Some(Ticks::new(2)));
+    assert_eq!(delay(Num::ONE - e), None);
+    assert_eq!(delay(Num::ZERO), None);
+    assert_eq!(OWN.delay(Num::int(10), 30), None);
+    // At 60 Hz the same weapon flies half a meter a tick: 1 m is 2 ticks.
+    assert_eq!(slow.delay(Num::ONE, 60), Some(Ticks::new(2)));
 }

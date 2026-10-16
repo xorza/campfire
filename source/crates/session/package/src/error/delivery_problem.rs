@@ -50,6 +50,10 @@ pub enum DeliveryProblem {
     /// A weapon's scatter has no curve to aim at a point.
     #[error("weapon \"{0}\": a scatter aims its delivery's curve at a point")]
     Scatter(DeclaredName),
+    /// A weapon of a delivery has a speed, which only a weapon of none takes: its delivery flies
+    /// at its own speed.
+    #[error("weapon \"{0}\": a speed delays the hit of a weapon of no delivery")]
+    Speed(DeclaredName),
     /// A weapon's delivery is neither a homing projectile nor a curve.
     #[error("weapon \"{0}\": its delivery is a homing projectile or a curve")]
     Weapon(DeclaredName),

@@ -1,4 +1,7 @@
+use bevy_ecs::world::World;
+use campfire_actions::ActionBook;
 use campfire_math::Num;
+use campfire_script::View;
 use campfire_sim::StableId;
 use campfire_values::{ActionId, DamageKind, Hit, Rank};
 use serde::{Deserialize, Serialize};
@@ -27,6 +30,17 @@ pub enum DamageCause {
     Attack { roll: Num, rank: Rank },
     ExtraAttack { rank: Rank },
     Effect,
+}
+
+impl Damage {
+    /// Whether a restored damage holds what the pass reads: an action the book holds, if it names
+    /// one, and a kind the mode declares, which `calc_damage` reads by its name.
+    pub(crate) fn known(&self, world: &World) -> bool {
+        let book = world.resource::<ActionBook>();
+        let names = world.get_non_send::<View>().map(View::names);
+        self.action.is_none_or(|action| book.get(action).is_some())
+            && names.is_some_and(|names| names.has_damage_kind(self.kind))
+    }
 }
 
 impl DamageCause {
