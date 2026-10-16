@@ -8,6 +8,7 @@ use serde::Serialize;
 
 use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::format::ini::damage_type::DamageType;
+use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
 use crate::zero_hour::imported_type::{INFANTRY, LIFE, STRUCTURE, VICTORY, WALL, WEAPON};
 use crate::zero_hour::map_import::{SLOTS, START};
 use crate::zero_hour::production_import::{COMMAND, MONEY, ProductionImport};
@@ -63,7 +64,7 @@ pub(crate) struct ModeImport<'a> {
     pub(crate) start: &'a SkirmishStart,
     pub(crate) production: &'a ProductionImport,
     pub(crate) combat: &'a CombatImport,
-    pub(crate) start_money: u32,
+    pub(crate) start_money: &'a MoneyChoices,
 }
 
 /// The imported package's mode data: its name and its teams' names, the rules package's mode
@@ -71,8 +72,9 @@ pub(crate) struct ModeImport<'a> {
 /// by, the pool of that life, its combat of the game's damage types and armors, the tags of
 /// victory, of a structure, a wall and infantry, the markers its players start at, the state
 /// `ended` by which its script ends the match once, its params of what each starts with, `start`
-/// (12-zero-hour.md, A skirmish starts with the faction's start objects), and the money
-/// `start_money`; the slot kinds `weapon` and `command`, the weapons of `combat`
+/// (12-zero-hour.md, A skirmish starts with the faction's start objects), and the option of the
+/// money it starts with, of `start_money`'s values (21-match-options.md, The import writes Zero
+/// Hour's money as an option); the slot kinds `weapon` and `command`, the weapons of `combat`
 /// (12-zero-hour.md) and the trains and builds of `production` (04-capabilities/production.md).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {
@@ -86,6 +88,7 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .iter()
         .map(|unit| format!("\"{unit}\""))
         .collect();
+    let money: Vec<String> = start_money.values.iter().map(ToString::to_string).collect();
     let kinds: Vec<String> = DamageType::ALL
         .into_iter()
         .map(|kind| format!("\"{}\"", kind.kind()))
@@ -156,7 +159,10 @@ ended = {{ type = "bool", default = false }}
 start_building = "{building}"
 start_units = [{units}]
 start_offset = "{offset}"
-start_money = {start_money}
+
+[options.start_money]
+values = [{money}]
+default = {default_money}
 
 {armors}
 {weapons}
@@ -165,6 +171,8 @@ start_money = {start_money}
         building = start.building,
         units = units.join(", "),
         offset = start.offset,
+        money = money.join(", "),
+        default_money = start_money.default,
     )
 }
 
@@ -268,7 +276,10 @@ mod tests {
             start: &start,
             production: &ProductionImport::default(),
             combat: &CombatImport::default(),
-            start_money: 100,
+            start_money: &MoneyChoices {
+                values: vec![100],
+                default: 100,
+            },
         });
         // An empty table would write `actions = {}` into `[params]`, and `armors = {}` under a
         // second `[combat]`.

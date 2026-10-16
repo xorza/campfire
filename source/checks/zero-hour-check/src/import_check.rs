@@ -15,9 +15,9 @@ use tracing::info;
 use crate::error::CheckError;
 use crate::failure::Failure;
 use crate::pins::{
-    CLIENT_OBJECTS, DRIVE_TICKS, FACTORY, FIGHT, FOUGHT, FoughtCounts, HEIGHTS, LOOKS, LookCounts,
-    MARKERS, OBJECT_LOOKS, PRODUCED, PRODUCTION, ProducedCounts, TERRAIN, TerrainDrawn, UNIT_TYPES,
-    UNITS, WALLS,
+    BOT, CLIENT_OBJECTS, DRIVE_TICKS, FACTORY, FIGHT, FOUGHT, FoughtCounts, HEIGHTS, LOOKS,
+    LookCounts, MARKERS, OBJECT_LOOKS, PRODUCED, PRODUCTION, ProducedCounts, TERRAIN, TerrainDrawn,
+    UNIT_TYPES, UNITS, WALLS,
 };
 use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
@@ -246,6 +246,7 @@ impl ImportCheck<'_> {
             production,
             factory,
             fight,
+            bot,
         }) = SkirmishPlay::run(played, rate, &mut self.failures)
         {
             if production != PRODUCTION {
@@ -276,8 +277,15 @@ impl ImportCheck<'_> {
                 fight = fight.fight_ticks,
                 money = fight.money,
                 result = ?fight.result,
-                killed = fight.killed,
                 "player 1's crusaders' shells destroyed the bot's command center"
+            );
+            if bot != BOT {
+                self.failures.push(Failure::Bot(bot));
+            }
+            info!(
+                built = ?bot.built,
+                farthest = bot.farthest_m,
+                "the builder bot built its base and trained its units"
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {

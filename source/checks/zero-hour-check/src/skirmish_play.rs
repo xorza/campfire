@@ -1,11 +1,12 @@
 use std::num::NonZeroU32;
 
 use campfire_actions::ActionTarget;
+use campfire_bots::{BotScript, OrderScript};
 use campfire_capabilities::Order;
 use campfire_common::PlayerSlot;
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Num;
-use campfire_mode::MatchEnd;
+use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
 use campfire_players::{OrderUnits, PlayersWorld};
@@ -19,7 +20,7 @@ use campfire_values::{DeclaredName, Names, ResourceId};
 
 use crate::failure::Failure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};
-use crate::pins::{FactorySteps, FightSteps, ProductionSteps};
+use crate::pins::{BOT_TYPES, BotBase, FactorySteps, FightSteps, ProductionSteps};
 
 /// The unit types the play makes beside the start's.
 const BARRACKS: &str = "americabarracks";
@@ -62,21 +63,31 @@ const FACTORY_CHAIN: [Building; 3] = [
     },
 ];
 
-/// The skirmish on Tournament Desert against an idle bot (designs 18 and 19;
+/// The builder bot's orders, which the play's bot plays and a host gives a local server's bot
+/// (21-match-options.md, A bot that builds and does not fight).
+const BUILDER: &str = include_str!("../bots/builder.toml");
+
+/// The money every player starts with, the most of Zero Hour's choices, which the session's host
+/// picks (21-match-options.md, The import writes Zero Hour's money as an option).
+const START_MONEY: &str = "start_money=50000";
+
+/// The skirmish on Tournament Desert of `START_MONEY` against the builder bot (designs 18 and 19;
 /// 20-zero-hour-projectiles.md, The import converts shells, splash, scatter, pitch, turrets and
 /// slow weapons): player 1's command center trains a dozer, its start dozer builds a barracks,
 /// and the barracks trains a ranger; then the dozer builds a power plant, a supply center and a
 /// war factory, the factory trains `CRUSADERS`, and their shells destroy the bot's command
-/// center, which ends the match.
+/// center, which ends no match, as the bot's other buildings count for its victory. The bot
+/// builds its base and trains its units meanwhile, and orders no attack.
 #[derive(Debug)]
 pub(crate) struct SkirmishPlay;
 
-/// What the play measures: its production steps, its factory's, and its fight.
+/// What the play measures: its production steps, its factory's, its fight, and the bot's base.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SkirmishSteps {
     pub(crate) production: ProductionSteps,
     pub(crate) factory: FactorySteps,
     pub(crate) fight: FightSteps,
+    pub(crate) bot: BotBase,
 }
 
 /// A building the dozer builds: its unit type, its build action, and its place, `[x, z, angle]`.
@@ -95,9 +106,10 @@ struct Play<'a> {
 }
 
 impl SkirmishPlay {
-    /// Plays the skirmish in a match of `packages` at `rate` ticks a second, player 1 against an
-    /// idle bot: each production step's ticks and the money left after each, and the fight's; a
-    /// failure for a step that does not end, or a unit the play lacks, goes to `failures`.
+    /// Plays the skirmish in a match of `packages` at `rate` ticks a second, player 1 against the
+    /// builder bot: each production step's ticks and the money left after each, the fight's, and
+    /// the bot's base; a failure for a step that does not end, a unit the play lacks, or an
+    /// option or a bot's script the mode does not take, goes to `failures`.
     pub(crate) fn run(
         packages: ModePackages,
         rate: NonZeroU32,
@@ -113,14 +125,35 @@ impl SkirmishPlay {
             failures.push(Failure::NoMoney);
             return None;
         };
+        let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
+        let options = &packages.data().options;
+        let picks = match OptionPicks::named(options, &[start_money]) {
+            Ok(picks) => picks,
+            Err(error) => {
+                failures.push(Failure::Options(error));
+                return None;
+            }
+        };
+        let script = OrderScript::parse(BUILDER).map_err(Failure::BotOrders);
+        let bot = script.and_then(|script| {
+            BotScript::new(&script, &packages.unit_types()).map_err(Failure::BotType)
+        });
+        let bot = match bot {
+            Ok(bot) => bot,
+            Err(failure) => {
+                failures.push(failure);
+                return None;
+            }
+        };
         let plan = [SlotPlan::Player, SlotPlan::Bot];
-        let session = FixedSession::planned(packages, rate, InputRules::ROOMY, plan);
+        let session =
+            FixedSession::planned(packages, rate, InputRules::ROOMY, plan).picked(picks.places());
         let play = Play {
             packages: session.packages(),
             money,
         };
         let mut playing = MatchPlay::new(session.start());
-        let played = play.steps(&mut playing);
+        let played = play.steps(&mut playing, bot);
         playing.end();
         match played {
             Ok(played) => Some(played),
@@ -135,8 +168,9 @@ impl SkirmishPlay {
 impl Play<'_> {
     /// The production steps in `play`, after its start's tick, then the factory's, then the
     /// fight.
-    fn steps(&self, play: &mut MatchPlay) -> Result<SkirmishSteps, Failure> {
+    fn steps(&self, play: &mut MatchPlay, bot: BotScript) -> Result<SkirmishSteps, Failure> {
         play.step();
+        play.drive_bot(1, bot)?;
         let [center] = play.owned(CENTER, 0)?[..] else {
             return Err(Failure::ProductionStart);
         };
@@ -182,11 +216,19 @@ impl Play<'_> {
             money: [after_dozer, after_barracks, self.money(play)],
         };
         let factory = self.factory(play, dozer)?;
-        let fight = self.fight(play)?;
+        let train_ticks = self.train_crusaders(play)?;
+        let built = Self::bot_built(play)?;
+        let fight = self.attack(play, train_ticks)?;
+        let farthest = play.bot_farthest().expect("the play drives its bot");
+        let bot = BotBase {
+            built,
+            farthest_m: farthest.floor(),
+        };
         Ok(SkirmishSteps {
             production,
             factory,
             fight,
+            bot,
         })
     }
 
@@ -212,20 +254,11 @@ impl Play<'_> {
         })
     }
 
-    /// The fight in `play`: player 1's war factory trains `CRUSADERS`, one order a tick while its
-    /// queue has room; they attack the bot's command center; the ticks of the trains, from
-    /// the attack's order to the first shell's launch and to the first damage to the center, and
-    /// to the match's end; the money left, how the match ended, and whether the bot's dozer's
-    /// life is gone.
-    fn fight(&self, play: &mut MatchPlay) -> Result<FightSteps, Failure> {
+    /// Player 1's war factory in `play` trains `CRUSADERS`, one order a tick while its queue has
+    /// room; the ticks the trains took.
+    fn train_crusaders(&self, play: &mut MatchPlay) -> Result<u64, Failure> {
         let [factory] = play.owned(FACTORY, 0)?[..] else {
             return Err(Failure::ProductionStart);
-        };
-        let [target] = play.owned(CENTER, 1)?[..] else {
-            return Err(Failure::FightStart);
-        };
-        let [bot_dozer] = play.owned(DOZER, 1)?[..] else {
-            return Err(Failure::FightStart);
         };
         let train = OrdersAction::Slot {
             slot: self.slot(FACTORY, "train_americatankcrusader")?,
@@ -246,6 +279,32 @@ impl Play<'_> {
             play.step();
             train_ticks += 1;
         }
+        Ok(train_ticks)
+    }
+
+    /// How many living units of each of `BOT_TYPES` the bot owns in `play`, whole, as a site
+    /// counts for no building.
+    fn bot_built(play: &MatchPlay) -> Result<[usize; BOT_TYPES.len()], Failure> {
+        let units = MatchUnits::of(play.game());
+        let mut built = [0; BOT_TYPES.len()];
+        for (count, name) in built.iter_mut().zip(BOT_TYPES) {
+            let owned = play.owned(name, 1)?;
+            *count = owned
+                .iter()
+                .filter(|&&id| !units.unit(id).contains::<Site>())
+                .count();
+        }
+        Ok(built)
+    }
+
+    /// The fight in `play`, after player 1's crusaders were trained in `train_ticks`: they attack
+    /// the bot's command center; the ticks from the attack's order to the first shell's launch,
+    /// to the first damage to the center, and to its death; the money left, and how the match
+    /// ended by then, if it did, as the bot's other buildings count for its victory.
+    fn attack(&self, play: &mut MatchPlay, train_ticks: u64) -> Result<FightSteps, Failure> {
+        let [target] = play.owned(CENTER, 1)?[..] else {
+            return Err(Failure::FightStart);
+        };
         let money = self.money(play);
         let crusaders = play.owned(CRUSADER, 0)?;
         let units = OrderUnits::new(&crusaders).expect("the play's crusaders");
@@ -265,19 +324,18 @@ impl Play<'_> {
             if hit_ticks.is_none() && Self::life(play, target) < full {
                 hit_ticks = Some(fight_ticks);
             }
-            let end = world
-                .match_entity()
-                .and_then(|entity| world.get::<MatchEnd>(entity).copied());
-            if let Some(end) = end {
-                let bot_dozer = units.unit(bot_dozer);
+            let life = Self::life(play, target);
+            if life.is_none_or(|life| life == Num::ZERO) {
+                let end = world
+                    .match_entity()
+                    .and_then(|entity| world.get::<MatchEnd>(entity).copied());
                 return Ok(FightSteps {
                     train_ticks,
                     shot_ticks,
                     hit_ticks,
                     fight_ticks,
                     money,
-                    result: end.result(),
-                    killed: bot_dozer.get::<Life>().is_some_and(|life| life.is_empty()),
+                    result: end.map(MatchEnd::result),
                 });
             }
         }

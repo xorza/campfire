@@ -3,7 +3,6 @@
 use campfire_common::PackageFingerprint;
 use campfire_import::{DropCause, WeaponDrop};
 use campfire_mode::MatchResult;
-use campfire_values::Team;
 use derive_more::Display;
 
 /// The map the check plays.
@@ -15,7 +14,7 @@ pub(crate) const MAP: &str = "tournament_desert";
 /// importer that converts anything otherwise moves them, and a run on each OS pins them again.
 pub(crate) const FINGERPRINTS: Fingerprints = Fingerprints {
     game: PackageFingerprint::of_hex(
-        "a5a5c68eab414cbc2b5864374486c85853fd807b736d4e6e4d4cef86af66f703",
+        "31fff10fc65a5636f1c1efd86f473632f1d6d016790b704cff1eda4088598093",
     ),
     rules: PackageFingerprint::of_hex(
         "d0245c9b5ddd9cb2cb58aeb2e69e92f3779b30cbbca0aa291a47ef35cd3aa874",
@@ -53,39 +52,66 @@ pub(crate) const PRODUCED: ProducedCounts = ProducedCounts {
 /// The production play's ticks and money on Tournament Desert: the dozer's 5 s, 150 ticks, the
 /// order's tick among them; the barracks' 706, the dozer's drive round the command center's box
 /// to the site, which the check pins as it measured it, then its 10 s of building, 300 ticks;
-/// the ranger's 5 s; and the money of 10,000 less the dozer's 1,000, the barracks' 600 and the
-/// ranger's 225.
+/// the ranger's 5 s; and the money of the 50,000 the host picks less the dozer's 1,000, the
+/// barracks' 600 and the ranger's 225.
 pub(crate) const PRODUCTION: ProductionSteps = ProductionSteps {
     dozer_ticks: 150,
     barracks_ticks: 706,
     ranger_ticks: 150,
-    money: [9000, 8400, 8175],
+    money: [49_000, 48_400, 48_175],
 };
 
 /// The factory's chain on Tournament Desert: the dozer's walk to each site and its building, the
 /// power plant's 10 s, 300 ticks, the supply center's 10 s and the war factory's 15 s, 450,
-/// which the check pins as it measured them; and the money of 8,175 less the plant's 800, the
+/// which the check pins as it measured them; and the money of 48,175 less the plant's 800, the
 /// center's 2,000 and the factory's 2,000.
 pub(crate) const FACTORY: FactorySteps = FactorySteps {
     ticks: [483, 688, 1091],
-    money: 8175 - 800 - 2000 - 2000,
+    money: 48_175 - 800 - 2000 - 2000,
 };
 
-/// The fight on Tournament Desert against an idle bot: the factory's 3 crusaders, each its 10 s,
-/// 300 ticks, one after another, 900; their drive into the 150 m of their guns and the turn of
-/// their turrets to the first shell's launch; its flight, on its curve's points at 400 m a
+/// The fight on Tournament Desert against the builder bot: the factory's 3 crusaders, each its
+/// 10 s, 300 ticks, one after another, 900; their drive into the 150 m of their guns and the turn
+/// of their turrets to the first shell's launch; its flight, on its curve's points at 400 m a
 /// second, to the center's first damage; and the center's destruction, 5,000 life at 60
 /// armor-piercing damage a shell, which its armor takes whole, so 84 shells of 3 guns that each
-/// fire every 2 s; each of which the check pins as it measured it; the money of 3,375 less 3 crusaders' 900 each;
-/// player 1's team the winner; and the bot's dozer's life gone.
+/// fire every 2 s; each of which the check pins as it measured it; the money of 48,175 less the
+/// plant's, the center's and the factory's 4,800 and 3 crusaders' 900 each; and no end of the
+/// match, as the bot's other buildings count for its victory (12-zero-hour.md, Defeat by the last
+/// building that counts).
 pub(crate) const FIGHT: FightSteps = FightSteps {
     train_ticks: 3 * 300,
-    shot_ticks: Some(820),
-    hit_ticks: Some(831),
-    fight_ticks: 2581,
-    money: 3375 - 3 * 900,
-    result: MatchResult::Won(Team::new(0)),
-    killed: true,
+    shot_ticks: Some(816),
+    hit_ticks: Some(827),
+    fight_ticks: 2567,
+    money: 50_000 - 1825 - 4800 - 3 * 900,
+    result: None,
+};
+
+/// The unit types of the bot's base, which the play counts as player 1's attack starts.
+pub(crate) const BOT_TYPES: [&str; 10] = [
+    "americacommandcenter",
+    "americavehicledozer",
+    "americapowerplant",
+    "americabarracks",
+    "americasupplycenter",
+    "americawarfactory",
+    "americainfantryranger",
+    "americainfantrymissiledefender",
+    "americatankcrusader",
+    "americavehiclehumvee",
+];
+
+/// The builder bot's base on Tournament Desert as player 1's attack starts: its center and its
+/// two dozers, each building its orders name, the barracks' two rangers and missile defender,
+/// and the factory's two crusaders and humvee, of each `BOT_TYPES`' count, the last whole in tick
+/// 3,850 of the play; and the farthest any of its units stood from its center, in whole meters,
+/// 310, which the check pins as it measured it: its farthest site, the war factory's, √(150² +
+/// 230²) = 274.6 m away, and the factory's rally beyond it (21-match-options.md, A bot that
+/// builds and does not fight).
+pub(crate) const BOT: BotBase = BotBase {
+    built: [1, 2, 1, 1, 1, 1, 2, 1, 2, 1],
+    farthest_m: 310,
 };
 
 /// The weapons the import converts from every starting weapon set, 29, the weapons it drops by
@@ -161,10 +187,19 @@ pub(crate) struct FactorySteps {
     pub(crate) money: i64,
 }
 
+/// What the bot built: the living units of each of `BOT_TYPES` it owns as player 1's attack
+/// starts, and the farthest any of its units stood from its command center over the play, in
+/// whole meters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BotBase {
+    pub(crate) built: [usize; BOT_TYPES.len()],
+    pub(crate) farthest_m: i64,
+}
+
 /// The fight's steps: the ticks from the first train to the last crusader trained, and from the
 /// attack's order to the first shell's launch, to the first damage to the bot's command center,
-/// and to the match's end; player 1's money as the attack is ordered; how the match ended; and
-/// whether the bot's dozer's life is gone.
+/// and to its death; player 1's money as the attack is ordered; and how the match ended by then,
+/// if it did.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FightSteps {
     pub(crate) train_ticks: u64,
@@ -172,8 +207,7 @@ pub(crate) struct FightSteps {
     pub(crate) hit_ticks: Option<u64>,
     pub(crate) fight_ticks: u64,
     pub(crate) money: i64,
-    pub(crate) result: MatchResult,
-    pub(crate) killed: bool,
+    pub(crate) result: Option<MatchResult>,
 }
 
 /// How many weapons the import converts, how many it drops for each cause, in the order of the

@@ -1,10 +1,13 @@
+use campfire_bots::BotScript;
 use campfire_capabilities::{Match, Order};
-use campfire_common::Tick;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_harness::{FixedMatch, MatchUnits};
+use campfire_math::{Num, Vec3};
+use campfire_protocol::ServerInput;
 use campfire_runner::SessionWorld;
-use campfire_sim::StableId;
+use campfire_sim::{Position, StableId};
 use campfire_stats::Life;
-use campfire_units::Units;
+use campfire_units::{HeldPlayerUnits, Units};
 use campfire_values::UnitType;
 
 use crate::failure::Failure;
@@ -14,12 +17,27 @@ pub(crate) const CENTER: &str = "americacommandcenter";
 /// America's dozer, the unit a skirmish starts a player with.
 pub(crate) const DOZER: &str = "americavehicledozer";
 
-/// A match a play of the check drives a tick at a time, as player 1, and the tick it runs next.
-/// A part of the imported mode a play reads and does not find is a failure of the import.
+/// A match a play of the check drives a tick at a time, as player 1, the tick it runs next, and
+/// the bot it drives, if one. A part of the imported mode a play reads and does not find is a
+/// failure of the import.
 #[derive(Debug)]
 pub(crate) struct MatchPlay {
     fixed: FixedMatch,
     tick: Tick,
+    bot: Option<MatchBot>,
+}
+
+/// A bot a play drives as a server's bot driver drives it: its slot, its script, the lookup of its
+/// units the driver's is and a scratch for it, the point its command center stands at, and the
+/// farthest any of its units stood from there.
+#[derive(Debug)]
+struct MatchBot {
+    slot: u32,
+    script: BotScript,
+    players: HeldPlayerUnits,
+    scratch: Vec<StableId>,
+    home: Vec3,
+    farthest: Num,
 }
 
 impl MatchPlay {
@@ -28,7 +46,33 @@ impl MatchPlay {
         Self {
             fixed,
             tick: Tick::new(0),
+            bot: None,
         }
+    }
+
+    /// Drives player `slot` by `script` from the tick it runs next, as a server drives its bot,
+    /// and keeps the farthest its units stand from its command center; a failure when the player
+    /// has no one center.
+    pub(crate) fn drive_bot(&mut self, slot: u32, script: BotScript) -> Result<(), Failure> {
+        let [center] = self.owned(CENTER, slot)?[..] else {
+            return Err(Failure::FightStart);
+        };
+        let home = MatchUnits::of(self.game()).pos(center);
+        self.bot = Some(MatchBot {
+            slot,
+            script,
+            players: HeldPlayerUnits::new(self.fixed.game_mut()),
+            scratch: Vec::new(),
+            home,
+            farthest: Num::ZERO,
+        });
+        Ok(())
+    }
+
+    /// The farthest a unit of the bot stood from its command center, on the ground plane, in
+    /// meters; none with no bot.
+    pub(crate) fn bot_farthest(&self) -> Option<Num> {
+        self.bot.as_ref().map(|bot| bot.farthest)
     }
 
     /// The tick it runs next: how many ticks it ran.
@@ -40,10 +84,58 @@ impl MatchPlay {
         self.fixed.game()
     }
 
-    /// Runs the tick, and moves on to the next.
+    /// Logs the bot's orders its script has due, then runs the tick, and moves on to the next.
     pub(crate) fn step(&mut self) {
+        if let Some(mut bot) = self.bot.take() {
+            self.serve_bot(&mut bot);
+            self.bot = Some(bot);
+        }
         self.fixed.game_mut().run_tick_alone();
         self.tick = Tick::new(self.tick.get() + 1);
+        if let Some(bot) = &mut self.bot {
+            let units = MatchUnits::of(self.fixed.game());
+            let slot = bot.slot;
+            for (_, unit) in units
+                .all()
+                .filter(|(_, unit)| MatchUnits::owned_by(unit, slot))
+            {
+                let Some(pos) = unit.get::<Position>() else {
+                    continue;
+                };
+                let distance = bot.home.ground_offset(pos.get()).length();
+                bot.farthest = bot.farthest.max(distance);
+            }
+        }
+    }
+
+    /// Logs each order `bot`'s script has due by the tick it runs next, for the bot's units it
+    /// names, by the server's bot driver's own lookup; an order of no such unit is none, as the
+    /// driver drops it.
+    fn serve_bot(&mut self, bot: &mut MatchBot) {
+        let MatchBot {
+            slot,
+            script,
+            players,
+            scratch,
+            ..
+        } = bot;
+        let units = players.get(self.fixed.game());
+        let slot = PlayerSlot::new(*slot);
+        let orders: Vec<Order> = script
+            .due_orders(self.tick)
+            .iter()
+            .filter_map(|scripted| scripted.order(slot, &units, scratch).ok())
+            .collect();
+        for order in orders {
+            let payload = Order::payload(&[order]);
+            let input = ServerInput::Bot {
+                slot,
+                payload: &payload,
+            };
+            self.fixed
+                .serve(input)
+                .expect("a bot's order within the session's limits");
+        }
     }
 
     /// Sends player 1's `orders`, stamped for the tick it runs next.

@@ -262,9 +262,7 @@ impl ZeroHour {
             MultiplayerIni::default(),
             MultiplayerIni::read,
         )?;
-        let money = multiplayer
-            .default_money()
-            .ok_or(ZeroHourError::DefaultMoney)?;
+        let money = multiplayer.money()?;
         let strings = self.string_table()?;
         let sources = CommandSources {
             ini: &ini,
@@ -295,7 +293,7 @@ impl ZeroHour {
             start: &start,
             production: &production,
             combat: &combat,
-            start_money: money,
+            start_money: &money,
         };
         writer.write(
             fixed("data/mode.toml"),

@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 campfire-actions.workspace = true
+campfire-bots.workspace = true
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-client-files.workspace = true
 campfire-codec.workspace = true

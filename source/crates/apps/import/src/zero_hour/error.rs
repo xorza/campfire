@@ -11,7 +11,7 @@ use thiserror::Error;
 use crate::texture::error::TextureError;
 use crate::zero_hour::format::big::error::ArchiveError;
 use crate::zero_hour::format::csf::error::CsfError;
-use crate::zero_hour::format::ini::error::IniError;
+use crate::zero_hour::format::ini::error::{IniError, MoneyError};
 use crate::zero_hour::format::map::error::MapReadError;
 use crate::zero_hour::format::map::error::TerrainError;
 use crate::zero_hour::format::w3d::error::W3dError;
@@ -101,9 +101,9 @@ pub enum ZeroHourError {
     /// No language folder holds art, so the import cannot tell which string table the game reads.
     #[error("no language folder holds art, so no string table is the game's")]
     NoLanguage,
-    /// The multiplayer settings mark no choice of starting money as the default, or several.
-    #[error("the multiplayer settings mark no single default starting money")]
-    DefaultMoney,
+    /// The multiplayer settings' choices of starting money make no option of the mode.
+    #[error("the multiplayer settings' starting money")]
+    Money(#[from] MoneyError),
     /// Two armors' names give one id in the mode.
     #[error("the armor {0} has a name another armor's gives")]
     ArmorName(String),

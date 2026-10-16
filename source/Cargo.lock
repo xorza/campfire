@@ -3180,6 +3180,7 @@ name = "campfire-zero-hour-check"
 version = "0.1.0"
 dependencies = [
  "campfire-actions",
+ "campfire-bots",
  "campfire-capabilities",
  "campfire-client-files",
  "campfire-codec",

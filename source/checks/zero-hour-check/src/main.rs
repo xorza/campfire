@@ -13,10 +13,13 @@
 //! `DRIVE_TICKS`, in no wall's cell in any tick. It counts the trains and builds the import
 //! converts from the command sets and the buttons it drops by cause; and in a match of its own,
 //! player 1's command center trains a dozer, its dozer builds a barracks, and the barracks trains a
-//! ranger, each in its pinned ticks and paid from the starting money; then its dozer builds a power
-//! plant, a supply center and a war factory, the factory trains three crusaders, and their shells
-//! destroy the bot's command center, in the pinned ticks of the first shot, the first damage and
-//! the match's end. Every other map the game
+//! ranger, each in its pinned ticks and paid from the 50,000 the host picks of the starting money;
+//! then its dozer builds a power plant, a supply center and a war factory, the factory trains three
+//! crusaders, and their shells destroy the bot's command center, in the pinned ticks of the first
+//! shot, the first damage and the center's death, and the match goes on, as the bot's other
+//! buildings count for its victory. The bot plays the builder's orders, `bots/builder.toml`: it
+//! builds its base, trains its units, each counted and pinned, and attacks nothing, its units no
+//! farther from its center than the pinned distance. Every other map the game
 //! lists loads in the imported mode. It fails when `GENERALSZH_DATA` names no install, so a machine
 //! with no copy never passes as one that checked.
 //!

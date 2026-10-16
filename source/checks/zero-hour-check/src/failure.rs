@@ -1,14 +1,17 @@
+use campfire_bots::{OrderScriptError, UnknownUnitType};
 use campfire_common::MapName;
 use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
+use campfire_mode::PickError;
 use campfire_orders::OrdersAction;
 use campfire_package::LoadError;
 use derive_more::Display;
 
 use crate::pins::{
-    CLIENT_OBJECTS, DRIVE_TICKS, FACTORY, FIGHT, FINGERPRINTS, FOUGHT, FactorySteps, FightSteps,
-    Fingerprints, FoughtCounts, HEIGHTS, LOOKS, LookCounts, MARKERS, OBJECT_LOOKS, PRODUCED,
-    PRODUCTION, ProducedCounts, ProductionSteps, TERRAIN, TerrainDrawn, UNIT_TYPES, UNITS, WALLS,
+    BOT, BotBase, CLIENT_OBJECTS, DRIVE_TICKS, FACTORY, FIGHT, FINGERPRINTS, FOUGHT, FactorySteps,
+    FightSteps, Fingerprints, FoughtCounts, HEIGHTS, LOOKS, LookCounts, MARKERS, OBJECT_LOOKS,
+    PRODUCED, PRODUCTION, ProducedCounts, ProductionSteps, TERRAIN, TerrainDrawn, UNIT_TYPES,
+    UNITS, WALLS,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
@@ -79,6 +82,18 @@ pub(crate) enum Failure {
     /// The factory's chain's ticks or money differ from the pinned.
     #[display("it built the factory's chain as {_0:?}, not {FACTORY:?}")]
     Factory(FactorySteps),
+    /// The mode takes no pick the play's host gives of its options.
+    #[display("the mode takes no pick of {_0}")]
+    Options(PickError),
+    /// The builder bot's orders file is no order script.
+    #[display("the builder bot's orders: {_0}")]
+    BotOrders(OrderScriptError),
+    /// The builder bot's orders name a unit type the mode lacks.
+    #[display("the builder bot's orders: {_0}")]
+    BotType(UnknownUnitType),
+    /// The bot's base differs from the pinned.
+    #[display("the bot built {_0:?}, not {BOT:?}")]
+    Bot(BotBase),
     /// The bot lacks the command center or the dozer the fight reads.
     #[display("the bot lacks its command center or its dozer")]
     FightStart,

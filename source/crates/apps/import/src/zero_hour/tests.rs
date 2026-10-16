@@ -105,7 +105,8 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     );
     // Its players start with America's command center and dozer, the dozer half the center's
     // sphere of 25 m, 12.5 m, along +z where a map has no rally, at the markers tagged
-    // `start`, which the load checks a walker can stand on, and with the default money.
+    // `start`, which the load checks a walker can stand on, and with the money its host picks of
+    // the fixture's three choices, 10,000 by default.
     let data: ModeView = Toml::parse(&scratch.read_text("one/game/data/mode.toml")).unwrap();
     assert_eq!(data.navigation.spawn_tags, ["start"]);
     assert_eq!(
@@ -114,8 +115,18 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             start_building: "americacommandcenter".to_owned(),
             start_units: vec!["americavehicledozer".to_owned()],
             start_offset: Num::int(25) / Num::int(2),
-            start_money: 10000,
         }
+    );
+    assert_eq!(
+        data.options,
+        [(
+            "start_money".to_owned(),
+            OptionView {
+                values: vec![5000, 10000, 20000],
+                default: 10000,
+            }
+        )]
+        .into()
     );
     assert_eq!(data.resources, ["money"]);
     assert_eq!(
@@ -774,6 +785,7 @@ struct ModeView {
     navigation: NavigationView,
     slots: Vec<SlotView>,
     params: ParamsView,
+    options: BTreeMap<String, OptionView>,
     combat: CombatView,
     actions: BTreeMap<String, ActionOf>,
 }
@@ -852,7 +864,13 @@ struct ParamsView {
     start_building: String,
     start_units: Vec<String>,
     start_offset: Num,
-    start_money: u32,
+}
+
+#[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OptionView {
+    values: Vec<u32>,
+    default: u32,
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]

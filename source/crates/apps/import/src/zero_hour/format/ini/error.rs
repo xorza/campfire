@@ -77,3 +77,18 @@ pub enum IniError {
     #[error("line {line}: a reskin's base is not read before it")]
     NoBase { line: usize },
 }
+
+/// Why the multiplayer settings' choices of starting money make no option of the mode
+/// (21-match-options.md, The import writes Zero Hour's money as an option).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum MoneyError {
+    /// No choice is marked `Default`, or several are, which the game asserts against.
+    #[error("no single choice is the default")]
+    Default,
+    /// Two choices of one value, which no host could tell apart.
+    #[error("two choices of {0}")]
+    Twice(u32),
+    /// More choices than a mode's option holds.
+    #[error("{0} choices, past what an option holds")]
+    TooMany(usize),
+}

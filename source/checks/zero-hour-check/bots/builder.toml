@@ -1,0 +1,65 @@
+# The builder bot of Tournament Desert's player 2, at `Player_2_Start` (1011, -2103), with the money of
+# a skirmish's 50,000: its dozer builds a power plant, a barracks, a supply center and a war factory
+# beside and behind its command center, away from player 1's way; the barracks trains infantry, the
+# factory vehicles, and the center a second dozer, after the last build, so no build goes to it. It
+# orders no attack and no move. Each slot is the place of a train or a build among its type's
+# actions of the slot kind `command`. Play it with `--server-bot 1=<this file>`.
+
+# The dozer's builds, at America's angle of -135 degrees.
+[[order]]
+tick = 1
+units = "americavehicledozer"
+build = { slot = 0, x = 861, z = -2103, angle = -135 }
+
+[[order]]
+tick = 600
+units = "americavehicledozer"
+build = { slot = 1, x = 861, z = -2303, angle = -135 }
+
+[[order]]
+tick = 1200
+units = "americavehicledozer"
+build = { slot = 3, x = 1161, z = -2103, angle = -135 }
+
+# The barracks' rangers and missile defender.
+[[order]]
+tick = 1300
+units = "americabarracks"
+cast = 0
+
+[[order]]
+tick = 1301
+units = "americabarracks"
+cast = 1
+
+[[order]]
+tick = 1302
+units = "americabarracks"
+cast = 0
+
+[[order]]
+tick = 2050
+units = "americavehicledozer"
+build = { slot = 7, x = 1161, z = -2333, angle = -135 }
+
+# The war factory's crusaders and humvee.
+[[order]]
+tick = 2950
+units = "americawarfactory"
+cast = 0
+
+[[order]]
+tick = 2951
+units = "americawarfactory"
+cast = 2
+
+[[order]]
+tick = 2952
+units = "americawarfactory"
+cast = 0
+
+# The center's second dozer.
+[[order]]
+tick = 3000
+units = "americacommandcenter"
+cast = 0
