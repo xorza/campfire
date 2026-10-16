@@ -91,6 +91,7 @@ fn terms() -> SessionTerms {
         dependencies: DEPENDENCIES.to_vec(),
         slots: vec![SlotPlan::Player; 2],
         visibility: VISIBILITY.to_vec(),
+        options: vec![2, 0],
     }
 }
 
@@ -716,7 +717,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
 
     // The session id hashes the terms, so a change to any of them leaves every delegation
     // naming another session.
-    let changes: [fn(&mut SessionTerms); 15] = [
+    let changes: [fn(&mut SessionTerms); 17] = [
         |terms| terms.server_key = x_only(42),
         |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
         |terms| terms.inputs.max_delay = Ticks::new(terms.inputs.max_delay.get() + 1),
@@ -732,6 +733,8 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.slots[1] = SlotPlan::Bot,
         |terms| terms.visibility[1] = 1,
         |terms| terms.visibility.push(0),
+        |terms| terms.options[1] = 1,
+        |terms| terms.options.push(0),
     ];
     for (at, change) in changes.into_iter().enumerate() {
         let mut other = header();
@@ -751,7 +754,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     // The id, as the protocol spells it (05-protocol-spec.md, Keys).
     let mut spelled = Hasher::new();
     spelled
-        .update(b"campfire/session-id/v3")
+        .update(b"campfire/session-id/v4")
         .update(&server_key().serialize())
         .update(&300_u32.to_le_bytes())
         .update(&2_u64.to_le_bytes())
@@ -773,7 +776,10 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         .update(&[0, 0])
         // The visibility's 3 bytes, after their length.
         .update(&3_u64.to_le_bytes())
-        .update(&VISIBILITY);
+        .update(&VISIBILITY)
+        // 2 options' picks, after their count.
+        .update(&2_u64.to_le_bytes())
+        .update(&[2, 0]);
     assert_eq!(session_id().as_bytes(), spelled.finalize().as_bytes());
 }
 
@@ -861,7 +867,7 @@ fn frame(
     tail: &[Sent<'_>],
     revealed: Option<ServerSeed>,
 ) -> Vec<u8> {
-    let mut bytes = b"campfire/session-log/v5".to_vec();
+    let mut bytes = b"campfire/session-log/v6".to_vec();
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
@@ -876,6 +882,7 @@ fn frame(
     put(&mut bytes, &terms.dependencies);
     put(&mut bytes, &terms.slots);
     put(&mut bytes, &terms.visibility);
+    put(&mut bytes, &terms.options);
     put(&mut bytes, &u32::try_from(header.slots.len()).unwrap());
     for start in &header.slots {
         put(&mut bytes, &start.plan().code());
@@ -988,7 +995,7 @@ fn a_log_file_has_its_layout() {
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
-        &b"campfire/session-log/v5"[..],
+        &b"campfire/session-log/v6"[..],
         // The terms, and no session id: it is their hash.
         &server_key().serialize(),
         // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
@@ -1007,8 +1014,9 @@ fn a_log_file_has_its_layout() {
         &[53; 32],
         // The plan of 2 slots, each a player's.
         &[2, 0, 0],
-        // The visibility's 3 bytes, after their length.
+        // The visibility's 3 bytes, after their length, then the 2 options' picks.
         &[3, 7, 0, 1],
+        &[2, 2, 0],
         // 2 slots, each a player's start, 0, and the delegation's JSON as a length and UTF-8.
         &[2, 0],
         &varint(first.json().len()),
@@ -1033,7 +1041,7 @@ fn a_log_file_has_its_layout() {
     assert_eq!(encoded(&log), expected);
 
     // A rate of 0 ticks a second does not decode.
-    let tick_at = b"campfire/session-log/v5".len() + 32;
+    let tick_at = b"campfire/session-log/v6".len() + 32;
     let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
     assert!(matches!(
         SessionLog::decode(&zero_rate),
@@ -1097,7 +1105,7 @@ fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
         SessionLog::decode(&bytes).map(|log| log.next_tick()),
         Ok(Tick::new(1))
     );
-    let tag = b"campfire/session-log/v5".len();
+    let tag = b"campfire/session-log/v6".len();
     for at in 0..bytes.len() {
         let expected = if at < tag {
             LogError::NotLog

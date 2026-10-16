@@ -27,6 +27,19 @@ pub enum ModeNamesError {
     Repeated { list: ModeList, name: DeclaredName },
 }
 
+/// Why the picks a session's terms carry are none of the mode's options (21-match-options.md, The
+/// host picks, and the terms record the pick). Terms come from a server or a published log, so
+/// each is an expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum PickError {
+    /// Picks of another count than the mode's options.
+    #[error("{given} picks of the mode's {options} options")]
+    Count { given: usize, options: usize },
+    /// A pick past its option's values.
+    #[error("the pick {place} of the option {option}, which has no value there")]
+    Place { option: DeclaredName, place: u8 },
+}
+
 /// Why the mode's teams, relations or map do not load: they name what the mode does not have.
 /// Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_common::Version;
+use campfire_mode::PickError;
 use campfire_visibility::VisibilityDecodeError;
 use thiserror::Error;
 
@@ -32,4 +33,7 @@ pub enum TermsError {
     /// The visibility the terms carry sets what the mode does not leave to the host.
     #[error("the visibility sets what the mode does not leave to the host")]
     OtherVisibility,
+    /// The picks the terms carry are none of the mode's options.
+    #[error("the options' picks")]
+    Picks(#[from] PickError),
 }

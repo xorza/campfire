@@ -5,12 +5,14 @@ use campfire_units::ScriptBook;
 use campfire_values::NameTable;
 
 use crate::mode_data::{InputType, ModeData};
+use crate::option_picks::OptionPicks;
 
 /// The one run of each of the schema's tables.
 const RUN: usize = 0;
 
 /// The mode's script and what its data declares: the hooks the script defines, the params, each
-/// option's default among them, the state fields and the input types. Package data, not state.
+/// option's picked value among them, the state fields and the input types. Package data, not
+/// state.
 #[derive(Debug)]
 pub(crate) struct ModeSchema {
     pub(crate) script: ScriptId,
@@ -24,8 +26,14 @@ pub(crate) struct ModeSchema {
 }
 
 impl ModeSchema {
-    /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives.
-    pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> Self {
+    /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives,
+    /// its options of the values `picks` gives.
+    pub(crate) fn new(
+        script: ScriptId,
+        scripts: &ScriptBook,
+        data: &ModeData,
+        picks: &OptionPicks,
+    ) -> Self {
         let mut schema = Self {
             script,
             hooks: scripts.defines(Some(script), ScriptRole::Mode),
@@ -41,12 +49,9 @@ impl ModeSchema {
             .params
             .iter()
             .map(|(name, param)| (name, param.to_value()));
-        let options = data.options.iter().map(|(name, option)| {
-            let default = option
-                .value(option.default_place())
-                .expect("an option holds its default");
-            (name, ScriptValue::from(default))
-        });
+        let options = picks
+            .values(&data.options)
+            .map(|(name, value)| (name, ScriptValue::from(value)));
         schema.params.push(
             params
                 .chain(options)

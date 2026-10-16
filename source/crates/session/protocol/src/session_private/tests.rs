@@ -30,6 +30,7 @@ fn a_private_record_round_trips_and_other_bytes_are_refused() {
             dependencies: vec![PackageFingerprint::new([2; 32])],
             slots: vec![SlotPlan::Player, SlotPlan::Open],
             visibility: Vec::new(),
+            options: Vec::new(),
         },
     };
     // A buffer that held other bytes is cleared first, so the file decodes.

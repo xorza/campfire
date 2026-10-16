@@ -423,6 +423,8 @@ fn raised(mut map: MapData, y: i64) -> MapData {
 #[derive(Debug)]
 struct ModeFiles {
     data: ModeData,
+    /// The value the session's host picked of each of the mode's options.
+    picks: OptionPicks,
     /// The mode's modifiers, which its package's content holds.
     modifiers: BTreeMap<String, ModifierData>,
     map: MapData,
@@ -541,7 +543,13 @@ fn mode_state() -> BTreeMap<DeclaredName, SyncedStateDecl> {
 
 fn mode_files() -> ModeFiles {
     let text = |text: &str| ListEntry::Text(text.to_owned());
+    let options = [(
+        DeclaredName::new("bounty").unwrap(),
+        Toml::parse("values = [3, 40]\ndefault = 40").unwrap(),
+    )]
+    .into();
     ModeFiles {
+        picks: OptionPicks::defaults(&options),
         data: ModeData {
             name: MessageId::new("mode").unwrap(),
             teams: BTreeMap::new(),
@@ -585,11 +593,7 @@ fn mode_files() -> ModeFiles {
             ]
             .map(|(name, param)| (DeclaredName::new(name).unwrap(), param))
             .into(),
-            options: [(
-                DeclaredName::new("bounty").unwrap(),
-                Toml::parse("values = [3, 40]\ndefault = 40").unwrap(),
-            )]
-            .into(),
+            options,
             stats: STATS_3V3
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
                 .into(),
@@ -676,6 +680,7 @@ fn setup<'a>(
     ModeSetup {
         script,
         data: &files.data,
+        picks: &files.picks,
         teams: &files.teams,
         players: 3,
         units: ModeUnits {

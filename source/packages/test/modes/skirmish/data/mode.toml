@@ -38,4 +38,8 @@ ended = { type = "bool", default = false }
 start_building = "center"
 start_units = ["dozer"]
 start_offset = "2"
-start_money = 100
+
+# The money each player starts with, which the session's host picks.
+[options.start_money]
+values = [100, 5000]
+default = 100

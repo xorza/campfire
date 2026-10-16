@@ -17,12 +17,6 @@ The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): t
 
 The slice of [Match options](docs/design/21-match-options.md): the player starts a Zero Hour skirmish with 50,000 money for every player against a bot that builds a base and never attacks. The systems it changes: `package`, `mode`, `protocol`, `runner`, `verifier`, `harness`, `net`, `server`, `client`, `import`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 2. The terms record the picks
-
-`protocol`: `session_terms.rs`; `runner`: `session_rules/`, `match_build/`, `session/`, `replay/`; `verifier`; `harness`: `fixed_session/`; the design `05-protocol-spec.md`. It stands second, as the command lines give picks the terms must hold. Builds: what can be forgotten is a type, the picks a checked value of the rules.
-
-- [ ] crates/session/protocol/src/session_terms.rs:30 — terms hold no pick of an option (The host picks, and the terms record the pick). → `SessionTerms` holds the index of each option's picked value in the session id after the visibility, of the domain `campfire/session-id/v4`; `SessionRules::check` gives the checked picks beside the visibility; `HostChoices` takes the picks; a match and a restore target install the mode with them (A script reads the pick as the param). The goldens of the session ids move.
-
 ### 3. The host names its picks
 
 `net`: `sim_server/lobby/`; `server`: `args/`; `client`: `args/`, the local server. Builds: a name is resolved once, at the command line.

@@ -3,6 +3,7 @@ use std::hint::black_box;
 use std::time::{Duration, Instant};
 
 use campfire_capabilities::Release;
+use campfire_mode::OptionPicks;
 use campfire_package_disk::PackageDir;
 use campfire_runner::MatchBuild;
 use campfire_script::ScriptHost;
@@ -40,11 +41,12 @@ pub(crate) fn build(c: &mut Criterion) {
     group.bench_function("3v3", |b| {
         let packages = moba.packages();
         let rate = TickRate::new(packages.manifest().tick_hz.default());
+        let picks = OptionPicks::defaults(&packages.data().options);
         b.iter_custom(|builds| {
             let mut spent = Duration::ZERO;
             for _ in 0..builds {
                 let start = Instant::now();
-                let game = MatchBuild::restore_target(packages, rate, Moba3v3::PLAYERS);
+                let game = MatchBuild::restore_target(packages, rate, Moba3v3::PLAYERS, &picks);
                 spent += start.elapsed();
                 black_box(game);
             }

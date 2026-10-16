@@ -2,7 +2,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{Match, MatchSpec, Release};
 use campfire_common::SegmentSeed;
 use campfire_declare::Role;
-use campfire_mode::{ModeInputs, ModeSetup};
+use campfire_mode::{ModeInputs, ModeSetup, OptionPicks};
 use campfire_package::ModePackages;
 use campfire_script::ScriptBudgets;
 use campfire_sim::TickRate;
@@ -28,12 +28,18 @@ impl MatchBuild {
     }
 
     /// Puts into `world`, a match of the spec of `packages`, every package's scripts, the books
-    /// at the match's rate, and the mode itself.
-    pub(crate) fn install_mode(world: &mut World, packages: &ModePackages, players: u32) {
+    /// at the match's rate, and the mode itself, of the values `picks` gives its options.
+    pub(crate) fn install_mode(
+        world: &mut World,
+        packages: &ModePackages,
+        players: u32,
+        picks: &OptionPicks,
+    ) {
         let ModeInputs { units, load } = Self::books(world, packages);
         let setup = ModeSetup {
             script: packages.mode_script(),
             data: packages.data(),
+            picks,
             teams: &packages.manifest().teams,
             players,
             units,
@@ -49,19 +55,30 @@ impl MatchBuild {
         packages.books(rate).install(world)
     }
 
-    /// A restore target: the match of `packages` for `players` players at `rate`, with its books
-    /// and its mode in place and no unit, to restore a snapshot into, as a session that loads a
-    /// save, or a verifier that checks a checkpoint's snapshot, does: the books come from the
-    /// packages, the state from the snapshot. Its seed is zero, as the seed is not state.
-    pub fn restore_target(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
+    /// A restore target: the match of `packages` for `players` players at `rate`, of the values
+    /// `picks` gives the mode's options, with its books and its mode in place and no unit, to
+    /// restore a snapshot into, as a session that loads a save, or a verifier that checks a
+    /// checkpoint's snapshot, does: the books come from the packages, the state from the
+    /// snapshot. Its seed is zero, as the seed is not state.
+    pub fn restore_target(
+        packages: &ModePackages,
+        rate: TickRate,
+        players: u32,
+        picks: &OptionPicks,
+    ) -> Match {
         let spec = Self::spec(packages, SegmentSeed::ZERO, rate, players);
-        Self::restore_target_of(spec, packages, players)
+        Self::restore_target_of(spec, packages, players, picks)
     }
 
-    /// The restore target of `spec`, the spec of `packages` for `players` players.
-    fn restore_target_of(spec: MatchSpec, packages: &ModePackages, players: u32) -> Match {
+    /// The restore target of `spec`, the spec of `packages` for `players` players, of `picks`.
+    fn restore_target_of(
+        spec: MatchSpec,
+        packages: &ModePackages,
+        players: u32,
+        picks: &OptionPicks,
+    ) -> Match {
         let mut game = Match::new(spec);
-        Self::install_mode(&mut game, packages, players);
+        Self::install_mode(&mut game, packages, players, picks);
         game
     }
 }
@@ -71,7 +88,7 @@ pub(crate) mod internals {
     use campfire_capabilities::Match;
     use campfire_common::SegmentSeed;
     use campfire_log::internals::LogCheck;
-    use campfire_mode::{Mode, ModeInputs};
+    use campfire_mode::{Mode, ModeInputs, OptionPicks};
     use campfire_package::ModePackages;
     use campfire_players::Players;
     use campfire_sim::TickRate;
@@ -95,11 +112,12 @@ pub(crate) mod internals {
             game
         }
 
-        /// The restore target `restore_target` builds at the mode's default rate, which fails
-        /// its test on any warning it logs.
+        /// The restore target `restore_target` builds at the mode's default rate, of the options'
+        /// defaults, which fails its test on any warning it logs.
         pub fn test_target(packages: &ModePackages, players: u32) -> Match {
             let log = LogCheck::start();
-            Self::restore_target(packages, Self::rate(packages), players).with_log(log)
+            let picks = OptionPicks::defaults(&packages.data().options);
+            Self::restore_target(packages, Self::rate(packages), players, &picks).with_log(log)
         }
 
         /// The restore target `test_target` builds, its schedule built with no automatic sync
@@ -109,7 +127,9 @@ pub(crate) mod internals {
             let log = LogCheck::start();
             let rate = Self::rate(packages);
             let spec = Self::spec(packages, SegmentSeed::ZERO, rate, players);
-            let target = Self::restore_target_of(spec.without_sync_points(), packages, players);
+            let picks = OptionPicks::defaults(&packages.data().options);
+            let spec = spec.without_sync_points();
+            let target = Self::restore_target_of(spec, packages, players, &picks);
             target.with_log(log)
         }
 

@@ -465,7 +465,8 @@ impl SimServer {
         // The rules of the packages the server runs now may not admit the terms it ran under.
         let visibility = SessionRules::of(&packages)
             .check(&terms)
-            .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
+            .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?
+            .visibility;
         Self::take_terms(world, &terms, visibility);
         let slots = restored.log.slot_count();
         let signer = Signer::new(server.key, server.os.entropy);

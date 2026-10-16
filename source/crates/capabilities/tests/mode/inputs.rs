@@ -148,6 +148,13 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         [8 + 40, i64::MAX, 0]
     );
     assert_eq!(resource("gems").map(ResourceId::index), Some(1));
+    // A host's pick of the option's other value is the param in place of its default: 8 + 3.
+    let mut files = mode_files();
+    files.picks = OptionPicks::checked(&files.data.options, &[0]).unwrap();
+    let mut picked = start_match(SCRIPT, ScriptLimits::ROOMY, &files).unwrap();
+    Mode::tick_inputs(&mut picked, &[(1, input("gold", "gold"))]);
+    let resources = picked.player_resources(PlayerSlot::new(1)).unwrap();
+    assert_eq!(resources.amount(resource("gold").unwrap()), 8 + 3);
     assert_eq!(
         Mode::failures(&game),
         [

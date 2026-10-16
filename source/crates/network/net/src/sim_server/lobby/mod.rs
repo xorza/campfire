@@ -7,6 +7,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Local, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
+use campfire_mode::OptionPicks;
 use campfire_package::ModePackages;
 use campfire_protocol::{
     Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
@@ -151,6 +152,7 @@ impl Lobby {
             .visibility()
             .session(&host)
             .map_err(LobbyError::Visibility)?;
+        let picks = OptionPicks::defaults(session_rules.options());
         let terms = session_rules
             .terms(HostChoices {
                 server_key: server.key.x_only_public_key().0,
@@ -159,6 +161,7 @@ impl Lobby {
                 inputs,
                 slots: plan,
                 visibility: &visibility,
+                picks: &picks,
             })
             .map_err(LobbyError::Terms)?;
         Ok(Self {

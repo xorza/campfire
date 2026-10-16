@@ -3,6 +3,7 @@ use std::num::NonZeroU32;
 
 use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
+use campfire_mode::OptionPicks;
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
@@ -63,6 +64,7 @@ impl FixedSession {
     ) -> Self {
         let session_rules = SessionRules::of(&packages);
         let visibility = session_rules.visibility().settings();
+        let picks = OptionPicks::defaults(session_rules.options());
         let terms = session_rules
             .terms(HostChoices {
                 server_key: server_key(),
@@ -71,9 +73,20 @@ impl FixedSession {
                 inputs: rules,
                 slots: plan.into_iter().collect(),
                 visibility,
+                picks: &picks,
             })
             .unwrap();
         Self { packages, terms }
+    }
+
+    /// The session, of the values at `places` among its mode's options' values picked, as its
+    /// host picks them (21-match-options.md, The host picks, and the terms record the pick).
+    #[must_use]
+    pub fn picked(mut self, places: &[u8]) -> Self {
+        let rules = SessionRules::of(&self.packages);
+        let picks = OptionPicks::checked(rules.options(), places).expect("picks of the options");
+        self.terms.options = picks.places().to_vec();
+        self
     }
 
     pub const fn packages(&self) -> &ModePackages {

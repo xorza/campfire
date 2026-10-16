@@ -1,6 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
 use campfire_common::Tick;
+use campfire_mode::OptionPicks;
 use campfire_package::ModePackages;
 use campfire_protocol::{Checkpoint, SeedError, SessionLog};
 use campfire_sim::{SimWorld, TickRate};
@@ -105,7 +106,15 @@ impl<'p> Replay<'p> {
                 let header = self.game.session().log().header();
                 let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
                 let rate = TickRate::new(header.terms.tick_hz);
-                empty.insert(MatchBuild::restore_target(self.packages, rate, slots))
+                let options = &self.packages.data().options;
+                let picks = OptionPicks::checked(options, &header.terms.options)
+                    .expect("the replay's session checked its terms");
+                empty.insert(MatchBuild::restore_target(
+                    self.packages,
+                    rate,
+                    slots,
+                    &picks,
+                ))
             }
         };
         let checked = Session::restore_checked(target, record, snapshot);

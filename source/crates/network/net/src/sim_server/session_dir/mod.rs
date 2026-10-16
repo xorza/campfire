@@ -354,6 +354,7 @@ mod tests {
                 dependencies: Vec::new(),
                 slots: vec![SlotPlan::Open],
                 visibility: Visibility::DEFAULT.encode(),
+                options: Vec::new(),
             },
         };
         let session = Path::new("data/sessions").join(private.terms.session_id().to_string());

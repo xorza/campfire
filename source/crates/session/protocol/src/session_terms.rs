@@ -11,7 +11,7 @@ use crate::session_id::SessionId;
 use crate::slot_plan::SlotPlan;
 
 /// Starts the session id, so no other BLAKE3 use can produce one.
-const SESSION_ID_DOMAIN: HashDomain<SessionId> = HashDomain::new("campfire/session-id/v3");
+const SESSION_ID_DOMAIN: HashDomain<SessionId> = HashDomain::new("campfire/session-id/v4");
 
 /// The most bytes postcard writes for a `u64`, and for a `u32` or a length.
 const VARINT_64: u64 = 10;
@@ -49,6 +49,10 @@ pub struct SessionTerms {
     /// Who receives each kind of the session's state, as the mode and its host set it: the bytes
     /// `capabilities`' `Visibility` encodes, which the protocol carries and does not read.
     pub visibility: Vec<u8>,
+    /// The place of the value the host picked of each of the mode's options, among the option's
+    /// values, in the order of their names: bytes the protocol carries and does not read
+    /// (21-match-options.md, The host picks, and the terms record the pick).
+    pub options: Vec<u8>,
 }
 
 impl SessionTerms {
@@ -56,7 +60,7 @@ impl SessionTerms {
     /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
     /// ‖ mode fingerprint ‖ u64 map name length ‖ map name ‖ u64 dependency count ‖ dependency
     /// fingerprints ‖ u64 slot count ‖ u8 per slot, its plan's code ‖ u64 visibility length ‖
-    /// visibility)`, integers little-endian.
+    /// visibility ‖ u64 option count ‖ u8 per option, its pick's place)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
         let release = self.release.to_string();
         let mut hasher = DomainHasher::new(SESSION_ID_DOMAIN);
@@ -83,7 +87,9 @@ impl SessionTerms {
         }
         hasher
             .update(&len(self.visibility.len()).to_le_bytes())
-            .update(&self.visibility);
+            .update(&self.visibility)
+            .update(&len(self.options.len()).to_le_bytes())
+            .update(&self.options);
         hasher.finish()
     }
 
@@ -119,7 +125,8 @@ impl SessionTerms {
             .checked_add(
                 len(self.release.to_string().len()) + len(self.map.as_str().len()) + SLACK,
             )?
-            .checked_add(len(self.visibility.len()))?;
+            .checked_add(len(self.visibility.len()))?
+            .checked_add(len(self.options.len()))?;
         let header = slots.checked_mul(delegation + SLACK)?.checked_add(terms)?;
         Some(packet.max(server).max(checkpoint).max(header))
     }

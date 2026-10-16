@@ -33,6 +33,7 @@ fn terms() -> SessionTerms {
         dependencies: vec![PackageFingerprint::new([4; 32])],
         slots: vec![SlotPlan::Player],
         visibility: Vec::new(),
+        options: Vec::new(),
     }
 }
 

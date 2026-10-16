@@ -84,7 +84,7 @@ impl ModeSpec {
             spawned.set(unit_type, ());
         }
         Self {
-            schema: ModeSchema::new(setup.script, scripts, setup.data),
+            schema: ModeSchema::new(setup.script, scripts, setup.data, setup.picks),
             roster: Roster::new(setup.units.avatars, &setup.units.loadout),
             teams: Rc::new(teams),
             choices: ChoiceSpecs::new(&setup.data.choices),

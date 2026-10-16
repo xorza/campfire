@@ -72,7 +72,7 @@ impl Opening {
             None => Opened::New(Box::new(Self::open(setup)?)),
         };
         let terms = session.terms();
-        let visibility = rules.check(terms).map_err(OpeningError::Terms)?;
+        let visibility = rules.check(terms).map_err(OpeningError::Terms)?.visibility;
         let slots = u32::try_from(terms.slots.len()).expect("a session's slots fit u32");
         let seats = slots
             .checked_add(visibility.max_spectators())

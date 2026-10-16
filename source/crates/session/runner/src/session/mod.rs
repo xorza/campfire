@@ -18,7 +18,7 @@ use crate::session::error::{
     CheckpointBeginError, ResumeError, ServerInputRefused, SnapshotCheckError, StartError,
 };
 use crate::session::session_source::{ResumeAt, SessionSource};
-use crate::session_rules::SessionRules;
+use crate::session_rules::{CheckedTerms, SessionRules};
 use crate::slot_rules::SlotRules;
 
 pub(crate) mod error;
@@ -61,7 +61,7 @@ impl Session {
             packages,
         } = source;
         let header = log.header();
-        let visibility = SessionRules::of(packages)
+        let CheckedTerms { visibility, picks } = SessionRules::of(packages)
             .check(&header.terms)
             .map_err(StartError::Terms)?;
         if seeds.last() < log.segment() {
@@ -84,7 +84,7 @@ impl Session {
         let rate = TickRate::new(header.terms.tick_hz);
         let spec = MatchBuild::spec(packages, seed, rate, players).out(visibility.out());
         Release::build(world, spec);
-        MatchBuild::install_mode(world, packages, players);
+        MatchBuild::install_mode(world, packages, players, &picks);
         let saves = packages.data().saves;
         let autosave = saves.autosave_ms.map(|ms| {
             rate.ticks(NonZeroU64::from(ms).get())

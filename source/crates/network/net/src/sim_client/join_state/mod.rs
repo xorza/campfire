@@ -628,7 +628,11 @@ impl Joining {
         if terms.server_key != self.server.key {
             return Err(TermsMismatch::OtherServer);
         }
-        let visibility = self.rules.check(terms).map_err(TermsMismatch::Terms)?;
+        let visibility = self
+            .rules
+            .check(terms)
+            .map_err(TermsMismatch::Terms)?
+            .visibility;
         if terms.tick_hz != self.server.tick_hz {
             return Err(TermsMismatch::OtherTickRate);
         }

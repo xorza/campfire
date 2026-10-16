@@ -2950,6 +2950,7 @@ dependencies = [
  "campfire-sim",
  "campfire-test-packages",
  "campfire-units",
+ "campfire-values",
  "campfire-visibility",
  "campfire-vision",
  "secp256k1",

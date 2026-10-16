@@ -1,6 +1,7 @@
 use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_common::ExitStatus;
+use campfire_mode::OptionPicks;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{InputRules, SeedChain, SessionHeader, SessionLog, SlotPlan, SlotStart};
 use campfire_runner::{HostChoices, SessionRules};
@@ -25,6 +26,7 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
             inputs: InputRules::LAN,
             slots: vec![SlotPlan::Open],
             visibility: rules.visibility().settings(),
+            picks: &OptionPicks::defaults(rules.options()),
         })
         .unwrap();
     let header = SessionHeader {

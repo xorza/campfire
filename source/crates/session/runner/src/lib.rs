@@ -22,5 +22,5 @@ pub use crate::session::error::{
 pub use crate::session::session_source::{ResumeAt, SessionSource};
 pub use crate::session::session_world::SessionWorld;
 pub use crate::session_rules::error::TermsError;
-pub use crate::session_rules::{HostChoices, SessionRules};
+pub use crate::session_rules::{CheckedTerms, HostChoices, SessionRules};
 pub use crate::slot_rules::error::SlotRuleError;

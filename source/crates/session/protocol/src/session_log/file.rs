@@ -23,7 +23,7 @@ use crate::slot_plan::SlotPlan;
 use crate::slot_start::SlotStart;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
-pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v5";
+pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v6";
 /// The bytes that start a player's packet and a server input in the file.
 pub(super) const PACKET_ENTRY: u8 = 0;
 const SERVER_ENTRY: u8 = 1;

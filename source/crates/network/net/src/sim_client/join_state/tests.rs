@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_common::{PackageFingerprint, TlsKey, Version};
+use campfire_mode::OptionPicks;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectChallenge, Entropy, InputHash, MainKey, Receipt, SeedChain, SlotPlan,
@@ -61,6 +62,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
             inputs: InputRules::LAN,
             slots: vec![SlotPlan::Player; 2],
             visibility: rules.visibility().settings(),
+            picks: &OptionPicks::defaults(rules.options()),
         })
         .unwrap();
     change(&mut terms);
