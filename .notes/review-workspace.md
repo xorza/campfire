@@ -95,18 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 1. Protocol: the verifier holds design 05
-
-`protocol`: `session_log`, `delegation`, `checkpoint`; `runner`: `session_world`, `replay`; `net`: `sim_server/session_dir`. Format: the joined chain's root. First, as these holes let a signed log verify when it should not.
-
-- [ ] runner/src/session/session_world.rs:227 — `check_result` accepts `Aborted` whatever the mode did, so a host replaces a won match's result with `aborted`. → Require `result.outcome == self.outcome()`. net/src/sim_server/session_dir/mod.rs:297-303 then logs `session_result()`, not `Aborted`.
-- [ ] protocol/src/delegation/mod.rs:92-121 — `parse` keeps any JSON spelling that `Event::from_json` accepts (whitespace, key order, `\u` escapes, hex case). No signature covers those bytes, so a third party can give one log a second fingerprint. → Refuse JSON that is not `event.as_json()`.
-- [ ] protocol/src/session_log/mod.rs:270-310, 647-656 — neither the header nor a `Join` refuses a main key that controls another slot, against design 05's "one slot for each main key". → A case in `HeaderError` and in `ServerInputError` for a key that holds another slot.
-- [ ] protocol/src/session_log/mod.rs:752 — a `Join` starts the chain at `delegation.chain_root()` and seq 0. A player who comes back with the same delegation, as design 10's door allows, restarts the chain from that root, so the host can log the player's old signed packets again, and an input within the max input delay applies twice. → A joined chain's root derives from the `Join`'s place in the log, and the start message tells the client its root. Designs 05 (the `Join` row: "whose chain starts from its id") and 10 change.
-- [ ] protocol/src/session_log/mod.rs:263, 551-556; net/src/sim_server/session_dir/mod.rs:177; verifier/src/verification/mod.rs:39 — `MAX_FILE_LEN` bounds payload bytes, input count and entry count, not the file, and the doc says it bounds the file. The journal grows faster still (a 37-byte `Sealed` frame a tick, 36 bytes a record, the records a load dropped). A long session writes a journal past 4 GiB, which the restore refuses to read. → The log counts its file's bytes and refuses with `LogFull` the record that passes the bound; the journal has its own bound, and the log refuses the record that passes it.
-- [ ] protocol/src/session_log/mod.rs:500-532 — `record` takes a `PlayerSlot` on each `PlayerInput`, and only a `debug_assert_eq!` keeps one packet to one slot. In release, a mixed packet hashes one slot's chain and applies inputs to another. → `record(slot, inputs: impl IntoIterator<Item = (Tick, &[u8])>, …)`.
-- [ ] protocol/src/checkpoint/log_carry.rs, runner/src/replay/mod.rs:37-55 — designs 02 (the verifier's row and line 226) and 05 (Checkpoints and results) say a segment verifies from its checkpoint alone. The code builds, writes and compares the carry, and never starts a log or a replay from it. → Designs 02 and 05 mark segment verification planned; the carry stays in the format; an issue-log item under Ready (**Verifier**) waits for the slice that prunes logs.
-
 ### 2. Life and death
 
 `stats`: `refresh`, `meter`; `combat`: `damage_pass`, `combat_effect`, `pass_queue`, `dying`, `attacks`. Format: the snapshot gains the next tick's damage. May move goldens.

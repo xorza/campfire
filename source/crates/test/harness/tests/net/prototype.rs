@@ -21,7 +21,7 @@ use campfire_orders::OrdersAction;
 use campfire_package_disk::internals::TestMode;
 use campfire_players::{PlayerResources, PlayersWorld};
 use campfire_projectiles::Projectile;
-use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
+use campfire_protocol::{InputError, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::{Replay, Session};
 use campfire_script::StateValue;
@@ -203,14 +203,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     // A message whose signature the player's session key did not make, stamped for the next tick
     // so that only its signature is wrong: the server refuses it, and ends the link.
     let next_tick = Tick::new(local.next_tick(End::Server));
-    let forged = InputMessage::new(
-        [PlayerInput {
-            slot: PlayerSlot::new(0),
-            stamp: next_tick,
-            payload: b"",
-        }],
-        Signature::from_bytes([0; 64]),
-    );
+    let forged = InputMessage::new([(next_tick, &b""[..])], Signature::from_bytes([0; 64]));
     let world = local.client_mut(0).world_mut();
     let mut senders = world.query_filtered::<&mut MessageSender<InputMessage>, With<Client>>();
     senders

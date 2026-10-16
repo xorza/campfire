@@ -54,6 +54,31 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
         assert_ne!(other, after_a);
     }
 
+    // A join's chain starts from `domain ‖ delegation id ‖ u64 tick ‖ u32 index`; another
+    // delegation, tick or index starts another.
+    let joined = |delegation: u8, tick: u64, index: u32| {
+        let place = InputPlace {
+            tick: Tick::new(tick),
+            index,
+        };
+        InputChain::joined(
+            PlayerSlot::new(1),
+            &DelegationId::new([delegation; 32]),
+            place,
+        )
+    };
+    let mut hasher = Hasher::new();
+    hasher
+        .update(b"campfire/join-root/v1")
+        .update(&[7; 32])
+        .update(&5_u64.to_le_bytes())
+        .update(&2_u32.to_le_bytes());
+    let from = InputHash::new(*hasher.finalize().as_bytes());
+    assert_eq!(joined(7, 5, 2), InputChain::new(PlayerSlot::new(1), from));
+    for other in [joined(8, 5, 2), joined(7, 6, 2), joined(7, 5, 3)] {
+        assert_ne!(other.head(), from);
+    }
+
     // The session key signs `domain ‖ session id ‖ u32 slot ‖ u64 seq ‖ head`, the seq being
     // the last input's: the signature holds over that message as secp256k1 checks it.
     let secp = Secp256k1::verification_only();

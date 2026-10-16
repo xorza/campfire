@@ -185,10 +185,11 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
         .unwrap();
     play(&mut fixed, &orders, 40..72, &mut trail);
     let game = fixed.game_mut();
-    let result = outcome.map_or_else(
-        || game.session_result(),
-        |outcome| game.session_result_as(outcome),
-    );
+    let ended = game.session_result();
+    let result = SessionResult {
+        outcome: outcome.unwrap_or(ended.outcome),
+        ..ended
+    };
     game.session_mut().record_result(result).unwrap();
     game.session_mut().reveal_seed();
     Run { fixed, trail }

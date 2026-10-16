@@ -2,8 +2,10 @@ use campfire_common::{DomainHasher, HashDomain, PlayerSlot, Tick};
 use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
+use crate::delegation::delegation_id::DelegationId;
 use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
+use crate::server_input::InputPlace;
 use crate::session_id::SessionId;
 use crate::signature::Signature;
 use crate::signer::Signer;
@@ -11,6 +13,8 @@ use crate::verifier::Verifier;
 
 /// Starts every input hash, so no other BLAKE3 use can produce a chain link.
 const HASH_DOMAIN: HashDomain = HashDomain::new("campfire/input-hash/v1");
+/// Starts every root of a chain a join starts, so no other BLAKE3 use can produce one.
+const JOIN_DOMAIN: HashDomain = HashDomain::new("campfire/join-root/v1");
 /// Starts every signed chain head, so no other signature of the session key counts as one.
 const SIGNATURE_DOMAIN: &[u8] = b"campfire/input/v1";
 const HEAD_MESSAGE_LEN: usize = SIGNATURE_DOMAIN.len() + 32 + 4 + 8 + 32;
@@ -33,6 +37,20 @@ impl InputChain {
             head: root,
             next_seq: 0,
         }
+    }
+
+    /// The chain a `Join` at `place` starts for the player of `delegation`: its root is
+    /// `BLAKE3(domain ‖ delegation id ‖ u64 tick ‖ u32 index)`, little-endian, of the join's
+    /// place, which no other join of the log holds. A player who joins again with the same
+    /// delegation so starts a chain that none of their earlier packets extends, and the host
+    /// cannot log those again.
+    pub fn joined(slot: PlayerSlot, delegation: &DelegationId, place: InputPlace) -> Self {
+        let mut hasher = DomainHasher::new(JOIN_DOMAIN);
+        hasher
+            .update(delegation.as_bytes())
+            .update(&place.tick.get().to_le_bytes())
+            .update(&place.index.to_le_bytes());
+        Self::new(slot, InputHash::new(hasher.finish()))
     }
 
     /// A chain whose next input is the `next_seq`th, linking to `head`: as the log holds it, for

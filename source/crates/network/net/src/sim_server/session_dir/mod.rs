@@ -7,7 +7,7 @@ use bevy_ecs::world::World;
 use campfire_common::Version;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::{JournalFrames, Outcome, SessionId, SessionLog, SessionPrivate, Signer};
+use campfire_protocol::{JournalFrames, SessionId, SessionLog, SessionPrivate, Signer};
 use campfire_runner::{ResumeAt, Session, SessionSource, SessionWorld};
 use campfire_sim::StateRegistry;
 use campfire_store::{
@@ -51,6 +51,8 @@ pub struct RestoredSession {
     pub log: SessionLog,
     /// Its journal, cut to its whole frames, open to append, and its snapshots.
     pub files: SessionFiles,
+    /// The bytes its journal holds: the tag and the whole frames.
+    pub journal_len: u64,
     /// When the journal was last written.
     pub modified: SystemTime,
 }
@@ -174,7 +176,7 @@ impl SessionDir {
         }
         let path = self.journal();
         let Stamped { bytes, modified } =
-            match InputFile::read_stamped(&path, SessionLog::MAX_FILE_LEN) {
+            match InputFile::read_stamped(&path, SessionLog::MAX_JOURNAL_LEN) {
                 Ok(stamped) => stamped,
                 Err(PathError {
                     error: ReadError::Missing,
@@ -197,6 +199,7 @@ impl SessionDir {
                 journal,
                 snapshots: self.snapshots(),
             },
+            journal_len: whole,
             modified,
         }))
     }
@@ -235,6 +238,7 @@ impl RestoredSession {
             private,
             log,
             files: SessionFiles { journal, snapshots },
+            journal_len,
             ..
         } = self;
         let ticks = log.next_tick();
@@ -270,7 +274,9 @@ impl RestoredSession {
             Session::start(world, source).map_err(RestoreMatchError::Start)?;
         }
         world.insert_resource(JournalWatch(journal.watch()));
-        world.session_mut().resume_journal(Box::new(journal));
+        world
+            .session_mut()
+            .resume_journal(Box::new(journal), journal_len);
         let resumed = world.session().log().next_tick();
         world.replay_to(ticks, |world| {
             if world.session().log().next_tick() > resumed {
@@ -281,9 +287,10 @@ impl RestoredSession {
         Ok(snapshots)
     }
 
-    /// Ends the session aborted, as a server back past the restore window does, unless it
-    /// ended before the crash: replays the log, of the mode `publisher` names, as `replay` does,
-    /// to the state its last tick left; logs an aborted result there, into the journal too; and
+    /// Ends the session, as a server back past the restore window does, unless it ended before
+    /// the crash: replays the log, of the mode `publisher` names, as `replay` does, to the state
+    /// its last tick left; logs the result there, aborted unless the mode ended the match, into
+    /// the journal too; and
     /// publishes the log under the publisher's data directory, its seed revealed, and logs
     /// `SessionAborted`. The publisher's key signs what it logs. The published file's path.
     pub fn abort(self, publisher: Publisher<'_>) -> Result<PathBuf, AbortError> {
@@ -296,7 +303,7 @@ impl RestoredSession {
         self.replay(&mut world, packages, signer.clone(), |_| {})
             .map_err(AbortError::Replay)?;
         if world.session().log().result().is_none() {
-            let result = world.session_result_as(Outcome::Aborted);
+            let result = world.session_result();
             world
                 .session_mut()
                 .record_result(result)

@@ -149,13 +149,15 @@ impl BotDriver {
         }
     }
 
-    /// Logs `payload` as an input of the bot of `slot`; one past the session's max length, or
-    /// past the ticks up to its max input lead, which the slot's inputs fill, is dropped.
+    /// Logs `payload` as an input of the bot of `slot`; one past the session's max length, past
+    /// the ticks up to its max input lead, which the slot's inputs fill, or past a full log, is
+    /// dropped.
     fn log(session: &mut Session, slot: PlayerSlot, payload: &[u8]) {
         let cause = match session.serve(ServerInput::Bot { slot, payload }) {
             Ok(()) => return,
             Err(ServerInputRefused::Log(ServerInputError::PayloadTooLarge)) => DropCause::TooLarge,
             Err(ServerInputRefused::Log(ServerInputError::AheadOfTime)) => DropCause::AheadOfTime,
+            Err(ServerInputRefused::Log(ServerInputError::LogFull)) => DropCause::LogFull,
             Err(error) => panic!("the server's bot input holds: {}", ErrorReport::of(&error)),
         };
         BotPayloadDropped {

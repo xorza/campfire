@@ -51,6 +51,7 @@ pub use crate::events::journal_failed::JournalFailed;
 pub use crate::events::journal_sync_slow::JournalSyncSlow;
 pub use crate::events::link_lost::{LinkLossCause, LinkLost};
 pub use crate::events::listening::Listening;
+pub use crate::events::log_filled::LogFilled;
 pub use crate::events::match_started::MatchStarted;
 pub use crate::events::order_dropped::OrderDropped;
 pub use crate::events::orders_sent::OrdersSent;

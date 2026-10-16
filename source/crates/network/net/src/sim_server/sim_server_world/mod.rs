@@ -1,7 +1,6 @@
 use bevy_app::AppExit;
 use bevy_ecs::world::World;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_protocol::Outcome;
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
 use campfire_store::{DurableError, PathError};
@@ -20,12 +19,13 @@ use crate::sim_server::session_dir::SessionDir;
 
 /// What the sim server module gives a world, for every crate.
 pub trait SimServerWorld {
-    /// Ends the session before the next tick as `outcome`: logs the record of the
+    /// Ends the session before the next tick, as the mode ended the match or aborted when it did
+    /// not: logs the record of the
     /// checkpoint on its thread first; then the result, which the server key signs; reveals the
     /// seed; and from then on runs no tick and logs nothing, as each such system checks that the
     /// session runs. The server then publishes the log. An error when the checkpoint's snapshot
     /// was not written, as the log can then not be published: the session ends with no result.
-    fn end_session(&mut self, outcome: Outcome) -> Result<(), PathError<DurableError>>;
+    fn end_session(&mut self) -> Result<(), PathError<DurableError>>;
 
     /// Whether the session went back to a save, and its server is to start again on
     /// its data, which restores the match from it.
@@ -51,12 +51,12 @@ pub(crate) trait SimServerWorldCrate {
 }
 
 impl SimServerWorld for World {
-    fn end_session(&mut self, outcome: Outcome) -> Result<(), PathError<DurableError>> {
+    fn end_session(&mut self) -> Result<(), PathError<DurableError>> {
         if self.contains_resource::<Checkpoints>() {
             Checkpoints::settle(self)?;
             self.remove_resource::<Checkpoints>();
         }
-        let result = self.session_result_as(outcome);
+        let result = self.session_result();
         let mut session = self.session_mut();
         session
             .record_result(result)
@@ -82,8 +82,7 @@ impl SimServerWorld for World {
             if !stop && !Door::empty(self) {
                 return None;
             }
-            let outcome = self.outcome();
-            if let Err(error) = self.end_session(outcome) {
+            if let Err(error) = self.end_session() {
                 self.resource_mut::<Faults>().report(Fault::Snapshot(error));
                 return Faults::apply(self);
             }

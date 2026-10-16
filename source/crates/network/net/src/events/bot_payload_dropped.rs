@@ -19,6 +19,8 @@ pub enum DropCause {
     TooLarge,
     /// The slot's inputs fill every tick up to the session's max input lead.
     AheadOfTime,
+    /// The session log is full: the session ends at the next boundary.
+    LogFull,
 }
 
 impl LogEvent for BotPayloadDropped {

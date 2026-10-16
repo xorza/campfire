@@ -3,7 +3,7 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
 use campfire_protocol::{
-    Applied, Checkpoint, InputChain, ServerInput, SessionResult, SessionTerms, Signer,
+    Applied, Checkpoint, Controller, InputChain, ServerInput, SessionResult, SessionTerms, Signer,
 };
 
 use crate::fixed_session::FixedSession;
@@ -50,7 +50,12 @@ impl FixedMatch {
         let signature = chain.sign(&self.signers[at], self.terms.session_id());
         self.game
             .session_mut()
-            .record([input], &signature, &mut self.applied)
+            .record(
+                input.slot,
+                [(input.stamp, input.payload)],
+                &signature,
+                &mut self.applied,
+            )
             .unwrap_or_else(|error| {
                 panic!(
                     "player {slot}'s input at {stamp}: {}",
@@ -69,14 +74,20 @@ impl FixedMatch {
     }
 
     /// Logs player `slot`'s join of their slot, with the delegation the session would start them
-    /// with; once it is logged, the player sends on a chain started again.
+    /// with; once it is logged, the player sends on the new chain the join starts, from the root
+    /// of its place, which their server tells them.
     pub fn join(&mut self, slot: u32) -> Result<(), ServerInputRefused> {
         let delegation = FixedSession::delegation(&self.terms, slot);
+        let slot_at = PlayerSlot::new(slot);
         self.serve(ServerInput::Join {
-            slot: PlayerSlot::new(slot),
+            slot: slot_at,
             delegation,
         })?;
-        self.chains[usize::try_from(slot).unwrap()] = FixedSession::chain(&self.terms, slot);
+        let Some(Controller::Player { chain, .. }) = self.game.session().log().controller(slot_at)
+        else {
+            panic!("the join seats the player");
+        };
+        self.chains[slot_at.index()] = chain;
         Ok(())
     }
 

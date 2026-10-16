@@ -111,6 +111,15 @@ fn a_flawed_delegation_is_refused() {
     assert_eq!(error.kind(), ErrorKind::Malformed);
     assert_eq!(EventError::from(error), EventError::Malformed);
     let malformed = || DelegationError::NotEvent(EventError::Malformed);
+    // The same event in another spelling: whitespace, another key order, an escape where none is
+    // needed, the id's hex in uppercase.
+    let id = signed().id().to_string();
+    let sig_field = &json[json.find(",\"sig\"").unwrap()..json.len() - 1];
+    let sig_first = format!(
+        "{{{},{}}}",
+        &sig_field[1..],
+        &json[1..json.len() - 1 - sig_field.len()]
+    );
     let not_event = Delegation::parse("not JSON").unwrap_err();
     assert!(StdError::source(&not_event).is_some());
     let cases = [
@@ -122,6 +131,17 @@ fn a_flawed_delegation_is_refused() {
             DelegationError::WrongId,
         ),
         (forged, DelegationError::BadSignature),
+        (json.replacen(',', ", ", 1), DelegationError::NotCanonical),
+        (format!("{json}\n"), DelegationError::NotCanonical),
+        (sig_first, DelegationError::NotCanonical),
+        (
+            json.replace("\"kind\"", "\"\\u006bind\""),
+            DelegationError::NotCanonical,
+        ),
+        (
+            json.replace(&id, &id.to_uppercase()),
+            DelegationError::NotCanonical,
+        ),
         (event(1, tags(|_| ())), DelegationError::WrongKind),
         (
             event(KIND, tags(|tags| drop(tags.remove(0)))),

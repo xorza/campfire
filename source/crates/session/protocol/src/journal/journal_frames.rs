@@ -33,7 +33,7 @@ pub struct JournalFrames<'a> {
 
 impl<'a> JournalFrames<'a> {
     /// Starts every journal and states its version, so other bytes are refused at once.
-    pub const TAG: &'static [u8] = b"campfire/journal/v2";
+    pub const TAG: &'static [u8] = b"campfire/journal/v3";
 
     /// The frames of `bytes`; an error when they do not start with the journal's tag.
     pub fn new(bytes: &'a [u8]) -> Result<Self, NotJournal> {
@@ -45,6 +45,9 @@ impl<'a> JournalFrames<'a> {
             at: JournalFrames::TAG.len(),
         })
     }
+
+    /// The bytes a frame takes beside its record: its length and its hash.
+    pub(crate) const FRAME_OVERHEAD: usize = LEN_BYTES + HASH_BYTES;
 
     /// How many bytes the tag and the frames read so far take: once the read ends, the length
     /// to cut the journal to.

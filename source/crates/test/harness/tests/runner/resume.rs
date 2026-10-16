@@ -10,7 +10,7 @@ use campfire_harness::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::TestMode;
-use campfire_protocol::{Checkpoint, Outcome, SessionLog, SnapshotFingerprint};
+use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
 use campfire_runner::{
     Replay, ResumeAt, ResumeError, Session, SessionSource, SessionWorld, SnapshotCheckError,
 };
@@ -252,7 +252,7 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
         game.run_tick_alone();
     }
     assert_ne!(game.state_hash(), hashes[149]);
-    let result = game.session_result_as(Outcome::Aborted);
+    let result = game.session_result();
     game.session_mut().record_result(result).unwrap();
     game.session_mut().reveal_seed();
     let mut bytes = Vec::new();

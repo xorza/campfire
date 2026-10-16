@@ -14,7 +14,7 @@ use crate::controller::Controller;
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 use crate::journal::Journal;
-use crate::journal::journal_frames::MAX_RECORD;
+use crate::journal::journal_frames::{JournalFrames, MAX_RECORD};
 use crate::main_key::MainKey;
 use crate::player_input::PlayerInput;
 use crate::server_input::{InputPlace, LeaveReason, ServerInput};
@@ -49,9 +49,13 @@ pub(crate) mod paged_bytes;
 pub(crate) mod paged_vec;
 pub(crate) mod session_header;
 
-/// The log's positions are `u32`: input indices, payload offsets and the count of entries each
-/// tick ends at.
-const POSITION_BOUND: usize = u32::MAX as usize;
+/// What one record adds beside its own bytes: in the journal its frame and its kind's byte, in
+/// the file its kind's byte and the growth of the counts before it, each at most 10 bytes.
+const RECORD_SLACK: u64 = 64;
+/// The records the session's end may take past the room the last entry leaves, each of at most
+/// a record's bytes: the begin of a checkpoint and its record, the seal of the tick before the
+/// end, and the result with the revealed seed.
+const END_RECORDS: u64 = 4;
 
 /// The entries of a session, in memory, in the order they were logged, and grouped by the tick
 /// that was next when each arrived: the players' packets and the server's inputs. The applied
@@ -107,14 +111,34 @@ pub struct SessionLog {
     pending: BinaryHeap<Reverse<Due>>,
     /// Indices of the inputs applied in the tick last sealed.
     due: Vec<u32>,
-    /// The most inputs and payload bytes the log holds: `POSITION_BOUND`, or less in a test.
-    position_bound: usize,
+    /// The most bytes the log's file and its journal hold.
+    bounds: Bounds,
+    /// The bytes `encode` writes now.
+    file_len: u64,
+    /// The most bytes one record adds to the file or the journal: the terms' largest record and
+    /// `RECORD_SLACK`.
+    unit: u64,
     /// The hash of the header's terms.
     session_id: SessionId,
     /// Where each record the log takes goes as it takes it, once the server keeps one.
     journal: Option<Journal>,
     /// Where each slot's chain stands in the records the journal synced.
     durable: DurableHeads,
+}
+
+/// The most bytes a log's file and its journal hold: `MAX_FILE_LEN` and `MAX_JOURNAL_LEN`, or
+/// less in a test.
+#[derive(Debug, Clone, Copy)]
+struct Bounds {
+    file: u64,
+    journal: u64,
+}
+
+/// The bytes a record adds to the log's file and to its journal.
+#[derive(Debug, Clone, Copy)]
+struct Growth {
+    file: u64,
+    journal: u64,
 }
 
 /// A slot as the log follows it: who controls it, the main key of the player who left it last,
@@ -245,39 +269,49 @@ impl Slot {
     }
 }
 
-impl Control {
-    /// The player of `delegation`, the log's `index`th, in `slot`, whose chain starts from its
-    /// id.
-    const fn player(slot: PlayerSlot, delegation: &Delegation, index: u32) -> Self {
-        Self::Player {
-            delegation: index,
-            chain: InputChain::new(slot, delegation.chain_root()),
-        }
-    }
+impl Bounds {
+    const MAX: Self = Self {
+        file: SessionLog::MAX_FILE_LEN as u64,
+        journal: SessionLog::MAX_JOURNAL_LEN as u64,
+    };
 }
 
 impl SessionLog {
-    /// The most bytes a log's file, or its journal, may hold to be read whole: as many as the
-    /// log's positions reach, `POSITION_BOUND`, which bounds its payload bytes alone, so a file
-    /// past it holds more than any log the format keeps, of a match that would run for months.
-    pub const MAX_FILE_LEN: usize = POSITION_BOUND;
+    /// The most bytes a log's file holds, which the log refuses an entry past. Its positions,
+    /// input indices, payload offsets and the count of entries each tick ends at, are `u32`, and
+    /// each input, payload byte and entry takes a byte of the file at least, so every position of
+    /// a file within the bound fits. A match of 30 ticks a second that fills it runs for weeks.
+    pub const MAX_FILE_LEN: usize = u32::MAX as usize;
+
+    /// The most bytes a log's journal holds, which a restore reads whole, and which the log
+    /// refuses an entry past. The journal frames each record and seal, and keeps what a load
+    /// dropped, so it grows faster than the file.
+    pub const MAX_JOURNAL_LEN: usize = u32::MAX as usize;
 
     /// A log with nothing recorded; an error when the header starts another count of slots than
     /// the terms plan, or a slot otherwise than its plan, when a player's delegation names
-    /// another server or session than `header`, whose terms the session id hashes, when there
-    /// are more slots than a `u32` counts, or when the terms let a journal record hold more than
-    /// a journal frame takes, so no entry the log takes later can.
+    /// another server or session than `header`, whose terms the session id hashes, or the main
+    /// key of an earlier slot's player, when there are more slots than a `u32` counts, or when
+    /// the terms let a journal record hold more than a journal frame takes, so no entry the log
+    /// takes later can.
     pub fn new(header: SessionHeader) -> Result<Self, HeaderError> {
+        Self::within(header, Bounds::MAX)
+    }
+
+    /// A log with nothing recorded, as `new` makes one, whose file and journal hold at most
+    /// `bounds`.
+    fn within(header: SessionHeader, bounds: Bounds) -> Result<Self, HeaderError> {
         if u32::try_from(header.slots.len()).is_err() {
             return Err(HeaderError::TooManySlots);
         }
         if header.slots.len() != header.terms.slots.len() {
             return Err(HeaderError::SlotCount);
         }
-        let fits = |bound| usize::try_from(bound).is_ok_and(|bound| bound <= MAX_RECORD);
-        if !header.terms.largest_record().is_some_and(fits) {
-            return Err(HeaderError::RecordTooLarge);
-        }
+        let largest = header
+            .terms
+            .largest_record()
+            .filter(|&largest| usize::try_from(largest).is_ok_and(|largest| largest <= MAX_RECORD))
+            .ok_or(HeaderError::RecordTooLarge)?;
         let session_id = header.terms.session_id();
         let slots_len = header.slots.len();
         let mut slots = Vec::with_capacity(header.slots.len());
@@ -292,16 +326,25 @@ impl SessionLog {
                     delegation
                         .check(&header.terms.server_key, &session_id)
                         .map_err(|error| HeaderError::Scope { slot, error })?;
+                    if delegations
+                        .iter()
+                        .any(|earlier: &Delegation| earlier.main_key() == delegation.main_key())
+                    {
+                        return Err(HeaderError::MainKeyRepeated { slot });
+                    }
                     let index = offset(delegations.len());
                     delegations.push((**delegation).clone());
-                    Control::player(slot, delegation, index)
+                    Control::Player {
+                        delegation: index,
+                        chain: InputChain::new(slot, delegation.chain_root()),
+                    }
                 }
                 SlotStart::Bot => Control::Bot,
                 SlotStart::Open => Control::Open,
             };
             slots.push(Slot::of(control));
         }
-        Ok(Self {
+        let mut log = Self {
             slots,
             delegations,
             segments: vec![SegmentStart {
@@ -327,11 +370,82 @@ impl SessionLog {
             to_replay: PagedVec::default(),
             pending: BinaryHeap::new(),
             due: Vec::new(),
-            position_bound: POSITION_BOUND,
+            bounds,
+            file_len: 0,
+            unit: largest + RECORD_SLACK,
             session_id,
             journal: None,
             durable: DurableHeads::new(slots_len),
+        };
+        // The tag and the header, then a byte each: one segment, of no tick, no entry since, and
+        // neither the seed nor the result.
+        let mut start = file::LOG_TAG.to_vec();
+        log.put_header(&mut start);
+        log.file_len = len(start.len()) + 5;
+        Ok(log)
+    }
+
+    /// Whether the log may refuse its next entry: its file or its journal has no room for one
+    /// more record of the most bytes and the session's end after it. A log that refused an entry
+    /// is full. Its server ends the session at the boundary where it finds the log full, which the
+    /// room the log keeps lets it do.
+    pub fn full(&self) -> bool {
+        !self.has_room(Growth {
+            file: self.unit,
+            journal: self.unit,
         })
+    }
+
+    /// Whether the file and the journal take `growth` and keep the room the session's end takes
+    /// after it, as `kept` counts it. A decode of the file, which records a checkpoint's record as its segment starts, then
+    /// takes every entry the log took.
+    fn has_room(&self, growth: Growth) -> bool {
+        let kept = self.kept();
+        let fits = |len: u64, more: u64, bound: u64| {
+            len.checked_add(more)
+                .and_then(|len| len.checked_add(kept))
+                .is_some_and(|len| len <= bound)
+        };
+        fits(self.file_len, growth.file, self.bounds.file)
+            && self
+                .journal
+                .as_ref()
+                .is_none_or(|journal| fits(journal.len(), growth.journal, self.bounds.journal))
+    }
+
+    /// The bytes the session's end may still take: `END_RECORDS` records, and the record of a
+    /// checkpoint begun that has none yet.
+    fn kept(&self) -> u64 {
+        self.unit * (END_RECORDS + u64::from(self.begun.is_some()))
+    }
+
+    /// What an entry of `body` bytes adds: to the file, its kind's byte, its body, and the
+    /// growth of the count of the entries since the last tick; to the journal, its frame, its
+    /// kind's byte and its body.
+    fn entry_growth(&self, body: u64) -> Growth {
+        let since =
+            len(self.entries.len()) - u64::from(self.tick_ends.last().copied().unwrap_or(0));
+        Growth {
+            file: 1 + body + varint_len(since + 1) - varint_len(since),
+            journal: len(JournalFrames::FRAME_OVERHEAD) + 1 + body,
+        }
+    }
+
+    /// Notes the entry the log took last, of `growth`, in the file's length, and writes it into
+    /// the journal when the log keeps one.
+    fn took_entry(&mut self, growth: Growth) {
+        self.file_len += growth.file;
+        debug_assert!(
+            self.file_len <= self.bounds.file,
+            "the file stays within its bound"
+        );
+        let before = self.journal.as_ref().map(Journal::len);
+        self.journal_last_entry();
+        debug_assert_eq!(
+            self.journal.as_ref().map(Journal::len),
+            before.map(|before| before + growth.journal),
+            "an entry's record adds what the log counted"
+        );
     }
 
     pub const fn header(&self) -> &SessionHeader {
@@ -350,7 +464,17 @@ impl SessionLog {
             server_seed.check(self.segment(), &self.header.terms.seed_commitment),
             "the server reveals the seed it committed to"
         );
+        self.set_revealed(server_seed);
+    }
+
+    /// Keeps `server_seed` as the revealed seed, which the file then holds in place of none.
+    fn set_revealed(&mut self, server_seed: ServerSeed) {
+        debug_assert!(self.revealed.is_none(), "the seed is revealed once");
         self.revealed = Some(server_seed);
+        self.message.clear();
+        put(&mut self.message, &self.revealed);
+        self.file_len += len(self.message.len()) - 1;
+        debug_assert!(self.file_len <= self.bounds.file, "the end has its room");
     }
 
     /// The last segment's server seed, once the log is published.
@@ -484,31 +608,35 @@ impl SessionLog {
         &self.changes[self.sealed_changes.clone()]
     }
 
-    /// Logs a player's packet before the next tick: `inputs`, all of one slot, in the order sent,
-    /// and the player's session-key `signature` over the chain head after the last. Writes when
-    /// each input applies into `applied`, which is cleared first: late when the next tick is more
-    /// than the max input delay after its stamp; early when its stamp is more than the max input
-    /// lead ahead; else at `max(stamp, next tick)`, or later, when the player's inputs before it
-    /// fill that tick: a player's inputs fill each tick up to the max inputs per tick, in chain
-    /// order, and the rest spill to the next. A packet is refused for what its client controls
-    /// alone, so one that follows the rules is never refused, however the network groups its
-    /// packets: more inputs than the max inputs per tick, in the packet or of one stamp; a stamp
-    /// before the one before it; more inputs in all than the ticks up to the max input lead
-    /// hold; a payload past the max length; or a bad signature; and for a slot its player does
-    /// not control now. Each count and length is checked before any input is hashed. A refused
-    /// packet leaves the log unchanged.
+    /// Logs a packet of the player of `slot` before the next tick: `inputs`, each its stamp and
+    /// payload, in the order sent, and the player's session-key `signature` over the chain head
+    /// after the last. Writes when each input applies into `applied`, which is cleared first:
+    /// late when the next tick is more than the max input delay after its stamp; early when its
+    /// stamp is more than the max input lead ahead; else at `max(stamp, next tick)`, or later,
+    /// when the player's inputs before it fill that tick: a player's inputs fill each tick up to
+    /// the max inputs per tick, in chain order, and the rest spill to the next. A packet is
+    /// refused for what its client controls alone, so one that follows the rules is never
+    /// refused, however the network groups its packets: more inputs than the max inputs per
+    /// tick, in the packet or of one stamp; a stamp before the one before it; more inputs in all
+    /// than the ticks up to the max input lead hold; a payload past the max length; or a bad
+    /// signature; and for a slot its player does not control now, or when the log's file or
+    /// journal has no room for it and the session's end. Each count and length is checked before
+    /// any input is hashed. A refused packet leaves the log unchanged.
     pub fn record<'a, I>(
         &mut self,
+        slot: PlayerSlot,
         inputs: I,
         signature: &Signature,
         applied: &mut Vec<Applied>,
     ) -> Result<(), InputError>
     where
-        I: IntoIterator<Item = PlayerInput<'a>>,
+        I: IntoIterator<Item = (Tick, &'a [u8])>,
         I::IntoIter: Clone,
     {
         let inputs = inputs.into_iter();
-        let slot = inputs.clone().next().ok_or(InputError::EmptyPacket)?.slot;
+        if inputs.clone().next().is_none() {
+            return Err(InputError::EmptyPacket);
+        }
         let player = slot.index();
         debug_assert!(
             self.to_replay.is_empty(),
@@ -527,18 +655,15 @@ impl SessionLog {
         let session_key = self.delegations[delegation as usize].terms().session_key;
         let mut stamps = state.stamps;
         let mut count = 0;
-        let mut bytes = 0;
-        for input in inputs.clone() {
-            debug_assert_eq!(input.slot, slot, "a packet holds one player's inputs");
-            if input.payload.len() > terms.inputs.max_payload_len as usize {
+        for (stamp, payload) in inputs.clone() {
+            if payload.len() > terms.inputs.max_payload_len as usize {
                 return Err(InputError::PayloadTooLarge);
             }
             count += 1;
             if count > terms.inputs.max_per_tick {
                 return Err(InputError::TooManyInputs);
             }
-            stamps.add(input.stamp, terms.inputs.max_per_tick)?;
-            bytes += input.payload.len();
+            stamps.add(stamp, terms.inputs.max_per_tick)?;
         }
         let ticks = self
             .next_tick()
@@ -548,15 +673,15 @@ impl SessionLog {
         if stamps.total > ticks.saturating_mul(u64::from(terms.inputs.max_per_tick)) {
             return Err(InputError::AheadOfTime);
         }
-        let count = count as usize;
-        if self.inputs.len() + count > self.position_bound
-            || self.payloads.len() + bytes > self.position_bound
-            || self.entries.len() >= self.position_bound
-        {
+        self.message.clear();
+        file::write_packet(&mut self.message, slot, count, inputs.clone(), signature);
+        let growth = self.entry_growth(len(self.message.len()));
+        if !self.has_room(growth) {
             return Err(InputError::LogFull);
         }
-        for input in inputs.clone() {
-            chain.extend(input.stamp, input.payload);
+        let count = count as usize;
+        for (stamp, payload) in inputs.clone() {
+            chain.extend(stamp, payload);
         }
         if !chain.signed_by(&self.verifier, &session_key, self.session_id, signature) {
             return Err(InputError::BadSignature);
@@ -569,8 +694,12 @@ impl SessionLog {
         applied.clear();
         applied.reserve_exact(count);
         let start = offset(self.inputs.len());
-        for input in inputs {
-            let index = self.push_input(input);
+        for (stamp, payload) in inputs {
+            let index = self.push_input(PlayerInput {
+                slot,
+                stamp,
+                payload,
+            });
             applied.push(self.schedule(index));
         }
         self.entries.push(Entry::Packet(offset(self.packets.len())));
@@ -578,7 +707,7 @@ impl SessionLog {
             inputs: start..offset(self.inputs.len()),
             signature: *signature,
         });
-        self.journal_last_entry();
+        self.took_entry(growth);
         if let Some(journal) = &self.journal {
             let head = DurableHead {
                 delegation: *self.delegations[delegation as usize].id(),
@@ -594,10 +723,10 @@ impl SessionLog {
     /// allows, before its signature is checked: a join from what the slot is, a leave to what it
     /// becomes, or nothing; an error for an input the log refuses. A bot's commands need a slot a
     /// bot plays, a payload within the max length and a place, as a player's inputs spill past a
-    /// tick's max inputs, within the max input lead past the next tick; a
-    /// join a slot no player controls, and of a reserved one its leaver; a renewal, a leave and a
-    /// link's change a slot a player controls, a renewal by the same main key; a delegation
-    /// this session's.
+    /// tick's max inputs, within the max input lead past the next tick; a join a slot no player
+    /// controls, and of a reserved one its leaver, by a main key that controls no other slot; a
+    /// renewal, a leave and a link's change a slot a player controls, a renewal by the same main
+    /// key; a delegation this session's.
     pub fn change_of(
         &self,
         input: &ServerInput<'_>,
@@ -607,9 +736,6 @@ impl SessionLog {
             .slots
             .get(input.slot().index())
             .ok_or(ServerInputError::UnknownSlot)?;
-        if self.entries.len() >= self.position_bound {
-            return Err(ServerInputError::LogFull);
-        }
         let scope = |delegation: &Delegation| {
             delegation
                 .check(&terms.server_key, &self.session_id)
@@ -637,11 +763,6 @@ impl SessionLog {
                 {
                     return Err(ServerInputError::AheadOfTime);
                 }
-                if self.inputs.len() >= self.position_bound
-                    || self.payloads.len() + payload.len() > self.position_bound
-                {
-                    return Err(ServerInputError::LogFull);
-                }
                 Ok(None)
             }
             ServerInput::Join { delegation, .. } => {
@@ -654,6 +775,15 @@ impl SessionLog {
                     Control::Open => Taken::Open,
                     Control::Bot => Taken::Bot,
                 };
+                let main_key = delegation.main_key();
+                if self.slots.iter().any(|slot| match slot.control {
+                    Control::Player { delegation, .. } => {
+                        self.delegations[delegation as usize].main_key() == main_key
+                    }
+                    Control::Bot | Control::Open | Control::Reserved => false,
+                }) {
+                    return Err(ServerInputError::MainKeyHeld);
+                }
                 Ok(Some(SlotChangeKind::Joined { from }))
             }
             ServerInput::Renew { delegation, .. } => {
@@ -676,9 +806,10 @@ impl SessionLog {
     }
 
     /// Logs a server input before the next tick, with the server key's `signature` over it at
-    /// its place, the next server input logged there: what `change_of` allows, a bot's commands
-    /// applying in the next tick in slot order, among the players' inputs, or, past the tick's
-    /// max inputs, in the first later tick its slot's inputs leave room in. A join or a leave of
+    /// its place, the next server input logged there: what `change_of` allows, and the log's
+    /// file and journal have room for, a bot's commands applying in the next tick in slot order,
+    /// among the players' inputs, or, past the tick's max inputs, in the first later tick its
+    /// slot's inputs leave room in. A join or a leave of
     /// a slot drops the inputs its player logged that were still to apply, and changes the
     /// controller from the next tick on. A refused input leaves the log unchanged.
     pub fn record_server(
@@ -687,13 +818,14 @@ impl SessionLog {
         signature: &Signature,
     ) -> Result<(), ServerInputError> {
         let change = self.change_of(&input)?;
+        let growth = self.server_growth(&input)?;
         let place = self.next_place();
         let server_key = &self.header.terms.server_key;
         let id = self.session_id;
         if !input.signed_by(&mut self.verifier, server_key, id, place, signature) {
             return Err(ServerInputError::BadSignature);
         }
-        self.log_server(input, change, signature);
+        self.log_server(input, change, growth, signature);
         Ok(())
     }
 
@@ -712,6 +844,7 @@ impl SessionLog {
             "the server signs with the terms' server key"
         );
         let change = self.change_of(&input)?;
+        let growth = self.server_growth(&input)?;
         let place = self.next_place();
         input.write_message(self.session_id, place, &mut self.message);
         let signature = server.sign(&self.message);
@@ -720,15 +853,28 @@ impl SessionLog {
                 .verifies(signature, &server_key, &self.message),
             "a signature the log made verifies"
         );
-        self.log_server(input, change, &signature);
+        self.log_server(input, change, growth, &signature);
         Ok(())
     }
 
-    /// Logs a server input `change_of` allowed, with its `signature`.
+    /// What `input` adds to the file and the journal, with its signature; an error when they
+    /// have no room for it.
+    fn server_growth(&mut self, input: &ServerInput<'_>) -> Result<Growth, ServerInputError> {
+        self.message.clear();
+        input.encode(&mut self.message);
+        let growth = self.entry_growth(len(self.message.len()) + Signature::ENCODED_LEN);
+        if !self.has_room(growth) {
+            return Err(ServerInputError::LogFull);
+        }
+        Ok(growth)
+    }
+
+    /// Logs a server input `change_of` allowed, of `growth`, with its `signature`.
     fn log_server(
         &mut self,
         input: ServerInput<'_>,
         change: Option<SlotChangeKind>,
+        growth: Growth,
         signature: &Signature,
     ) {
         debug_assert!(
@@ -750,8 +896,12 @@ impl SessionLog {
                 Served::Bot { input: index }
             }
             ServerInput::Join { delegation, .. } => {
-                let control = Control::player(slot, &delegation, offset(self.delegations.len()));
+                let chain = InputChain::joined(slot, delegation.id(), self.next_place());
                 let index = self.push_delegation(delegation);
+                let control = Control::Player {
+                    delegation: index,
+                    chain,
+                };
                 let held = &mut self.slots[at];
                 held.control = control;
                 held.leaver = None;
@@ -814,7 +964,7 @@ impl SessionLog {
             signature: *signature,
         });
         self.server_since += 1;
-        self.journal_last_entry();
+        self.took_entry(growth);
     }
 
     /// Ends the last segment at the boundary before the next tick, and starts the next there, as
@@ -848,6 +998,8 @@ impl SessionLog {
             checkpoint: None,
         };
         let number = offset(self.segments.len());
+        // The count of segments grows, and the new one's count of ticks, 0, takes a byte.
+        self.file_len += varint_len(u64::from(number) + 1) - varint_len(u64::from(number)) + 1;
         if let Some(journal) = &mut self.journal {
             segment.journal_begun(journal, number);
         }
@@ -863,8 +1015,9 @@ impl SessionLog {
 
     /// Logs `record`, with the server key's `signature` over it, as the record of the checkpoint
     /// the log began and has none of yet, as many ticks after its boundary as it took: it must
-    /// start that segment, at its tick, and carry the log's own state there, so a segment
-    /// verifies from its checkpoint alone. A refused record leaves the log unchanged.
+    /// start that segment, at its tick, and carry the log's own state there, which a segment's
+    /// verification from its checkpoint alone will start from. A refused record leaves the log
+    /// unchanged.
     pub fn record_checkpoint(
         &mut self,
         record: Checkpoint,
@@ -885,6 +1038,13 @@ impl SessionLog {
         if record.carry != begun.carry {
             return Err(CheckpointError::Carry);
         }
+        self.message.clear();
+        record.encode(&mut self.message);
+        self.file_len += len(self.message.len()) + Signature::ENCODED_LEN;
+        debug_assert!(
+            self.file_len <= self.bounds.file,
+            "a checkpoint has its room"
+        );
         let logged = LoggedCheckpoint {
             record,
             signature: *signature,
@@ -964,6 +1124,10 @@ impl SessionLog {
             logged.journal(journal);
         }
         self.result = Some(logged);
+        self.message.clear();
+        put(&mut self.message, &self.result);
+        self.file_len += len(self.message.len()) - 1;
+        debug_assert!(self.file_len <= self.bounds.file, "the end has its room");
         Ok(())
     }
 
@@ -985,10 +1149,15 @@ impl SessionLog {
     /// Closes the next tick to new entries, and puts the inputs applied in it in `due`.
     fn seal(&mut self) {
         let tick = self.next_tick();
-        if self.to_replay.is_empty()
-            && let Some(journal) = &mut self.journal
-        {
-            journal_records::sealed(journal);
+        if self.to_replay.is_empty() {
+            // The segment's count of ticks grows, and the next tick's count of entries, 0,
+            // takes a byte.
+            let ticks = tick.get() - self.segments.last().expect("a segment").tick.get();
+            self.file_len += varint_len(ticks + 1) - varint_len(ticks) + 1;
+            debug_assert!(self.file_len <= self.bounds.file, "a seal has its room");
+            if let Some(journal) = &mut self.journal {
+                journal_records::sealed(journal);
+            }
         }
         let replayed = usize::try_from(tick.get()).expect("tick fits usize");
         let end = match self.to_replay.get(replayed) {
@@ -1045,7 +1214,8 @@ impl SessionLog {
     /// that save does: the log becomes what it held there, its segments after that one and every
     /// entry logged after the boundary dropped, and the segment goes on from its checkpoint, with
     /// its seed. The journal logs the load, so a log rebuilt from it is the log loaded. An error
-    /// when the log holds no checkpoint that starts the segment.
+    /// when the log holds no checkpoint that starts the segment, and when its journal has no room
+    /// for the load's record.
     pub fn load(&mut self, segment: u32) -> Result<(), LogLoadError> {
         debug_assert!(
             self.to_replay.is_empty(),
@@ -1059,10 +1229,17 @@ impl SessionLog {
         {
             return Err(LogLoadError::NoCheckpoint);
         }
+        let record = Growth {
+            file: 0,
+            journal: len(JournalFrames::FRAME_OVERHEAD) + 1 + varint_len(u64::from(segment)),
+        };
+        if !self.has_room(record) {
+            return Err(LogLoadError::LogFull);
+        }
         let mut bytes = Vec::new();
         self.encode_through(at, &mut bytes);
         let mut loaded =
-            Self::decode_within(&bytes, self.position_bound).expect("the log's own past decodes");
+            Self::decode_within(&bytes, self.bounds).expect("the log's own past decodes");
         if let Some(mut journal) = self.journal.take() {
             journal_records::loaded(&mut journal, segment);
             loaded.journal = Some(journal);
@@ -1200,9 +1377,23 @@ impl SessionLog {
     }
 }
 
-/// A position in the log's buffers, which `record` keeps within `POSITION_BOUND`.
+/// A position in the log's buffers, which the file's bound keeps within a `u32`.
 fn offset(len: usize) -> u32 {
     u32::try_from(len).expect("log positions fit u32")
+}
+
+fn len(len: usize) -> u64 {
+    u64::try_from(len).expect("a length fits u64")
+}
+
+/// The bytes postcard's varint of `value` takes: 7 bits a byte, at least one.
+const fn varint_len(value: u64) -> u64 {
+    let bits = value.bit_width();
+    if bits == 0 {
+        1
+    } else {
+        bits.div_ceil(7) as u64
+    }
 }
 
 fn put<T: Serialize + ?Sized>(out: &mut Vec<u8>, value: &T) {
@@ -1218,6 +1409,21 @@ fn take<'a, T: Deserialize<'a> + Serialize>(rest: &mut &'a [u8]) -> Result<T, Lo
     })?;
     *rest = taken.rest;
     Ok(taken.value)
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::session_log::SessionLog;
+
+    impl SessionLog {
+        /// Bounds the log's file to what it holds and the room the session's end takes after a
+        /// record of the most bytes, less a byte: the log is full, as a session of weeks leaves
+        /// it.
+        pub fn fill(&mut self) {
+            self.bounds.file = self.file_len + self.unit + self.kept() - 1;
+            debug_assert!(self.full(), "the log is full");
+        }
+    }
 }
 
 #[cfg(test)]

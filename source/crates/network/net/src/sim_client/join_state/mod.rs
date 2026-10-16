@@ -18,7 +18,7 @@ use crate::events::receipt_refused::error::ReceiptRefusal;
 use crate::hosting::Hosting;
 use crate::join::{Join, JoinRole};
 use crate::match_clock::MatchClock;
-use crate::match_start::MatchStart;
+use crate::match_start::{MatchStart, SeatChain};
 use crate::offer::Offer;
 use crate::os::Clock;
 use crate::session_times::SessionTimes;
@@ -383,8 +383,9 @@ impl JoinState {
         Some(Ok(join))
     }
 
-    /// Plays the match `start` names, for a client that answered: the player's chain starts from
-    /// their delegation's id when the server holds none, or goes on from the server's copy, which
+    /// Plays the match `start` names, for a client that answered: the player's chain starts anew
+    /// from the root the server names, whatever the client's history, or goes on from the
+    /// server's copy, which
     /// a client with a history finds in it and cuts its own back to, and a client with none
     /// takes; after a load, which may drop inputs the client's history holds, every client of a
     /// local server takes it. Sim tick `start.first` is Lightyear tick `start.start_tick`.
@@ -403,32 +404,31 @@ impl JoinState {
             // A receipt names inputs the load may have dropped.
             member.receipt = None;
         }
-        let last_stamp = start.chain.and_then(|head| head.last_stamp);
-        let (chain, history, discarded) = match (start.chain, answered.history) {
-            (None, _) => {
-                let chain = InputChain::new(start.slot, member.delegation.chain_root());
+        let (chain, history, discarded, last_stamp) = match (start.chain, answered.history) {
+            (SeatChain::New { root }, _) => {
+                let chain = InputChain::new(start.slot, root);
                 member.receipt = None;
-                (chain, ChainHistory::of(&chain), 0)
+                (chain, ChainHistory::of(&chain), 0, None)
             }
             // The session went back to a save: the player's chain stands where the save left it,
             // and the inputs after it never apply.
-            (Some(head), Some(history)) if loaded => {
+            (SeatChain::Held(head), Some(history)) if loaded => {
                 let discarded = history.next_seq().saturating_sub(head.next_seq);
                 let chain = InputChain::resume(start.slot, head.head, head.next_seq);
-                (chain, ChainHistory::of(&chain), discarded)
+                (chain, ChainHistory::of(&chain), discarded, head.last_stamp)
             }
-            (Some(head), Some(mut history)) => {
+            (SeatChain::Held(head), Some(mut history)) => {
                 if history.head_at(head.next_seq) != Some(head.head) {
                     self.step = Step::Lost(Loss::Rewritten);
                     return Started::Rewritten;
                 }
                 let discarded = history.cut(head.next_seq);
                 let chain = InputChain::resume(start.slot, head.head, head.next_seq);
-                (chain, history, discarded)
+                (chain, history, discarded, head.last_stamp)
             }
-            (Some(head), None) => {
+            (SeatChain::Held(head), None) => {
                 let chain = InputChain::resume(start.slot, head.head, head.next_seq);
-                (chain, ChainHistory::of(&chain), 0)
+                (chain, ChainHistory::of(&chain), 0, head.last_stamp)
             }
         };
         self.step = Step::Playing(Playing {

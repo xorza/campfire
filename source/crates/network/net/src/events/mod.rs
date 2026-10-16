@@ -16,6 +16,7 @@ pub(crate) mod journal_failed;
 pub(crate) mod journal_sync_slow;
 pub(crate) mod link_lost;
 pub(crate) mod listening;
+pub(crate) mod log_filled;
 pub(crate) mod match_ended;
 pub(crate) mod match_started;
 pub(crate) mod order_dropped;

@@ -4,8 +4,8 @@
 use campfire_common::{PlayerSlot, Tick};
 
 use crate::journal::Journal;
+use crate::journal::journal_frames::JournalFrames;
 use crate::journal::record_sink::RecordSink;
-use crate::player_input::PlayerInput;
 use crate::session_log::applied::Applied;
 use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{CheckpointError, JournalReplayError, LogError};
@@ -109,7 +109,7 @@ impl SessionLog {
     fn apply_journal<'a>(
         &mut self,
         record: &'a [u8],
-        inputs: &mut Vec<PlayerInput<'a>>,
+        inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let (&kind, mut rest) = record.split_first().ok_or(LogError::Truncated)?;
@@ -154,16 +154,18 @@ impl SessionLog {
         Ok(())
     }
 
-    /// Keeps `sink` as its journal, a new one, and writes into it the records of what the log
-    /// holds: the header, then each entry, each sealed tick, each checkpoint and the result, as
-    /// the log took them; from then on each record the log takes goes to it as it takes it.
+    /// Keeps `sink` as its journal, a new one that holds the journal's tag alone, and writes into
+    /// it the records of what the log holds: the header, then each entry, each sealed tick, each
+    /// checkpoint and the result, as the log took them; from then on each record the log takes
+    /// goes to it as it takes it.
     pub fn keep_journal(&mut self, sink: Box<dyn RecordSink>) {
         assert!(self.journal.is_none(), "a log keeps one journal");
         debug_assert!(
             self.to_replay.is_empty(),
             "a log that replays keeps no journal"
         );
-        let mut journal = Journal::new(sink);
+        let tag = u64::try_from(JournalFrames::TAG.len()).expect("the tag's length fits u64");
+        let mut journal = Journal::new(sink, tag);
         journal.append(|out| {
             out.push(JOURNAL_HEADER);
             self.put_header(out);
@@ -194,13 +196,14 @@ impl SessionLog {
         self.journal = Some(journal);
     }
 
-    /// Keeps `sink` as its journal, which holds every record the log took, as the log was
-    /// rebuilt from it: from then on each record the log takes goes to it as it takes it. Every
+    /// Keeps `sink` as its journal, of `len` bytes, which holds every record the log took, as the
+    /// log was rebuilt from it: from then on each record the log takes goes to it as it takes it.
+    /// Every
     /// chain whose head its player's current delegation signed stands durably where the log
     /// holds it, as the journal was read back from the disk.
-    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>) {
+    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>, len: u64) {
         assert!(self.journal.is_none(), "a log keeps one journal");
-        self.journal = Some(Journal::new(sink));
+        self.journal = Some(Journal::new(sink, len));
         for (slot, held) in (0..).map(PlayerSlot::new).zip(&self.slots) {
             let Control::Player { delegation, chain } = held.control else {
                 continue;

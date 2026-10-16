@@ -1,5 +1,5 @@
-use campfire_common::{PlayerSlot, Tick};
-use campfire_protocol::{PlayerInput, Signature};
+use campfire_common::Tick;
+use campfire_protocol::Signature;
 use serde::{Deserialize, Serialize};
 
 /// A packet of player inputs as the client sends it, signed once over the chain head after the
@@ -20,36 +20,33 @@ struct InputFrame {
 }
 
 impl InputMessage {
-    /// A message of `inputs`, with `signature` over the chain head after the last. Its buffers
-    /// take their exact sizes first, from a pass over the inputs.
+    /// A message of `inputs`, each its stamp and payload, with `signature` over the chain head
+    /// after the last. Its buffers take their exact sizes first, from a pass over the inputs.
     pub fn new<'a, I>(inputs: I, signature: Signature) -> Self
     where
-        I: IntoIterator<Item = PlayerInput<'a>>,
+        I: IntoIterator<Item = (Tick, &'a [u8])>,
         I::IntoIter: ExactSizeIterator + Clone,
     {
         let inputs = inputs.into_iter();
-        let bytes = inputs.clone().map(|input| input.payload.len()).sum();
+        let bytes = inputs.clone().map(|(_, payload)| payload.len()).sum();
         let mut message = Self {
             frames: Vec::with_capacity(inputs.len()),
             payloads: Vec::with_capacity(bytes),
             signature,
         };
-        for input in inputs {
+        for (stamp, payload) in inputs {
             message.frames.push(InputFrame {
-                stamp: input.stamp,
-                payload_len: u32::try_from(input.payload.len()).expect("a payload fits u32"),
+                stamp,
+                payload_len: u32::try_from(payload.len()).expect("a payload fits u32"),
             });
-            message.payloads.extend_from_slice(input.payload);
+            message.payloads.extend_from_slice(payload);
         }
         message
     }
 
-    /// The inputs of the player in `slot`; `None` when the frames' lengths do not add up to the
-    /// payload bytes, which only a broken client sends.
-    pub fn inputs(
-        &self,
-        slot: PlayerSlot,
-    ) -> Option<impl Iterator<Item = PlayerInput<'_>> + Clone> {
+    /// The inputs, each its stamp and payload; `None` when the frames' lengths do not add up to
+    /// the payload bytes, which only a broken client sends.
+    pub fn inputs(&self) -> Option<impl Iterator<Item = (Tick, &[u8])> + Clone> {
         let total = self.frames.iter().try_fold(0_usize, |total, frame| {
             total.checked_add(frame.payload_len as usize)
         })?;
@@ -61,11 +58,7 @@ impl InputMessage {
             let end = start + frame.payload_len as usize;
             let payload = &self.payloads[start..end];
             start = end;
-            PlayerInput {
-                slot,
-                stamp: frame.stamp,
-                payload,
-            }
+            (frame.stamp, payload)
         }))
     }
 
@@ -81,16 +74,10 @@ mod tests {
     #[test]
     fn a_message_gives_back_its_inputs_or_none() {
         let signature = Signature::from_bytes([3; 64]);
-        let slot = PlayerSlot::new(1);
-        let input = |stamp, payload| PlayerInput {
-            slot,
-            stamp,
-            payload,
-        };
         let sent = [
-            input(Tick::new(7), &b"ab"[..]),
-            input(Tick::new(7), b""),
-            input(Tick::new(8), b"cde"),
+            (Tick::new(7), &b"ab"[..]),
+            (Tick::new(7), b""),
+            (Tick::new(8), b"cde"),
         ];
         let message = InputMessage::new(sent, signature);
         assert_eq!(message.payloads, b"abcde");
@@ -98,7 +85,7 @@ mod tests {
         // `Vec::with_capacity` gives.
         let capacities = (message.frames.capacity(), message.payloads.capacity());
         assert_eq!(capacities, (3, 5));
-        let received: Vec<_> = message.inputs(slot).unwrap().collect();
+        let received: Vec<_> = message.inputs().unwrap().collect();
         assert_eq!(received, sent);
         assert_eq!(message.signature(), &signature);
 
@@ -108,7 +95,7 @@ mod tests {
             for (frame, len) in broken.frames.iter_mut().zip(lens) {
                 frame.payload_len = len;
             }
-            assert!(broken.inputs(slot).is_none(), "{lens:?}");
+            assert!(broken.inputs().is_none(), "{lens:?}");
         }
     }
 }

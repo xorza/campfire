@@ -9,20 +9,20 @@ use crate::bytes::Bytes;
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::error::CheckpointDecodeError;
 use crate::delegation::Delegation;
-use crate::player_input::PlayerInput;
 use crate::server_input::ServerInput;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::server_seed::ServerSeed;
 use crate::session_log::applied::Applied;
 use crate::session_log::error::{HeaderError, LogError};
 use crate::session_log::session_header::SessionHeader;
-use crate::session_log::{Entry, LoggedResult, POSITION_BOUND, SessionLog, offset, put, take};
+use crate::session_log::{Bounds, Entry, LoggedResult, SessionLog, len, offset, put, take};
 use crate::session_terms::SessionTerms;
+use crate::signature::Signature;
 use crate::slot_plan::SlotPlan;
 use crate::slot_start::SlotStart;
 
 /// Starts every log file and states its protocol version, so other bytes are refused at once.
-pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v4";
+pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v5";
 /// The bytes that start a player's packet and a server input in the file.
 pub(super) const PACKET_ENTRY: u8 = 0;
 const SERVER_ENTRY: u8 = 1;
@@ -48,6 +48,11 @@ impl SessionLog {
         self.put_entries(out, start..offset(self.entries.len()));
         put(out, &self.revealed);
         put(out, &self.result);
+        debug_assert_eq!(
+            len(out.len()),
+            self.file_len,
+            "the log counts its file's bytes"
+        );
     }
 
     /// Writes into `out`, which is cleared first, the file of the log as it stood at the boundary
@@ -93,14 +98,14 @@ impl SessionLog {
     /// signature, and only the bytes `encode` gives for the decoded log are accepted, so a log has
     /// one file.
     pub fn decode(bytes: &[u8]) -> Result<Self, LogError> {
-        Self::decode_within(bytes, POSITION_BOUND)
+        Self::decode_within(bytes, Bounds::MAX)
     }
 
-    pub(super) fn decode_within(bytes: &[u8], position_bound: usize) -> Result<Self, LogError> {
+    /// Decodes a log file as `decode` does, the log's file and journal held within `bounds`.
+    pub(super) fn decode_within(bytes: &[u8], bounds: Bounds) -> Result<Self, LogError> {
         let mut rest = bytes.strip_prefix(LOG_TAG).ok_or(LogError::NotLog)?;
         let header = take_header(&mut rest)?;
-        let mut log = Self::new(header).map_err(LogError::Header)?;
-        log.position_bound = position_bound;
+        let mut log = Self::within(header, bounds).map_err(LogError::Header)?;
         let mut inputs = Vec::new();
         let mut applied = Vec::new();
         let segments: u32 = take(&mut rest)?;
@@ -122,7 +127,7 @@ impl SessionLog {
             if !server_seed.check(log.segment(), &log.header.terms.seed_commitment) {
                 return Err(LogError::WrongSeed);
             }
-            log.revealed = Some(server_seed);
+            log.set_revealed(server_seed);
         }
         if let Some(LoggedResult { result, signature }) = take(&mut rest)? {
             log.record_result(result, &signature)
@@ -175,14 +180,17 @@ impl SessionLog {
     pub(super) fn put_packet(&self, out: &mut Vec<u8>, at: u32) {
         let packet = &self.packets[at as usize];
         let slot = self.inputs[packet.inputs.start as usize].slot;
-        put(out, &slot.get());
-        put(out, &(packet.inputs.end - packet.inputs.start));
-        for index in packet.inputs.clone() {
+        let inputs = packet.inputs.clone().map(|index| {
             let input = self.input(index);
-            put(out, &input.stamp);
-            put(out, &Bytes(input.payload));
-        }
-        put(out, &packet.signature);
+            (input.stamp, input.payload)
+        });
+        write_packet(
+            out,
+            slot,
+            packet.inputs.end - packet.inputs.start,
+            inputs,
+            &packet.signature,
+        );
     }
 
     /// Writes the server input `at` and its signature.
@@ -197,7 +205,7 @@ impl SessionLog {
     fn record_logged<'a>(
         &mut self,
         rest: &mut &'a [u8],
-        inputs: &mut Vec<PlayerInput<'a>>,
+        inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let entries: u32 = take(rest)?;
@@ -216,7 +224,7 @@ impl SessionLog {
     pub(super) fn record_packet<'a>(
         &mut self,
         rest: &mut &'a [u8],
-        inputs: &mut Vec<PlayerInput<'a>>,
+        inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
     ) -> Result<(), LogError> {
         let tick = self.next_tick();
@@ -226,14 +234,10 @@ impl SessionLog {
         for _ in 0..count {
             let stamp = take(rest)?;
             let payload = take(rest)?;
-            inputs.push(PlayerInput {
-                slot,
-                stamp,
-                payload,
-            });
+            inputs.push((stamp, payload));
         }
         let signature = take(rest)?;
-        self.record(inputs.iter().copied(), &signature, applied)
+        self.record(slot, inputs.iter().copied(), &signature, applied)
             .map_err(|error| LogError::Input { tick, error })
     }
 
@@ -270,6 +274,24 @@ impl SessionLog {
         self.record_checkpoint(taken.value, &signature)
             .map_err(|error| LogError::Checkpoint { segment, error })
     }
+}
+
+/// Writes a packet of `slot`: its `u32` slot, its `count` inputs as a `u32` count and each
+/// input's stamp and payload bytes, and its signature.
+pub(super) fn write_packet<'a>(
+    out: &mut Vec<u8>,
+    slot: PlayerSlot,
+    count: u32,
+    inputs: impl Iterator<Item = (Tick, &'a [u8])>,
+    signature: &Signature,
+) {
+    put(out, &slot.get());
+    put(out, &count);
+    for (stamp, payload) in inputs {
+        put(out, &stamp);
+        put(out, &Bytes(payload));
+    }
+    put(out, signature);
 }
 
 /// Reads the header `SessionLog::put_header` wrote, checking each delegation.

@@ -3,7 +3,7 @@ use bevy_ecs::world::{Mut, World};
 use campfire_common::{Tick, Ticks};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::SaveBy;
-use campfire_protocol::{Checkpoint, CheckpointBegun, CheckpointError, Outcome};
+use campfire_protocol::{Checkpoint, CheckpointBegun, CheckpointError};
 use campfire_runner::{CheckpointBeginError, Session, SessionWorld};
 use campfire_sim::{SimWorld, StateDelta, StateRegistry};
 use campfire_store::{DurableError, PathError};
@@ -54,12 +54,12 @@ impl Checkpoints {
 
     /// At the boundary before the next tick: begins the checkpoint due there, as the plan or a
     /// save of the mode's says, and sends it with the state changed since the last delta, queued
-    /// behind the delta on the thread, if one is; past the seed chain's last segment, the
-    /// outcome the session ends with instead, aborted. The log begins one checkpoint at a time,
+    /// behind the delta on the thread, if one is; `true` instead when the session ends there, the
+    /// checkpoint due past the seed chain's last segment. The log begins one checkpoint at a time,
     /// so one due while the last one's record is still to come waits for it. With none due,
     /// sends the state changed whenever the thread is free, so each delta holds the ticks since
     /// the last, few unless a snapshot kept the thread.
-    pub(crate) fn begin(world: &mut World) -> Option<Outcome> {
+    pub(crate) fn begin(world: &mut World) -> bool {
         let next = world.session().log().next_tick();
         let saved = world.save_due();
         let mut checkpoints = world.resource_mut::<Self>();
@@ -69,7 +69,7 @@ impl Checkpoints {
             if !checkpoints.thread.pending() {
                 Self::send(world, None);
             }
-            return None;
+            return false;
         }
         let recording = world
             .resource::<Session>()
@@ -80,19 +80,19 @@ impl Checkpoints {
             world
                 .resource_mut::<Faults>()
                 .report(Fault::Snapshot(error));
-            return None;
+            return false;
         }
         match world.resource_mut::<Session>().begin_checkpoint() {
             Ok(begun) => Self::send(world, Some(begun)),
             Err(CheckpointBeginError::PastSeeds) => {
                 SeedsRanOut { tick: next }.log();
-                return Some(Outcome::Aborted);
+                return true;
             }
             // A checkpoint begun at this boundary already, as a restore takes one again.
             Err(CheckpointBeginError::Log(CheckpointError::Empty)) => {}
             Err(error) => panic!("the session's own checkpoint: {}", ErrorReport::of(&error)),
         }
-        None
+        false
     }
 
     /// Logs the record of the checkpoint the thread finished, when it did; reports its fault

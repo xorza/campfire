@@ -73,14 +73,17 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
     }
 }
 
+/// The root the server names for a new chain.
+const ROOT: InputHash = InputHash::new([3; 32]);
+
 /// The start of the match in slot 1, of team 1, at sim tick 0, Lightyear tick 40, with a new
-/// chain.
+/// chain from `ROOT`.
 const START: MatchStart = MatchStart {
     start_tick: 40,
     first: Tick::new(0),
     slot: PlayerSlot::new(1),
     team: Team::new(1),
-    chain: None,
+    chain: SeatChain::New { root: ROOT },
     loaded: false,
 };
 
@@ -194,10 +197,7 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     );
     let playing = state.playing_mut().unwrap();
     assert_eq!(playing.member.session.id, offer.terms.session_id());
-    assert_eq!(
-        playing.chain,
-        InputChain::new(PlayerSlot::new(1), delegation.chain_root())
-    );
+    assert_eq!(playing.chain, InputChain::new(PlayerSlot::new(1), ROOT));
 }
 
 /// A client that played: its chain in slot 1 holds the inputs of `payloads`, stamped 0; with the
@@ -255,7 +255,7 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
     let resumed = MatchStart {
         start_tick: 7,
         first: Tick::new(500),
-        chain: Some(head),
+        chain: SeatChain::Held(head),
         ..START
     };
     assert_eq!(state.start(resumed), Started::Playing { discarded: 1 });
@@ -270,6 +270,29 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
     assert_eq!(playing.stamp(Tick::new(501)), Tick::new(503));
     assert_eq!(playing.stamp(Tick::new(504)), Tick::new(504));
 
+    // Its slot was given up and joined again: the server names a new chain's root, which the
+    // client starts from whatever its history.
+    assert_eq!(state.lose(lost, [0; 32]), LinkLoss::Rejoining);
+    state
+        .answer(&offer(|_| {}), &BINDING, &mut signer)
+        .unwrap()
+        .unwrap();
+    let rejoined = InputHash::new([4; 32]);
+    let again = MatchStart {
+        chain: SeatChain::New { root: rejoined },
+        ..resumed
+    };
+    assert_eq!(state.start(again), Started::Playing { discarded: 0 });
+    let playing = state.playing_mut().unwrap();
+    assert_eq!(playing.chain, InputChain::new(PlayerSlot::new(1), rejoined));
+    let heads: Vec<_> = [b"d", b"e", b"f"]
+        .into_iter()
+        .map(|payload| {
+            playing.extend(Tick::new(504), payload);
+            playing.chain.head()
+        })
+        .collect();
+
     // Again: a server whose copy is not the client's own ends it.
     assert_eq!(state.lose(lost, [0; 32]), LinkLoss::Rejoining);
     state
@@ -278,11 +301,11 @@ fn a_client_whose_link_failed_takes_its_chain_up_again_from_the_servers_copy() {
         .unwrap();
     let rewritten = ChainHead {
         next_seq: 1,
-        head: heads[2],
+        head: heads[1],
         last_stamp: None,
     };
     let start = MatchStart {
-        chain: Some(rewritten),
+        chain: SeatChain::Held(rewritten),
         ..resumed
     };
     assert_eq!(state.start(start), Started::Rewritten);
@@ -458,7 +481,7 @@ fn only_a_client_of_a_local_server_takes_a_loaded_chain_as_the_server_holds_it()
             .unwrap()
             .unwrap();
         let loaded = MatchStart {
-            chain: Some(ChainHead {
+            chain: SeatChain::Held(ChainHead {
                 next_seq: 1,
                 head: heads[3],
                 last_stamp: None,
@@ -534,7 +557,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
     let renewed = Delegation::parse(&join.delegation).unwrap();
     assert_ne!(delegation.id(), renewed.id());
     let resumed = MatchStart {
-        chain: Some(ChainHead {
+        chain: SeatChain::Held(ChainHead {
             next_seq: 3,
             head: heads[3],
             last_stamp: None,
@@ -580,7 +603,7 @@ fn a_client_keeps_its_newest_receipt_through_a_rejoin_and_a_renewal() {
         .unwrap()
         .unwrap();
     let start = MatchStart {
-        chain: Some(ChainHead {
+        chain: SeatChain::Held(ChainHead {
             next_seq: 4,
             head: fourth.head,
             last_stamp: None,

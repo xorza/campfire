@@ -288,7 +288,8 @@ impl Lobby {
         }
         let header = SessionHeader { terms, slots };
         let session = header.terms.session_id();
-        let log = SessionLog::new(header).expect("every delegation names this session");
+        let log = SessionLog::new(header)
+            .expect("every delegation names this session, one main key each");
         info!(%session, players = links.len(), "every slot is taken; the match starts");
         let seeds = lobby.seed_chain.seeds();
         let start = SessionStart {

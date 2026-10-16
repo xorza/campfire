@@ -20,7 +20,7 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::{MatchEnd, ModeWorld};
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    Applied, Controller, ServerInput, ServerSeeds, SessionLog, SessionTerms, Signer,
+    Applied, Controller, InputError, ServerInput, ServerSeeds, SessionLog, SessionTerms, Signer,
 };
 use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError, TermsError};
@@ -38,6 +38,7 @@ use crate::events::input_logged::InputLogged;
 use crate::events::input_message_refused::InputMessageRefused;
 use crate::events::input_message_unfit::InputMessageUnfit;
 use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
+use crate::events::log_filled::LogFilled;
 use crate::events::match_ended::MatchEnded;
 use crate::events::save_refused::SaveRefused;
 use crate::events::server_frame::ServerFrame;
@@ -45,10 +46,11 @@ use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
 use crate::events::unit_died::UnitDied;
 use crate::faults::Faults;
+use crate::faults::fault::Fault;
 use crate::input_ack::InputAck;
 use crate::input_message::InputMessage;
 use crate::match_clock::MatchClock;
-use crate::match_start::MatchStart;
+use crate::match_start::{MatchStart, SeatChain};
 use crate::net_protocol::{MatchChannel, NetProtocol};
 use crate::pace::PaceSpeed;
 use crate::save_command::SaveCommand;
@@ -218,7 +220,7 @@ impl Plugin for SimServer {
                 run_sim_tick,
                 record_hash.run_if(resource_exists::<TickHashes>),
                 // Right after the tick, before any entry of the next.
-                Self::begin_checkpoint.run_if(resource_exists::<Checkpoints>),
+                Self::at_boundary,
                 report_deaths,
                 report_end,
             )
@@ -230,7 +232,7 @@ impl Plugin for SimServer {
             FixedUpdate,
             Shows
                 .in_set(SimTickSystems)
-                .after(Self::begin_checkpoint)
+                .after(Self::at_boundary)
                 .before(report_deaths),
         );
     }
@@ -280,13 +282,26 @@ type SaveLinks = QueryState<(
 )>;
 
 impl SimServer {
-    /// Begins the checkpoint due at the boundary before the next tick, as `Checkpoints::begin`
-    /// does, and ends the session with the outcome it gives.
-    fn begin_checkpoint(world: &mut World) {
-        if let Some(outcome) = Checkpoints::begin(world) {
+    /// At the boundary before the next tick: ends the session when its log is full, which the
+    /// room the log keeps lets it do; else begins the checkpoint due there, as
+    /// `Checkpoints::begin` does when the session keeps them, and ends the session when that
+    /// gives that it ends there. A checkpoint still on its thread that is not written then is a
+    /// fault, as the log can not be published.
+    fn at_boundary(world: &mut World) {
+        let log = world.session().log();
+        let ends = if log.full() {
+            LogFilled {
+                tick: log.next_tick(),
+            }
+            .log();
+            true
+        } else {
+            world.contains_resource::<Checkpoints>() && Checkpoints::begin(world)
+        };
+        if ends && let Err(error) = world.end_session() {
             world
-                .end_session(outcome)
-                .expect("no checkpoint is on the thread");
+                .resource_mut::<Faults>()
+                .report(Fault::Snapshot(error));
         }
     }
 
@@ -366,6 +381,7 @@ impl SimServer {
         for &(slot, client) in clients {
             let team = world.team_of(slot).expect("every player has a team");
             world.entity_mut(client).insert(PlayerLink::new(slot, team));
+            let chain = SeatChain::new_of(world.resource::<Session>().log(), slot);
             world
                 .get_mut::<MessageSender<MatchStart>>(client)
                 .expect("a client link sends the match start")
@@ -374,7 +390,7 @@ impl SimServer {
                     first: next,
                     slot,
                     team,
-                    chain: None,
+                    chain,
                     loaded: false,
                 });
         }
@@ -486,13 +502,13 @@ impl SimServer {
         };
         Self::run_match(world, run);
         // The stop may have come after the tick before this boundary, before the save it made due
-        // here began.
-        Self::begin_checkpoint(world);
+        // here began. The session may end there, and then logs nothing more.
+        Self::at_boundary(world);
         let mut session = world.resource_mut::<Session>();
-        for &slot in &players {
-            session
-                .serve(ServerInput::Disconnected { slot })
-                .expect("the server's own input holds");
+        if session.log().result().is_none() {
+            for &slot in &players {
+                Door::serve_unless_full(&mut session, ServerInput::Disconnected { slot });
+            }
         }
         Ok(())
     }
@@ -532,7 +548,7 @@ fn record_inputs(
             }
             let next_tick = session.log().next_tick();
             let slot = link.slot();
-            let Some(inputs) = message.inputs(slot) else {
+            let Some(inputs) = message.inputs() else {
                 InputMessageUnfit { slot }.log();
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
@@ -542,13 +558,19 @@ fn record_inputs(
                 });
                 continue;
             };
-            if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
+            if let Err(error) =
+                session.record(slot, inputs.clone(), message.signature(), &mut applied)
+            {
                 InputMessageRefused {
                     slot: link.slot(),
                     next_tick,
                     error: ErrorReport::of(&error).to_string(),
                 }
                 .log();
+                // Not the client's doing: the session ends at the next boundary.
+                if error == InputError::LogFull {
+                    continue;
+                }
                 link = link.into_refused();
                 commands.entity(entity).insert(link);
                 commands.trigger(CloseLink {
@@ -563,13 +585,13 @@ fn record_inputs(
             };
             let first_seq = chain.next_seq() - u64::try_from(applied.len()).expect("a count fits");
             acks.send::<MatchChannel>(InputAck::of(first_seq, &applied));
-            for ((input, &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
+            for (((stamp, _), &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
                 let outcome = match outcome {
                     Applied::At(tick) => {
                         InputLogged {
                             slot: link.slot(),
                             seq,
-                            stamp: input.stamp,
+                            stamp,
                             tick,
                         }
                         .log();
@@ -580,7 +602,7 @@ fn record_inputs(
                 };
                 InputNeverApplied {
                     slot: link.slot(),
-                    stamp: input.stamp,
+                    stamp,
                     next_tick,
                     outcome,
                 }

@@ -1,6 +1,4 @@
 use super::*;
-use crate::journal::journal_frames::JournalFrames;
-use crate::journal::tests::MemorySink;
 
 /// The checkpoint record of the segment after `log`'s last, at its next tick, carrying its own
 /// state, with a state hash and a snapshot fingerprint of `byte`.
@@ -287,9 +285,17 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     for segment in [0, 2] {
         assert_eq!(log.load(segment), Err(LogLoadError::NoCheckpoint));
     }
+    // The load's record, 4 + 1 + 1 + 32 = 38 bytes framed, needs its room and the end's in the
+    // journal.
+    let journal = log.journal.as_ref().unwrap().len();
+    log.bounds.journal = journal + 38 + 4 * log.unit - 1;
+    assert_eq!(log.load(1), Err(LogLoadError::LogFull));
+    log.bounds.journal += 1;
     // The load of segment 1: the log is the one saved, at tick 2 again, its y due again there
     // and z gone; and the journal rebuilds the log loaded.
     log.load(1).unwrap();
+    assert_eq!(log.journal.as_ref().unwrap().len(), journal + 38);
+    log.bounds = Bounds::MAX;
     assert_eq!(encoded(&log), saved);
     assert_eq!((log.next_tick(), log.segment()), (Tick::new(2), 1));
     assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));

@@ -87,14 +87,18 @@ impl Delegation {
         Self::parse(&event.as_json()).expect("a signed delegation parses")
     }
 
-    /// Reads a delegation from its event's JSON, at most `MAX_JSON` bytes, checking the event's
-    /// id and signature, its kind, and each term's tag. Other tags and the content are ignored.
+    /// Reads a delegation from its event's JSON, at most `MAX_JSON` bytes and in the one spelling
+    /// nostr writes, checking the event's id and signature, its kind, and each term's tag. Other
+    /// tags and the content are ignored.
     pub fn parse(json: &str) -> Result<Self, DelegationError> {
         if json.len() > Self::MAX_JSON {
             return Err(DelegationError::TooLong);
         }
         let event = Event::from_json(json)
             .map_err(|error| DelegationError::NotEvent(EventError::from(error)))?;
+        if event.as_json() != json {
+            return Err(DelegationError::NotCanonical);
+        }
         if !event.verify_id() {
             return Err(DelegationError::WrongId);
         }

@@ -15,6 +15,11 @@ pub enum DelegationError {
     /// The JSON is not a Nostr event, of the kind nostr's error says.
     #[error("delegation is not a Nostr event")]
     NotEvent(#[source] EventError),
+    /// The JSON is an event, but not the one spelling nostr writes of it: no signature covers
+    /// its whitespace, key order, escapes or hex case, so another spelling would give one log a
+    /// second fingerprint.
+    #[error("delegation is not its event's canonical JSON")]
+    NotCanonical,
     /// The event id is not the hash of the event.
     #[error("delegation id is not the hash of the event")]
     WrongId,

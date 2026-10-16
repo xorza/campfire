@@ -56,16 +56,12 @@ pub trait SessionWorld {
     /// How the match ended: as the mode ended it, or aborted when it did not.
     fn outcome(&self) -> Outcome;
 
-    /// The result that ends the session before the next tick as `outcome`, with the state hash.
-    fn session_result_as(&self, outcome: Outcome) -> SessionResult;
-
     /// The result that ends the session before the next tick, as the mode ended the match or
     /// aborted when it did not.
     fn session_result(&self) -> SessionResult;
 
     /// Whether the log's result, once every tick before it ran, holds: its state hash is the
-    /// state's, and its outcome the one the mode ended the match with, unless the session
-    /// aborted.
+    /// state's, and its outcome the one the mode ended the match with, aborted when it did not.
     fn check_result(&self) -> Result<(), ResultMismatch>;
 }
 
@@ -194,16 +190,12 @@ impl SessionWorld for World {
         }
     }
 
-    fn session_result_as(&self, outcome: Outcome) -> SessionResult {
+    fn session_result(&self) -> SessionResult {
         SessionResult {
             tick: self.session().log.next_tick(),
-            outcome,
+            outcome: self.outcome(),
             state_hash: self.state_hash(),
         }
-    }
-
-    fn session_result(&self) -> SessionResult {
-        self.session_result_as(self.outcome())
     }
 
     fn check_result(&self) -> Result<(), ResultMismatch> {
@@ -224,7 +216,7 @@ impl SessionWorld for World {
             });
         }
         let ended = self.outcome();
-        if result.outcome != Outcome::Aborted && result.outcome != ended {
+        if result.outcome != ended {
             return Err(ResultMismatch::Outcome {
                 logged: result.outcome,
                 ended,

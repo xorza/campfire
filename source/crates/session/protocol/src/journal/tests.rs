@@ -30,17 +30,24 @@ impl RecordSink for MemorySink {
     }
 }
 
+fn len(len: usize) -> u64 {
+    u64::try_from(len).unwrap()
+}
+
 /// Three records, the second empty.
 const RECORDS: [&[u8]; 3] = [b"first", b"", b"third record"];
 
 /// The journal file of `RECORDS`, written in turn.
 fn journal_of_records() -> Vec<u8> {
     let file = MemorySink::new();
-    let mut journal = Journal::new(file.boxed());
+    let mut journal = Journal::new(file.boxed(), len(JournalFrames::TAG.len()));
     for record in RECORDS {
         journal.append(|out| out.extend_from_slice(record));
     }
     assert_eq!(journal.written(), 3);
+    // The tag, then each record's 4 + 32 bytes beside its own: 19 + 41 + 36 + 48.
+    assert_eq!(journal.len(), 144);
+    assert_eq!(journal.len(), len(file.bytes().len()));
     file.bytes()
 }
 

@@ -15,7 +15,7 @@ use campfire_net::{
     InputsDiscarded, JoinState, PaceSpeed, PendingSaves, SaveCommand, SaveRefusal, SaveRefused,
     ServerDir, SessionDir, SimServerWorld,
 };
-use campfire_protocol::{InputRules, JournalFrames, Outcome, SeedChain, SessionLog};
+use campfire_protocol::{InputRules, JournalFrames, SeedChain, SessionLog};
 use campfire_runner::{Replay, Session};
 use campfire_sim::{SimWorld, TickRate};
 use campfire_store::InputFile;
@@ -144,11 +144,7 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     );
 
     // The published log holds the segment before the save and the one after it, and verifies.
-    local
-        .server_mut()
-        .world_mut()
-        .end_session(Outcome::Aborted)
-        .unwrap();
+    local.server_mut().world_mut().end_session().unwrap();
     let file =
         SessionDir::publish(local.server().world().resource::<ServerDir>(), log(&local)).unwrap();
     let published =

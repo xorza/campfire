@@ -18,7 +18,7 @@ use campfire_declare::Role;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
-use campfire_protocol::{PlayerInput, SignedReceipt, Signer, Verifier};
+use campfire_protocol::{SignedReceipt, Signer, Verifier};
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
@@ -696,12 +696,7 @@ fn send_orders(
     for payload in payloads.clone() {
         playing.extend(stamp, payload);
     }
-    let slot = playing.chain.slot();
-    let inputs = payloads.map(|payload| PlayerInput {
-        slot,
-        stamp,
-        payload,
-    });
+    let inputs = payloads.map(|payload| (stamp, payload));
     let signature = playing.chain.sign(&signer.0, session.id);
     sender.send::<InputChannel>(InputMessage::new(inputs, signature));
 }

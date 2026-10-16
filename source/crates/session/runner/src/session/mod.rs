@@ -3,13 +3,13 @@ use std::num::NonZeroU64;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
-use campfire_common::{AfterLeave, Tick, Ticks};
+use campfire_common::{AfterLeave, PlayerSlot, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
 use campfire_players::Seating;
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError, PlayerInput,
-    Receipt, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog,
-    SessionResult, Signature, Signer, SlotStart, SnapshotFingerprint,
+    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError, Receipt,
+    RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog, SessionResult,
+    Signature, Signer, SlotStart, SnapshotFingerprint,
 };
 use campfire_sim::{SimWorld, TickRate};
 
@@ -135,15 +135,16 @@ impl Session {
     /// Logs a player's packet before the next tick; see `SessionLog::record`.
     pub fn record<'a, I>(
         &mut self,
+        slot: PlayerSlot,
         inputs: I,
         signature: &Signature,
         applied: &mut Vec<Applied>,
     ) -> Result<(), InputError>
     where
-        I: IntoIterator<Item = PlayerInput<'a>>,
+        I: IntoIterator<Item = (Tick, &'a [u8])>,
         I::IntoIter: Clone,
     {
-        self.log.record(inputs, signature, applied)
+        self.log.record(slot, inputs, signature, applied)
     }
 
     /// Logs a server input before the next tick, signed in the log with the server's key at
@@ -193,10 +194,10 @@ impl Session {
         self.log.keep_journal(sink);
     }
 
-    /// Keeps `sink` as the journal of the session's log, which holds every record of it; see
-    /// `SessionLog::resume_journal`.
-    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>) {
-        self.log.resume_journal(sink);
+    /// Keeps `sink` as the journal of the session's log, of `len` bytes, which holds every
+    /// record of it; see `SessionLog::resume_journal`.
+    pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>, len: u64) {
+        self.log.resume_journal(sink, len);
     }
 
     /// Begins a checkpoint at the boundary before the next tick, which starts the segment after
@@ -370,6 +371,11 @@ pub(crate) mod internals {
                 signer,
             };
             Self::resume_match(source, at)
+        }
+
+        /// Fills the session's log, as `SessionLog::fill` does.
+        pub fn fill_log(&mut self) {
+            self.log.fill();
         }
     }
 }

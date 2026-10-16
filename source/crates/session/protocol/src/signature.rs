@@ -10,6 +10,9 @@ pub struct Signature {
 }
 
 impl Signature {
+    /// The bytes its encoding takes: the two halves, with no length.
+    pub(crate) const ENCODED_LEN: u64 = 64;
+
     pub const fn from_bytes(bytes: [u8; 64]) -> Self {
         let (r, s) = bytes.split_at(32);
         let mut signature = Self {
@@ -27,5 +30,19 @@ impl Signature {
         r.copy_from_slice(&self.r);
         s.copy_from_slice(&self.s);
         bytes
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Binary;
+
+    use super::*;
+
+    #[test]
+    fn a_signature_encodes_as_its_bytes_alone() {
+        let signature = Signature::from_bytes([7; 64]);
+        assert_eq!(Binary::encode(&signature), [7; 64]);
+        assert_eq!(Signature::ENCODED_LEN, 64);
     }
 }

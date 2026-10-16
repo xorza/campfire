@@ -11,6 +11,7 @@ use crate::delegation::seed_contribution::SeedContribution;
 use crate::harness::test_key::TestKey;
 use crate::input_hash::InputHash;
 use crate::input_rules::InputRules;
+use crate::journal::tests::MemorySink;
 use crate::seed_chain::SeedChain;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::session_log::error::{JournalReplayError, SeedError};
@@ -123,7 +124,15 @@ struct Sent<'a> {
 impl Sent<'_> {
     /// Records the packet into `log`, as the server does when it arrives.
     fn submit(&self, log: &mut SessionLog, applied: &mut Vec<Applied>) -> Result<(), InputError> {
-        log.record(self.inputs.iter().copied(), &self.signature, applied)
+        let inputs = self.inputs.iter().map(|input| (input.stamp, input.payload));
+        log.record(self.slot(), inputs, &self.signature, applied)
+    }
+
+    /// The slot of its first input, or slot 0 for a packet of none.
+    fn slot(&self) -> PlayerSlot {
+        self.inputs
+            .first()
+            .map_or(PlayerSlot::new(0), |input| input.slot)
     }
 }
 
@@ -507,46 +516,93 @@ fn a_tampered_packet_is_refused() {
 }
 
 #[test]
-fn a_packet_past_the_position_bound_is_refused() {
-    // The log's position bound, lowered from 2³² − 1 here: the 12th input, j, needs 12
-    // inputs and 12 payload bytes.
-    let bounded = |bound| {
+fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
+    // Each record of the terms takes at most their largest, 9,778 bytes, and 64 more, and the
+    // session's end keeps four: 4 × 9,842 = 39,368. Player 1's packet of a, stamped 0, is its
+    // slot, its count, a's stamp, length and byte, and the 64-byte signature, 69 bytes: 70 in the
+    // file with its kind's byte, and 4 + 1 + 69 + 32 = 106 in the journal, framed.
+    let (unit, kept) = (9_842, 4 * 9_842);
+    let start = new_log().file_len;
+    assert_eq!(start, len(encoded(&new_log()).len()));
+    let bounded = |file: u64| {
         let mut log = new_log();
-        log.position_bound = bound;
-        record_into(log, &chained()).err()
+        assert_eq!(log.unit, unit);
+        log.bounds.file = start + file;
+        log
     };
-    let full = LogError::Input {
-        tick: Tick::new(4),
-        error: InputError::LogFull,
-    };
-    assert_eq!(bounded(11), Some(full.clone()));
-    assert_eq!(bounded(12), None);
-    let file = encoded(&record(header(), &chained()).unwrap().log);
-    assert_eq!(SessionLog::decode_within(&file, 11).err(), Some(full));
-    assert!(SessionLog::decode_within(&file, 12).is_ok());
-    // The payload bytes count on their own: 1 input of 4 bytes passes a bound of 3.
-    let mut log = new_log();
-    log.position_bound = 3;
-    let oversized = resent(1, &[&[(0, b"abcd")]], 1).remove(0);
+    let sent = resent(1, &[&[(0, b"a")], &[(0, b"b")]], 1);
     let mut applied = Vec::new();
+    // A byte short of the packet and the end: refused, and the log unchanged.
+    let mut log = bounded(70 + kept - 1);
     assert_eq!(
-        oversized.submit(&mut log, &mut applied),
+        sent[0].submit(&mut log, &mut applied),
         Err(InputError::LogFull)
     );
-    // So do the entries: under a bound of 2, a packet of 1 input and 1 server input fill it.
-    let mut log = new_log();
-    log.position_bound = 2;
-    let sent = resent(1, &[&[(0, b"a")], &[(0, b"b")]], 1);
+    assert_eq!(log.file_len, start);
+    // At the bound: taken. The log is full, as it refuses the next packet, and a server input.
+    let mut log = bounded(70 + kept);
     sent[0].submit(&mut log, &mut applied).unwrap();
-    let connected = ServerInput::Connected {
-        slot: PlayerSlot::new(0),
-    };
-    serve(&mut log, connected.clone()).unwrap();
-    assert_eq!(serve(&mut log, connected), Err(ServerInputError::LogFull));
+    assert_eq!(log.file_len, start + 70);
+    assert!(log.full());
     assert_eq!(
         sent[1].submit(&mut log, &mut applied),
         Err(InputError::LogFull)
     );
+    let connected = ServerInput::Connected {
+        slot: PlayerSlot::new(0),
+    };
+    assert_eq!(serve(&mut log, connected), Err(ServerInputError::LogFull));
+    // Its file decodes within the same bound, and not within one a byte less.
+    let file = encoded(&log);
+    let within = |file_bound| Bounds {
+        file: file_bound,
+        journal: Bounds::MAX.journal,
+    };
+    assert!(SessionLog::decode_within(&file, within(start + 70 + kept)).is_ok());
+    let full = LogError::Input {
+        tick: Tick::new(0),
+        error: InputError::LogFull,
+    };
+    assert_eq!(
+        SessionLog::decode_within(&file, within(start + 70 + kept - 1)).err(),
+        Some(full)
+    );
+    // A log full only once it takes a record of the most bytes and the end no more.
+    let mut log = bounded(unit + kept);
+    assert!(!log.full());
+    sent[0].submit(&mut log, &mut applied).unwrap();
+    assert!(log.full());
+
+    // The journal counts on its own: its frames past what the log holds.
+    let mut log = new_log();
+    log.keep_journal(MemorySink::new().boxed());
+    let journal = log.journal.as_ref().unwrap().len();
+    log.bounds.journal = journal + 106 + kept - 1;
+    assert_eq!(
+        sent[0].submit(&mut log, &mut applied),
+        Err(InputError::LogFull)
+    );
+    log.bounds.journal += 1;
+    sent[0].submit(&mut log, &mut applied).unwrap();
+    assert_eq!(log.journal.as_ref().unwrap().len(), journal + 106);
+
+    // Each seal takes a byte for the next tick's count of entries, and one more as the count
+    // of the segment's ticks passes 127: 127 + 2 bytes in 128 seals.
+    let mut log = new_log();
+    for _ in 0..128 {
+        drop(log.seal_tick());
+    }
+    assert_eq!(log.file_len, start + 129);
+    assert_eq!(len(encoded(&log).len()), start + 129);
+    // A checkpoint begun keeps the room of its record: a seal and the begin, whose count of
+    // segments stays a byte and whose own count of ticks takes one, leave a log of 2 bytes more
+    // full within 2 + 9,842 + 5 × 9,842 bytes less one.
+    let mut log = bounded(2 + 6 * unit - 1);
+    drop(log.seal_tick());
+    assert!(!log.full());
+    log.begin_checkpoint().unwrap();
+    assert_eq!(log.file_len, start + 2);
+    assert!(log.full());
 }
 
 #[test]
@@ -607,6 +663,19 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         slot: PlayerSlot::new(1),
     };
     assert_eq!(SessionLog::new(bot).err(), Some(mismatch));
+    // Player 0's main key in slot 1 too, with slot 1's session key.
+    let mut twice = header();
+    let main = TestKey::signer(TestKey::of(11));
+    let shared = Delegation::sign(&main, delegation(1).terms(), TestKey::NOW);
+    twice.slots[1] = SlotStart::player(shared);
+    let repeated = HeaderError::MainKeyRepeated {
+        slot: PlayerSlot::new(1),
+    };
+    assert_eq!(SessionLog::new(twice.clone()).err(), Some(repeated.clone()));
+    assert_eq!(
+        SessionLog::decode(&frame(&twice, &[], &[], None)).err(),
+        Some(LogError::Header(repeated))
+    );
 
     // The largest record of the terms, a checkpoint's: each of the 2 slots carries a delegation
     // of at most 4,096 bytes and its length, 4,101, and its inputs still to apply, 2 a stamp
@@ -779,7 +848,7 @@ fn frame(
     tail: &[Sent<'_>],
     revealed: Option<ServerSeed>,
 ) -> Vec<u8> {
-    let mut bytes = b"campfire/session-log/v4".to_vec();
+    let mut bytes = b"campfire/session-log/v5".to_vec();
     let terms = &header.terms;
     put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
@@ -808,8 +877,7 @@ fn frame(
         put(&mut bytes, &u32::try_from(packets.len()).unwrap());
         for packet in packets {
             put(&mut bytes, &PACKET_ENTRY);
-            let slot = packet.inputs.first().map_or(0, |input| input.slot.get());
-            put(&mut bytes, &slot);
+            put(&mut bytes, &packet.slot().get());
             put(&mut bytes, &u32::try_from(packet.inputs.len()).unwrap());
             for input in &packet.inputs {
                 put(&mut bytes, &input.stamp);
@@ -903,7 +971,7 @@ fn a_log_file_has_its_layout() {
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
-        &b"campfire/session-log/v4"[..],
+        &b"campfire/session-log/v5"[..],
         // The terms, and no session id: it is their hash.
         &server_key().serialize(),
         // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
@@ -948,7 +1016,7 @@ fn a_log_file_has_its_layout() {
     assert_eq!(encoded(&log), expected);
 
     // A rate of 0 ticks a second does not decode.
-    let tick_at = b"campfire/session-log/v4".len() + 32;
+    let tick_at = b"campfire/session-log/v5".len() + 32;
     let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
     assert!(matches!(
         SessionLog::decode(&zero_rate),
@@ -1006,7 +1074,7 @@ fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
         SessionLog::decode(&bytes).map(|log| log.next_tick()),
         Ok(Tick::new(1))
     );
-    let tag = b"campfire/session-log/v4".len();
+    let tag = b"campfire/session-log/v5".len();
     for at in 0..bytes.len() {
         let expected = if at < tag {
             LogError::NotLog
@@ -1222,9 +1290,10 @@ fn bot(slot: u32, payload: &[u8]) -> ServerInput<'_> {
 }
 
 /// Server inputs a log of `mixed_log` refuses before tick 1 for their structure alone: a bot's
-/// commands for a player's slot, a join of a player's slot, a leave of the bot's, a renewal by
-/// another main key, a join of a delegation of another session, and an input for no slot.
-fn refused_by_structure() -> [(ServerInput<'static>, ServerInputError); 6] {
+/// commands for a player's slot, a join of a player's slot, a join of the open one by the main
+/// key of slot 0's player, a leave of the bot's, a renewal by another main key, a join of a
+/// delegation of another session, and an input for no slot.
+fn refused_by_structure() -> [(ServerInput<'static>, ServerInputError); 7] {
     let renewal = ServerInput::Renew {
         slot: PlayerSlot::new(0),
         delegation: mixed_delegation(1, 1),
@@ -1236,6 +1305,7 @@ fn refused_by_structure() -> [(ServerInput<'static>, ServerInputError); 6] {
     [
         (bot(0, b""), ServerInputError::NotBot),
         (joins(0, 1, 1), ServerInputError::Occupied),
+        (joins(2, 0, 2), ServerInputError::MainKeyHeld),
         (leaves(1, AfterLeave::Bot), ServerInputError::NotPlayer),
         (renewal, ServerInputError::OtherPlayer),
         (
@@ -1368,14 +1438,22 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     let joined_open = at(2, 2, SlotChangeKind::Joined { from: Taken::Open });
     assert_eq!(log.sealed_changes(), [left, joined_open]);
     // The log's own view: slot 0 a bot's, left by player 0's main key; slot 1 the bot's; slot 2
-    // player 1's, on the chain of their delegation; and the server inputs as logged.
+    // player 1's, on the chain their join starts, from the root of its place, the second server
+    // input before tick 2; and the server inputs as logged.
     let main = |player: u32| *mixed_delegation(player, player).main_key();
     assert_eq!(log.controller(slot(0)), Some(Controller::Bot));
     assert_eq!(log.leaver(slot(0)), Some(main(0)));
     let joiner = Controller::Player {
         main_key: main(1),
         session_key: session_key(1).x_only_public_key().0,
-        chain: InputChain::new(slot(2), mixed_delegation(1, 1).chain_root()),
+        chain: InputChain::joined(
+            slot(2),
+            mixed_delegation(1, 1).id(),
+            InputPlace {
+                tick: Tick::new(2),
+                index: 1,
+            },
+        ),
     };
     assert_eq!(log.controller(slot(2)), Some(joiner));
     assert_eq!(log.controller(slot(3)), None);
@@ -1400,8 +1478,24 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
         serve(&mut log, joins(2, 2, 2)),
         Err(ServerInputError::Reserved)
     );
-    // Player 0, back with a new chain, sends again.
-    let mut back = InputChain::new(slot(0), mixed_delegation(0, 0).chain_root());
+    // Player 0, back with the delegation they started with, on the new chain of their join, the
+    // first server input before tick 3, sends again. Their first packet, signed on the chain
+    // from that delegation's id, which they joined with before, is refused: the host may not log
+    // it again.
+    let first = mixed_packet(
+        &mut InputChain::new(slot(0), mixed_delegation(0, 0).chain_root()),
+        &[(0, b"p"), (1, b"q")],
+        0,
+    );
+    assert_eq!(
+        first.submit(&mut log, &mut applied),
+        Err(InputError::BadSignature)
+    );
+    let place = InputPlace {
+        tick: Tick::new(3),
+        index: 0,
+    };
+    let mut back = InputChain::joined(slot(0), mixed_delegation(0, 0).id(), place);
     mixed_packet(&mut back, &[(3, b"u")], 0)
         .submit(&mut log, &mut applied)
         .unwrap();
