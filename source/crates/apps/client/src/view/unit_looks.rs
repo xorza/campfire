@@ -38,11 +38,13 @@ pub(crate) struct LookModel {
 }
 
 /// What a drawn model needs once its scene is spawned: its package's place, whose material files
-/// its materials take, and the names of the nodes its default look hides.
+/// its materials take, the names of the nodes its default look hides, and the name of the node
+/// its look turns by its unit's turret angle, if it has one.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModelParts {
     pub(crate) package: PackageIndex,
     pub(crate) hide: Arc<[String]>,
+    pub(crate) turret: Option<Arc<str>>,
 }
 
 impl UnitLooks {
@@ -91,6 +93,7 @@ impl LookModel {
                 parts: ModelParts {
                     package,
                     hide: model.hide.as_slice().into(),
+                    turret: look.turret.as_deref().map(Arc::from),
                 },
                 scale: model.scale.get(),
             })
@@ -178,6 +181,7 @@ mod tests {
         let parts = |package: PackageIndex, hide: &[&str]| ModelParts {
             package,
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
+            turret: None,
         };
         assert_eq!(
             paths(types[0]).unwrap(),

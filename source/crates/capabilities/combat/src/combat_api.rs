@@ -15,6 +15,7 @@ use crate::damage_handle::DamageHandle;
 use crate::error::CombatRefusal;
 use crate::heal_handle::HealHandle;
 use crate::mode_combat_data::{LeechData, ModeCombatData};
+use crate::turret::turret_data::TurretData;
 
 /// The script API of `combat`: `ctx.damage`, `ctx.heal`, `ctx.restore`, `ctx.attack_hit`, and the
 /// `Damage` handle.
@@ -108,8 +109,9 @@ impl CombatApi {
         )
         .data::<LeechData>(&["attack", "other"], &[])
         .data::<CombatData>(&["on_death", "armor"], &[])
+        .data::<TurretData>(&["turn_rate", "tolerance_deg", "slot"], &[])
         .shared_data(DataTable::Mode, &["combat"], &[])
-        .shared_data(DataTable::UnitType, &["combat"], &[])
+        .shared_data(DataTable::UnitType, &["combat", "turret"], &[])
         .action_fields(ActionDataField::of(Some(Capability::Combat)))
         .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))

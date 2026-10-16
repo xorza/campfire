@@ -1,6 +1,6 @@
 use campfire_actions::{ActionBook, ActionSlots, EffectListBook, UseGroup};
 use campfire_areas::AreaSpec;
-use campfire_combat::{Armor, OnDeath};
+use campfire_combat::{Armor, OnDeath, Turret};
 use campfire_declare::ByType;
 use campfire_interaction::{UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, Shop};
@@ -42,6 +42,7 @@ pub(crate) struct BookParts {
     pub(super) armors: ByType<Armor>,
     pub(super) steps: ByType<MoveStep>,
     pub(super) turns: ByType<TurnStep>,
+    pub(super) turrets: ByType<Turret>,
     pub(super) bodies: ByType<BodyForm>,
     /// The tracks of each type that gains experience.
     pub(super) type_tracks: ByType<TrackSet>,

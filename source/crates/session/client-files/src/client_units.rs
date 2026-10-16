@@ -29,6 +29,10 @@ pub struct ClientUnit {
     pub variants: Vec<LookVariant>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placement_angle: Option<Num>,
+    /// The name of the node its models turn by the unit's turret angle
+    /// (20-zero-hour-projectiles.md, A unit type may have a turret).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turret: Option<String>,
 }
 
 /// A look's models on a map of some conditions, as a night or snowy weather, by name: any game
@@ -54,6 +58,7 @@ impl ClientUnit {
             models,
             variants: Vec::new(),
             placement_angle: None,
+            turret: None,
         }
     }
 

@@ -627,6 +627,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
             variant(&["night", "snow"], vec![model("tank", &[])]),
         ],
         placement_angle: None,
+        turret: None,
     };
     // The rock and its reskin at the rock's scale, which the reskin cannot set; the tree's
     // look as a unit of both its models, and as the client's of its tree draw module's; the
@@ -643,6 +644,7 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
                 "americacommandcenter",
                 ClientUnit {
                     placement_angle: Some(Num::int(-135)),
+                    turret: None,
                     ..empty()
                 },
             ),

@@ -1,4 +1,4 @@
-data_version 28
+data_version 29
 actions.progress 24b230688d34435b
 actions.slot_times 776040a47152d129
 actions.slots 8792f8e9f8e71af6
@@ -11,6 +11,7 @@ combat.next_damage 22be8d9e036e2753
 combat.on_death a4f4b17fec8c8db4
 combat.recent_attackers 58e017c445524785
 combat.respawn b1604652186dcd98
+combat.turret_angle b9124b2821c13b2d
 items.inventory 632c105c9e56cebf
 mode.choices c36f705c3f6b53e9
 mode.match_end c04adfc1d93b84d1

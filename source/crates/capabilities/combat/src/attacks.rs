@@ -8,19 +8,21 @@ use campfire_actions::{
     Purse, Reached, Shot, ShotDamage, ShotHit, ShotHits, Shots, SlotAim, SlotTimes, Targets,
 };
 use campfire_common::Tick;
-use campfire_declare::RoleForm;
+use campfire_declare::{ByType, RoleForm};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
 use campfire_script::ScriptsWorld;
 use campfire_sim::{EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
-use campfire_units::{Body, Dead, ForcedMove, Owner, UnitsNear};
-use campfire_values::{Block, Motion, TagSet, Team, UnitTags};
+use campfire_units::{Body, Dead, Facing, ForcedMove, Owner, UnitsNear};
+use campfire_values::{Block, Motion, TagSet, Team, UnitTags, UnitType};
 
 use crate::clip_shots::ClipShots;
 use crate::combat_event::CombatEvent;
 use crate::combat_hooks::CombatHooks;
 use crate::damage::{Damage, DamageCause};
 use crate::pass_queue::PassQueue;
+use crate::turret::Turret;
+use crate::turret::turret_angle::TurretAngle;
 use crate::volley::{GoingOff, Volley};
 use crate::wielded::Wielded;
 use crate::{ROLL_STREAM, SCATTER_STREAM};
@@ -112,13 +114,18 @@ impl Attacks {
     }
 
     /// Starts each unit's attack on its attack target, in Act, when it has nothing under way: with
-    /// the first weapon whose filter selects the target, once that weapon passes its checks and the
-    /// target is within its range. An attack in its windup stops when the unit's tags keep it from
+    /// the first weapon whose filter selects the target, once that weapon passes its checks, the
+    /// target is within its reach, and, for a weapon of its turret's slot kind, the turret lies
+    /// within its tolerance of the target's bearing (20-zero-hour-projectiles.md, A unit type may
+    /// have a turret). An attack in its windup stops when the unit's tags keep it from
     /// attacking, or it lives no more, and such a unit starts none. An attack target that is no
     /// living enemy any more is dropped, with the attack on it.
     pub(super) fn start_attacks(
-        tick: Res<'_, SimTick>,
-        book: Res<'_, ActionBook>,
+        (tick, book, turrets): (
+            Res<'_, SimTick>,
+            Res<'_, ActionBook>,
+            Res<'_, ByType<Turret>>,
+        ),
         (resources, life): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PoolBook>),
         targets: Targets<'_, '_>,
         mut units: Query<
@@ -134,14 +141,25 @@ impl Attacks {
                 Option<&Body>,
                 Option<&UnitTags>,
                 Has<ForcedMove>,
+                (&UnitType, Option<&Facing>, Option<&TurretAngle>),
             ),
             Without<Dead>,
         >,
     ) {
         let now = tick.start();
         let life = life.life();
-        for (&position, &team, (slots, mut progress), times, pools, owner, body, tags, forced) in
-            &mut units
+        for (
+            &position,
+            &team,
+            (slots, mut progress),
+            times,
+            pools,
+            owner,
+            body,
+            tags,
+            forced,
+            (&unit_type, facing, turret_angle),
+        ) in &mut units
         {
             let blocked =
                 Caster::of(tags, Motion::of(forced), None).blocks(Block::Attack) || !pools.lives();
@@ -176,6 +194,16 @@ impl Attacks {
                     let Some(slot) = slots.weapon_in(&book, Some(selects)) else {
                         continue;
                     };
+                    let kind = slots.slot(slot).expect("a weapon's slot").kind;
+                    let turret = turrets.get(unit_type).filter(|turret| turret.slot == kind);
+                    if let (Some(turret), Some(&facing), Some(&angle)) =
+                        (turret, facing, turret_angle)
+                    {
+                        let aim = TurretAngle::toward(facing, position.get(), unit.pos);
+                        if !aim.is_some_and(|aim| angle.within(aim, turret.tolerance)) {
+                            continue;
+                        }
+                    }
                     let aim = SlotAim {
                         slot,
                         target: ActionTarget::Unit(target),

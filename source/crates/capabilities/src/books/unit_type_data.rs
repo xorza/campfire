@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_areas::AreaData;
-use campfire_combat::CombatData;
+use campfire_combat::{CombatData, TurretData};
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ShopData};
 use campfire_orders::AiData;
@@ -35,6 +35,8 @@ pub struct UnitTypeData {
     pub passive: Option<DeclaredName>,
     pub stats: Option<StatsData>,
     pub combat: Option<CombatData>,
+    /// The turret its attacks of a slot kind turn with.
+    pub turret: Option<TurretData>,
     pub orders: Option<AiData>,
     pub vision: Option<VisionData>,
     pub collision: Option<CollisionData>,
@@ -88,7 +90,7 @@ impl UnitTypeData {
 
     /// Each field of its table by name, in the table's order, and whether it gives it: a list or
     /// a map only when it is not empty.
-    pub fn fields(&self) -> [(&'static str, bool); 22] {
+    pub fn fields(&self) -> [(&'static str, bool); 23] {
         let Self {
             tags,
             params,
@@ -98,6 +100,7 @@ impl UnitTypeData {
             passive,
             stats,
             combat,
+            turret,
             orders,
             vision,
             collision,
@@ -122,6 +125,7 @@ impl UnitTypeData {
             ("passive", passive.is_some()),
             ("stats", stats.is_some()),
             ("combat", combat.is_some()),
+            ("turret", turret.is_some()),
             ("orders", orders.is_some()),
             ("vision", vision.is_some()),
             ("collision", collision.is_some()),

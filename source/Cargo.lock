@@ -2321,6 +2321,7 @@ dependencies = [
  "campfire-capabilities",
  "campfire-client-files",
  "campfire-codec",
+ "campfire-combat",
  "campfire-common",
  "campfire-interaction",
  "campfire-items",

@@ -119,6 +119,7 @@ impl LookWriter<'_, '_, '_> {
             models: own.models,
             variants,
             placement_angle: None,
+            turret: None,
         }))
     }
 

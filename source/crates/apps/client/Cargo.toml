@@ -11,6 +11,7 @@ campfire-bots.workspace = true
 campfire-capabilities.workspace = true
 campfire-client-files.workspace = true
 campfire-codec.workspace = true
+campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-interaction.workspace = true
 campfire-items.workspace = true

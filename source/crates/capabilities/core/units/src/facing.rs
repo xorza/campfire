@@ -63,6 +63,12 @@ impl Facing {
         Some(Self::of((-z).atan2_degrees(x)))
     }
 
+    /// The angle between it and `other` the shorter way round, from 0 to 180 degrees.
+    pub const fn apart(self, other: Self) -> Num {
+        let apart = (other.0.to_bits() - self.0.to_bits()).rem_euclid(FULL);
+        Num::from_bits(if apart > HALF { FULL - apart } else { apart })
+    }
+
     /// It turned toward `way` the shorter way round, counter-clockwise on a tie: by at most
     /// `step`'s degrees, or at once with no step; and whether it then faces within
     /// `Facing::WITHIN` of the way.
@@ -128,6 +134,18 @@ mod tests {
         assert_eq!(degrees([0, 0]), None);
         // Toward `x` and `−z` alike: 45°.
         assert_eq!(degrees([2, -2]), Some(Num::int(45)));
+        // Apart the shorter way round, across 0° too, and at most half a turn.
+        let apart = |a: i64, b: i64| Facing::of(Num::int(a)).apart(Facing::of(Num::int(b)));
+        assert_eq!(
+            [
+                apart(10, 12),
+                apart(12, 10),
+                apart(359, 1),
+                apart(0, 180),
+                apart(0, 270)
+            ],
+            [2, 2, 2, 180, 90].map(Num::int)
+        );
         let facing = |angle: i64| Facing::of(Num::int(angle));
         let three = TurnStep::new(Num::int(3));
         let toward = |from: i64, way: i64| facing(from).toward(facing(way), three);

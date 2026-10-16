@@ -6,15 +6,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): the player trains a tank, and its shells destroy the bot's command center. The systems it changes: `geometry`, `units`, `client-files`, `mode`, `package`, `capabilities`, `projectiles`, `combat`, `import`, `client`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 6. Turrets
-
-`combat`: a new `turret/`, the attack's start; `client`: `view/unit_models.rs`. Builds: a kind is a marker; a part a system derives each tick is one it writes in place.
-
-- [ ] crates/capabilities/combat/src/attacks.rs — an attack starts as soon as its target is in reach, and no part of a unit turns but its body (A unit type may have a turret). → A unit type's `turret`, a `TurretAngle` part on the types that have one, written in place each tick toward the target of the attack under way at its rate, back to 0 at half of it with none; an attack of the turret's slot kind starts its windup only within its tolerance; its owner's client predicts it. The client turns the look's `turret` node by it.
-
 ### 7. Slow weapons
 
-`combat`: the attack's data, a held hit. After batch 6. Builds: what can be forgotten is a type.
+`combat`: the attack's data, a held hit. Builds: what can be forgotten is a type.
 
 - [ ] crates/capabilities/combat/src/attacks.rs:354-365 — an attack of no projectile lands its damage in the tick it fires, where Zero Hour delays it by `distance / WeaponSpeed` (A slow weapon delays its damage). → An attack's `speed`; its hit held as state until ⌈`d` ÷ `s`⌉ ticks after its shot, at once below one, on its target wherever it stands, none on a target dead by then. Takes the issue log's **Combat** item of Ready.
 

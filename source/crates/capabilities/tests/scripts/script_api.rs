@@ -10,7 +10,7 @@ use campfire_actions::{ActionData, DeliveryData, EffectData, RequiresData, SlotK
 use campfire_areas::{AreaData, AreaInsideData};
 use campfire_capabilities::{Release, UnitTypeData};
 use campfire_codec::Toml;
-use campfire_combat::{CombatData, LeechData, ModeCombatData};
+use campfire_combat::{CombatData, LeechData, ModeCombatData, TurretData};
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
 use campfire_math::Num;
@@ -438,6 +438,7 @@ fn the_data_fields_are_the_schemas() {
         table::<ModifierData>(),
         table::<AuraData>(),
         table::<CombatData>(),
+        table::<TurretData>(),
         table::<ProductionData>(),
         table::<SupplyData>(),
         table::<ModeSupplyData>(),

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use bevy::app::{App, Plugin, Startup};
+use bevy::app::{App, Plugin, Startup, Update};
 use bevy::asset::{AssetServer, Assets, Handle, embedded_asset};
 use bevy::camera::visibility::Visibility;
 use bevy::ecs::component::Component;
@@ -8,6 +8,7 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
+use bevy::ecs::query::{Added, Allow, Changed};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::gltf::GltfMaterialName;
@@ -19,12 +20,15 @@ use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
 use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
 use campfire_client_files::{ClientObject, MaterialFile};
+use campfire_combat::TurretAngle;
+use campfire_sim::Unpredicted;
 use campfire_units::TypeOriginBook;
 use campfire_values::PackageIndex;
 
 use tracing::error;
 
 use crate::view::client_data::ClientData;
+use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::file_material::{FileBlend, FileMaterial};
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
@@ -60,6 +64,7 @@ impl Plugin for UnitModels {
         app.init_resource::<FileMaterials>();
         app.add_systems(Startup, (Self::load_looks, Self::place_objects));
         app.add_observer(Self::dress);
+        app.add_systems(Update, Self::turn_turrets);
     }
 }
 
@@ -121,6 +126,34 @@ impl UnitModels {
         Transform::from_xyz(x, y, z).with_rotation(turn)
     }
 
+    /// Turns the turret node of each drawing by its unit's turret angle, as the sim last gave it:
+    /// of each unit whose angle changed, and of each drawing whose model was just dressed, so a
+    /// node is written only when its angle or its node is new.
+    fn turn_turrets(
+        changed: TurnedTurrets<'_, '_>,
+        dressed: Query<'_, '_, (&DrawingOf, &TurretNode), Added<TurretNode>>,
+        (angles, turrets): (
+            Query<'_, '_, &TurretAngle, Allow<Unpredicted>>,
+            Query<'_, '_, &TurretNode>,
+        ),
+        mut nodes: Query<'_, '_, &mut Transform>,
+    ) {
+        let changed = changed.iter().filter_map(|(&angle, drawing)| {
+            turrets
+                .get(drawing.root())
+                .ok()
+                .map(|&turret| (angle, turret))
+        });
+        let dressed = dressed.iter().filter_map(|(&DrawingOf(unit), &turret)| {
+            angles.get(unit).ok().map(|&angle| (angle, turret))
+        });
+        for (angle, turret) in changed.chain(dressed) {
+            if let Ok(mut node) = nodes.get_mut(turret.node) {
+                node.rotation = turret.rotation(angle);
+            }
+        }
+    }
+
     /// Dresses the model whose scene spawned, as its dressing says, and marks it dressed.
     #[expect(
         clippy::too_many_arguments,
@@ -131,6 +164,7 @@ impl UnitModels {
         models: Query<'_, '_, &ModelParts>,
         children: Query<'_, '_, &Children>,
         nodes: Query<'_, '_, (Option<&Name>, Option<&GltfMaterialName>)>,
+        (parents, transforms): (Query<'_, '_, &ChildOf>, Query<'_, '_, &Transform>),
         data: Res<'_, ClientData>,
         assets: Res<'_, AssetServer>,
         mut made: ResMut<'_, FileMaterials>,
@@ -149,9 +183,22 @@ impl UnitModels {
             })
         });
         let files = data.materials_of(parts.package);
-        let Dressing { hidden, filed } = Dressing::of(&parts.hide, spawned, files);
+        let Dressing {
+            hidden,
+            filed,
+            turret,
+        } = Dressing::of(parts, spawned, files);
         for node in hidden {
             commands.entity(node).insert(Visibility::Hidden);
+        }
+        // A model is a child of its unit's drawing, which the turret's node turns with.
+        if let Some(node) = turret
+            && let (Ok(root), Ok(rest)) = (parents.get(ready.entity), transforms.get(node))
+        {
+            commands.entity(root.parent()).insert(TurretNode {
+                node,
+                rest: rest.rotation,
+            });
         }
         commands.entity(ready.entity).insert(Dressed);
         let made = made.made.entry(parts.package).or_default();
@@ -199,6 +246,15 @@ impl UnitModels {
     }
 }
 
+/// The units whose turret angle changed, the client's own and those it only receives, each with
+/// its drawing.
+type TurnedTurrets<'w, 's> = Query<
+    'w,
+    's,
+    (&'static TurretAngle, &'static Drawing),
+    (Changed<TurretAngle>, Allow<Unpredicted>),
+>;
+
 /// A node of a spawned model: its entity, its name, and its glTF material's name, if it draws one.
 #[derive(Debug, Clone, Copy)]
 struct Node<'a> {
@@ -207,20 +263,37 @@ struct Node<'a> {
     material: Option<&'a str>,
 }
 
-/// What a spawned model's dressing does: the nodes it hides, and the nodes whose material a
-/// material file replaces, each with the file's name.
+/// What a spawned model's dressing does: the nodes it hides, the nodes whose material a material
+/// file replaces, each with the file's name, and the node its unit's turret angle turns.
 #[derive(Debug, Default, PartialEq, Eq)]
 struct Dressing<'f> {
     hidden: Vec<Entity>,
     filed: Vec<(Entity, &'f str)>,
+    turret: Option<Entity>,
+}
+
+/// On a unit's drawing: the node of its model its turret angle turns, and that node's rotation
+/// at rest, as its model holds it.
+#[derive(Component, Debug, Clone, Copy, PartialEq)]
+pub(crate) struct TurretNode {
+    node: Entity,
+    rest: Quat,
+}
+
+impl TurretNode {
+    /// The node's rotation at `angle`: its rest turned about the model's up by the angle, as the
+    /// drawing turns by its unit's facing.
+    fn rotation(&self, angle: TurretAngle) -> Quat {
+        Quat::from_rotation_y(angle.degrees().float().to_radians()) * self.rest
+    }
 }
 
 impl<'f> Dressing<'f> {
-    /// The dressing of a model that hides the nodes named in `hide`, whose scene spawned `nodes`:
-    /// each node of a name it hides, and each node whose glTF material has a file among `files`,
-    /// its model's package's.
+    /// The dressing of a model of `parts`, whose scene spawned `nodes`: each node of a name it
+    /// hides, each node whose glTF material has a file among `files`, its model's package's, and
+    /// the first node of its turret's name.
     fn of<'a>(
-        hide: &[String],
+        parts: &ModelParts,
         nodes: impl Iterator<Item = Node<'a>>,
         files: &'f BTreeMap<String, MaterialFile>,
     ) -> Self {
@@ -228,9 +301,13 @@ impl<'f> Dressing<'f> {
         for node in nodes {
             if node
                 .name
-                .is_some_and(|name| hide.iter().any(|hidden| hidden == name))
+                .is_some_and(|name| parts.hide.iter().any(|hidden| hidden == name))
             {
                 dressing.hidden.push(node.entity);
+            }
+            let turret = parts.turret.as_deref();
+            if dressing.turret.is_none() && node.name.is_some_and(|name| Some(name) == turret) {
+                dressing.turret = Some(node.entity);
             }
             if let Some((name, _)) = node
                 .material
@@ -245,6 +322,7 @@ impl<'f> Dressing<'f> {
 
 #[cfg(test)]
 mod tests {
+    use std::f32::consts::FRAC_PI_2;
     use std::path::Path;
 
     use bevy::app::TaskPoolPlugin;
@@ -410,6 +488,7 @@ mod tests {
         let parts = |hide: &[&str]| ModelParts {
             package: PackageIndex::MODE,
             hide: hide.iter().map(|&node| node.to_owned()).collect(),
+            turret: None,
         };
         let scaled = |scale: f32| Transform::from_scale(Vec3::splat(scale));
         assert_eq!(placed.len(), 2);
@@ -449,7 +528,12 @@ mod tests {
         };
         // The files of the model's package: `tank_3`'s, and not `tank_0`'s.
         let files = BTreeMap::from([("tank_3".to_owned(), file)]);
-        let hide = ["tank.turret".to_owned(), "tank.flash".to_owned()];
+        // It hides the flash and a decal, and turns the turret.
+        let parts = ModelParts {
+            package: PackageIndex::MODE,
+            hide: ["tank.decal".to_owned(), "tank.flash".to_owned()].into(),
+            turret: Some("tank.turret".into()),
+        };
         let nodes = [
             Node {
                 entity: turret,
@@ -473,11 +557,33 @@ mod tests {
             },
         ];
         assert_eq!(
-            Dressing::of(&hide, nodes.into_iter(), &files),
+            Dressing::of(&parts, nodes.into_iter(), &files),
             Dressing {
-                hidden: vec![turret, flash],
+                hidden: vec![flash],
                 filed: vec![(flash, "tank_3"), (other, "tank_3")],
+                turret: Some(turret),
             }
         );
+        // A look of no turret turns none.
+        let still = ModelParts {
+            turret: None,
+            ..parts
+        };
+        assert_eq!(Dressing::of(&still, nodes.into_iter(), &files).turret, None);
+    }
+
+    #[test]
+    fn a_turret_node_turns_about_the_models_up_from_its_rest() {
+        // A node at rest tilted 10° about x, turned 90°: the tilt, then a quarter turn about up,
+        // so its forward along −z points along −x.
+        let rest = Quat::from_rotation_x(10_f32.to_radians());
+        let node = TurretNode {
+            node: Entity::PLACEHOLDER,
+            rest,
+        };
+        let turned = node.rotation(TurretAngle::of(Num::int(90)));
+        assert!(turned.abs_diff_eq(Quat::from_rotation_y(FRAC_PI_2) * rest, 1e-6));
+        assert!((turned * rest.inverse() * Vec3::NEG_Z).abs_diff_eq(Vec3::NEG_X, 1e-6));
+        assert_eq!(node.rotation(TurretAngle::REST), rest);
     }
 }

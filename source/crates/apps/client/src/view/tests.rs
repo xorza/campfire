@@ -325,6 +325,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         Some(&ModelParts {
             package: PackageIndex::MODE,
             hide: ["tank.flash".to_owned()].into(),
+            turret: None,
         })
     );
     let transform = model.get::<Transform>().unwrap();
@@ -545,6 +546,7 @@ fn drawn_model(
     let parts = ModelParts {
         package: PackageIndex::MODE,
         hide: Arc::<[String]>::from([]),
+        turret: None,
     };
     let mut model = world.spawn((WorldAssetRoot(scene), parts, transform, ChildOf(root)));
     if dressed {

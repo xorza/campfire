@@ -21,6 +21,7 @@ use campfire_units::{BodyUnit, Dead, SpawnPoint};
 
 use crate::combat_column::RowReads;
 use crate::next_damage::NextDamage;
+use crate::turret::aiming::Aiming;
 use crate::volley::Volley;
 
 mod armor;
@@ -52,6 +53,7 @@ mod pass_queue;
 mod recent_attack;
 mod recent_attackers;
 mod respawn;
+mod turret;
 mod volley;
 mod weighers;
 mod wielded;
@@ -83,6 +85,9 @@ pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
 pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
+pub use crate::turret::Turret;
+pub use crate::turret::turret_angle::TurretAngle;
+pub use crate::turret::turret_data::TurretData;
 pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
@@ -147,6 +152,9 @@ impl Module for Combat {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<CombatSet>();
+        d.component::<TurretAngle>();
+        d.book::<ByType<Turret>>();
+        d.part::<BodyUnit, TurretAngle>(|at| at.of_type::<Turret>().map(|_| TurretAngle::REST));
         d.component::<Kept>();
         d.component::<Life>();
         d.component::<OnDeath>();
@@ -189,6 +197,9 @@ impl Module for Combat {
     /// pays no toggle, as its pools come from the server.
     fn install(cx: &mut InstallCx<'_>) {
         cx.systems((
+            Aiming::aim
+                .before(Attacks::start_attacks)
+                .in_set(CombatSet::Attack),
             Attacks::start_attacks.in_set(CombatSet::Attack),
             Attacks::take_hits.in_set(CombatSet::Hits),
             ModifierIntervals::run_intervals.in_set(CombatSet::Interval),

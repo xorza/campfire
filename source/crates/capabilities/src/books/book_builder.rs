@@ -8,7 +8,7 @@ use campfire_actions::{
     SlotKindBook, UseGroup,
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
-use campfire_combat::{Armor, CombatBook, CombatData, OnDeath};
+use campfire_combat::{Armor, CombatBook, CombatData, OnDeath, Turret};
 use campfire_interaction::{UseData, UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
 use campfire_mode::{MapInput, ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
@@ -275,6 +275,7 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.armors);
         built.add(parts.steps);
         built.add(parts.turns);
+        built.add(parts.turrets);
         built.add(parts.bodies);
         built.add(parts.type_tracks);
         built.add(parts.builders);
@@ -890,6 +891,12 @@ impl<'a> BookBuilder<'a> {
                 .ok_or_else(|| UnknownName::new(NameKind::SlotKind, &uses.kind))
         });
         let uses = uses.transpose().map_err(unknown)?;
+        let turret = file.turret.as_ref().map(|turret| {
+            let slot = input.data.slots.names().named(turret.slot.as_str());
+            let slot = slot.ok_or_else(|| UnknownName::new(NameKind::SlotKind, &turret.slot))?;
+            Ok(Turret::of(turret, slot, input.rate))
+        });
+        let turret = turret.transpose().map_err(unknown)?;
         let slots = self
             .slots(file, actions, inventory.as_ref(), uses)
             .map_err(unknown)?;
@@ -908,6 +915,7 @@ impl<'a> BookBuilder<'a> {
         books.armors.set_some(unit_type, armor);
         books.steps.set_some(unit_type, step);
         books.turns.set_some(unit_type, turn);
+        books.turrets.set_some(unit_type, turret);
         books.bodies.set_some(unit_type, body);
         books
             .sights
