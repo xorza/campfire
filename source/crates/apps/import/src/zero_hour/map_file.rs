@@ -417,8 +417,10 @@ impl MapFile {
 
     /// Whether the map's `WorldInfo` dictionary names snowy weather, as
     /// `WorldHeightMap::ParseWorldDictDataChunk` sets the game's weather from its `weather`
-    /// integer; its keys named by `names`.
+    /// integer; its keys named by `names`. Its one version is the world builder's
+    /// `K_WORLDDICT_VERSION_1`.
     fn snowy(chunk: RawChunk<'_>, names: &BTreeMap<u32, &[u8]>) -> Result<bool, MapError> {
+        chunk.check_version(Chunk::WorldInfo, 1..=1)?;
         let mut body = chunk.body;
         let mut weather = None;
         map_dict::read(&mut body, names, |key, value| {
@@ -699,8 +701,8 @@ mod tests {
     #[test]
     fn a_world_snows_at_its_snowy_weather_alone() {
         // A `weather` of 1, `WEATHER_SNOWY`, snows; of 0 or 2, of text, or none, it does not; a
-        // key set twice takes its last value.
-        let snowy = |entries: &[(&str, u8, Vec<u8>)]| {
+        // key set twice takes its last value; a dictionary of another version than 1 is refused.
+        let snowy_of = |version: u16, entries: &[(&str, u8, Vec<u8>)]| {
             let mut writer = ChunkWriter::default();
             let count = u16::try_from(entries.len()).unwrap();
             let mut body = count.to_le_bytes().to_vec();
@@ -709,12 +711,22 @@ mod tests {
             }
             let chunk = RawChunk {
                 id: 0,
-                version: 1,
+                version,
                 body: ChunkReader::new(&body),
             };
             MapFile::snowy(chunk, &writer.table())
         };
+        let snowy = |entries: &[(&str, u8, Vec<u8>)]| snowy_of(1, entries);
         let int = |value: i32| value.to_le_bytes().to_vec();
+        for version in [0, 2] {
+            assert_eq!(
+                snowy_of(version, &[]),
+                Err(MapError::Version {
+                    chunk: Chunk::WorldInfo,
+                    version
+                })
+            );
+        }
         assert_eq!(snowy(&[("weather", 1, int(1))]), Ok(true));
         for weather in [0, 2] {
             assert_eq!(snowy(&[("weather", 1, int(weather))]), Ok(false));

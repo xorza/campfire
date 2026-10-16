@@ -14,7 +14,7 @@ use campfire_store::DurableDir;
 use campfire_values::PackagePath;
 
 use crate::texture::dds_file::DdsFile;
-use crate::texture::tga_file::{TgaFile, TgaHeader};
+use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::armor_ini::ArmorIni;
 use crate::zero_hour::combat_import::{CombatImport, CombatSources, DroppedWeapon};
@@ -57,6 +57,7 @@ pub(crate) mod error;
 pub(crate) mod game_data;
 pub(crate) mod game_data_ini;
 pub(crate) mod game_float;
+pub(crate) mod game_path;
 pub(crate) mod game_version;
 pub(crate) mod hierarchy;
 pub(crate) mod hlod;
@@ -139,6 +140,9 @@ pub enum SkipReason {
     Missing,
     /// It is a particle emitter, which the importer does not convert.
     Emitter,
+    /// It is an aggregate of a model's HLOD, a render object the game adds on a pivot, which
+    /// the importer does not convert.
+    Aggregate,
 }
 
 /// A Zero Hour install, read as the game reads it and of a version the importer knows, which it
@@ -249,9 +253,12 @@ impl<'a> ZeroHour<'a> {
             };
             let ktx2 = match kind {
                 TextureKind::Dds => DdsFile::read(&bytes).map_err(texture)?.ktx2(),
-                TextureKind::Tga => TgaFile::read(&bytes).map_err(texture)?.ktx2(),
+                // Zero Hour's loader keeps a texel's alpha whatever the header counts.
+                TextureKind::Tga => TgaFile::read(&bytes, TgaAlpha::Always)
+                    .map_err(texture)?
+                    .ktx2(),
             };
-            write(path.texture_path().as_str(), &ktx2)?;
+            write(path.texture_path()?.as_str(), &ktx2)?;
         }
         let templates = self.read_inis(
             "PlayerTemplate",
@@ -344,10 +351,7 @@ impl<'a> ZeroHour<'a> {
                 continue;
             };
             // A preview of its build stands at the angle the original's cursor shows it at.
-            unit_look.placement_angle = object
-                .build()
-                .placement_angle
-                .and_then(|angle| game_float::to_num(angle).ok());
+            unit_look.placement_angle = object.build().placement_angle;
             let unit_type = names.take(object)?;
             // A tree draws its module's model whatever the map; a prop the model of its first
             // module's best state, all of it shown, as `W3DTerrainVisual::addProp` draws it.
@@ -437,7 +441,7 @@ impl<'a> ZeroHour<'a> {
             let name = model.to_ascii_lowercase();
             match models.model(&name)? {
                 WrittenModel::Parts(parts) => looked.models.push(ClientModel {
-                    model: model_writer::path(&name),
+                    model: game_path::model(&name)?,
                     scale,
                     hide: parts.hidden(look),
                 }),
@@ -530,7 +534,7 @@ impl ZeroHour<'_> {
             header.size()
         };
         Ok(Some(ClassTexture {
-            path: path.texture_path(),
+            path: path.texture_path()?,
             size,
         }))
     }

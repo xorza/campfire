@@ -32,6 +32,10 @@ pub(crate) struct GameDataIni {
 const FRAMES: f32 = 30.0;
 /// The view's horizontal field of view, in degrees, which `View` fixes.
 const FIELD_OF_VIEW: f32 = 50.0;
+/// The tangent of half the field of view, which a camera's speeds are in the import's
+/// fingerprint by, so no OS's own `tan` gives it: 25° as an `f32` of radians is
+/// 0.436332315…, whose tangent 0.466307660843… rounds to the `f32` 0x3EEE_BFE1, 0.466307669…
+const TAN_HALF_FIELD: f32 = f32::from_bits(0x3EEE_BFE1);
 /// The pixels a key scrolls a frame, before its factors: retail's `SCROLL_AMT`.
 const SCROLL_PIXELS: f32 = 100.0;
 /// `W3DView::scrollBy`'s screen pixels for each pixel of a scroll.
@@ -133,7 +137,7 @@ impl GameDataIni {
     /// The pitch is clamped to 0.1°–89.9° and the most height raised to the least, as the view
     /// takes them; none for a camera the client takes no other way.
     pub(crate) fn camera_file(&self) -> Option<CameraFile> {
-        let plane = 2.0 * (FIELD_OF_VIEW / 2.0).to_radians().tan() / DISPLAY_WIDTH;
+        let plane = 2.0 * TAN_HALF_FIELD / DISPLAY_WIDTH;
         let speed = |factor: f32| {
             factor * SCROLL_PIXELS * self.default_scroll * SCROLL_RESOLUTION * plane * FRAMES
         };
@@ -158,6 +162,20 @@ impl GameDataIni {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_half_fields_tangent_is_the_nearest_f32_to_its_exact_value() {
+        // An `f64` tangent of the `f32` angle errs by far less than half an `f32` step, so it
+        // rounds to the nearest `f32`, as the constant is.
+        let angle = (FIELD_OF_VIEW / 2.0).to_radians();
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "the f64 tangent rounds to its nearest f32"
+        )]
+        let rounded = f64::from(angle).tan() as f32;
+        assert_eq!(TAN_HALF_FIELD, rounded);
+        assert_eq!(angle, f32::from_bits(0x3EDF_66F3));
+    }
 
     #[test]
     fn a_field_keeps_the_default_until_a_file_sets_it_and_the_last_file_wins() {

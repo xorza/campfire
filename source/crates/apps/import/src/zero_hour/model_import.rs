@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fmt::Write;
 
 use campfire_client_files::{Blend, MaterialFile, MaterialTexture};
 
@@ -11,6 +10,7 @@ use crate::gltf::gltf_document::{
 use crate::texture::srgb::Srgb;
 use crate::zero_hour::archive_path::ArchivePath;
 use crate::zero_hour::error::{ModelError, ZeroHourError};
+use crate::zero_hour::game_path;
 use crate::zero_hour::hierarchy::Hierarchy;
 use crate::zero_hour::hlod::SubObject;
 use crate::zero_hour::model_assets::ModelAssets;
@@ -19,14 +19,15 @@ use crate::zero_hour::pose::Pose;
 use crate::zero_hour::w3d_mesh::{NullTexture, Pass, Shader, Stage, VertexMaterial, W3dMesh};
 
 /// A model the objects name, converted: its glTF, the material files its shaders need, the
-/// parts its default look reads, and the textures its meshes name that no archive holds, which
-/// it draws as the game's `MissingTexture`.
+/// parts its default look reads, the textures its meshes name that no archive holds, which it
+/// draws as the game's `MissingTexture`, and its HLOD's aggregates, which it does not draw.
 #[derive(Debug)]
 pub(crate) struct ModelImport {
     pub(crate) glb: GlbBuilder,
     pub(crate) materials: Vec<NamedMaterial>,
     pub(crate) parts: ModelParts,
     pub(crate) missing_textures: BTreeSet<String>,
+    pub(crate) aggregates: Vec<String>,
 }
 
 /// What a model's name gives, as `WW3DAssetManager::Create_Render_Obj` finds it.
@@ -120,10 +121,16 @@ impl ModelImport {
             return Ok(Converted::Missing);
         };
         let mesh_named = |full: &str| file.meshes.iter().find(|mesh| mesh.name == full).cloned();
+        let mut aggregates = Vec::new();
         // `HLodClass` skips a sub-object no render object has, and keeps a box, which the game
         // never draws, as no code sets `Set_Box_Display_Mask`.
         let (hierarchy_name, sub_objects, meshes) =
             if let Some(hlod) = file.hlods.iter().find(|hlod| hlod.name == name) {
+                aggregates.extend(
+                    hlod.aggregates
+                        .iter()
+                        .map(|aggregate| aggregate.name.clone()),
+                );
                 let mut sub_objects = Vec::with_capacity(hlod.sub_objects.len());
                 let mut meshes = Vec::with_capacity(hlod.sub_objects.len());
                 for sub in &hlod.sub_objects {
@@ -190,6 +197,7 @@ impl ModelImport {
             materials: builder.materials,
             parts,
             missing_textures: builder.missing_textures,
+            aggregates,
         })))
     }
 }
@@ -599,18 +607,16 @@ impl ModelBuilder {
         };
         let texture = match &key.surface {
             Surface::Texture { path, flags } => Some(MaterialTexture {
-                path: path.texture_path(),
+                path: path.texture_path()?,
                 clamp_u: flags & CLAMP_U != 0,
                 clamp_v: flags & CLAMP_V != 0,
             }),
             Surface::Untextured | Surface::Missing => None,
         };
+        let model = game_path::model(&self.name)?;
         let gltf_texture = texture.as_ref().map(|texture| {
             let wrap = |clamp: bool| if clamp { CLAMP_TO_EDGE } else { REPEAT };
-            let uri = format!(
-                "../{}",
-                Self::uri(texture.path.as_str().trim_start_matches("client/"))
-            );
+            let uri = game_path::relative_uri(&model, &texture.path);
             TextureRef {
                 index: self
                     .glb
@@ -673,20 +679,6 @@ impl ModelBuilder {
     fn linear(code: u8) -> f32 {
         Srgb::light(code) as f32 / 65_536.0
     }
-
-    /// `path` as a relative URI: each byte outside RFC 3986's unreserved set and `/`
-    /// percent-encoded.
-    fn uri(path: &str) -> String {
-        let mut uri = String::with_capacity(path.len());
-        for byte in path.bytes() {
-            if byte.is_ascii_alphanumeric() || b"-._~/".contains(&byte) {
-                uri.push(char::from(byte));
-            } else {
-                write!(uri, "%{byte:02X}").expect("a String takes any text");
-            }
-        }
-        uri
-    }
 }
 
 #[cfg(test)]
@@ -738,6 +730,7 @@ pub(crate) mod internals {
                 sub(0, "TANK.GHOST"),
                 sub(0, "TANK.SKIN"),
             ],
+            aggregates: vec![sub(2, "TANK.SMOKE")],
         };
         [
             hull.chunk(),
@@ -1073,12 +1066,12 @@ mod tests {
         }
         assert_eq!(document.extensions_used, ["KHR_materials_specular"]);
         assert_eq!(document.images[0].uri, "../textures/art/textures/rock.ktx2");
-        // A byte outside RFC 3986's unreserved set and `/` is percent-encoded, a UTF-8 one by byte.
-        assert_eq!(ModelBuilder::uri("a b/ü~.ktx2"), "a%20b/%C3%BC~.ktx2");
         assert_eq!(
             (document.samplers[0].wrap_s, document.samplers[0].wrap_t),
             (CLAMP_TO_EDGE, REPEAT)
         );
+        // Its aggregate, which no glTF node draws, is reported by its name.
+        assert_eq!(tank.aggregates, ["tank.smoke"]);
         assert_eq!(
             tank.missing_textures,
             BTreeSet::from(["gone.tga".to_owned()])

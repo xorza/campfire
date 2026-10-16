@@ -1,7 +1,7 @@
 use campfire_values::PackagePath;
 
 use super::*;
-use crate::zero_hour::terrain::{TerrainCell, TextureClass};
+use crate::zero_hour::terrain::{Terrain, TerrainCell, TextureClass};
 
 /// A class of `width` tiles a side and `tiles` tiles from `first_tile`, of no texture.
 fn class(first_tile: u32, tiles: u32, width: u32) -> TextureClass {
@@ -153,4 +153,16 @@ fn a_class_loads_the_largest_square_of_its_tiles_that_its_texture_holds() {
     // A texture narrower than a tile loads none either.
     assert_eq!(TerrainAtlas::read_side(1, UVec2::splat(64)), Some(1));
     assert_eq!(TerrainAtlas::read_side(1, UVec2::new(63, 64)), None);
+}
+
+#[test]
+fn a_class_the_terrain_holds_fits_the_atlas_grid() {
+    // The terrain refuses a class wider than the grid's cells a row, and the grid places one
+    // that wide: 28 cells of 72 texels, 2,016, then a border, within 2,048.
+    assert_eq!(
+        usize::try_from(Terrain::MOST_CLASS_WIDTH).unwrap(),
+        TerrainAtlas::CELLS
+    );
+    let widest = TerrainAtlas::place(&terrain([class(0, 28 * 28, 28)]));
+    assert_eq!(widest.corners, [Some(UVec2::new(4, 4))]);
 }

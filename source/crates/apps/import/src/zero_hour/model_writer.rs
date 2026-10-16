@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_client_files::MaterialFile;
 use campfire_codec::Toml;
-use campfire_values::PackagePath;
 
-use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::error::{NoPackagePath, ZeroHourError};
+use crate::zero_hour::game_path;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_parts::ModelParts;
@@ -89,14 +89,20 @@ impl<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> Converter<'_, W> {
     fn convert(&mut self, name: &str) -> Result<WrittenModel, ZeroHourError> {
         let reason = match ModelImport::convert(name, &mut self.assets)? {
             Converted::Model(import) => {
-                (self.write)(path(name).as_str(), &import.glb.encode())?;
+                (self.write)(game_path::model(name)?.as_str(), &import.glb.encode())?;
                 for material in &import.materials {
                     let text = Toml::write(&material.file);
-                    let path = MaterialFile::path(&material.name)
-                        .expect("a material's name is a package path's name");
+                    let path = MaterialFile::path(&material.name).ok_or_else(|| {
+                        NoPackagePath(format!("{}/{}.toml", MaterialFile::DIR, material.name))
+                    })?;
                     (self.write)(path.as_str(), text.as_bytes())?;
                 }
                 self.missing_textures.extend(import.missing_textures);
+                self.skipped
+                    .extend(import.aggregates.into_iter().map(|name| SkippedModel {
+                        name,
+                        reason: SkipReason::Aggregate,
+                    }));
                 return Ok(WrittenModel::Parts(import.parts));
             }
             Converted::Nothing => return Ok(WrittenModel::Nothing),
@@ -109,10 +115,4 @@ impl<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> Converter<'_, W> {
         });
         Ok(WrittenModel::Skipped)
     }
-}
-
-/// Where the model `name` goes: `client/models/<name>.glb`.
-pub(crate) fn path(name: &str) -> PackagePath {
-    PackagePath::parse(&format!("client/models/{name}.glb"))
-        .expect("a model name is a package path")
 }

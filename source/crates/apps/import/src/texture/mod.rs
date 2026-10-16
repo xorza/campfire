@@ -11,8 +11,8 @@ pub(crate) mod tga_file;
 pub(crate) mod internals {
     use crate::texture::dds_file::DdsFile;
     use crate::texture::dds_file::internals::dds;
-    use crate::texture::tga_file::TgaFile;
     use crate::texture::tga_file::internals::tga;
+    use crate::texture::tga_file::{TgaAlpha, TgaFile};
 
     /// A DXT1 texture of 8 × 8 texels and its full chain, and a TGA of 2 × 1.
     pub(crate) fn textures() -> [Vec<u8>; 2] {
@@ -27,7 +27,9 @@ pub(crate) mod internals {
         let [rock, sign] = textures();
         [
             DdsFile::read(&rock).expect("a fixture DDS reads").ktx2(),
-            TgaFile::read(&sign).expect("a fixture TGA reads").ktx2(),
+            TgaFile::read(&sign, TgaAlpha::Always)
+                .expect("a fixture TGA reads")
+                .ktx2(),
         ]
     }
 }

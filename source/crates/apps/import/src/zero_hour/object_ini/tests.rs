@@ -1,3 +1,5 @@
+use campfire_math::Num;
+
 use super::*;
 use crate::zero_hour::object_ini::build_data::{Prerequisite, ProductionExit};
 use crate::zero_hour::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
@@ -408,7 +410,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
                 create: [-18.0, 35.0],
                 rally: [60.0, 35.0],
             }),
-            placement_angle: Some(-135.0),
+            placement_angle: Some(Num::int(-135)),
         }
     );
     // The barracks' queue of 5, and its points, of a `QueueProductionExitUpdate`, which names them
@@ -452,6 +454,10 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
     assert_eq!(build(&ini, "Twice").prerequisites, [line(&["B"])]);
     // A cost past an unsigned short, and a point that lacks a label, are refused.
     let fails = |text: &str| ObjectIni::default().read(text.as_bytes()).unwrap_err();
+    assert_eq!(
+        fails("Object A\n PlacementViewAngle = 1e40\nEnd\n"),
+        IniError::Range { line: 2 }
+    );
     assert_eq!(
         fails("Object A\n BuildCost = 65536\nEnd\n"),
         IniError::Range { line: 2 }

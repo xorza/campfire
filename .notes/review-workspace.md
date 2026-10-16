@@ -105,16 +105,7 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 `import`: `zero_hour` (`game_version`, `install`, `archive_path`, `model_writer`, `model_import`, `production_import`, `terrain`, `terrain_cells`, `game_data_ini`, `map_file`, `hlod`, `mod.rs`), `texture`, `lib`. After batch 16 (typed paths). Moves the Zero Hour fingerprints where an item changes written bytes.
 
-- [ ] import/src/zero_hour/game_version.rs:193-196, install.rs:94-98 — `identify` collapses names by case and the last hash wins; `Install::open` keeps both and reads the first. A modified `INIZH.BIG` beside the genuine `INIZH.big` passes the check, and the import reads the modified bytes. → Refuse two archives with one `ArchivePath`.
-- [ ] import/src/zero_hour/archive_path.rs:18, model_writer.rs:95-116, mod.rs:167, model_import.rs:610-613 — package paths come from names of the original by `format!` and `expect`; a `:`, `..`, `aux.dds` or `/` panics or breaks the `"../"` texture URI. → One checked conversion that returns `ZeroHourError`; the URI relative to the model's `PackagePath`.
-- [ ] import/src/zero_hour/production_import.rs:318-329 — `windup_ms` overflows for a huge `BuildTime`. → `checked_mul` within the game's range; drop it as `BadTime`.
-- [ ] import/src/zero_hour/terrain_cells/mod.rs:309, 346, terrain.rs:105-155 — `width * TILE` on an unbounded class width. → `Terrain::new` refuses a width past the atlas.
-- [ ] import/src/zero_hour/game_data_ini.rs:136 — `tan` through libm enters the fingerprint, which must be equal on every OS (D4). → An exact `f32` literal with its derivation.
-- [ ] import/src/zero_hour/map_file.rs:422-435 — `WorldInfo`'s version is not checked. → `check_version`.
-- [ ] import/src/zero_hour/hlod.rs:59-62 — two LOD arrays in one level reads as `Levels(1)`; aggregate arrays are skipped with no report. → Their own variant; report aggregates.
-- [ ] import/src/zero_hour/mod.rs:100-118, 216-219, 337-340 — `dropped_waypoints`, `missing_textures`, `unliving` and `wounded` hold names as strings; `untextured_cells` keeps zero counts where `dropped_waypoints` does not; a non-finite `PlacementViewAngle` is dropped silently. → Typed names, one rule, a refusal.
-- [ ] import/src/texture/tga_file.rs:7-9, 128 — the general texture module holds Zero Hour's alpha rule. → A parameter that the importer passes.
-- [ ] import/src/lib.rs:12 — publishes `Short`. → Crate-private.
+- [ ] import/src/zero_hour/mod.rs:100-118 — `dropped_waypoints`, `missing_textures`, `unliving` and `wounded` hold names as strings. → Typed names. **Skipped: see `review-workspace_QUESTIONS.md`, batch 17, item 8.**
 
 ### 18. Zero Hour import: structure
 

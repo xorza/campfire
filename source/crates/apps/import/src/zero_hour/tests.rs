@@ -548,11 +548,16 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     // Each model the objects name once, as its conversion gives it; its material file; and
     // each object's models with the nodes its default look hides. The tank's turret is hidden
     // with the flash on the bone below it, which its muzzle flash hides as well; the crate's
-    // box and the marker's `NULL` draw nothing; the emitter, the absent model and the tree's,
-    // which the fixture install lacks, are skipped, in the order of their objects' names.
+    // box and the marker's `NULL` draw nothing; the tank's aggregate, the emitter, the absent
+    // model and the tree's, which the fixture install lacks, are skipped, in the order of their
+    // objects' names.
     assert_eq!(
         imported.skipped_models,
         [
+            SkippedModel {
+                name: "tank.smoke".to_owned(),
+                reason: SkipReason::Aggregate,
+            },
             SkippedModel {
                 name: "absent".to_owned(),
                 reason: SkipReason::Missing,

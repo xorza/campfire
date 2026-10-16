@@ -100,8 +100,13 @@ pub(crate) struct CliffUv {
 }
 
 impl Terrain {
+    /// The most tiles a side of a texture class, which the atlas's grid holds: its 2,048 texels
+    /// a side of cells of a 64-texel tile and a border of 8, ⌊2,048 / 72⌋ = 28.
+    pub(crate) const MOST_CLASS_WIDTH: u32 = 28;
+
     /// The terrain of `terrain`; an error unless its cells fill whole rows, every index each
-    /// cell, blend and cliff names is in its list, and each class's tiles are within its count.
+    /// cell, blend and cliff names is in its list, each class's tiles are within its count, and
+    /// each class is no wider than the atlas holds.
     pub(crate) fn new(terrain: TerrainParts) -> Result<Self, TerrainError> {
         let columns = usize::try_from(terrain.columns)
             .ok()
@@ -146,6 +151,13 @@ impl Terrain {
             })
         };
         within(&terrain.classes, terrain.tiles, TerrainError::Class)?;
+        if let Some(at) = terrain
+            .classes
+            .iter()
+            .position(|class| class.width > Self::MOST_CLASS_WIDTH)
+        {
+            return Err(TerrainError::ClassWidth(at));
+        }
         within(
             &terrain.edge_classes,
             terrain.edge_tiles,
@@ -242,6 +254,15 @@ mod tests {
             with(|parts| parts.cliffs[0].tile = 12),
             TerrainError::Tile(12)
         );
+        // A class of the atlas's 28 tiles a side holds; of 29, past its grid, not.
+        let wide = |width| {
+            let mut parts = parts.clone();
+            parts.classes[0].width = width;
+            Terrain::new(parts)
+        };
+        assert!(wide(28).is_ok());
+        assert_eq!(wide(29).unwrap_err(), TerrainError::ClassWidth(0));
+        assert_eq!(wide(u32::MAX).unwrap_err(), TerrainError::ClassWidth(0));
         // The class's tiles 0 and 1 are the terrain's 2; from 1 they would reach a third.
         assert_eq!(
             with(|parts| parts.classes[0].first_tile = 1),

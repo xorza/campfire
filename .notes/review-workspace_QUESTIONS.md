@@ -15,3 +15,19 @@
 | C. The server alone refuses unseen ground | The server's placement test reads the fog cache; the preview keeps its present rule | The preview and the server disagree on fogged ground, which design 11 D8 then names |
 
 **Blocked.** Item 5 alone. Item 4, the rules that read what the team sees over a spatial search, does not wait for it.
+
+## Batch 17, item 8: typed names in the import's report (import/src/zero_hour/mod.rs)
+
+**Item.** `dropped_waypoints`, `missing_textures`, `unliving` and `wounded` hold names as strings; the item asks for typed names. Its other two parts are done: each map's entry of `Imported::maps` holds both its untextured cells and its dropped waypoints, one rule for every map, and a `PlacementViewAngle` that is not a number is refused as the INI reads it.
+
+**Why it needs a decision.** Each of these names is an identifier the game's own files define: a waypoint's name in a map, a texture's file name as a W3D mesh writes it, an INI object's name. CLAUDE.md keeps strings "for human text and identifiers an outside format defines", and the report is printed for a person to review against the original. The item and that rule disagree.
+
+**Options.**
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| A. Keep the strings (recommended) | The report names the game's identifiers as the game spells them, as CLAUDE.md allows | The item's first part stays undone, and the item leaves the plan |
+| B. One public newtype for each kind | `WaypointName`, `TextureName` and `ObjectName`, each the game's spelling, with `Display` | Three public types that hold no rule a string lacks |
+| C. The engine's names where they exist | `unliving` and `wounded` name the unit types the import made (`DeclaredName`); waypoints and textures stay strings | A reviewer looks an object up by its engine name, not by the INI's |
+
+**Blocked.** The typed-names part of item 8 alone.

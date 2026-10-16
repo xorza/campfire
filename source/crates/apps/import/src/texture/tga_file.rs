@@ -5,13 +5,31 @@ use crate::texture::error::TextureError;
 use crate::texture::mip_chain::MipChain;
 
 /// An uncompressed true-color TGA (Truevision's TGA 2.0), its texels as 8-bit red, green, blue
-/// and alpha, rows from the top. A texel of 32 bits keeps its alpha whatever the header's count
-/// of alpha bits says, as Zero Hour's loader reads it; one of 24 is opaque.
+/// and alpha, rows from the top; a texel of 24 bits is opaque, and one of 32 has the alpha its
+/// reader's `TgaAlpha` takes.
 #[derive(Debug)]
 pub(crate) struct TgaFile {
     width: u32,
     height: u32,
     rgba: Vec<u8>,
+}
+
+/// Which a texel of 32 bits takes as its alpha: its fourth byte as TGA 2.0 says, only when the
+/// header counts alpha bits, or that byte whatever the header counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TgaAlpha {
+    /// The header's count of alpha bits, its descriptor's low four, says: a texel is opaque when
+    /// it counts none.
+    #[cfg_attr(
+        not(test),
+        expect(
+            dead_code,
+            reason = "TGA 2.0's own rule, which the general reader holds and no imported game reads by yet"
+        )
+    )]
+    Counted,
+    /// The fourth byte, as a loader that never reads the count takes it.
+    Always,
 }
 
 /// The header of a TGA the importer reads, checked against the bytes after it: its size, the
@@ -93,8 +111,9 @@ impl TgaHeader {
 }
 
 impl TgaFile {
-    /// The TGA `bytes` hold, refused as `TgaHeader::read` refuses its header.
-    pub(crate) fn read(bytes: &[u8]) -> Result<Self, TextureError> {
+    /// The TGA `bytes` hold, its alpha as `alpha` takes it, refused as `TgaHeader::read` refuses
+    /// its header.
+    pub(crate) fn read(bytes: &[u8], alpha: TgaAlpha) -> Result<Self, TextureError> {
         let header = TgaHeader::read(bytes)?;
         let TgaHeader {
             width,
@@ -110,6 +129,10 @@ impl TgaFile {
         // Bit 5 of the descriptor puts the first row at the top, bit 4 the first column at the
         // right.
         let (from_top, from_right) = (descriptor & 0x20 != 0, descriptor & 0x10 != 0);
+        let alpha_byte = match alpha {
+            TgaAlpha::Counted => descriptor & 0x0F != 0,
+            TgaAlpha::Always => true,
+        };
         let mut rgba = Vec::with_capacity(columns * rows * 4);
         for row in 0..rows {
             let stored = if from_top { row } else { rows - 1 - row };
@@ -125,7 +148,10 @@ impl TgaFile {
                     bgra[2],
                     bgra[1],
                     bgra[0],
-                    bgra.get(3).copied().unwrap_or(u8::MAX),
+                    bgra.get(3)
+                        .copied()
+                        .filter(|_| alpha_byte)
+                        .unwrap_or(u8::MAX),
                 ]);
             }
         }
@@ -187,7 +213,16 @@ mod tests {
         let (b, w, g) = ([0, 0, 0, 0], [255, 255, 255, 255], [128, 128, 128, 100]);
         let file = tga(4, 2, 32, 0, &[w, b, g, g, b, w, g, g].concat());
         assert_eq!(TgaHeader::read(&file).unwrap().size(), UVec2::new(4, 2));
-        let ktx2 = TgaFile::read(&file).unwrap().ktx2();
+        let ktx2 = TgaFile::read(&file, TgaAlpha::Always).unwrap().ktx2();
+        // The header counts no alpha bits: read by the count, each texel is opaque; read always,
+        // its fourth byte. Counted 8 bits, the count reads that byte too.
+        let alphas = |descriptor: u8, alpha: TgaAlpha| {
+            let read = TgaFile::read(&tga(1, 1, 32, descriptor, &g), alpha).unwrap();
+            read.rgba[3]
+        };
+        assert_eq!(alphas(0, TgaAlpha::Counted), 255);
+        assert_eq!(alphas(0, TgaAlpha::Always), 100);
+        assert_eq!(alphas(8, TgaAlpha::Counted), 100);
         // Levels 4 × 2, 2 × 1 and 1 × 1, of 32, 8 and 4 bytes. The level index ends at 80 + 3 · 24
         // = 152; the descriptor, 4 + 24 + 4 · 16 = 92 bytes, ends at 244; levels align to 4: 1 × 1
         // at 244, 2 × 1 at 248, the base at 256, to 288.
@@ -219,13 +254,14 @@ mod tests {
     #[test]
     fn a_tga_reads_its_channels_and_rows_as_its_header_says() {
         // One texel of 24 bits, blue 1, green 2, red 3: opaque.
-        let one = TgaFile::read(&tga(1, 1, 24, 0, &[1, 2, 3])).unwrap();
+        let one = TgaFile::read(&tga(1, 1, 24, 0, &[1, 2, 3]), TgaAlpha::Counted).unwrap();
         assert_eq!(one.rgba, [3, 2, 1, 255]);
         // 2 × 2, each texel's red its place in the file; the first row at the top and the first
         // column at the right, by the descriptor's bits.
         let texels: Vec<u8> = (0..4).flat_map(|at| [0, 0, at]).collect();
         let red = |descriptor| -> Vec<u8> {
-            let read = TgaFile::read(&tga(2, 2, 24, descriptor, &texels)).unwrap();
+            let read =
+                TgaFile::read(&tga(2, 2, 24, descriptor, &texels), TgaAlpha::Counted).unwrap();
             read.rgba.chunks(4).map(|texel| texel[0]).collect()
         };
         assert_eq!(red(0x00), [2, 3, 0, 1]);
@@ -237,37 +273,37 @@ mod tests {
         let mut mapped = tga(1, 1, 24, 0, &[1, 2, 3]);
         mapped[1] = 1;
         assert_eq!(
-            TgaFile::read(&mapped).map(|_| ()),
+            TgaFile::read(&mapped, TgaAlpha::Counted).map(|_| ()),
             Err(TextureError::TgaType(2))
         );
         let mut rle = tga(1, 1, 24, 0, &[1, 2, 3]);
         rle[2] = 10;
         assert_eq!(
-            TgaFile::read(&rle).map(|_| ()),
+            TgaFile::read(&rle, TgaAlpha::Counted).map(|_| ()),
             Err(TextureError::TgaType(10))
         );
         assert_eq!(
-            TgaFile::read(&tga(1, 1, 16, 0, &[1, 2])).map(|_| ()),
+            TgaFile::read(&tga(1, 1, 16, 0, &[1, 2]), TgaAlpha::Counted).map(|_| ()),
             Err(TextureError::TgaDepth(16))
         );
         assert_eq!(
-            TgaFile::read(&tga(0, 1, 24, 0, &[])).map(|_| ()),
+            TgaFile::read(&tga(0, 1, 24, 0, &[]), TgaAlpha::Counted).map(|_| ()),
             Err(TextureError::Size {
                 width: 0,
                 height: 1
             })
         );
         let bare = &tga(1, 1, 24, 0, &[1, 2, 3])[..21];
-        assert!(TgaFile::read(bare).is_ok());
+        assert!(TgaFile::read(bare, TgaAlpha::Counted).is_ok());
         assert_eq!(
-            TgaFile::read(&bare[..20]).map(|_| ()),
+            TgaFile::read(&bare[..20], TgaAlpha::Counted).map(|_| ()),
             Err(TextureError::Length {
                 expected: 3,
                 found: 2
             })
         );
         assert_eq!(
-            TgaFile::read(&[bare, &[9]].concat()).map(|_| ()),
+            TgaFile::read(&[bare, &[9]].concat(), TgaAlpha::Counted).map(|_| ()),
             Err(TextureError::Length {
                 expected: 3,
                 found: 4

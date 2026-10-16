@@ -314,11 +314,15 @@ impl ProductionImport {
 
     /// The milliseconds of a build time of `seconds` the engine turns into the original's count
     /// of frames, `BuildTime × 30` truncated, as `calcTimeToBuild` counts it: rounded up, the
-    /// engine's ⌈ms × 30 / 1000⌉ of ⌊frames × 100 / 3⌋ is the count; none for a time below 0 or
-    /// not finite.
+    /// engine's ⌈ms × 30 / 1000⌉ of ⌊frames × 100 / 3⌋ is the count; none for a time below 0, not
+    /// finite, or of more frames than the game's `Int` holds, 2³¹ and past, which its cast does
+    /// not define.
     fn windup_ms(seconds: f32) -> Option<u64> {
+        /// 2³¹, the least count of frames past an `Int`.
+        const PAST_INT: f64 = 2_147_483_648.0;
         let frames = seconds * FRAMES;
-        if !frames.is_finite() || frames < 0.0 {
+        // Not a number and either infinity are out of the range too.
+        if !(0.0..PAST_INT).contains(&f64::from(frames)) {
             return None;
         }
         #[expect(
@@ -367,5 +371,25 @@ mod tests {
         assert_eq!(share(Num::int(180)), "0.005555556");
         assert_eq!(share(Num::ONE), "1");
         assert_eq!(share(Num::HALF), "1");
+    }
+
+    #[test]
+    #[expect(
+        clippy::lossy_float_literal,
+        reason = "71,582,784 and 71,582,792 are multiples of 8, which an f32 of 2²⁶ to 2²⁷ holds exactly"
+    )]
+    fn a_build_time_is_its_frames_in_milliseconds_within_the_games_int() {
+        // 5 s is 150 frames, ⌊150 × 100 / 3⌋ = 5,000 ms; 0.1 s is 3 frames, 100 ms. 71,582,784 s
+        // is 2,147,483,520 frames, the most an `f32` holds below 2³¹, ⌊2,147,483,520 × 100 / 3⌋
+        // = 71,582,784,000 ms; 71,582,792 s, the next time an `f32` holds, is 2³¹ frames, past
+        // the game's `Int`, and gives none, as what is not a time at all does.
+        let windup = ProductionImport::windup_ms;
+        assert_eq!(windup(5.0), Some(5000));
+        assert_eq!(windup(0.1), Some(100));
+        assert_eq!(windup(0.0), Some(0));
+        assert_eq!(windup(71_582_784.0), Some(71_582_784_000));
+        for refused in [71_582_792.0, f32::MAX, -1.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(windup(refused), None, "{refused}");
+        }
     }
 }

@@ -96,6 +96,15 @@ impl Install {
                 .cmp(&ArchivePath::of(&b.name))
                 .then_with(|| a.name.cmp(&b.name))
         });
+        if let Some([first, second]) = found
+            .array_windows()
+            .find(|[first, second]| ArchivePath::of(&first.name) == ArchivePath::of(&second.name))
+        {
+            return Err(ZeroHourError::ArchiveClash {
+                first: first.name.clone(),
+                second: second.name.clone(),
+            });
+        }
         let mut archives = Vec::new();
         let mut files = BTreeMap::new();
         for Found { name, path } in found {
@@ -517,5 +526,15 @@ mod tests {
                 "{error:?}"
             );
         }
+        // Two archives of one path to the game, its case aside, as a changed `INIZH.BIG` beside
+        // the genuine `INIZH.big`: the game reads one, so the import reads neither.
+        let scratch = Scratch::new();
+        scratch.write("zh/INIZH.big", &full);
+        scratch.write("zh/INIZH.BIG", big(&[("a.ini", b"xyz")]));
+        assert!(matches!(
+            Install::open(&scratch.path("zh")),
+            Err(ZeroHourError::ArchiveClash { first, second })
+                if first == "INIZH.BIG" && second == "INIZH.big"
+        ));
     }
 }

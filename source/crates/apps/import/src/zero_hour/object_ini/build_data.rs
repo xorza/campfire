@@ -1,4 +1,7 @@
+use campfire_math::Num;
+
 use crate::zero_hour::error::IniError;
+use crate::zero_hour::game_float;
 use crate::zero_hour::ini_text::IniLine;
 
 /// What an object gives production, as `ThingTemplate` and its modules read it: its `BuildCost`,
@@ -14,8 +17,8 @@ pub(crate) struct BuildData {
     pub(crate) queue: Option<i32>,
     pub(crate) exit: Option<ProductionExit>,
     /// Its `PlacementViewAngle` in degrees, the angle the cursor's building shows at as a player
-    /// places it, none when it gives none.
-    pub(crate) placement_angle: Option<f32>,
+    /// places it, none when it gives none; a value that is not a number is refused.
+    pub(crate) placement_angle: Option<Num>,
 }
 
 /// A line of an object's `Prerequisites`: objects any one of which meets it, or a science.
@@ -56,7 +59,11 @@ impl BuildData {
             }
             "buildtime" => self.time = at.real()?,
             "commandset" => self.command_set = Some(at.value()?.to_owned()),
-            "placementviewangle" => self.placement_angle = Some(at.real()?),
+            "placementviewangle" => {
+                let angle = game_float::to_num(at.real()?)
+                    .map_err(|_| IniError::Range { line: at.number })?;
+                self.placement_angle = Some(angle);
+            }
             _ => return Ok(false),
         }
         Ok(true)

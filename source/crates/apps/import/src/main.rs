@@ -58,6 +58,10 @@ fn main() -> ExitCode {
                         model,
                         "an object names a particle emitter, which the importer does not convert"
                     ),
+                    SkipReason::Aggregate => warn!(
+                        model,
+                        "a model's HLOD adds an aggregate, which the importer does not convert"
+                    ),
                 }
             }
             for texture in &missing_textures {

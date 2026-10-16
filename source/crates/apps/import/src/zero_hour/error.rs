@@ -32,6 +32,10 @@ pub enum ZeroHourError {
     /// another program changed it during the import.
     #[error("{} changed during the import", .archive.display())]
     ArchiveChanged { archive: PathBuf },
+    /// Two archives of the install are one to the game, whose paths differ only in case: which
+    /// one it reads is not known, and a check of one would pass the other.
+    #[error("archives {first} and {second} are one archive to the game")]
+    ArchiveClash { first: String, second: String },
     /// The install's archives are no version the importer knows: the first archive that differs
     /// from the version they were compared with, and how.
     #[error("no version the importer knows: {archive} {difference}")]
@@ -128,6 +132,8 @@ pub enum ZeroHourError {
     /// Two maps' folders give one map name.
     #[error("{first} and {second} give one map name")]
     MapNameClash { first: String, second: String },
+    #[error(transparent)]
+    NoPackagePath(#[from] NoPackagePath),
 }
 
 /// Why an object gives no unit type.
@@ -315,6 +321,12 @@ pub struct NameClash {
     pub second: String,
 }
 
+/// A path the import made of the game's names that no package path spells, as a name of `:`,
+/// `..` or a device's name gives.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[error("{0} is no path a package can name")]
+pub struct NoPackagePath(pub String);
+
 /// Why a map's terrain is not one the import converts: a count or an index that reaches past
 /// what it holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
@@ -334,6 +346,9 @@ pub enum TerrainError {
     /// A texture class, by its index, reaches past its tiles.
     #[error("texture class {0} reaches past its tiles")]
     Class(usize),
+    /// A texture class, by its index, is more tiles a side than the atlas's grid holds.
+    #[error("texture class {0} is wider than the atlas")]
+    ClassWidth(usize),
     /// An edge class, by its index, reaches past its edge tiles.
     #[error("edge class {0} reaches past its edge tiles")]
     EdgeClassTiles(usize),
@@ -510,6 +525,9 @@ pub enum W3dError {
     /// An HLOD has other than one level of detail.
     #[error("an HLOD has {0} levels of detail")]
     Levels(u32),
+    /// An HLOD of one level of detail has other than one array of it.
+    #[error("an HLOD of one level of detail has {0} arrays of it")]
+    LodArrays(u32),
     /// A mesh is of a geometry the importer does not draw, as a camera-aligned one.
     #[error("a mesh is of geometry {0:#x}")]
     Geometry(u32),
@@ -546,6 +564,8 @@ pub enum ModelError {
     /// A shader mixes its detail stage by a color function no shipped shader uses.
     #[error("a shader mixes its detail stage by function {0}")]
     DetailFunction(u8),
+    #[error(transparent)]
+    NoPackagePath(#[from] NoPackagePath),
 }
 
 /// Why a float of the game's files is not a number.
@@ -562,7 +582,7 @@ pub(crate) enum FloatError {
 /// Bytes of the original that end inside a field.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 #[error("it ends inside a field")]
-pub struct Short;
+pub(crate) struct Short;
 
 impl From<Short> for MapError {
     fn from(_: Short) -> Self {
