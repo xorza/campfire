@@ -13,7 +13,8 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
-use campfire_actions::{CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
+use campfire_actions::{ActionSlots, CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
+use campfire_combat::ClipShots;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
     ModuleSet, OneShot, Phase, Report, Role, Scratch, SetPlace,
@@ -451,11 +452,11 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 29 of a unit, items' `UseGroup`, orders'
-    // `NextThink`, the units' `StatusTags` and combat's `ClipShots` among them, and
-    // the 47 books, 14 of the core's, interaction's two and combat's armors among them.
+    // player, the mode's three of the match, the 28 of a unit, items' `UseGroup`, orders'
+    // `NextThink` and the units' `StatusTags` among them, and the 47 books, 14 of the core's,
+    // interaction's two and combat's armors among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 34);
+    assert_eq!(audit.parts.len(), 33);
     assert_eq!(audit.books.len(), 47);
     let core = audit.books.iter().filter(|book| book.owner.is_none());
     assert_eq!(core.count(), 14);
@@ -491,6 +492,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(
         server,
         [
+            (type_name::<ActionSlots>(), type_name::<ClipShots>()),
             (type_name::<UnitEntity>(), type_name::<SeenBy>()),
             (type_name::<Player>(), type_name::<PlayerSupply>()),
         ]

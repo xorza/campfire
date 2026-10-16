@@ -642,9 +642,38 @@ impl SimComponent for ActionSlots {
                 .and_then(|action| action.values_at(cut.rank)?.channel);
             usize::from(cut.call.aim.slot) < self.slots.len() && rule.is_some()
         });
-        let places = self.underway.is_none_or(InProgress::within_bound)
-            && self.interrupted.is_none_or(|cut| cut.call.within_bound());
-        self.slots.iter().all(held) && underway && channel && interrupted && places
+        let places = self.underway.is_none_or(InProgress::check)
+            && self.interrupted.is_none_or(|cut| cut.call.check());
+        // A start holds a charge exactly when its action charges at its rank, as `ctx.charge`
+        // reads one.
+        let charged = |values: Option<&RankValues>, start: ActionStart| {
+            values.is_some_and(|values| values.charge.is_some() == start.charge.is_some())
+        };
+        let slot_values = |slot: u8| {
+            let slot = self.slots.get(usize::from(slot))?;
+            slot.values_in(book)
+        };
+        let started = match self.underway {
+            Some(InProgress::Order {
+                aim,
+                phase: OrderPhase::Started(started),
+            }) => charged(slot_values(aim.slot), started.start),
+            Some(InProgress::Channel { aim, start, .. }) => charged(slot_values(aim.slot), start),
+            _ => true,
+        };
+        let cut_start = self.interrupted.is_none_or(|cut| {
+            let values = book
+                .get(cut.action)
+                .and_then(|action| action.values_at(cut.rank));
+            charged(values, cut.call.start)
+        });
+        self.slots.iter().all(held)
+            && underway
+            && channel
+            && interrupted
+            && places
+            && started
+            && cut_start
     }
 }
 

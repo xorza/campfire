@@ -50,13 +50,14 @@ pub enum OrderPhase {
 }
 
 impl InProgress {
-    /// Whether each of its places lies within the world's bound, as a restore checks it.
-    pub(crate) fn within_bound(self) -> bool {
+    /// Whether each of its places lies within the world's bound and its start holds what one
+    /// can, as a restore checks them.
+    pub(crate) fn check(self) -> bool {
         match self {
             Self::Attack { .. } => true,
             Self::Order { aim, phase } => {
                 let started = match phase {
-                    OrderPhase::Started(started) => started.start.within_bound(),
+                    OrderPhase::Started(started) => started.start.check(),
                     OrderPhase::Ordered | OrderPhase::Approaching => true,
                 };
                 aim.target.within_bound() && started
@@ -64,7 +65,7 @@ impl InProgress {
             Self::Charge { aim, origin, .. } => {
                 aim.target.within_bound() && Position::from(origin).within_bound()
             }
-            Self::Channel { aim, start, .. } => aim.target.within_bound() && start.within_bound(),
+            Self::Channel { aim, start, .. } => aim.target.within_bound() && start.check(),
         }
     }
 

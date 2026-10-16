@@ -42,7 +42,8 @@ use campfire_script::{
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimRng, SimSet, SimTick, SimWorld, StableId, StateCopy,
+    Capability, EntityIndex, Position, SimComponent, SimRng, SimSet, SimTick, SimWorld, StableId,
+    StateCopy,
 };
 use campfire_stats::{
     Hold, Level, Life, LiveCarriers, ModifierBook, ModifierClocks, ModifierData, Modifiers, PoolId,
@@ -1571,6 +1572,28 @@ fn on_resolve(ctx, caster, target) {
         failed[0].kind,
         FailureKind::Api(AbilitiesRefusal::NotCharged.refused())
     );
+
+    // A restored start holds a charge, from 0 to 1, exactly when its action charges at its rank,
+    // as `ctx.charge` reads one.
+    let entity = game.unit_entity(caster);
+    let checked = |action, charge| {
+        let mut slots = ActionSlots::new([(action, SlotKind::new(0), Rank::new(1))]);
+        slots.order(0, ActionTarget::Unit(target));
+        let start = ActionStart {
+            origin: Vec3::ZERO,
+            charge,
+        };
+        slots.start(Tick::new(5), ActionTarget::Unit(target), start);
+        slots.check(&game, entity)
+    };
+    let past = [Num::ONE + Num::EPSILON, Num::ZERO - Num::EPSILON];
+    assert_eq!(
+        [Num::ZERO, Num::ONE].map(|charge| checked(draw, Some(charge))),
+        [true; 2]
+    );
+    assert!(checked(plain, None));
+    assert!(!checked(draw, None) && !checked(plain, Some(Num::ZERO)));
+    assert_eq!(past.map(|charge| checked(draw, Some(charge))), [false; 2]);
 }
 
 #[test]

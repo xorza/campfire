@@ -58,6 +58,9 @@ const BODY_LEN_BYTES: usize = size_of::<u64>();
 pub struct StateRegistry {
     entries: Vec<Entry>,
     foreign: Vec<ForeignCheck>,
+    /// Whether a world's changes are recorded by it: the record holds each type by its place in
+    /// `entries`, so no type joins them from then on.
+    tracking: bool,
 }
 
 /// A rule of a registered state type that a capability other than its owner knows, checked as
@@ -180,6 +183,7 @@ impl StateRegistry {
         let mut registry = Self {
             entries: Vec::new(),
             foreign: Vec::new(),
+            tracking: false,
         };
         let entities = Entry {
             name: ENTITIES,
@@ -448,8 +452,9 @@ impl StateRegistry {
 
     /// Starts recording the changes of the state of `world` for copies of it, and writes its
     /// whole state into `delta`, which an empty world takes as the base the later changes apply
-    /// to.
-    pub fn track(&self, world: &mut World, delta: &mut StateDelta) {
+    /// to. The registry takes no more type from then on, as the record holds each by its place.
+    pub fn track(&mut self, world: &mut World, delta: &mut StateDelta) {
+        self.tracking = true;
         assert!(
             !world.contains_resource::<StateChanges>(),
             "a world records its changes once"
@@ -528,6 +533,10 @@ impl StateRegistry {
 
     fn register(&mut self, entry: Entry) {
         let name = entry.name;
+        assert!(
+            !self.tracking,
+            "state type {name:?} registered after its world's changes are tracked"
+        );
         let Err(at) = self.entries.binary_search_by(|held| held.name.cmp(name)) else {
             panic!("state type {name:?} registered twice");
         };

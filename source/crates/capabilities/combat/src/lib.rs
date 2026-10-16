@@ -9,7 +9,7 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionBook, ActionSlots, EffectQueues};
+use campfire_actions::{ActionSlots, EffectQueues};
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
@@ -152,6 +152,9 @@ impl Module for Combat {
         d.component::<OnDeath>();
         d.component::<RecentAttackers>();
         d.component::<ClipShots>();
+        // A unit with slots counts the shots of its weapons with a clip, from its spawn or a
+        // grant of slots on; a client receives its own units' counts, as it predicts them.
+        d.server_part::<ActionSlots, ClipShots>();
         d.component::<Respawn>();
         d.state::<BodyUnit, Respawn>();
         d.scratch::<PassQueue>();
@@ -170,11 +173,6 @@ impl Module for Combat {
         d.book::<ByType<Armor>>();
         d.part::<BodyUnit, Life>(|at| at.of_type::<Life>().copied());
         d.part::<BodyUnit, OnDeath>(|at| at.of_type::<OnDeath>().copied());
-        // A unit whose slots hold a weapon with a clip counts its shots.
-        d.part::<BodyUnit, ClipShots>(|at| {
-            let book = at.world().get_resource::<ActionBook>()?;
-            ClipShots::of(at.of_type::<ActionSlots>()?, book)
-        });
         // A unit that can die keeps who struck it, for its death's assisters.
         d.part::<BodyUnit, RecentAttackers>(|at| {
             at.of_type::<OnDeath>().map(|_| RecentAttackers::default())

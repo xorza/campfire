@@ -73,7 +73,7 @@ impl SimComponent for Area {
         });
         let applies = |modifier| Stats::modifier_has_way(world, modifier, Some(action), rank);
         let holds = |spec: &AreaSpec| spec.inside.modifiers().all(applies);
-        let start = self.by.start.is_none_or(ActionStart::within_bound);
+        let start = self.by.start.is_none_or(ActionStart::check);
         by && launched && spec.is_some_and(holds) && start
     }
 }

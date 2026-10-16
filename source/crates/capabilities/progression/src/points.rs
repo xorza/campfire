@@ -48,13 +48,18 @@ impl SimComponent for Points {
     const NAME: &'static str = "progression.points";
     type Host = UnitEntity;
 
-    // Points come from the levels of the `level` track, so only a unit that has it holds them.
+    // Points come from the levels of the `level` track, so only a unit that has it holds them,
+    // at most one for each of its levels there.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let level_track = world.resource::<TrackBook>().level_track();
         let experience = world.get::<Experience>(entity);
         level_track
             .zip(experience)
-            .is_some_and(|(track, experience)| experience.get(track).is_some())
+            .is_some_and(|(track, experience)| {
+                experience
+                    .get(track)
+                    .is_some_and(|held| self.0 <= held.level.get())
+            })
     }
 }
 

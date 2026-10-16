@@ -95,17 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 3. Restore checks hold every relation the systems take
-
-`units`: `body`; `progression`: `points`; `interaction`; `values`: `action_start`; `actions`: `action_slots`; `combat`: `clip_shots`, `attacks`; `sim`: `state_registry`.
-
-- [ ] units/src/body.rs:100 — `Body::check` returns `true`, so a restore accepts a box body on a spatial map, which the load refuses (package/src/mode_packages/load_check.rs:1208). `Metric::reaches` then fails a `debug_assert!`, and a release build measures on the ground plane. → Refuse a box when the map is spatial.
-- [ ] progression/src/points.rs:52 — `Points::check` does not bound the points, and `gain` (points.rs:34-38) `expect`s no overflow. A restored `Points(u32::MAX)` panics at the next level. → Require points ≤ the level of the `level` track.
-- [ ] interaction/src/using.rs:66-70, orders/src/unit_order.rs:158-161 — "a user holds its use slot" is a `debug_assert` only. A restored user with no use slot makes `UnitOrder::Use` overwrite another kind's slot, or index past the end. → Interaction declares a restore check: each unit of a `ByType<UseSlot>` type holds one slot of that kind, as `Inventory::check` does for items.
-- [ ] values/src/action_start.rs:16, actions/src/action_slots/mod.rs:588-648 — `ActionStart` is checked by `within_bound` only, which reads `origin`. A restored charge outside 0 to 1, or a charge on an action with none, reaches `ctx.charge` (abilities_api.rs:89-95). → `ActionStart::check`: origin in bound, charge in 0 to 1. `ActionSlots::check` requires a charge exactly when the action's rank has one.
-- [ ] combat/src/clip_shots.rs:41-53, lib.rs:171-174, attacks.rs:293-297 — whether a unit holds `ClipShots` is kept by hand at the spawn and at mode's `Grant`, and the check reads the type's slots, not the unit's. A restore without it panics in `strike`. → Every unit with `ActionSlots` holds `ClipShots`. The `Option`, the `expect` and `ClipShots::hold` go.
-- [ ] sim/src/state_registry/mod.rs:458, 483, 740 — `track` freezes each type's position in three places, and a type registered later shifts them. Removals then go to the wrong type, and `copy_component`'s downcast panics. sim_world_builder.rs:347 allows a register after `build`. → Key the tracking by `TypeId`, or close the registry when tracking starts and assert it in `register`.
-
 ### 4. Navigation: route checks a restore reproduces
 
 `navigation`: `static_changes`, `routing`, `static_tracking`, `room_making`, `walls`, `walking`, `pathing_grid`, `walk_check`, `route_asks`, `walker`, `error`; `units`: `unit_tracker`; `geometry`: `bounds`; `production`: `placement`; `capabilities`: `book_builder`. Moves goldens.

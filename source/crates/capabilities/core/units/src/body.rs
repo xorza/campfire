@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_geometry::{BodyBox, Radius, Shape};
+use campfire_geometry::{BodyBox, Metric, Radius, Shape};
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
@@ -9,6 +9,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::layer::Layer;
+use crate::map_book::MapBook;
 use crate::unit_entity::UnitEntity;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
@@ -96,9 +97,11 @@ impl SimComponent for Body {
     const NAME: &'static str = "units.body";
     type Host = UnitEntity;
 
-    // Its decode bounds its radius or its box; a layer only compares with another.
-    fn check(&self, _: &World, _: Entity) -> bool {
-        true
+    // Its decode bounds its radius or its box; a layer only compares with another. A box only on
+    // a planar map, as the load gives one, which a spatial map's measures do not take.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        matches!(self.shape, Shape::Circle(_))
+            || world.resource::<MapBook>().metric == Metric::Planar
     }
 }
 
@@ -209,6 +212,20 @@ mod tests {
         assert_eq!(Body::layer_of(None), Layer::FIRST);
         let decoded = Binary::decode::<Body>(&Binary::encode(&air));
         assert_eq!(decoded.ok(), Some(air));
+        // A restore keeps a box only on a planar map, and a circle on either.
+        let boxed = BodyForm::box_sized([Num::int(4), Num::int(2)])
+            .unwrap()
+            .at(Num::ZERO);
+        let on = |metric| {
+            let mut world = World::new();
+            world.insert_resource(MapBook {
+                metric,
+                ..MapBook::default()
+            });
+            [circle, boxed].map(|body| body.check(&world, Entity::PLACEHOLDER))
+        };
+        assert_eq!(on(Metric::Planar), [true, true]);
+        assert_eq!(on(Metric::Spatial), [true, false]);
         // A form spawns its body: a circle as it is, a box of 4 × 2 m turned by the spawn's
         // angle, which keeps the form's layer; the box has half edges and no radius.
         let form = BodyForm::circle(Num::int(2)).unwrap();

@@ -10,7 +10,7 @@ use bevy_ecs::world::World;
 use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
     ActionRange, ActionSlot, ActionSlots, Actions, ChannelCall, ClipRule, InProgress, SlotKind,
-    SlotTimes, Source, Targets,
+    SlotTimes, Source, Targets, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
@@ -215,48 +215,41 @@ fn a_weapon_of_its_own_amount_and_period_fires_its_clip_then_reloads() {
     assert_eq!(hits, [0, 3, 6, 27, 30, 33, 54]);
     assert_eq!(Stats::health(&game, fight[1]), 65);
     // A predicting client, which holds the dummy as the server sent it and deals no damage,
-    // counts the clip as the server does: its rifle is ready again in the same ticks.
+    // counts the clip as the server does, with the count the server sends of its own shooter:
+    // its rifle is ready again in the same ticks.
     let mut client = Match::predicting(&[Capability::Stats, Capability::Combat]);
     Combat::load_weapon_stats(&mut client);
     let fight = rifle_fight(&mut client, Unpredicted);
+    client.insert_parts(fight[0], ClipShots::default());
     let [ready, hits] = rifle_ticks(&mut client, fight);
     assert_eq!(ready, readies);
     assert_eq!(hits, Vec::<u64>::new());
 }
 
 #[test]
-fn a_unit_counts_its_clip_once_a_weapon_with_one_is_in_its_slots() {
-    // The shooter spawns with its count, its rifle's clip; the dummy, of a weapon of no clip, with
-    // none. Given the rifle, as a grant gives it, the dummy holds a count, and a second hold
-    // keeps the one it holds.
+fn every_unit_with_slots_counts_its_clips_from_its_spawn_or_a_grant() {
+    // On a server, the shooter and the dummy, of a weapon of no clip, spawn with their counts,
+    // empty. A unit of no slots holds none, and one once a grant gives it the rifle's.
     let mut game = fight_match();
+    let bare = Units::load_next_type(&mut game, &UnitTypeCore::default());
     let [shooter, dummy] = rifle_fight(&mut game, ());
-    assert!(game.try_part::<ClipShots>(shooter).is_some());
-    assert!(game.try_part::<ClipShots>(dummy).is_none());
+    let counts = |game: &Match, id| game.try_part::<ClipShots>(id).cloned();
+    assert_eq!(counts(&game, shooter), Some(ClipShots::default()));
+    assert_eq!(counts(&game, dummy), Some(ClipShots::default()));
     let rifle = game
         .part::<ActionSlots>(shooter)
         .slot(0)
         .unwrap()
         .action
         .unwrap();
-    let entity = game.unit_entity(dummy);
-    ClipShots::hold(&mut game, entity);
-    assert!(game.try_part::<ClipShots>(dummy).is_none());
-    let mut times = game.part::<SlotTimes>(dummy).clone();
-    let mut slots = game.part::<ActionSlots>(dummy).clone();
-    slots.grant(&mut times, SlotKind::new(0), &[rifle], Rank::new(1));
-    game.entity_mut(entity).insert((slots, times));
-    ClipShots::hold(&mut game, entity);
-    assert_eq!(
-        game.try_part::<ClipShots>(dummy),
-        Some(&ClipShots::default())
-    );
+    let bare = Mode::spawn(&mut game, bare, (9, 0, 0), Team::new(0), ());
+    assert_eq!(counts(&game, bare), None);
+    let granted = ActionSlots::new([(rifle, SlotKind::new(0), Rank::new(1))]);
+    game.insert_parts(bare, TimedSlots::new(granted));
+    assert_eq!(counts(&game, bare), Some(ClipShots::default()));
+    // The shooter's rifle fires, and its count holds the shots.
     game.run_until(4);
-    let counted = game.part::<ClipShots>(shooter).clone();
-    assert_ne!(counted, ClipShots::default());
-    let shooter_entity = game.unit_entity(shooter);
-    ClipShots::hold(&mut game, shooter_entity);
-    assert_eq!(game.part::<ClipShots>(shooter), &counted);
+    assert_ne!(counts(&game, shooter), Some(ClipShots::default()));
 }
 
 #[test]

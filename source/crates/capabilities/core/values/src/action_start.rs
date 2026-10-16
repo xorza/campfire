@@ -12,8 +12,12 @@ pub struct ActionStart {
 }
 
 impl ActionStart {
-    /// Whether each of its places lies within the world's bound, as a restore checks it.
-    pub fn within_bound(self) -> bool {
-        Position::from(self.origin).within_bound()
+    /// Whether it holds what a start can, as a restore checks it: its origin within the world's
+    /// bound, and its charge, when it has one, from 0 to 1.
+    pub fn check(self) -> bool {
+        let charge = self
+            .charge
+            .is_none_or(|charge| (Num::ZERO..=Num::ONE).contains(&charge));
+        Position::from(self.origin).within_bound() && charge
     }
 }

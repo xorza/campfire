@@ -94,7 +94,7 @@ impl SimWorld for World {
     }
 
     fn track(&mut self, delta: &mut StateDelta) {
-        self.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+        self.resource_scope(|world, mut registry: Mut<'_, StateRegistry>| {
             registry.track(world, delta);
         });
     }

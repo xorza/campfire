@@ -138,7 +138,7 @@ impl SimComponent for Projectile {
                 rank,
                 start,
                 ..
-            } => book.ranked(action, rank) && start.is_none_or(ActionStart::within_bound),
+            } => book.ranked(action, rank) && start.is_none_or(ActionStart::check),
         };
         flies && carries
     }

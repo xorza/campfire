@@ -504,7 +504,7 @@ fn on_unit_died(ctx, unit, killer, assisters) {}
     Mode::tick_inputs(&mut game, &[]);
     Mode::tick_inputs(&mut game, &[]);
     let mut delta = StateDelta::default();
-    game.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
+    game.resource_scope(|world, mut registry: Mut<'_, StateRegistry>| {
         registry.track(world, &mut delta);
     });
     Mode::tick_inputs(&mut game, &[]);

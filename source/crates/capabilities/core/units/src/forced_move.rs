@@ -116,7 +116,7 @@ impl SimComponent for ForcedMove {
                 };
                 let start = delivers
                     .and_then(|delivers| delivers.start)
-                    .is_none_or(ActionStart::within_bound);
+                    .is_none_or(ActionStart::check);
                 step > Num::ZERO && within(step) && point && start
             }
             Self::KnockBack { to, left } => {

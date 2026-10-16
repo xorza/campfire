@@ -262,7 +262,7 @@ impl Attacks {
                 Option<&UnitTags>,
                 Has<ForcedMove>,
                 Option<&Owner>,
-                Option<&mut ClipShots>,
+                &mut ClipShots,
             ),
             Without<Dead>,
         >,
@@ -274,8 +274,19 @@ impl Attacks {
             Self::going_off(slots, now).map(|_| Keyed { id, entity })
         });
         for &Keyed { entity, .. } in order.sort(going) {
-            let (_, &source, &from, mut slots, mut times, stats, pools, tags, forced, owner, clips) =
-                attackers.get_mut(entity).expect("an attacker in the order");
+            let (
+                _,
+                &source,
+                &from,
+                mut slots,
+                mut times,
+                stats,
+                pools,
+                tags,
+                forced,
+                owner,
+                mut clips,
+            ) = attackers.get_mut(entity).expect("an attacker in the order");
             let target = Self::going_off(&slots, now).expect("an attack going off");
             let lives = pools.lives();
             let pools = pools.of(life);
@@ -300,11 +311,7 @@ impl Attacks {
                 .expect("an attack going off started");
             let started = Tick::new(resolves_at.get() - values.windup.get());
             let period = weapon.period(stats, &values, clock.rate().hz().get());
-            let reloads = values.clip.is_some_and(|clip| {
-                let mut clips =
-                    clips.expect("a unit whose slots hold a weapon with a clip counts its shots");
-                clips.shoot(action, clip)
-            });
+            let reloads = values.clip.is_some_and(|clip| clips.shoot(action, clip));
             let ready = match values.clip {
                 Some(clip) if reloads => clip.reload,
                 _ => period,

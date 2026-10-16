@@ -169,7 +169,7 @@ mod tests {
         // The base goes first, and stays on the thread until its answer is taken; the next two
         // deltas, each a unit more, and the checkpoint after the second, queue behind it. They
         // come back in order, and the checkpoint holds the state the main thread had then.
-        let registry = StateRegistry::new();
+        let mut registry = StateRegistry::new();
         let mut world = World::new();
         world.init_resource::<EntityIndex>();
         world.init_resource::<IdAllocator>();
