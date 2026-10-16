@@ -27,8 +27,8 @@ zeroize.workspace = true
 
 [dev-dependencies]
 campfire-package = { workspace = true, features = ["internals"] }
-campfire-package-disk = { workspace = true, features = ["internals"] }
 campfire-store = { workspace = true, features = ["internals"] }
+campfire-test-packages.workspace = true
 
 [lints]
 workspace = true

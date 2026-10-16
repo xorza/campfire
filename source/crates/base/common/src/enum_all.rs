@@ -1,9 +1,48 @@
 /// States an enum of variants with no data together with its `ALL`, every variant in the order
 /// declared, so neither can lack one. The enum comes first, as written; after it, `const ALL;`,
 /// with the visibility and the attributes `ALL` takes; then, if asked for, `const IDENTS;`, the
-/// name of each variant as written, in the same order.
+/// name of each variant as written, in the same order. An enum whose data names its members
+/// writes each member's name beside it, `Move => "move"`, and the macro implements `NamedEnum`
+/// from them, so a name never leaves its member.
 #[macro_export]
 macro_rules! enum_all {
+    (
+        $(#[$meta:meta])*
+        $vis:vis enum $name:ident {
+            $(
+                $(#[$variant_meta:meta])*
+                $variant:ident => $data:literal
+            ),* $(,)?
+        }
+        $(#[$all_meta:meta])*
+        $all_vis:vis const ALL;
+        $(
+            $(#[$idents_meta:meta])*
+            $idents_vis:vis const IDENTS;
+        )?
+    ) => {
+        $crate::enum_all! {
+            $(#[$meta])*
+            $vis enum $name {
+                $(
+                    $(#[$variant_meta])*
+                    $variant
+                ),*
+            }
+            $(#[$all_meta])*
+            $all_vis const ALL;
+            $(
+                $(#[$idents_meta])*
+                $idents_vis const IDENTS;
+            )?
+        }
+
+        impl $crate::NamedEnum for $name {
+            const TYPE: &'static str = stringify!($name);
+            const ALL: &'static [Self] = &Self::ALL;
+            const NAMES: &'static [&'static str] = &[$($data),*];
+        }
+    };
     (
         $(#[$meta:meta])*
         $vis:vis enum $name:ident {

@@ -70,5 +70,5 @@ pub mod internals {
     pub use crate::platform::file_link::FileLink;
     pub use crate::race::Race;
     pub use crate::scratch::Scratch;
-    pub use crate::source_files::{SourceFile, SourceFiles};
+    pub use crate::source_files::{Gate, SourceFile, SourceFiles};
 }

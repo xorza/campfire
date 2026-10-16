@@ -3,7 +3,6 @@ use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
 use campfire_common::ChannelBinding;
-use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy,
@@ -11,6 +10,7 @@ use campfire_protocol::{
 };
 use campfire_state_types::DataKind;
 use campfire_store::internals::Scratch;
+use campfire_test_packages::TestMode;
 use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
 

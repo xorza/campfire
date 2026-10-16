@@ -20,11 +20,11 @@ use campfire_package::{
     PackageRef, Place, ScriptProblem, Way,
 };
 use campfire_package_disk::PackageDir;
-use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_script::internals::Undefined;
 use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::ModifierProblem;
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_values::{DeclaredName, EngineEnum, Number, Scalar, TimeTooLarge};
 
 use crate::package::moba::{edited, load, moba, two_lanes};

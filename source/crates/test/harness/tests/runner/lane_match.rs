@@ -11,12 +11,12 @@ use campfire_harness::{ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, Ma
 use campfire_math::Num;
 use campfire_navigation::PathWalker;
 use campfire_package::ModePackages;
-use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_progression::{Experience, Points};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
 use campfire_script::{Hook, ScriptFailures};
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_values::{Rank, Team, TrackId};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and

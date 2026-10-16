@@ -18,7 +18,6 @@ use campfire_net::{
     InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders, TickHashes,
 };
 use campfire_orders::OrdersAction;
-use campfire_package_disk::internals::TestMode;
 use campfire_players::{PlayerResources, PlayersWorld};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, SessionLog, Signature};
@@ -27,6 +26,7 @@ use campfire_runner::{Replay, Session};
 use campfire_script::StateValue;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_stats::{Life, Modifiers, PoolId, Stats, StatsWorld};
+use campfire_test_packages::TestMode;
 use campfire_units::{
     DashTo, Dead, Destination, ForcedMove, MapBook, MoveStep, Owner, SyncAll, SyncNone, Units,
     UnitsWorld,

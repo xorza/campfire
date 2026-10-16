@@ -15,11 +15,11 @@ use campfire_net::{
     Clock, Hosting, JoinRole, JoinState, LocalRelink, LocalServer, LocalServerSetup, NetProtocol,
     Os, Pace, PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
 };
-use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, Outcome, SessionLog};
 use campfire_runner::TermsError;
 use campfire_store::internals::Scratch;
+use campfire_test_packages::TestMode;
 use lightyear::prelude::Connect;
 
 /// How long the client gets to join and play.

@@ -54,7 +54,7 @@ JSON = "--message-format=json-diagnostic-short"
 LINT = (
     "clippy", "--workspace", "--all-targets", "--all-features", "--locked", "--keep-going", JSON,
 )
-SHIP = ("clippy", "--workspace", "--locked", "--keep-going", JSON)
+SHIP = ("clippy", "--locked", "--keep-going", JSON)
 TESTS = (
     "nextest", "run", "--workspace", "--all-features", "--locked",
     "--cargo-message-format", "json-diagnostic-short",
@@ -71,9 +71,9 @@ INDEX_TEST = (
     f"package(={INDEX_PACKAGE}) & "
     "test(=package_dir::tests::every_workspace_package_holds_the_index_of_its_files)"
 )
-# The crates whose tests read the files of every crate, the workspace's rules: a change in any
-# crate reaches them. A new test that reads other crates' files goes in one of them.
-WORKSPACE_READERS = frozenset(("campfire-common", "campfire-log"))
+# The crate whose tests read the files of every crate, the workspace's rules: a change in any
+# crate reaches it. A new test that reads other crates' files goes in it.
+WORKSPACE_READERS = frozenset(("campfire-rules",))
 # The LAN check and the binaries it runs, its `Binaries::NAMES`, which its test holds the same.
 LAN_BINARIES = (
     "campfire-lan-check", "campfire-server", "campfire-client", "campfire-verifier",
@@ -213,9 +213,6 @@ class Workspace:
     # The members with an `internals` feature, which a bench crate needs on, but the top test
     # crate, all of whose code is test code.
     internals: frozenset[str]
-    # Each member whose build that ships turns `internals` on: one with a normal, required
-    # dependency on a member with it, and each member that depends so on one of those.
-    unifies_internals: tuple[str, ...]
     target: Path
 
     def reach(self, changed: Iterable[str]) -> frozenset[str]:
@@ -254,19 +251,10 @@ def workspace() -> Workspace:
     packages = metadata["packages"]
     names = {package["name"] for package in packages}
     dependents: dict[str, set[str]] = {name: set() for name in names}
-    # The members that depend on each member through a normal, required dependency, so that their
-    # build that ships builds it.
-    normal_dependents: dict[str, set[str]] = {name: set() for name in names}
-    unifying: set[str] = set()
     for package in packages:
         for dependency in package["dependencies"]:
-            if dependency["name"] not in names:
-                continue
-            dependents[dependency["name"]].add(package["name"])
-            if dependency["kind"] is None and not dependency["optional"]:
-                normal_dependents[dependency["name"]].add(package["name"])
-                if "internals" in dependency["features"]:
-                    unifying.add(package["name"])
+            if dependency["name"] in names:
+                dependents[dependency["name"]].add(package["name"])
     return Workspace(
         folders={package["name"]: Path(package["manifest_path"]).parent for package in packages},
         dependents={name: frozenset(found) for name, found in dependents.items()},
@@ -278,7 +266,6 @@ def workspace() -> Workspace:
         internals=frozenset(
             package["name"] for package in packages if "internals" in package["features"]
         ),
-        unifies_internals=tuple(sorted(closure(unifying, normal_dependents))),
         target=Path(metadata["target_directory"]),
     )
 
@@ -311,11 +298,11 @@ def lint_step() -> Step:
 
 
 def ship_step() -> Step:
-    # A member that turns `internals` on through a normal dependency, as the harness does, or
-    # depends on one that does, as the Zero Hour check does, unifies it into the crates below it:
-    # with such a member, no build that ships is linted. Its own code is linted by `lint`.
-    excluded = [arg for name in workspace().unifies_internals for arg in ("--exclude", name)]
-    return Step("ship", Kind.CHECK, cargo(*SHIP, *excluded, *DENY))
+    # The workspace's default members, which leave out each member that turns `internals` on
+    # through a normal dependency, as the harness does, or depends on one that does, as the Zero
+    # Hour check does: with such a member, no build that ships is linted. Its own code is linted
+    # by `lint`, and `campfire-rules` holds the list.
+    return Step("ship", Kind.CHECK, cargo(*SHIP, *DENY))
 
 
 def tests_step(
@@ -338,15 +325,15 @@ def cross_step(target: str) -> Step:
 
 
 def lan_build_step() -> Step:
-    # The check and the processes it starts, beside it, in the tests' build: the workspace with
-    # every feature and its tests, whose dev-dependencies unify the same features, so each unit but
-    # the binaries the tests' build does not write is fresh after it, and the tests' build after
-    # this one. It runs whenever the check runs, as the tests' build writes the server and the
-    # verifier too.
-    binaries = [arg for package in LAN_BINARIES for arg in ("--bin", package)]
+    # The check and the processes it starts, beside it, as they ship: each package by `-p`, with
+    # no feature beyond those they ship with, so no `internals` gate is in what the check runs. One
+    # invocation builds the four, so the server and the verifier carry the client's Bevy features,
+    # as one build costs CI less. It runs whenever the check runs, as the tests' build writes the
+    # server and the verifier beside it with every feature.
+    packages = [arg for package in LAN_BINARIES for arg in ("-p", package)]
     return Step(
         "lan build", Kind.CHECK,
-        cargo("build", "--workspace", "--all-features", "--locked", "--tests", *binaries, JSON),
+        cargo("build", "--locked", "--bins", *packages, JSON),
         follows=lan_run_step(),
     )
 

@@ -5,11 +5,11 @@ use std::num::NonZeroU32;
 use campfire_capabilities::Match;
 use campfire_harness::FixedSession;
 use campfire_package::ModePackages;
-use campfire_package_disk::internals::TestMode;
 use campfire_protocol::{Outcome, SessionLog, SessionResult};
 use campfire_runner::{MatchBuild, Replay, ReplayError, ResultMismatch, SessionWorld};
 use campfire_sim::SimWorld;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_test_packages::TestMode;
 
 #[test]
 fn a_mode_runs_the_script_its_rules_package_holds() {

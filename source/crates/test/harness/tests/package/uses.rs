@@ -5,9 +5,9 @@ use campfire_actions::ActionDataField;
 use campfire_package::{
     LoadError, LoadProblem, ModePackages, PackageName, PackageRef, Place, UseProblem,
 };
-use campfire_package_disk::internals::Edit;
 use campfire_script::NameKind;
 use campfire_sim::Capability;
+use campfire_test_packages::Edit;
 use campfire_values::DeclaredName;
 
 use crate::package::moba::{edited, load};

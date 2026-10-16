@@ -12,10 +12,10 @@ use bevy_ecs::entity::Entity;
 use campfire_common::ExitStatus;
 use campfire_log::LogLine;
 use campfire_net::Listening;
-use campfire_package_disk::internals::TestMode;
 use campfire_quic::{LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
 use campfire_store::internals::Scratch;
 use campfire_store::{InputFile, StopSignals};
+use campfire_test_packages::TestMode;
 use lightyear::link::{LinkStart, Linked};
 
 /// The longest each step after the server's start waits, inside a test's bound of 1 s.

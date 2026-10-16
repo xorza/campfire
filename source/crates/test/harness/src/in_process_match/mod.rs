@@ -24,12 +24,12 @@ use campfire_net::{
     SimServerWorld, SlotBot, TickHashes,
 };
 use campfire_package::ModePackages;
-use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, InputRules, SeedChain, ServerInput};
 use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::internals::UnitsWorldInternals;
 use campfire_units::{Body, MoveStep, Owner, UnitTypeBook};
 use campfire_values::{NameId, Team};
@@ -939,9 +939,9 @@ pub(crate) mod bench {
 
     use campfire_math::{Num, Vec3};
     use campfire_orders::OrdersAction;
-    use campfire_package_disk::internals::TestMode;
     use campfire_sim::{Position, SimWorld};
     use campfire_store::DurableDir;
+    use campfire_test_packages::TestMode;
     use lightyear::prelude::RollbackMode;
 
     use crate::in_process_match::link_model::LinkModel;

@@ -10,11 +10,11 @@ use campfire_math::Num;
 use campfire_mode::{InputValue, Mode, ModeInput};
 use campfire_navigation::PathWalker;
 use campfire_orders::OrdersAction;
-use campfire_package_disk::internals::TestMode;
 use campfire_progression::ProgressionAction;
 use campfire_protocol::{InputRules, ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
 use campfire_stats::Life;
+use campfire_test_packages::TestMode;
 use campfire_units::Dead;
 use campfire_values::{DeclaredName, Names, Team};
 

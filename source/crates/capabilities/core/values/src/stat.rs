@@ -20,19 +20,13 @@ pub enum Stat {
 pub struct DeclaredStat(DeclaredName);
 
 campfire_common::enum_all! {
-    /// A stat a capability reads, whatever the mode.
+    /// A stat a capability reads, whatever the mode, by the name data and scripts give it.
     #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
     pub enum EngineStat {
-        MoveSpeed,
-        TurnRate,
+        MoveSpeed => "move_speed",
+        TurnRate => "turn_rate",
     }
     pub const ALL;
-}
-
-/// As data and scripts name each.
-impl NamedEnum for EngineStat {
-    const ALL: &'static [Self] = &Self::ALL;
-    const NAMES: &'static [&'static str] = &["move_speed", "turn_rate"];
 }
 
 impl Stat {

@@ -24,6 +24,54 @@ members = [
     "crates/test/*",
     "checks/*",
 ]
+# Every member but those whose build turns `internals` on through a normal dependency, so a cargo
+# command at the root with no `--workspace` builds what ships; `campfire-rules` holds the list.
+default-members = [
+    "checks/lan-check",
+    "crates/apps/client",
+    "crates/apps/import",
+    "crates/apps/server",
+    "crates/base/codec",
+    "crates/base/common",
+    "crates/base/log",
+    "crates/base/schedule",
+    "crates/base/store",
+    "crates/capabilities",
+    "crates/capabilities/abilities",
+    "crates/capabilities/areas",
+    "crates/capabilities/combat",
+    "crates/capabilities/core/actions",
+    "crates/capabilities/core/declare",
+    "crates/capabilities/core/deliveries",
+    "crates/capabilities/core/geometry",
+    "crates/capabilities/core/players",
+    "crates/capabilities/core/script",
+    "crates/capabilities/core/state-types",
+    "crates/capabilities/core/units",
+    "crates/capabilities/core/values",
+    "crates/capabilities/core/visibility",
+    "crates/capabilities/interaction",
+    "crates/capabilities/items",
+    "crates/capabilities/mode",
+    "crates/capabilities/navigation",
+    "crates/capabilities/orders",
+    "crates/capabilities/production",
+    "crates/capabilities/progression",
+    "crates/capabilities/projectiles",
+    "crates/capabilities/stats",
+    "crates/capabilities/vision",
+    "crates/network/net",
+    "crates/network/quic",
+    "crates/session/client-files",
+    "crates/session/package",
+    "crates/session/package-disk",
+    "crates/session/protocol",
+    "crates/session/runner",
+    "crates/session/verifier",
+    "crates/sim/math",
+    "crates/sim/sim",
+    "crates/test/rules",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -72,6 +120,7 @@ campfire-schedule = { path = "crates/base/schedule" }
 campfire-script = { path = "crates/capabilities/core/script" }
 campfire-sim = { path = "crates/sim/sim" }
 campfire-store = { path = "crates/base/store" }
+campfire-test-packages = { path = "crates/test/test-packages" }
 campfire-verifier = { path = "crates/session/verifier" }
 
 arrayvec = { version = "=0.7.8", default-features = false }

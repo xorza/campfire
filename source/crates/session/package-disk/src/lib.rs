@@ -3,21 +3,20 @@
 //! through `store`, which the deterministic core of `campfire-package` does not reach.
 
 mod error;
-#[cfg(feature = "internals")]
-mod harness;
 mod package_dir;
 mod package_place;
 mod package_store;
 mod package_writer;
+#[cfg(feature = "internals")]
+mod tree_dir;
 
 pub use crate::error::{IndexError, StoreError, WriteError};
 pub use crate::package_dir::PackageDir;
 pub use crate::package_store::{PackageStore, StoreFailure};
 pub use crate::package_writer::PackageWriter;
 
+/// A package tree in memory, for the tests of this crate and `campfire-test-packages`.
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::harness::package_tree::{Edit, PackageTree};
-    pub use crate::harness::test_mode::TestMode;
-    pub use crate::harness::tree_dir::TreeDir;
+    pub use crate::tree_dir::TreeDir;
 }

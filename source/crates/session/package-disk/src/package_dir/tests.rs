@@ -6,8 +6,8 @@ use campfire_common::{ContentHash, PackageFingerprint};
 use campfire_store::internals::{PinnedFile, Scratch};
 
 use super::*;
-use crate::harness::tree_dir::TreeDir;
 use crate::package_store::PackageStore;
+use crate::tree_dir::TreeDir;
 
 /// Writes the index of the package at `dir`, under `scratch`, from its files.
 fn pack(scratch: &Scratch, dir: &str) {

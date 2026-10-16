@@ -1,12 +1,12 @@
 use std::num::NonZeroU32;
 
 use campfire_common::{PackageFingerprint, TlsKey, Version};
-use campfire_package_disk::internals::TestMode;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectChallenge, Entropy, InputHash, MainKey, Receipt, SeedChain, SlotPlan,
 };
 use campfire_runner::{HostChoices, TermsError};
+use campfire_test_packages::TestMode;
 use secp256k1::XOnlyPublicKey;
 
 use super::*;

@@ -5,11 +5,11 @@ use std::sync::Arc;
 
 use campfire_codec::internals::TomlDocument;
 use campfire_package::{LoadError, ModePackages};
+use campfire_package_disk::PackageDir;
+use campfire_package_disk::internals::TreeDir;
 use campfire_store::{DirEntries, EntryKind, InputFile};
 
-use crate::harness::test_mode::TestMode;
-use crate::harness::tree_dir::TreeDir;
-use crate::package_dir::PackageDir;
+use crate::test_mode::TestMode;
 
 /// The most bytes a test reads of a workspace package's file: far past any the test packages
 /// hold.

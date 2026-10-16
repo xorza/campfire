@@ -60,6 +60,3 @@ pub mod internals {
     pub use crate::alloc_audit::counting_allocator::{AllocWindow, CountingAllocator};
     pub use crate::alloc_audit::{AllocAudit, AuditReport};
 }
-
-#[cfg(test)]
-mod tests;

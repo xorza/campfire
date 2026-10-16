@@ -3,8 +3,8 @@
 use campfire_package::{
     LoadError, LoadProblem, ModePackages, PackageName, PackageRef, ScriptProblem,
 };
-use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_script::ScriptId;
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 
 const MODE_DATA: &str = "modes/ruled/data/mode.toml";
 

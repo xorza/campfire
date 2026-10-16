@@ -1,5 +1,5 @@
 use campfire_common::NamedEnum;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::engine_enum::EngineEnum;
 use crate::script_enum::ScriptEnum;
@@ -8,12 +8,11 @@ campfire_common::enum_all! {
     /// How one team regards another, as the mode's `[[relations]]` declare it and
     /// `ctx.set_relation` changes it: Unreal's team attitudes. A neutral unit may be attacked,
     /// but does not seek a fight.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    #[serde(rename_all = "snake_case")]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Relation {
-        Hostile,
-        Neutral,
-        Friendly,
+        Hostile => "hostile",
+        Neutral => "neutral",
+        Friendly => "friendly",
     }
     const ALL;
     const IDENTS;
@@ -26,10 +25,18 @@ impl Relation {
     }
 }
 
-/// As data names each.
-impl NamedEnum for Relation {
-    const ALL: &'static [Self] = &Self::ALL;
-    const NAMES: &'static [&'static str] = &["hostile", "neutral", "friendly"];
+/// Written and read as serde's derive does a unit variant: a binary format, as a snapshot, by its
+/// place, and a text format, as data, by the name beside it.
+impl Serialize for Relation {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.serialize_member(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Relation {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::deserialize_member(deserializer)
+    }
 }
 
 /// `Relation::Hostile` and the others in scripts.

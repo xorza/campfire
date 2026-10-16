@@ -18,7 +18,6 @@ use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
-use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
 use campfire_package_disk::{PackageDir, PackageStore, StoreError};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{
@@ -34,6 +33,7 @@ use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
 use campfire_stats::Life;
 use campfire_store::internals::{PinnedFile, Scratch};
 use campfire_store::{AppendWriter, PathError, ReadError};
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::Destination;
 use campfire_values::Rank;
 use campfire_verifier::{VerifyError, verify_file, verify_log};

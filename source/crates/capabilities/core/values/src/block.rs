@@ -3,28 +3,22 @@ use serde::{Deserialize, Deserializer};
 
 campfire_common::enum_all! {
     /// What a tag can stop its unit doing, or being: moving, the actions of a group, being chosen
-    /// as a target, taking damage.
+    /// as a target, taking damage. Each member's name is as a mode's `blocks` writes it.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum Block {
-        Move,
-        Attack,
-        Cast,
-        Use,
-        Target,
-        Damage,
+        Move => "move",
+        Attack => "attack",
+        Cast => "cast",
+        Use => "use",
+        Target => "target",
+        Damage => "damage",
     }
     pub const ALL;
 }
 
-/// As a mode's `blocks` writes each.
-impl NamedEnum for Block {
-    const ALL: &'static [Self] = &Self::ALL;
-    const NAMES: &'static [&'static str] = &["move", "attack", "cast", "use", "target", "damage"];
-}
-
 impl<'de> Deserialize<'de> for Block {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        Self::deserialize_named(deserializer)
+        Self::deserialize_member(deserializer)
     }
 }
 

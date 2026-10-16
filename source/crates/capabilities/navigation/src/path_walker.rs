@@ -8,7 +8,7 @@ use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{EngineEnum, ScriptEnum};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::party::{Party, PartyKey};
 
@@ -30,20 +30,27 @@ campfire_common::enum_all! {
     /// The end of a path a unit walks it from, as a placed unit's or a spawn group's `from`
     /// names it: a MOBA's two sides walk each path from their own end, and a third team either
     /// way.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-    #[serde(rename_all = "snake_case")]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum PathEnd {
-        Start,
-        End,
+        Start => "start",
+        End => "end",
     }
     const ALL;
     const IDENTS;
 }
 
-/// `start` and `end` in data.
-impl NamedEnum for PathEnd {
-    const ALL: &'static [Self] = &Self::ALL;
-    const NAMES: &'static [&'static str] = &["start", "end"];
+/// Written and read as serde's derive does a unit variant: a binary format, as a snapshot, by its
+/// place, and a text format, as data, by the name beside it.
+impl Serialize for PathEnd {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.serialize_member(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for PathEnd {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::deserialize_member(deserializer)
+    }
 }
 
 /// `PathEnd::Start` and `PathEnd::End` in scripts.

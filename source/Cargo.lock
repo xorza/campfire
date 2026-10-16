@@ -2470,6 +2470,7 @@ dependencies = [
  "campfire-state-types",
  "campfire-stats",
  "campfire-store",
+ "campfire-test-packages",
  "campfire-units",
  "campfire-values",
  "campfire-verifier",
@@ -2662,7 +2663,6 @@ dependencies = [
  "campfire-net",
  "campfire-orders",
  "campfire-package",
- "campfire-package-disk",
  "campfire-players",
  "campfire-production",
  "campfire-progression",
@@ -2672,6 +2672,7 @@ dependencies = [
  "campfire-sim",
  "campfire-state-types",
  "campfire-store",
+ "campfire-test-packages",
  "campfire-units",
  "campfire-values",
  "campfire-visibility",
@@ -2889,6 +2890,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-rules"
+version = "0.1.0"
+dependencies = [
+ "campfire-store",
+]
+
+[[package]]
 name = "campfire-runner"
 version = "0.1.0"
 dependencies = [
@@ -2899,12 +2907,12 @@ dependencies = [
  "campfire-log",
  "campfire-mode",
  "campfire-package",
- "campfire-package-disk",
  "campfire-players",
  "campfire-protocol",
  "campfire-runner",
  "campfire-script",
  "campfire-sim",
+ "campfire-test-packages",
  "campfire-units",
  "campfire-visibility",
  "campfire-vision",
@@ -2958,6 +2966,7 @@ dependencies = [
  "campfire-quic",
  "campfire-runner",
  "campfire-store",
+ "campfire-test-packages",
  "campfire-visibility",
  "clap",
  "lightyear",
@@ -3027,6 +3036,17 @@ dependencies = [
  "thiserror 2.0.21",
  "windows",
  "zeroize",
+]
+
+[[package]]
+name = "campfire-test-packages"
+version = "0.1.0"
+dependencies = [
+ "campfire-codec",
+ "campfire-common",
+ "campfire-package",
+ "campfire-package-disk",
+ "campfire-store",
 ]
 
 [[package]]

@@ -4,10 +4,10 @@ use std::time::{Duration, Instant};
 
 use campfire_capabilities::Release;
 use campfire_package_disk::PackageDir;
-use campfire_package_disk::internals::TestMode;
 use campfire_runner::MatchBuild;
 use campfire_script::ScriptHost;
 use campfire_sim::TickRate;
+use campfire_test_packages::TestMode;
 use criterion::Criterion;
 
 use crate::moba_3v3::Moba3v3;

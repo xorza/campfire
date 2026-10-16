@@ -6,11 +6,11 @@ use campfire_common::PlayerSlot;
 use campfire_math::Vec3;
 use campfire_mode::Mode;
 use campfire_package::ModePackages;
-use campfire_package_disk::internals::PackageTree;
 use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimWorld, StableId, TickRate};
 use campfire_stats::{PoolId, Stats};
+use campfire_test_packages::PackageTree;
 use campfire_values::{ActionId, DeclaredName, ModifierId, Names, PackageIndex, Team};
 use campfire_vision::Vision;
 

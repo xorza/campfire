@@ -6,17 +6,13 @@ license.workspace = true
 
 [features]
 internals = [
-    "campfire-codec/internals",
     "campfire-common/internals",
     "campfire-package/internals",
     "campfire-store/internals",
     "campfire-values/internals",
-    "dep:campfire-codec",
-    "campfire-codec/internals",
 ]
 
 [dependencies]
-campfire-codec = { workspace = true, optional = true }
 campfire-common.workspace = true
 campfire-package.workspace = true
 campfire-store.workspace = true
@@ -25,6 +21,7 @@ campfire-values.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-package-disk = { workspace = true, features = ["internals"] }
 serde.workspace = true
 

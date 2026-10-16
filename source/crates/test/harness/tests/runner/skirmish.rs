@@ -7,12 +7,12 @@ use campfire_combat::{Combat, DamageCause};
 use campfire_common::PlayerSlot;
 use campfire_harness::{FixedMatch, FixedSession, MatchUnits};
 use campfire_mode::MatchEnd;
-use campfire_package_disk::internals::TestMode;
 use campfire_players::{HeldOut, PlayersWorld};
 use campfire_protocol::{InputRules, Outcome, SlotPlan};
 use campfire_runner::SessionWorld;
 use campfire_sim::StableId;
 use campfire_stats::Life;
+use campfire_test_packages::TestMode;
 use campfire_units::{Dead, Units, UnitsWorld};
 use campfire_values::UnitType;
 

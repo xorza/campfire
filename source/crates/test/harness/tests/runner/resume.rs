@@ -9,12 +9,12 @@ use campfire_common::{StateHash, Tick};
 use campfire_harness::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
-use campfire_package_disk::internals::TestMode;
 use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
 use campfire_runner::{
     Replay, ResumeAt, ResumeError, Session, SessionSource, SessionWorld, SnapshotCheckError,
 };
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
+use campfire_test_packages::TestMode;
 use campfire_units::Dead;
 
 /// A run of a match with a checkpoint before each of three ticks: its log, the snapshot of each

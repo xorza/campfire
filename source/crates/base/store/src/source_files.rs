@@ -12,33 +12,81 @@ const MAX_LEN: usize = 1 << 20;
 pub struct SourceFile {
     pub path: String,
     pub text: String,
-    /// Whether a gate of `GATES` holds its module, at its own declaration or an outer one's, so
-    /// all of it is code only tests and their helpers build.
-    pub gated: bool,
+    /// The gate that holds its module, at its own declaration or an outer one's, so all of it is
+    /// code only tests, or tests and their helpers, build; none for code every build holds.
+    pub gate: Option<Gate>,
+}
+
+/// A gate of code that only tests and their helpers build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Gate {
+    /// `#[cfg(test)]`: a crate's own tests alone.
+    Test,
+    /// `#[cfg(feature = "internals")]`: the helpers of any crate's tests and benches.
+    Internals,
+}
+
+impl Gate {
+    /// Each gate, by the line that writes it.
+    const LINES: [(&'static str, Self); 2] = [
+        ("#[cfg(test)]", Self::Test),
+        ("#[cfg(feature = \"internals\")]", Self::Internals),
+    ];
+
+    /// The gate `line` writes, if it writes one alone.
+    fn of(line: &str) -> Option<Self> {
+        let line = line.trim();
+        Self::LINES
+            .into_iter()
+            .find_map(|(text, gate)| (text == line).then_some(gate))
+    }
 }
 
 impl SourceFile {
-    /// The gates of the code that only tests and their helpers build.
-    const GATES: [&'static str; 2] = ["#[cfg(test)]", "#[cfg(feature = \"internals\")]"];
-
-    /// Its production code: its text with each item a gate of `GATES` holds blanked, its doc
-    /// comment and its further attributes with it, line for line, so each line keeps its number;
-    /// none for a gated module's file, a `tests.rs`, a `bench.rs` or a file of a `tests`
-    /// directory, which hold tests and their helpers alone. An item is found by its indentation,
-    /// as rustfmt lays it out: it ends on its own line when that line ends it, else at the closing
-    /// delimiter back at its indentation, or before the first line that comes back there after it
-    /// ended.
+    /// Its production code: its text with each item a gate holds blanked, its doc comment and
+    /// its further attributes with it, line for line, so each line keeps its number; none for a
+    /// gated module's file, a `tests.rs`, a `bench.rs` or a file of a `tests` directory, which
+    /// hold tests and their helpers alone. An item is found by its indentation, as rustfmt lays
+    /// it out: it ends on its own line when that line ends it, else at the closing delimiter back
+    /// at its indentation, or before the first line that comes back there after it ended.
     pub fn production(&self) -> Option<String> {
-        let names: Vec<&str> = self.path.split('/').collect();
-        let (name, dirs) = names.split_last().expect("a source has a name");
-        if self.gated || dirs.contains(&"tests") || *name == "tests.rs" || *name == "bench.rs" {
+        let (name, dirs) = self.names();
+        if self.gate.is_some()
+            || dirs.contains(&"tests")
+            || name == "tests.rs"
+            || name == "bench.rs"
+        {
             return None;
         }
+        Some(self.blanked(&[Gate::Test, Gate::Internals]))
+    }
+
+    /// Its library code, what the crate's build with `internals` holds: its text with each item
+    /// `#[cfg(test)]` holds blanked, as `production` blanks one; none for a module's file that
+    /// gate holds, a `tests.rs` or a file of a `tests` directory. A `bench.rs` is library code,
+    /// as `internals` builds it.
+    pub fn library(&self) -> Option<String> {
+        let (name, dirs) = self.names();
+        if self.gate == Some(Gate::Test) || dirs.contains(&"tests") || name == "tests.rs" {
+            return None;
+        }
+        Some(self.blanked(&[Gate::Test]))
+    }
+
+    /// Its file's name, and the directories its path holds it in.
+    fn names(&self) -> (&str, Vec<&str>) {
+        let mut names: Vec<&str> = self.path.split('/').collect();
+        let name = names.pop().expect("a source has a name");
+        (name, names)
+    }
+
+    /// Its text with each item one of `gates` holds blanked, line for line.
+    fn blanked(&self, gates: &[Gate]) -> String {
         let lines: Vec<&str> = self.text.split('\n').collect();
         let mut kept = vec![true; lines.len()];
         let mut at = 0;
         while at < lines.len() {
-            if !Self::GATES.contains(&lines[at].trim()) {
+            if !Gate::of(lines[at]).is_some_and(|gate| gates.contains(&gate)) {
                 at += 1;
                 continue;
             }
@@ -59,7 +107,7 @@ impl SourceFile {
             .zip(kept)
             .map(|(&line, kept)| if kept { line } else { "" })
             .collect();
-        Some(code.join("\n"))
+        code.join("\n")
     }
 
     /// The first line of the item the gate at `gate` holds, past its further attributes and doc
@@ -126,10 +174,10 @@ impl SourceFile {
         line.len() - line.trim_start_matches(' ').len()
     }
 
-    /// The paths of the modules a gate of `GATES` holds at their declarations in this file, by
-    /// the path of the module's file and of its directory: `name.rs` or `name/mod.rs` beside it
-    /// for a `lib.rs`, `main.rs` or `mod.rs`, else under its own name's directory.
-    fn gated_modules(&self) -> Vec<String> {
+    /// The paths of the modules a gate holds at their declarations in this file, each with its
+    /// gate, by the path of the module's file and of its directory: `name.rs` or `name/mod.rs`
+    /// beside it for a `lib.rs`, `main.rs` or `mod.rs`, else under its own name's directory.
+    fn gated_modules(&self) -> Vec<(String, Gate)> {
         let (dir, name) = self
             .path
             .rsplit_once('/')
@@ -148,9 +196,9 @@ impl SourceFile {
         let lines: Vec<&str> = self.text.split('\n').collect();
         let mut gated = Vec::new();
         for (at, line) in lines.iter().enumerate() {
-            if *line != line.trim_start() || !Self::GATES.contains(line) {
+            let Some(gate) = Gate::of(line).filter(|_| *line == line.trim_start()) else {
                 continue;
-            }
+            };
             let declared = lines[Self::item_start(&lines, at)];
             let module = declared
                 .trim_start_matches("pub ")
@@ -164,7 +212,7 @@ impl SourceFile {
                 } else {
                     format!("{own}/{module}")
                 };
-                gated.push(path);
+                gated.push((path, gate));
             }
         }
         gated
@@ -177,15 +225,20 @@ pub struct SourceFiles;
 
 impl SourceFiles {
     /// Each `.rs` file under `dir`, a `target` directory left out, in the order of its path, each
-    /// marked when a gate holds its module.
+    /// with the gate that holds its module: `#[cfg(test)]` where any module on its way has it,
+    /// else `internals` where one has that.
     pub fn under(dir: &Path) -> Vec<SourceFile> {
         let mut found = Vec::new();
         Self::walk(dir, "", &mut found);
-        let gated: Vec<String> = found.iter().flat_map(SourceFile::gated_modules).collect();
+        let gated: Vec<(String, Gate)> = found.iter().flat_map(SourceFile::gated_modules).collect();
         for file in &mut found {
-            file.gated = gated.iter().any(|module| {
+            let holds = |module: &str| {
                 file.path == format!("{module}.rs") || file.path.starts_with(&format!("{module}/"))
-            });
+            };
+            let gates = gated.iter().filter(|(module, _)| holds(module));
+            file.gate = gates
+                .map(|&(_, gate)| gate)
+                .min_by_key(|&gate| gate != Gate::Test);
         }
         found
     }
@@ -209,7 +262,7 @@ impl SourceFiles {
                     found.push(SourceFile {
                         path,
                         text,
-                        gated: false,
+                        gate: None,
                     });
                 }
                 _ => {}
@@ -227,7 +280,7 @@ mod tests {
         SourceFile {
             path: path.to_owned(),
             text: text.to_owned(),
-            gated: false,
+            gate: None,
         }
     }
 
@@ -245,6 +298,21 @@ mod tests {
         for path in ["src/tests.rs", "src/bench.rs", "src/a/tests/mod.rs"] {
             assert_eq!(file(path, "fn f() {}").production(), None, "{path}");
         }
+        // A bench is library code, as `internals` builds it; a test's file is not.
+        let library = |path| file(path, "fn f() {}").library();
+        assert_eq!(library("src/bench.rs").as_deref(), Some("fn f() {}"));
+        assert_eq!(library("src/tests.rs"), None);
+        assert_eq!(library("src/a/tests/mod.rs"), None);
+        let gated = |gate| SourceFile {
+            gate: Some(gate),
+            ..file("src/a.rs", "fn f() {}")
+        };
+        assert_eq!(gated(Gate::Internals).production(), None);
+        assert_eq!(
+            gated(Gate::Internals).library().as_deref(),
+            Some("fn f() {}")
+        );
+        assert_eq!(gated(Gate::Test).library(), None);
     }
 
     #[test]
@@ -275,38 +343,64 @@ mod tests {
         );
         assert_eq!(code, expected);
         assert_eq!(code.lines().count(), text.lines().count());
+        // The library keeps what `internals` holds, and blanks the rest alike.
+        let library = file("src/a.rs", text).library().unwrap();
+        let expected = concat!(
+            "mod a;\n#[cfg(feature = \"internals\")]\nmod b;\nmod c;\n",
+            "\n\n\n\n\n\n",
+            "fn f() {\n    let x = 1;\n    #[cfg(feature = \"internals\")]\n    if x == 1 {\n",
+            "        g();\n    }\n    h();\n",
+            "\n\n\n\n    i();\n",
+            "\n\n\n\n\n\n    l();\n}\n",
+            "\n\n\n\n\n\n",
+            "\n\n\n\n\n\n\nfn v() {}\n",
+        );
+        assert_eq!(library, expected);
     }
 
     #[test]
     fn a_module_a_gate_holds_is_gated_whole_its_children_with_it() {
         // `lib.rs` gates `harness`, a directory whose child it declares ungated, and `scratch`, a
-        // file; `a.rs` gates `b`, its own child; `kept` and `a` stay production code.
+        // file, by `internals`, and `fake` by `test`; `a.rs` gates `b`, its own child, and
+        // `harness/mod.rs` its `checks` by `test`, which wins over the outer `internals`; `kept`
+        // and `a` stay production code.
         let scratch = Scratch::new();
         let gate = "#[cfg(feature = \"internals\")]";
+        let test = "#[cfg(test)]";
         scratch.write(
             "src/lib.rs",
-            format!("mod a;\n{gate}\nmod harness;\n{gate}\npub(crate) mod scratch;\nmod kept;\n"),
+            format!(
+                "mod a;\n{gate}\nmod harness;\n{gate}\npub(crate) mod scratch;\nmod kept;\n{test}\nmod fake;\n"
+            ),
         );
-        scratch.write("src/harness/mod.rs", "mod arena;\n");
+        scratch.write(
+            "src/harness/mod.rs",
+            format!("mod arena;\n{test}\nmod checks;\n"),
+        );
         scratch.write("src/harness/arena.rs", "");
+        scratch.write("src/harness/checks.rs", "");
         scratch.write("src/scratch.rs", "");
         scratch.write("src/kept.rs", "");
+        scratch.write("src/fake.rs", "");
         scratch.write("src/a.rs", format!("{gate}\nmod b;\n"));
         scratch.write("src/a/b.rs", "");
-        let gated: Vec<(String, bool)> = SourceFiles::under(scratch.root())
+        let gates: Vec<(String, Option<Gate>)> = SourceFiles::under(scratch.root())
             .into_iter()
-            .map(|file| (file.path, file.gated))
+            .map(|file| (file.path, file.gate))
             .collect();
+        let (internals, test) = (Some(Gate::Internals), Some(Gate::Test));
         let expected = [
-            ("src/a/b.rs", true),
-            ("src/a.rs", false),
-            ("src/harness/arena.rs", true),
-            ("src/harness/mod.rs", true),
-            ("src/kept.rs", false),
-            ("src/lib.rs", false),
-            ("src/scratch.rs", true),
+            ("src/a/b.rs", internals),
+            ("src/a.rs", None),
+            ("src/fake.rs", test),
+            ("src/harness/arena.rs", internals),
+            ("src/harness/checks.rs", test),
+            ("src/harness/mod.rs", internals),
+            ("src/kept.rs", None),
+            ("src/lib.rs", None),
+            ("src/scratch.rs", internals),
         ]
-        .map(|(path, gated)| (path.to_owned(), gated));
-        assert_eq!(gated, expected);
+        .map(|(path, gate)| (path.to_owned(), gate));
+        assert_eq!(gates, expected);
     }
 }

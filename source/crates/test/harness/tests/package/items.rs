@@ -9,9 +9,9 @@ use campfire_math::Num;
 use campfire_package::{
     ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
 };
-use campfire_package_disk::internals::Edit;
 use campfire_script::NameKind;
 use campfire_sim::Capability;
+use campfire_test_packages::Edit;
 use campfire_values::DeclaredName;
 
 use crate::package::moba::{edited, load};

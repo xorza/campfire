@@ -2,10 +2,10 @@ use campfire_actions::ActionTarget;
 use campfire_capabilities::Order;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersAction;
-use campfire_package_disk::internals::TestMode;
 use campfire_production::TrainQueue;
 use campfire_protocol::{InputRules, SlotPlan};
 use campfire_sim::StableId;
+use campfire_test_packages::TestMode;
 use campfire_values::Team;
 
 use crate::fixed_session::FixedSession;

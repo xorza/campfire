@@ -450,7 +450,7 @@ fn no_module_names_another_modules_sets() {
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 44] = [
+const LOOKUPS: [(&str, &str); 43] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
@@ -468,7 +468,6 @@ const LOOKUPS: [(&str, &str); 44] = [
     ("stats/param_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
     ("units/unit_types.rs", "named"),
-    ("values/block.rs", "deserialize_named"),
     ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),

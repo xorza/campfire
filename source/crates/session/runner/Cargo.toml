@@ -43,9 +43,9 @@ thiserror.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-# Its tests read the workspace's test packages from disk.
-campfire-package-disk = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
+# Its tests read the workspace's test packages from disk.
+campfire-test-packages.workspace = true
 
 [lints]
 workspace = true

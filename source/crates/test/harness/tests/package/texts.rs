@@ -4,7 +4,7 @@
 use campfire_package::{
     Language, LoadError, LoadProblem, LocalePackage, LocaleProblem, PackageName, PackageRef, Texts,
 };
-use campfire_package_disk::internals::Edit;
+use campfire_test_packages::Edit;
 use campfire_values::MessageId;
 
 use crate::package::moba::{edited, edited_at, load};

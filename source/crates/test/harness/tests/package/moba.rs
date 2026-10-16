@@ -6,7 +6,8 @@ use std::path::PathBuf;
 use campfire_common::MapName;
 use campfire_package::{LoadError, ModePackages};
 use campfire_package_disk::PackageDir;
-use campfire_package_disk::internals::{Edit, PackageTree, TestMode, TreeDir};
+use campfire_package_disk::internals::TreeDir;
+use campfire_test_packages::{Edit, PackageTree, TestMode};
 
 /// The map of the MOBA's 3v3.
 pub(crate) fn two_lanes() -> MapName {

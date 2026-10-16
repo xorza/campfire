@@ -1,26 +1,18 @@
-use campfire_common::NamedEnum;
-
 use crate::relation::Relation;
 
 campfire_common::enum_all! {
     /// Which units a filter selects, by how a unit's team regards theirs: its enemies, which it may
     /// attack, hostile and neutral; only the hostile; only the neutral; its allies, the friendly,
-    /// which include itself; or all.
+    /// which include itself; or all. Each member's name is as a filter writes it.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub enum RelationSet {
-        Enemies,
-        Hostiles,
-        Neutrals,
-        Allies,
-        All,
+        Enemies => "enemies",
+        Hostiles => "hostiles",
+        Neutrals => "neutrals",
+        Allies => "allies",
+        All => "all",
     }
     const ALL;
-}
-
-/// As filters write each.
-impl NamedEnum for RelationSet {
-    const ALL: &'static [Self] = &Self::ALL;
-    const NAMES: &'static [&'static str] = &["enemies", "hostiles", "neutrals", "allies", "all"];
 }
 
 impl RelationSet {

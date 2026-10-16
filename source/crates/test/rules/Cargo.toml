@@ -1,0 +1,16 @@
+[package]
+name = "campfire-rules"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+# The workspace's structural rules, as Rust's `tidy` holds the compiler's: all of it is test code,
+# which reads every crate's sources and manifests, `clippy.toml` and the design documents through
+# `store`. Its library builds nothing outside its tests, so `store` is a dev-dependency.
+
+[dev-dependencies]
+campfire-store = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true
