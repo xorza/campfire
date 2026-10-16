@@ -160,7 +160,7 @@ impl Projectiles {
         let flights = (0..fan.count.get()).map(|at| {
             let direction = aim.rotated_y(fan.turn(at).sin_cos());
             let reach = Self::reach(bounds, range, from, direction);
-            Flight::line(direction, reach, target.unit())
+            Flight::line(from, direction, reach, target.unit())
         });
         Self::push(world, by, unit_type, from, None, flights);
     }
@@ -233,7 +233,7 @@ pub mod internals {
     use campfire_declare::ByType;
     use campfire_math::{Num, Vec3};
     use campfire_sim::{EntityIndex, Position, StableId, TickRate};
-    use campfire_units::UnitTypeBook;
+    use campfire_units::{MapBook, UnitTypeBook};
     use campfire_values::{ActionId, DamageKind, Rank, UnitType};
 
     use crate::Projectiles;
@@ -257,20 +257,27 @@ pub mod internals {
         }
 
         /// Launches a projectile of the line type `unit_type` from `source` at the origin along
-        /// +x, carrying 10 damage, from the next tick.
-        pub fn fire_line(world: &mut World, source: StableId, unit_type: UnitType) {
+        /// the unit vector `direction`, up to the map's bounds as a cast flies, carrying 10
+        /// damage, from the next tick.
+        pub fn fire_line(
+            world: &mut World,
+            source: StableId,
+            unit_type: UnitType,
+            direction: Vec3,
+        ) {
             let range = world
                 .resource::<ByType<ProjectileSpec>>()
                 .get(unit_type)
                 .unwrap()
-                .range
-                .unwrap();
+                .range;
+            let bounds = world.resource::<MapBook>().bounds;
+            let reach = Self::reach(bounds, range, Vec3::ZERO, direction);
             world.resource_mut::<Launches>().push(Launch {
                 id: None,
                 source,
                 from: Vec3::ZERO,
                 unit_type,
-                flight: Flight::line(Vec3::new(Num::ONE, Num::ZERO, Num::ZERO), range, None),
+                flight: Flight::line(Vec3::ZERO, direction, reach, None),
                 payload: LaunchPayload::Attack {
                     action: ActionId::new(0),
                     rank: Rank::FIRST,

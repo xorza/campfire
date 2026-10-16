@@ -480,7 +480,7 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
     let world = local.server_mut().world_mut();
     let pos = world.get::<Position>(entity).unwrap().get();
     let to = Vec3::new(pos.x - Num::int(6), pos.y, pos.z);
-    let step = Num::ONE.checked_div_int(5).unwrap();
+    let step = Num::ONE / 5;
     world.entity_mut(entity).insert(ForcedMove::Dash {
         to: DashTo::Point(to),
         step,

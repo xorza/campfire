@@ -95,23 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 5. Precision: round once
-
-`math`: `vec3`, `num`, `num/trig`, `direction`, `rng`, `simd`; `geometry`: `body_box`, `bounds`, `approach`; `units`: `units_api`; `vision`: `fog`; `projectiles`: `flights`; `import`: the `f32` callers in `zero_hour`. Moves goldens.
-
-- [ ] math/src/vec3/mod.rs:146 — `normalized` divides by a length rounded to a whole bit, so its error grows as 1/|v|: `(1, 1, 0)` bits gives `(1.0, 1.0, 0)`. Knock-back (navigation_effect.rs:204), a dash's end (forced_moves.rs:143) and the script `direction` receive vectors that are not unit. → Take the unit from the root scaled to 126 bits, as `Direction::of` does, round once to 2⁻²⁴, and state the bound.
-- [ ] math/src/num/trig/mod.rs:73-90 — `of_degrees` rounds π, then the radians, then `sin_cos`. 166 of the whole degrees 1 to 359 are 1 bit off, and `of_degrees(d).sin ≠ of_degrees(90 − d).cos` for 34 of 89 angles. The test at trig/tests.rs:230 uses the same chain. → Reduce in degrees to an octant, convert the rest at 2⁻⁶² with `HALF_PI_WIDE`, run the wide kernel, and round once. Move the impl beside `SinCos` in num/mod.rs.
-- [ ] math/src/direction/mod.rs:49, 65 — `length` rounds the root to an integer, then shifts with ties to even. `Direction::of([2⁴⁰+1, 2²⁰, 1])` gives k+1 where k is nearest. → Break a half tie by the sign of `root² − square·4^fine`, or take `square.nearest_root()`.
-- [ ] units/src/units_api.rs:121-127 — `rotated_deg` converts degrees to radians in two roundings and fails on large angles. → `vector.checked_rotated_y(SinCos::of_degrees(degrees))`.
-- [ ] geometry/src/bounds.rs:66-78 — `exit` divides to nearest, so the distance can pass the edge. → Round each quotient toward the start (`checked_div_rounded` with `Floor`).
-- [ ] vision/src/fog.rs:60-63, 96-99; projectiles/src/flights.rs:146-200, lib.rs:192 — `Seeing::see` `expect`s each unit within the bounds, but only walkers are clamped, and a line projectile reaches `Bounds::exit` in rounded steps. → The flight's last step ends at the exit point, and `see` keeps its `expect` as the contract.
-- [ ] geometry/src/body_box/closer.rs:60, edges.rs:171, body_box/mod.rs:236 — at reach 0, a point inside a box is not "closer", where a circle's interior is. A walker of radius 0 (no `collision` section) routes through buildings. → At reach 0, a point or path that enters the open box counts as closer.
-- [ ] geometry/src/approach.rs:53-54, body_box/mod.rs:197-198 — a full `Direction` is built only to read a length, on a hot path. → `length_squared_bits().nearest_root()`; build the direction only where it is used.
-- [ ] math/src/num/mod.rs:172-237 — six mul and div entry points: three take a `Rounding`, two fix nearest-even, and `_int`/`_ratio` name operands inconsistently. → One family named by operation, each with a `Rounding`; only the operators fix nearest-even.
-- [ ] math/src/num/mod.rs:456, error.rs:24, lib.rs:19 — `TryFrom<f32> for Num` and `FloatToNumError` are in math, against design 09 D7 ("no float converts"); the only callers are in `import::zero_hour` (imported_type.rs:208, combat_import.rs:129, 256, map_object.rs:115, 132, production_import.rs:288, skirmish_start.rs:50, mod.rs:340). → The conversion moves to `import::zero_hour`, built on `Num::from_bits` and `Rounding::shift_right`, with its own error. No fingerprint moves.
-- [ ] math/src/rng/mod.rs:25 — `Rng` derives `Clone`, which repeats draws, the thing `SimRng`'s debug check forbids. No production code clones it. → Remove `Clone`.
-- [ ] math/src/simd/i64x4/mod.rs:100 — `I64x4::cast_signed(lanes: U64x4)` is associated; its mirror is a method. → `U64x4::cast_signed(self)`.
-
 ### 6. Script: the load checks every call
 
 `script`: `script_facts`, `script_api`, `api_builder`, `script_args`, `script_batch`, `hook`, `pool`, `script_limits`; `capabilities`: `release`; `package`: `load_check`.

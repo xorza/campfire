@@ -96,7 +96,9 @@ impl I64x4 {
         Self(F64x4::from_exact(self.0).div(divisor).floor().to_exact())
     }
 
-    /// Each lane of `lanes`, its bits read as signed.
+    /// Each lane of `lanes`, its bits read as signed: a constructor of `I64x4`, not a method of
+    /// `U64x4`, as the mirror of `cast_unsigned` there would make the two modules import each
+    /// other.
     pub const fn cast_signed(lanes: U64x4) -> Self {
         let [a, b, c, d] = lanes.to_array();
         Self([

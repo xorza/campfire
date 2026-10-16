@@ -16,7 +16,7 @@ mod wide_division;
 
 pub use crate::direction::Direction;
 pub use crate::flat::Flat;
-pub use crate::num::error::{FloatToNumError, IntToNumError, ParseNumError};
+pub use crate::num::error::{IntToNumError, ParseNumError};
 pub use crate::num::{Num, SinCos};
 pub use crate::rng::Rng;
 pub use crate::rng::rng_stream::RngStream;

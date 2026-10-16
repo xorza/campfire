@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, EffectTo};
 use campfire_common::{Tick, Ticks};
 use campfire_deliveries::Teleported;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rounding, Vec3};
 use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, View};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, MapBook};
@@ -58,7 +58,7 @@ impl NavigationEffect {
         Self::walker(view, id)?;
         let hz = NonZeroI64::from(view.rate().hz()).get();
         let step = speed
-            .checked_div_int(hz)
+            .checked_div_int(hz, Rounding::NearestEven)
             .filter(|&step| step > Num::ZERO)
             .ok_or_else(|| NavigationRefusal::NotASpeed.refused())?;
         Ok(Self::Dash {

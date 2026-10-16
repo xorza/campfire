@@ -1,4 +1,4 @@
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::Position;
 
 use crate::body_box::BodyBox;
@@ -70,8 +70,9 @@ impl Bounds {
 
     /// How far a straight path from `from` along the unit vector `direction` stays within the
     /// bounds on the ground plane, and within the world's bound in height: 0 from a point
-    /// outside. An axis the path barely moves along cannot be the one it leaves by, so a ratio
-    /// too large to hold is never the nearest.
+    /// outside. Each axis's distance rounds toward the start, so the path that far reaches no
+    /// edge's far side. An axis the path barely moves along cannot be the one it leaves by, so a
+    /// ratio too large to hold is never the nearest.
     pub fn exit(self, from: Vec3, direction: Vec3) -> Num {
         if !self.contains(from) {
             return Num::ZERO;
@@ -85,7 +86,7 @@ impl Bounds {
         .into_iter()
         .filter_map(|(at, moves, min, max)| {
             let edge = if moves > Num::ZERO { max } else { min };
-            (edge - at).checked_div(moves)
+            (edge - at).checked_div(moves, Rounding::Floor)
         })
         .min()
         .expect("a unit vector moves along an axis")
@@ -216,5 +217,20 @@ mod tests {
             assert_eq!(bounds.exit(past, direction), Num::ZERO, "{direction:?}");
         }
         assert_eq!(bounds.exit(origin, up), Position::BOUND);
+        // Along (0.6, 0, 0.8), each rounded once, the right edge lies 3 / 0.600 000 02 =
+        // 4.999 999 8 m on, 3 · 2⁴⁸ / 10 066 330 = 83 886 076.67 bits, rounded down, as the
+        // nearest, 83 886 077, would carry the path a hair past it: the distance times the
+        // step's x stays within the 3 m.
+        let slant = Vec3::new(
+            Num::from_bits(10_066_330),
+            Num::ZERO,
+            Num::from_bits(13_421_773),
+        );
+        let from = Vec3::from((1, 0, -1));
+        let exit = bounds.exit(from, slant);
+        assert_eq!(exit, Num::from_bits(83_886_076));
+        let reached = i128::from(exit.to_bits()) * i128::from(slant.x.to_bits());
+        assert!(reached <= 3 << 48);
+        assert!(reached + i128::from(slant.x.to_bits()) > 3 << 48);
     }
 }

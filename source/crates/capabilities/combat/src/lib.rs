@@ -344,7 +344,7 @@ pub mod internals {
             // rounds back to `period`.
             let period = Num::from_int(i64::try_from(self.period.get()).unwrap()).unwrap();
             let rate = Num::int(i64::from(hz))
-                .checked_div_rounded(period, Rounding::Ceiling)
+                .checked_div(period, Rounding::Ceiling)
                 .unwrap();
             debug_assert!(
                 world.resource::<StatBook>().len() >= 2,

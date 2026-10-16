@@ -1,4 +1,4 @@
-data_version 22
+data_version 23
 actions.slot_times 776040a47152d129
 actions.slots 7f1b07638f8a86da
 actions.use_group dbfe58d458cf8fc1
@@ -40,7 +40,7 @@ progression.experience f994c655dafc7639
 progression.level_ups 832035801ffaa69f
 progression.points 15fb8f345c37c1c2
 projectiles.flight_state e424d4aaefae6056
-projectiles.projectile 0665bcc6371bc7b4
+projectiles.projectile 33a2dec17025c445
 projectiles.struck_units 2ac460ad65984f23
 sim.entities 3ad3c5b04100e61c
 sim.id_allocator b6efbc7ed70c398e

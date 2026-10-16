@@ -7,6 +7,7 @@ use serde::Serialize;
 
 use crate::zero_hour::command_button_ini::{ButtonCommand, CommandButton, CommandButtonIni};
 use crate::zero_hour::command_set_ini::CommandSetIni;
+use crate::zero_hour::game_float;
 use crate::zero_hour::import_names::{ImportNames, ProductionSection};
 use crate::zero_hour::imported_type::ImportedType;
 use crate::zero_hour::locomotor_ini::LocomotorIni;
@@ -285,8 +286,8 @@ impl ProductionImport {
     fn section(build: &BuildData) -> Option<ProductionSection> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
         let frame = |[x, y]: [f32; 2]| {
-            let x = Num::try_from(x).ok()?;
-            let y = Num::try_from(y).ok()?;
+            let x = game_float::to_num(x).ok()?;
+            let y = game_float::to_num(y).ok()?;
             Some([x, y.checked_neg()?])
         };
         let exit = build.exit;

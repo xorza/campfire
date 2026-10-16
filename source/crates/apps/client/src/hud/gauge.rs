@@ -4,7 +4,7 @@ use bevy::math::Vec3;
 use bevy::transform::components::Transform;
 use campfire_actions::{ChargeRule, SlotCharges};
 use campfire_common::{Tick, Ticks};
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_stats::PoolId;
 
 use crate::view::float_num::FloatNum;
@@ -96,7 +96,9 @@ impl Gauge {
         if max <= Num::ZERO {
             return 0.0;
         }
-        let ratio = current.checked_div(max).unwrap_or(Num::ZERO);
+        let ratio = current
+            .checked_div(max, Rounding::NearestEven)
+            .unwrap_or(Num::ZERO);
         ratio.float().clamp(0.0, 1.0)
     }
 }

@@ -2,7 +2,9 @@ use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssi
 
 use serde::{Deserialize, Serialize};
 
+use crate::direction::Direction;
 use crate::num::{Num, SinCos};
+use crate::rounding::Rounding;
 use crate::vec3::step_moves::StepMoves;
 
 #[cfg(feature = "internals")]
@@ -52,17 +54,17 @@ impl Vec3 {
 
     pub const fn checked_mul(self, factor: Num) -> Option<Self> {
         Self::from_parts(
-            self.x.checked_mul(factor),
-            self.y.checked_mul(factor),
-            self.z.checked_mul(factor),
+            self.x.checked_mul(factor, Rounding::NearestEven),
+            self.y.checked_mul(factor, Rounding::NearestEven),
+            self.z.checked_mul(factor, Rounding::NearestEven),
         )
     }
 
     pub fn checked_div(self, divisor: Num) -> Option<Self> {
         Self::from_parts(
-            self.x.checked_div(divisor),
-            self.y.checked_div(divisor),
-            self.z.checked_div(divisor),
+            self.x.checked_div(divisor, Rounding::NearestEven),
+            self.y.checked_div(divisor, Rounding::NearestEven),
+            self.z.checked_div(divisor, Rounding::NearestEven),
         )
     }
 
@@ -141,20 +143,25 @@ impl Vec3 {
         self.ground().within(other.ground(), radius)
     }
 
-    /// The unit vector in this direction, each component rounded once; `None` for the zero
-    /// vector.
+    /// The unit vector in this direction, each component the true unit's rounded once to the
+    /// nearest 2⁻²⁴, so within 2⁻²⁵ of it, whatever the vector's length; `None` for the zero
+    /// vector, and for one with a component past ±2⁴⁷ bits, 2²³ m, beyond any offset of two
+    /// places.
     pub fn normalized(self) -> Option<Self> {
-        let length = self.checked_length()?.to_bits().cast_unsigned();
-        if length == 0 {
+        let vector = [self.x, self.y, self.z].map(|component| i128::from(component.to_bits()));
+        if vector
+            .iter()
+            .any(|component| component.unsigned_abs() >= 1 << 47)
+        {
             return None;
         }
-        // One float quotient and three multiplies estimate the three quotients, and
-        // `unit_component` corrects each exactly, so the result does not depend on the float.
-        let scale = unit_scale(length);
+        let direction = Direction::of(vector)?;
+        let square = self.length_squared_bits();
+        let [x, y, z] = direction.unit();
         Some(Self::new(
-            unit_component(self.x, length, scale),
-            unit_component(self.y, length, scale),
-            unit_component(self.z, length, scale),
+            unit_component(x, vector[0], square),
+            unit_component(y, vector[1], square),
+            unit_component(z, vector[2], square),
         ))
     }
 
@@ -248,63 +255,44 @@ impl Vec3 {
     }
 }
 
-/// 2²⁴, exact in f64.
-const TWO_POW_24: f64 = 16_777_216.0;
-/// 2⁻²⁰, exact in f64: what lifts a quotient's estimate past its error.
-const TWO_POW_MINUS_20: f64 = 1.0 / 1_048_576.0;
-
-/// 2²⁴ / `length`, rounded twice, for a `length` from 1 to below 2⁶³: within 2⁻⁵² of it.
-#[expect(
-    clippy::cast_precision_loss,
-    clippy::float_arithmetic,
-    reason = "an estimate that `unit_component` corrects exactly"
-)]
-fn unit_scale(length: u64) -> f64 {
-    debug_assert!(0 < length && length < 1 << 63);
-    TWO_POW_24 / length.cast_signed() as f64
+/// The component of the unit vector of a vector whose squared length is `square`, of the
+/// vector's `component`, rounded once to the nearest 2⁻²⁴: from `unit`, the direction's axis at
+/// 2⁻⁶², within 2⁻⁶² of the true one, the nearest of the two 2⁻²⁴ steps it lies between unless
+/// it lies within 2 units of 2⁻⁶² of their half, where the exact half decides: the true
+/// magnitude `m / √square` passes `n + ½` exactly when `4m² · 2⁴⁸ > (2n + 1)² · square`. It is
+/// never a half: that takes `m · 2²⁵ / √square` odd, so the square's two-adic valuation 50 more
+/// than twice the component's, where a sum of three squares, one of the least valuation odd,
+/// has one of at most twice that least valuation and one.
+fn unit_component(unit: i64, component: i128, square: u128) -> Num {
+    const SHIFT: u32 = 62 - Num::FRAC_BITS;
+    const HALF: u64 = 1 << (SHIFT - 1);
+    let magnitude = unit.unsigned_abs();
+    let floor = magnitude >> SHIFT;
+    let rest = magnitude & ((1 << SHIFT) - 1);
+    let up = if rest.abs_diff(HALF) > 2 {
+        rest > HALF
+    } else {
+        let twice = component.unsigned_abs() << (Num::FRAC_BITS + 1);
+        let odd = u128::from(2 * floor + 1);
+        wide_product(twice, twice) > wide_product(odd * odd, square)
+    };
+    let bits = (floor + u64::from(up)).cast_signed();
+    Num::from_bits(if unit < 0 { -bits } else { bits })
 }
 
-/// `component / length` rounded to nearest, ties to even, from `scale`, `unit_scale(length)`.
-/// |component| ≤ length, because the length is the nearest root of the squared sum, so the
-/// quotient is at most 2²⁴. The estimate rounds four times, twice in `scale`, once in the
-/// magnitude's conversion and once in the fused multiply-add, by at most 2⁻⁵³ of itself each, so
-/// it lies within 2⁻²⁶ of the quotient, and lifted by 2⁻²⁰ it lies above it and within 2⁻¹⁹: its
-/// floor is the quotient's floor or one above it, the second only
-/// for a quotient within 2⁻¹⁹ below an integer, which one rare step corrects. A whole quotient,
-/// as an axis's component gives, takes no step.
-#[expect(
-    clippy::cast_possible_truncation,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    reason = "an estimate of at most 2²⁴ + 1, which the integer steps correct"
-)]
-fn unit_component(component: Num, length: u64, scale: f64) -> Num {
-    let magnitude = component.to_bits().unsigned_abs();
-    let estimate = (magnitude.cast_signed() as f64).mul_add(scale, TWO_POW_MINUS_20);
-    let mut quotient = estimate as i64 as u64;
-    // The rest `magnitude · 2²⁴ − quotient · length` lies from −length to below length, within
-    // 2⁶³, so its low 64 bits, wrapped, are the rest, and every step runs on `u64`.
-    let mut rest = (magnitude << Num::FRAC_BITS)
-        .wrapping_sub(quotient.wrapping_mul(length))
-        .cast_signed();
-    // The quotient is at most 2²⁴ + 1 and the rest within ±2⁶³, so no step wraps, and the
-    // wrapping steps skip the checks a release build makes.
-    if rest < 0 {
-        quotient = quotient.wrapping_sub(1);
-        rest = rest.wrapping_add(length.cast_signed());
-    }
-    // The rounding and the sign are as random as the components, so both are arithmetic, which
-    // takes no branch to mispredict.
-    let twice_rest = rest.cast_unsigned() << 1;
-    #[expect(
-        clippy::needless_bitwise_bool,
-        reason = "the lazy operators branch on a random rounding"
-    )]
-    let up = (twice_rest > length) | ((twice_rest == length) & (quotient & 1 == 1));
-    let quotient = quotient.wrapping_add(u64::from(up)).cast_signed();
-    // All ones for a negative component, so the xor and the subtraction negate.
-    let sign = component.to_bits() >> 63;
-    Num::from_bits((quotient ^ sign).wrapping_sub(sign))
+/// `a · b` as its high and its low 128 bits.
+const fn wide_product(a: u128, b: u128) -> (u128, u128) {
+    const LOW: u128 = (1 << 64) - 1;
+    let (a_high, a_low) = (a >> 64, a & LOW);
+    let (b_high, b_low) = (b >> 64, b & LOW);
+    let low = a_low * b_low;
+    let middle_a = a_high * b_low;
+    let middle_b = a_low * b_high;
+    let (middle, middle_carry) = middle_a.overflowing_add(middle_b);
+    let (low, low_carry) = low.overflowing_add(middle << 64);
+    let high =
+        a_high * b_high + (middle >> 64) + ((middle_carry as u128) << 64) + low_carry as u128;
+    (high, low)
 }
 
 impl Add for Vec3 {

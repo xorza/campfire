@@ -6,6 +6,7 @@ use campfire_sim::Position;
 
 use crate::zero_hour::chunk_reader::ChunkReader;
 use crate::zero_hour::error::MapError;
+use crate::zero_hour::game_float;
 use crate::zero_hour::map_dict::{self, DictValue};
 
 /// An object of a map's `ObjectsList`, as `WorldHeightMap::ParseObjectData` reads it: its
@@ -112,7 +113,7 @@ impl MapObject {
     /// Where it stands on the engine's ground plane: the original's `x` east and `y` north become
     /// `x` and `−z`, which keeps the axes right-handed with `y` up. `None` past the world's bound.
     pub(crate) fn ground(&self) -> Option<[Num; 2]> {
-        let [x, y, _] = self.pos.map(|axis| Num::try_from(axis).ok());
+        let [x, y, _] = self.pos.map(|axis| game_float::to_num(axis).ok());
         let ground = [x?, y?.checked_neg()?];
         let bound = Position::BOUND.to_bits();
         ground
@@ -129,7 +130,7 @@ impl MapObject {
     pub(crate) fn placement(&self) -> Option<Placement> {
         Some(Placement {
             ground: self.ground()?,
-            height: Num::try_from(self.pos[2]).ok()?,
+            height: game_float::to_num(self.pos[2]).ok()?,
             degrees: Self::degrees(Self::normalized(self.angle)?)?,
         })
     }

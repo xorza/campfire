@@ -4,6 +4,7 @@ use campfire_values::DeclaredName;
 use serde::Serialize;
 
 use crate::zero_hour::error::TypeError;
+use crate::zero_hour::game_float;
 use crate::zero_hour::locomotor_ini::LocomotorIni;
 use crate::zero_hour::object_ini::fight_data::BodyKind;
 use crate::zero_hour::object_ini::{GeometryShape, IniObject};
@@ -202,7 +203,7 @@ impl TypeStats {
 
 /// `value` exactly as a `Num`; an error for one that is not finite, or past what a `Num` holds.
 fn num(value: f32) -> Result<Num, TypeError> {
-    Num::try_from(value).map_err(|_| TypeError::Number)
+    game_float::to_num(value).map_err(|_| TypeError::Number)
 }
 
 #[cfg(test)]

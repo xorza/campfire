@@ -22,7 +22,7 @@ const MAX_MESSAGE_LEN: usize = DOMAIN.len() + 4 + RngStream::MAX_LEN + 8 + 8;
 
 /// The random sequence of one (stream, entity, tick): keyed BLAKE3 extended output, so the draws
 /// a client sees do not reveal the seed.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Rng {
     reader: OutputReader,
     block: [u8; BLOCK_LEN],

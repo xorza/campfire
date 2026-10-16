@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_script::{NameKind, UnknownName, View};
 use campfire_sim::{Capability, TickRate};
 use campfire_values::{EngineStat, NameId, Names, Stat, UnitType};
@@ -194,7 +194,11 @@ impl StatBook {
             .engine(values, EngineStat::MoveSpeed)?
             .clamp(Num::ZERO, self.max_move_speed);
         let hz = NonZeroI64::from(rate.hz()).get();
-        Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
+        Some(
+            speed
+                .checked_div_int(hz, Rounding::NearestEven)
+                .expect("a speed a tick fits"),
+        )
     }
 
     /// How far a unit with `values` turns a tick at `rate`, in degrees: its `turn_rate`, at
@@ -203,7 +207,10 @@ impl StatBook {
     pub fn turn_step(&self, values: &[Num], rate: TickRate) -> Option<Num> {
         let turn = self.engine(values, EngineStat::TurnRate)?.max(Num::ZERO);
         let hz = NonZeroI64::from(rate.hz()).get();
-        Some(turn.checked_div_int(hz).expect("a turn a tick fits"))
+        Some(
+            turn.checked_div_int(hz, Rounding::NearestEven)
+                .expect("a turn a tick fits"),
+        )
     }
 }
 

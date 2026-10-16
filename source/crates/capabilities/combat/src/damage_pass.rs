@@ -6,7 +6,7 @@ use campfire_actions::{
 };
 use campfire_common::Tick;
 use campfire_declare::ByType;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorld};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
@@ -387,7 +387,8 @@ impl DamagePass {
             } else {
                 bindings.leech_other
             };
-            let amount = scaled(taken, Self::stat(world, entity, stat));
+            let amount =
+                taken.saturating_mul(Self::stat(world, entity, stat), Rounding::NearestEven);
             if amount > Num::ZERO {
                 let heal = Heal {
                     source: Some(id),
@@ -409,7 +410,7 @@ impl DamagePass {
         let bindings = world.resource::<CombatBook>().bindings;
         let scale = Self::stat(world, entity, bindings.heal_scale);
         let received = Num::ONE.checked_add(scale).unwrap_or(Num::MAX);
-        let amount = scaled(amount, received);
+        let amount = amount.saturating_mul(received, Rounding::NearestEven);
         if amount > Num::ZERO {
             let mut life = world.get_mut::<Life>(entity).expect("a living unit");
             life.add(amount);
@@ -437,15 +438,4 @@ impl DamagePass {
         stat.zip(values)
             .map_or(Num::ZERO, |(at, values)| values.values()[at.index()])
     }
-}
-
-/// `amount` times `ratio`, rounded once, at the end of the range of numbers when past it.
-fn scaled(amount: Num, ratio: Num) -> Num {
-    amount.checked_mul(ratio).unwrap_or_else(|| {
-        if (amount < Num::ZERO) == (ratio < Num::ZERO) {
-            Num::MAX
-        } else {
-            Num::MIN
-        }
-    })
 }

@@ -46,7 +46,7 @@ impl<const N: usize> Direction<N> {
         let unit = vector.map(|axis| divisor.unit(axis));
         Some(Self {
             unit,
-            length: Self::unscaled(root, fine),
+            length: Self::length_of(square, root, fine),
         })
     }
 
@@ -61,13 +61,25 @@ impl<const N: usize> Direction<N> {
         })
     }
 
-    /// `root / 2^fine`, rounded to nearest, ties to even.
-    const fn unscaled(root: u64, fine: u32) -> i128 {
-        debug_assert!(root <= 1 << 63 && fine <= 62);
-        if fine == 0 {
-            return root as i128;
-        }
-        Rounding::NearestEven.shift_right(root as i128, fine)
+    /// `√square` rounded to nearest, from `root`, the nearest root of `square · 4^fine`, `fine`
+    /// at least 1: `root / 2^fine` rounded to nearest, its half broken by which side of `root`
+    /// the exact root lies on. A root away from the half rounds as the exact root does, as the
+    /// two lie within a half of each other and the half lies on a whole `root`; at the half,
+    /// `root² > square · 4^fine` puts the exact root below it. `√square` is never a half, as
+    /// `(k + ½)²` is not an integer.
+    const fn length_of(square: u128, root: u64, fine: u32) -> i128 {
+        debug_assert!(root <= 1 << 63 && 1 <= fine && fine <= 62);
+        let half = 1 << (fine - 1);
+        let rest = root & ((1 << fine) - 1);
+        let floor = (root >> fine) as i128;
+        let wide = root as u128;
+        let up = rest > half || (rest == half && wide * wide < square << (2 * fine));
+        if up { floor + 1 } else { floor }
+    }
+
+    /// The unit vector, each axis with 62 bits of fraction, within 2⁻⁶² of the true one.
+    pub(crate) const fn unit(&self) -> [i64; N] {
+        self.unit
     }
 
     /// The length of the vector it was taken from, rounded to the nearest unit.

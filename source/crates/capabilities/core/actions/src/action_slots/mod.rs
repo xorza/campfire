@@ -372,7 +372,7 @@ impl ActionSlots {
             i64::try_from(held.get()).expect("a span of ticks within the tick limit fits i64")
         };
         let charge = Num::ONE
-            .checked_mul_ratio(ticks(now.min(full)), ticks(full), Rounding::NearestEven)
+            .checked_mul_div_int(ticks(now.min(full)), ticks(full), Rounding::NearestEven)
             .expect("a charge's most is a tick at least, and its share at most 1");
         self.underway = Some(InProgress::Order {
             aim,

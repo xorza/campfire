@@ -56,6 +56,7 @@ pub(crate) mod damage_type;
 pub(crate) mod error;
 pub(crate) mod game_data;
 pub(crate) mod game_data_ini;
+pub(crate) mod game_float;
 pub(crate) mod game_version;
 pub(crate) mod hierarchy;
 pub(crate) mod hlod;
@@ -338,7 +339,7 @@ impl<'a> ZeroHour<'a> {
             unit_look.placement_angle = object
                 .build()
                 .placement_angle
-                .and_then(|angle| Num::try_from(angle).ok());
+                .and_then(|angle| game_float::to_num(angle).ok());
             let unit_type = names.take(object)?;
             // A tree draws its module's model whatever the map; a prop the model of its first
             // module's best state, all of it shown, as `W3DTerrainVisual::addProp` draws it.

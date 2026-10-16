@@ -14,7 +14,7 @@ use bevy::math::Vec3;
 use campfire_actions::{ActionBook, ActionSlots, ActionTarget, Aim, UseGroup};
 use campfire_capabilities::{Action, Order};
 use campfire_interaction::Using;
-use campfire_math::{Num, Vec3 as SimVec3};
+use campfire_math::Vec3 as SimVec3;
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
 use campfire_production::{ProductionAction, RallyTarget, TrainQueue};
@@ -27,6 +27,7 @@ use crate::own_player::OwnPlayer;
 use crate::placing::Placing;
 use crate::pointer::{Pointed, Pointer};
 use crate::selection::{Selection, SelectionSystems};
+use crate::view::float_num;
 
 /// Turns the player's clicks and keys into orders: a right click on a unit the own avatar may
 /// use, with the avatar selected, orders the avatar alone to use it (design 13, D6); else, with
@@ -198,8 +199,8 @@ impl Orders {
             selected,
         } = click;
         let ground = || {
-            let x = Num::try_from(point.x).ok()?;
-            let z = Num::try_from(point.z).ok()?;
+            let x = float_num::to_num(point.x)?;
+            let z = float_num::to_num(point.z)?;
             Some([x, z])
         };
         let action = match under {
@@ -318,10 +319,10 @@ impl Takes {
     }
 }
 
-/// A point of the ground as a sim position, each axis exactly as `Num::try_from` takes it;
+/// A point of the ground as a sim position, each axis as `float_num::to_num` takes it;
 /// `None` past the bound.
 fn position(point: Vec3) -> Option<SimVec3> {
-    let axes = [point.x, point.y, point.z].map(|axis| Num::try_from(axis).ok());
+    let axes = [point.x, point.y, point.z].map(float_num::to_num);
     let [Some(x), Some(y), Some(z)] = axes else {
         return None;
     };
@@ -331,6 +332,7 @@ fn position(point: Vec3) -> Option<SimVec3> {
 
 #[cfg(test)]
 mod tests {
+    use campfire_math::Num;
     use campfire_sim::IdAllocator;
 
     use super::*;

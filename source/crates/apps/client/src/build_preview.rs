@@ -34,7 +34,7 @@ use crate::orders::OrderSystems;
 use crate::placing::Placing;
 use crate::pointer::Pointer;
 use crate::selection::SelectionSystems;
-use crate::view::float_num::FloatNum;
+use crate::view::float_num::{self, FloatNum};
 use crate::view::look::Shape;
 use crate::view::unit_looks::UnitLooks;
 
@@ -200,8 +200,8 @@ impl BuildPreview {
             .and_then(|builder| builders.get(builder).ok())
             .map(|pos| pos.get().y);
         let at = ground.zip(height).and_then(|(ground, y)| {
-            let x = Num::try_from(ground.x).ok()?;
-            let z = Num::try_from(ground.z).ok()?;
+            let x = float_num::to_num(ground.x)?;
+            let z = float_num::to_num(ground.z)?;
             Some((ground, SimVec3::new(x, y, z)))
         });
         ghost.at = at.map(|(_, at)| at);

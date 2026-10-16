@@ -6,7 +6,7 @@ use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::num::decimal::Decimal;
-use crate::num::error::{FloatToNumError, IntToNumError, ParseNumError};
+use crate::num::error::{IntToNumError, ParseNumError};
 use crate::root::RoundedRoot;
 use crate::rounding::Rounding;
 
@@ -32,6 +32,15 @@ pub struct Num(i64);
 pub struct SinCos {
     pub sin: Num,
     pub cos: Num,
+}
+
+impl SinCos {
+    /// The sine and the cosine of `angle` degrees, each rounded once from the kernel's value: the
+    /// angle reduces in degrees, exactly, so each multiple of 90° is exact, a whole number of
+    /// turns more turns alike, and an angle's sine is its complement's cosine.
+    pub fn of_degrees(angle: Num) -> Self {
+        trig::sin_cos_degrees(angle)
+    }
 }
 
 impl Num {
@@ -140,16 +149,18 @@ impl Num {
         }
     }
 
-    /// `self × rhs`, rounded once to nearest, ties to even, and at the end of the range of
-    /// numbers when past it: a step of a compound value, as a stat's (design 09, D11).
+    /// `self × rhs`, from the exact product, rounded once by `rounding`, and at the end of the
+    /// range of numbers when past it: a step of a compound value, as a stat's (design 09, D11).
     #[must_use]
-    pub const fn saturating_mul(self, rhs: Self) -> Self {
+    pub const fn saturating_mul(self, rhs: Self, rounding: Rounding) -> Self {
         let product = (self.0 as i128).wrapping_mul(rhs.0 as i128);
-        Self::saturating_from_bits(Rounding::NearestEven.shift_right(product, Self::FRAC_BITS))
+        Self::saturating_from_bits(rounding.shift_right(product, Self::FRAC_BITS))
     }
 
-    pub const fn checked_mul(self, rhs: Self) -> Option<Self> {
-        Self::from_raw_products(self.0 as i128 * rhs.0 as i128)
+    /// `self × rhs`, from the exact product, rounded once by `rounding`; `None` for a result that
+    /// does not fit.
+    pub const fn checked_mul(self, rhs: Self, rounding: Rounding) -> Option<Self> {
+        narrow(rounding.shift_right(self.0 as i128 * rhs.0 as i128, Self::FRAC_BITS))
     }
 
     /// The value with these bits, from a wider result that cannot overflow.
@@ -169,13 +180,9 @@ impl Num {
         narrow(Rounding::NearestEven.divide(numerator, denominator))
     }
 
-    pub fn checked_div(self, rhs: Self) -> Option<Self> {
-        self.checked_div_rounded(rhs, Rounding::NearestEven)
-    }
-
     /// `self ÷ rhs`, rounded once by `rounding`; `None` for a divisor of 0 or a result that does
     /// not fit.
-    pub fn checked_div_rounded(self, rhs: Self, rounding: Rounding) -> Option<Self> {
+    pub fn checked_div(self, rhs: Self, rounding: Rounding) -> Option<Self> {
         if rhs.0 == 0 {
             return None;
         }
@@ -194,7 +201,7 @@ impl Num {
     /// `self × by ÷ over` for whole `by` and `over`, as a share of a value, from the exact
     /// product, rounded once by `rounding`; `None` for a divisor of 0 or a result that does not
     /// fit.
-    pub fn checked_mul_ratio(self, by: i64, over: i64, rounding: Rounding) -> Option<Self> {
+    pub fn checked_mul_div_int(self, by: i64, over: i64, rounding: Rounding) -> Option<Self> {
         if over == 0 {
             return None;
         }
@@ -217,23 +224,13 @@ impl Num {
         }
     }
 
-    /// `self × rhs ÷ divisor`, rounded once to nearest, ties to even; `None` for a divisor of 0
-    /// or a result that does not fit.
-    pub fn checked_mul_div_int(self, rhs: Self, divisor: i64) -> Option<Self> {
-        if divisor == 0 {
-            return None;
-        }
-        narrow(Rounding::NearestEven.divide(
-            i128::from(self.0) * i128::from(rhs.0),
-            i128::from(divisor) << Self::FRAC_BITS,
-        ))
-    }
-
-    pub fn checked_div_int(self, rhs: i64) -> Option<Self> {
+    /// `self ÷ rhs` for a whole `rhs`, rounded once by `rounding`; `None` for a divisor of 0 or
+    /// a result that does not fit.
+    pub fn checked_div_int(self, rhs: i64, rounding: Rounding) -> Option<Self> {
         if rhs == 0 {
             return None;
         }
-        narrow(Rounding::NearestEven.divide(i128::from(self.0), i128::from(rhs)))
+        narrow(rounding.divide(i128::from(self.0), i128::from(rhs)))
     }
 
     /// `None` for a negative value.
@@ -324,7 +321,8 @@ impl Mul for Num {
     type Output = Self;
 
     fn mul(self, rhs: Self) -> Self {
-        self.checked_mul(rhs).expect("Num overflow in *")
+        self.checked_mul(rhs, Rounding::NearestEven)
+            .expect("Num overflow in *")
     }
 }
 
@@ -332,7 +330,7 @@ impl Div for Num {
     type Output = Self;
 
     fn div(self, rhs: Self) -> Self {
-        self.checked_div(rhs)
+        self.checked_div(rhs, Rounding::NearestEven)
             .expect("Num division by zero or overflow in /")
     }
 }
@@ -349,7 +347,7 @@ impl Div<i64> for Num {
     type Output = Self;
 
     fn div(self, rhs: i64) -> Self {
-        self.checked_div_int(rhs)
+        self.checked_div_int(rhs, Rounding::NearestEven)
             .expect("Num division by zero or overflow in / i64")
     }
 }
@@ -448,44 +446,6 @@ impl TryFrom<u64> for Num {
         value
             .and_then(Self::from_int)
             .ok_or(IntToNumError::OutOfRange)
-    }
-}
-
-/// `value` exactly where a step of 2⁻²⁴ holds it, as it holds every value of at least 2⁻¹ that
-/// fits, and below rounded once to nearest, ties to even.
-impl TryFrom<f32> for Num {
-    type Error = FloatToNumError;
-
-    fn try_from(value: f32) -> Result<Self, FloatToNumError> {
-        if !value.is_finite() {
-            return Err(FloatToNumError::NotFinite);
-        }
-        let bits = value.to_bits();
-        let exponent = i32::try_from((bits >> 23) & 0xFF).expect("eight bits");
-        let fraction = i128::from(bits & 0x7F_FFFF);
-        let (mantissa, power) = if exponent == 0 {
-            (fraction, -149)
-        } else {
-            (fraction | 0x80_0000, exponent - 150)
-        };
-        // The value is `mantissa · 2^power`, so its bits are `mantissa · 2^(power + 24)`: a left
-        // shift below 64 that fits an `i64` or none, or a right shift of at most 125.
-        let scaled = power + Self::FRAC_BITS.cast_signed();
-        let magnitude = if scaled >= 0 {
-            if scaled >= 64 {
-                return Err(FloatToNumError::OutOfRange);
-            }
-            mantissa << scaled
-        } else {
-            Rounding::NearestEven.shift_right(mantissa, scaled.unsigned_abs())
-        };
-        let bits = if value.is_sign_negative() {
-            -magnitude
-        } else {
-            magnitude
-        };
-        let bits = i64::try_from(bits).map_err(|_| FloatToNumError::OutOfRange)?;
-        Ok(Self::from_bits(bits))
     }
 }
 

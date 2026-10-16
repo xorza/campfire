@@ -52,7 +52,7 @@ impl Approach {
             },
             Stretch::End => Self {
                 nearest: (off - path).length_squared_bits().nearest_root_cmp(reach),
-                place: place(Self::direction(path).length()),
+                place: place(path.length_squared_bits().nearest_root().cast_signed()),
             },
             Stretch::Between => {
                 let direction = Self::direction(path);

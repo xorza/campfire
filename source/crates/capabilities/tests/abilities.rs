@@ -1517,7 +1517,7 @@ fn on_resolve(ctx, caster, target) {
         game.part_mut::<ActionSlots>(id).order(slot, target);
     };
     let run_to = |game: &mut Match, tick: u64| game.run_until(tick);
-    let share = |held: i64| Num::int(held).checked_div(Num::int(90)).unwrap();
+    let share = |held: i64| Num::int(held) / Num::int(90);
 
     // Ordered in tick 0, it charges; in tick 10 the caster moves 2 m, which keeps the charge; its
     // order again in tick 30 releases it: 30 of 90 ticks, a third, as 24 fraction bits round it.

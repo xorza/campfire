@@ -24,6 +24,14 @@ pub(crate) struct Flights<'a> {
     pub(crate) met: &'a mut Vec<(Num, StableId)>,
 }
 
+/// A line a projectile flies: its origin, its unit direction and its range.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Line {
+    from: Vec3,
+    direction: Vec3,
+    range: Num,
+}
+
 /// A projectile in flight this tick: its stable id, its team, its type's spec, where it is,
 /// itself, and how far it flew.
 #[derive(Debug)]
@@ -60,10 +68,20 @@ impl Flights<'_> {
         match aloft.projectile.flight() {
             Flight::Homing { target } => self.homing(targets, aloft, target),
             Flight::Line {
+                from,
                 direction,
                 range,
                 aimed,
-            } => self.line(targets, aloft, direction, range, aimed),
+            } => self.line(
+                targets,
+                aloft,
+                Line {
+                    from,
+                    direction,
+                    range,
+                },
+                aimed,
+            ),
         }
     }
 
@@ -114,14 +132,18 @@ impl Flights<'_> {
         true
     }
 
-    /// Flies `aloft` a step along `direction`, on from the meters of its `range` it flew; its hits
-    /// and its end name `aimed` as their action's target.
+    /// Flies `aloft` a step along its line, on from the meters of its range it flew, to its
+    /// place on the line from the line's origin; its hits and its end name `aimed` as their
+    /// action's target.
     fn line(
         &mut self,
         targets: &Targets<'_, '_>,
         aloft: Aloft<'_>,
-        direction: Vec3,
-        range: Num,
+        Line {
+            from: origin,
+            direction,
+            range,
+        }: Line,
         aimed: Option<StableId>,
     ) -> bool {
         let by = aloft.strikes_by();
@@ -143,8 +165,11 @@ impl Flights<'_> {
             distance,
             direction: Some(direction),
         };
-        let offset = direction.checked_mul(step).expect("a step fits");
-        let to = from.get().checked_add(offset);
+        let along = |distance: Num| {
+            let offset = direction.checked_mul(distance)?;
+            origin.checked_add(offset)
+        };
+        let to = along(flown + step);
         let Some(to) = to.filter(|&to| Position::from(to).within_bound()) else {
             self.end(projectile, line(from.get(), flown));
             return true;
@@ -182,10 +207,7 @@ impl Flights<'_> {
         for at in 0..self.met.len() {
             let (place, struck) = self.met[at];
             let travelled = place.min(step);
-            let pos = from
-                .get()
-                .checked_add(direction.checked_mul(travelled).expect("within a step"))
-                .expect("a point of a step within the bound");
+            let pos = along(flown + travelled).expect("a point of a step within the bound");
             let hit = line(pos, flown + travelled);
             self.struck.insert(Struck { by, id: struck });
             self.strike(projectile, struck, hit);

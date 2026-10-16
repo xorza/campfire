@@ -1,4 +1,4 @@
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 
 use crate::stat_op::StatOp;
 
@@ -39,7 +39,10 @@ impl StatTotals {
         let one = 1_i128 << Num::FRAC_BITS;
         let kept = Num::saturating_from_bits(one - self.cut.clamp(0, one));
         Num::saturating_from_bits(self.add)
-            .saturating_mul(Num::saturating_from_bits(one + self.pct))
-            .saturating_mul(kept)
+            .saturating_mul(
+                Num::saturating_from_bits(one + self.pct),
+                Rounding::NearestEven,
+            )
+            .saturating_mul(kept, Rounding::NearestEven)
     }
 }

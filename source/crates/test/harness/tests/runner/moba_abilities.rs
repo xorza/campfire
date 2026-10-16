@@ -269,7 +269,7 @@ fn areas(game: &mut Match) -> usize {
 
 /// The point `x`, `z` thousandths of a meter from the origin.
 fn milli(x: i64, z: i64) -> Vec3 {
-    let at = |value: i64| Num::int(value).checked_div_int(1000).unwrap();
+    let at = |value: i64| Num::int(value) / 1000;
     Vec3::new(at(x), Num::ZERO, at(z))
 }
 
@@ -959,7 +959,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
 
 /// A body of half a meter.
 fn body() -> Body {
-    Body::new(Num::ONE.checked_div_int(2).unwrap()).unwrap()
+    Body::new(Num::ONE / 2).unwrap()
 }
 
 /// A body of half a meter that walks a meter a tick.
@@ -992,7 +992,7 @@ fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it(
         arena.step(&mut game);
     }
     let (x, dash) = forced(&game, veil);
-    let step = Num::int(22).checked_div_int(30).unwrap();
+    let step = Num::int(22) / 30;
     assert_eq!((x, health(&arena, &game, enemy)), (step * 6, 500));
     assert!(matches!(
         dash,

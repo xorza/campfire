@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_values::{ActionStart, DashDelivery};
@@ -84,7 +84,7 @@ impl ForcedMove {
                     i64::try_from(*left).expect("a knock back's ticks are within the tick limit");
                 let share = point
                     .distance(goal.point)
-                    .checked_div_int(ticks)
+                    .checked_div_int(ticks, Rounding::NearestEven)
                     .expect("a share of a way within the bound fits");
                 *left -= 1;
                 Advanced {

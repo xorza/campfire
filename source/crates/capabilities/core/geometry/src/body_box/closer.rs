@@ -58,7 +58,7 @@ impl Closer {
     pub(crate) fn holds(&self, row: &Row, x: i64) -> bool {
         let slabs = self.edges.slabs(row, x);
         if !self.edges.outside(slabs) {
-            return self.reach.units > 0;
+            return self.reach.units > 0 || self.edges.inside(slabs);
         }
         // A slab value past the area and a line's bound puts the point at least two units past
         // the reach from the edges along the other half edge, so from the box, with no edge's

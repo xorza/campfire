@@ -2,6 +2,7 @@ use campfire_math::Num;
 use campfire_values::DeclaredName;
 
 use crate::zero_hour::error::{TypeError, ZeroHourError};
+use crate::zero_hour::game_float;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::locomotor_ini::LocomotorIni;
 use crate::zero_hour::object_ini::{IniObject, ObjectIni};
@@ -48,7 +49,7 @@ impl SkirmishStart {
         let building = object(building)?;
         let half = building.geometry().bounding_sphere() / 2.0;
         let offset =
-            Num::try_from(half).map_err(|_| Self::type_error(building, TypeError::Number))?;
+            game_float::to_num(half).map_err(|_| Self::type_error(building, TypeError::Number))?;
         Ok(Self {
             building: unit_type(building)?,
             units: template

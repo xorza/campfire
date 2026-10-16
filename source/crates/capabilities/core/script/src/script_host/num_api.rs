@@ -1,4 +1,4 @@
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rounding, Vec3};
 use rhai::{Dynamic, Engine, EvalAltResult, INT};
 
 use crate::script_host::error::{NumError, Raised};
@@ -25,8 +25,8 @@ impl NumApi {
         let operators: [(&str, Operator); 4] = [
             ("+", Num::checked_add),
             ("-", Num::checked_sub),
-            ("*", Num::checked_mul),
-            ("/", Num::checked_div),
+            ("*", |a, b| a.checked_mul(b, Rounding::NearestEven)),
+            ("/", |a, b| a.checked_div(b, Rounding::NearestEven)),
         ];
         for (name, operator) in operators {
             engine.register_fn(name, move |a: Num, b: Num| checked(operator(a, b)));

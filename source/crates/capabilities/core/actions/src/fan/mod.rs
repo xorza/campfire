@@ -1,6 +1,6 @@
 use std::num::{NonZeroI64, NonZeroU8};
 
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 
 /// How a delivery launches its projectiles: `count` of them, spread evenly over `spread_deg`
 /// degrees around the aim.
@@ -22,7 +22,9 @@ impl Fan {
         debug_assert!(i64::from(at) < count);
         self.spread_deg
             .checked_mul_int(2 * i64::from(at) - (count - 1))
-            .and_then(|turn| turn.checked_mul_div_int(Num::PI, 360 * (count - 1)))
+            .and_then(|turn| {
+                turn.checked_mul_div(Num::PI, Num::int(360 * (count - 1)), Rounding::NearestEven)
+            })
             .expect("a delivery's data bounds a fan's spread to a full turn")
     }
 }

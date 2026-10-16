@@ -2,7 +2,7 @@ use std::num::NonZeroI64;
 
 use campfire_declare::PerType;
 use campfire_geometry::Radius;
-use campfire_math::Num;
+use campfire_math::{Num, Rounding};
 use campfire_script::{Filter, UnknownName};
 use campfire_sim::{Capability, TickRate};
 use campfire_units::UnitTypeBook;
@@ -38,7 +38,7 @@ impl ProjectileSpec {
         Ok(Self {
             speed: data
                 .speed
-                .checked_div_int(NonZeroI64::from(rate.hz()).get())
+                .checked_div_int(NonZeroI64::from(rate.hz()).get(), Rounding::NearestEven)
                 .expect("a speed over a tick rate fits"),
             half_width: Radius::new(data.width / 2)
                 .expect("the decode bounds a projectile's width"),

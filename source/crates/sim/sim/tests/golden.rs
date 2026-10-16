@@ -18,7 +18,7 @@ use bevy_ecs::world::World;
 use blake3::Hasher;
 use campfire_common::{SegmentSeed, Tick};
 use campfire_log::internals::LogCheck;
-use campfire_math::{Num, Rng, RngStream, Vec3};
+use campfire_math::{Num, Rng, RngStream, Rounding, Vec3};
 use campfire_sim::{
     EntityIndex, IdAllocator, OnAny, SimComponent, SimRng, SimSet, SimTick, SimUpdate, SimWorld,
     SimWorldBuilder, StableId, StateRegistry, TickRate,
@@ -97,10 +97,10 @@ fn num_section(hasher: &mut Hasher) {
         for result in [
             a.checked_add(b),
             a.checked_sub(b),
-            a.checked_mul(b),
-            a.checked_div(b),
+            a.checked_mul(b, Rounding::NearestEven),
+            a.checked_div(b, Rounding::NearestEven),
             a.checked_mul_int(k),
-            a.checked_div_int(k),
+            a.checked_div_int(k, Rounding::NearestEven),
             a.checked_sqrt(),
             a.to_string().parse().ok(),
         ] {
@@ -313,7 +313,7 @@ fn golden_digests() {
         Section {
             name: "vec3",
             run: vec3_section,
-            digest: "cbc5de4894e677c32439c9eedc47f1e2560a7b29a131419a87bc95c8c614fc2c",
+            digest: "3803eb8a70a5fd6a9454bd416ae6cf675fdfb477643c29bef4c5a3952c3318cd",
         },
         Section {
             name: "rng",
@@ -323,7 +323,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "f6c9eb6ea963f8b6504ba9fb0f9d230ead53229cb88e2862fb02665a5809aef4",
+            digest: "a78995a8fdfd820c2211fe952b4613aca4509df4122225dec939074e7ff1f0b2",
         },
         Section {
             name: "tick",

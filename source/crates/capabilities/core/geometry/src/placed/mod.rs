@@ -27,7 +27,8 @@ impl Placed {
 
     /// Whether the straight path from `from` to `to` on the ground plane comes closer than
     /// `reach` to it, exactly: closer than `reach` and its radius to a circle's center, or than
-    /// `reach` to a box. Touching at `reach` is not closer.
+    /// `reach` to a box, which a path into its open inside is at any reach, 0 too, as a circle's
+    /// center is. Touching at `reach` is not closer.
     pub fn comes_closer(self, from: Vec3, to: Vec3, reach: Num) -> bool {
         let Self { pos, shape } = self;
         // A path whose span along an axis lies at least `reach` beyond the shape's comes no

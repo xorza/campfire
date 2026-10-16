@@ -250,6 +250,18 @@ fn vectors_add_subtract_and_scale_each_rounded_once() {
             half
         ]
     );
+    // Turned a quarter about the vertical, (x, z) goes to (z, −x), exact; 2³⁸ degrees, whose
+    // radians would pass what a number holds, turn as their 184° modulo 360° does.
+    let probe = r#"fn probe(ctx, of) {
+        let d = of.pos.direction_to(ctx.find(of, of.pos, 6, "enemies")[0].pos);
+        [d.rotated_deg(90), d.rotated_deg(1 << 38), d.rotated_deg(184)]
+    }"#;
+    let read = Units::probe(&mut game, probe, of)
+        .unwrap()
+        .cast::<ScriptList>();
+    let read: Vec<Vec3> = read.into_iter().map(ScriptValue::cast::<Vec3>).collect();
+    assert_eq!(read[0], vector(13_421_773, -10_066_330));
+    assert_eq!(read[1], read[2]);
     // 0.8 × 2³⁹ is about 4.4 × 10¹¹, within a number's 5.5 × 10¹¹; its double is past it, and
     // the sum fails the call.
     let error = Units::read(&mut game,

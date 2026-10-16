@@ -5,7 +5,7 @@ use campfire_actions::ActionBook;
 use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
 use campfire_script::View;
-use campfire_sim::{SimComponent, StableId};
+use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::DeliveryEntity;
 use campfire_values::{ActionId, ActionStart, DamageKind, Rank, UnitType};
@@ -25,14 +25,17 @@ pub struct Projectile {
     payload: Payload,
 }
 
-/// How a projectile flies: homing on a unit, or along a line, a unit vector on the ground or in
-/// space, for `range` meters, with the unit its action aimed at, if one.
+/// How a projectile flies: homing on a unit, or along a line from `from`, where it launched, a
+/// unit vector on the ground or in space, for `range` meters, with the unit its action aimed at,
+/// if one. Each step of a line ends at its place along the line from `from`, rounded once, so no
+/// rounding gathers over its steps, and its last ends where the line does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Flight {
     Homing {
         target: StableId,
     },
     Line {
+        from: Vec3,
         direction: Vec3,
         range: Num,
         aimed: Option<StableId>,
@@ -44,9 +47,15 @@ impl Flight {
         Self::Homing { target }
     }
 
-    /// A flight along `direction` for `range`, aimed at `aimed` if a unit.
-    pub(crate) const fn line(direction: Vec3, range: Num, aimed: Option<StableId>) -> Self {
+    /// A flight from `from` along `direction` for `range`, aimed at `aimed` if a unit.
+    pub(crate) const fn line(
+        from: Vec3,
+        direction: Vec3,
+        range: Num,
+        aimed: Option<StableId>,
+    ) -> Self {
         Self::Line {
+            from,
             direction,
             range,
             aimed,
@@ -127,6 +136,11 @@ impl SimComponent for Projectile {
             .get::<UnitType>(entity)
             .is_some_and(|&unit_type| specs.get(unit_type).is_some());
         let book = world.resource::<ActionBook>();
+        // A line's origin lies within the world's bound, as every place does.
+        let origin = match self.flight {
+            Flight::Line { from, .. } => Position::from(from).within_bound(),
+            Flight::Homing { .. } => true,
+        };
         let carries = match self.payload {
             Payload::Attack {
                 action, rank, kind, ..
@@ -140,7 +154,7 @@ impl SimComponent for Projectile {
                 ..
             } => book.ranked(action, rank) && start.is_none_or(ActionStart::check),
         };
-        flies && carries
+        flies && origin && carries
     }
 }
 

@@ -28,7 +28,7 @@ impl Share {
     /// The share of `value`, rounded down to the least amount a `Num` holds, exactly.
     pub fn of_num(self, value: Num) -> Num {
         value
-            .checked_mul_ratio(self.0.into(), Self::WHOLE.into(), Rounding::Floor)
+            .checked_mul_div_int(self.0.into(), Self::WHOLE.into(), Rounding::Floor)
             .expect("a share of at most 1 of a value fits")
     }
 

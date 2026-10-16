@@ -8,6 +8,7 @@ use serde::Serialize;
 use crate::zero_hour::armor_ini::ArmorIni;
 use crate::zero_hour::damage_type::DamageType;
 use crate::zero_hour::error::ZeroHourError;
+use crate::zero_hour::game_float;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::object_ini::ObjectIni;
 use crate::zero_hour::weapon_ini::{IniWeapon, ShotDelay, WeaponIni};
@@ -131,7 +132,7 @@ impl CombatImport {
                 if share == 1.0 {
                     continue;
                 }
-                let share = Num::try_from(share)
+                let share = game_float::to_num(share)
                     .ok()
                     .filter(|share| *share >= Num::ZERO)
                     .ok_or_else(|| ZeroHourError::ArmorShare(name.to_owned()))?;
@@ -261,7 +262,7 @@ impl ImportedWeapon {
             return Err(WeaponDrop::Healing);
         }
         let number = |value: f32| {
-            let value = Num::try_from(value).map_err(|_| WeaponDrop::BadNumber)?;
+            let value = game_float::to_num(value).map_err(|_| WeaponDrop::BadNumber)?;
             if value < Num::ZERO {
                 return Err(WeaponDrop::BadNumber);
             }
