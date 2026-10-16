@@ -1,4 +1,3 @@
-use campfire_package::ContentError;
 use campfire_package_disk::StoreError;
 use campfire_protocol::LogError;
 use campfire_runner::{ReplayError, SnapshotCheckError, StartError, TermsError};
@@ -8,9 +7,9 @@ use thiserror::Error;
 /// Why a log file does not verify, by the step that failed.
 #[derive(Debug, Error)]
 pub enum VerifyError {
-    /// The directory of packages does not scan.
+    /// A directory of the packages does not list.
     #[error("the packages do not scan")]
-    Store(#[source] ContentError),
+    Store(#[source] PathError<ReadError>),
     #[error("the log does not read")]
     ReadLog(#[source] PathError<ReadError>),
     #[error("the log does not decode")]

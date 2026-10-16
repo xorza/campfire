@@ -101,26 +101,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 - [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. **Skipped: see `review-workspace_QUESTIONS.md`, batch 9, item 5.**
 
-### 16. Packages
-
-`package`: `file_index`, `package_walk`, `mode_packages`, `files`, `error`, `texts`; `package-disk`: `package_writer`, `package_dir`; `client-files`; `server`: `main`, `opening`; `client`: `action_names`, `item_names`.
-
-- [ ] package/src/file_index/mod.rs:49-51, 91, 148 — `new` refuses only the spelling `package.index` and does not check the bounds that `decode` checks. An index that lists `PACKAGE.INDEX`, a file and a directory of one name, or a file past 2 GiB gets a fingerprint and then fails every read. → `new` holds every rule: case-folded names with its own path, no clash of a file and a directory, the bounds. `MAX_FILE_LEN` becomes private.
-- [ ] package-disk/src/package_writer.rs:46-50, package/src/package_walk.rs:50 — the writer records the row before the write, and the walk replaces a repeated path. A refused second write leaves a row for bytes not on disk, and a later hard link copies it. → The walk refuses a repeated path; the writer commits after the write.
-- [ ] package/src/mode_packages/load_check.rs:140, mod.rs:391-408, dependent.rs:43-72 — the API version is checked after every file is parsed and every script compiled, so a newer package fails as `Data`, not `OtherApi`, against design 03. → Check it as each manifest is read.
-- [ ] package/src/file_index/mod.rs:21, package_reader.rs:15, package.rs:72 — the index holds its rows and their encoding (up to 64 MiB), and each reader clone copies both. → `Arc<FileIndex>`; the builder hands the encoding to the writer.
-- [ ] client-files/src/{terrain_file.rs:148, map_lights.rs:36, client_objects.rs:26, map_conditions.rs:15} — `path(map: &str) -> String`, re-parsed with `expect` by each caller; `heights.bin`, `client/units.toml` and `client/materials/` are spelled by hand in the client, the import and the check. → `path(&MapName) -> PackagePath` on each type, `HeightGrid`, `ClientUnits` and `MaterialFile` included.
-- [ ] client-files/src/material_file.rs:9 — no check of its 0-to-1 values, where its siblings check; NaN reaches Bevy (client/src/view/file_material.rs:64). → A checked `Deserialize`.
-- [ ] client-files/src/client_units.rs:54 — the generic crate names Zero Hour's `SparseMatchFinder`. → Remove the name.
-- [ ] package/src/files/dependency.rs:7, package-disk/src/package_dir/mod.rs:113 — a dependency path is a raw string joined as an OS path; an absolute path replaces the root. → A checked relative-path type.
-- [ ] package-disk/src/package_dir/mod.rs:39-193 — the memory tree is a variant of the disk type, so production branches on a test case. → `PackageDir` disk-only; the harness's tree implements `PackageSource` behind `internals`.
-- [ ] package-disk/src/package_dir/mod.rs:87, package/src/mode_packages/mod.rs:67 — both apps read the index twice; `choose_map`'s `map` is always `None`. → `mode_packages(map: Option<MapName>)` reads once.
-- [ ] package/src/error/mod.rs:45, package_walk.rs:44, package_store.rs:103 — `ContentError::Io` makes a disk failure read as "no package". → The walk returns `io::Error`; package-disk maps it.
-- [ ] package/src/texts.rs:82; client/src/action_names.rs:41, item_names.rs:41 — `text` takes `&str` for a `PackageName` key, and the client builds a full `Texts` twice. → `&PackageName`; one `Texts`, shared.
-- [ ] package/src/files/avatar_file.rs, lib.rs:44 — `pub` for one harness test. → `pub(crate)`.
-- [ ] server/src/main.rs:105-171 — five refusals repeat the log and the exit inline beside a `refused` helper. → A typed start error, logged in one place.
-- [ ] server/src/opening/mod.rs:131-132 — `Opening::find` reads `SystemTime::now()`. → Take `now`.
-
 ### 17. Zero Hour import: bugs and boundaries
 
 `import`: `zero_hour` (`game_version`, `install`, `archive_path`, `model_writer`, `model_import`, `production_import`, `terrain`, `terrain_cells`, `game_data_ini`, `map_file`, `hlod`, `mod.rs`), `texture`, `lib`. After batch 16 (typed paths). Moves the Zero Hour fingerprints where an item changes written bytes.

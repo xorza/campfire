@@ -35,6 +35,10 @@ impl Arena {
         }
     }
 
+    pub const fn packages(&self) -> &ModePackages {
+        &self.packages
+    }
+
     /// The arena's match at `rate`, for `players` players, which fails its test on any warning it
     /// logs, and keeps every script failure since it began.
     pub fn start(&self, rate: TickRate, players: u32) -> Match {

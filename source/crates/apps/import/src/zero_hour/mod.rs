@@ -3,8 +3,8 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, LookVariant, MapConditions,
-    MapLights, ModelScale, TerrainFile,
+    CameraFile, ClientModel, ClientObjects, ClientUnit, ClientUnits, HeightGrid, LookVariant,
+    MapConditions, MapLights, ModelScale, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{MapName, PackageFingerprint};
@@ -180,7 +180,7 @@ impl<'a> ZeroHour<'a> {
         let game_data = self.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?;
         let camera = game_data.camera_file().ok_or(ZeroHourError::Camera)?;
         let text = Toml::write(&camera);
-        write(CameraFile::PATH, text.as_bytes())?;
+        write(CameraFile::path().as_str(), text.as_bytes())?;
         let ini = self.read_inis("Object", ObjectIni::default(), ObjectIni::read)?;
         let locomotors =
             self.read_inis("Locomotor", LocomotorIni::default(), LocomotorIni::read)?;
@@ -222,15 +222,15 @@ impl<'a> ZeroHour<'a> {
             };
             let imported = MapImport::new(&file, sources).map_err(in_map)?;
             write(&format!("map/{name}/map.toml"), imported.map.as_bytes())?;
-            write(&format!("map/{name}/heights.bin"), &imported.heights)?;
-            write(&TerrainFile::path(name.as_str()), &imported.terrain)?;
+            write(HeightGrid::path(&name).as_str(), &imported.heights)?;
+            write(TerrainFile::path(&name).as_str(), &imported.terrain)?;
             write(
-                &MapConditions::path(name.as_str()),
+                MapConditions::path(&name).as_str(),
                 imported.conditions.as_bytes(),
             )?;
-            write(&MapLights::path(name.as_str()), imported.lights.as_bytes())?;
+            write(MapLights::path(&name).as_str(), imported.lights.as_bytes())?;
             write(
-                &ClientObjects::path(name.as_str()),
+                ClientObjects::path(&name).as_str(),
                 imported.objects.as_bytes(),
             )?;
             maps.insert(
@@ -377,7 +377,7 @@ impl<'a> ZeroHour<'a> {
             units.units.insert(unit_type.declared(), unit_look);
         }
         let text = Toml::write(&units);
-        models.write("client/units.toml", text.as_bytes())?;
+        models.write(ClientUnits::path().as_str(), text.as_bytes())?;
         Ok(units)
     }
 

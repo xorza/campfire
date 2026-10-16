@@ -1,3 +1,5 @@
+use std::io;
+
 use super::*;
 use crate::package_walk::PackageWalk;
 
@@ -9,6 +11,35 @@ fn indexed(rows: &[&str]) -> Vec<u8> {
         text.push('\n');
     }
     text.into_bytes()
+}
+
+/// A reader that gives each of its reads in turn, the first first, then its end.
+struct Reads(Vec<Result<&'static [u8], io::ErrorKind>>);
+
+impl io::Read for Reads {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if self.0.is_empty() {
+            return Ok(0);
+        }
+        let bytes = self.0.remove(0).map_err(io::Error::from)?;
+        buf[..bytes.len()].copy_from_slice(bytes);
+        Ok(bytes.len())
+    }
+}
+
+/// Takes the file at `path` of `bytes` into `walk`.
+fn add(walk: &mut PackageWalk, path: PackagePath, bytes: &[u8]) -> Result<(), ContentError> {
+    let hashed = walk.hash(bytes).unwrap();
+    walk.insert(path, hashed)
+}
+
+/// A walk that takes `path` of "abc", then again of `bytes`: the second's answer.
+fn walk_twice(path: &PackagePath, bytes: &[u8]) -> Result<(), ContentError> {
+    let mut walk = PackageWalk::default();
+    add(&mut walk, path.clone(), b"abc").unwrap();
+    let again = add(&mut walk, path.clone(), bytes);
+    assert_eq!(walk.finish().unwrap().index.row(path).unwrap().size, 3);
+    again
 }
 
 /// One row's line: its SHA-256 of 32 bytes of `byte`, as 64 hex digits, its size and its path.
@@ -25,7 +56,6 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
     assert_eq!(&a[..6], "1a1a1a");
     assert_eq!(&a[62..], "1a 2 data/a.toml");
     let index = FileIndex::decode(&bytes).unwrap();
-    assert_eq!(index.bytes(), bytes);
     assert_eq!(index.fingerprint(), PackageFingerprint::of(&bytes));
     let data = PackagePath::parse("data/a.toml").unwrap();
     assert_eq!(
@@ -66,16 +96,33 @@ fn an_index_is_its_one_encoding_of_rows_in_path_order() {
     // A row of a file of "abc", as a walk takes it: its 3 bytes, and SHA-256's own test vector.
     let path = PackagePath::parse("abc.txt").unwrap();
     let mut walk = PackageWalk::default();
-    walk.add(path.clone(), &b"abc"[..]).unwrap();
+    add(&mut walk, path.clone(), b"abc").unwrap();
     let abc = walk.finish().unwrap();
-    assert_eq!(abc.row(&path).unwrap().size, 3);
-    let written = String::from_utf8(abc.bytes().to_vec()).unwrap();
+    assert_eq!(abc.index.row(&path).unwrap().size, 3);
+    let written = String::from_utf8(abc.bytes).unwrap();
     assert_eq!(
         written,
         "campfire/package-index/v2\n\
          ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad 3 abc.txt\n",
         "SHA-256(\"abc\") is ba7816bf…"
     );
+    // A walk refuses a path it took before, of the same bytes or others, and keeps its first row.
+    for bytes in [&b"abc"[..], b"x"] {
+        assert!(matches!(
+            walk_twice(&path, bytes),
+            Err(ContentError::Repeated(repeated)) if repeated == path
+        ));
+    }
+    // A read interrupted goes on, and one that fails gives the reader's own error, no row of
+    // the package's.
+    let mut walk = PackageWalk::default();
+    let interrupted = walk
+        .hash(Reads(vec![Err(io::ErrorKind::Interrupted), Ok(b"abc")]))
+        .unwrap();
+    assert_eq!(interrupted, walk.hash(&b"abc"[..]).unwrap());
+    let failed = walk.hash(Reads(vec![Ok(b"ab"), Err(io::ErrorKind::PermissionDenied)]));
+    assert_eq!(failed.unwrap_err().kind(), io::ErrorKind::PermissionDenied);
+    assert_eq!(walk.finish().unwrap().index.rows().count(), 0);
     // No rows is a package of no file.
     assert_eq!(FileIndex::decode(&indexed(&[])).unwrap().rows().count(), 0);
 }
@@ -159,4 +206,77 @@ fn an_index_refuses_every_other_spelling_of_its_rows() {
         Err(ContentError::CaseClash { path, other })
             if path.as_str() == "data/a" && other.as_str() == "Data"
     ));
+    // The index's own path in another case, and a path under it, which a file system that
+    // ignores case holds where the index goes.
+    for path in [
+        "PACKAGE.INDEX",
+        "Package.Index/a.toml",
+        "package.index/a.toml",
+    ] {
+        assert!(
+            matches!(refused(path), Err(ContentError::IndexListsItself)),
+            "{path}"
+        );
+    }
+    // A file `data` and a file under a directory `data`, which no file system holds.
+    let both = indexed(&[&row(0, 0, "data"), &row(0, 0, "data/a")]);
+    assert!(matches!(
+        FileIndex::decode(&both),
+        Err(ContentError::FileAndDir { path, name })
+            if path.as_str() == "data/a" && name.as_str() == "data"
+    ));
+}
+
+#[test]
+fn an_index_a_builder_makes_holds_every_rule_its_read_holds() {
+    let rows = |listed: &[(&str, u64)]| -> BTreeMap<PackagePath, FileRow> {
+        listed
+            .iter()
+            .map(|&(path, size)| {
+                let row = FileRow {
+                    size,
+                    sha256: ContentHash::new([0; 32]),
+                };
+                (PackagePath::parse(path).unwrap(), row)
+            })
+            .collect()
+    };
+    // A walk that takes the index's own path in another case, or a file and a directory of one
+    // name, makes no index.
+    for refused in [
+        vec![PackagePath::parse("Package.Index").unwrap()],
+        vec![
+            PackagePath::parse("data").unwrap(),
+            PackagePath::parse("data/a").unwrap(),
+        ],
+    ] {
+        let mut walk = PackageWalk::default();
+        for path in refused {
+            add(&mut walk, path, b"").unwrap();
+        }
+        assert!(walk.finish().is_err());
+    }
+    // A file of 2 GiB, the most a package's file holds, is a row; one byte more is refused.
+    assert!(FileIndex::encode(rows(&[("big.bin", FileIndex::MAX_FILE_LEN)])).is_ok());
+    assert!(matches!(
+        FileIndex::encode(rows(&[("big.bin", FileIndex::MAX_FILE_LEN + 1)])),
+        Err(ContentError::IndexFileLen(path)) if path.as_str() == "big.bin"
+    ));
+    // Rows of one name of 65,437 bytes each: a row's line is 64 hex digits, a space, its size of
+    // one digit, a space, the name and LF, 65,505 bytes, and the tag's line 26, so 1,024 rows are
+    // 26 + 1,024 × 65,505 = 67,077,146 bytes, within the 67,108,864 of `MAX_LEN`, and 1,025 are
+    // 67,142,651, past it.
+    let named = |at: usize| format!("{at:05}{}", "x".repeat(65_432));
+    let listed =
+        |count: usize| -> Vec<(String, u64)> { (0..count).map(|at| (named(at), 0)).collect() };
+    let index = |count: usize| {
+        let listed = listed(count);
+        let listed: Vec<(&str, u64)> = listed
+            .iter()
+            .map(|(path, size)| (path.as_str(), *size))
+            .collect();
+        FileIndex::encode(rows(&listed))
+    };
+    assert_eq!(index(1024).unwrap().bytes.len(), 26 + 1024 * 65_505);
+    assert!(matches!(index(1025), Err(ContentError::IndexLen)));
 }

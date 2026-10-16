@@ -1,7 +1,11 @@
+use campfire_common::MapName;
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
+use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::client_path;
 
 /// A map's ground, `map/<name>/heights.bin`, through `Binary`: samples `cell` meters apart, the one of
 /// `column` and `row` at `[x, z] = origin + [column, row] · cell`, row after row from the first,
@@ -16,6 +20,11 @@ pub struct HeightGrid {
 }
 
 impl HeightGrid {
+    /// The file of the map `map`.
+    pub fn path(map: &MapName) -> PackagePath {
+        client_path::parse(&format!("map/{map}/heights.bin"))
+    }
+
     /// The grid; `None` unless `cell` and `step` are positive, `samples` fill at least two whole
     /// rows of at least two columns, and every sample, at its highest, lies within the world's
     /// bound.

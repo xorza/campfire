@@ -44,6 +44,14 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) host: HostVisibility,
 }
 
+/// How long a session waits to restore, and the time of the start that asks: a session whose
+/// journal was written within `length` of `now` restores.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RestoreWindow {
+    pub(crate) length: Duration,
+    pub(crate) now: SystemTime,
+}
+
 impl Opening {
     /// What the server starts: `found`, the session to restore that `find` gave, or a new one,
     /// its directory, private record and journal made. An error for a session or a journal not
@@ -118,21 +126,18 @@ impl Opening {
         }
     }
 
-    /// The session `waiting` to restore within the restore window `window`: when it is past the
-    /// window or ended, `publisher` publishes its log instead, and none restores. An error for a
-    /// session that does not end.
+    /// The session `waiting` to restore within `window`: when it is past the window or ended,
+    /// `publisher` publishes its log instead, and none restores. An error for a session that
+    /// does not end.
     pub(crate) fn find(
         waiting: Option<RestoredSession>,
-        window: Duration,
+        window: RestoreWindow,
         publisher: Publisher<'_>,
     ) -> Result<Option<RestoredSession>, OpeningError> {
         let Some(session) = waiting else {
             return Ok(None);
         };
-        let idle = SystemTime::now()
-            .duration_since(session.modified)
-            .unwrap_or_default();
-        if session.log.result().is_none() && idle <= window {
+        if session.log.result().is_none() && window.holds(session.modified) {
             return Ok(Some(session));
         }
         session.abort(publisher).map_err(OpeningError::Abort)?;
@@ -149,6 +154,15 @@ impl Opening {
             server: setup.server,
         };
         Lobby::open(opening, setup.data).map_err(OpeningError::Open)
+    }
+}
+
+impl RestoreWindow {
+    /// Whether a journal written at `modified` is within it; one written after `now`, as a
+    /// clock set back gives, is.
+    fn holds(self, modified: SystemTime) -> bool {
+        let idle = self.now.duration_since(modified).unwrap_or_default();
+        idle <= self.length
     }
 }
 

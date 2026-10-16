@@ -3,7 +3,9 @@ use std::sync::Arc;
 
 use campfire_codec::Toml;
 use campfire_common::PackageFingerprint;
+use campfire_script::ApiVersion;
 use campfire_values::PackagePath;
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::error::load_problem::LoadProblem;
@@ -11,6 +13,7 @@ use crate::error::{ContentError, LoadError, PackageRef};
 use crate::file_index::FileIndex;
 use crate::files::manifest::Manifest;
 use crate::files::mode_manifest::ModeManifest;
+use crate::files::package_name::PackageName;
 use crate::package_reader::PackageReader;
 use crate::package_source::PackageSource;
 
@@ -47,7 +50,7 @@ impl PackageFiles {
     pub fn read(source: Arc<dyn PackageSource>) -> Result<Self, ContentError> {
         let index = FileIndex::decode(&source.read_index()?)?;
         source.check_names(&mut index.rows().map(|(path, _)| path))?;
-        let reader = PackageReader::new(index, source);
+        let reader = PackageReader::new(Arc::new(index), source);
         let mut files = BTreeMap::new();
         for (path, row) in reader.index().rows() {
             if Self::reads(path) {
@@ -68,7 +71,7 @@ impl PackageFiles {
         path.as_str() == Self::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
     }
 
-    pub const fn fingerprint(&self) -> PackageFingerprint {
+    pub fn fingerprint(&self) -> PackageFingerprint {
         self.reader.fingerprint()
     }
 
@@ -99,7 +102,27 @@ impl PackageFiles {
         Self::text(path, bytes)
     }
 
-    pub(crate) const fn index(&self) -> &FileIndex {
+    /// Its manifest, as the package `package`, once its API version is one the release loads:
+    /// the version and the name are read first, as every version of the format names both, so a
+    /// package of another version fails as `OtherApi` before any other field or file of it is
+    /// read (design 03, Package API).
+    pub(crate) fn manifest(&self, package: &PackageRef) -> Result<Manifest, LoadError> {
+        #[derive(Debug, Deserialize)]
+        struct Targets {
+            name: PackageName,
+            api: ApiVersion,
+        }
+        let path = Self::engine_path(Self::MANIFEST);
+        if let Ok(Targets { name, api }) = self.read_data(&path)
+            && !ApiVersion::RELEASE.loads(api)
+        {
+            return Err(LoadError::of(&name, LoadProblem::OtherApi(api)));
+        }
+        self.read_data(&path)
+            .map_err(|error| LoadError::new(package.clone(), LoadProblem::Content(error)))
+    }
+
+    pub(crate) fn index(&self) -> &FileIndex {
         self.reader.index()
     }
 
@@ -119,8 +142,7 @@ impl PackageFiles {
     /// read, or of another kind of package.
     pub fn mode_manifest(&self, package: &PackageRef) -> Result<ModeManifest, LoadError> {
         let fail = |problem| LoadError::new(package.clone(), problem);
-        let manifest = self.read_data(&Self::engine_path(Self::MANIFEST));
-        match manifest.map_err(LoadProblem::Content).map_err(fail)? {
+        match self.manifest(package)? {
             Manifest::Mode(manifest) => manifest
                 .checked()
                 .map_err(|error| fail(LoadProblem::Capabilities(error))),

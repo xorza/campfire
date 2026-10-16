@@ -1,73 +1,30 @@
-use std::collections::BTreeMap;
-use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
 
 use campfire_common::MapName;
 use campfire_package::{
-    ContentError, FileIndex, LoadError, LoadProblem, ModePackages, PackageFiles, PackageRef,
-    PackageSource, PackageWalk,
+    ContentError, DependencyPath, EncodedIndex, FileIndex, LoadError, ModePackages, PackageFiles,
+    PackageRef, PackageSource, PackageWalk,
 };
 use campfire_store::{DirEntries, EntryKind, InputFile, PathError, ReadError};
 use campfire_values::PackagePath;
 
 use crate::error::IndexError;
 use crate::package_dir::listings::Listings;
+use crate::package_place::{PackagePlace, ReadBound};
 
 mod listings;
 
-/// Where a package's files are: on disk, or in memory, as a test builds them. Both are the
-/// source the core reads the package's files from, through its index.
+/// A package's directory on disk, the source the core reads the package's files from, through
+/// its index.
 #[derive(Debug, Clone)]
 pub struct PackageDir {
     root: PathBuf,
-    source: Source,
-}
-
-/// How many bytes a read of a package's file takes: exactly a row's size, or no more than a
-/// bound, as the index's own read takes. No read takes a file whole, however long it is.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum ReadBound {
-    Exact(u64),
-    AtMost(u64),
-}
-
-/// Where a package's files are.
-#[derive(Debug, Clone)]
-enum Source {
-    Disk,
-    /// A tree of files by path, which `root` is a directory of.
-    Memory(Arc<BTreeMap<PathBuf, Vec<u8>>>),
 }
 
 impl PackageDir {
     /// The package on disk at `root`.
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self {
-            root: root.into(),
-            source: Source::Disk,
-        }
-    }
-
-    /// The package at `root` of the tree `files`, whose keys are paths from the tree's root.
-    pub fn in_memory(files: Arc<BTreeMap<PathBuf, Vec<u8>>>, root: impl Into<PathBuf>) -> Self {
-        Self {
-            root: normal(&root.into()),
-            source: Source::Memory(files),
-        }
-    }
-
-    /// The package at `relative` from this one's root, as a manifest names a dependency.
-    #[must_use]
-    fn join(&self, relative: &Path) -> Self {
-        let root = self.root.join(relative);
-        let root = match self.source {
-            Source::Disk => root,
-            Source::Memory(_) => normal(&root),
-        };
-        Self {
-            root,
-            source: self.source.clone(),
-        }
+        Self { root: root.into() }
     }
 
     pub fn root(&self) -> &Path {
@@ -76,79 +33,31 @@ impl PackageDir {
 
     /// The package's files, as the core reads and checks them: see `PackageFiles::read`.
     pub fn files(&self) -> Result<PackageFiles, ContentError> {
-        PackageFiles::read(Arc::new(self.clone()))
+        PackagePlace::files(self)
     }
 
-    /// The map of the mode in this directory that a session plays, as
-    /// `ModePackages::choose_map` chooses it from the mode's index.
-    pub fn choose_map(&self, map: Option<MapName>) -> Result<MapName, LoadError> {
-        if let Some(map) = map {
-            return Ok(map);
-        }
-        let package = PackageRef::Dir(self.root.clone());
-        let index = self
-            .read_index()
-            .and_then(|bytes| FileIndex::decode(&bytes))
-            .map_err(|error| LoadError::new(package.clone(), LoadProblem::Content(error)))?;
-        ModePackages::choose_map(&index, &package, None)
-    }
-
-    /// The mode in this directory with its map `map`, and its dependencies at the paths its
-    /// manifest gives from it, each read once.
-    pub fn mode_packages(&self, map: &MapName) -> Result<ModePackages, LoadError> {
-        let read = |dir: &Self, package: PackageRef| {
-            dir.files()
-                .map_err(|error| LoadError::new(package, LoadProblem::Content(error)))
-        };
-        let at = PackageRef::Dir(self.root.clone());
-        let files = read(self, at.clone())?;
-        let manifest = files.mode_manifest(&at)?;
-        let dependencies = manifest
-            .dependencies
-            .iter()
-            .map(|(name, dependency)| {
-                let dir = self.join(Path::new(&dependency.path));
-                Ok((name.clone(), read(&dir, PackageRef::Name(name.clone()))?))
-            })
-            .collect::<Result<Vec<_>, LoadError>>()?;
-        let dependencies: Vec<_> = dependencies
-            .iter()
-            .map(|(name, files)| (name.clone(), files))
-            .collect();
-        ModePackages::new(&files, manifest, map, &dependencies)
+    /// The mode in this directory on its map `map`, or its only map when `map` names none, with
+    /// its dependencies at the paths its manifest gives from it, each read once.
+    pub fn mode_packages(&self, map: Option<&MapName>) -> Result<ModePackages, LoadError> {
+        PackagePlace::mode_packages(self, map)
     }
 
     /// The index of the files under the package's root but its index, as its builder writes it:
     /// each hashed as it streams past. A link or any other entry that is neither a file nor a
     /// directory fails, as does a path that is not UTF-8 or that a package path does not spell,
     /// the first by name in each directory, so the first flaw of a tree is the same on every OS.
-    pub fn index_files(&self) -> Result<FileIndex, IndexError> {
+    pub fn index_files(&self) -> Result<EncodedIndex, IndexError> {
         let mut walk = PackageWalk::new();
-        match &self.source {
-            Source::Disk => self.walk_disk(&self.root, &mut walk)?,
-            Source::Memory(tree) => {
-                for (path, bytes) in tree.iter().filter(|(path, _)| path.starts_with(&self.root)) {
-                    let path = self.package_path(path)?;
-                    if path.as_str() != FileIndex::PATH {
-                        walk.add(path, bytes.as_slice())
-                            .map_err(IndexError::Package)?;
-                    }
-                }
-            }
-        }
+        self.walk(&self.root, &mut walk)?;
         walk.finish().map_err(IndexError::Package)
     }
 
     /// Missing, unless the file at `path` is on disk by its exact name, by the names `listings`
-    /// holds of the directories on its way. A tree in memory keys its files by their exact
-    /// paths.
+    /// holds of the directories on its way.
     fn check_name(&self, path: &PackagePath, listings: &mut Listings) -> Result<(), ContentError> {
-        let held = match self.source {
-            Source::Disk => listings
-                .hold(&self.root, path)
-                .map_err(|error| ContentError::Read(Box::new(error)))?,
-            Source::Memory(_) => true,
-        };
+        let held = listings
+            .hold(&self.root, path)
+            .map_err(|error| ContentError::Read(Box::new(error)))?;
         if held {
             Ok(())
         } else {
@@ -156,43 +65,18 @@ impl PackageDir {
         }
     }
 
-    /// The bytes of the file at `path`, as many as `bound` takes: a file of another size than an
-    /// exact bound `Changed`, one past an upper bound too large; a file not there is missing.
+    /// The bytes of the file at `path`, as many as `bound` takes; a file not there is missing.
     fn read_bytes(&self, path: &PackagePath, bound: ReadBound) -> Result<Vec<u8>, ContentError> {
-        let missing = || ContentError::Missing { path: path.clone() };
         let file = self.file_path(path);
-        let held = |len: u64| match bound {
-            ReadBound::Exact(size) if len != size => {
-                Err(ContentError::Changed { path: path.clone() })
-            }
-            ReadBound::AtMost(max) if len > max => {
-                let max = usize::try_from(max).expect("a bound fits usize");
-                let error = PathError {
-                    path: file.clone(),
-                    error: ReadError::TooLarge { max },
-                };
-                Err(ContentError::Read(Box::new(error)))
-            }
-            _ => Ok(usize::try_from(len).expect("a bounded length fits usize")),
-        };
-        match &self.source {
-            Source::Disk => {
-                let mut ranges = InputFile::ranges(&file).map_err(|error| match error.error {
-                    ReadError::Missing => missing(),
-                    _ => ContentError::Read(Box::new(error)),
-                })?;
-                let len = held(ranges.len())?;
-                ranges.read_at(0, len).map_err(|error| match error.error {
-                    ReadError::Short { .. } => ContentError::Changed { path: path.clone() },
-                    _ => ContentError::Read(Box::new(error)),
-                })
-            }
-            Source::Memory(tree) => {
-                let bytes = tree.get(&file).ok_or_else(missing)?;
-                held(u64::try_from(bytes.len()).expect("a length fits u64"))?;
-                Ok(bytes.clone())
-            }
-        }
+        let mut ranges = InputFile::ranges(&file).map_err(|error| match error.error {
+            ReadError::Missing => ContentError::Missing { path: path.clone() },
+            _ => ContentError::Read(Box::new(error)),
+        })?;
+        let len = bound.take(ranges.len(), path, &file)?;
+        ranges.read_at(0, len).map_err(|error| match error.error {
+            ReadError::Short { .. } => ContentError::Changed { path: path.clone() },
+            _ => ContentError::Read(Box::new(error)),
+        })
     }
 
     /// Where the file at `path` of the package is, its names joined as the OS joins them.
@@ -202,18 +86,25 @@ impl PackageDir {
             .fold(self.root.clone(), |at, name| at.join(name))
     }
 
-    /// Takes every file under `dir` on disk into `walk`, in the order of their names, but the
-    /// index at the root.
-    fn walk_disk(&self, dir: &Path, walk: &mut PackageWalk) -> Result<(), IndexError> {
+    /// Takes every file under `dir` into `walk`, in the order of their names, but the index at
+    /// the root.
+    fn walk(&self, dir: &Path, walk: &mut PackageWalk) -> Result<(), IndexError> {
         for entry in DirEntries::read(dir).map_err(IndexError::Read)? {
             let path = dir.join(&entry.name);
             match entry.kind {
-                EntryKind::Dir => self.walk_disk(&path, walk)?,
+                EntryKind::Dir => self.walk(&path, walk)?,
                 EntryKind::File => {
                     let package_path = self.package_path(&path)?;
                     if package_path.as_str() != FileIndex::PATH {
                         let file = InputFile::stream(&path).map_err(IndexError::Read)?;
-                        walk.add(package_path, file).map_err(IndexError::Package)?;
+                        let hashed = walk.hash(file).map_err(|error| {
+                            IndexError::Read(PathError {
+                                path: path.clone(),
+                                error: ReadError::Read(error),
+                            })
+                        })?;
+                        walk.insert(package_path, hashed)
+                            .map_err(IndexError::Package)?;
                     }
                 }
                 EntryKind::Link | EntryKind::Other => return Err(IndexError::NotAFile(path)),
@@ -261,29 +152,23 @@ impl PackageSource for PackageDir {
     }
 }
 
-/// `path` with each `..` taking away the name before it, and each `.` gone, as a tree in memory
-/// keys its files.
-fn normal(path: &Path) -> PathBuf {
-    let mut normal = PathBuf::new();
-    for component in path.components() {
-        match component {
-            Component::ParentDir => {
-                normal.pop();
-            }
-            Component::CurDir => {}
-            other => normal.push(other),
-        }
+impl PackagePlace for PackageDir {
+    /// The directory at `relative` from this one, which the OS resolves.
+    fn join(&self, relative: &DependencyPath) -> Self {
+        let root = relative
+            .names()
+            .fold(self.root.clone(), |root, name| root.join(name));
+        Self { root }
     }
-    normal
+
+    fn package_ref(&self) -> PackageRef {
+        PackageRef::Dir(self.root.clone())
+    }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::collections::BTreeMap;
     use std::path::{Path, PathBuf};
-    use std::sync::Arc;
-
-    use campfire_package::{FileIndex, PackageFiles};
 
     use crate::package_dir::PackageDir;
 
@@ -292,26 +177,6 @@ pub(crate) mod internals {
         /// find the test packages.
         pub fn workspace(path: &str) -> PathBuf {
             Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../../packages")).join(path)
-        }
-
-        /// `files` with the index of each package in it, each directory that holds a
-        /// `manifest.toml`, written again from its files, as its builder would after an edit.
-        pub fn reindexed(files: BTreeMap<PathBuf, Vec<u8>>) -> BTreeMap<PathBuf, Vec<u8>> {
-            let tree = Arc::new(files);
-            let indexes: Vec<(PathBuf, Vec<u8>)> = tree
-                .keys()
-                .filter(|path| path.file_name() == Some(PackageFiles::MANIFEST.as_ref()))
-                .map(|path| {
-                    let root = path.parent().expect("a manifest is in a directory");
-                    let index = Self::in_memory(Arc::clone(&tree), root)
-                        .index_files()
-                        .unwrap();
-                    (root.join(FileIndex::PATH), index.bytes().to_vec())
-                })
-                .collect();
-            let mut files = Arc::into_inner(tree).expect("no package holds the tree");
-            files.extend(indexes);
-            files
         }
     }
 }

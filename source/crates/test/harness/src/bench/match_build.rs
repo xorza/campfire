@@ -29,7 +29,7 @@ pub(crate) fn build(c: &mut Criterion) {
         b.iter(|| {
             black_box(
                 PackageDir::new(dir.clone())
-                    .mode_packages(&map)
+                    .mode_packages(Some(&map))
                     .expect("the 3v3 loads"),
             )
         });

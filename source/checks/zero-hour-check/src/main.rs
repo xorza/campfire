@@ -94,7 +94,7 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
         imported: &imported,
         game: &game,
         map: &map,
-        packages: game.mode_packages(&map).map_err(CheckError::Load)?,
+        packages: game.mode_packages(Some(&map)).map_err(CheckError::Load)?,
         failures,
     };
     check.map()?;

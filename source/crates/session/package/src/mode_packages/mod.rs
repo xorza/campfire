@@ -15,10 +15,10 @@ use campfire_units::ScriptBook;
 use campfire_values::{DeclaredName, EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
+use crate::error::LoadError;
 use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
-use crate::error::{LoadError, PackageRef};
 use crate::file_index::FileIndex;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
@@ -62,28 +62,7 @@ pub struct ModePackages {
 }
 
 impl ModePackages {
-    /// The map of the mode whose index is `index`, the package `package`, that a session plays:
-    /// `map` when it names one, else the mode's only map; an error when it names none and the
-    /// mode has no map, or several.
-    pub fn choose_map(
-        index: &FileIndex,
-        package: &PackageRef,
-        map: Option<MapName>,
-    ) -> Result<MapName, LoadError> {
-        if let Some(map) = map {
-            return Ok(map);
-        }
-        let fail = |problem| LoadError::new(package.clone(), problem);
-        let mut maps = maps_of(index).map_err(fail)?;
-        match maps.pop() {
-            Some(only) if maps.is_empty() => Ok(only),
-            other => Err(fail(LoadProblem::MapNeeded(
-                maps.into_iter().chain(other).collect(),
-            ))),
-        }
-    }
-
-    pub const fn fingerprint(&self) -> PackageFingerprint {
+    pub fn fingerprint(&self) -> PackageFingerprint {
         self.mode.fingerprint()
     }
 
@@ -376,13 +355,14 @@ impl ModePackages {
         &self.dependencies
     }
 
-    /// The mode of `files`, whose manifest is `manifest`, on its map `map_name`, with each
-    /// package its manifest names in `dependencies`, in the order of their names: checked as a
-    /// match loads them, each file the load reads parsed once.
+    /// The mode of `files`, whose manifest is `manifest`, on its map `map`, or its only map when
+    /// `map` names none, with each package its manifest names in `dependencies`, in the order of
+    /// their names: checked as a match loads them, each file the load reads parsed once. A mode
+    /// of several maps and none named fails, its error naming them all.
     pub fn new(
         files: &PackageFiles,
         manifest: ModeManifest,
-        map_name: &MapName,
+        map: Option<&MapName>,
         dependencies: &[(PackageName, &PackageFiles)],
     ) -> Result<Self, LoadError> {
         let mut parser = ScriptHost::new(manifest.script_limits.per_call);
@@ -405,9 +385,18 @@ impl ModePackages {
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         content.units = units.units;
-        if !maps_of(files.index()).map_err(fail)?.contains(map_name) {
-            return Err(fail(LoadProblem::NoMap(map_name.clone())));
-        }
+        let mut maps = maps_of(files.index()).map_err(fail)?;
+        let map_name = match map {
+            Some(map) if maps.contains(map) => map.clone(),
+            Some(map) => return Err(fail(LoadProblem::NoMap(map.clone()))),
+            None => match maps.pop() {
+                Some(only) if maps.is_empty() => only,
+                other => {
+                    let named = maps.into_iter().chain(other).collect();
+                    return Err(fail(LoadProblem::MapNeeded(named)));
+                }
+            },
+        };
         let map_data = PackagePath::parse(&format!("map/{map_name}/map.toml"))
             .expect("a map's name is a package path's name");
         let map = files
@@ -437,7 +426,7 @@ impl ModePackages {
             manifest,
             script,
             data,
-            map_name: map_name.clone(),
+            map_name,
             map,
             content,
             tag_names,

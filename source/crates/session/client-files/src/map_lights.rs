@@ -1,6 +1,10 @@
 use bevy_math::Vec3;
+use campfire_common::MapName;
+use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::client_path;
 
 /// A map's `client/maps/<name>/lights.toml`: the light its units are drawn in, as a fixed-function
 /// renderer lights them: the ambient color, and each directional light's color, added as it meets
@@ -32,9 +36,9 @@ impl MapLights {
         holds.then_some(Self { ambient, lights })
     }
 
-    /// The file of a map, by its name.
-    pub fn path(map: &str) -> String {
-        format!("client/maps/{map}/lights.toml")
+    /// The file of the map `map`.
+    pub fn path(map: &MapName) -> PackagePath {
+        client_path::of_map(map, "lights.toml")
     }
 }
 

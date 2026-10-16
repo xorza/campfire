@@ -1,6 +1,7 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
+use campfire_client_files::MaterialFile;
 use campfire_codec::Toml;
 use campfire_values::PackagePath;
 
@@ -91,10 +92,9 @@ impl<W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> Converter<'_, W> {
                 (self.write)(path(name).as_str(), &import.glb.encode())?;
                 for material in &import.materials {
                     let text = Toml::write(&material.file);
-                    (self.write)(
-                        &format!("client/materials/{}.toml", material.name),
-                        text.as_bytes(),
-                    )?;
+                    let path = MaterialFile::path(&material.name)
+                        .expect("a material's name is a package path's name");
+                    (self.write)(path.as_str(), text.as_bytes())?;
                 }
                 self.missing_textures.extend(import.missing_textures);
                 return Ok(WrittenModel::Parts(import.parts));

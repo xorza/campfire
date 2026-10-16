@@ -5,6 +5,8 @@ use campfire_values::{DeclaredName, PackagePath};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::client_path;
+
 /// A package's `client/units.toml`: how each unit type looks, `[units.<type>]`, and each look
 /// its maps' client objects name, `[objects.<look>]`, which a game may draw otherwise than its
 /// units (design 12, D14).
@@ -38,6 +40,13 @@ pub struct LookVariant {
     pub models: Vec<ClientModel>,
 }
 
+impl ClientUnits {
+    /// Where a package holds it.
+    pub fn path() -> PackagePath {
+        client_path::parse("client/units.toml")
+    }
+}
+
 impl ClientUnit {
     /// The look of `models`, of no variant.
     pub const fn new(models: Vec<ClientModel>) -> Self {
@@ -50,8 +59,7 @@ impl ClientUnit {
 
     /// Draws, on a map of `conditions`, the models of its variant whose conditions have the most
     /// in common with the map's, of a tie the one of the fewest the map lacks, of a tie the first,
-    /// its own models counted first as of no condition; and holds no variant after. It is the
-    /// rule by which Zero Hour picks a model's condition state (`SparseMatchFinder`).
+    /// its own models counted first as of no condition; and holds no variant after.
     pub fn settle(&mut self, conditions: &[DeclaredName]) {
         let mut best = None;
         let (mut most, mut fewest) = (0, 0);

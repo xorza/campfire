@@ -1,6 +1,9 @@
+use campfire_common::MapName;
 use campfire_math::Num;
-use campfire_values::DeclaredName;
+use campfire_values::{DeclaredName, PackagePath};
 use serde::{Deserialize, Serialize};
+
+use crate::client_path;
 
 /// A map's `client/maps/<name>/objects.toml`: the objects the client alone draws, still, of which
 /// the sim holds none (design 12, D14). Each names its look among the `objects` of its package's
@@ -22,9 +25,9 @@ pub struct ClientObject {
 }
 
 impl ClientObjects {
-    /// The file of a map, by its name.
-    pub fn path(map: &str) -> String {
-        format!("client/maps/{map}/objects.toml")
+    /// The file of the map `map`.
+    pub fn path(map: &MapName) -> PackagePath {
+        client_path::of_map(map, "objects.toml")
     }
 }
 
@@ -58,10 +61,6 @@ mod tests {
         assert!(
             read("[[objects]]\nlook = \"a\"\npos = [1, 2]\nheight = 0\nangle = 0\nscale = 1\n")
                 .is_err()
-        );
-        assert_eq!(
-            ClientObjects::path("tournament_desert"),
-            "client/maps/tournament_desert/objects.toml"
         );
     }
 }

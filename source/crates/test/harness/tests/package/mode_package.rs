@@ -261,7 +261,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
 /// The 3v3 as its packages hold it.
 fn three_v_three() -> ModePackages {
     PackageDir::new(moba().join(MODE_DIR))
-        .mode_packages(&two_lanes())
+        .mode_packages(Some(&two_lanes()))
         .unwrap()
 }
 
@@ -445,6 +445,22 @@ static DATA_FLAWS: &[Flaw] = &[
         "hero-husk",
         |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "1.1"),
     ),
+    // A newer package's manifest may hold a field this release does not know: its version is
+    // read first, so it fails as `OtherApi`, the mode's and a dependency's alike.
+    Flaw {
+        file: MANIFEST,
+        edit: Edit::Set("api", r#""1.1""#),
+        also: &[(MANIFEST, Edit::Set("future", "true"))],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "1.1"),
+    },
+    Flaw {
+        file: "heroes/husk/manifest.toml",
+        edit: Edit::Set("api", r#""2.0""#),
+        also: &[("heroes/husk/manifest.toml", Edit::Set("future", "true"))],
+        package: "hero-husk",
+        refused: |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "2.0"),
+    },
     flaw(
         MANIFEST,
         Edit::Replace(r#"["combat","#, r#"["mode", "combat","#),
@@ -3163,7 +3179,7 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
 
     // A hero is no mode.
     let husk = PackageDir::new(moba().join("heroes/husk"))
-        .mode_packages(&two_lanes())
+        .mode_packages(Some(&two_lanes()))
         .unwrap_err();
     assert!(matches!(*husk.problem, LoadProblem::WrongKind), "{husk}");
 }
@@ -3258,17 +3274,17 @@ fn a_mode_loads_the_map_its_session_names() {
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
     assert_eq!(planar.map().metric, Metric::Planar);
-    let spatial = two.mode_packages(&second).unwrap();
+    let spatial = two.mode_packages(Some(&second)).unwrap();
     assert_eq!(spatial.map_name(), &second);
     assert_eq!(spatial.map().metric, Metric::Spatial);
     let third = MapName::parse("third").unwrap();
-    let error = two.mode_packages(&third).unwrap_err();
+    let error = two.mode_packages(Some(&third)).unwrap_err();
     assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));
 
     // With no map named, the only map; of two, neither, and the error names both in order.
-    assert_eq!(edited([]).choose_map(None).unwrap(), two_lanes());
-    assert_eq!(two.choose_map(Some(third.clone())).unwrap(), third);
-    let error = two.choose_map(None).unwrap_err();
+    let only = edited([]).mode_packages(None).unwrap();
+    assert_eq!(only.map_name(), &two_lanes());
+    let error = two.mode_packages(None).unwrap_err();
     assert!(
         matches!(&*error.problem, LoadProblem::MapNeeded(maps) if *maps == [second, two_lanes()]),
         "{error:?}"

@@ -6,12 +6,14 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-common/internals",
     "campfire-math/internals",
     "campfire-sim/internals",
     "campfire-values/internals",
 ]
 
 [dependencies]
+campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-sim.workspace = true
 campfire-values.workspace = true

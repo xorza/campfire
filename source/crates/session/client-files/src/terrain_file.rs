@@ -1,8 +1,10 @@
 use bevy_math::{UVec2, Vec2};
+use campfire_common::MapName;
 use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::client_path;
 use crate::error::TerrainFileError;
 use crate::height_grid::HeightGrid;
 
@@ -144,9 +146,9 @@ impl TerrainFile {
         self.surface
     }
 
-    /// The file of a map, by its name.
-    pub fn path(map: &str) -> String {
-        format!("client/maps/{map}/terrain.bin")
+    /// The file of the map `map`.
+    pub fn path(map: &MapName) -> PackagePath {
+        client_path::of_map(map, "terrain.bin")
     }
 }
 
@@ -279,10 +281,6 @@ mod tests {
         let file = TerrainFile::new(quads, texture, surface).unwrap();
         let read: TerrainFile = Binary::decode(&Binary::encode(&file)).unwrap();
         assert_eq!(read, file);
-        assert_eq!(
-            TerrainFile::path("tournament_desert"),
-            "client/maps/tournament_desert/terrain.bin"
-        );
         // Its two cells are those of a grid of 3 × 2 samples, not of 3 × 3 or of 2 × 2.
         let grid = |columns: u32, rows: u32| {
             let samples = vec![0; (columns * rows) as usize];

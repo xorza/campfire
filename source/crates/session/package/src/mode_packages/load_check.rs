@@ -16,7 +16,7 @@ use campfire_mode::{ModeList, ModeNamesError, Offers};
 use campfire_progression::TrackError;
 use campfire_projectiles::ProjectileHits;
 use campfire_script::{
-    ApiOwner, ApiVersion, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
+    ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
     ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, SyncTo,
     UnknownName,
 };
@@ -130,18 +130,6 @@ impl<'a> LoadCheck<'a> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
         let engine = Release::engine_tags();
-        let every = [&packages.mode].into_iter().chain(
-            packages
-                .dependencies
-                .iter()
-                .map(|dependent| &dependent.package),
-        );
-        for package in every {
-            if !ApiVersion::RELEASE.loads(package.header.api) {
-                let problem = LoadProblem::OtherApi(package.header.api);
-                return Err(LoadError::of(&package.header.name, problem));
-            }
-        }
         let names = NameTables::of(packages);
         let check = LoadCheck {
             packages,

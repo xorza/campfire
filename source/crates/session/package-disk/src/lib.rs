@@ -6,6 +6,7 @@ mod error;
 #[cfg(feature = "internals")]
 mod harness;
 mod package_dir;
+mod package_place;
 mod package_store;
 mod package_writer;
 
@@ -18,4 +19,5 @@ pub use crate::package_writer::PackageWriter;
 pub mod internals {
     pub use crate::harness::package_tree::{Edit, PackageTree};
     pub use crate::harness::test_mode::TestMode;
+    pub use crate::harness::tree_dir::TreeDir;
 }

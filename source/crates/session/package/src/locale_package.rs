@@ -1,8 +1,5 @@
 use std::collections::BTreeMap;
 
-use campfire_script::ApiVersion;
-use campfire_values::PackagePath;
-
 use crate::error::load_problem::LoadProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::{LoadError, PackageRef};
@@ -25,19 +22,12 @@ impl LocalePackage {
     /// of a package it depends on, and reads.
     pub fn read(files: &PackageFiles) -> Result<Self, LoadError> {
         let fail = LoadError::new;
-        let manifest_path = PackagePath::parse(PackageFiles::MANIFEST).expect("a package path");
         let unnamed = || PackageRef::PackageFingerprint(files.fingerprint());
-        let manifest = files
-            .read_data(&manifest_path)
-            .map_err(|error| fail(unnamed(), LoadProblem::Content(error)))?;
-        let Manifest::Locale(manifest) = manifest else {
+        let Manifest::Locale(manifest) = files.manifest(&unnamed())? else {
             return Err(fail(unnamed(), LoadProblem::WrongKind));
         };
         let name = manifest.header.name;
         let named = || PackageRef::Name(name.clone());
-        if !ApiVersion::RELEASE.loads(manifest.header.api) {
-            return Err(fail(named(), LoadProblem::OtherApi(manifest.header.api)));
-        }
         let mut translations: BTreeMap<PackageName, BTreeMap<Language, LocaleFile>> =
             BTreeMap::new();
         for path in files.files_under(LOCALE) {

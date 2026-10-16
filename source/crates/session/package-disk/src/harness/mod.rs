@@ -2,3 +2,4 @@
 
 pub(crate) mod package_tree;
 pub(crate) mod test_mode;
+pub(crate) mod tree_dir;

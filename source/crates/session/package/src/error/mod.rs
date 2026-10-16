@@ -1,5 +1,4 @@
 use std::error::Error;
-use std::io;
 use std::path::PathBuf;
 use std::str::Utf8Error;
 
@@ -40,13 +39,6 @@ pub enum ContentError {
         #[source]
         error: Utf8Error,
     },
-    /// The file does not read.
-    #[error("{path} does not read")]
-    Io {
-        path: PackagePath,
-        #[source]
-        error: io::Error,
-    },
     /// The data file is not TOML of the expected shape.
     #[error("{path} does not parse as its data")]
     Data {
@@ -85,9 +77,22 @@ pub enum ContentError {
     /// would allocate them.
     #[error("the package's index lists {0} of more than a package file's bytes")]
     IndexFileLen(PackagePath),
-    /// The package's index lists itself, which no list can hold the hash of.
+    /// A walk of the package's files took the path twice.
+    #[error("{0} is taken twice")]
+    Repeated(PackagePath),
+    /// The package's index lists itself, which no list can hold the hash of, or a path under its
+    /// name, in any case.
     #[error("the package's index lists itself")]
     IndexListsItself,
+    /// A path of the package names `name` a directory, where another names it a file.
+    #[error("{path} names {name} a directory, and another path names it a file")]
+    FileAndDir {
+        path: PackagePath,
+        name: PackagePath,
+    },
+    /// The package's index is more bytes than its read takes, `FileIndex::MAX_LEN`.
+    #[error("the package's index is more bytes than its read takes")]
+    IndexLen,
 }
 
 /// Why a mode's packages do not load: `problem`, in the package `package`.

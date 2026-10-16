@@ -9,11 +9,11 @@ use campfire_values::MessageId;
 /// An avatar package's `data/avatar.toml`: the name players see, its one unit type, whose
 /// fields sit at the top of the table, and its content.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AvatarFile {
+pub(crate) struct AvatarFile {
     /// The message of the name players see.
-    pub name: MessageId,
-    pub unit: UnitTypeData,
-    pub content: PackageContent,
+    pub(crate) name: MessageId,
+    pub(crate) unit: UnitTypeData,
+    pub(crate) content: PackageContent,
 }
 
 impl<'de> Deserialize<'de> for AvatarFile {

@@ -38,7 +38,7 @@ use campfire_net::{
     BotScript, Hosting, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, SimClient,
     WatchRequest, exit_code,
 };
-use campfire_package::ModePackages;
+use campfire_package::{ModePackages, Texts};
 use campfire_package_disk::PackageDir;
 use campfire_sim::{Capability, TickRate};
 use campfire_store::SecretFile;
@@ -244,12 +244,15 @@ fn add_ends(
         Selecting,
         Orders,
     ));
+    let texts =
+        Arc::new(Texts::new(packages, &[]).expect("a mode's own text, with no translation"));
     // The item names, the shop and the inventory read the items' books, which a mode of no
     // `items` has none of.
     if packages.manifest().capabilities.contains(Capability::Items) {
         app.add_plugins((
             ItemNames {
                 packages: Arc::clone(packages),
+                texts: Arc::clone(&texts),
             },
             ShopPanel,
             InventoryBar,
@@ -269,6 +272,7 @@ fn add_ends(
         app.add_plugins((
             ActionNames {
                 packages: Arc::clone(packages),
+                texts: Arc::clone(&texts),
             },
             CommandPanel { resources },
         ));
@@ -281,9 +285,7 @@ fn add_ends(
 /// The packages of the mode the arguments name; the exit code when they do not load.
 fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
     let mode = PackageDir::new(&args.mode);
-    let packages = mode.choose_map(args.map.clone())
-        .and_then(|map| mode.mode_packages(&map))
-        .map_err(|error| {
+    let packages = mode.mode_packages(args.map.as_ref()).map_err(|error| {
         error!(mode = %args.mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
         ExitCode::from(ExitStatus::Failure)
     })?;

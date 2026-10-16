@@ -86,7 +86,7 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // sets make. Its units drive, by stats, orders and navigation, no faster than the tank's
     // 30.5 m a second.
     let mode = PackageDir::new(scratch.path("one/game"))
-        .mode_packages(&named)
+        .mode_packages(Some(&named))
         .unwrap();
     let types: Vec<String> = mode
         .content()

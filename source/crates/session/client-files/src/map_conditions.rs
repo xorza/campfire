@@ -1,5 +1,8 @@
-use campfire_values::DeclaredName;
+use campfire_common::MapName;
+use campfire_values::{DeclaredName, PackagePath};
 use serde::{Deserialize, Serialize};
+
+use crate::client_path;
 
 /// A map's `client/maps/<name>/conditions.toml`: the conditions it draws its looks in, as a night
 /// or snowy weather, by the names its game gives them; a look draws its variant that best matches
@@ -11,8 +14,8 @@ pub struct MapConditions {
 }
 
 impl MapConditions {
-    /// The file of a map, by its name.
-    pub fn path(map: &str) -> String {
-        format!("client/maps/{map}/conditions.toml")
+    /// The file of the map `map`.
+    pub fn path(map: &MapName) -> PackagePath {
+        client_path::of_map(map, "conditions.toml")
     }
 }

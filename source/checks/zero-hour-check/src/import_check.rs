@@ -9,15 +9,15 @@ use campfire_import::{DropCause, Imported, WeaponDrop};
 use campfire_math::Num;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
-use campfire_values::{DeclaredName, PackagePath};
+use campfire_values::DeclaredName;
 use tracing::info;
 
 use crate::error::CheckError;
 use crate::failure::Failure;
 use crate::pins::{
-    CLIENT_OBJECTS, DRIVE_TICKS, FIGHT, FOUGHT, FoughtCounts, HEIGHTS, LOOKS, LookCounts, MAP,
-    MARKERS, OBJECT_LOOKS, PRODUCED, PRODUCTION, ProducedCounts, TERRAIN, TerrainDrawn, UNIT_TYPES,
-    UNITS, WALLS,
+    CLIENT_OBJECTS, DRIVE_TICKS, FIGHT, FOUGHT, FoughtCounts, HEIGHTS, LOOKS, LookCounts, MARKERS,
+    OBJECT_LOOKS, PRODUCED, PRODUCTION, ProducedCounts, TERRAIN, TerrainDrawn, UNIT_TYPES, UNITS,
+    WALLS,
 };
 use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
@@ -37,7 +37,7 @@ impl ImportCheck<'_> {
     /// Tournament Desert's heights, units, client objects, markers, terrain and walls.
     pub(crate) fn map(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
-        let heights = files.read_file(&package_path(&format!("map/{MAP}/heights.bin")))?;
+        let heights = files.read_file(&HeightGrid::path(self.map))?;
         let grid = Binary::decode::<HeightGrid>(&heights).map_err(CheckError::Decode)?;
         let [columns, rows] = [grid.columns(), grid.rows()];
         if [columns, rows] != HEIGHTS {
@@ -50,7 +50,7 @@ impl ImportCheck<'_> {
         if (units, types) != (UNITS, UNIT_TYPES) {
             self.failures.push(Failure::Units { units, types });
         }
-        let client: ClientObjects = files.read_data(&package_path(&ClientObjects::path(MAP)))?;
+        let client: ClientObjects = files.read_data(&ClientObjects::path(self.map))?;
         let objects = client.objects.len();
         let by_look = tally(client.objects.iter().map(|object| object.look.as_str()));
         let looks = by_look.len();
@@ -64,7 +64,7 @@ impl ImportCheck<'_> {
         if markers != MARKERS {
             self.failures.push(Failure::Markers(markers));
         }
-        let terrain = files.read_file(&package_path(&TerrainFile::path(MAP)))?;
+        let terrain = files.read_file(&TerrainFile::path(self.map))?;
         let terrain = Binary::decode::<TerrainFile>(&terrain).map_err(CheckError::Decode)?;
         let drawn = TerrainDrawn {
             quads: terrain.quads().ground.len(),
@@ -106,7 +106,7 @@ impl ImportCheck<'_> {
     /// the maps of night and of snow among those the import wrote.
     pub(crate) fn looks(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
-        let unit_looks: ClientUnits = files.read_data(&package_path("client/units.toml"))?;
+        let unit_looks: ClientUnits = files.read_data(&ClientUnits::path())?;
         let varied = unit_looks
             .units
             .values()
@@ -126,8 +126,7 @@ impl ImportCheck<'_> {
             snowy: 0,
         };
         for other in self.imported.maps.keys() {
-            let held: MapConditions =
-                files.read_data(&package_path(&MapConditions::path(other.as_str())))?;
+            let held: MapConditions = files.read_data(&MapConditions::path(other))?;
             drawn.night += usize::from(held.conditions.contains(&night));
             drawn.snowy += usize::from(held.conditions.contains(&snow));
         }
@@ -150,7 +149,7 @@ impl ImportCheck<'_> {
         let mut loaded = 1;
         for (other, imported) in &self.imported.maps {
             if other != self.map {
-                match self.game.mode_packages(other) {
+                match self.game.mode_packages(Some(other)) {
                     Ok(_) => loaded += 1,
                     Err(error) => self.failures.push(Failure::MapLoad {
                         map: other.clone(),
@@ -240,7 +239,7 @@ impl ImportCheck<'_> {
         let rate = NonZeroU32::new(30).expect("a rate");
         let played = self
             .game
-            .mode_packages(self.map)
+            .mode_packages(Some(self.map))
             .map_err(CheckError::Load)?;
         if let Some(SkirmishSteps { production, fight }) =
             SkirmishPlay::run(played, rate, &mut self.failures)
@@ -307,9 +306,4 @@ fn listed(counts: &BTreeMap<&str, usize>) -> String {
         .map(|(name, count)| format!("{name} × {count}"))
         .collect();
     entries.join(", ")
-}
-
-/// The package path `path`, one the check names.
-fn package_path(path: &str) -> PackagePath {
-    PackagePath::parse(path).expect("the check names package paths")
 }

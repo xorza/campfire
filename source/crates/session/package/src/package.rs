@@ -74,7 +74,7 @@ impl Package {
     }
 
     /// The fingerprint of its files' index.
-    pub const fn fingerprint(&self) -> PackageFingerprint {
+    pub fn fingerprint(&self) -> PackageFingerprint {
         self.files.fingerprint()
     }
 

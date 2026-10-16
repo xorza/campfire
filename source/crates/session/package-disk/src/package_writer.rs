@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::collections::btree_map::Entry;
 use std::path::{Path, PathBuf};
 
 use campfire_common::{ContentHash, PackageFingerprint};
@@ -34,7 +33,8 @@ impl PackageWriter {
     }
 
     /// Writes the file at `path` with `bytes`, and the directories on its way, linked to the
-    /// first file of the same bytes; an error for a path written before.
+    /// first file of the same bytes; an error for a path written before. The row and the link's
+    /// target are kept once the file is written, so a write refused leaves neither.
     pub fn write(&mut self, path: PackagePath, bytes: &[u8]) -> Result<(), WriteError> {
         let at = path
             .as_str()
@@ -43,20 +43,25 @@ impl PackageWriter {
         if let Some(dir) = at.parent() {
             DurableDir::create_all(dir).map_err(WriteError::Directory)?;
         }
-        let sha256 = self.rows.add(path, bytes).map_err(WriteError::Package)?;
-        let written = match self.firsts.entry(sha256) {
-            Entry::Occupied(first) => OutputFile::link_new(&at, first.get(), bytes),
-            Entry::Vacant(first) => OutputFile::write_new(first.insert(at), bytes),
-        };
-        written.map_err(WriteError::File)
+        let hashed = self.rows.hash(bytes).expect("a slice reads");
+        match self.firsts.get(&hashed.sha256()) {
+            Some(first) => OutputFile::link_new(&at, first, bytes),
+            None => OutputFile::write_new(&at, bytes),
+        }
+        .map_err(WriteError::File)?;
+        self.rows
+            .insert(path, hashed)
+            .map_err(WriteError::Package)?;
+        self.firsts.entry(hashed.sha256()).or_insert(at);
+        Ok(())
     }
 
     /// Writes the package's index; its fingerprint.
     pub fn finish(self) -> Result<PackageFingerprint, WriteError> {
-        let index = self.rows.finish().map_err(WriteError::Package)?;
-        DurableFile::write(&self.root.join(FileIndex::PATH), index.bytes())
+        let encoded = self.rows.finish().map_err(WriteError::Package)?;
+        DurableFile::write(&self.root.join(FileIndex::PATH), &encoded.bytes)
             .map_err(WriteError::Index)?;
-        Ok(index.fingerprint())
+        Ok(encoded.index.fingerprint())
     }
 }
 
@@ -142,6 +147,18 @@ mod tests {
                 Err(WriteError::File(error)) if error.path == scratch.path("three/a.txt")
             ));
         }
+        // The refused writes keep no row and no link's target: a file of the bytes of the
+        // refused `2` is a file of its own, and the index lists `a.txt` as its first write.
+        twice.write(path("b.txt"), b"2").unwrap();
+        assert!(!scratch.same_file("three/a.txt", "three/b.txt"));
+        assert_eq!(scratch.read("three/b.txt"), b"2");
+        twice.finish().unwrap();
+        let rows = format!(
+            "campfire/package-index/v2\n{} 1 a.txt\n{} 1 b.txt\n",
+            hex(b"1"),
+            hex(b"2")
+        );
+        assert_eq!(scratch.read("three/package.index"), rows.as_bytes());
         assert!(matches!(
             PackageWriter::create(&scratch.path("one")),
             Err(WriteError::CreateDir(_))

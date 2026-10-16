@@ -15,20 +15,21 @@ use crate::package_source::PackageSource;
 /// names.
 #[derive(Debug, Clone)]
 pub struct PackageReader {
-    index: FileIndex,
+    /// Shared by every clone, as a mode's packages each keep their reader.
+    index: Arc<FileIndex>,
     source: Arc<dyn PackageSource>,
 }
 
 impl PackageReader {
-    pub(crate) fn new(index: FileIndex, source: Arc<dyn PackageSource>) -> Self {
+    pub(crate) fn new(index: Arc<FileIndex>, source: Arc<dyn PackageSource>) -> Self {
         Self { index, source }
     }
 
-    pub const fn fingerprint(&self) -> PackageFingerprint {
+    pub fn fingerprint(&self) -> PackageFingerprint {
         self.index.fingerprint()
     }
 
-    pub(crate) const fn index(&self) -> &FileIndex {
+    pub(crate) fn index(&self) -> &FileIndex {
         &self.index
     }
 
