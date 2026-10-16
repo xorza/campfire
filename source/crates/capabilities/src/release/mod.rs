@@ -22,7 +22,7 @@ use campfire_script::{ApiBuilder, ScriptApi, ScriptHost};
 use campfire_sim::{Capability, SimWorldBuilder, Unpredicted};
 use campfire_state_types::StateTypes;
 use campfire_stats::Stats;
-use campfire_units::{UnitTypeBook, Units};
+use campfire_units::{UnitTypes, Units};
 use campfire_values::{EngineTag, NameId};
 use campfire_vision::Vision;
 
@@ -224,7 +224,9 @@ impl Release {
                 Self::declare(set, &mut ApiBinder(builder));
             });
         }
-        UnitTypeBook::new(Self::engine_tags()).load_into(world);
+        UnitTypes::new(Self::engine_tags())
+            .into_book()
+            .load_into(world);
         #[cfg(feature = "internals")]
         if spec.unbuilt {
             sim.leave_unbuilt();

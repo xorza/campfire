@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::resource::Resource;
@@ -66,7 +64,7 @@ impl RoomMaking {
                 .filter(|&(_, _, &walker_pos, other)| {
                     let radius = Walker::walking(Some(other)).radius;
                     other.layer() == body.layer()
-                        && boxed.nearest(pos.get(), walker_pos.get(), radius) == Ordering::Less
+                        && boxed.closer(pos.get(), walker_pos.get(), radius)
                 })
                 .map(|(entity, &id, ..)| Keyed { id, entity }),
         );

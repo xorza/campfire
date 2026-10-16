@@ -17,8 +17,8 @@ pub trait NameId: Copy + Debug {
     fn index(self) -> usize;
 }
 
-/// What a lookup gives a table of names: a name, in its scope.
-pub trait NameKey<S> {
+/// What a lookup gives a table of names: a name, in its scope, borrowed, so a key is a copy.
+pub trait NameKey<S>: Copy {
     fn scope(&self) -> S;
 
     fn text(&self) -> &str;

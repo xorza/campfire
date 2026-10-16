@@ -12,7 +12,7 @@ use campfire_script::Filter;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent};
 use campfire_stats::{ModifierData, Stats};
-use campfire_units::{UnitTypeBook, UnitTypeCore, Units};
+use campfire_units::{UnitTypeCore, UnitTypes, Units};
 use campfire_values::{
     DeclaredName, EngineTag, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, TagSet,
     Team, TypeScope,
@@ -20,7 +20,7 @@ use campfire_values::{
 
 #[test]
 fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
-    let types = UnitTypeBook::new(Release::engine_tags());
+    let types = UnitTypes::new(Release::engine_tags());
     let [projectile, area] = [Projectiles::TAG, Areas::TAG].map(EngineTag::tag);
     let parse = |text| Filter::parse(text, types.tags()).unwrap();
     // A relation alone is the filter of its name.

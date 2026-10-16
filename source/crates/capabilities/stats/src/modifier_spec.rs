@@ -4,9 +4,8 @@ use std::sync::Arc;
 
 use campfire_common::Ticks;
 use campfire_math::Num;
-use campfire_script::{Filter, StateSchema, SyncTo, UnknownName};
+use campfire_script::{Filter, StateSchema, SyncTo, TagNames, UnknownName};
 use campfire_sim::TickRate;
-use campfire_units::UnitTypeBook;
 use campfire_values::{DeclaredName, FilterData, ModifierId, Names, Number, Param, Stat};
 
 use crate::applier_param::ApplierParam;
@@ -89,7 +88,7 @@ struct ParamPlaces<'a> {
 #[derive(Debug)]
 pub struct SpecNames<'a, S, M> {
     pub stat: S,
-    pub types: &'a UnitTypeBook,
+    pub tags: &'a TagNames,
     pub rate: TickRate,
     pub modifier: M,
 }
@@ -133,7 +132,7 @@ impl ModifierSpec {
             .as_ref()
             .map(|shield| places.number(shield))
             .transpose()?;
-        let filter = |filter: &FilterData| Filter::resolve(filter, names.types.tags());
+        let filter = |filter: &FilterData| Filter::resolve(filter, names.tags);
         let aura = match &data.aura {
             Some(aura) => Some(AuraSpec {
                 radius: places.number(&aura.radius)?,

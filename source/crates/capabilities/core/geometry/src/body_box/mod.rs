@@ -140,10 +140,16 @@ impl BodyBox {
         })
     }
 
+    /// Whether `pos` lies closer than `reach` to the box at `center`, exactly: a point at `reach`
+    /// is not closer.
+    pub fn closer(&self, center: Vec3, pos: Vec3, reach: Num) -> bool {
+        self.nearest(center, pos, reach) == Ordering::Less
+    }
+
     /// How the distance from `pos` to the box at `center` lies against `reach`: past it when `pos`
     /// lies past the box's extent and the reach along an axis, as the distance is at least that
     /// gap; else as the nearest of the box's features lies against it.
-    pub fn nearest(&self, center: Vec3, pos: Vec3, reach: Num) -> Ordering {
+    pub(crate) fn nearest(&self, center: Vec3, pos: Vec3, reach: Num) -> Ordering {
         let off = flat(pos) - flat(center);
         let extent = self.extent();
         let reach_bits = reach.to_bits();

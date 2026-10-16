@@ -134,6 +134,7 @@ impl Hook {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::NamedEnum;
     use campfire_values::RelationSet;
 
     use super::*;

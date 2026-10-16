@@ -131,8 +131,6 @@ impl<'de> Deserialize<'de> for Body {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use std::cmp::Ordering;
-
     use campfire_geometry::{Metric, Placed, Radius, Shape};
     use campfire_math::{Num, Vec3};
 
@@ -172,7 +170,7 @@ pub(crate) mod internals {
             let (Shape::Circle(radius), Shape::Box(boxed)) = (self.shape(), body.shape()) else {
                 panic!("a circle and a box");
             };
-            boxed.nearest(center, pos, radius.get()) == Ordering::Less
+            boxed.closer(center, pos, radius.get())
         }
     }
 }

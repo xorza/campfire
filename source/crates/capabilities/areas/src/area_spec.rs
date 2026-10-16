@@ -1,9 +1,8 @@
 use campfire_common::Ticks;
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_script::{Filter, UnknownName};
+use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::TickRate;
-use campfire_units::UnitTypeBook;
 use campfire_values::{DeclaredName, ModifierId, TimeTooLarge};
 
 use crate::area_data::AreaData;
@@ -31,11 +30,11 @@ pub struct Inside {
 
 impl AreaSpec {
     /// The spec of `data`: its times in ticks at `rate`, rounded up, what it reaches among the
-    /// tags of `types`, and its `inside` modifiers as `modifier` finds them; an error for a time
+    /// tags of `tags`, and its `inside` modifiers as `modifier` finds them; an error for a time
     /// that does not count in ticks, or a name the match does not have.
     pub fn of(
         data: &AreaData,
-        types: &UnitTypeBook,
+        tags: &TagNames,
         rate: TickRate,
         modifier: impl Fn(&DeclaredName) -> Result<ModifierId, UnknownName>,
     ) -> Result<Self, AreaError> {
@@ -45,7 +44,7 @@ impl AreaSpec {
             radius: data.radius,
             delay: ticks(data.delay_ms)?,
             duration: ticks(data.duration_ms)?,
-            affects: Filter::resolve_or_enemies(data.affects.as_ref(), types.tags())?,
+            affects: Filter::resolve_or_enemies(data.affects.as_ref(), tags)?,
             inside: Inside {
                 caster: inside(&data.inside.caster)?,
                 allies: inside(&data.inside.allies)?,

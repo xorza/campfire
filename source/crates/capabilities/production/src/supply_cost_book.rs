@@ -41,7 +41,7 @@ impl SupplyCostBook {
     /// The costs of `types`, and of the trains of `book`.
     pub fn new(types: ByType<SupplyData>, book: &ActionBook) -> Self {
         let trains = (0..)
-            .map_while(|at| book.get(ActionId::new(at)))
+            .map_while(|at| book.get(ActionId::at(at)))
             .map(|action| match action.kind {
                 KindSpec::Train(made) => types.get(made).map_or(0, |supply| supply.cost),
                 KindSpec::Cast

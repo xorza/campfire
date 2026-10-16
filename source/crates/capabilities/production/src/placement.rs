@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_geometry::{Placed, Shape};
@@ -77,9 +75,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
                 return false;
             };
             let inside = match other.shape() {
-                Shape::Circle(radius) => {
-                    boxed.nearest(pos, unit.pos, radius.get()) == Ordering::Less
-                }
+                Shape::Circle(radius) => boxed.closer(pos, unit.pos, radius.get()),
                 Shape::Box(other) => boxed.overlaps(pos, &other, unit.pos),
             };
             inside && relations.between(team, unit.team) != Relation::Friendly

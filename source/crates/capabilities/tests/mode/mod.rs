@@ -49,7 +49,7 @@ use campfire_stats::{
 };
 use campfire_units::{
     Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MatchEntity, MoveStep,
-    Owner, Player, SyncAll, SyncNone, UnitTypeBook, UnitTypeCore, Units, UnitsWorld,
+    Owner, Player, SyncAll, SyncNone, UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
     ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, MessageId, ModifierId, Names,
@@ -729,15 +729,13 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     let pools = Arc::clone(&mode_names.pools);
     let pools = PoolBook::new(&data.pools, pools, life, |_, held| stat(held)).unwrap();
     let combat = CombatBook::new(&data.combat, RATE, stat).unwrap();
-    let tags = {
-        let mut unit_types = game.resource_mut::<UnitTypeBook>();
+    Units::change_types(game, |_, unit_types| {
         let bodies = types.iter().map(|unit| (unit.unit_type, unit.body));
         unit_types.tag_layers(&mode_names.layers, bodies);
-        unit_types.tag_book(&data.tags)
-    };
+    });
+    Units::seal_types(game, &data.tags);
     stats.load_into(game);
     pools.load_into(game);
-    tags.load_into(game);
     TestType::load(game, types);
     SlotKindBook(Arc::new(data.slots.clone())).load_into(game);
     combat.load_into(game);
@@ -803,8 +801,10 @@ fn installed_match(
         .map(DeclaredName::as_str)
         .collect();
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &resources);
+    // The mode's tags, the layers' then those of its data, as its packages name them.
     let layers = files.data.navigation.layers.iter();
-    Units::declare_tags(&mut game, layers.map(DeclaredName::as_str));
+    let tags = layers.chain(files.data.tags.keys());
+    Units::declare_tags(&mut game, tags.map(DeclaredName::as_str));
     let grunt_type = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt_data());
     let mut load = |name: &str, tag: &str| {
         let data = UnitTypeCore::tagged(&[tag]);

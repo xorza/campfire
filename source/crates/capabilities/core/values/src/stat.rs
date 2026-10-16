@@ -1,3 +1,4 @@
+use campfire_common::NamedEnum;
 use derive_more::Display;
 use serde::{Deserialize, Deserializer};
 
@@ -28,19 +29,10 @@ campfire_common::enum_all! {
     pub const ALL;
 }
 
-impl EngineStat {
-    /// The stat named `name`.
-    pub fn named(name: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|stat| stat.name() == name)
-    }
-
-    /// The stat as data and scripts name it.
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::MoveSpeed => "move_speed",
-            Self::TurnRate => "turn_rate",
-        }
-    }
+/// As data and scripts name each.
+impl NamedEnum for EngineStat {
+    const ALL: &'static [Self] = &Self::ALL;
+    const NAMES: &'static [&'static str] = &["move_speed", "turn_rate"];
 }
 
 impl Stat {

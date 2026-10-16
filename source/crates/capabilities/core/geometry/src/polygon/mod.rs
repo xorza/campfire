@@ -3,7 +3,7 @@ use std::cmp::Ordering;
 use campfire_math::{Flat, Num, Vec3};
 use campfire_sim::Position;
 
-use crate::halves::Halves;
+use crate::halves;
 use crate::polygon::error::PolygonError;
 
 pub(crate) mod error;
@@ -69,7 +69,7 @@ impl Polygon {
 
     /// Whether `at`, `[x, z]`, lies inside the polygon or on its edge.
     pub(crate) fn holds_point(&self, at: [Num; 2]) -> bool {
-        self.holds(Flat::from_array(at.map(Halves::of)))
+        self.holds(Flat::from_array(at.map(halves::of)))
     }
 
     pub fn points(&self) -> &[[Num; 2]] {
@@ -79,7 +79,7 @@ impl Polygon {
     /// The edge from point `at` to the next, in halves of a bit.
     fn edge(&self, at: usize) -> [Flat; 2] {
         let next = (at + 1) % self.points.len();
-        [self.points[at], self.points[next]].map(|[x, z]| Flat::new(Halves::of(x), Halves::of(z)))
+        [self.points[at], self.points[next]].map(|[x, z]| Flat::new(halves::of(x), halves::of(z)))
     }
 
     /// Whether edges `first` and `second`, `first` the lower, meet where a simple polygon's do

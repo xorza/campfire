@@ -1,5 +1,6 @@
 use campfire_common::Tick;
 use campfire_progression::ProgressionRefusal;
+use campfire_units::TagData;
 
 use super::*;
 use campfire_script::CapabilityRefusal;
@@ -198,9 +199,12 @@ fn on_input(ctx, player, name, value) {
 }
 "#;
     let script = format!("{killer}{DEATHS_3V3}");
-    let mut game = picking_match(&script, ScriptLimits::ROOMY);
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
-    Units::declare_tags(&mut game, ["core"]);
+    let mut files = mode_files();
+    let core = DeclaredName::new("core").unwrap();
+    files.data.tags.insert(core, TagData::default());
+    let script = format!("{script}{PICKING}");
+    let mut game = start_match(&script, ScriptLimits::ROOMY, &files).unwrap();
     Mode::tick_inputs(
         &mut game,
         &[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))],

@@ -234,7 +234,7 @@ pub mod internals {
     use campfire_declare::ByType;
     use campfire_math::{Num, Vec3};
     use campfire_sim::{EntityIndex, Position, StableId, TickRate};
-    use campfire_units::{MapBook, UnitTypeBook};
+    use campfire_units::{MapBook, UnitTypeBook, Units};
     use campfire_values::{ActionId, DamageKind, Rank, UnitType};
 
     use crate::Projectiles;
@@ -248,9 +248,9 @@ pub mod internals {
         /// the match's rate: its `hits` filter names tags of the match's.
         pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
             let rate = *world.resource::<TickRate>();
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            types.give_tag(unit_type, Self::TAG.tag());
-            let spec = ProjectileSpec::of(data, world.resource::<UnitTypeBook>(), rate)
+            Units::change_types(world, |_, types| types.give_tag(unit_type, Self::TAG.tag()));
+            let tags = world.resource::<UnitTypeBook>().tags();
+            let spec = ProjectileSpec::of(data, tags, rate)
                 .expect("a test's projectile hits tags its match has");
             world
                 .resource_mut::<ByType<ProjectileSpec>>()

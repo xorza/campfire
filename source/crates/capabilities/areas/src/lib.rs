@@ -158,7 +158,7 @@ pub mod internals {
     use campfire_script::{NameKind, UnknownName};
     use campfire_sim::TickRate;
     use campfire_stats::Stats;
-    use campfire_units::UnitTypeBook;
+    use campfire_units::{UnitTypeBook, Units};
     use campfire_values::{DeclaredName, PackageIndex, UnitType};
 
     use crate::Areas;
@@ -176,14 +176,13 @@ pub mod internals {
             data: &AreaData,
         ) {
             let rate = *world.resource::<TickRate>();
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            types.give_tag(unit_type, Self::TAG.tag());
+            Units::change_types(world, |_, types| types.give_tag(unit_type, Self::TAG.tag()));
             let modifier = |name: &DeclaredName| {
                 Stats::modifier(world, package, name.as_str())
                     .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
             };
-            let types = world.resource::<UnitTypeBook>();
-            let spec = AreaSpec::of(data, types, rate, modifier)
+            let tags = world.resource::<UnitTypeBook>().tags();
+            let spec = AreaSpec::of(data, tags, rate, modifier)
                 .expect("a test's area holds in ticks and names what its match has");
             world
                 .resource_mut::<ByType<AreaSpec>>()

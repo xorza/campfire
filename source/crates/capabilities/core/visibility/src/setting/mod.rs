@@ -1,10 +1,12 @@
 use std::fmt;
 use std::str::FromStr;
 
+use campfire_common::NamedEnum;
 use campfire_state_types::{DataKind, Recipients};
 
+use crate::out_view::OutView;
 use crate::setting::error::VisibilityError;
-use crate::{OutView, SpectatorFog};
+use crate::spectator_fog::SpectatorFog;
 
 pub(crate) mod error;
 

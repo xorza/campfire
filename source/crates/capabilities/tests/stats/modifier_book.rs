@@ -6,10 +6,10 @@ use campfire_math::Num;
 use campfire_script::ParamProblem;
 use campfire_script::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
 use campfire_stats::*;
-use campfire_units::{ScriptBook, UnitTypeBook};
+use campfire_units::{ScriptBook, UnitTypes};
 use campfire_values::{
-    ActionId, DeclaredName, Number, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar, Scaling,
-    Stat,
+    ActionId, DeclaredName, ModifierId, NameId, Number, PackageIndex, Param, ParamRef, Rank,
+    Ranked, Scalar, Scaling, Stat,
 };
 
 fn name(text: &str) -> DeclaredName {
@@ -64,9 +64,10 @@ fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
     .map(|(id, data)| (name(id), data));
     let rate = Match::TEST_RATE;
     let mut book = ModifierBook::default();
+    let types = UnitTypes::new(Release::engine_tags());
     let load = ModifierLoad {
         scripts: &ScriptBook::default(),
-        types: &mut UnitTypeBook::new(Release::engine_tags()),
+        tags: types.tags(),
         stat: |_: &_| Ok(StatId::new(0)),
         rate,
     };
@@ -87,7 +88,7 @@ fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
     let params = ParamBook::new(tables, book.appliers());
     let ways = |action, rank| -> Vec<Option<ParamProblem>> {
         let rank = Rank::new(rank).unwrap();
-        let check = |at| book.check_way(ModifierBook::id_at(at), action, rank, &params, rate);
+        let check = |at| book.check_way(ModifierId::at(at), action, rank, &params, rate);
         (0..data.len()).map(|at| check(at).err()).collect()
     };
     // By the action at rank 2: no `absent`; 2⁴⁰ past a number; −5 ms no time; `own` has no

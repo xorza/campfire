@@ -1,5 +1,7 @@
 use std::fmt;
 
+use campfire_common::NamedEnum;
+
 use crate::block::Block;
 
 /// A property the mode may give a tag, as the script API reference lists it.

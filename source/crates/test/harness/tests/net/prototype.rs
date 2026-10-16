@@ -510,7 +510,11 @@ fn the_client_takes_the_relations_a_script_sets() {
     let mut local = InProcessMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The client holds the relations from its first replication, on the match's entity.
-    let relations = |app: &App| app.world().held_relations().cloned();
+    let relations = |app: &App| {
+        let world = app.world();
+        let entity = world.match_entity()?;
+        world.get::<Relations>(entity).cloned()
+    };
     while relations(local.client(0)).is_none() {
         local.step();
     }

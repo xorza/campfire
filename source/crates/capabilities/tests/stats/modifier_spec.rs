@@ -7,7 +7,7 @@ use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::*;
-use campfire_units::UnitTypeBook;
+use campfire_units::UnitTypes;
 use campfire_values::{
     DeclaredName, FilterData, ModifierId, NameId, Names, Number, Param, ParamRef, Ranked, Scalar,
     Stat,
@@ -23,7 +23,7 @@ fn param(text: &str) -> Number {
 
 #[test]
 fn a_spec_resolves_every_name_of_its_modifier_at_load() {
-    let mut types = UnitTypeBook::new(Release::engine_tags());
+    let mut types = UnitTypes::new(Release::engine_tags());
     types.declare("rooted").unwrap();
     let one = Param::Ranked(Ranked::One(Scalar::Int(1)));
     let mut data = ModifierData {
@@ -69,7 +69,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
     };
     let names = SpecNames {
         stat,
-        types: &types,
+        tags: types.tags(),
         rate,
         modifier: |modifier: &str| {
             assert_eq!(modifier, "chill");
@@ -130,7 +130,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
 #[test]
 fn a_spec_fails_on_a_name_the_match_does_not_have() {
     // The match has the stat armor, the tag rooted and the modifier chill.
-    let mut types = UnitTypeBook::new(Release::engine_tags());
+    let mut types = UnitTypes::new(Release::engine_tags());
     types.declare("rooted").unwrap();
     let armor = Stat::named("armor").unwrap();
     let names = SpecNames {
@@ -138,7 +138,7 @@ fn a_spec_fails_on_a_name_the_match_does_not_have() {
             let found = (*stat == armor).then(|| StatId::new(0));
             found.ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
         },
-        types: &types,
+        tags: types.tags(),
         rate: Match::TEST_RATE,
         modifier: |modifier: &str| {
             let found = (modifier == "chill").then(|| ModifierId::new(0));

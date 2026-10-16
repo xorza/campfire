@@ -3,9 +3,8 @@ use std::num::NonZeroI64;
 use campfire_declare::PerType;
 use campfire_geometry::Radius;
 use campfire_math::{Num, Rounding};
-use campfire_script::{Filter, UnknownName};
+use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::TickRate;
-use campfire_units::UnitTypeBook;
 
 use crate::projectile_data::{ProjectileData, ProjectileHits};
 
@@ -25,15 +24,11 @@ pub struct ProjectileSpec {
 
 impl ProjectileSpec {
     /// The spec of `data`: its speed a tick at `rate`, and what it hits among the tags of
-    /// `types`; an error for a filter of a tag `types` lacks.
-    pub fn of(
-        data: &ProjectileData,
-        types: &UnitTypeBook,
-        rate: TickRate,
-    ) -> Result<Self, UnknownName> {
+    /// `tags`; an error for a filter of a tag `tags` lacks.
+    pub fn of(data: &ProjectileData, tags: &TagNames, rate: TickRate) -> Result<Self, UnknownName> {
         let hits = match &data.hits {
             ProjectileHits::Nothing => None,
-            ProjectileHits::Units(filter) => Some(Filter::resolve(filter, types.tags())?),
+            ProjectileHits::Units(filter) => Some(Filter::resolve(filter, tags)?),
         };
         Ok(Self {
             speed: data

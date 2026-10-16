@@ -6,6 +6,7 @@ use campfire_combat::Deaths;
 use campfire_players::Seating;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_units::BodyUnit;
+use campfire_units::internals::UnitsWorldInternals;
 
 use super::*;
 use campfire_script::CapabilityRefusal;

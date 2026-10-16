@@ -4,10 +4,6 @@
 //! and the teams' relations.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
-#![expect(
-    clippy::needless_pass_by_value,
-    reason = "Bevy systems take `Res` and `Query` by value"
-)]
 
 mod action_id;
 mod action_start;

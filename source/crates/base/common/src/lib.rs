@@ -5,9 +5,10 @@
 //!
 //! A type enters only when two crates that do not depend on each other both name it, and only
 //! as a plain value: construction, parsing, display and serde, no other logic. The exceptions
-//! are `enum_all!`, which states an enum with the list of its variants; the hashers, SHA-256 and
-//! domain-tagged BLAKE3, which construct the 32-byte values (design 05, Hashes, ids and keys);
-//! and, behind `internals`, the allocation audit every crate's `tests/alloc` suite runs on. The
+//! are `enum_all!`, which states an enum with the list of its variants, and `NamedEnum`, which
+//! names them from one table; the hashers, SHA-256 and domain-tagged BLAKE3, which construct
+//! the 32-byte values (design 05, Hashes, ids and keys); and, behind `internals`, the
+//! allocation audit every crate's `tests/alloc` suite runs on. The
 //! crate depends on nothing but `serde`, `derive_more`, `sha2` and `blake3`, and, for the audit,
 //! `backtrace`.
 
@@ -23,6 +24,7 @@ mod domain_hasher;
 mod enum_all;
 mod exit_status;
 mod map_name;
+mod named_enum;
 mod package_fingerprint;
 mod player_slot;
 mod secret;
@@ -42,6 +44,7 @@ pub use crate::domain_hasher::{DomainHasher, HashDomain, HashOutput};
 pub use crate::exit_status::ExitStatus;
 pub use crate::map_name::MapName;
 pub use crate::map_name::error::NotMapName;
+pub use crate::named_enum::NamedEnum;
 pub use crate::package_fingerprint::{PackageFingerprint, PackageFingerprintMeaning};
 pub use crate::player_slot::PlayerSlot;
 pub use crate::secret::Secret;

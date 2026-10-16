@@ -8,7 +8,7 @@ use campfire_declare::ByType;
 use campfire_mode::ModeInputs;
 use campfire_navigation::{MapProblem, WalkCheck, Walker};
 use campfire_script::View;
-use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook};
+use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook, UnitTypes};
 use campfire_values::{DamageKind, DeclaredName, Names, PackageIndex, ResourceId, UnitType};
 
 use crate::books::book_builder::BookBuilder;
@@ -58,8 +58,8 @@ impl Books {
     pub fn unit_types(
         tag_names: &[DeclaredName],
         packages: &[BookPackage<'_>],
-    ) -> Result<UnitTypeBook, TypesError> {
-        let mut types = UnitTypeBook::new(Release::engine_tags());
+    ) -> Result<UnitTypes, TypesError> {
+        let mut types = UnitTypes::new(Release::engine_tags());
         for name in tag_names {
             types.declare(name.as_str())?;
         }

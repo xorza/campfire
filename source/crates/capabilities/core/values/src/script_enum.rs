@@ -1,20 +1,26 @@
+use campfire_common::NamedEnum;
+
 use crate::engine_enum::EngineEnum;
 
-/// The Rust type of an engine enum, whose values scripts hold as its members.
-pub trait ScriptEnum: Copy + PartialEq + 'static {
+/// The Rust type of an engine enum, whose values scripts hold as its members, each named in data
+/// as `NamedEnum` names it.
+pub trait ScriptEnum: NamedEnum {
     const ENUM: EngineEnum;
-    /// Each member, by its name in scripts, in order.
-    const MEMBERS: &'static [(&'static str, Self)];
+    /// Each member's name in scripts, in the order of `ALL`: `enum_all!`'s `IDENTS`.
+    const SCRIPT_NAMES: &'static [&'static str];
 
-    /// The member as data names it, which `to_string` gives and `named` reads.
-    fn data_name(self) -> &'static str;
-
-    /// The member data names `text`.
-    fn named(text: &str) -> Option<Self> {
-        Self::MEMBERS
+    /// Each member by its name in scripts, in order.
+    fn members() -> impl Iterator<Item = (&'static str, Self)> {
+        const {
+            assert!(
+                Self::SCRIPT_NAMES.len() == Self::ALL.len(),
+                "a script name for each member"
+            );
+        };
+        Self::SCRIPT_NAMES
             .iter()
-            .map(|&(_, member)| member)
-            .find(|member| member.data_name() == text)
+            .copied()
+            .zip(Self::ALL.iter().copied())
     }
 }
 
@@ -29,10 +35,10 @@ pub(crate) mod internals {
     /// Checks that each member of `T` reads from data by the name `named` reads it by, and that
     /// a text that names no member names none.
     pub fn named_as_data<T: ScriptEnum + DeserializeOwned + Debug>() {
-        for &(_, member) in T::MEMBERS {
-            let text = IntoDeserializer::<value::Error>::into_deserializer(member.data_name());
+        for (_, member) in T::members() {
+            let text = IntoDeserializer::<value::Error>::into_deserializer(member.name());
             assert_eq!(T::deserialize(text).unwrap(), member);
-            assert_eq!(T::named(member.data_name()), Some(member));
+            assert_eq!(T::named(member.name()), Some(member));
         }
         assert_eq!(T::named("none"), None);
     }

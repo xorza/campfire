@@ -1,17 +1,22 @@
+use campfire_common::NamedEnum;
 use serde::{Deserialize, Serialize};
 
 use crate::engine_enum::EngineEnum;
 use crate::script_enum::ScriptEnum;
 
-/// How one team regards another, as the mode's `[[relations]]` declare it and
-/// `ctx.set_relation` changes it: Unreal's team attitudes. A neutral unit may be attacked, but
-/// does not seek a fight.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Relation {
-    Hostile,
-    Neutral,
-    Friendly,
+campfire_common::enum_all! {
+    /// How one team regards another, as the mode's `[[relations]]` declare it and
+    /// `ctx.set_relation` changes it: Unreal's team attitudes. A neutral unit may be attacked,
+    /// but does not seek a fight.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+    #[serde(rename_all = "snake_case")]
+    pub enum Relation {
+        Hostile,
+        Neutral,
+        Friendly,
+    }
+    const ALL;
+    const IDENTS;
 }
 
 impl Relation {
@@ -21,22 +26,16 @@ impl Relation {
     }
 }
 
+/// As data names each.
+impl NamedEnum for Relation {
+    const ALL: &'static [Self] = &Self::ALL;
+    const NAMES: &'static [&'static str] = &["hostile", "neutral", "friendly"];
+}
+
 /// `Relation::Hostile` and the others in scripts.
 impl ScriptEnum for Relation {
     const ENUM: EngineEnum = EngineEnum::Relation;
-    const MEMBERS: &'static [(&'static str, Self)] = &[
-        ("Hostile", Self::Hostile),
-        ("Neutral", Self::Neutral),
-        ("Friendly", Self::Friendly),
-    ];
-
-    fn data_name(self) -> &'static str {
-        match self {
-            Self::Hostile => "hostile",
-            Self::Neutral => "neutral",
-            Self::Friendly => "friendly",
-        }
-    }
+    const SCRIPT_NAMES: &'static [&'static str] = &Self::IDENTS;
 }
 
 #[cfg(test)]

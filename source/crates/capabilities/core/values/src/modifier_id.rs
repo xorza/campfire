@@ -8,13 +8,6 @@ use crate::package_index::PackageIndex;
 #[serde(transparent)]
 pub struct ModifierId(u16);
 
-impl ModifierId {
-    /// The modifier at `index` of the book.
-    pub const fn new(index: u16) -> Self {
-        Self(index)
-    }
-}
-
 impl NameId for ModifierId {
     type Scope = PackageIndex;
     const LIMIT: usize = 1 << u16::BITS;
@@ -25,5 +18,17 @@ impl NameId for ModifierId {
 
     fn index(self) -> usize {
         self.0 as usize
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::modifier_id::ModifierId;
+
+    impl ModifierId {
+        /// The modifier at `index` of the book.
+        pub const fn new(index: u16) -> Self {
+            Self(index)
+        }
     }
 }

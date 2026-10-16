@@ -26,7 +26,7 @@ use campfire_stats::{
     ModifierBook, ModifierError, ModifierLoad, PackageModifier, ParamBook, ParamTable, PoolBook,
     PoolId, SpecError, StatBook, StatId, TypePassive,
 };
-use campfire_units::{Avatar, TypesError, UnitTypeBook};
+use campfire_units::{Avatar, TypesError, UnitTypes};
 use campfire_values::{
     ActionId, DamageKind, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex,
     PackagePath, Share, Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
@@ -247,10 +247,11 @@ impl<'a> BookBuilder<'a> {
             navigation,
             vision,
         } = resolved;
+        let types = parts.types.finish(&data.tags);
         let mut built = BuiltBooks::default();
-        built.add(parts.types.state_book());
-        built.add(parts.types.origin_book());
-        built.add(parts.types.tag_book(&data.tags));
+        built.add(types.states);
+        built.add(types.origins);
+        built.add(types.tags);
         built.add(input.scripts.clone());
         built.add(ground);
         built.add(self.stats);
@@ -294,7 +295,7 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.shops);
         built.add(parts.use_specs);
         built.add(parts.use_slots);
-        built.add(parts.types);
+        built.add(types.types);
         let ModeNames {
             damage_kinds,
             resources,
@@ -318,7 +319,7 @@ impl<'a> BookBuilder<'a> {
 
     /// The mode's map, resolved, its placed units' types among `types`; an error for what it
     /// names that the mode does not have.
-    fn resolve_map(&self, types: &UnitTypeBook) -> Result<ResolvedMap, BookError> {
+    fn resolve_map(&self, types: &UnitTypes) -> Result<ResolvedMap, BookError> {
         let input = self.input;
         let data = input.data;
         let mode_units = &input.packages[0].content.units;
@@ -403,7 +404,7 @@ impl<'a> BookBuilder<'a> {
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`
     /// section, refreshed in the input's order: each package's types that stand, in its scope,
     /// and each avatar, in the mode's; an error for a stat the mode does not declare.
-    fn stat_book(input: &BookInput<'_>, types: &UnitTypeBook) -> Result<StatBook, BookError> {
+    fn stat_book(input: &BookInput<'_>, types: &UnitTypes) -> Result<StatBook, BookError> {
         let mut book = StatBook::new(&input.data.stats, input.max_move_speed.get());
         for (index, package) in (0..).map(PackageIndex::new).zip(&input.packages) {
             let units = package.content.units.iter();
@@ -434,7 +435,7 @@ impl<'a> BookBuilder<'a> {
     /// avatar package's avatar. Each type is in its package's scope, which for the mode is the
     /// mode's; an avatar is in the mode's.
     pub(super) fn declare_types(
-        types: &mut UnitTypeBook,
+        types: &mut UnitTypes,
         index: PackageIndex,
         package: &BookPackage<'_>,
     ) -> Result<(), TypesError> {
@@ -472,7 +473,7 @@ impl<'a> BookBuilder<'a> {
         let books = &mut self.books;
         let load = ModifierLoad {
             scripts: input.scripts,
-            types: &mut books.types,
+            tags: books.types.tags(),
             stat: |stat: &Stat| {
                 stats
                     .named(stat)
@@ -1042,7 +1043,7 @@ impl<'a> BookBuilder<'a> {
         let at = || BookPlace::UnitType(TypePlace::Declared(name.clone()));
         if let Some(projectile) = &file.projectile {
             books.types.give_tag(unit_type, Projectiles::TAG.tag());
-            let spec = ProjectileSpec::of(projectile, &books.types, rate)
+            let spec = ProjectileSpec::of(projectile, books.types.tags(), rate)
                 .map_err(|unknown| BookError::unknown(index, at(), unknown))?;
             books.projectiles.set(unit_type, spec);
         }
@@ -1054,13 +1055,15 @@ impl<'a> BookBuilder<'a> {
                 modifier.ok_or_else(|| UnknownName::new(NameKind::Modifier, id))
             };
             let spec =
-                AreaSpec::of(area, &books.types, rate, modifier).map_err(|error| match error {
-                    AreaError::Time(TimeTooLarge) => BookError::AreaTime {
-                        package: index,
-                        unit_type: name.clone(),
+                AreaSpec::of(area, books.types.tags(), rate, modifier).map_err(
+                    |error| match error {
+                        AreaError::Time(TimeTooLarge) => BookError::AreaTime {
+                            package: index,
+                            unit_type: name.clone(),
+                        },
+                        AreaError::Unknown(unknown) => BookError::unknown(index, at(), unknown),
                     },
-                    AreaError::Unknown(unknown) => BookError::unknown(index, at(), unknown),
-                })?;
+                )?;
             books.areas.set(unit_type, spec);
         }
         books
@@ -1105,7 +1108,7 @@ struct BuildNames<'b> {
     input: &'b BookInput<'b>,
     names: &'b ModeNames,
     stats: &'b StatBook,
-    types: &'b UnitTypeBook,
+    types: &'b UnitTypes,
     modifiers: &'b ModifierBook,
     tracks: &'b TrackBook,
     params: &'b ParamTable,

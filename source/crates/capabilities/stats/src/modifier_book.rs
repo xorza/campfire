@@ -4,10 +4,10 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{
-    HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, StateValue, UnknownName, View,
+    HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName, View,
 };
 use campfire_sim::TickRate;
-use campfire_units::{ScriptBook, StatusTags, UnitTypeBook};
+use campfire_units::{ScriptBook, StatusTags};
 use campfire_values::{
     ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet,
 };
@@ -53,12 +53,12 @@ pub struct ModifierEntry {
     pub tags: TagSet,
 }
 
-/// What a package's modifiers load with: the hooks each script defines, the unit types that
-/// declare the tags they grant and resolve their filters, each stat's place, and the tick rate.
+/// What a package's modifiers load with: the hooks each script defines, the match's tags, which
+/// name the tags they grant and resolve their filters, each stat's place, and the tick rate.
 #[derive(Debug)]
 pub struct ModifierLoad<'a, S> {
     pub scripts: &'a ScriptBook,
-    pub types: &'a mut UnitTypeBook,
+    pub tags: &'a TagNames,
     pub stat: S,
     pub rate: TickRate,
 }
@@ -84,7 +84,7 @@ impl ModifierBook {
     ) -> Result<(), ModifierError> {
         let ModifierLoad {
             scripts,
-            types,
+            tags,
             stat,
             rate,
         } = load;
@@ -93,7 +93,7 @@ impl ModifierBook {
             modifiers.is_sorted_by(|a, b| a.name < b.name),
             "a package's modifiers load by name"
         );
-        let last = start.checked_sub(1).map(Self::id_at);
+        let last = start.checked_sub(1).map(ModifierId::at);
         if let (Some(last), Some(first)) = (last, modifiers.first()) {
             let held = (self.names.scope(last), self.names.name(last));
             assert!(
@@ -101,24 +101,24 @@ impl ModifierBook {
                 "modifiers load by package, then name"
             );
         }
-        let tags: Vec<TagSet> = modifiers
+        let granted: Vec<TagSet> = modifiers
             .iter()
             .map(|modifier| {
-                let declare = |name: &DeclaredName| {
-                    let tag = types.declare(name.as_str());
+                let declared = |name: &DeclaredName| {
+                    let tag = tags.named(name.as_str());
                     tag.expect("a match declares each tag its packages name before their modifiers")
                 };
-                modifier.data.tags.iter().map(declare).collect()
+                modifier.data.tags.iter().map(declared).collect()
             })
             .collect();
         let names = SpecNames {
             stat,
-            types: &*types,
+            tags,
             rate,
             modifier: |name: &str| {
                 let at = modifiers.binary_search_by(|modifier| modifier.name.as_str().cmp(name));
                 match at {
-                    Ok(at) => Ok(Self::id_at(start + at)),
+                    Ok(at) => Ok(ModifierId::at(start + at)),
                     Err(_) => self
                         .names
                         .named((package, name))
@@ -136,7 +136,7 @@ impl ModifierBook {
                 })
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let entries = modifiers.iter().zip(specs).zip(tags);
+        let entries = modifiers.iter().zip(specs).zip(granted);
         let book = Arc::make_mut(&mut self.entries);
         let names = Arc::make_mut(&mut self.names);
         for ((modifier, spec), tags) in entries {
@@ -167,11 +167,6 @@ impl ModifierBook {
     /// The names of the params its modifiers read from the abilities that apply them.
     pub fn appliers(&self) -> &Names<ApplierParam> {
         &self.appliers
-    }
-
-    /// The id of the modifier at `at` of the book, which numbers at most `u16` of them.
-    pub fn id_at(at: usize) -> ModifierId {
-        ModifierId::new(u16::try_from(at).expect("modifiers fit u16"))
     }
 
     /// The modifier `id`, when the book holds it.

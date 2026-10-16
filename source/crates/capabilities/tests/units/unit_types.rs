@@ -4,7 +4,7 @@ use campfire_values::{DeclaredName, NameId, PackageIndex, Tag, TypeScope, UnitTy
 
 #[test]
 fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {
-    let mut types = UnitTypeBook::new(Release::engine_tags());
+    let mut types = UnitTypes::new(Release::engine_tags());
     // The engine's 7 tags and 249 more fill the 256 a match holds.
     for at in Release::engine_tags().len()..Tag::LIMIT {
         types.declare(&format!("tag{at}")).unwrap();
@@ -16,7 +16,7 @@ fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {
         tags: vec![DeclaredName::new(name).unwrap()],
         ..UnitTypeCore::default()
     };
-    let load = |types: &mut UnitTypeBook, name: &str, data: &UnitTypeCore| {
+    let load = |types: &mut UnitTypes, name: &str, data: &UnitTypeCore| {
         types.load(TypeScope::Mode, PackageIndex::MODE, name, data)
     };
     assert_eq!(

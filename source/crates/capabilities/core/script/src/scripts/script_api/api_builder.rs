@@ -85,10 +85,10 @@ impl<'a> ApiBuilder<'a> {
             .register_fn(eq, |a: T, b: T| a == b)
             .register_fn(ne, |a: T, b: T| a != b)
             .register_fn(to_string, |member: &mut T| {
-                ImmutableString::from(member.data_name())
+                ImmutableString::from(member.name())
             });
         let mut module = Module::new();
-        for &(member, value) in T::MEMBERS {
+        for (member, value) in T::members() {
             module.set_var(member, value);
         }
         let [named] = EnumRecord::FUNCTIONS;
@@ -98,7 +98,7 @@ impl<'a> ApiBuilder<'a> {
         self.host
             .engine_mut()
             .register_static_module(name, module.into());
-        let members = T::MEMBERS.iter().map(|&(member, _)| member);
+        let members = T::members().map(|(member, _)| member);
         self.api.record_enum(T::ENUM, members);
         self
     }

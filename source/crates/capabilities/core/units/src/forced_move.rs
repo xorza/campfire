@@ -52,8 +52,8 @@ pub struct Advanced {
 }
 
 impl ForcedMove {
-    /// One tick of it from `point`, towards `goal`; none for a dash whose unit is gone or dead, which
-    /// ends where it is. A dash goes its step, and ends once it comes within its goal's reach; a
+    /// One tick of it from `point`, towards `goal`; none for a dash whose unit is gone or dead,
+    /// which ends where it is. A dash goes its step, and ends once it comes within its goal's reach; a
     /// knock back goes its share of the way to its end, and ends on it in its last tick.
     pub fn advance(&mut self, point: Vec3, goal: Option<Goal>) -> Advanced {
         let Some(goal) = goal else {
@@ -102,9 +102,10 @@ impl SimComponent for ForcedMove {
 
     // A dash of no step, or a knock back with no tick left, never ends. A dash's step, and a
     // knock back's end, lie within twice the world's bound, a distance within it from a place
-    // within it, so a step past a body's reach and a way to the end fit a number; a knock back's
-    // ticks are a time's, within the tick limit; a dash's point, and the start of the action it
-    // delivers, lie within the world's bound, as every place does. That its unit walks, and so is no box, its declarations require.
+    // within it, so a step past a body's reach and a way to the end fit a number. A knock back's
+    // ticks are a time's, within the tick limit. A dash's point, and the start of the action it
+    // delivers, lie within the world's bound, as every place does. The declarations, not this
+    // check, require that its unit walks, and so is no box.
     fn check(&self, _: &World, _: Entity) -> bool {
         let reach = 2 * Position::BOUND.to_bits().unsigned_abs();
         let within = |value: Num| value.to_bits().unsigned_abs() <= reach;

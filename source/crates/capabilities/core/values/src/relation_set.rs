@@ -1,3 +1,5 @@
+use campfire_common::NamedEnum;
+
 use crate::relation::Relation;
 
 campfire_common::enum_all! {
@@ -15,25 +17,13 @@ campfire_common::enum_all! {
     const ALL;
 }
 
+/// As filters write each.
+impl NamedEnum for RelationSet {
+    const ALL: &'static [Self] = &Self::ALL;
+    const NAMES: &'static [&'static str] = &["enemies", "hostiles", "neutrals", "allies", "all"];
+}
+
 impl RelationSet {
-    /// A filter's relation by its name.
-    pub fn named(name: &str) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .find(|relation| relation.name() == name)
-    }
-
-    /// The relation as filters write it.
-    pub const fn name(self) -> &'static str {
-        match self {
-            Self::Enemies => "enemies",
-            Self::Hostiles => "hostiles",
-            Self::Neutrals => "neutrals",
-            Self::Allies => "allies",
-            Self::All => "all",
-        }
-    }
-
     /// Whether it selects a unit of a team regarded with `relation`.
     pub const fn selects(self, relation: Relation) -> bool {
         match self {

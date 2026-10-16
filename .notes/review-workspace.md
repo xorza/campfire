@@ -101,25 +101,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 - [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. **Skipped: see `review-workspace_QUESTIONS.md`, batch 9, item 5.**
 
-### 12. Units, geometry, visibility, values
-
-`units`: `unit_core`, `unit_type_book`, `hit_handle`, `units_world`, `forced_move`; `declare`: `entity_parts`; `deliveries`; `navigation`: `forced_moves`; `geometry`: `lib`, `halves`, `grid`, `body_box`; `visibility`; `values`; `stats`: `modifier_book`. May move goldens: the spawn order changes.
-
-- [ ] units/src/unit_core.rs:189-207, declare/src/entity_parts.rs:94 — a new unit moves between archetypes up to eight times (spawn, core, `Owner`, up to four `UnitState<S>`, `SpawnParts::give`, the deferred `Avatar`), as `KindSpawn::of` reads the core back from the entity. → `KindSpawn` takes the core values, and one `BundleWriter` write holds core, owner, states and parts.
-- [ ] units/src/unit_type_book.rs:26-44, 158, 186, 217 — the book is also its builder: three `Option`s each taken once, and a late load panics. → A `UnitTypes` builder whose `finish` returns the four books.
-- [ ] units/src/hit_handle.rs:20, 56 — the core names `Capability::Abilities` and `Hitboxes`; its one caller is deliveries. → The registration moves to deliveries.
-- [ ] units/src/units_world.rs:276, 294 — `avatar_of` serves the harness and builds a `QueryState` each call; `held_relations` has one caller. → `avatar_of` to a gated trait; fold `held_relations`.
-- [ ] units/src/forced_move.rs:300 — a garbled comment past the line width. → Rewrite it.
-- [ ] deliveries/src/lib.rs:100-106 — `end_dash` takes four parameters. → A struct. navigation/src/forced_moves.rs:39 takes `Option<ResMut<Deliveries>>` for a resource every match holds. → `ResMut`.
-- [ ] geometry/src/lib.rs:20, 28; grid/mod.rs:489 — `Approach` is published for one gated caller; `Grid::index` is `pub` and panics left of `min`; `mod kernel_scene` is gated mid-file. → `internals`, `pub(crate)`, at the end.
-- [ ] geometry/src/halves.rs:6-21, grid/mod.rs:483 — `Halves` is a namespace struct. → Free fns.
-- [ ] geometry/src/grid/mod.rs:254, 264, 509 — `strict: bool`. → An enum.
-- [ ] geometry/src/body_box/mod.rs:146 — `nearest` returns `Ordering`, and every caller tests `== Less`. → A public `closer(…) -> bool`; the `Ordering` form `pub(crate)`.
-- [ ] visibility/src/lib.rs:16-209 — three types in lib.rs that its children import back; no `//!`; each enum states its set three times (`NAMED`, `code`, `of_code`). → One file per type; one table per enum.
-- [ ] values: four hand-made name tables (`Block` in block.rs, `RelationSet` in relation_set.rs:22-38, `EngineStat` in stat.rs, `Relation` written twice in relation.rs). → One named-enum mechanism over `enum_all!`'s `ALL`, which `ScriptEnum` also uses.
-- [ ] values/src/action_id.rs:13, modifier_id.rs:13, track_id.rs:12; stats/src/modifier_book.rs:169 — `new` is `pub` for tests where siblings gate it; `ModifierBook::id_at` repeats `NameId::at`. → `NameId::at` in production; each `new` under `internals`.
-- [ ] values/src/lib.rs:7-10 — a crate-wide `expect(needless_pass_by_value)` with "Bevy systems" as reason, in a crate with no system. → Remove; fix or `expect` each real case.
-
 ### 13. Net: one match run
 
 `net`: `sim_server` (`mod`, `pending_restore`, `door`, `lobby`, `team_rooms`, `session_dir`, `local_session`, `checkpoints`, `bot_driver`, `viewer`, `offering`, `seats`, `receipts`, `sim_server_world`, `spectators`), `sim_client` (`mod`, `join_state`), `events`, `order_script`, the root modules; `capabilities`: `release/tests`; `docs/design/10-sessions.md`. After batch 7 (the writers' `close`).

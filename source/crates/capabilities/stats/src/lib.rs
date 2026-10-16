@@ -381,7 +381,7 @@ pub mod internals {
     use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId, TickRate};
-    use campfire_units::{ScriptBook, UnitTypeBook};
+    use campfire_units::{ScriptBook, UnitTypeBook, Units};
     use campfire_values::{
         ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet,
         UnitType,
@@ -488,17 +488,24 @@ pub mod internals {
             script: Option<ScriptId>,
         ) {
             let name = DeclaredName::new(name).expect("a modifier's name is a name");
+            // A test's package names no tag before its modifiers, as a mode's does.
+            let tags = world.resource::<UnitTypeBook>().tags();
+            let new = data
+                .tags
+                .iter()
+                .any(|tag| tags.named(tag.as_str()).is_none());
+            if new {
+                Units::declare_tags(world, data.tags.iter().map(DeclaredName::as_str));
+            }
             world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
-                let mut types = world
-                    .remove_resource::<UnitTypeBook>()
-                    .expect("the unit types");
+                let tags = world.resource::<UnitTypeBook>().tags();
                 // A match that runs no scripts holds no script book, and its modifiers none.
                 let none = ScriptBook::default();
                 let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);
                 let places = Self::stat_places(world, data.stats.keys());
                 let load = ModifierLoad {
                     scripts,
-                    types: &mut types,
+                    tags,
                     stat: |stat: &Stat| Ok(places[stat]),
                     rate: *world.resource::<TickRate>(),
                 };
@@ -509,9 +516,7 @@ pub mod internals {
                 };
                 book.load(load, package, &[modifier])
                     .expect("a test's modifier loads");
-                world.insert_resource(types);
             });
-            UnitTypeBook::share_in(world);
             let book = world.resource::<ModifierBook>();
             let id = book
                 .names()

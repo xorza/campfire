@@ -159,7 +159,7 @@ impl IndexedBody {
     /// not overlap.
     pub fn overlaps_box(&self, pos: Vec3, body: &BodyBox) -> bool {
         match &self.shape {
-            Shape::Circle(radius) => body.nearest(pos, self.pos, radius.get()) == Ordering::Less,
+            Shape::Circle(radius) => body.closer(pos, self.pos, radius.get()),
             Shape::Box(other) => body.overlaps(pos, other, self.pos),
         }
     }

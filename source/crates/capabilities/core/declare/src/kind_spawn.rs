@@ -10,20 +10,42 @@ use crate::by_type::ByType;
 use crate::per_type::PerType;
 
 /// An entity of the host `H` as its parts are made, at its spawn or as a restore checks it: the
-/// world it is in, and the entity, which holds its core and what its spawn's caller gave it.
+/// world it is in, the entity, which holds what its spawn's caller gave it, and the core it
+/// spawns with, which the same write as its parts puts on it; a restore reads the core from the
+/// entity.
 #[derive(Debug)]
 pub struct KindSpawn<'w, H> {
     world: &'w World,
     entity: Entity,
+    core: Option<SpawnCore>,
     host: PhantomData<H>,
 }
 
+/// The core a unit spawns with, as its parts read it: its place and its type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SpawnCore {
+    pub pos: Vec3,
+    pub unit_type: UnitType,
+}
+
 impl<'w, H> KindSpawn<'w, H> {
-    /// `entity` of `world`, as it stands.
+    /// `entity` of `world`, as it stands, its core its own.
     pub const fn of(world: &'w World, entity: Entity) -> Self {
         KindSpawn {
             world,
             entity,
+            core: None,
+            host: PhantomData,
+        }
+    }
+
+    /// `entity` of `world`, which spawns with `core`, not on it yet; none for an entity of no
+    /// core, as the match's or a player's.
+    pub const fn spawning(world: &'w World, entity: Entity, core: Option<SpawnCore>) -> Self {
+        KindSpawn {
+            world,
+            entity,
+            core,
             host: PhantomData,
         }
     }
@@ -36,18 +58,30 @@ impl<'w, H> KindSpawn<'w, H> {
         self.entity
     }
 
-    /// The unit's place, which its core holds; none for a restored unit that lacks it, which
-    /// the core's check refuses.
+    /// The unit's place, of its core; none for a restored unit that lacks it, which the core's
+    /// check refuses.
     pub fn pos(&self) -> Option<Vec3> {
-        self.world
-            .get::<Position>(self.entity)
-            .map(|place| place.get())
+        match self.core {
+            Some(core) => Some(core.pos),
+            None => self
+                .world
+                .get::<Position>(self.entity)
+                .map(|place| place.get()),
+        }
     }
 
-    /// What the book of `T` holds for the unit's type, which its core holds; none when the type
-    /// has none, the match does not hold the book, or a restored unit lacks its type.
+    /// The unit's type, of its core; none for a restored unit that lacks it.
+    pub fn unit_type(&self) -> Option<UnitType> {
+        match self.core {
+            Some(core) => Some(core.unit_type),
+            None => self.world.get::<UnitType>(self.entity).copied(),
+        }
+    }
+
+    /// What the book of `T` holds for the unit's type, of its core; none when the type has none,
+    /// the match does not hold the book, or a restored unit lacks its type.
     pub fn of_type<T: PerType>(&self) -> Option<&'w T> {
         let book = self.world.get_resource::<ByType<T>>()?;
-        book.get(*self.world.get::<UnitType>(self.entity)?)
+        book.get(self.unit_type()?)
     }
 }

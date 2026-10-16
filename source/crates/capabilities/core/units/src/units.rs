@@ -305,6 +305,7 @@ pub(crate) mod internals {
 
     use bevy_ecs::change_detection::Mut;
     use bevy_ecs::world::World;
+    use campfire_common::NamedEnum;
     use campfire_declare::{Book, ByType};
     use campfire_script::{CallError, Ctx, ScriptError, ScriptHost, ScriptId, ScriptValue, View};
     use campfire_sim::StableId;
@@ -317,6 +318,7 @@ pub(crate) mod internals {
     use crate::tag_data::TagData;
     use crate::unit_type_book::UnitTypeBook;
     use crate::unit_type_core::UnitTypeCore;
+    use crate::unit_types::UnitTypes;
     use crate::units::Units;
     use crate::units_world::UnitsWorld;
 
@@ -346,19 +348,43 @@ pub(crate) mod internals {
     const TEST_TAGS: usize = Block::ALL.len() + 2;
 
     impl Units {
-        /// Seals the match's unit types' tags: gives the tag book their tags and `effects`, by
-        /// tag, as a match's books take them once its packages load, and the test tags, which
-        /// it declares after every type's, with theirs.
+        /// `change` of the unit types the match loads, after which the match's book of their
+        /// names and of their state fields holds them, as a test match has no package load.
+        pub fn change_types<R>(
+            world: &mut World,
+            change: impl FnOnce(&mut World, &mut UnitTypes) -> R,
+        ) -> R {
+            let mut types = world.resource_mut::<UnitTypeBook>().take_loading();
+            let changed = change(world, &mut types);
+            let states = types.state_book();
+            types.into_book().load_into(world);
+            states.load_into(world);
+            changed
+        }
+
+        /// Finishes the match's unit types, which gives it their books, their tags with the
+        /// effects `data` gives them by name, as a match's books take them once its packages
+        /// load: after it, no type loads.
+        pub fn seal_types(world: &mut World, data: &BTreeMap<DeclaredName, TagData>) {
+            let types = world.resource_mut::<UnitTypeBook>().take_loading();
+            let books = types.finish(data);
+            books.types.load_into(world);
+            books.tags.load_into(world);
+            books.origins.load_into(world);
+            books.states.load_into(world);
+        }
+
+        /// Seals the match's unit types' tags as `seal_types` does, with `effects`, and the test
+        /// tags, which it declares after every type's, with theirs.
         pub fn seal_tags(world: &mut World, effects: &BTreeMap<DeclaredName, TagData>) {
             let mut effects = effects.clone();
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            for (name, data) in Self::test_tags() {
-                types.declare(name.as_str()).unwrap();
-                effects.insert(name, data);
-            }
-            let book = types.tag_book(&effects);
-            world.insert_resource(book);
-            UnitTypeBook::share_in(world);
+            Self::change_types(world, |_, types| {
+                for (name, data) in Self::test_tags() {
+                    types.declare(name.as_str()).unwrap();
+                    effects.insert(name, data);
+                }
+            });
+            Self::seal_types(world, &effects);
         }
 
         /// The tags a test holds on a unit, each by a modifier of its name that grants it, with
@@ -390,8 +416,8 @@ pub(crate) mod internals {
         /// Seals the match's unit types' tags as `seal_tags` does, with no effect for a tag,
         /// unless they are sealed, or the test put a tag book of its own.
         pub fn seal_once(world: &mut World) {
-            let sealed = world.resource::<UnitTypeBook>().sealed();
-            if !sealed && world.resource::<TagBook>().is_empty() {
+            let loading = world.resource::<UnitTypeBook>().is_loading();
+            if loading && world.resource::<TagBook>().is_empty() {
                 Self::seal_tags(world, &BTreeMap::new());
             }
         }
@@ -441,11 +467,11 @@ pub(crate) mod internals {
         /// before any type, modifier or filter names one, so the tags are numbered the same however
         /// the packages load.
         pub fn declare_tags<'a>(world: &mut World, names: impl IntoIterator<Item = &'a str>) {
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            for name in names {
-                types.declare(name).unwrap();
-            }
-            UnitTypeBook::share_in(world);
+            Self::change_types(world, |_, types| {
+                for name in names {
+                    types.declare(name).unwrap();
+                }
+            });
         }
 
         /// Loads the unit type `name` of `scope`, with its core fields: its tags, its params and
@@ -462,12 +488,9 @@ pub(crate) mod internals {
                 TypeScope::Mode => PackageIndex::MODE,
                 TypeScope::Package(package) => package,
             };
-            let mut types = world.resource_mut::<UnitTypeBook>();
-            let unit_type = types.load(scope, package, name, data).unwrap();
-            let states = types.state_book_so_far();
-            UnitTypeBook::share_in(world);
-            states.load_into(world);
-            unit_type
+            Self::change_types(world, |_, types| {
+                types.load(scope, package, name, data).unwrap()
+            })
         }
 
         /// Loads `data` as the next unit type of the mode, named for its place.

@@ -3091,6 +3091,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-codec",
+ "campfire-common",
  "campfire-state-types",
  "campfire-visibility",
  "serde",

@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use campfire_units::{DashTo, ForcedMove};
 
 use super::*;
@@ -24,7 +22,7 @@ fn sunk(pos: Vec3, radius: Num, center: Vec3, body: &Body) -> bool {
     let Shape::Box(boxed) = body.shape() else {
         panic!("a box");
     };
-    boxed.nearest(center, pos, radius - Num::from_bits(2)) == Ordering::Less
+    boxed.closer(center, pos, radius - Num::from_bits(2))
 }
 
 #[test]

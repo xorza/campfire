@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::panic::{self, AssertUnwindSafe};
 
 use campfire_capabilities::Release;
 use campfire_units::*;
@@ -7,7 +6,7 @@ use campfire_values::{Block, DeclaredName, NameId, PackageIndex, Tag, TagSet, Ty
 
 #[test]
 fn a_units_tags_take_their_properties_from_the_modes_data() {
-    let mut types = UnitTypeBook::new(Release::engine_tags());
+    let mut types = UnitTypes::new(Release::engine_tags());
     let names = ["stunned", "slowed", "slow_immune", "true_sight"];
     let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name).unwrap());
     // The engine's tags hold the first places, and to declare one finds it.
@@ -53,7 +52,7 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
         ]
         .map(|(name, data)| (DeclaredName::new(name).unwrap(), data)),
     );
-    let book = types.tag_book(&data);
+    let book = types.finish(&data).tags;
     let set = |tags: &[Tag]| tags.iter().copied().collect::<TagSet>();
 
     // Its type's true sight detects; a stun blocks what the data names, and no more.
@@ -76,22 +75,4 @@ fn a_units_tags_take_their_properties_from_the_modes_data() {
         assert_eq!(tags.tags, set(&[sight, slow_immune]));
         assert_eq!(tags.immune, set(&[slowed]));
     }
-
-    // The book took the types' tags: a later load, a later tag or a second book fails, as it
-    // would be lost.
-    let mut fails = |late: &mut dyn FnMut(&mut UnitTypeBook)| {
-        panic::catch_unwind(AssertUnwindSafe(|| late(&mut types))).is_err()
-    };
-    assert!(fails(&mut |types| {
-        types
-            .load(
-                TypeScope::Mode,
-                PackageIndex::MODE,
-                "late",
-                &UnitTypeCore::default(),
-            )
-            .unwrap();
-    }));
-    assert!(fails(&mut |types| types.give_tag(tower, stunned)));
-    assert!(fails(&mut |types| drop(types.tag_book(&data))));
 }

@@ -60,6 +60,7 @@ mod unit_ticks;
 mod unit_tracker;
 mod unit_type_book;
 mod unit_type_core;
+mod unit_types;
 mod units;
 mod units_api;
 mod units_call;
@@ -114,6 +115,7 @@ pub use crate::unit_states::UnitStates;
 pub use crate::unit_tracker::{TrackedUnit, TrackedUnits, Tracking, UnitTracker};
 pub use crate::unit_type_book::UnitTypeBook;
 pub use crate::unit_type_core::UnitTypeCore;
+pub use crate::unit_types::{UnitTypeBooks, UnitTypes};
 pub use crate::units::Units;
 pub use crate::units_api::UnitsApi;
 pub use crate::units_call::UnitsCall;
@@ -123,4 +125,9 @@ pub use crate::view_reader::ViewReader;
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::units::internals::TEST_PACKAGE;
+    #[expect(
+        clippy::module_name_repetitions,
+        reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"
+    )]
+    pub use crate::units_world::internals::UnitsWorldInternals;
 }

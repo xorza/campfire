@@ -566,15 +566,11 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
     let theirs = load(TypeScope::Package(PackageIndex::new(1)), "grunt");
     // A scope names a type once.
-    assert_eq!(
-        game.resource_mut::<UnitTypeBook>().load(
-            TypeScope::Package(PackageIndex::new(1)),
-            PackageIndex::new(1),
-            "grunt",
-            &data
-        ),
-        Err(TypesError::Repeated("grunt".to_owned()))
-    );
+    let repeated = Units::change_types(&mut game, |_, types| {
+        let scope = TypeScope::Package(PackageIndex::new(1));
+        types.load(scope, PackageIndex::new(1), "grunt", &data)
+    });
+    assert_eq!(repeated, Err(TypesError::Repeated("grunt".to_owned())));
     let view = game.non_send::<View>();
     assert_eq!(
         (
@@ -600,7 +596,8 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     assert_ne!(theirs, first);
     drop(names);
     // Each type's origin: its package and its name there.
-    let origins = game.resource_mut::<UnitTypeBook>().origin_book();
+    Units::seal_once(&mut game);
+    let origins = game.resource::<TypeOriginBook>();
     let origin = |unit_type| {
         let origin = origins.of(unit_type);
         (origin.package.get(), &*origin.name)
@@ -685,9 +682,10 @@ fn a_unit_holds_its_types_tags_on_every_path_in_a_match_without_stats() {
 
 #[test]
 fn a_spawn_gives_its_declared_parts_in_one_move() {
-    // A melee unit spawns with the parts combat, stats and actions declare for it, `Life`,
-    // `Level` and `ActionSlots` among them: written at once, they reach one archetype only, the
-    // unit's, where a part put on alone would leave an archetype of each part before the last.
+    // A melee unit spawns with its core and the parts combat, stats and actions declare for it,
+    // `Life`, `Level` and `ActionSlots` among them: written at once after its kind, they reach
+    // one archetype only, the unit's, where a part or the core put on alone would leave an
+    // archetype of each before the last.
     let mut game = units_match();
     melee(&mut game, (0, 0, 0), Team::new(0), ());
     let holding = |game: &Match, id: Option<ComponentId>| {
@@ -699,11 +697,13 @@ fn a_spawn_gives_its_declared_parts_in_one_move() {
     };
     let components = game.components();
     let parts = [
+        components.component_id::<UnitType>(),
+        components.component_id::<Position>(),
         components.component_id::<Life>(),
         components.component_id::<Level>(),
         components.component_id::<ActionSlots>(),
     ];
-    assert_eq!(parts.map(|id| holding(&game, id)), [1, 1, 1]);
+    assert_eq!(parts.map(|id| holding(&game, id)), [1; 5]);
 }
 
 mod entity_kinds;

@@ -3,9 +3,9 @@ use std::fmt;
 use serde::de::{Error, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
-use crate::Visibility;
 use crate::setting::error::VisibilityError;
 use crate::setting::{Setting, SettingValue};
+use crate::visibility::Visibility;
 
 /// What a session's host sets of its visibility (design 14, D14, D15): the settings it gives in
 /// place of the mode's, and the most spectators it admits, none unless it says.

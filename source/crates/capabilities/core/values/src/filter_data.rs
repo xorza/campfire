@@ -1,5 +1,6 @@
 use std::fmt;
 
+use campfire_common::NamedEnum;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 

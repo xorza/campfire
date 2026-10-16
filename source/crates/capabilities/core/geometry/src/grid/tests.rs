@@ -168,8 +168,9 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
         let bits = cell.to_bits();
         // A reach of 2·radius halves fits while 2·radius + 8·cell < 2³¹.
         let widest = (1 << 30) - 4 * bits - 1;
-        let rows_of =
-            |radius: i64| grid.disc_rows(Vec3::from((0, 0, 0)), Num::from_bits(radius), false);
+        let rows_of = |radius: i64| {
+            grid.disc_rows(Vec3::from((0, 0, 0)), Num::from_bits(radius), DiscEdge::In)
+        };
         assert!(rows_of(widest).fit_lanes(bits));
         assert!(!rows_of(widest + 1).fit_lanes(bits));
         let runs = |rows: &Rows, lanes: bool| {
@@ -199,13 +200,13 @@ fn the_rows_in_lanes_are_the_rows_one_by_one() {
                 1 => (words.next_u64() % (4 * Num::ONE.to_bits().cast_unsigned())).cast_signed(),
                 _ => (words.next_u64() % widest.cast_unsigned()).cast_signed(),
             };
-            for strict in [false, true] {
-                let rows = grid.disc_rows(pos, Num::from_bits(radius), strict);
+            for edge in [DiscEdge::In, DiscEdge::Out] {
+                let rows = grid.disc_rows(pos, Num::from_bits(radius), edge);
                 assert!(rows.fit_lanes(bits));
                 assert_eq!(
                     runs(&rows, true),
                     runs(&rows, false),
-                    "{pos:?} {radius} {strict}"
+                    "{pos:?} {radius} {edge:?}"
                 );
             }
         }
@@ -349,7 +350,7 @@ fn a_box_marks_exactly_the_cells_it_comes_closer_to_and_those_it_covers() {
             Num::from_bits(draw(-6 * one, 12 * one)),
         ));
         let reach = Num::from_bits(if round % 4 == 1 { 0 } else { draw(0, one) });
-        let off = |cell: usize| grid.center_twice(cell) - Halves::ground(center);
+        let off = |cell: usize| grid.center_twice(cell) - halves::ground(center);
         let closer = from_runs(&grid, |mark| {
             grid.box_spans_closer(center, &body, reach, mark);
         });

@@ -5,8 +5,8 @@ use campfire_math::{Direction, FloorRoot, Num, RoundedRoot, Vec3};
 /// How near a straight path comes to a body: its nearest distance against a reach, and the place
 /// along the path of its nearest point, both to the nearest bit (design 09, D9).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Approach {
-    pub nearest: Ordering,
+pub(crate) struct Approach {
+    pub(crate) nearest: Ordering,
     pub(crate) place: Num,
 }
 
@@ -37,7 +37,7 @@ impl Approach {
     /// from its start, against `reach`; a negative reach is nearer than any distance. Beyond an
     /// end the distance is the end's, its nearest root measured against the reach with no root;
     /// between them it is the distance from the path's line.
-    pub fn of(path: Vec3, off: Vec3, reach: Num) -> Self {
+    pub(crate) fn of(path: Vec3, off: Vec3, reach: Num) -> Self {
         let Some(reach) = Self::units(reach) else {
             return Self {
                 nearest: Ordering::Greater,
@@ -65,7 +65,7 @@ impl Approach {
     }
 
     /// `of`'s order alone, which takes no direction where the path comes nearest at an end.
-    pub fn nearest_of(path: Vec3, off: Vec3, reach: Num) -> Ordering {
+    pub(crate) fn nearest_of(path: Vec3, off: Vec3, reach: Num) -> Ordering {
         let Some(reach) = Self::units(reach) else {
             return Ordering::Greater;
         };
@@ -143,6 +143,22 @@ impl Approach {
     /// A reach and a radius, summed, which past every number reaches every distance.
     fn circle_reach(reach: Num, radius: Num) -> Num {
         reach.checked_add(radius).unwrap_or(Num::MAX)
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::cmp::Ordering;
+
+    use campfire_math::{Num, Vec3};
+
+    use crate::approach::Approach;
+
+    /// Whether the path `path`, the offset from its start to its end, comes closer than `reach`
+    /// to the point `off` from its start, exactly: the test that a crate's own of a path and a
+    /// circle must agree with.
+    pub fn path_comes_closer(path: Vec3, off: Vec3, reach: Num) -> bool {
+        Approach::nearest_of(path, off, reach) == Ordering::Less
     }
 }
 

@@ -14,7 +14,7 @@ use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeB
 use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, SimUpdate, StableId, TickRate};
 use campfire_units::{
-    Body, BodyForm, BodyUnit, Destination, Owner, UnitCore, UnitTypeBook, UnitTypeCore,
+    Body, BodyForm, BodyUnit, Destination, Owner, UnitCore, UnitTypeCore, UnitTypes,
 };
 use campfire_values::{PackageIndex, Rank, RelationSet, ResourceId, Team, TypeScope, UnitType};
 use criterion::{Criterion, Throughput};
@@ -56,7 +56,7 @@ fn two_fields() -> Match {
     let gold = ResourceId::new(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
     // The scene's types and their books, as a match loads them before any unit spawns.
-    let mut types = UnitTypeBook::new(Release::engine_tags());
+    let mut types = UnitTypes::new(Release::engine_tags());
     let [node_type, drop_off_type, worker_type] = ["node", "drop_off", "worker"].map(|name| {
         types
             .load(
@@ -67,9 +67,10 @@ fn two_fields() -> Match {
             )
             .unwrap()
     });
-    world.insert_resource(types.tag_book(&BTreeMap::new()));
-    world.insert_resource(types.state_book());
-    types.load_into(&mut world);
+    let books = types.finish(&BTreeMap::new());
+    world.insert_resource(books.tags);
+    world.insert_resource(books.states);
+    books.types.load_into(&mut world);
     let mut book = NodeBook::default();
     book.nodes.set(node_type, gold);
     book.drop_offs.set(drop_off_type, ResourceSet::from([gold]));

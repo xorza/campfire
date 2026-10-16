@@ -32,9 +32,8 @@ impl TrackSet {
 
     /// Its tracks, in the order of their ids.
     pub fn iter(self) -> impl Iterator<Item = TrackId> {
-        (0..=u8::MAX)
-            .take(TrackId::LIMIT)
-            .map(TrackId::new)
+        (0..TrackId::LIMIT)
+            .map(TrackId::at)
             .filter(move |&track| self.contains(track))
     }
 }

@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::num::NonZeroU32;
 
 use campfire_capabilities::Order;
@@ -104,7 +103,7 @@ impl StartDrive {
         let shape = |id| Body::shape_of(units.unit(id).get::<Body>());
         let clear = match (shape(building), shape(dozer)) {
             (Shape::Box(body), Shape::Circle(radius)) => {
-                body.nearest(center, units.pos(dozer), radius.get()) != Ordering::Less
+                !body.closer(center, units.pos(dozer), radius.get())
             }
             _ => false,
         };
