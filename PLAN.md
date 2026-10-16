@@ -6,15 +6,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): the player trains a tank, and its shells destroy the bot's command center. The systems it changes: `geometry`, `units`, `client-files`, `mode`, `package`, `capabilities`, `projectiles`, `combat`, `import`, `client`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 3. A body's height
-
-`units`: the unit type's body; `geometry`: the volume; `import`: `zero_hour/imported_type.rs`. Builds: an entity spawns whole.
-
-- [ ] crates/capabilities/core/units/ — a body is a circle or a box of the ground plane, with no height, so a shot has no center to aim at and a splash no volume to reach (A body has a height). → A unit type's `height` makes its body a volume; `Body::center` is its ground point, by `Ground`, raised by its height above the ground and half its own; a test of a volume's distance to a point in 3D, exact on squares ([Determinism core](docs/design/09-determinism-core.md)). The import writes each object's `GeometryHeight`.
-
 ### 4. A curve's flight and its contact
 
-`projectiles`: `projectile_data.rs`, `projectile.rs`, `flights.rs`, `flight_state.rs`, a new `curve/`. After batch 3. Builds: a pass visits what changed.
+`projectiles`: `projectile_data.rs`, `projectile.rs`, `flights.rs`, `flight_state.rs`, a new `curve/`. Builds: a pass visits what changed.
 
 - [ ] crates/capabilities/projectiles/src/projectile.rs — a projectile flies homing or along a line (A projectile may fly a curve; A curve meets units by its point). → `Flight::Curve` of its four control points' inputs, its point count and its step; its point at step `k` from the closed form in one step; its length by the split rule; its end that follows a living target by `follow`; its end in the tick after its last point and as `life_ms` passes; after the tick's movement, its sphere at its point meets the volumes its `hits` select and its target's, never its source's, the lowest stable id first. The data section `curve`, refused with `homing` or `gravity`. The tests of [Checks](docs/design/20-zero-hour-projectiles.md#checks) for projectiles.
 

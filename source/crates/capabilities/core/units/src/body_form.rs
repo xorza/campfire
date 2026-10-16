@@ -6,14 +6,15 @@ use crate::body::Body;
 use crate::layer::Layer;
 
 /// A unit type's body before a unit of it spawns: a circle, or a box of a size that the spawn's
-/// angle turns, on its layer.
+/// angle turns, on its layer, of its height.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BodyForm {
     form: Form,
     layer: Layer,
+    height: Num,
 }
 
-/// The shape of a `BodyForm`: a circle's radius, or a box's size, `[width, height]`.
+/// The shape of a `BodyForm`: a circle's radius, or a box's size, `[width, depth]`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Form {
     Circle(Num),
@@ -26,16 +27,23 @@ impl BodyForm {
         Body::new(radius).map(|_| Self {
             form: Form::Circle(radius),
             layer: Layer::FIRST,
+            height: Num::ZERO,
         })
     }
 
-    /// A box of `size`, `[width, height]` in meters, on the first layer, when `BodyBox` takes
+    /// A box of `size`, `[width, depth]` in meters, on the first layer, when `BodyBox` takes
     /// that size: at every angle, as the size alone decides.
     pub fn box_sized(size: [Num; 2]) -> Option<Self> {
         BodyBox::new(size, Num::ZERO).map(|_| Self {
             form: Form::Box(size),
             layer: Layer::FIRST,
+            height: Num::ZERO,
         })
+    }
+
+    /// The form `height` meters tall, when `Body::raised` takes that height.
+    pub fn raised(self, height: Num) -> Option<Self> {
+        Body::holds_height(height).then_some(Self { height, ..self })
     }
 
     /// The form on `layer`.
@@ -64,6 +72,8 @@ impl BodyForm {
             }
         };
         body.on(self.layer)
+            .raised(self.height)
+            .expect("a form's height is one a body takes")
     }
 
     /// The radius of a circle form, as a walker sees it; `None` for a box, which never walks.

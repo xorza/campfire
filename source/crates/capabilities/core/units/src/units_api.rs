@@ -35,7 +35,7 @@ impl UnitsApi {
             },
         );
         UnitStateAccess::register(api);
-        api.data::<CollisionData>(&["radius", "box", "layer"], &[])
+        api.data::<CollisionData>(&["radius", "box", "height", "layer"], &[])
             .data::<TagData>(&["blocks", "hidden", "detects", "immune"], &[]);
         let vector = |name, signature, description| {
             MemberSpec::method(ApiOwner::Vector, name, signature, description)

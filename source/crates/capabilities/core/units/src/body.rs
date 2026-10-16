@@ -1,8 +1,8 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_geometry::{BodyBox, Metric, Radius, Shape};
-use campfire_math::Num;
+use campfire_geometry::{BodyBox, MAX_BOUND, Metric, Placed, Radius, Shape, Volume};
+use campfire_math::{Num, Vec3};
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use serde::de::Error;
@@ -13,13 +13,15 @@ use crate::map_book::MapBook;
 use crate::unit_entity::UnitEntity;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
-/// that does not walk on a planar map may have. Living bodies of one layer do not overlap, and
-/// every range counts from a body's edge; a unit with no body is a point, on the first layer.
+/// that does not walk on a planar map may have, and its height, which makes it a volume
+/// (20-zero-hour-projectiles.md, A body has a height). Living bodies of one layer do not overlap,
+/// and every range counts from a body's edge; a unit with no body is a point, on the first layer.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[component(immutable)]
 pub struct Body {
     shape: Shape,
     layer: Layer,
+    height: Num,
 }
 
 impl Body {
@@ -35,6 +37,7 @@ impl Body {
         Some(Self {
             shape: Shape::Circle(radius),
             layer: Layer::FIRST,
+            height: Num::ZERO,
         })
     }
 
@@ -43,6 +46,7 @@ impl Body {
         Self {
             shape: Shape::Box(body),
             layer: Layer::FIRST,
+            height: Num::ZERO,
         }
     }
 
@@ -50,6 +54,24 @@ impl Body {
     #[must_use]
     pub(crate) const fn on(self, layer: Layer) -> Self {
         Self { layer, ..self }
+    }
+
+    /// The body `height` meters tall; `None` unless `height` is at least 0 and at most
+    /// `MAX_BOUND`, as every body's bound is.
+    pub const fn raised(self, height: Num) -> Option<Self> {
+        if !Self::holds_height(height) {
+            return None;
+        }
+        Some(Self { height, ..self })
+    }
+
+    /// Whether a body may be `height` meters tall, as `raised` takes it.
+    pub(crate) const fn holds_height(height: Num) -> bool {
+        height.to_bits() >= 0 && height.to_bits() <= MAX_BOUND.to_bits()
+    }
+
+    pub const fn height(self) -> Num {
+        self.height
     }
 
     pub const fn shape(self) -> Shape {
@@ -84,6 +106,19 @@ impl Body {
         }
     }
 
+    /// The volume of a unit with `body` at `pos`, on the map of `map`: its shape from the
+    /// position's point in space up by its height; a unit with no body is a point there.
+    pub fn volume(body: Option<&Self>, pos: Vec3, map: &MapBook) -> Volume {
+        let base = Placed::new(map.point(pos), Self::shape_of(body));
+        Volume::new(base, body.map_or(Num::ZERO, |body| body.height))
+    }
+
+    /// The center of a unit with `body` at `pos`, on the map of `map`: the position's point in
+    /// space raised by half its height, which a shot aims at.
+    pub fn center(body: Option<&Self>, pos: Vec3, map: &MapBook) -> Vec3 {
+        Self::volume(body, pos, map).center()
+    }
+
     /// The layer of a unit with `body`, or the first for a unit with none.
     pub const fn layer_of(body: Option<&Self>) -> Layer {
         match body {
@@ -110,14 +145,15 @@ impl Replication for Body {
     type Sending = SentOnce;
 }
 
-/// A snapshot is untrusted, so a radius `new` refuses fails to decode, and a box its own decode
-/// refuses.
+/// A snapshot is untrusted, so a radius `new` refuses fails to decode, a box its own decode
+/// refuses, and a height `raised` refuses.
 impl<'de> Deserialize<'de> for Body {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             shape: Shape,
             layer: Layer,
+            height: Num,
         }
         let fields = Fields::deserialize(deserializer)?;
         let body = match fields.shape {
@@ -125,7 +161,9 @@ impl<'de> Deserialize<'de> for Body {
                 .ok_or_else(|| D::Error::custom("a body radius not positive or beyond 2,048 m"))?,
             Shape::Box(body) => Self::of_box(body),
         };
-        Ok(body.on(fields.layer))
+        body.on(fields.layer)
+            .raised(fields.height)
+            .ok_or_else(|| D::Error::custom("a body height below 0 or beyond 2,048 m"))
     }
 }
 
@@ -182,6 +220,8 @@ mod tests {
     use super::*;
     use crate::body_form::BodyForm;
     use crate::facing::Facing;
+    use crate::ground::{CellSplit, Ground};
+    use crate::height_grid::HeightGrid;
 
     #[test]
     fn a_body_is_a_circle_up_to_2048_m_or_a_box_on_a_layer() {
@@ -257,5 +297,57 @@ mod tests {
         assert_eq!(decoded.ok(), Some(turned));
         // A box of a size `BodyBox` refuses is no form.
         assert_eq!(BodyForm::box_sized([Num::int(4094), Num::int(1)]), None);
+    }
+
+    #[test]
+    fn a_body_is_a_volume_on_its_ground_and_its_center_lies_halfway_up_it() {
+        #[derive(Debug, Serialize)]
+        struct Raw {
+            shape: Shape,
+            layer: Layer,
+            height: Num,
+        }
+
+        // A ground 4 m up everywhere; a body of radius 1 and height 2 at 0.5 m above it.
+        let grid = HeightGrid::new([Num::ZERO; 2], Num::int(10), Num::ONE, 2, vec![4; 4]).unwrap();
+        let ground = Ground::new(grid, CellSplit::ZeroTwo, None).unwrap();
+        let map = |metric| MapBook {
+            metric,
+            ground: ground.clone(),
+            ..MapBook::default()
+        };
+        let [planar, spatial] = [map(Metric::Planar), map(Metric::Spatial)];
+        let tall = Body::new(Num::ONE).unwrap().raised(Num::int(2)).unwrap();
+        let pos = Vec3::new(Num::int(5), Num::HALF, Num::int(5));
+        let at = |y: Num| Vec3::new(pos.x, y, pos.z);
+        // On a planar map, 4 + 0.5 + 2 ÷ 2; with no body, its point, 4.5; on a spatial map the
+        // position is its point, 0.5 + 1.
+        assert_eq!(Body::center(Some(&tall), pos, &planar), at(Num::HALF * 11));
+        assert_eq!(Body::center(None, pos, &planar), at(Num::HALF * 9));
+        assert_eq!(Body::center(Some(&tall), pos, &spatial), at(Num::HALF * 3));
+        let volume = Body::volume(Some(&tall), pos, &planar);
+        assert_eq!(volume.base.pos, at(Num::HALF * 9));
+        assert_eq!(volume.height, Num::int(2));
+
+        // A height is from 0 to 2,048 m, and a snapshot is untrusted: a decoded height below 0
+        // fails, one within the bound holds.
+        let body = Body::new(Num::ONE).unwrap();
+        assert_eq!(body.raised(MAX_BOUND).map(Body::height), Some(MAX_BOUND));
+        assert_eq!(body.raised(-Num::EPSILON), None);
+        assert_eq!(body.raised(MAX_BOUND + Num::EPSILON), None);
+        let raw = |height| {
+            Binary::encode(&Raw {
+                shape: body.shape(),
+                layer: Layer::FIRST,
+                height,
+            })
+        };
+        assert_eq!(Binary::decode::<Body>(&raw(Num::int(2))).ok(), Some(tall));
+        assert!(Binary::decode::<Body>(&raw(-Num::EPSILON)).is_err());
+        let form = BodyForm::circle(Num::ONE)
+            .unwrap()
+            .raised(Num::int(2))
+            .unwrap();
+        assert_eq!(form.at(Num::ZERO), tall);
     }
 }

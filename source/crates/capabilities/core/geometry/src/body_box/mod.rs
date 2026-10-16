@@ -63,7 +63,7 @@ impl BodyBox {
     /// the position whatever the rounding.
     pub(crate) const MAX_DIAGONAL: Num = Num::int(4094);
 
-    /// The box of `size`, `[width, height]` in meters along `a` and `b`, turned by `angle`
+    /// The box of `size`, `[width, depth]` in meters along `a` and `b`, turned by `angle`
     /// degrees as a unit's facing turns, from `x` towards `−z`: `a` along `(cos, −sin)` and `b`
     /// along `(sin, cos)`, so its model, which the client turns by the same angle, covers it.
     /// Each component of a half edge is the exact product of half a size and a cosine or a sine,
@@ -71,8 +71,8 @@ impl BodyBox {
     /// angle by those `sin_cos` gives. `None` for a size below `MIN_SIZE`, or for a diagonal past
     /// `MAX_DIAGONAL`.
     pub fn new(size: [Num; 2], angle: Num) -> Option<Self> {
-        let [width, height] = size;
-        if width < Self::MIN_SIZE || height < Self::MIN_SIZE {
+        let [width, depth] = size;
+        if width < Self::MIN_SIZE || depth < Self::MIN_SIZE {
             return None;
         }
         let square = |num: Num| {
@@ -80,7 +80,7 @@ impl BodyBox {
             bits * bits
         };
         // Each square is below 2¹²⁶, so the sum fits.
-        if square(width) + square(height) > square(Self::MAX_DIAGONAL) {
+        if square(width) + square(depth) > square(Self::MAX_DIAGONAL) {
             return None;
         }
         let SinCos { sin, cos } = SinCos::of_degrees(angle);
@@ -90,7 +90,7 @@ impl BodyBox {
         };
         let made = Self::of_halves([
             [half(width, cos), -half(width, sin)],
-            [half(height, sin), half(height, cos)],
+            [half(depth, sin), half(depth, cos)],
         ]);
         debug_assert!(made.is_some(), "a box of the least size is not flat");
         made
@@ -165,6 +165,16 @@ impl BodyBox {
         let edges = Edges::of(self.frame());
         let mut lines = LinesOnDemand::new(&edges, Reach::of(i128::from(reach.to_bits())));
         edges.against(off, &mut lines)
+    }
+
+    /// The distance on the ground plane from `pos` to the box at `center`, in bits, to the nearest
+    /// bit: 0 inside or on its edge.
+    pub(crate) fn gap(&self, center: Vec3, pos: Vec3) -> i128 {
+        let frame = self.frame();
+        let off = flat(pos) - flat(center);
+        frame
+            .nearest_to(off, &mut HalfDirections::new(frame))
+            .distance
     }
 
     /// The point of the box at `center` nearest `pos`, each coordinate rounded to the nearest bit:

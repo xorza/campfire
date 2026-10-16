@@ -562,6 +562,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | --- | --- | --- |
 | `radius` | core | since 1.0 |
 | `box` | core | since 1.0 |
+| `height` | core | since 1.0 |
 | `layer` | core | since 1.0 |
 
 ### A unit type's `orders`

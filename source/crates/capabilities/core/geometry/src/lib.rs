@@ -19,6 +19,7 @@ mod polygon;
 mod radius;
 mod row_directory;
 mod shape;
+mod volume;
 
 pub use crate::body_bound::MAX_BOUND;
 pub use crate::body_box::BodyBox;
@@ -35,6 +36,7 @@ pub use crate::radius::Radius;
 pub use crate::radius::error::NotRadius;
 pub use crate::row_directory::{LayerView, RowDirectory, RowEntries};
 pub use crate::shape::Shape;
+pub use crate::volume::Volume;
 
 #[cfg(feature = "internals")]
 pub mod bench {

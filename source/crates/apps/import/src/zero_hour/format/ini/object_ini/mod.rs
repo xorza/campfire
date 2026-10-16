@@ -405,6 +405,15 @@ impl Geometry {
         small: false,
     };
 
+    /// Its height, as `GeometryInfo::set` takes it: a sphere's its radius, whatever its
+    /// `GeometryHeight`.
+    pub(crate) const fn height(&self) -> f32 {
+        match self.shape {
+            GeometryShape::Sphere => self.major,
+            GeometryShape::Cylinder | GeometryShape::Box => self.height,
+        }
+    }
+
     /// The radius of the circle round it on the ground, as `calcBoundingStuff` computes it: a
     /// box's `√(major² + minor²)`, each step in the game's `f32`, else its major radius.
     #[expect(

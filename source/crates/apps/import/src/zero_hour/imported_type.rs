@@ -1,4 +1,4 @@
-use campfire_geometry::{BodyBox, Radius};
+use campfire_geometry::{BodyBox, MAX_BOUND, Radius};
 use campfire_math::Num;
 use campfire_values::DeclaredName;
 use serde::Serialize;
@@ -16,7 +16,8 @@ use crate::zero_hour::import_name::ImportName;
 /// last building that counts): the speed and the turn rate of its first normal locomotor that
 /// drives on the ground; its body: a circle of its bounding radius, at most `MAX_WALKER`, when it
 /// drives, or, when it is a structure that is not small, a box of twice its radii for a box
-/// geometry, else a circle of its radius; the life of an active or a structure body, with its
+/// geometry, else a circle of its radius, of its geometry's height (20-zero-hour-projectiles.md,
+/// A body has a height); the life of an active or a structure body, with its
 /// `combat` section, which despawns it as it dies, and the armor of its starting armor set; and the
 /// tag of victory for a structure that counts for one. Every other object has none of these.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -52,10 +53,17 @@ struct StatBase {
     base: Num,
 }
 
-/// A type's body, as its `collision` section writes it: a circle's radius, or a box's sides,
-/// along its `x` then its `z`.
+/// A type's body, as its `collision` section writes it: its shape and its height.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-enum TypeBody {
+struct TypeBody {
+    #[serde(flatten)]
+    shape: BodyShape,
+    height: Num,
+}
+
+/// A body's shape: a circle's radius, or a box's sides, along its `x` then its `z`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+enum BodyShape {
     #[serde(rename = "radius")]
     Circle(Num),
     #[serde(rename = "box")]
@@ -99,25 +107,34 @@ impl ImportedType {
             }
         }
         let geometry = object.geometry();
-        let collision = match drive {
-            Some(_) => Some(TypeBody::Circle(num(geometry
+        let shape = match drive {
+            Some(_) => Some(BodyShape::Circle(num(geometry
                 .bounding_circle()
                 .min(MAX_WALKER))?)),
             None if object.is_structure() && !geometry.small => Some(match geometry.shape {
                 GeometryShape::Box => {
-                    TypeBody::Box([num(2.0 * geometry.major)?, num(2.0 * geometry.minor)?])
+                    BodyShape::Box([num(2.0 * geometry.major)?, num(2.0 * geometry.minor)?])
                 }
                 GeometryShape::Sphere | GeometryShape::Cylinder => {
-                    TypeBody::Circle(num(geometry.major)?)
+                    BodyShape::Circle(num(geometry.major)?)
                 }
             }),
             None => None,
         };
-        let held = match collision {
-            Some(TypeBody::Circle(radius)) => Radius::new(radius).is_some(),
-            Some(TypeBody::Box(size)) => BodyBox::new(size, Num::ZERO).is_some(),
-            None => true,
+        let collision = match shape {
+            Some(shape) => Some(TypeBody {
+                shape,
+                height: num(geometry.height())?,
+            }),
+            None => None,
         };
+        let held = collision.is_none_or(|body| {
+            let shape = match body.shape {
+                BodyShape::Circle(radius) => Radius::new(radius).is_some(),
+                BodyShape::Box(size) => BodyBox::new(size, Num::ZERO).is_some(),
+            };
+            shape && Num::ZERO <= body.height && body.height <= MAX_BOUND
+        });
         if !held {
             return Err(TypeError::Body);
         }
@@ -163,9 +180,9 @@ impl ImportedType {
     /// How far its body reaches from its unit's place along `x` and `z`, at `angle` degrees, as
     /// a map's load measures a placed box against its bounds; none for no body.
     pub(crate) fn reach(&self, angle: Num) -> Option<[Num; 2]> {
-        match self.collision? {
-            TypeBody::Circle(radius) => Some([radius; 2]),
-            TypeBody::Box(size) => Some(
+        match self.collision?.shape {
+            BodyShape::Circle(radius) => Some([radius; 2]),
+            BodyShape::Box(size) => Some(
                 BodyBox::new(size, angle)
                     .expect("a box's size alone decides whether it is one")
                     .extent(),
@@ -180,7 +197,13 @@ impl ImportedType {
 
     /// Whether its body is a box, which a build places.
     pub(crate) const fn is_box(&self) -> bool {
-        matches!(self.collision, Some(TypeBody::Box(_)))
+        matches!(
+            self.collision,
+            Some(TypeBody {
+                shape: BodyShape::Box(_),
+                ..
+            })
+        )
     }
 
     /// Its speed in meters a second, when it drives.
@@ -210,7 +233,7 @@ mod tests {
     use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
     use crate::zero_hour::format::ini::object_ini::ObjectIni;
 
-    /// The objects of each kind D4 tells apart.
+    /// The objects of each kind the import's rule of bodies tells apart.
     const OBJECTS: &str = "Object Tank
   KindOf = VEHICLE
   Locomotor = SET_NORMAL TankTreads
@@ -276,10 +299,22 @@ Object Huge
   KindOf = STRUCTURE
   GeometryMajorRadius = 2048.5
 End
+Object Dome
+  KindOf = STRUCTURE
+  Geometry = SPHERE
+  GeometryMajorRadius = 5.0
+  GeometryHeight = 9.0
+End
+Object Sunk
+  KindOf = STRUCTURE
+  Geometry = CYLINDER
+  GeometryMajorRadius = 5.0
+  GeometryHeight = -1.0
+End
 ";
 
     #[test]
-    fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_by_d4() {
+    fn an_objects_type_drives_by_its_ground_locomotor_and_has_its_body_of_its_height() {
         let mut ini = ObjectIni::default();
         ini.read(OBJECTS.as_bytes()).unwrap();
         let mut locomotors = LocomotorIni::default();
@@ -287,7 +322,8 @@ End
         let of = |name: &str| ImportedType::of(ini.object(name.as_bytes()).unwrap(), &locomotors);
         let int = Num::int;
         let half = |x: i64| Num::from_bits(x << (Num::FRAC_BITS - 1));
-        let drives = |speed, turn_rate, radius| ImportedType {
+        let body = |shape, height| Some(TypeBody { shape, height });
+        let drives = |speed, turn_rate, radius, height| ImportedType {
             pools: None,
             tags: None,
             stats: TypeStats {
@@ -295,7 +331,7 @@ End
                 turn_rate: Some(StatBase { base: turn_rate }),
                 life: None,
             },
-            collision: Some(TypeBody::Circle(radius)),
+            collision: body(BodyShape::Circle(radius), height),
             combat: None,
         };
         let stands = |body| ImportedType {
@@ -308,49 +344,66 @@ End
         // The tank drives on its treads, 30.5 m and 90° a second; a box of half extents 15 and
         // 10 bounds a circle of √(15² + 10²) = √325 = 18.02775637…, in `f32` the nearest of
         // 19 bits past the point, 9,451,736 · 2⁻¹⁹ = 18.0277557373…, exactly 302,455,552 · 2⁻²⁴
-        // as a `Num`.
+        // as a `Num`. Its geometry names no height, so it has the game's default, 1 m.
         let tank = of("Tank").unwrap();
-        assert_eq!(tank, drives(half(61), int(90), Num::from_bits(302_455_552)));
+        let radius = Num::from_bits(302_455_552);
+        assert_eq!(tank, drives(half(61), int(90), radius, int(1)));
         assert_eq!(tank.move_speed(), Some(half(61)));
         // The jet only flies: no stats, and no body. The hover craft's first normal locomotor
-        // flies, and its second drives, a cylinder's major radius 6.5.
+        // flies, and its second drives, a cylinder's major radius 6.5, 20 m tall.
         assert_eq!(of("Jet").unwrap(), stands(None));
         assert_eq!(of("Jet").unwrap().move_speed(), None);
-        assert_eq!(of("Hover").unwrap(), drives(half(61), int(90), half(13)));
+        assert_eq!(
+            of("Hover").unwrap(),
+            drives(half(61), int(90), half(13), int(20))
+        );
         // A train's box bounds a circle of √(112² + 10²) ≈ 112.4 m, past the original's widest
         // pathfinding footprint: its circle is that footprint's 25 m.
-        assert_eq!(of("Train").unwrap(), drives(half(61), int(90), int(25)));
-        // A structure that is not small: a box of twice its radii, 120 × 140; a cylinder's
-        // circle of its radius 8.5; one of no geometry the game's sphere of radius 1.
+        assert_eq!(
+            of("Train").unwrap(),
+            drives(half(61), int(90), int(25), int(1))
+        );
+        // A structure that is not small: a box of twice its radii, 120 × 140, 49 m tall; a
+        // cylinder's circle of its radius 8.5; one of no geometry the game's sphere of radius 1,
+        // whose height is its radius whatever its `GeometryHeight`, as `GeometryInfo::set` takes
+        // it, and the sphere 5 m wide with a height of 9 m, 5 m tall.
         assert_eq!(
             of("Barracks").unwrap(),
-            stands(Some(TypeBody::Box([int(120), int(140)])))
+            stands(body(BodyShape::Box([int(120), int(140)]), int(49)))
         );
         assert_eq!(
             of("Tower").unwrap(),
-            stands(Some(TypeBody::Circle(half(17))))
+            stands(body(BodyShape::Circle(half(17)), int(1)))
         );
-        assert_eq!(of("Shrub").unwrap(), stands(Some(TypeBody::Circle(int(1)))));
+        assert_eq!(
+            of("Shrub").unwrap(),
+            stands(body(BodyShape::Circle(int(1)), int(1)))
+        );
+        assert_eq!(
+            of("Dome").unwrap(),
+            stands(body(BodyShape::Circle(int(5)), int(5)))
+        );
         // A small structure and an object of no kind block nothing; a reskin's own geometry
         // makes its mine large, a box of 6 × 6.
         assert_eq!(of("Mine").unwrap(), stands(None));
         assert_eq!(of("Rock").unwrap(), stands(None));
         assert_eq!(
             of("BigMine").unwrap(),
-            stands(Some(TypeBody::Box([int(6), int(6)])))
+            stands(body(BodyShape::Box([int(6), int(6)]), int(1)))
         );
         // A locomotor no file defines refuses the type, as the game refuses it.
         assert_eq!(
             of("Lost"),
             Err(TypeError::NoLocomotor("NoSuchTreads".to_owned()))
         );
-        // A box of no width, and a circle past the widest body's 2,048 m, a unit type's load
-        // refuses, so the import refuses them first.
+        // A box of no width, a circle past the widest body's 2,048 m, and a height below 0, a
+        // unit type's load refuses, so the import refuses them first.
         assert_eq!(of("Flat"), Err(TypeError::Body));
         assert_eq!(of("Huge"), Err(TypeError::Body));
+        assert_eq!(of("Sunk"), Err(TypeError::Body));
     }
 
-    /// The objects of each kind of life D5 and D7 tell apart.
+    /// The objects of each kind of life the import tells apart.
     const LIVING: &str = "Object Soldier
   Body = ActiveBody ModuleTag_01
     MaxHealth = 180.0
@@ -429,10 +482,13 @@ End
         assert_eq!(of("Soldier"), lives(180, Some("humanarmor"), None));
         assert_eq!(of("Veteran"), of("Soldier"));
         // A structure that counts for victory lives by its structure body, of no armor, and of
-        // no geometry stands as the game's sphere of radius 1; an
-        // object of the kind that is no structure, of an armor of `None`, counts for none.
+        // no geometry stands as the game's sphere of radius 1, 1 m tall; an object of the kind
+        // that is no structure, of an armor of `None`, counts for none.
         let center = ImportedType {
-            collision: Some(TypeBody::Circle(Num::ONE)),
+            collision: Some(TypeBody {
+                shape: BodyShape::Circle(Num::ONE),
+                height: Num::ONE,
+            }),
             ..lives(5000, None, Some([VICTORY]))
         };
         assert_eq!(of("Center"), center);
