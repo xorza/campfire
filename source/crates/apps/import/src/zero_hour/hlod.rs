@@ -26,7 +26,7 @@ const NAME: usize = 16;
 const LONG_NAME: usize = 2 * NAME;
 
 impl Hlod {
-    pub(crate) fn read(body: &[u8]) -> Result<Hlod, W3dError> {
+    pub(crate) fn read(body: &[u8]) -> Result<Self, W3dError> {
         let mut header = None;
         let mut sub_objects = Vec::new();
         let mut arrays = 0;
@@ -60,7 +60,7 @@ impl Hlod {
         if levels != 1 || arrays != 1 {
             return Err(W3dError::Levels(levels));
         }
-        Ok(Hlod {
+        Ok(Self {
             name,
             hierarchy,
             sub_objects,

@@ -34,7 +34,7 @@ impl UnitCore {
         world
             .resource_mut::<NewUnitStates>()
             .take(self.id, &mut states);
-        let UnitCore {
+        let Self {
             id,
             pos,
             unit_type,

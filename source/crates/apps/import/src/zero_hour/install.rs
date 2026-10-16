@@ -85,9 +85,9 @@ const HASH_CHUNK: u64 = 1 << 20;
 
 impl Install {
     /// The install under `root`, its archives read in the game's order.
-    pub(crate) fn open(root: &Path) -> Result<Install, ZeroHourError> {
+    pub(crate) fn open(root: &Path) -> Result<Self, ZeroHourError> {
         let mut found = Vec::new();
-        Install::find(root, "", &mut found)?;
+        Self::find(root, "", &mut found)?;
         found.retain(|archive| ArchivePath::of(&archive.name).as_str() != SKIPPED);
         // The game compares paths ignoring case, `\` between names; two that differ only in case
         // keep their bytes' order, so one tree gives one order.
@@ -116,7 +116,7 @@ impl Install {
                 stamp: file.stamp(),
             });
         }
-        Ok(Install { archives, files })
+        Ok(Self { archives, files })
     }
 
     /// The bytes of the file at `path`, as the game names it, in the first archive that holds
@@ -264,7 +264,7 @@ impl Install {
                 .extension()
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("big"));
             match entry.kind {
-                EntryKind::Dir => Install::find(&path, &format!("{name}/"), found)?,
+                EntryKind::Dir => Self::find(&path, &format!("{name}/"), found)?,
                 EntryKind::File | EntryKind::Link if big => found.push(Found { name, path }),
                 EntryKind::File | EntryKind::Link | EntryKind::Other => {}
             }

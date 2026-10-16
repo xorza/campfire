@@ -16,8 +16,8 @@ use crate::unit_entity::UnitEntity;
 pub struct SpawnPoint(Vec3);
 
 impl SpawnPoint {
-    pub const fn new(pos: Vec3) -> SpawnPoint {
-        SpawnPoint(pos)
+    pub const fn new(pos: Vec3) -> Self {
+        Self(pos)
     }
 
     pub const fn get(self) -> Vec3 {

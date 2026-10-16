@@ -42,12 +42,11 @@ pub(crate) mod internals {
         /// Adds a probe at each edge of the sim schedule of `world`, after the stage before it
         /// and its `SimEdge::After` and before the stage after it, and the clock they write.
         pub fn install(world: &mut World) {
-            world.insert_resource(StageClock {
+            world.insert_resource(Self {
                 edges: [Instant::now(); EDGES],
             });
-            let probe = |edge: usize| {
-                move |mut clock: ResMut<'_, StageClock>| clock.edges[edge] = Instant::now()
-            };
+            let probe =
+                |edge: usize| move |mut clock: ResMut<'_, Self>| clock.edges[edge] = Instant::now();
             world.schedule_scope(SimUpdate, |_, schedule| {
                 schedule.add_systems(probe(0).after(SimEdge::Start).before(SimSet::Inputs));
                 for (edge, stages) in SimSet::ALL.windows(2).enumerate() {

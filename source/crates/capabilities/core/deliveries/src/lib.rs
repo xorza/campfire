@@ -51,11 +51,11 @@ campfire_common::enum_all! {
 
 impl ModuleSet for DeliverySet {
     const CAPABILITY: Option<Capability> = None;
-    const ALL: &'static [DeliverySet] = &DeliverySet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            DeliverySet::Deliver => Phase::Deliver,
+            Self::Deliver => Phase::Deliver,
         })
     }
 }
@@ -67,8 +67,8 @@ impl Module for Deliveries {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<DeliverySet>();
-        d.scratch::<Deliveries>();
-        d.check::<ForcedMove>(Deliveries::dashes_known);
+        d.scratch::<Self>();
+        d.check::<ForcedMove>(Self::dashes_known);
         d.api(DeliveriesApi::register);
     }
 

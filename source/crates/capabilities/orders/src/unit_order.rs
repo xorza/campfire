@@ -89,7 +89,7 @@ impl Effect for UnitOrder {
             .get_components_mut::<OrderedUnit>()
             .expect("an ordered unit stands");
         self.apply(parts, &bounds, now);
-        if self == UnitOrder::Reset {
+        if self == Self::Reset {
             unit.insert(Resetting);
         }
     }
@@ -133,14 +133,14 @@ impl UnitOrder {
         self.set_loops(builder.as_mut(), gatherer.as_mut(), bounds, at.get());
         let ground = |x, z| bounds.ground_point([x, z], at.get());
         let to = match self {
-            UnitOrder::Attack { target } => {
+            Self::Attack { target } => {
                 if let Some(slots) = &mut slots {
                     slots.cancel_charge();
                     slots.set_attack_target(Some(target));
                 }
                 return;
             }
-            UnitOrder::Slot { slot, target } => {
+            Self::Slot { slot, target } => {
                 let target = match target {
                     ActionTarget::Point(point) => ActionTarget::Point(ground(point.x, point.z)),
                     target => target,
@@ -150,7 +150,7 @@ impl UnitOrder {
                 }
                 return;
             }
-            UnitOrder::Use {
+            Self::Use {
                 slot,
                 action,
                 target,
@@ -163,7 +163,7 @@ impl UnitOrder {
                 slots.order(slot, ActionTarget::Unit(target));
                 return;
             }
-            UnitOrder::FollowPath => {
+            Self::FollowPath => {
                 if let Some(slots) = &mut slots {
                     slots.set_attack_target(None);
                 }
@@ -172,19 +172,19 @@ impl UnitOrder {
                 }
                 return;
             }
-            UnitOrder::Move { x, z, .. } => Some(ground(x, z)),
-            UnitOrder::Reset => Some(
+            Self::Move { x, z, .. } => Some(ground(x, z)),
+            Self::Reset => Some(
                 spawn
                     .expect("a unit the mode spawned holds its spawn place")
                     .get(),
             ),
-            UnitOrder::Stop => {
+            Self::Stop => {
                 if let Some(slots) = &mut slots {
                     slots.stop();
                 }
                 None
             }
-            UnitOrder::Build { .. } | UnitOrder::Gather { .. } => None,
+            Self::Build { .. } | Self::Gather { .. } => None,
         };
         if let Some(slots) = &mut slots {
             slots.set_attack_target(None);
@@ -195,7 +195,7 @@ impl UnitOrder {
         if let Some(mut destination) = destination {
             destination.set_if_neq(Destination::to(to));
         }
-        if let (UnitOrder::Move { party, .. }, Some(to), Some(mut route), Some(mut progress)) =
+        if let (Self::Move { party, .. }, Some(to), Some(mut route), Some(mut progress)) =
             (self, to, route, progress)
             && party.is_some()
         {
@@ -215,7 +215,7 @@ impl UnitOrder {
         pos: Vec3,
     ) {
         let build = match self {
-            UnitOrder::Build { slot, target } => {
+            Self::Build { slot, target } => {
                 let target = match target {
                     BuildTarget::Point { x, z, angle } => {
                         let [x, z] = bounds.clamp_ground([x, z]);
@@ -233,7 +233,7 @@ impl UnitOrder {
             builder.set(build);
         }
         let gather = match self {
-            UnitOrder::Gather { slot, target } => Some(GatherOrder {
+            Self::Gather { slot, target } => Some(GatherOrder {
                 slot,
                 node: NodeAt { node: target, pos },
                 step: GatherStep::Ordered,

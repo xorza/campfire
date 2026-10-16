@@ -21,9 +21,9 @@ pub(super) struct StepMoves {
 }
 
 impl StepMoves {
-    pub(super) const fn new(step: i64, distance: i64) -> StepMoves {
+    pub(super) const fn new(step: i64, distance: i64) -> Self {
         debug_assert!(0 <= step && step <= distance);
-        StepMoves { step, distance }
+        Self { step, distance }
     }
 
     /// Each offset's move, `offset · step / distance`, rounded to nearest, ties to even: at most

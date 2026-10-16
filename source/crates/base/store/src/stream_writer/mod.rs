@@ -54,17 +54,13 @@ struct Pending {
 impl StreamWriter {
     /// A new file at `path`, in place of one there, written on the worker `name`, with a buffer
     /// of `bound` bytes.
-    pub fn create(
-        name: &str,
-        path: &Path,
-        bound: usize,
-    ) -> Result<StreamWriter, PathError<io::Error>> {
+    pub fn create(name: &str, path: &Path, bound: usize) -> Result<Self, PathError<io::Error>> {
         let file = File::create(path).map_err(PathError::at(path))?;
-        Ok(StreamWriter::start(name, file, bound))
+        Ok(Self::start(name, file, bound))
     }
 
     /// A writer that writes to `file` on the worker `name`, with a buffer of `bound` bytes.
-    fn start<W: Write + Send + 'static>(name: &str, file: W, bound: usize) -> StreamWriter {
+    fn start<W: Write + Send + 'static>(name: &str, file: W, bound: usize) -> Self {
         assert!(bound > 0, "a stream's buffer holds a byte");
         let shared = Arc::new(StreamShared {
             pending: WorkerLock::default(),
@@ -75,7 +71,7 @@ impl StreamWriter {
         });
         let writing = Arc::clone(&shared);
         let worker = Worker::start(name, move || writing.write(file));
-        StreamWriter {
+        Self {
             shared,
             _worker: worker,
         }

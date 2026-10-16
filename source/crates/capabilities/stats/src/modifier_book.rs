@@ -30,6 +30,10 @@ use crate::stat_id::StatId;
 /// the entries, as the script view reads them.
 #[derive(Resource, Debug, Clone, Default)]
 pub struct ModifierBook {
+    #[expect(
+        clippy::rc_buffer,
+        reason = "the load grows the book through `Arc::make_mut`; the clones after it share it"
+    )]
     entries: Arc<Vec<ModifierEntry>>,
     /// Each modifier's name in its package.
     names: Arc<Names<ModifierId>>,
@@ -89,7 +93,7 @@ impl ModifierBook {
             modifiers.is_sorted_by(|a, b| a.name < b.name),
             "a package's modifiers load by name"
         );
-        let last = start.checked_sub(1).map(ModifierBook::id_at);
+        let last = start.checked_sub(1).map(Self::id_at);
         if let (Some(last), Some(first)) = (last, modifiers.first()) {
             let held = (self.names.scope(last), self.names.name(last));
             assert!(
@@ -114,7 +118,7 @@ impl ModifierBook {
             modifier: |name: &str| {
                 let at = modifiers.binary_search_by(|modifier| modifier.name.as_str().cmp(name));
                 match at {
-                    Ok(at) => Ok(ModifierBook::id_at(start + at)),
+                    Ok(at) => Ok(Self::id_at(start + at)),
                     Err(_) => self
                         .names
                         .named((package, name))
@@ -149,7 +153,7 @@ impl ModifierBook {
     }
 
     /// Whether `other` is this book as one load made it, not a book of another load.
-    pub(crate) fn same(&self, other: &ModifierBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.entries, &other.entries)
             && Arc::ptr_eq(&self.names, &other.names)
             && Arc::ptr_eq(&self.appliers, &other.appliers)

@@ -23,7 +23,7 @@ impl Module for Players {
     const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
-        Players::kinds(d);
+        Self::kinds(d);
         d.component::<MatchEntity>();
         d.component::<Player>();
         d.component::<HeldOut>();
@@ -32,7 +32,7 @@ impl Module for Players {
         d.component::<PlayerResources>();
         d.call_part::<PlayersCall>();
         d.require::<Player, Team>();
-        d.check::<MatchEntity>(Players::match_spawned);
+        d.check::<MatchEntity>(Self::match_spawned);
         d.part::<Player, PlayerResources>(|at| {
             let resources = at.world().non_send::<View>().names().count::<ResourceId>();
             Some(PlayerResources::new(resources))
@@ -63,7 +63,7 @@ impl Players {
     pub fn spawn_match(world: &mut World, slots: impl IntoIterator<Item = SlotStart>) {
         EntityParts::<MatchEntity>::give(&mut world.spawn((StableId::MATCH, MatchEntity)));
         for (slot, start) in (0..).map(PlayerSlot::new).zip(slots) {
-            let player = Players::spawn_player(world, slot, start.team);
+            let player = Self::spawn_player(world, slot, start.team);
             if start.seating == Seating::Held {
                 world.entity_mut(player).insert(Seated);
             }
@@ -110,7 +110,7 @@ pub(crate) mod internals {
                 team,
                 seating: Seating::Held,
             };
-            Players::spawn_match(world, teams.iter().copied().map(held));
+            Self::spawn_match(world, teams.iter().copied().map(held));
             let entity = world.match_entity().expect("the match's entity spawned");
             world.entity_mut(entity).insert(Relations::default());
             for slot in (0..).map(PlayerSlot::new).take(teams.len()) {
@@ -128,7 +128,7 @@ pub(crate) mod internals {
         /// resources, as a mode's start does.
         pub fn spawn(world: &mut World, players: u32, resources: usize) {
             for slot in (0..players).map(PlayerSlot::new) {
-                let player = Players::spawn_player(world, slot, Team::new(0));
+                let player = Self::spawn_player(world, slot, Team::new(0));
                 world
                     .entity_mut(player)
                     .insert(PlayerResources::new(resources));

@@ -258,19 +258,19 @@ impl Bag {
     /// Binds the indexer, and forwards the properties too when `forward`.
     fn bind(host: &mut ScriptHost, forward: bool) {
         let engine = host.engine_mut();
-        engine.register_type::<Bag>();
-        engine.register_indexer_get(|bag: &mut Bag, name: ImmutableString| bag.get(&name));
-        engine.register_indexer_set(|bag: &mut Bag, name: ImmutableString, value: INT| {
+        engine.register_type::<Self>();
+        engine.register_indexer_get(|bag: &mut Self, name: ImmutableString| bag.get(&name));
+        engine.register_indexer_set(|bag: &mut Self, name: ImmutableString, value: INT| {
             bag.set(&name, value);
         });
         if forward {
             host.forward_properties(|engine, name| {
                 let property = ImmutableString::from(name);
                 let set = property.clone();
-                engine.register_fn(format!("get${name}"), move |bag: &mut Bag| {
+                engine.register_fn(format!("get${name}"), move |bag: &mut Self| {
                     bag.get(&property)
                 });
-                engine.register_fn(format!("set${name}"), move |bag: &mut Bag, value: INT| {
+                engine.register_fn(format!("set${name}"), move |bag: &mut Self, value: INT| {
                     bag.set(&set, value);
                 });
             });

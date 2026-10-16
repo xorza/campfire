@@ -38,7 +38,7 @@ impl CommandSetIni {
                     let place = word
                         .parse::<u8>()
                         .ok()
-                        .filter(|place| (1..=CommandSetIni::PLACES).contains(place))
+                        .filter(|place| (1..=Self::PLACES).contains(place))
                         .ok_or(IniError::NotListed { line: line.number })?;
                     let button = line.value()?.to_owned();
                     let set = self.sets.get_mut(name).expect("an open set is in the list");

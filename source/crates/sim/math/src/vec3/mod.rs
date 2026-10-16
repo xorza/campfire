@@ -20,46 +20,46 @@ pub struct Vec3 {
 }
 
 impl Vec3 {
-    pub const ZERO: Vec3 = Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO);
+    pub const ZERO: Self = Self::new(Num::ZERO, Num::ZERO, Num::ZERO);
 
-    pub const fn new(x: Num, y: Num, z: Num) -> Vec3 {
-        Vec3 { x, y, z }
+    pub const fn new(x: Num, y: Num, z: Num) -> Self {
+        Self { x, y, z }
     }
 
-    pub const fn checked_add(self, rhs: Vec3) -> Option<Vec3> {
-        Vec3::from_parts(
+    pub const fn checked_add(self, rhs: Self) -> Option<Self> {
+        Self::from_parts(
             self.x.checked_add(rhs.x),
             self.y.checked_add(rhs.y),
             self.z.checked_add(rhs.z),
         )
     }
 
-    pub const fn checked_sub(self, rhs: Vec3) -> Option<Vec3> {
-        Vec3::from_parts(
+    pub const fn checked_sub(self, rhs: Self) -> Option<Self> {
+        Self::from_parts(
             self.x.checked_sub(rhs.x),
             self.y.checked_sub(rhs.y),
             self.z.checked_sub(rhs.z),
         )
     }
 
-    pub const fn checked_neg(self) -> Option<Vec3> {
-        Vec3::from_parts(
+    pub const fn checked_neg(self) -> Option<Self> {
+        Self::from_parts(
             self.x.checked_neg(),
             self.y.checked_neg(),
             self.z.checked_neg(),
         )
     }
 
-    pub const fn checked_mul(self, factor: Num) -> Option<Vec3> {
-        Vec3::from_parts(
+    pub const fn checked_mul(self, factor: Num) -> Option<Self> {
+        Self::from_parts(
             self.x.checked_mul(factor),
             self.y.checked_mul(factor),
             self.z.checked_mul(factor),
         )
     }
 
-    pub fn checked_div(self, divisor: Num) -> Option<Vec3> {
-        Vec3::from_parts(
+    pub fn checked_div(self, divisor: Num) -> Option<Self> {
+        Self::from_parts(
             self.x.checked_div(divisor),
             self.y.checked_div(divisor),
             self.z.checked_div(divisor),
@@ -67,7 +67,7 @@ impl Vec3 {
     }
 
     /// The dot product, rounded once from the exact sum of products.
-    pub const fn checked_dot(self, rhs: Vec3) -> Option<Num> {
+    pub const fn checked_dot(self, rhs: Self) -> Option<Num> {
         let x = self.x.to_bits() as i128 * rhs.x.to_bits() as i128;
         let y = self.y.to_bits() as i128 * rhs.y.to_bits() as i128;
         let z = self.z.to_bits() as i128 * rhs.z.to_bits() as i128;
@@ -81,7 +81,7 @@ impl Vec3 {
     }
 
     #[must_use]
-    pub const fn dot(self, rhs: Vec3) -> Num {
+    pub const fn dot(self, rhs: Self) -> Num {
         match self.checked_dot(rhs) {
             Some(dot) => dot,
             None => panic!("Vec3 overflow in dot"),
@@ -98,18 +98,18 @@ impl Vec3 {
         self.checked_length().expect("Vec3 overflow in length")
     }
 
-    pub fn checked_distance(self, other: Vec3) -> Option<Num> {
+    pub fn checked_distance(self, other: Self) -> Option<Num> {
         other.checked_sub(self)?.checked_length()
     }
 
     #[must_use]
-    pub fn distance(self, other: Vec3) -> Num {
+    pub fn distance(self, other: Self) -> Num {
         self.checked_distance(other)
             .expect("Vec3 overflow in distance")
     }
 
     /// Whether `other` is at most `radius` away, decided exactly and without a square root.
-    pub const fn within(self, other: Vec3, radius: Num) -> bool {
+    pub const fn within(self, other: Self, radius: Num) -> bool {
         if radius.to_bits() < 0 {
             return false;
         }
@@ -123,13 +123,13 @@ impl Vec3 {
 
     /// The vector with its height dropped: its point on the ground plane.
     #[must_use]
-    pub const fn ground(self) -> Vec3 {
-        Vec3::new(self.x, Num::ZERO, self.z)
+    pub const fn ground(self) -> Self {
+        Self::new(self.x, Num::ZERO, self.z)
     }
 
     /// The offset from here to `to` on the ground plane, heights dropped.
     #[must_use]
-    pub const fn ground_offset(self, to: Vec3) -> Vec3 {
+    pub const fn ground_offset(self, to: Self) -> Self {
         to.ground()
             .checked_sub(self.ground())
             .expect("Vec3 overflow in ground_offset")
@@ -137,13 +137,13 @@ impl Vec3 {
 
     /// Whether `other` is at most `radius` away on the ground plane, heights dropped, decided
     /// exactly: the range test of a planar map.
-    pub const fn within_ground(self, other: Vec3, radius: Num) -> bool {
+    pub const fn within_ground(self, other: Self, radius: Num) -> bool {
         self.ground().within(other.ground(), radius)
     }
 
     /// The unit vector in this direction, each component rounded once; `None` for the zero
     /// vector.
-    pub fn normalized(self) -> Option<Vec3> {
+    pub fn normalized(self) -> Option<Self> {
         let length = self.checked_length()?.to_bits().cast_unsigned();
         if length == 0 {
             return None;
@@ -151,7 +151,7 @@ impl Vec3 {
         // One float quotient and three multiplies estimate the three quotients, and
         // `unit_component` corrects each exactly, so the result does not depend on the float.
         let scale = unit_scale(length);
-        Some(Vec3::new(
+        Some(Self::new(
             unit_component(self.x, length, scale),
             unit_component(self.y, length, scale),
             unit_component(self.z, length, scale),
@@ -159,14 +159,14 @@ impl Vec3 {
     }
 
     /// The unit vector from `self` towards `other`; `None` when they coincide.
-    pub fn direction_to(self, other: Vec3) -> Option<Vec3> {
+    pub fn direction_to(self, other: Self) -> Option<Self> {
         other.checked_sub(self)?.normalized()
     }
 
     /// The point `step` along the way to `target`, or `target` when it is at most `step` away.
     /// Each component moves by `offset · step / distance`, rounded once, so it never passes the
     /// target's. `None` when the offset or the distance does not fit a `Num`.
-    pub fn checked_step_toward(self, target: Vec3, step: Num) -> Option<Vec3> {
+    pub fn checked_step_toward(self, target: Self, step: Num) -> Option<Self> {
         debug_assert!(step >= Num::ZERO, "Vec3::step_toward with a negative step");
         if self.within(target, step) {
             return Some(target);
@@ -182,7 +182,7 @@ impl Vec3 {
             debug_assert!(from.checked_add(moved).is_some());
             Num::from_bits(from.to_bits().wrapping_add(moved.to_bits()))
         };
-        Some(Vec3::new(
+        Some(Self::new(
             advance(self.x, moves[0]),
             advance(self.y, moves[1]),
             advance(self.z, moves[2]),
@@ -190,27 +190,27 @@ impl Vec3 {
     }
 
     #[must_use]
-    pub fn step_toward(self, target: Vec3, step: Num) -> Vec3 {
+    pub fn step_toward(self, target: Self, step: Num) -> Self {
         self.checked_step_toward(target, step)
             .expect("Vec3 overflow in step_toward")
     }
 
     /// Turned about the y axis by the angle of `turn`, counter-clockwise seen from above; each
     /// component rounded once from the exact sum of products.
-    pub const fn checked_rotated_y(self, turn: SinCos) -> Option<Vec3> {
+    pub const fn checked_rotated_y(self, turn: SinCos) -> Option<Self> {
         let (x, z) = (self.x.to_bits() as i128, self.z.to_bits() as i128);
         let (sin, cos) = (turn.sin.to_bits() as i128, turn.cos.to_bits() as i128);
         match (
             Num::from_raw_products(x * cos + z * sin),
             Num::from_raw_products(z * cos - x * sin),
         ) {
-            (Some(x), Some(z)) => Some(Vec3::new(x, self.y, z)),
+            (Some(x), Some(z)) => Some(Self::new(x, self.y, z)),
             _ => None,
         }
     }
 
     #[must_use]
-    pub const fn rotated_y(self, turn: SinCos) -> Vec3 {
+    pub const fn rotated_y(self, turn: SinCos) -> Self {
         match self.checked_rotated_y(turn) {
             Some(turned) => turned,
             None => panic!("Vec3 overflow in rotated_y"),
@@ -218,9 +218,9 @@ impl Vec3 {
     }
 
     /// A vector when all three components exist.
-    const fn from_parts(x: Option<Num>, y: Option<Num>, z: Option<Num>) -> Option<Vec3> {
+    const fn from_parts(x: Option<Num>, y: Option<Num>, z: Option<Num>) -> Option<Self> {
         match (x, y, z) {
-            (Some(x), Some(y), Some(z)) => Some(Vec3::new(x, y, z)),
+            (Some(x), Some(y), Some(z)) => Some(Self::new(x, y, z)),
             _ => None,
         }
     }
@@ -308,54 +308,54 @@ fn unit_component(component: Num, length: u64, scale: f64) -> Num {
 }
 
 impl Add for Vec3 {
-    type Output = Vec3;
+    type Output = Self;
 
-    fn add(self, rhs: Vec3) -> Vec3 {
+    fn add(self, rhs: Self) -> Self {
         self.checked_add(rhs).expect("Vec3 overflow in +")
     }
 }
 
 impl Sub for Vec3 {
-    type Output = Vec3;
+    type Output = Self;
 
-    fn sub(self, rhs: Vec3) -> Vec3 {
+    fn sub(self, rhs: Self) -> Self {
         self.checked_sub(rhs).expect("Vec3 overflow in -")
     }
 }
 
 impl Neg for Vec3 {
-    type Output = Vec3;
+    type Output = Self;
 
-    fn neg(self) -> Vec3 {
+    fn neg(self) -> Self {
         self.checked_neg().expect("Vec3 overflow in unary -")
     }
 }
 
 impl Mul<Num> for Vec3 {
-    type Output = Vec3;
+    type Output = Self;
 
-    fn mul(self, factor: Num) -> Vec3 {
+    fn mul(self, factor: Num) -> Self {
         self.checked_mul(factor).expect("Vec3 overflow in *")
     }
 }
 
 impl Div<Num> for Vec3 {
-    type Output = Vec3;
+    type Output = Self;
 
-    fn div(self, divisor: Num) -> Vec3 {
+    fn div(self, divisor: Num) -> Self {
         self.checked_div(divisor)
             .expect("Vec3 division by zero or overflow in /")
     }
 }
 
 impl AddAssign for Vec3 {
-    fn add_assign(&mut self, rhs: Vec3) {
+    fn add_assign(&mut self, rhs: Self) {
         *self = *self + rhs;
     }
 }
 
 impl SubAssign for Vec3 {
-    fn sub_assign(&mut self, rhs: Vec3) {
+    fn sub_assign(&mut self, rhs: Self) {
         *self = *self - rhs;
     }
 }
@@ -374,15 +374,15 @@ impl DivAssign<Num> for Vec3 {
 
 /// Exact, as each element's conversion to a `Num` is.
 impl<X: Into<Num>, Y: Into<Num>, Z: Into<Num>> From<(X, Y, Z)> for Vec3 {
-    fn from((x, y, z): (X, Y, Z)) -> Vec3 {
-        Vec3::new(x.into(), y.into(), z.into())
+    fn from((x, y, z): (X, Y, Z)) -> Self {
+        Self::new(x.into(), y.into(), z.into())
     }
 }
 
 /// Exact, as each element's conversion to a `Num` is.
 impl<T: Into<Num>> From<[T; 3]> for Vec3 {
-    fn from([x, y, z]: [T; 3]) -> Vec3 {
-        Vec3::new(x.into(), y.into(), z.into())
+    fn from([x, y, z]: [T; 3]) -> Self {
+        Self::new(x.into(), y.into(), z.into())
     }
 }
 

@@ -27,7 +27,7 @@ impl EntityKinds {
     /// state marker asks; a world with no declared kinds holds none to count.
     pub(crate) fn alone(world: &World, entity: Entity) -> bool {
         world
-            .get_resource::<EntityKinds>()
+            .get_resource::<Self>()
             .is_none_or(|kinds| kinds.held(world.entity(entity)) == 1)
     }
 
@@ -38,7 +38,7 @@ impl EntityKinds {
         if world.contains_resource::<Restoring>() {
             return;
         }
-        let Some(kinds) = world.get_resource::<EntityKinds>() else {
+        let Some(kinds) = world.get_resource::<Self>() else {
             return;
         };
         let held = kinds.held(world.entity(context.entity));

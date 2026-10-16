@@ -56,7 +56,7 @@ struct Objects {
 impl Objects {
     /// A match of `stats`, `combat`, `navigation`, `abilities`, `orders` and `interaction`,
     /// with its objects and users loaded, and no unit.
-    fn load() -> (Match, Objects) {
+    fn load() -> (Match, Self) {
         let declared = [
             Capability::Stats,
             Capability::Combat,
@@ -95,7 +95,7 @@ impl Objects {
         let shrine = object("shrine", pray, "all");
         let well = object("well", draw, "all");
         let altar = object("altar", offer, "allies");
-        let objects = Objects {
+        let objects = Self {
             shrine,
             well,
             altar,

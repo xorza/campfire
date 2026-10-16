@@ -75,9 +75,9 @@ impl Rounding {
         // a select after the division, which measured 14 % slower.
         let twice = rest << 1;
         let away = match self {
-            Rounding::NearestEven => twice > divisor || (twice == divisor && toward_zero & 1 == 1),
-            Rounding::Floor => negative && rest != 0,
-            Rounding::Ceiling => !negative && rest != 0,
+            Self::NearestEven => twice > divisor || (twice == divisor && toward_zero & 1 == 1),
+            Self::Floor => negative && rest != 0,
+            Self::Ceiling => !negative && rest != 0,
         };
         let rounded = if away {
             toward_zero.wrapping_add(1)
@@ -103,9 +103,9 @@ impl Rounding {
         // mask, which no rest passes. The floor is at most half the value, so one more fits, and
         // the wrapping step skips the check a release build makes.
         let threshold = match self {
-            Rounding::NearestEven => (mask - (mask >> 1)) - (floor & 1).cast_unsigned(),
-            Rounding::Floor => mask,
-            Rounding::Ceiling => 0,
+            Self::NearestEven => (mask - (mask >> 1)) - (floor & 1).cast_unsigned(),
+            Self::Floor => mask,
+            Self::Ceiling => 0,
         };
         floor.wrapping_add((rest > threshold) as i128)
     }

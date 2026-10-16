@@ -211,14 +211,14 @@ impl StatsColumn {
     }
 
     /// What `read` gives of the column; an error for a match with no stats.
-    fn read<R>(view: &View, read: impl FnOnce(&StatsColumn) -> Checked<R>) -> Checked<R> {
+    fn read<R>(view: &View, read: impl FnOnce(&Self) -> Checked<R>) -> Checked<R> {
         view.column(read)
             .unwrap_or_else(|| Err(StatsRefusal::NoStats.fail().into()))
     }
 
     /// The level of the unit in row `row`; an error for a unit with no stats.
     pub(crate) fn level(view: &View, row: usize) -> Checked<u32> {
-        StatsColumn::read(view, |column| {
+        Self::read(view, |column| {
             Ok(column.rows.now().rows[row]
                 .level
                 .ok_or_else(|| StatsRefusal::NoStats.fail())?)
@@ -227,7 +227,7 @@ impl StatsColumn {
 
     /// The value of `stat` of the unit in row `row`; an error for a unit with no stats.
     pub(crate) fn stat(view: &View, row: usize, stat: StatId) -> Checked<Num> {
-        StatsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column
                 .rows
                 .now()
@@ -246,7 +246,7 @@ impl StatsColumn {
         pool: PoolId,
         read: fn(Meter) -> Num,
     ) -> Checked<Num> {
-        StatsColumn::read(view, |column| {
+        Self::read(view, |column| {
             let row = &column.rows.now().rows[row];
             let pools = PoolMeters::new(column.life_pool, row.life.as_ref(), row.pools.as_ref());
             pools
@@ -266,7 +266,7 @@ impl StatsColumn {
         rank: Rank,
     ) -> Checked<()> {
         let rate = view.rate();
-        StatsColumn::read(view, |column| {
+        Self::read(view, |column| {
             let checked = column
                 .modifier_book
                 .check_way(id, action, rank, call.params(), rate);
@@ -276,7 +276,7 @@ impl StatsColumn {
 
     /// Whether the unit in row `row` carries the modifier `id`.
     pub(crate) fn has_modifier(view: &View, row: usize, id: ModifierId) -> Checked<bool> {
-        StatsColumn::read(view, |column| {
+        Self::read(view, |column| {
             Ok(column.run(row).iter().any(|modifier| modifier.id == id))
         })
     }
@@ -294,14 +294,14 @@ impl StatsColumn {
         source: Option<StableId>,
     ) -> ModifierHandle {
         if let Some(handle) = call.handed(carrier, id, source) {
-            view.column(|column: &StatsColumn| column.apply_again(handle, id))
+            view.column(|column: &Self| column.apply_again(handle, id))
                 .expect("a match that applies a modifier has stats");
             return handle.clone();
         }
         let row = view.row_index(carrier);
         let spare = call.spare();
         let handle = view
-            .column(|column: &StatsColumn| {
+            .column(|column: &Self| {
                 let spec = &column.modifier_book.get(id).spec;
                 let held = row.and_then(|row| {
                     column
@@ -340,7 +340,7 @@ impl StatsColumn {
         state: &[StateValue],
     ) -> ModifierHandle {
         let schema = view
-            .column(|column: &StatsColumn| Arc::clone(&column.modifier_book.get(of.id).spec.state))
+            .column(|column: &Self| Arc::clone(&column.modifier_book.get(of.id).spec.state))
             .expect("a match with modifiers has stats");
         let handle = ModifierHandle::new(call.spare(), of, state, schema, view.clone());
         call.hand_out(handle.clone());
@@ -368,10 +368,7 @@ impl StatsColumn {
     }
 
     /// Adds the unit's level, pools, stats and modifiers to the stats' column of the script view.
-    pub(super) fn fill_row(
-        parts: ROQueryItem<'_, '_, RowReads>,
-        fill: &mut RowFill<'_, StatsColumn>,
-    ) {
+    pub(super) fn fill_row(parts: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
         let (level, life, pools, stats, modifiers, clocks) = parts;
         let stats = stats.map_or(&[][..], UnitStats::values);
         fill.column.push(

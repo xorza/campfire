@@ -52,13 +52,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for AbilitiesSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
-    const ALL: &'static [AbilitiesSet] = &AbilitiesSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            AbilitiesSet::Toggles => Phase::Toggles,
-            AbilitiesSet::StartCasts => Phase::Start,
-            AbilitiesSet::Resolve => Phase::CastResolve,
+            Self::Toggles => Phase::Toggles,
+            Self::StartCasts => Phase::Start,
+            Self::Resolve => Phase::CastResolve,
         })
     }
 }
@@ -173,7 +173,7 @@ pub mod internals {
         }
 
         pub fn cast(world: &mut World, id: StableId, target: ActionTarget) {
-            Abilities::casts(world, &[(id, target)]);
+            Self::casts(world, &[(id, target)]);
         }
 
         /// Runs a tick in which each unit casts its first slot's ability at its target, as an order
@@ -187,7 +187,7 @@ pub mod internals {
         }
 
         pub fn pool(world: &World, id: StableId) -> i64 {
-            Abilities::pool_of(world, id, MANA)
+            Self::pool_of(world, id, MANA)
         }
 
         pub fn pool_of(world: &World, id: StableId, pool: PoolId) -> i64 {
@@ -221,7 +221,7 @@ pub mod internals {
 
         /// Gives `id` the modifier `name` from itself.
         pub fn give(world: &mut World, id: StableId, name: &str) {
-            Abilities::give_from(world, id, id, name);
+            Self::give_from(world, id, id, name);
         }
 
         /// Gives `id` the modifier `name` of package 0, from `source`.
@@ -233,7 +233,7 @@ pub mod internals {
 
         /// Each failed call of the tick: the unit it ran for and its hook.
         pub fn calls(world: &World) -> Vec<(StableId, Hook)> {
-            let failures = Abilities::failed_calls(world).into_iter();
+            let failures = Self::failed_calls(world).into_iter();
             failures
                 .map(|failure| (failure.id.unwrap(), failure.hook))
                 .collect()

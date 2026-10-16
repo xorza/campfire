@@ -12,7 +12,7 @@ pub struct Purse<'a> {
 impl<'a> Purse<'a> {
     /// The purse of a unit of `pools`, whose player holds `resources`: none for a unit no player
     /// owns, or in a match that keeps no players' resources.
-    pub const fn of(pools: PoolMeters<'a>, resources: Option<&'a PlayerResources>) -> Purse<'a> {
+    pub const fn of(pools: PoolMeters<'a>, resources: Option<&'a PlayerResources>) -> Self {
         Purse { pools, resources }
     }
 

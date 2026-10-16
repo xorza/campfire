@@ -15,10 +15,10 @@ pub enum TagProperty {
 impl fmt::Display for TagProperty {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TagProperty::Blocks(block) => write!(f, "blocks = [\"{}\"]", block.name()),
-            TagProperty::Hidden => f.write_str("hidden = true"),
-            TagProperty::Detects => f.write_str("detects = true"),
-            TagProperty::Immune => f.write_str("immune = [tags]"),
+            Self::Blocks(block) => write!(f, "blocks = [\"{}\"]", block.name()),
+            Self::Hidden => f.write_str("hidden = true"),
+            Self::Detects => f.write_str("detects = true"),
+            Self::Immune => f.write_str("immune = [tags]"),
         }
     }
 }
@@ -30,15 +30,15 @@ pub(crate) mod internals {
 
     impl TagProperty {
         /// A block of each of `Block::ALL`, then the rest.
-        pub const ALL: [TagProperty; Block::ALL.len() + 3] = {
-            let mut all = [TagProperty::Immune; Block::ALL.len() + 3];
+        pub const ALL: [Self; Block::ALL.len() + 3] = {
+            let mut all = [Self::Immune; Block::ALL.len() + 3];
             let mut at = 0;
             while at < Block::ALL.len() {
-                all[at] = TagProperty::Blocks(Block::ALL[at]);
+                all[at] = Self::Blocks(Block::ALL[at]);
                 at += 1;
             }
-            all[at] = TagProperty::Hidden;
-            all[at + 1] = TagProperty::Detects;
+            all[at] = Self::Hidden;
+            all[at + 1] = Self::Detects;
             all
         };
     }

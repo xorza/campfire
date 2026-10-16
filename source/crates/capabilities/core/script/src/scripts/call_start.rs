@@ -29,8 +29,8 @@ pub struct CallStart {
 impl CallStart {
     /// A call of `role` in tick `now`, with no acting unit, action, modifier or chain, of the
     /// mode's package, at rank 1.
-    pub const fn mode(role: ScriptRole, now: Tick) -> CallStart {
-        CallStart {
+    pub const fn mode(role: ScriptRole, now: Tick) -> Self {
+        Self {
             role,
             acting: None,
             action: None,
@@ -52,29 +52,24 @@ impl CallStart {
         caster: StableId,
         package: PackageIndex,
         now: Tick,
-    ) -> CallStart {
-        CallStart {
+    ) -> Self {
+        Self {
             acting: Some(caster),
             action: Some(action),
             rank,
             package,
-            ..CallStart::mode(ScriptRole::Action, now)
+            ..Self::mode(ScriptRole::Action, now)
         }
     }
 
     /// A hook of `modifier` of `package` at chain depth `depth` in tick `now`, of an instance
     /// from no source, by no action, at rank 1.
-    pub const fn hook(
-        modifier: ModifierId,
-        package: PackageIndex,
-        depth: u8,
-        now: Tick,
-    ) -> CallStart {
-        CallStart {
+    pub const fn hook(modifier: ModifierId, package: PackageIndex, depth: u8, now: Tick) -> Self {
+        Self {
             modifier: Some(modifier),
             package,
             depth,
-            ..CallStart::mode(ScriptRole::Modifier, now)
+            ..Self::mode(ScriptRole::Modifier, now)
         }
     }
 }

@@ -20,18 +20,18 @@ pub enum ExitStatus {
 impl ExitStatus {
     pub const fn code(self) -> u8 {
         match self {
-            ExitStatus::Success => 0,
-            ExitStatus::Failure => 1,
-            ExitStatus::Usage => 2,
-            ExitStatus::Storage => 74,
-            ExitStatus::Interrupted => 130,
+            Self::Success => 0,
+            Self::Failure => 1,
+            Self::Usage => 2,
+            Self::Storage => 74,
+            Self::Interrupted => 130,
         }
     }
 }
 
 impl From<ExitStatus> for ExitCode {
-    fn from(status: ExitStatus) -> ExitCode {
-        ExitCode::from(status.code())
+    fn from(status: ExitStatus) -> Self {
+        Self::from(status.code())
     }
 }
 

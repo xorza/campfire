@@ -36,7 +36,7 @@ impl Progress {
 
     /// Forgets the walk, as the walker asked for a new route or stopped.
     pub const fn restart(&mut self) {
-        *self = Progress {
+        *self = Self {
             last_at: None,
             stuck: 0,
         };

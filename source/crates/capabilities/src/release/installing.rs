@@ -25,7 +25,7 @@ impl<'a> Installing<'a> {
         registry: &'a mut StateRegistry,
         role: &'a Role,
         facts: &'a MatchFacts<'a>,
-    ) -> Installing<'a> {
+    ) -> Self {
         Installing {
             world,
             schedule,

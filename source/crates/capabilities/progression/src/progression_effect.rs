@@ -41,7 +41,7 @@ impl ProgressionEffect {
         if !ProgressionColumn::has(view, id, track) {
             return Err(CallError::Api(ProgressionRefusal::NoTrack.refused()));
         }
-        frame.queue(ProgressionEffect::AddXp {
+        frame.queue(Self::AddXp {
             id,
             track,
             amount: amount.number(frame),
@@ -56,7 +56,7 @@ impl Effect for ProgressionEffect {
     /// level, and raises the unit's level, which stats owns.
     fn apply(self, world: &mut World, _: &mut Frame) {
         match self {
-            ProgressionEffect::AddXp { id, track, amount } => {
+            Self::AddXp { id, track, amount } => {
                 let entity = world.entity_of(id).expect("a unit given experience exists");
                 let book = world.resource::<TrackBook>().clone();
                 let raised = world

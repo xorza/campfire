@@ -62,7 +62,7 @@ impl UnitsApi {
         );
         api.ty::<Vec3>("Vector")
             .method(rotated, |vector: Vec3, degrees: Num| {
-                UnitsApi::rotated(vector, degrees)
+                Self::rotated(vector, degrees)
             })
             .method(
                 distance,
@@ -77,7 +77,7 @@ impl UnitsApi {
             .method(
                 within,
                 |ctx: &Ctx, from: ScriptPosition, to: ScriptPosition, radius: ScriptRadius| {
-                    Ok(UnitsApi::within(ctx, from.get(), to.get(), radius))
+                    Ok(Self::within(ctx, from.get(), to.get(), radius))
                 },
             )
             .method(
@@ -98,17 +98,17 @@ impl UnitsApi {
         );
         api.method(
             MemberSpec::operator(ApiOwner::Vector, "+", "the sum of two vectors"),
-            |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_add(b)),
+            |a: Vec3, b: Vec3| Self::exact(a.checked_add(b)),
         )
         .method(
             MemberSpec::operator(ApiOwner::Vector, "-", "the difference of two vectors"),
-            |a: Vec3, b: Vec3| UnitsApi::exact(a.checked_sub(b)),
+            |a: Vec3, b: Vec3| Self::exact(a.checked_sub(b)),
         )
         .method(scaled, |vector: Vec3, factor: Num| {
-            UnitsApi::exact(vector.checked_mul(factor))
+            Self::exact(vector.checked_mul(factor))
         })
         .method(scaled, |factor: Num, vector: Vec3| {
-            UnitsApi::exact(vector.checked_mul(factor))
+            Self::exact(vector.checked_mul(factor))
         });
     }
 
@@ -123,7 +123,7 @@ impl UnitsApi {
             .checked_mul(Num::PI)
             .and_then(|turn| turn.checked_div_int(180))
             .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))?;
-        UnitsApi::exact(vector.checked_rotated_y(radians.sin_cos()))
+        Self::exact(vector.checked_rotated_y(radians.sin_cos()))
     }
 
     /// Whether `to` is within `radius` of `from` in the map's metric, exactly: the reach rule

@@ -25,8 +25,8 @@ pub(crate) struct ModeSchema {
 
 impl ModeSchema {
     /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives.
-    pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> ModeSchema {
-        let mut schema = ModeSchema {
+    pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> Self {
+        let mut schema = Self {
             script,
             hooks: scripts.defines(Some(script), ScriptRole::Mode),
             params: NameTable::default(),

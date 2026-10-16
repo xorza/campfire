@@ -15,7 +15,7 @@ impl RowMarks {
 
     /// Marks `entity`'s row for `source` to fill again.
     pub(crate) fn mark(&mut self, entity: Entity, source: usize) {
-        debug_assert!(source < RowMarks::SOURCES);
+        debug_assert!(source < Self::SOURCES);
         let at = entity.index_u32();
         let index = at as usize;
         if self.bits.len() <= index {

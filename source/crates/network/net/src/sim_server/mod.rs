@@ -184,7 +184,7 @@ impl Plugin for SimServer {
         );
         app.add_systems(
             Update,
-            SimServer::take_save_commands
+            Self::take_save_commands
                 .after(Door::watch)
                 .run_if(resource_exists::<Door>)
                 .run_if(session_running),
@@ -218,7 +218,7 @@ impl Plugin for SimServer {
                 run_sim_tick,
                 record_hash.run_if(resource_exists::<TickHashes>),
                 // Right after the tick, before any entry of the next.
-                SimServer::begin_checkpoint.run_if(resource_exists::<Checkpoints>),
+                Self::begin_checkpoint.run_if(resource_exists::<Checkpoints>),
                 report_deaths,
                 report_end,
             )
@@ -230,7 +230,7 @@ impl Plugin for SimServer {
             FixedUpdate,
             Shows
                 .in_set(SimTickSystems)
-                .after(SimServer::begin_checkpoint)
+                .after(Self::begin_checkpoint)
                 .before(report_deaths),
         );
     }
@@ -342,7 +342,7 @@ impl SimServer {
             "one client per player"
         );
         let terms = log.header().terms.clone();
-        SimServer::take_terms(world, &terms, packages).map_err(StartError::Terms)?;
+        Self::take_terms(world, &terms, packages).map_err(StartError::Terms)?;
         let slots = log.slot_count();
         Session::start(
             world,
@@ -361,7 +361,7 @@ impl SimServer {
             seats: Seats::new(slots, clients),
             bots,
         };
-        let start = SimServer::run_match(world, run);
+        let start = Self::run_match(world, run);
         let next = world.resource::<Session>().log().next_tick();
         for &(slot, client) in clients {
             let team = world.team_of(slot).expect("every player has a team");
@@ -466,7 +466,7 @@ impl SimServer {
         bots: ServerBots,
     ) -> Result<(), RestoreMatchError> {
         let terms = restored.log.header().terms.clone();
-        SimServer::take_terms(world, &terms, packages)
+        Self::take_terms(world, &terms, packages)
             .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
         let slots = restored.log.slot_count();
         let signer = Signer::new(server.key, server.os.entropy);
@@ -484,10 +484,10 @@ impl SimServer {
             seats: Seats::gone(slots, players.iter().copied(), now),
             bots,
         };
-        SimServer::run_match(world, run);
+        Self::run_match(world, run);
         // The stop may have come after the tick before this boundary, before the save it made due
         // here began.
-        SimServer::begin_checkpoint(world);
+        Self::begin_checkpoint(world);
         let mut session = world.resource_mut::<Session>();
         for &slot in &players {
             session

@@ -62,7 +62,7 @@ impl Effect for ModeEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
         match self {
-            ModeEffect::Timer {
+            Self::Timer {
                 name,
                 ticks,
                 repeat,
@@ -70,19 +70,19 @@ impl Effect for ModeEffect {
             } => world
                 .resource_mut::<Timers>()
                 .set(now, name, ticks, repeat, data),
-            ModeEffect::End(result) => {
+            Self::End(result) => {
                 let tick = world.resource::<SimTick>().start();
                 let entity = world
                     .match_entity()
                     .expect("a match that runs has its entity");
                 world.entity_mut(entity).insert(MatchEnd::new(tick, result));
             }
-            ModeEffect::SpawnUnit(at) => {
+            Self::SpawnUnit(at) => {
                 let spawner = world.non_send::<Spawner>().clone();
                 spawner.spawn(world, at, ());
             }
-            ModeEffect::SpawnGroup(group) => group.spawn(world),
-            ModeEffect::Grant {
+            Self::SpawnGroup(group) => group.spawn(world),
+            Self::Grant {
                 id,
                 kind,
                 rank,
@@ -102,22 +102,22 @@ impl Effect for ModeEffect {
                 }
                 ClipShots::hold(world, entity);
             }
-            ModeEffect::Respawn { id, ticks } => {
+            Self::Respawn { id, ticks } => {
                 let entity = world.entity_of(id);
                 let entity = entity.expect("a dead unit that stays is in the world");
                 let at = now.after(ticks);
                 world.entity_mut(entity).insert(Respawn { at });
             }
-            ModeEffect::Learn { id, slot } => {
+            Self::Learn { id, slot } => {
                 let entity = world.entity_of(id);
                 let entity = entity.expect("a unit the view read is in the world");
                 let slots = world.get_mut::<ActionSlots>(entity);
                 slots.expect("a unit with ability slots").learn(slot);
             }
-            ModeEffect::SetRelation { a, b, relation } => {
+            Self::SetRelation { a, b, relation } => {
                 world.relations_mut().set_keeping_vision(a, b, relation);
             }
-            ModeEffect::SetOut { slot, out } => {
+            Self::SetOut { slot, out } => {
                 let player = world.player_entity(slot);
                 let mut player = world.entity_mut(player.expect("every slot has its entity"));
                 if out {
@@ -127,7 +127,7 @@ impl Effect for ModeEffect {
                 }
             }
             // A call's `now` is the end of its tick.
-            ModeEffect::Save => world.insert_resource(SaveAsked::new(now)),
+            Self::Save => world.insert_resource(SaveAsked::new(now)),
         }
     }
 }

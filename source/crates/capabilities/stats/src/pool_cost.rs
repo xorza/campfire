@@ -9,8 +9,8 @@ pub struct PoolCost([Num; PoolId::LIMIT]);
 
 impl PoolCost {
     /// The cost of `amounts`, each not negative, a pool named at most once.
-    pub fn new(amounts: impl IntoIterator<Item = (PoolId, Num)>) -> PoolCost {
-        let mut cost = PoolCost::default();
+    pub fn new(amounts: impl IntoIterator<Item = (PoolId, Num)>) -> Self {
+        let mut cost = Self::default();
         for (pool, amount) in amounts {
             debug_assert!(amount >= Num::ZERO, "a cost is not negative");
             debug_assert_eq!(cost.0[pool.index()], Num::ZERO, "a pool is named once");

@@ -12,10 +12,7 @@ pub struct Payer<'a> {
 impl<'a> Payer<'a> {
     /// The payer of a unit of `pools`, whose player holds `resources`: none for a unit no player
     /// owns, or in a match that keeps no players' resources.
-    pub const fn of(
-        pools: PoolMetersMut<'a>,
-        resources: Option<&'a mut PlayerResources>,
-    ) -> Payer<'a> {
+    pub const fn of(pools: PoolMetersMut<'a>, resources: Option<&'a mut PlayerResources>) -> Self {
         Payer { pools, resources }
     }
 

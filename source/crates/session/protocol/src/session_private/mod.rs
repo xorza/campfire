@@ -28,7 +28,7 @@ impl SessionPrivate {
     }
 
     /// The record of a file's `bytes`; an error for bytes that `encode` did not write.
-    pub fn decode(bytes: &[u8]) -> Result<SessionPrivate, TaggedError> {
+    pub fn decode(bytes: &[u8]) -> Result<Self, TaggedError> {
         Binary::decode_tagged(PRIVATE_TAG, bytes)
     }
 }

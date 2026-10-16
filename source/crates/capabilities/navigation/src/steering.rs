@@ -122,7 +122,7 @@ impl Steering {
             (true, Some(apart)) => apart,
             _ => self.standing.as_ref().expect("steering read the bodies"),
         };
-        let window_cells = i64::try_from(Steering::WINDOW).expect("a small window");
+        let window_cells = i64::try_from(Self::WINDOW).expect("a small window");
         let reach = grid.cell() * window_cells;
         let look = at.step_toward(route.ahead()[0], reach);
         if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.spent() {
@@ -130,7 +130,7 @@ impl Steering {
         }
         let clearance = grid.clearance(walker);
         let cells = clearance.grid();
-        let window = Window::around(cells, cells.nearest_cell(at), Steering::WINDOW);
+        let window = Window::around(cells, cells.nearest_cell(at), Self::WINDOW);
         let inside = |pos: &Vec3| {
             let cell = cells.nearest_cell(*pos);
             window.contains(cell % cells.columns(), cell / cells.columns())

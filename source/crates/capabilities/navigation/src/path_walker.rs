@@ -34,13 +34,12 @@ pub enum PathEnd {
 /// `PathEnd::Start` and `PathEnd::End` in scripts, `start` and `end` in data.
 impl ScriptEnum for PathEnd {
     const ENUM: EngineEnum = EngineEnum::PathEnd;
-    const MEMBERS: &'static [(&'static str, PathEnd)] =
-        &[("Start", PathEnd::Start), ("End", PathEnd::End)];
+    const MEMBERS: &'static [(&'static str, Self)] = &[("Start", Self::Start), ("End", Self::End)];
 
     fn data_name(self) -> &'static str {
         match self {
-            PathEnd::Start => "start",
-            PathEnd::End => "end",
+            Self::Start => "start",
+            Self::End => "end",
         }
     }
 }
@@ -48,8 +47,8 @@ impl ScriptEnum for PathEnd {
 impl PathWalker {
     /// A walker of `group` at the end `from` of its path, bound for its second waypoint from
     /// there.
-    pub const fn start(from: PathEnd, group: StableId) -> PathWalker {
-        PathWalker {
+    pub const fn start(from: PathEnd, group: StableId) -> Self {
+        Self {
             from,
             next: 1,
             left: false,

@@ -39,8 +39,8 @@ struct Named {
 }
 
 impl Named {
-    fn of<T: 'static>() -> Named {
-        Named {
+    fn of<T: 'static>() -> Self {
+        Self {
             id: TypeId::of::<T>(),
             name: type_name::<T>(),
         }
@@ -563,12 +563,12 @@ campfire_common::enum_all! {
 
 impl ModuleSet for StraySet {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
-    const ALL: &'static [StraySet] = &StraySet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            StraySet::Early => Phase::Begin,
-            StraySet::Late => Phase::Fire,
+            Self::Early => Phase::Begin,
+            Self::Late => Phase::Fire,
         })
     }
 }

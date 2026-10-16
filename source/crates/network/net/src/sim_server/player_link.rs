@@ -14,8 +14,8 @@ pub(crate) struct PlayerLink {
 }
 
 impl PlayerLink {
-    pub(crate) const fn new(slot: PlayerSlot, team: Team) -> PlayerLink {
-        PlayerLink {
+    pub(crate) const fn new(slot: PlayerSlot, team: Team) -> Self {
+        Self {
             slot,
             team,
             refused: false,
@@ -37,8 +37,8 @@ impl PlayerLink {
     }
 
     /// The link as the log refused one of its messages.
-    pub(super) const fn into_refused(self) -> PlayerLink {
-        PlayerLink {
+    pub(super) const fn into_refused(self) -> Self {
+        Self {
             refused: true,
             ..self
         }

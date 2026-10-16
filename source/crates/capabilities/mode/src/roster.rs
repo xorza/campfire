@@ -14,8 +14,8 @@ pub(crate) struct Roster {
 }
 
 impl Roster {
-    pub(crate) fn new(avatars: Names<Offer>, loadout: &LoadoutSetup) -> Roster {
-        Roster {
+    pub(crate) fn new(avatars: Names<Offer>, loadout: &LoadoutSetup) -> Self {
+        Self {
             avatars,
             loadout: loadout.sorted(),
         }

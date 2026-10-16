@@ -20,7 +20,7 @@ pub struct FlightState {
 
 impl FlightState {
     /// A flight none of which is flown.
-    pub const START: FlightState = FlightState {
+    pub const START: Self = Self {
         flown: Num::ZERO,
         lost: false,
     };
@@ -67,7 +67,7 @@ impl Replication for FlightState {
 
 /// A snapshot is untrusted, so a flight of fewer than 0 meters fails to decode.
 impl<'de> Deserialize<'de> for FlightState {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<FlightState, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             flown: Num,
@@ -77,6 +77,6 @@ impl<'de> Deserialize<'de> for FlightState {
         if flown < Num::ZERO {
             return Err(D::Error::custom("a flight of fewer than 0 meters"));
         }
-        Ok(FlightState { flown, lost })
+        Ok(Self { flown, lost })
     }
 }

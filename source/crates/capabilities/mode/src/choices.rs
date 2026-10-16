@@ -17,8 +17,8 @@ pub struct Choices(Vec<Option<Offer>>);
 
 impl Choices {
     /// The choices of `players` players of `specs`, none chosen.
-    pub(crate) fn empty(specs: &ChoiceSpecs, players: usize) -> Choices {
-        Choices(vec![None; specs.width() * players])
+    pub(crate) fn empty(specs: &ChoiceSpecs, players: usize) -> Self {
+        Self(vec![None; specs.width() * players])
     }
 
     /// Whether these choices hold a row of `specs` for each of `players` players, as `choose`
@@ -106,8 +106,8 @@ pub(crate) mod internals {
 
     impl Choices {
         /// The choices of `offers`, one a row, as a snapshot may hold them.
-        pub const fn of(offers: Vec<Option<Offer>>) -> Choices {
-            Choices(offers)
+        pub const fn of(offers: Vec<Option<Offer>>) -> Self {
+            Self(offers)
         }
 
         /// The offer each row took, if one.

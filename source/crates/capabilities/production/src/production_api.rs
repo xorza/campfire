@@ -43,7 +43,7 @@ impl ProductionApi {
                     &[&["player"]],
                     "what `player`'s living units and queued trains use of its supply",
                 ),
-                |ctx: &mut Ctx, player: i64| ProductionApi::supply(ctx, player, false),
+                |ctx: &mut Ctx, player: i64| Self::supply(ctx, player, false),
             )
             .call(
                 MemberSpec::call(
@@ -51,7 +51,7 @@ impl ProductionApi {
                     &[&["player"]],
                     "what `player`'s living, complete units give of supply, at most the mode's `max`",
                 ),
-                |ctx: &mut Ctx, player: i64| ProductionApi::supply(ctx, player, true),
+                |ctx: &mut Ctx, player: i64| Self::supply(ctx, player, true),
             );
     }
 

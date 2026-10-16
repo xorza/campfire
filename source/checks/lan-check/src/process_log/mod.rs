@@ -21,24 +21,24 @@ impl ProcessLog {
     /// one.
     const MAX_LEN: usize = 1 << 30;
 
-    pub(crate) const fn empty(process: Process) -> ProcessLog {
-        ProcessLog {
+    pub(crate) const fn empty(process: Process) -> Self {
+        Self {
             process,
             lines: Vec::new(),
         }
     }
 
     /// The log `process` wrote to `path`; empty when it wrote none.
-    pub(crate) fn read(process: Process, path: &Path) -> Result<ProcessLog, CheckError> {
-        match InputFile::read_if_present(path, ProcessLog::MAX_LEN).map_err(CheckError::Read)? {
-            Some(bytes) => ProcessLog::parse(process, &bytes),
-            None => Ok(ProcessLog::empty(process)),
+    pub(crate) fn read(process: Process, path: &Path) -> Result<Self, CheckError> {
+        match InputFile::read_if_present(path, Self::MAX_LEN).map_err(CheckError::Read)? {
+            Some(bytes) => Self::parse(process, &bytes),
+            None => Ok(Self::empty(process)),
         }
     }
 
     /// The log in `bytes`, one event a line. A last line with no line end is one a process did not
     /// finish writing before it was stopped, and is left out.
-    pub(crate) fn parse(process: Process, bytes: &[u8]) -> Result<ProcessLog, CheckError> {
+    pub(crate) fn parse(process: Process, bytes: &[u8]) -> Result<Self, CheckError> {
         // Cut before the text is read, so a character the process had not finished writing
         // goes with its line.
         let end = bytes.iter().rposition(|&byte| byte == b'\n').unwrap_or(0);
@@ -55,7 +55,7 @@ impl ProcessLog {
                 })
             })
             .collect::<Result<_, _>>()?;
-        Ok(ProcessLog { process, lines })
+        Ok(Self { process, lines })
     }
 
     pub(crate) fn lines(&self) -> &[LogLine] {

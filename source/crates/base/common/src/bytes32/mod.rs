@@ -16,8 +16,8 @@ pub(crate) mod error;
 pub struct Bytes32([u8; 32]);
 
 impl Bytes32 {
-    pub const fn new(bytes: [u8; 32]) -> Bytes32 {
-        Bytes32(bytes)
+    pub const fn new(bytes: [u8; 32]) -> Self {
+        Self(bytes)
     }
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
@@ -30,31 +30,30 @@ impl Bytes32 {
 
     /// The value the 64 lowercase hex digits `hex` write, as a literal in the code gives it; a
     /// text from outside reads by `FromStr`, which refuses a flawed one.
-    pub const fn of_hex(hex: &str) -> Bytes32 {
-        match Bytes32::parse(hex.as_bytes()) {
+    pub const fn of_hex(hex: &str) -> Self {
+        match Self::parse(hex.as_bytes()) {
             Some(bytes) => bytes,
             None => panic!("32 bytes are 64 lowercase hex digits"),
         }
     }
 
     /// The value the 64 lowercase hex digits `digits` write; none for any other text.
-    const fn parse(digits: &[u8]) -> Option<Bytes32> {
+    const fn parse(digits: &[u8]) -> Option<Self> {
         if digits.len() != 64 {
             return None;
         }
         let mut bytes = [0; 32];
         let mut at = 0;
         while at < 32 {
-            let (Some(high), Some(low)) = (
-                Bytes32::digit(digits[2 * at]),
-                Bytes32::digit(digits[2 * at + 1]),
-            ) else {
+            let (Some(high), Some(low)) =
+                (Self::digit(digits[2 * at]), Self::digit(digits[2 * at + 1]))
+            else {
                 return None;
             };
             bytes[at] = (high << 4) | low;
             at += 1;
         }
-        Some(Bytes32(bytes))
+        Some(Self(bytes))
     }
 
     /// The value of the lowercase hex digit `byte`; none for any other byte.
@@ -79,8 +78,8 @@ impl fmt::Display for Bytes32 {
 impl FromStr for Bytes32 {
     type Err = NotHex;
 
-    fn from_str(hex: &str) -> Result<Bytes32, NotHex> {
-        Bytes32::parse(hex.as_bytes()).ok_or(NotHex)
+    fn from_str(hex: &str) -> Result<Self, NotHex> {
+        Self::parse(hex.as_bytes()).ok_or(NotHex)
     }
 }
 

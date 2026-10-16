@@ -18,8 +18,8 @@ pub struct PlayerResources(Vec<i64>);
 
 impl PlayerResources {
     /// None of each of `resources` resources.
-    pub fn new(resources: usize) -> PlayerResources {
-        PlayerResources(vec![0; resources])
+    pub fn new(resources: usize) -> Self {
+        Self(vec![0; resources])
     }
 
     /// Whether adding each of `amounts` keeps every amount within an `i64`.

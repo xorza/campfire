@@ -71,7 +71,7 @@ impl<'a> TerrainCells<'a> {
         samples: &'a [u8],
         atlas: &'a TerrainAtlas,
         game: GameData,
-    ) -> TerrainCells<'a> {
+    ) -> Self {
         let columns = usize::try_from(terrain.columns).expect("a u32 fits usize");
         debug_assert_eq!(samples.len(), terrain.cells.len());
         TerrainCells {

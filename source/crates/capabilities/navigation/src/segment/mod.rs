@@ -9,8 +9,8 @@ pub struct Segment {
 }
 
 impl Segment {
-    pub const fn new(from: Vec3, to: Vec3) -> Segment {
-        Segment { from, to }
+    pub const fn new(from: Vec3, to: Vec3) -> Self {
+        Self { from, to }
     }
 
     pub(crate) const fn start(self) -> Vec3 {

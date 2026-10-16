@@ -67,7 +67,7 @@ impl BuildData {
     pub(crate) fn module(&mut self, module: &str) -> Option<ProductionModule> {
         match module {
             "productionupdate" => {
-                self.queue = Some(BuildData::QUEUE);
+                self.queue = Some(Self::QUEUE);
                 Some(ProductionModule::Queue)
             }
             "defaultproductionexitupdate"
@@ -123,8 +123,8 @@ impl BuildData {
 impl Default for BuildData {
     /// As `ThingTemplate` starts: free, a second to build, of no command set, prerequisite or
     /// production module.
-    fn default() -> BuildData {
-        BuildData {
+    fn default() -> Self {
+        Self {
             cost: 0,
             time: 1.0,
             command_set: None,

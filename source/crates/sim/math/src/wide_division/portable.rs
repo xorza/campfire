@@ -1,7 +1,7 @@
 use crate::wide_division::WideDivision;
 
 /// 2⁶⁴, exact in f64.
-const TWO_POW_64: f64 = 18_446_744_073_709_551_616.0;
+const TWO_POW_64: f64 = 18_446_744_073_709_552_000.0;
 /// 2³², exact in f64.
 const TWO_POW_32: f64 = 4_294_967_296.0;
 

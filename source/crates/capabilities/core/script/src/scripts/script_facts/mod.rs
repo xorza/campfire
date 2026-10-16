@@ -106,16 +106,12 @@ impl ScriptFacts {
     /// variable of that name, as every hook's first parameter is by convention and every helper
     /// passes it on; a use that breaks the convention is recorded, so the facts see every use of
     /// `ctx` in a script that keeps it.
-    pub fn read(
-        host: &ScriptHost,
-        source: &str,
-        api: &ScriptApi,
-    ) -> Result<ScriptFacts, ScriptError> {
-        Ok(ScriptFacts::of(&host.parse(source)?, api))
+    pub fn read(host: &ScriptHost, source: &str, api: &ScriptApi) -> Result<Self, ScriptError> {
+        Ok(Self::of(&host.parse(source)?, api))
     }
 
-    fn of(ast: &AST, api: &ScriptApi) -> ScriptFacts {
-        let mut facts = ScriptFacts {
+    fn of(ast: &AST, api: &ScriptApi) -> Self {
+        let mut facts = Self {
             functions: ast
                 .iter_functions()
                 .map(|function| ScriptFunction {
@@ -124,7 +120,7 @@ impl ScriptFacts {
                     ctx_first: function.params.first() == Some(&CTX),
                 })
                 .collect(),
-            ..ScriptFacts::default()
+            ..Self::default()
         };
         facts
             .functions
@@ -230,7 +226,7 @@ impl ScriptFacts {
     /// The members a chain of links reads, from `link`: its first is a name of `ctx` when
     /// `on_ctx`, and data when `data`, as after `p`; neither is a member.
     fn read_chain(&mut self, link: &Expr, on_ctx: bool, data: bool) {
-        let read = |facts: &mut ScriptFacts, link: &Expr| -> bool {
+        let read = |facts: &mut Self, link: &Expr| -> bool {
             let (name, kind) = match link {
                 Expr::Property(property, _) => (property.2.as_str(), MemberKind::Field),
                 Expr::MethodCall(call, _) => (call.name.as_str(), MemberKind::Method),

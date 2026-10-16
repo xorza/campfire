@@ -7,8 +7,8 @@ use campfire_values::{NameId, TrackId};
 pub struct TrackSet(u32);
 
 impl FromIterator<TrackId> for TrackSet {
-    fn from_iter<I: IntoIterator<Item = TrackId>>(tracks: I) -> TrackSet {
-        let mut set = TrackSet::default();
+    fn from_iter<I: IntoIterator<Item = TrackId>>(tracks: I) -> Self {
+        let mut set = Self::default();
         for track in tracks {
             set.0 |= 1 << track.index();
         }
@@ -17,7 +17,7 @@ impl FromIterator<TrackId> for TrackSet {
 }
 
 impl<const N: usize> From<[TrackId; N]> for TrackSet {
-    fn from(tracks: [TrackId; N]) -> TrackSet {
+    fn from(tracks: [TrackId; N]) -> Self {
         tracks.into_iter().collect()
     }
 }

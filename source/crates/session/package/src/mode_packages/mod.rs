@@ -377,7 +377,7 @@ impl ModePackages {
         manifest: ModeManifest,
         map_name: &MapName,
         dependencies: &[(PackageName, &PackageFiles)],
-    ) -> Result<ModePackages, LoadError> {
+    ) -> Result<Self, LoadError> {
         let mut parser = ScriptHost::new(manifest.script_limits.per_call);
         let api = Release::bind_script_api(&mut parser);
         let name = manifest.header.name.clone();
@@ -422,9 +422,9 @@ impl ModePackages {
             }
         }
         let dependents = dependencies.iter().map(|dependent| &dependent.package);
-        let scripts = ModePackages::read_hooks(iter::once(&mode).chain(dependents));
-        let tag_names = ModePackages::collect_tag_names((&data, &content), &dependencies);
-        let mut packages = ModePackages {
+        let scripts = Self::read_hooks(iter::once(&mode).chain(dependents));
+        let tag_names = Self::collect_tag_names((&data, &content), &dependencies);
+        let mut packages = Self {
             mode,
             manifest,
             script,

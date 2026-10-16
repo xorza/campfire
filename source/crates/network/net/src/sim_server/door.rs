@@ -54,8 +54,8 @@ impl AsRef<Offering> for Door {
 }
 
 impl Door {
-    pub(crate) const fn new(offering: Offering) -> Door {
-        Door { offering }
+    pub(crate) const fn new(offering: Offering) -> Self {
+        Self { offering }
     }
 
     /// Seats the player of each offered link that answered, or refuses them; the joins of one
@@ -68,22 +68,22 @@ impl Door {
     ) {
         joins.extend(links.iter_mut(world).filter_map(Offering::received));
         world
-            .resource::<Door>()
+            .resource::<Self>()
             .offering
             .check_all(joins.drain(..), &mut checked);
         for (link, error) in checked.refused.drain(..) {
-            Door::refuse(world, link, error);
+            Self::refuse(world, link, error);
         }
         let visibility = world.resource::<MatchVisibility>().0;
         for link in checked.watching.drain(..) {
             if let Err(error) = world.admit_spectator(link, &visibility) {
-                Door::refuse(world, link, error);
+                Self::refuse(world, link, error);
             }
         }
         for (link, delegation) in checked.answered.drain(..) {
-            match Door::seat_player(world, link, delegation) {
-                Ok(seat) => Door::seat(world, link, seat),
-                Err(error) => Door::refuse(world, link, error),
+            match Self::seat_player(world, link, delegation) {
+                Ok(seat) => Self::seat(world, link, seat),
+                Err(error) => Self::refuse(world, link, error),
             }
         }
     }
@@ -113,7 +113,7 @@ impl Door {
         if let Some((slot, session_key, chain)) = own {
             let renewed = session_key != delegation.terms().session_key;
             if renewed {
-                Door::serve(world, ServerInput::Renew { slot, delegation })?;
+                Self::serve(world, ServerInput::Renew { slot, delegation })?;
             }
             let seat = world.resource::<Seats>().get(slot);
             match seat.link {
@@ -127,7 +127,7 @@ impl Door {
                     world.flush();
                 }
                 _ if seat.gone_since.is_some() => {
-                    Door::serve(world, ServerInput::Connected { slot })?;
+                    Self::serve(world, ServerInput::Connected { slot })?;
                 }
                 _ => {}
             }
@@ -147,7 +147,7 @@ impl Door {
                 && !matches!(log.controller(slot), Some(Controller::Player { .. }))
         });
         if let Some(slot) = left {
-            Door::serve(world, ServerInput::Join { slot, delegation })?;
+            Self::serve(world, ServerInput::Join { slot, delegation })?;
             return Ok(SeatIn { slot, chain: None });
         }
         for wanted in [Controller::Open, Controller::Bot] {
@@ -160,7 +160,7 @@ impl Door {
                     slot,
                     delegation: delegation.clone(),
                 };
-                match Door::serve(world, join) {
+                match Self::serve(world, join) {
                     Ok(()) => return Ok(SeatIn { slot, chain: None }),
                     Err(JoinError::Refused(ServerInputRefused::Rule(
                         SlotRuleError::LateJoin | SlotRuleError::BotTakeover,
@@ -224,13 +224,13 @@ impl Door {
     /// and their link ends.
     pub(crate) fn watch(world: &mut World) {
         let now = world.resource::<Time<Real>>().elapsed();
-        let grace = world.resource::<Door>().offering.times.grace;
+        let grace = world.resource::<Self>().offering.times.grace;
         let slots = world.resource::<Session>().log().slot_count();
         for slot in (0..slots).map(PlayerSlot::new) {
             let seat = world.resource::<Seats>().get(slot);
             if let Some(link) = seat.link {
-                if Door::asked_to_leave(world, link) {
-                    Door::leave(world, slot, LeaveReason::Asked);
+                if Self::asked_to_leave(world, link) {
+                    Self::leave(world, slot, LeaveReason::Asked);
                     world.resource_mut::<Seats>().set(slot, Seat::default());
                     if let Ok(mut gone) = world.get_entity_mut(link) {
                         gone.remove::<PlayerLink>();
@@ -251,7 +251,7 @@ impl Door {
                     slot = slot.get(),
                     "a player's link failed; their grace period runs"
                 );
-                Door::serve(world, ServerInput::Disconnected { slot })
+                Self::serve(world, ServerInput::Disconnected { slot })
                     .expect("a seated slot has its player");
                 if let Ok(mut gone) = world.get_entity_mut(link) {
                     gone.remove::<PlayerLink>();
@@ -270,7 +270,7 @@ impl Door {
                     Some(Controller::Player { .. })
                 );
                 if player {
-                    Door::leave(world, slot, LeaveReason::Grace);
+                    Self::leave(world, slot, LeaveReason::Grace);
                 }
                 world.resource_mut::<Seats>().set(slot, Seat::default());
             }
@@ -288,7 +288,7 @@ impl Door {
     fn leave(world: &mut World, slot: PlayerSlot, reason: LeaveReason) {
         let becomes = world.resource::<Session>().after_leave();
         info!(slot = slot.get(), ?reason, ?becomes, "a player left");
-        Door::serve(
+        Self::serve(
             world,
             ServerInput::Leave {
                 slot,

@@ -17,7 +17,7 @@ struct Fixture {
 }
 
 impl Fixture {
-    fn new() -> Fixture {
+    fn new() -> Self {
         let class = |first_tile, tiles, width, name: &str| TextureClass {
             first_tile,
             tiles,
@@ -37,7 +37,7 @@ impl Fixture {
             path: PackagePath::parse("client/textures/art/terrain/sand.ktx2").unwrap(),
             size: UVec2::splat(128),
         });
-        Fixture {
+        Self {
             parts: TerrainParts {
                 columns: COLUMNS_U32,
                 cells: vec![cell; COLUMNS * ROWS],
@@ -58,7 +58,7 @@ impl Fixture {
     }
 
     fn cell(&mut self, at: [usize; 2]) -> &mut TerrainCell {
-        &mut self.parts.cells[Fixture::at(at)]
+        &mut self.parts.cells[Self::at(at)]
     }
 
     /// Sets the heights of the cell `[x, y]`'s corners, in the game's order.
@@ -67,7 +67,7 @@ impl Fixture {
             .into_iter()
             .zip(heights)
         {
-            self.samples[Fixture::at(corner)] = height;
+            self.samples[Self::at(corner)] = height;
         }
     }
 

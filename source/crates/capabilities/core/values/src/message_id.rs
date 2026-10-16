@@ -12,11 +12,11 @@ pub struct MessageId(Box<str>);
 
 impl MessageId {
     /// `text` as an id; `None` unless it is of that form.
-    pub fn new(text: &str) -> Option<MessageId> {
+    pub fn new(text: &str) -> Option<Self> {
         let mut chars = text.chars();
         let first = chars.next()?;
         let rest = |c: char| c.is_ascii_alphanumeric() || c == '-' || c == '_';
-        (first.is_ascii_alphabetic() && chars.all(rest)).then(|| MessageId(text.into()))
+        (first.is_ascii_alphabetic() && chars.all(rest)).then(|| Self(text.into()))
     }
 
     pub fn as_str(&self) -> &str {
@@ -32,9 +32,9 @@ impl Borrow<str> for MessageId {
 }
 
 impl<'de> Deserialize<'de> for MessageId {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<MessageId, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        MessageId::new(&text).ok_or_else(|| {
+        Self::new(&text).ok_or_else(|| {
             D::Error::custom(format!(
                 "{text:?} is not a message id: a letter, then letters, digits, - and _"
             ))

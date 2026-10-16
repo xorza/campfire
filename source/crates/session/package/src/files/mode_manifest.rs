@@ -41,7 +41,7 @@ impl ModeManifest {
 
 /// The flat table of a mode's manifest, its header's fields among the others.
 impl<'de> Deserialize<'de> for ModeManifest {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModeManifest, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -58,7 +58,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
             dependencies: BTreeMap<PackageName, Dependency>,
         }
         let fields = Fields::deserialize(deserializer)?;
-        Ok(ModeManifest {
+        Ok(Self {
             header: PackageHeader {
                 name: fields.name,
                 version: fields.version,

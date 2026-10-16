@@ -143,7 +143,7 @@ pub struct ZeroHour<'a> {
 
 impl<'a> ZeroHour<'a> {
     /// The install under `root`, refused unless its archives are a version of `known`.
-    pub fn open(root: &Path, known: &'a [GameVersion]) -> Result<ZeroHour<'a>, ZeroHourError> {
+    pub fn open(root: &Path, known: &'a [GameVersion]) -> Result<Self, ZeroHourError> {
         let install = Install::open(root)?;
         let version = GameVersion::identify(&install.hashed()?, known)?;
         Ok(ZeroHour { install, version })

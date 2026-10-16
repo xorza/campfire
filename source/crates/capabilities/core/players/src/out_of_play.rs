@@ -30,7 +30,7 @@ impl OutOfPlay {
     /// entities unpredicted, which no query here reads, so only the server marks them.
     pub fn refresh(
         units: Query<'_, '_, (&Owner, Has<Dead>), With<Avatar>>,
-        players: Query<'_, '_, (Entity, &Player, Has<HeldOut>, Has<OutOfPlay>)>,
+        players: Query<'_, '_, (Entity, &Player, Has<HeldOut>, Has<Self>)>,
         mut avatars: Local<'_, Vec<Avatars>>,
         mut commands: Commands<'_, '_>,
     ) {
@@ -50,9 +50,9 @@ impl OutOfPlay {
                 .unwrap_or_default();
             let out = held_out || (of.held && !of.living);
             if out && !marked {
-                commands.entity(entity).insert(OutOfPlay);
+                commands.entity(entity).insert(Self);
             } else if !out && marked {
-                commands.entity(entity).remove::<OutOfPlay>();
+                commands.entity(entity).remove::<Self>();
             }
         }
     }

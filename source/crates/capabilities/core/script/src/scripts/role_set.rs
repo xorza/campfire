@@ -5,23 +5,22 @@ use crate::scripts::script_role::ScriptRole;
 pub struct RoleSet(u8);
 
 impl RoleSet {
-    pub const ALL: RoleSet = RoleSet::of(&ScriptRole::ALL);
+    pub const ALL: Self = Self::of(&ScriptRole::ALL);
     /// The roles whose calls have an acting unit: every one but the mode's.
-    pub const ACTING: RoleSet =
-        RoleSet::of(&[ScriptRole::Action, ScriptRole::Modifier, ScriptRole::Ai]);
+    pub const ACTING: Self = Self::of(&[ScriptRole::Action, ScriptRole::Modifier, ScriptRole::Ai]);
     /// The role of an action's own calls, not its modifiers'.
-    pub const ACTION: RoleSet = RoleSet::of(&[ScriptRole::Action]);
-    pub const MODE: RoleSet = RoleSet::of(&[ScriptRole::Mode]);
-    pub const AI: RoleSet = RoleSet::of(&[ScriptRole::Ai]);
+    pub const ACTION: Self = Self::of(&[ScriptRole::Action]);
+    pub const MODE: Self = Self::of(&[ScriptRole::Mode]);
+    pub const AI: Self = Self::of(&[ScriptRole::Ai]);
 
-    pub const fn of(roles: &[ScriptRole]) -> RoleSet {
+    pub const fn of(roles: &[ScriptRole]) -> Self {
         let mut bits = 0;
         let mut at = 0;
         while at < roles.len() {
             bits |= 1 << roles[at] as u8;
             at += 1;
         }
-        RoleSet(bits)
+        Self(bits)
     }
 
     pub const fn contains(self, role: ScriptRole) -> bool {

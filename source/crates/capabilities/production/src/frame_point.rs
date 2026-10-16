@@ -13,10 +13,10 @@ pub struct FramePoint([Num; 2]);
 
 impl FramePoint {
     /// `[x, z]`; `None` for a coordinate past `Position::BOUND`.
-    pub fn new(point: [Num; 2]) -> Option<FramePoint> {
+    pub fn new(point: [Num; 2]) -> Option<Self> {
         let within =
             |at: &Num| at.to_bits().unsigned_abs() <= Position::BOUND.to_bits().unsigned_abs();
-        point.iter().all(within).then_some(FramePoint(point))
+        point.iter().all(within).then_some(Self(point))
     }
 
     /// The point of a producer at `pos` that faces `angle` degrees, at its height: the frame's
@@ -32,8 +32,8 @@ impl FramePoint {
 impl TryFrom<[Num; 2]> for FramePoint {
     type Error = PointPastBound;
 
-    fn try_from(point: [Num; 2]) -> Result<FramePoint, PointPastBound> {
-        FramePoint::new(point).ok_or(PointPastBound(point))
+    fn try_from(point: [Num; 2]) -> Result<Self, PointPastBound> {
+        Self::new(point).ok_or(PointPastBound(point))
     }
 }
 

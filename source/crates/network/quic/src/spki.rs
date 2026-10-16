@@ -19,7 +19,7 @@ const SPKI_LEN: usize = SPKI_PREFIX.len() + 32;
 pub(crate) struct Spki([u8; SPKI_LEN]);
 
 impl Spki {
-    pub(crate) const fn of(key: &TlsKey) -> Spki {
+    pub(crate) const fn of(key: &TlsKey) -> Self {
         let key = key.as_bytes();
         let mut spki = [0; SPKI_LEN];
         let mut index = 0;
@@ -31,7 +31,7 @@ impl Spki {
             spki[index] = key[index - SPKI_PREFIX.len()];
             index += 1;
         }
-        Spki(spki)
+        Self(spki)
     }
 
     pub(crate) const fn as_bytes(&self) -> &[u8; SPKI_LEN] {

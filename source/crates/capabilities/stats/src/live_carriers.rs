@@ -80,8 +80,8 @@ impl LiveCarriers {
 }
 
 impl Cache for LiveCarriers {
-    fn installed() -> Option<LiveCarriers> {
-        Some(LiveCarriers::default())
+    fn installed() -> Option<Self> {
+        Some(Self::default())
     }
 }
 

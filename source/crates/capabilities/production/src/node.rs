@@ -17,8 +17,8 @@ pub struct Node {
 }
 
 impl Node {
-    pub const fn new(amount: u32) -> Node {
-        Node {
+    pub const fn new(amount: u32) -> Self {
+        Self {
             amount,
             holder: None,
         }

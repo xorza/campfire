@@ -33,7 +33,7 @@ pub(crate) struct CellFrame {
 
 impl CliffWalls {
     /// The walls of `cliffs`, a cell each, the game's row after row of `columns` cells.
-    pub(crate) fn of(cliffs: &[bool], columns: usize) -> CliffWalls {
+    pub(crate) fn of(cliffs: &[bool], columns: usize) -> Self {
         debug_assert!(columns > 0 && cliffs.len().is_multiple_of(columns));
         let rows = cliffs.len() / columns;
         let grown: Vec<bool> = (0..cliffs.len())
@@ -76,7 +76,7 @@ impl CliffWalls {
             rows: from..=rows - 1,
         }));
         rects.sort_by_key(|rect| (*rect.rows.start(), *rect.columns.start()));
-        CliffWalls { rects }
+        Self { rects }
     }
 
     /// Each rectangle as a wall on the engine's axes, its cells placed by `frame`, cut to

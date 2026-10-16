@@ -41,9 +41,9 @@ impl DeclaredResources {
     /// own, the sim's own and those of `host` aside, then, while the match runs, each scratch
     /// resource not clear, each by its name.
     pub(super) fn audit(set: CapabilitySet, world: &World, host: &[TypeId]) -> Vec<String> {
-        let mut declared = DeclaredResources::default();
+        let mut declared = Self::default();
         Release::declare(set, &mut declared);
-        declared.ids.extend(DeclaredResources::release_own());
+        declared.ids.extend(Self::release_own());
         declared.ids.extend(SimWorldBuilder::sim_resources());
         declared.ids.extend(host);
         let mut unlisted: Vec<String> = world

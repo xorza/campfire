@@ -11,22 +11,20 @@ pub struct GroupBox {
 
 impl GroupBox {
     /// The box of `positions`; `None` for none.
-    pub fn of(positions: impl IntoIterator<Item = Vec3>) -> Option<GroupBox> {
-        positions
-            .into_iter()
-            .fold(None, |held: Option<GroupBox>, at| {
-                let point = [at.x, at.z];
-                Some(held.map_or(
-                    GroupBox {
-                        low: point,
-                        high: point,
-                    },
-                    |held| GroupBox {
-                        low: [held.low[0].min(at.x), held.low[1].min(at.z)],
-                        high: [held.high[0].max(at.x), held.high[1].max(at.z)],
-                    },
-                ))
-            })
+    pub fn of(positions: impl IntoIterator<Item = Vec3>) -> Option<Self> {
+        positions.into_iter().fold(None, |held: Option<Self>, at| {
+            let point = [at.x, at.z];
+            Some(held.map_or(
+                Self {
+                    low: point,
+                    high: point,
+                },
+                |held| Self {
+                    low: [held.low[0].min(at.x), held.low[1].min(at.z)],
+                    high: [held.high[0].max(at.x), held.high[1].max(at.z)],
+                },
+            ))
+        })
     }
 
     /// The box's midpoint: each coordinate the half of its two ends' sum, rounded toward negative

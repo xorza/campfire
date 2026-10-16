@@ -136,7 +136,7 @@ impl Construction {
                 }
                 Step::Start(start) => {
                     Navigation::go_to(world, entity, None);
-                    Construction::spawn_site::<S>(world, entity, start, &mut paid);
+                    Self::spawn_site::<S>(world, entity, start, &mut paid);
                 }
             }
         }
@@ -313,7 +313,7 @@ impl Construction {
                 pos: at.get(),
                 body: *site_body,
             };
-            let reaches = Construction::in_range(map.metric, from.get(), body, range, placed);
+            let reaches = Self::in_range(map.metric, from.get(), body, range, placed);
             if reaches && !UnitTags::properties_of(tags).blocks(Block::Use) {
                 building.push(BuildingAt {
                     site,

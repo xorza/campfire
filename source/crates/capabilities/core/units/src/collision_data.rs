@@ -20,7 +20,7 @@ pub struct CollisionData {
 /// A radius `Body::new` takes, or a size `BodyBox::new` takes, one of them, or the section fails
 /// to read.
 impl<'de> Deserialize<'de> for CollisionData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<CollisionData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -44,7 +44,7 @@ impl<'de> Deserialize<'de> for CollisionData {
                 ));
             }
         };
-        Ok(CollisionData {
+        Ok(Self {
             form,
             layer: fields.layer,
         })

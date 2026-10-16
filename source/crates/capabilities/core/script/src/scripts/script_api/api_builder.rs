@@ -39,7 +39,7 @@ pub struct ApiBuilder<'a> {
 }
 
 impl<'a> ApiBuilder<'a> {
-    pub const fn new(host: &'a mut ScriptHost, api: &'a mut ScriptApi) -> ApiBuilder<'a> {
+    pub const fn new(host: &'a mut ScriptHost, api: &'a mut ScriptApi) -> Self {
         ApiBuilder {
             host,
             api,

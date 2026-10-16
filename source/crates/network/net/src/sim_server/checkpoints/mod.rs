@@ -39,7 +39,7 @@ impl Checkpoints {
         world.track(&mut base);
         let thread =
             CheckpointThread::start(world.resource::<StateRegistry>().clone(), base, snapshots);
-        world.insert_resource(Checkpoints {
+        world.insert_resource(Self {
             plan: Vec::new(),
             thread,
         });
@@ -62,12 +62,12 @@ impl Checkpoints {
     pub(crate) fn begin(world: &mut World) -> Option<Outcome> {
         let next = world.session().log().next_tick();
         let saved = world.save_due();
-        let mut checkpoints = world.resource_mut::<Checkpoints>();
+        let mut checkpoints = world.resource_mut::<Self>();
         let due = saved || checkpoints.plan.first() == Some(&next);
         checkpoints.plan.retain(|&tick| tick > next);
         if !due {
             if !checkpoints.thread.pending() {
-                Checkpoints::send(world, None);
+                Self::send(world, None);
             }
             return None;
         }
@@ -76,14 +76,14 @@ impl Checkpoints {
             .log()
             .begun_checkpoint()
             .is_some();
-        if recording && let Err(error) = Checkpoints::settle(world) {
+        if recording && let Err(error) = Self::settle(world) {
             world
                 .resource_mut::<Faults>()
                 .report(Fault::Snapshot(error));
             return None;
         }
         match world.resource_mut::<Session>().begin_checkpoint() {
-            Ok(begun) => Checkpoints::send(world, Some(begun)),
+            Ok(begun) => Self::send(world, Some(begun)),
             Err(CheckpointBeginError::PastSeeds) => {
                 SeedsRanOut { tick: next }.log();
                 return Some(Outcome::Aborted);
@@ -98,8 +98,8 @@ impl Checkpoints {
     /// Logs the record of the checkpoint the thread finished, when it did; reports its fault
     /// when its snapshot was not written.
     pub(crate) fn finish(world: &mut World) {
-        let returned = world.resource_mut::<Checkpoints>().thread.take();
-        if let Err(error) = Checkpoints::record(world, returned) {
+        let returned = world.resource_mut::<Self>().thread.take();
+        if let Err(error) = Self::record(world, returned) {
             world
                 .resource_mut::<Faults>()
                 .report(Fault::Snapshot(error));
@@ -110,11 +110,11 @@ impl Checkpoints {
     /// checkpoint among them; an error when a snapshot was not written.
     pub(super) fn settle(world: &mut World) -> Result<(), PathError<DurableError>> {
         loop {
-            let returned = world.resource_mut::<Checkpoints>().thread.wait();
+            let returned = world.resource_mut::<Self>().thread.wait();
             if returned.is_none() {
                 return Ok(());
             }
-            Checkpoints::record(world, returned)?;
+            Self::record(world, returned)?;
         }
     }
 
@@ -129,7 +129,7 @@ impl Checkpoints {
         if !world.contains_resource::<LocalSession>() {
             return Err(SaveRefusal::NotLocal);
         }
-        if !world.contains_resource::<Checkpoints>() {
+        if !world.contains_resource::<Self>() {
             return Err(SaveRefusal::NoData);
         }
         match command {
@@ -139,13 +139,11 @@ impl Checkpoints {
                     return Err(SaveRefusal::ByMode);
                 }
                 let next = session.log().next_tick();
-                world
-                    .resource_mut::<Checkpoints>()
-                    .request(next.after(Ticks::ONE));
+                world.resource_mut::<Self>().request(next.after(Ticks::ONE));
                 Ok(None)
             }
             SaveCommand::LoadLatest => {
-                if let Err(error) = Checkpoints::settle(world) {
+                if let Err(error) = Self::settle(world) {
                     world
                         .resource_mut::<Faults>()
                         .report(Fault::Snapshot(error));
@@ -176,14 +174,14 @@ impl Checkpoints {
         let mut snapshot = Vec::new();
         let record = world.checkpoint(&mut snapshot).expect("a checkpoint begun");
         snapshots.write(&snapshot)?;
-        Checkpoints::log(world, record);
+        Self::log(world, record);
         Ok(())
     }
 
     /// Sends the thread the state changed since the last delta, with the checkpoint `begun` at
     /// the boundary before the next tick, when one is.
     fn send(world: &mut World, begun: Option<CheckpointBegun>) {
-        world.resource_scope(|world, mut checkpoints: Mut<'_, Checkpoints>| {
+        world.resource_scope(|world, mut checkpoints: Mut<'_, Self>| {
             checkpoints.thread.send(begun, |delta| world.changes(delta));
         });
     }
@@ -197,7 +195,7 @@ impl Checkpoints {
         match returned {
             None | Some(Returned::Applied) => Ok(()),
             Some(Returned::Taken(record)) => {
-                Checkpoints::log(world, record);
+                Self::log(world, record);
                 Ok(())
             }
             Some(Returned::Failed(error)) => Err(error),

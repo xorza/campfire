@@ -19,7 +19,7 @@ impl StatRule {
 
 /// A rule whose limits are not numbers, or whose minimum passes its maximum, fails to read.
 impl<'de> Deserialize<'de> for StatRule {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<StatRule, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -32,6 +32,6 @@ impl<'de> Deserialize<'de> for StatRule {
         {
             return Err(D::Error::custom("a stat's min passes its max"));
         }
-        Ok(StatRule { min, max })
+        Ok(Self { min, max })
     }
 }

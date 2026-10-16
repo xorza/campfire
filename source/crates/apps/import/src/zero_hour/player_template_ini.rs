@@ -16,7 +16,7 @@ pub(crate) struct PlayerTemplateIni {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct PlayerTemplate {
     pub(crate) building: Option<String>,
-    units: [Option<String>; PlayerTemplate::UNITS],
+    units: [Option<String>; Self::UNITS],
 }
 
 impl PlayerTemplateIni {

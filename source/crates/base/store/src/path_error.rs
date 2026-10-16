@@ -15,8 +15,8 @@ pub struct PathError<E> {
 impl<E> PathError<E> {
     /// Gives `error` the path `path`, as `map_err` takes it; the path is copied only on a
     /// failure, so a call that succeeds allocates nothing for it.
-    pub(crate) fn at(path: &Path) -> impl FnOnce(E) -> PathError<E> + '_ {
-        move |error| PathError {
+    pub(crate) fn at(path: &Path) -> impl FnOnce(E) -> Self + '_ {
+        move |error| Self {
             path: path.to_owned(),
             error,
         }

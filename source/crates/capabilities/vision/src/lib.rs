@@ -68,11 +68,11 @@ campfire_common::enum_all! {
 
 impl ModuleSet for VisionSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Vision);
-    const ALL: &'static [VisionSet] = &VisionSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            VisionSet::See => Phase::End,
+            Self::See => Phase::End,
         })
     }
 }

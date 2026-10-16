@@ -19,8 +19,8 @@ use crate::unit_tags::UnitTags;
 pub struct UnitType(u16);
 
 impl UnitType {
-    pub const fn new(index: u16) -> UnitType {
-        UnitType(index)
+    pub const fn new(index: u16) -> Self {
+        Self(index)
     }
 }
 
@@ -28,8 +28,8 @@ impl NameId for UnitType {
     type Scope = TypeScope;
     const LIMIT: usize = 1 << u16::BITS;
 
-    fn at(index: usize) -> UnitType {
-        UnitType(u16::try_from(index).expect("unit types fit u16"))
+    fn at(index: usize) -> Self {
+        Self(u16::try_from(index).expect("unit types fit u16"))
     }
 
     fn index(self) -> usize {

@@ -12,11 +12,7 @@ pub enum CostTarget {
 impl CostTarget {
     /// What a cost named `name` takes from: one of `pools`, or else one of `resources`; `None`
     /// for a name neither holds.
-    pub fn named(
-        pools: &Names<PoolId>,
-        resources: &Names<ResourceId>,
-        name: &str,
-    ) -> Option<CostTarget> {
+    pub fn named(pools: &Names<PoolId>, resources: &Names<ResourceId>, name: &str) -> Option<Self> {
         let pool = pools.named(name).map(CostTarget::Pool);
         pool.or_else(|| resources.named(name).map(CostTarget::Resource))
     }

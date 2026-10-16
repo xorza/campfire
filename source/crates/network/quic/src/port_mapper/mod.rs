@@ -90,7 +90,7 @@ impl MapTimes {
     /// router maps the port, as RFC 6887 §9 waits after a failure; RFC 6886's first wait of
     /// 250 ms, four tries, at most 3.75 s; a UPnP search of 3 s; and a deletion of at most a
     /// second, which a server's exit waits for.
-    pub(crate) const CAMPFIRE: MapTimes = MapTimes {
+    pub(crate) const CAMPFIRE: Self = Self {
         lifetime: Duration::from_secs(7200),
         retry: Duration::from_mins(30),
         tries: Tries {
@@ -105,21 +105,21 @@ impl MapTimes {
 impl Routes {
     fn pcp(self) -> Result<SocketAddrV4, MapError> {
         match self {
-            Routes::System => {
+            Self::System => {
                 let gateway = netdev::get_default_gateway().map_err(MapError::NoGateway)?;
                 let address = gateway.ipv4.first().ok_or(MapError::NoIpv4Gateway)?;
                 Ok(SocketAddrV4::new(*address, PCP_PORT))
             }
             #[cfg(test)]
-            Routes::At { pcp, .. } => Ok(pcp),
+            Self::At { pcp, .. } => Ok(pcp),
         }
     }
 
     const fn ssdp(self) -> SocketAddr {
         match self {
-            Routes::System => SSDP,
+            Self::System => SSDP,
             #[cfg(test)]
-            Routes::At { ssdp, .. } => ssdp,
+            Self::At { ssdp, .. } => ssdp,
         }
     }
 
@@ -127,7 +127,7 @@ impl Routes {
     /// the host's other listeners.
     pub(crate) fn announcements(self) -> io::Result<SharedPort> {
         match self {
-            Routes::System => {
+            Self::System => {
                 let IpAddr::V4(group) = SSDP.ip() else {
                     unreachable!("SSDP's group is IPv4");
                 };
@@ -137,14 +137,14 @@ impl Routes {
                 Ok(port)
             }
             #[cfg(test)]
-            Routes::At { announce, .. } => SharedPort::bind(announce),
+            Self::At { announce, .. } => SharedPort::bind(announce),
         }
     }
 }
 
 impl PortMapper {
-    pub(crate) const fn new(internal_port: u16, routes: Routes, times: MapTimes) -> PortMapper {
-        PortMapper {
+    pub(crate) const fn new(internal_port: u16, routes: Routes, times: MapTimes) -> Self {
+        Self {
             internal_port,
             routes,
             times,
@@ -170,10 +170,10 @@ impl PortMapper {
             match held.renew(self.internal_port, self.times) {
                 Ok(mapping) => {
                     if mapping.external != held.mapping.external {
-                        PortMapper::announce(&mapping);
+                        Self::announce(&mapping);
                     }
                     held.mapping = mapping;
-                    return PortMapper::renewal(mapping.lifetime, PortMapper::draw());
+                    return Self::renewal(mapping.lifetime, Self::draw());
                 }
                 Err(error) => {
                     warn!(error = %ErrorReport::of(&error), "the router did not renew the server's port mapping; the port is mapped anew");
@@ -183,9 +183,9 @@ impl PortMapper {
         }
         match self.map_anew() {
             Ok(held) => {
-                PortMapper::announce(&held.mapping);
+                Self::announce(&held.mapping);
                 self.told = false;
-                let wait = PortMapper::renewal(held.mapping.lifetime, PortMapper::draw());
+                let wait = Self::renewal(held.mapping.lifetime, Self::draw());
                 self.held = Some(held);
                 wait
             }
@@ -287,7 +287,7 @@ impl PortMapper {
     /// router, whose own address is then private.
     fn announce(mapping: &Mapping) {
         let external = mapping.external;
-        if PortMapper::public(*external.ip()) {
+        if Self::public(*external.ip()) {
             info!(%external, by = ?mapping.by, "the router forwards the server's port; a player outside joins at this address");
         } else {
             warn!(%external, by = ?mapping.by, "the router forwards the server's port, but its own address is private: another NAT stands before it, and a player outside joins only if that NAT forwards the port to the router");

@@ -112,16 +112,16 @@ pub enum PackageRef {
 }
 
 impl LoadError {
-    pub fn new(package: PackageRef, problem: LoadProblem) -> LoadError {
-        LoadError {
+    pub fn new(package: PackageRef, problem: LoadProblem) -> Self {
+        Self {
             package,
             problem: Box::new(problem),
         }
     }
 
     /// `problem`, of the package its manifest names `name`.
-    pub(crate) fn of(name: &PackageName, problem: LoadProblem) -> LoadError {
-        LoadError::new(PackageRef::Name(name.clone()), problem)
+    pub(crate) fn of(name: &PackageName, problem: LoadProblem) -> Self {
+        Self::new(PackageRef::Name(name.clone()), problem)
     }
 }
 

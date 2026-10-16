@@ -25,8 +25,8 @@ impl Teams {
         names: Names<Team>,
         slots: impl IntoIterator<Item = u32>,
         players: u32,
-    ) -> Option<Teams> {
-        let mut built = Teams::default();
+    ) -> Option<Self> {
+        let mut built = Self::default();
         let mut unseated = players;
         let teams = names.iter().map(|(team, _)| team).zip(slots);
         for (team, slots) in teams {

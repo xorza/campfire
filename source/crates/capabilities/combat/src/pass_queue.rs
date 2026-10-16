@@ -94,8 +94,8 @@ impl PassQueue {
 impl PassEntry {
     const fn source(self) -> Option<StableId> {
         match self {
-            PassEntry::Damage(damage) => damage.source,
-            PassEntry::Heal(heal) => heal.source,
+            Self::Damage(damage) => damage.source,
+            Self::Heal(heal) => heal.source,
         }
     }
 }

@@ -39,16 +39,16 @@ pub(crate) struct HoldSet(u8);
 
 impl Lifetime {
     /// The lifetime of an application by `hold`, which keeps it while it holds.
-    pub const fn held(hold: Hold) -> Lifetime {
-        Lifetime {
+    pub const fn held(hold: Hold) -> Self {
+        Self {
             holds: HoldSet::of(hold),
             applied: None,
         }
     }
 
     /// The lifetime of an application of its own, until `ends`.
-    pub const fn applied(ends: Ends) -> Lifetime {
-        Lifetime {
+    pub const fn applied(ends: Ends) -> Self {
+        Self {
             holds: HoldSet::NONE,
             applied: Some(ends),
         }
@@ -57,8 +57,8 @@ impl Lifetime {
     /// The lifetime once `new`, a later application of the same modifier from the same source,
     /// joins it: its holds join, and an application of its own replaces this one's, as a
     /// refresh takes the new end; a hold leaves this one's.
-    pub(crate) fn joined(self, new: Lifetime) -> Lifetime {
-        Lifetime {
+    pub(crate) fn joined(self, new: Self) -> Self {
+        Self {
             holds: self.holds.union(new.holds),
             applied: new.applied.or(self.applied),
         }
@@ -101,28 +101,27 @@ impl Lifetime {
 }
 
 impl HoldSet {
-    const NONE: HoldSet = HoldSet(0);
-    const ALL: u8 =
-        HoldSet::bit(Hold::Passive) | HoldSet::bit(Hold::Held) | HoldSet::bit(Hold::Running);
+    const NONE: Self = Self(0);
+    const ALL: u8 = Self::bit(Hold::Passive) | Self::bit(Hold::Held) | Self::bit(Hold::Running);
 
-    pub(crate) const fn of(hold: Hold) -> HoldSet {
-        HoldSet(HoldSet::bit(hold))
+    pub(crate) const fn of(hold: Hold) -> Self {
+        Self(Self::bit(hold))
     }
 
-    const fn with(self, hold: Hold) -> HoldSet {
-        HoldSet(self.0 | HoldSet::bit(hold))
+    const fn with(self, hold: Hold) -> Self {
+        Self(self.0 | Self::bit(hold))
     }
 
-    const fn without(self, hold: Hold) -> HoldSet {
-        HoldSet(self.0 & !HoldSet::bit(hold))
+    const fn without(self, hold: Hold) -> Self {
+        Self(self.0 & !Self::bit(hold))
     }
 
-    const fn union(self, other: HoldSet) -> HoldSet {
-        HoldSet(self.0 | other.0)
+    const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
     }
 
     pub(crate) const fn contains(self, hold: Hold) -> bool {
-        self.0 & HoldSet::bit(hold) != 0
+        self.0 & Self::bit(hold) != 0
     }
 
     pub(crate) const fn is_empty(self) -> bool {
@@ -136,12 +135,12 @@ impl HoldSet {
 
 /// A snapshot is untrusted, so a bit of no hold fails to decode.
 impl<'de> Deserialize<'de> for HoldSet {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<HoldSet, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let bits = u8::deserialize(deserializer)?;
-        if bits & !HoldSet::ALL != 0 {
+        if bits & !Self::ALL != 0 {
             return Err(D::Error::custom("a bit of no hold"));
         }
-        Ok(HoldSet(bits))
+        Ok(Self(bits))
     }
 }
 

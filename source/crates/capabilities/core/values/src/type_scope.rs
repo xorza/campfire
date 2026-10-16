@@ -14,11 +14,11 @@ pub enum TypeScope {
 impl TypeScope {
     /// The scope the actions of package `package` name their delivery types in: the mode's for
     /// the mode, 0, else the package's own.
-    pub const fn of_package(package: PackageIndex) -> TypeScope {
+    pub const fn of_package(package: PackageIndex) -> Self {
         if package.get() == PackageIndex::MODE.get() {
-            TypeScope::Mode
+            Self::Mode
         } else {
-            TypeScope::Package(package)
+            Self::Package(package)
         }
     }
 }

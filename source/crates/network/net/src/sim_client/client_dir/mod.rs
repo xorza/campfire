@@ -15,9 +15,9 @@ pub struct ClientDir {
 
 impl ClientDir {
     /// The data directory at `path`, made when missing, and locked.
-    pub fn open(path: &Path) -> Result<ClientDir, PathError<DataDirError>> {
+    pub fn open(path: &Path) -> Result<Self, PathError<DataDirError>> {
         let data = DataDir::open(path)?;
-        Ok(ClientDir {
+        Ok(Self {
             layout: ClientLayout::at(data.path().to_owned()),
             _data: data,
         })

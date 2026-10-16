@@ -31,8 +31,8 @@ pub struct EntityParts<H: Send + Sync + 'static> {
 }
 
 impl<H: Send + Sync + 'static> Default for EntityParts<H> {
-    fn default() -> EntityParts<H> {
-        EntityParts { parts: Vec::new() }
+    fn default() -> Self {
+        Self { parts: Vec::new() }
     }
 }
 
@@ -80,7 +80,7 @@ impl<H: Component> EntityParts<H> {
     /// Puts each part the modules declare for the host on `entity`, which spawns, as `push`
     /// makes them, in one move.
     pub fn give(entity: &mut EntityWorldMut<'_>) {
-        SpawnParts::give(entity, EntityParts::<H>::push);
+        SpawnParts::give(entity, Self::push);
     }
 
     /// Pushes onto `writer` each part the modules declare for the host that `entity` of `world`,
@@ -88,7 +88,7 @@ impl<H: Component> EntityParts<H> {
     /// whose modules declare none. Each part is made from the entity's core, its facing and its
     /// type's books, never from another declared part, so their order changes none.
     pub fn push(world: &World, entity: Entity, writer: &mut BundleWriter<'_>) {
-        let Some(parts) = world.get_resource::<EntityParts<H>>() else {
+        let Some(parts) = world.get_resource::<Self>() else {
             return;
         };
         let at = KindSpawn::of(world, entity);
@@ -100,7 +100,7 @@ impl<H: Component> EntityParts<H> {
     /// The restore check of the host's part `C`: the first entity of the host, by stable id, that
     /// lacks it where its spawn would give it.
     pub fn check<C: Component>(world: &World) -> Result<(), Breach> {
-        let Some(parts) = world.get_resource::<EntityParts<H>>() else {
+        let Some(parts) = world.get_resource::<Self>() else {
             return Ok(());
         };
         let part = parts.parts.iter().find(|part| part.ty == TypeId::of::<C>());

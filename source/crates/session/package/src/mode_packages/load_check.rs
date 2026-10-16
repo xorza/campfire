@@ -1981,7 +1981,7 @@ impl<'a> PackageNames<'a> {
         package: &'a Package,
         modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
         actions: &'a BTreeMap<DeclaredName, ActionData>,
-    ) -> PackageNames<'a> {
+    ) -> Self {
         PackageNames {
             package,
             scripts: BTreeMap::new(),

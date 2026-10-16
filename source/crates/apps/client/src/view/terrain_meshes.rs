@@ -36,7 +36,7 @@ struct Samples {
 impl TerrainMeshes {
     /// The meshes of `quads` over `grid`, whose cells they are, their texture `size` texels at
     /// its first level.
-    pub(crate) fn of(quads: &TerrainQuads, size: UVec2, grid: &HeightGrid) -> TerrainMeshes {
+    pub(crate) fn of(quads: &TerrainQuads, size: UVec2, grid: &HeightGrid) -> Self {
         debug_assert!(quads.fits(grid), "a terrain over the grid's cells");
         let samples = Samples::of(grid);
         // A file's texture sides lie far below 2²⁴, exact in an f32.
@@ -53,7 +53,7 @@ impl TerrainMeshes {
                     .map(|alpha| Vec4::new(1.0, 1.0, 1.0, f32::from(alpha) / 255.0)),
             );
         }
-        TerrainMeshes { ground, overlay }
+        Self { ground, overlay }
     }
 }
 
@@ -106,7 +106,7 @@ impl Samples {
         clippy::cast_precision_loss,
         reason = "a grid's columns, rows and heights lie far below 2²⁴, exact in an f32"
     )]
-    fn of(grid: &HeightGrid) -> Samples {
+    fn of(grid: &HeightGrid) -> Self {
         let columns = grid.columns() as usize;
         let rows = grid.rows() as usize;
         let [x, z] = grid.origin().map(FloatNum::float);
@@ -131,7 +131,7 @@ impl Samples {
                 normals.push(Vec3::new(-slope_x, 1.0, -slope_z).normalize());
             }
         }
-        Samples {
+        Self {
             columns,
             positions,
             normals,

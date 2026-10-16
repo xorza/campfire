@@ -31,14 +31,14 @@ impl WireCodec {
     /// A message's encode and decode.
     pub(crate) fn message<M: Serialize + DeserializeOwned>() -> SerializeFns<M> {
         SerializeFns {
-            serialize: WireCodec::write_message,
-            deserialize: WireCodec::read_message,
+            serialize: Self::write_message,
+            deserialize: Self::read_message,
         }
     }
 
     /// A replicated component's encode and decode.
     pub(crate) fn component<C: Component + Serialize + DeserializeOwned>() -> RuleFns<C> {
-        RuleFns::new(WireCodec::write_component, WireCodec::read_component)
+        RuleFns::new(Self::write_component, Self::read_component)
     }
 
     #[expect(

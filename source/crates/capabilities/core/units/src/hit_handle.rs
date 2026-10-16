@@ -10,8 +10,8 @@ pub struct HitHandle {
 }
 
 impl HitHandle {
-    pub const fn new(hit: Hit, view: View) -> HitHandle {
-        HitHandle { hit, view }
+    pub const fn new(hit: Hit, view: View) -> Self {
+        Self { hit, view }
     }
 
     /// The `Hit` handle's fields.
@@ -19,33 +19,33 @@ impl HitHandle {
         let field = |name, description| {
             MemberSpec::field(ApiOwner::Hit, name, description).capability(Capability::Abilities)
         };
-        let unit = |hit: &HitHandle, id| hit.view.unit_value(id);
-        api.ty::<HitHandle>("Hit")
+        let unit = |hit: &Self, id| hit.view.unit_value(id);
+        api.ty::<Self>("Hit")
             .bind(
                 field(
                     "delivery",
                     "the projectile or area unit that delivered it, `()` when at once or gone",
                 ),
-                move |hit: &mut HitHandle| unit(hit, hit.hit.delivery),
+                move |hit: &mut Self| unit(hit, hit.hit.delivery),
             )
             .bind(
                 field("target", "the unit the action aimed at, `()` with none"),
-                move |hit: &mut HitHandle| unit(hit, hit.hit.target),
+                move |hit: &mut Self| unit(hit, hit.hit.target),
             )
             .bind(
                 field("pos", "where it hit, or where its delivery ended"),
-                |hit: &mut HitHandle| hit.hit.pos,
+                |hit: &mut Self| hit.hit.pos,
             )
             .bind(
                 field("distance", "how far its delivery flew"),
-                |hit: &mut HitHandle| hit.hit.distance,
+                |hit: &mut Self| hit.hit.distance,
             )
             .bind(
                 field(
                     "direction",
                     "the direction its delivery flew in, `()` for an area or a delivery that did not move",
                 ),
-                |hit: &mut HitHandle| hit.hit.direction.map_or(ScriptValue::UNIT, ScriptValue::of),
+                |hit: &mut Self| hit.hit.direction.map_or(ScriptValue::UNIT, ScriptValue::of),
             )
             .plan(
                 MemberSpec::field(

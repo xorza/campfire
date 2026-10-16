@@ -36,7 +36,7 @@ impl<'a> JournalFrames<'a> {
     pub const TAG: &'static [u8] = b"campfire/journal/v2";
 
     /// The frames of `bytes`; an error when they do not start with the journal's tag.
-    pub fn new(bytes: &'a [u8]) -> Result<JournalFrames<'a>, NotJournal> {
+    pub fn new(bytes: &'a [u8]) -> Result<Self, NotJournal> {
         if !bytes.starts_with(JournalFrames::TAG) {
             return Err(NotJournal);
         }

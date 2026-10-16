@@ -47,14 +47,10 @@ impl CapabilityDoesSpec {
     /// The capability whose effect it is.
     pub const fn capability(self) -> Capability {
         match self {
-            CapabilityDoesSpec::Damage { .. }
-            | CapabilityDoesSpec::Heal { .. }
-            | CapabilityDoesSpec::Restore { .. } => Capability::Combat,
-            CapabilityDoesSpec::Xp { .. } => Capability::Progression,
-            CapabilityDoesSpec::Launch { .. } => Capability::Areas,
-            CapabilityDoesSpec::Dash { .. } | CapabilityDoesSpec::KnockBack { .. } => {
-                Capability::Navigation
-            }
+            Self::Damage { .. } | Self::Heal { .. } | Self::Restore { .. } => Capability::Combat,
+            Self::Xp { .. } => Capability::Progression,
+            Self::Launch { .. } => Capability::Areas,
+            Self::Dash { .. } | Self::KnockBack { .. } => Capability::Navigation,
         }
     }
 }
@@ -72,31 +68,31 @@ pub(crate) mod internals {
 
     impl CapabilityDoesSpec {
         /// One effect of each kind: a new kind fails to compile here until it joins.
-        pub fn one_of_each() -> Vec<CapabilityDoesSpec> {
+        pub fn one_of_each() -> Vec<Self> {
             let amount = Amount::Value(Num::ONE);
             let all = vec![
-                CapabilityDoesSpec::Damage {
+                Self::Damage {
                     amount,
                     kind: DamageKind::new(0),
                 },
-                CapabilityDoesSpec::Heal { amount },
-                CapabilityDoesSpec::Restore {
+                Self::Heal { amount },
+                Self::Restore {
                     pool: PoolId::new(0).unwrap(),
                     amount,
                 },
-                CapabilityDoesSpec::Xp {
+                Self::Xp {
                     track: TrackId::new(0),
                     amount,
                 },
-                CapabilityDoesSpec::Launch {
+                Self::Launch {
                     area: UnitType::new(0),
                     launch: LaunchId(0),
                 },
-                CapabilityDoesSpec::Dash {
+                Self::Dash {
                     to: EffectTo::Reached,
                     speed: amount,
                 },
-                CapabilityDoesSpec::KnockBack {
+                Self::KnockBack {
                     from: EffectTo::Source,
                     distance: amount,
                     ms: amount,
@@ -104,13 +100,13 @@ pub(crate) mod internals {
             ];
             for (at, does) in all.iter().enumerate() {
                 let place = match does {
-                    CapabilityDoesSpec::Damage { .. } => 0,
-                    CapabilityDoesSpec::Heal { .. } => 1,
-                    CapabilityDoesSpec::Restore { .. } => 2,
-                    CapabilityDoesSpec::Xp { .. } => 3,
-                    CapabilityDoesSpec::Launch { .. } => 4,
-                    CapabilityDoesSpec::Dash { .. } => 5,
-                    CapabilityDoesSpec::KnockBack { .. } => 6,
+                    Self::Damage { .. } => 0,
+                    Self::Heal { .. } => 1,
+                    Self::Restore { .. } => 2,
+                    Self::Xp { .. } => 3,
+                    Self::Launch { .. } => 4,
+                    Self::Dash { .. } => 5,
+                    Self::KnockBack { .. } => 6,
                 };
                 assert_eq!(place, at, "one of each kind, in order");
             }

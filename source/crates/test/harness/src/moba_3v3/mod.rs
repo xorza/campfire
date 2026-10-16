@@ -191,7 +191,7 @@ impl Moba3v3 {
     /// allow; the walk home, the shop, and the showcase, in which each hero uses its items and
     /// casts each of its abilities, one cast every `CAST_EVERY` ticks. `item` names an
     /// item.
-    fn script(item: &impl Fn(&str) -> ItemId) -> Vec<Scripted<Moba3v3>> {
+    fn script(item: &impl Fn(&str) -> ItemId) -> Vec<Scripted<Self>> {
         let mut script = SKIRMISH.to_vec();
         for stamp in (FARM..RECALL).step_by(FARM_EVERY) {
             script.extend(
@@ -200,16 +200,16 @@ impl Moba3v3 {
                     .map(|(slot, post)| Scripted::new(stamp, slot, farm_at(post))),
             );
         }
-        for stamp in (LEARN..Moba3v3::SHOWCASE).step_by(LEARN_EVERY) {
-            for slot in 0..Moba3v3::PLAYERS {
-                let ultimate = Moba3v3::Learn { slot: ULTIMATE };
+        for stamp in (LEARN..Self::SHOWCASE).step_by(LEARN_EVERY) {
+            for slot in 0..Self::PLAYERS {
+                let ultimate = Self::Learn { slot: ULTIMATE };
                 script.push(Scripted::new(stamp, slot, ultimate));
-                script.push(Scripted::new(stamp, slot, Moba3v3::LearnBasic));
+                script.push(Scripted::new(stamp, slot, Self::LearnBasic));
             }
         }
-        for slot in 0..Moba3v3::PLAYERS {
+        for slot in 0..Self::PLAYERS {
             let z = if slot < 3 { -60 } else { 60 };
-            script.push(Scripted::new(RECALL, slot, Moba3v3::Move { x: 0, z }));
+            script.push(Scripted::new(RECALL, slot, Self::Move { x: 0, z }));
         }
         let buys = [
             (2, "cloth_armor"),
@@ -227,26 +227,18 @@ impl Moba3v3 {
         ];
         for (slot, name) in buys {
             let item = item(name);
-            script.push(Scripted::new(Moba3v3::SHOP, slot, Moba3v3::Buy { item }));
+            script.push(Scripted::new(Self::SHOP, slot, Self::Buy { item }));
         }
-        script.push(Scripted::new(
-            Moba3v3::SHOP,
-            5,
-            Moba3v3::Swap { from: 0, to: 1 },
-        ));
-        script.push(Scripted::new(
-            Moba3v3::SHOP + 1,
-            5,
-            Moba3v3::Sell { slot: 1 },
-        ));
+        script.push(Scripted::new(Self::SHOP, 5, Self::Swap { from: 0, to: 1 }));
+        script.push(Scripted::new(Self::SHOP + 1, 5, Self::Sell { slot: 1 }));
         for (slot, post) in (0..).zip(ARENA) {
-            script.push(Scripted::new(Moba3v3::SHOP + 2, slot, walk_to(post)));
+            script.push(Scripted::new(Self::SHOP + 2, slot, walk_to(post)));
         }
-        let showcase = Moba3v3::showcase(item);
-        assert_eq!(showcase.len() as u64, Moba3v3::CASTS);
+        let showcase = Self::showcase(item);
+        assert_eq!(showcase.len() as u64, Self::CASTS);
         for (at, (slot, plan)) in (0..).zip(showcase) {
             script.push(Scripted::new(
-                Moba3v3::SHOWCASE + Moba3v3::CAST_EVERY * at,
+                Self::SHOWCASE + Self::CAST_EVERY * at,
                 slot,
                 plan,
             ));
@@ -259,10 +251,10 @@ impl Moba3v3 {
     /// Rime and Veil. Veil and Gale cast all theirs first, before the others' blows could fell
     /// them; Rime strikes Husk with Chill Arrows on, then walks back to her place, which
     /// ends her attack.
-    fn showcase(item: &impl Fn(&str) -> ItemId) -> Vec<(u32, Moba3v3)> {
+    fn showcase(item: &impl Fn(&str) -> ItemId) -> Vec<(u32, Self)> {
         let hero = |slot| Aim::Hero { slot };
         let at = |slot| Aim::HeroPoint { slot };
-        let using = |name, aim| Moba3v3::Use {
+        let using = |name, aim| Self::Use {
             item: item(name),
             aim,
         };
@@ -287,7 +279,7 @@ impl Moba3v3 {
             (0, cast(FIRST, at(3))),
             (2, cast(SECOND, Aim::Nothing)),
             (4, cast(FIRST, Aim::Nothing)),
-            (4, Moba3v3::AttackHero { slot: 2 }),
+            (4, Self::AttackHero { slot: 2 }),
             (3, cast(FIRST, hero(0))),
             (4, walk_to(ARENA[4])),
             (0, cast(SECOND, at(4))),
@@ -307,18 +299,18 @@ impl Moba3v3 {
         ]
     }
 
-    pub fn load() -> ScriptedMode<Moba3v3> {
-        let players = usize::try_from(Moba3v3::PLAYERS).expect("6 fits usize");
-        Moba3v3::planned(iter::repeat_n(SlotPlan::Player, players))
+    pub fn load() -> ScriptedMode<Self> {
+        let players = usize::try_from(Self::PLAYERS).expect("6 fits usize");
+        Self::planned(iter::repeat_n(SlotPlan::Player, players))
     }
 
     /// The MOBA 3v3 with its slots opened as `plan` says.
-    pub fn planned(plan: impl IntoIterator<Item = SlotPlan>) -> ScriptedMode<Moba3v3> {
+    pub fn planned(plan: impl IntoIterator<Item = SlotPlan>) -> ScriptedMode<Self> {
         let packages = TestMode::Moba3v3.packages();
         let items = &packages.mode().content.items;
         let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
         let item = |name: &str| items.named(name).expect("an item of the 3v3");
-        let script = Moba3v3::script(&item);
+        let script = Self::script(&item);
         let session = FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan);
         ScriptedMode::new(session, script)
     }
@@ -375,44 +367,44 @@ impl Plan for Moba3v3 {
     fn order(self, units: MatchUnits<'_>, slot: u32) -> Order {
         let hero = units.hero(slot);
         let action = match self {
-            Moba3v3::Move { x, z } => Action::Orders(OrdersAction::Move {
+            Self::Move { x, z } => Action::Orders(OrdersAction::Move {
                 x: Num::from(x),
                 z: Num::from(z),
             }),
-            Moba3v3::AttackSpawnedAt { x, z } => Action::Orders(OrdersAction::Attack {
+            Self::AttackSpawnedAt { x, z } => Action::Orders(OrdersAction::Attack {
                 target: units.spawned_at((x, 0, z)),
             }),
-            Moba3v3::AttackHero { slot } => Action::Orders(OrdersAction::Attack {
+            Self::AttackHero { slot } => Action::Orders(OrdersAction::Attack {
                 target: units.hero(slot),
             }),
-            Moba3v3::Cast { slot, aim } => Action::Orders(OrdersAction::Slot {
+            Self::Cast { slot, aim } => Action::Orders(OrdersAction::Slot {
                 slot,
                 target: aim.target(units),
             }),
-            Moba3v3::Use { item, aim } => Action::Orders(OrdersAction::Slot {
+            Self::Use { item, aim } => Action::Orders(OrdersAction::Slot {
                 slot: carried_at(units, hero, item),
                 target: aim.target(units),
             }),
-            Moba3v3::Learn { slot } => Action::Progression(ProgressionAction::Learn { slot }),
-            Moba3v3::LearnBasic => Action::Progression(ProgressionAction::Learn {
+            Self::Learn { slot } => Action::Progression(ProgressionAction::Learn { slot }),
+            Self::LearnBasic => Action::Progression(ProgressionAction::Learn {
                 slot: fewest_ranks(units, hero),
             }),
-            Moba3v3::Farm { x, z } => Action::Orders(weakest_creep(units, hero).map_or_else(
+            Self::Farm { x, z } => Action::Orders(weakest_creep(units, hero).map_or_else(
                 || OrdersAction::Move {
                     x: Num::from(x),
                     z: Num::from(z),
                 },
                 |target| OrdersAction::Attack { target },
             )),
-            Moba3v3::Buy { item } => Action::Items(ItemsAction::Buy {
+            Self::Buy { item } => Action::Items(ItemsAction::Buy {
                 item,
                 shop: units.shop_of(hero),
             }),
-            Moba3v3::Sell { slot } => Action::Items(ItemsAction::Sell {
+            Self::Sell { slot } => Action::Items(ItemsAction::Sell {
                 slot,
                 shop: units.shop_of(hero),
             }),
-            Moba3v3::Swap { from, to } => Action::Items(ItemsAction::Swap { from, to }),
+            Self::Swap { from, to } => Action::Items(ItemsAction::Swap { from, to }),
         };
         Order::one(hero, action)
     }

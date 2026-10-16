@@ -30,8 +30,8 @@ struct WriteClass<'w> {
 
 impl UnitStates {
     /// The state a unit of `unit_type` spawns with, by `book`, each field at its first value.
-    pub fn initial(book: &UnitStateBook, unit_type: UnitType) -> UnitStates {
-        let mut states = UnitStates::default();
+    pub fn initial(book: &UnitStateBook, unit_type: UnitType) -> Self {
+        let mut states = Self::default();
         if let Some(schema) = book.schema(unit_type) {
             for (value, place) in schema.initial().iter().zip(schema.places()) {
                 states.push(place.sync, value.clone());

@@ -151,7 +151,7 @@ const ONE_MINUS_SRC_COLOR: u8 = 3;
 const ONE_MINUS_SRC_ALPHA: u8 = 5;
 
 impl W3dMesh {
-    pub(crate) fn read(body: &[u8]) -> Result<W3dMesh, W3dError> {
+    pub(crate) fn read(body: &[u8]) -> Result<Self, W3dError> {
         let mut header = None;
         let mut positions = Vec::new();
         let mut normals = Vec::new();
@@ -174,8 +174,8 @@ impl W3dMesh {
                     let vertices = fields.u32()?;
                     header = Some((flags, name, container, triangles, vertices));
                 }
-                VERTICES => positions = W3dMesh::vectors(&mut fields)?,
-                NORMALS => normals = W3dMesh::vectors(&mut fields)?,
+                VERTICES => positions = Self::vectors(&mut fields)?,
+                NORMALS => normals = Self::vectors(&mut fields)?,
                 INFLUENCES => {
                     let records = fields.records::<8>()?;
                     bones = Some(
@@ -185,8 +185,8 @@ impl W3dMesh {
                             .collect(),
                     );
                 }
-                TRIANGLES => triangles = W3dMesh::triangles(&mut fields)?,
-                SHADERS => shaders = W3dMesh::shaders(&mut fields)?,
+                TRIANGLES => triangles = Self::triangles(&mut fields)?,
+                SHADERS => shaders = Self::shaders(&mut fields)?,
                 VERTEX_MATERIALS => {
                     for material in W3dChunks::of(chunk.body) {
                         let material = material?;
@@ -194,24 +194,24 @@ impl W3dMesh {
                             continue;
                         }
                         let info = W3dChunks::of(material.body).first_of(VERTEX_MATERIAL_INFO)?;
-                        materials.push(W3dMesh::vertex_material(info.body)?);
+                        materials.push(Self::vertex_material(info.body)?);
                     }
                 }
                 TEXTURES => {
                     for texture in W3dChunks::of(chunk.body) {
                         let texture = texture?;
                         if texture.id == TEXTURE {
-                            textures.push(W3dMesh::texture(texture.body)?);
+                            textures.push(Self::texture(texture.body)?);
                         }
                     }
                 }
-                MATERIAL_PASS => passes.push(W3dMesh::pass(chunk.body)?),
+                MATERIAL_PASS => passes.push(Self::pass(chunk.body)?),
                 _ => {}
             }
         }
         let (flags, name, container, triangle_count, vertex_count) =
             header.ok_or(W3dError::Missing)?;
-        let mesh = W3dMesh {
+        let mesh = Self {
             name: if container.is_empty() {
                 name
             } else {
@@ -481,20 +481,20 @@ impl W3dMesh {
 
 impl Ids {
     /// One id for all if the chunk holds one, else one each.
-    fn of(ids: impl IntoIterator<Item = u32>) -> Result<Ids, W3dError> {
+    fn of(ids: impl IntoIterator<Item = u32>) -> Result<Self, W3dError> {
         let ids: Vec<u32> = ids.into_iter().collect();
         match ids[..] {
             [] => Err(W3dError::Missing),
-            [one] => Ok(Ids::One(one)),
-            _ => Ok(Ids::Each(ids)),
+            [one] => Ok(Self::One(one)),
+            _ => Ok(Self::Each(ids)),
         }
     }
 
     /// The id of vertex or triangle `at`.
     pub(crate) fn get(&self, at: usize) -> u32 {
         match self {
-            Ids::One(id) => *id,
-            Ids::Each(ids) => ids[at],
+            Self::One(id) => *id,
+            Self::Each(ids) => ids[at],
         }
     }
 }
@@ -505,7 +505,7 @@ impl Stage {
 
     /// The texture of triangle `at`, if it has one.
     pub(crate) fn texture(&self, at: usize) -> Option<u32> {
-        Some(self.textures.get(at)).filter(|&id| id != Stage::NONE)
+        Some(self.textures.get(at)).filter(|&id| id != Self::NONE)
     }
 }
 
@@ -567,7 +567,7 @@ pub(crate) mod internals {
 
     impl Shader {
         /// An opaque, textured shader that writes depth.
-        pub(crate) const DEFAULT: Shader = Shader {
+        pub(crate) const DEFAULT: Self = Self {
             depth_write: true,
             dest_blend: ZERO,
             primary_gradient: GRADIENT_MODULATE,
@@ -580,7 +580,7 @@ pub(crate) mod internals {
 
     impl VertexMaterial {
         /// White in ambient and diffuse light, of no emissive light, opaque.
-        pub(crate) const DEFAULT: VertexMaterial = VertexMaterial {
+        pub(crate) const DEFAULT: Self = Self {
             ambient: [255; 3],
             diffuse: [255; 3],
             emissive: [0; 3],
@@ -597,8 +597,8 @@ pub(crate) mod internals {
     impl W3dMesh {
         /// A mesh of `name`, `container.mesh` or `mesh`, of no vertices, drawn by the default
         /// shader and vertex material.
-        pub(crate) fn named(name: &str) -> W3dMesh {
-            W3dMesh {
+        pub(crate) fn named(name: &str) -> Self {
+            Self {
                 name: name.to_owned(),
                 flags: 0,
                 positions: Vec::new(),
@@ -776,8 +776,8 @@ pub(crate) mod internals {
     impl Ids {
         fn bytes(&self) -> Vec<u8> {
             match self {
-                Ids::One(id) => id.to_le_bytes().to_vec(),
-                Ids::Each(ids) => ids.iter().flat_map(|id| id.to_le_bytes()).collect(),
+                Self::One(id) => id.to_le_bytes().to_vec(),
+                Self::Each(ids) => ids.iter().flat_map(|id| id.to_le_bytes()).collect(),
             }
         }
     }

@@ -50,13 +50,13 @@ pub(crate) struct Tries {
 
 impl Gateway {
     /// A client of the gateway at `gateway`, from this host's address that faces it.
-    pub(crate) fn connect(gateway: SocketAddrV4) -> io::Result<Gateway> {
+    pub(crate) fn connect(gateway: SocketAddrV4) -> io::Result<Self> {
         let socket = UdpSocket::bind(SocketAddr::from((Ipv4Addr::UNSPECIFIED, 0)))?;
         socket.connect(gateway)?;
         let SocketAddr::V4(local) = socket.local_addr()? else {
             unreachable!("a socket bound to an IPv4 address keeps one");
         };
-        Ok(Gateway {
+        Ok(Self {
             socket,
             client: *local.ip(),
             nat_pmp_only: false,
@@ -210,7 +210,7 @@ impl Gateway {
         let mut buffer = [0; MESSAGE_MAX];
         let mut wait = tries.first;
         for _ in 0..tries.count {
-            self.socket.send(request).map_err(Gateway::fault)?;
+            self.socket.send(request).map_err(Self::fault)?;
             let deadline = Instant::now() + wait;
             loop {
                 let left = deadline.saturating_duration_since(Instant::now());
@@ -231,7 +231,7 @@ impl Gateway {
                     {
                         break;
                     }
-                    Err(error) => return Err(Gateway::fault(error)),
+                    Err(error) => return Err(Self::fault(error)),
                 }
             }
             wait *= 2;

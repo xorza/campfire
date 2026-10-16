@@ -13,10 +13,10 @@ impl UnitDivisor {
     /// The divisor of `root`, for axes shifted by `shift`; a division takes no reciprocal, so
     /// the root estimate's goes unread.
     #[inline]
-    pub(crate) fn new(root: u64, _half_reciprocal: f64, shift: u32) -> UnitDivisor {
+    pub(crate) fn new(root: u64, _half_reciprocal: f64, shift: u32) -> Self {
         debug_assert!((1 << 62..=1 << 63).contains(&root));
         debug_assert!((FRACTION..=FRACTION + 62).contains(&shift));
-        UnitDivisor { root, shift }
+        Self { root, shift }
     }
 
     /// `axis · 2^shift / d`, rounded to nearest, ties to even, for an axis at most the length

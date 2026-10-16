@@ -48,15 +48,15 @@ struct TableRun<'a> {
 
 impl ParamBook {
     /// Whether `other` is this book as one load made it, not a book of another load.
-    pub(crate) fn same(&self, other: &ParamBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
     /// The book of `tables`, which the load built, each name of `appliers` resolved in each
     /// action's params.
-    pub fn new(mut tables: ParamTables, appliers: &Names<ApplierParam>) -> ParamBook {
+    pub fn new(mut tables: ParamTables, appliers: &Names<ApplierParam>) -> Self {
         tables.appliers = ApplierPlaces::of(&tables.actions, appliers);
-        ParamBook(Arc::new(tables))
+        Self(Arc::new(tables))
     }
 
     /// Every action's params, one run per action.
@@ -196,7 +196,7 @@ impl ParamTables {
 
 impl ApplierPlaces {
     /// The places in `actions` of each name of `appliers`.
-    fn of(actions: &ParamTable, appliers: &Names<ApplierParam>) -> ApplierPlaces {
+    fn of(actions: &ParamTable, appliers: &Names<ApplierParam>) -> Self {
         let runs = actions.runs();
         let mut at = Vec::with_capacity(runs * appliers.len());
         for run in 0..runs {
@@ -205,7 +205,7 @@ impl ApplierPlaces {
                 Some(u16::try_from(place).expect("params fit u16"))
             }));
         }
-        ApplierPlaces {
+        Self {
             width: appliers.len(),
             at,
         }

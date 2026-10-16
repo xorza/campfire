@@ -16,6 +16,10 @@ use crate::action_parts::ActionParts;
 /// script view reads them.
 #[derive(Resource, Debug, Clone, Default)]
 pub struct ActionBook {
+    #[expect(
+        clippy::rc_buffer,
+        reason = "the load grows the book through `Arc::make_mut`; the clones after it share it"
+    )]
     actions: Arc<Vec<Action>>,
     /// Each action's name in its package.
     names: Arc<Names<ActionId>>,
@@ -35,7 +39,7 @@ pub struct PackageAction<'d> {
 impl ActionBook {
     /// Whether `other` is this book as one load made it, not a book of another load: the actions
     /// a row filled from it holds.
-    pub(crate) fn same(&self, other: &ActionBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.actions, &other.actions) && Arc::ptr_eq(&self.names, &other.names)
     }
 

@@ -19,12 +19,12 @@ impl Binaries {
     const NAMES: [&str; 3] = ["campfire-server", "campfire-client", "campfire-verifier"];
 
     /// The server, client and verifier in the folder of the check's own executable.
-    pub(crate) fn beside_check() -> Result<Binaries, CheckError> {
+    pub(crate) fn beside_check() -> Result<Self, CheckError> {
         let own = env::current_exe().map_err(CheckError::OwnExecutable)?;
         let dir = own.parent().expect("an executable is in a folder");
         let [server, client, verifier] =
-            Binaries::NAMES.map(|name| dir.join(format!("{name}{EXE_SUFFIX}")));
-        Ok(Binaries {
+            Self::NAMES.map(|name| dir.join(format!("{name}{EXE_SUFFIX}")));
+        Ok(Self {
             server,
             client,
             verifier,

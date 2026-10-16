@@ -26,8 +26,8 @@ pub(crate) struct UnitParams(Unit);
 impl ViewApi {
     /// The `Unit` handle's fields and methods.
     pub fn register_unit(api: &mut ApiBuilder<'_>) {
-        ViewApi::unit_fields(api);
-        ViewApi::unit_methods(api);
+        Self::unit_fields(api);
+        Self::unit_methods(api);
     }
 
     fn unit_fields(api: &mut ApiBuilder<'_>) {

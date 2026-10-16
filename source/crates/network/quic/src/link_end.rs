@@ -45,36 +45,36 @@ pub enum LinkEnd {
 
 impl LinkEnd {
     /// How a link whose connection was lost by `error` ended.
-    pub(crate) fn of(error: &ConnectionError) -> LinkEnd {
+    pub(crate) fn of(error: &ConnectionError) -> Self {
         match error {
-            ConnectionError::TimedOut => LinkEnd::TimedOut,
-            ConnectionError::Reset => LinkEnd::Reset,
-            ConnectionError::VersionMismatch => LinkEnd::VersionMismatch,
+            ConnectionError::TimedOut => Self::TimedOut,
+            ConnectionError::Reset => Self::Reset,
+            ConnectionError::VersionMismatch => Self::VersionMismatch,
             ConnectionError::ApplicationClosed(close) => match AppCode::of(close.error_code) {
-                AppCode::ENDED => LinkEnd::Ended,
-                AppCode::STOPPED => LinkEnd::PeerStopped,
-                AppCode::UNFIT => LinkEnd::Unfit,
-                code => LinkEnd::ClosedByPeer(code),
+                AppCode::ENDED => Self::Ended,
+                AppCode::STOPPED => Self::PeerStopped,
+                AppCode::UNFIT => Self::Unfit,
+                code => Self::ClosedByPeer(code),
             },
             ConnectionError::ConnectionClosed(close)
                 if close.error_code == TransportErrorCode::CONNECTION_REFUSED =>
             {
-                LinkEnd::Refused
+                Self::Refused
             }
             ConnectionError::ConnectionClosed(close)
                 if close.error_code == TransportErrorCode::APPLICATION_ERROR =>
             {
-                LinkEnd::ClosedInHandshake
+                Self::ClosedInHandshake
             }
-            ConnectionError::ConnectionClosed(close) => LinkEnd::Transport {
+            ConnectionError::ConnectionClosed(close) => Self::Transport {
                 code: close.error_code.into(),
             },
             ConnectionError::TransportError(error)
                 if error.code == TransportErrorCode::crypto(ACCESS_DENIED) =>
             {
-                LinkEnd::WrongServerKey
+                Self::WrongServerKey
             }
-            ConnectionError::TransportError(error) => LinkEnd::Transport {
+            ConnectionError::TransportError(error) => Self::Transport {
                 code: error.code.into(),
             },
             ConnectionError::LocallyClosed => {

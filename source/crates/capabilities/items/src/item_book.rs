@@ -46,11 +46,11 @@ impl ItemBook {
     pub fn new(
         names: Names<ItemId>,
         items: impl IntoIterator<Item = ItemSpec>,
-    ) -> Result<ItemBook, ItemError> {
-        ItemBook::of(names, items.into_iter().collect())
+    ) -> Result<Self, ItemError> {
+        Self::of(names, items.into_iter().collect())
     }
 
-    fn of(names: Names<ItemId>, items: Vec<ItemSpec>) -> Result<ItemBook, ItemError> {
+    fn of(names: Names<ItemId>, items: Vec<ItemSpec>) -> Result<Self, ItemError> {
         assert_eq!(names.len(), items.len(), "an item has a name");
         for (index, item) in items.iter().enumerate() {
             let id = ItemId::at(index);
@@ -81,7 +81,7 @@ impl ItemBook {
             .collect();
         modifiers.sort_unstable();
         modifiers.dedup();
-        Ok(ItemBook(Arc::new(Items {
+        Ok(Self(Arc::new(Items {
             names,
             specs: items,
             modifiers,

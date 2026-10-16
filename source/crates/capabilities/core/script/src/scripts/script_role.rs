@@ -16,10 +16,10 @@ campfire_common::enum_all! {
 impl ScriptRole {
     pub const fn name(self) -> &'static str {
         match self {
-            ScriptRole::Action => "action",
-            ScriptRole::Modifier => "modifier",
-            ScriptRole::Mode => "mode",
-            ScriptRole::Ai => "AI",
+            Self::Action => "action",
+            Self::Modifier => "modifier",
+            Self::Mode => "mode",
+            Self::Ai => "AI",
         }
     }
 }
@@ -40,8 +40,8 @@ impl ScriptRole {
     /// its ability's and modifier's, a mode's or an AI's the mode's.
     pub const fn params(self) -> ParamScope {
         match self {
-            ScriptRole::Action | ScriptRole::Modifier => ParamScope::Action,
-            ScriptRole::Mode | ScriptRole::Ai => ParamScope::Mode,
+            Self::Action | Self::Modifier => ParamScope::Action,
+            Self::Mode | Self::Ai => ParamScope::Mode,
         }
     }
 }
@@ -50,8 +50,8 @@ impl ParamScope {
     /// Its place among `ALL`.
     pub const fn index(self) -> usize {
         match self {
-            ParamScope::Action => 0,
-            ParamScope::Mode => 1,
+            Self::Action => 0,
+            Self::Mode => 1,
         }
     }
 
@@ -59,8 +59,8 @@ impl ParamScope {
     /// in a match with no mode, an ability's in a match with no stats.
     pub(crate) const fn missing(self) -> ApiError {
         match self {
-            ParamScope::Action => ApiError::Unknown(NameKind::Param),
-            ParamScope::Mode => ApiError::NoMode,
+            Self::Action => ApiError::Unknown(NameKind::Param),
+            Self::Mode => ApiError::NoMode,
         }
     }
 }

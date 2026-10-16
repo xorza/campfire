@@ -13,7 +13,7 @@ impl FloatNum for Num {
         reason = "drawing needs no more than an f32's 24 bits of a place"
     )]
     fn float(self) -> f32 {
-        self.to_bits() as f32 / (1_u64 << Num::FRAC_BITS) as f32
+        self.to_bits() as f32 / (1_u64 << Self::FRAC_BITS) as f32
     }
 }
 

@@ -31,13 +31,13 @@ struct Tracks {
 
 impl TrackBook {
     /// Whether `other` is this book as one load made it, not a book of another load.
-    pub(crate) fn same(&self, other: &TrackBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
     /// The book of `tracks`; an error for more than `TrackId::LIMIT`, or more than one the
     /// `level` track.
-    pub fn new(tracks: &BTreeMap<DeclaredName, TrackData>) -> Result<TrackBook, TrackError> {
+    pub fn new(tracks: &BTreeMap<DeclaredName, TrackData>) -> Result<Self, TrackError> {
         if tracks.len() > TrackId::LIMIT {
             return Err(TrackError::TooMany);
         }
@@ -61,7 +61,7 @@ impl TrackBook {
         }
         book.starts.push(Tracks::start(book.thresholds.len()));
         book.names = Arc::new(names);
-        Ok(TrackBook(Arc::new(book)))
+        Ok(Self(Arc::new(book)))
     }
 
     /// The tracks' names.
@@ -91,8 +91,8 @@ impl Tracks {
 }
 
 impl Default for TrackBook {
-    fn default() -> TrackBook {
-        TrackBook::new(&BTreeMap::new()).expect("no tracks break no rule")
+    fn default() -> Self {
+        Self::new(&BTreeMap::new()).expect("no tracks break no rule")
     }
 }
 

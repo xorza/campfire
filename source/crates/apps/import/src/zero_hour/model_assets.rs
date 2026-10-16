@@ -15,7 +15,7 @@ pub(crate) struct ModelAssets<'a> {
 }
 
 impl<'a> ModelAssets<'a> {
-    pub(crate) fn new(install: &'a Install) -> Result<ModelAssets<'a>, ZeroHourError> {
+    pub(crate) fn new(install: &'a Install) -> Result<Self, ZeroHourError> {
         let language = install.language()?;
         Ok(ModelAssets {
             install,

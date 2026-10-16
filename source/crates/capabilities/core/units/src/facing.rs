@@ -32,14 +32,14 @@ const HALF: i64 = 180 << Num::FRAC_BITS;
 
 impl Facing {
     /// `angle` degrees, taken modulo 360.
-    pub const fn of(angle: Num) -> Facing {
-        Facing(Num::from_bits(angle.to_bits().rem_euclid(FULL)))
+    pub const fn of(angle: Num) -> Self {
+        Self(Num::from_bits(angle.to_bits().rem_euclid(FULL)))
     }
 
     /// The angle in degrees the unit of `at` faces, which its spawn gives; 0 for an entity that
     /// faces none.
     pub(crate) fn angle_of<H>(at: &KindSpawn<'_, H>) -> Num {
-        let facing = at.world().get::<Facing>(at.entity());
+        let facing = at.world().get::<Self>(at.entity());
         facing.map_or(Num::ZERO, |facing| facing.degrees())
     }
 
@@ -55,17 +55,17 @@ impl Facing {
 
     /// The facing along `way`, its `x` and `z` on the ground plane: its angle in degrees,
     /// rounded once; `None` for a way of no length.
-    pub fn along([x, z]: [Num; 2]) -> Option<Facing> {
+    pub fn along([x, z]: [Num; 2]) -> Option<Self> {
         if x == Num::ZERO && z == Num::ZERO {
             return None;
         }
-        Some(Facing::of((-z).atan2_degrees(x)))
+        Some(Self::of((-z).atan2_degrees(x)))
     }
 
     /// It turned toward `way` the shorter way round, counter-clockwise on a tie: by at most
     /// `step`'s degrees, or at once with no step; and whether it then faces within
     /// `Facing::WITHIN` of the way.
-    pub fn toward(self, way: Facing, step: Option<TurnStep>) -> Turn {
+    pub fn toward(self, way: Self, step: Option<TurnStep>) -> Turn {
         // The turn to the way, from just past −180° to 180°.
         let mut left = Num::from_bits((way.0.to_bits() - self.0.to_bits()).rem_euclid(FULL));
         if left.to_bits() > HALF {
@@ -74,8 +74,8 @@ impl Facing {
         let turn = step.map_or(left, |step| left.clamp(-step.get(), step.get()));
         let rest = left - turn;
         Turn {
-            facing: Facing::of(self.0 + turn),
-            faces: -Facing::WITHIN <= rest && rest <= Facing::WITHIN,
+            facing: Self::of(self.0 + turn),
+            faces: -Self::WITHIN <= rest && rest <= Self::WITHIN,
         }
     }
 }

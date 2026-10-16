@@ -34,7 +34,7 @@ impl ScriptLimits {
 
 /// A manifest's limits, refused unless each pool holds a whole call.
 impl<'de> Deserialize<'de> for ScriptLimits {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ScriptLimits, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -49,7 +49,7 @@ impl<'de> Deserialize<'de> for ScriptLimits {
             think,
             mode,
         } = Fields::deserialize(deserializer)?;
-        let limits = ScriptLimits {
+        let limits = Self {
             per_call,
             player,
             think,
@@ -72,7 +72,7 @@ pub(crate) mod internals {
 
     impl ScriptLimits {
         /// Limits no test's script comes near, but one that spins without end.
-        pub const ROOMY: ScriptLimits = ScriptLimits {
+        pub const ROOMY: Self = Self {
             per_call: NonZeroU64::new(10_000).unwrap(),
             player: 100_000,
             think: 100_000,

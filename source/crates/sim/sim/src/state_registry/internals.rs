@@ -131,16 +131,16 @@ impl Shape {
 }
 
 impl Draws {
-    pub const fn new(seed: u64) -> Draws {
-        Draws {
+    pub const fn new(seed: u64) -> Self {
+        Self {
             words: SplitMix64::new(seed),
             shape: None,
         }
     }
 
     /// Draws of `seed` that note what they meet, for a layout.
-    const fn shaped(seed: u64) -> Draws {
-        Draws {
+    const fn shaped(seed: u64) -> Self {
+        Self {
             words: SplitMix64::new(seed),
             shape: Some(Shape {
                 trace: Vec::new(),
@@ -428,8 +428,8 @@ campfire_common::enum_all! {
 pub struct DrawError(String);
 
 impl de::Error for DrawError {
-    fn custom<T: fmt::Display>(message: T) -> DrawError {
-        DrawError(message.to_string())
+    fn custom<T: fmt::Display>(message: T) -> Self {
+        Self(message.to_string())
     }
 }
 
@@ -753,11 +753,11 @@ impl StateRegistry {
         self.entries
             .iter()
             .map(|entry| {
-                let seed = *StateRegistry::digest(entry.name.as_bytes()).as_bytes();
+                let seed = *Self::digest(entry.name.as_bytes()).as_bytes();
                 let seed = u64::from_le_bytes(seed[..8].try_into().expect("8 of 32 bytes"));
                 bytes.clear();
                 (entry.layout)(&mut Draws::shaped(seed), &mut bytes);
-                (entry.name, StateRegistry::digest(&bytes))
+                (entry.name, Self::digest(&bytes))
             })
             .collect()
     }

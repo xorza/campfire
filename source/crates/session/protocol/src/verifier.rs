@@ -11,8 +11,8 @@ pub struct Verifier {
 }
 
 impl Verifier {
-    pub fn new() -> Verifier {
-        Verifier {
+    pub fn new() -> Self {
+        Self {
             secp: Secp256k1::verification_only(),
             message: Vec::new(),
         }
@@ -44,7 +44,7 @@ impl Verifier {
 }
 
 impl Default for Verifier {
-    fn default() -> Verifier {
-        Verifier::new()
+    fn default() -> Self {
+        Self::new()
     }
 }

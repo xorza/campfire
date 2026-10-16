@@ -68,13 +68,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for UnitsSet {
     const CAPABILITY: Option<Capability> = None;
-    const ALL: &'static [UnitsSet] = &UnitsSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            UnitsSet::BeginTick => SetPlace::Phase(Phase::Begin),
-            UnitsSet::EndLifespans => SetPlace::Phase(Phase::End),
-            UnitsSet::DropUnspawned => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
+            Self::BeginTick => SetPlace::Phase(Phase::Begin),
+            Self::EndLifespans => SetPlace::Phase(Phase::End),
+            Self::DropUnspawned => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
         }
     }
 }
@@ -94,7 +94,7 @@ impl Module for Units {
         d.sets::<UnitsSet>();
         d.calls::<SpawnHooks>();
         d.engine_tags(&[Avatar::TAG, Dead::TAG]);
-        Units::kinds(d);
+        Self::kinds(d);
         d.component::<Body>();
         d.component::<BodyUnit>();
         d.component::<Dead>();
@@ -126,14 +126,14 @@ impl Module for Units {
         d.cache::<UnitTracker<GridUnits>>();
         d.observer(UnitTracker::<GridUnits>::aged);
         d.observer(UnitTracker::<GridUnits>::lost_body);
-        d.observer(Units::refill_view);
-        d.check::<Position>(Units::within_bounds);
+        d.observer(Self::refill_view);
+        d.check::<Position>(Self::within_bounds);
         d.host::<Position, UnitEntity>();
-        d.check::<Team>(Units::teams_known);
+        d.check::<Team>(Self::teams_known);
         d.host::<Team, Either<UnitEntity, Player>>();
-        d.check::<UnitType>(Units::types_known);
+        d.check::<UnitType>(Self::types_known);
         d.host::<UnitType, UnitEntity>();
-        d.check::<Relations>(Units::relations_known);
+        d.check::<Relations>(Self::relations_known);
         d.host::<Relations, MatchEntity>();
         d.require::<UnitEntity, Position>();
         d.require::<UnitEntity, Team>();
@@ -348,7 +348,7 @@ pub(crate) mod internals {
         pub fn seal_tags(world: &mut World, effects: &BTreeMap<DeclaredName, TagData>) {
             let mut effects = effects.clone();
             let mut types = world.resource_mut::<UnitTypeBook>();
-            for (name, data) in Units::test_tags() {
+            for (name, data) in Self::test_tags() {
                 types.declare(name.as_str()).unwrap();
                 effects.insert(name, data);
             }
@@ -388,7 +388,7 @@ pub(crate) mod internals {
         pub fn seal_once(world: &mut World) {
             let sealed = world.resource::<UnitTypeBook>().sealed();
             if !sealed && world.resource::<TagBook>().is_empty() {
-                Units::seal_tags(world, &BTreeMap::new());
+                Self::seal_tags(world, &BTreeMap::new());
             }
         }
 
@@ -419,13 +419,13 @@ pub(crate) mod internals {
             expression: &str,
             of: StableId,
         ) -> Result<ScriptValue, CallError> {
-            Units::probe(world, &format!("fn probe(ctx, of) {{ {expression} }}"), of)
+            Self::probe(world, &format!("fn probe(ctx, of) {{ {expression} }}"), of)
         }
 
         /// Compiles `source`, and adds the hooks the host reads of it to the match's book, as a
         /// test match has no package load to read them.
         pub fn compile_hooked(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
-            let script = Units::compile(world, source)?;
+            let script = Self::compile(world, source)?;
             world.resource_scope(|world, mut scripts: Mut<'_, ScriptBook>| {
                 assert_eq!(script.index(), scripts.len(), "the book holds every script");
                 scripts.push(world.non_send::<ScriptHost>().functions(script));
@@ -469,7 +469,7 @@ pub(crate) mod internals {
         /// Loads `data` as the next unit type of the mode, named for its place.
         pub fn load_next_type(world: &mut World, data: &UnitTypeCore) -> UnitType {
             let name = format!("type {}", world.resource::<UnitTypeBook>().count());
-            Units::load_type(world, TypeScope::Mode, &name, data)
+            Self::load_type(world, TypeScope::Mode, &name, data)
         }
 
         pub fn tagged_type(
@@ -478,7 +478,7 @@ pub(crate) mod internals {
             params: &[(&str, Scalar)],
         ) -> UnitType {
             let data = UnitTypeCore::of(tags, params);
-            Units::load_next_type(world, &data)
+            Self::load_next_type(world, &data)
         }
     }
 }

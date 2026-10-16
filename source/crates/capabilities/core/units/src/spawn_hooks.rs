@@ -30,7 +30,7 @@ impl SpawnHooks {
     /// Runs each capability's hook on the unit of `entity`, which the mode's spawner spawned, in
     /// the capabilities' order.
     pub fn run(world: &mut World, entity: Entity) {
-        let hooks = world.resource::<SpawnHooks>().0;
+        let hooks = world.resource::<Self>().0;
         for hook in hooks.iter() {
             hook(world, entity);
         }

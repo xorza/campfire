@@ -42,8 +42,8 @@ impl<T: Send + Sync + 'static> ByType<T> {
 }
 
 impl<T: Send + Sync + 'static> Default for ByType<T> {
-    fn default() -> ByType<T> {
-        ByType {
+    fn default() -> Self {
+        Self {
             entries: Vec::new(),
         }
     }

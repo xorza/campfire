@@ -40,7 +40,7 @@ impl<'a> Installer<'a> {
         registry: &'a mut StateRegistry,
         set: CapabilitySet,
         role: &'a Role,
-    ) -> Installer<'a> {
+    ) -> Self {
         Installer {
             world,
             schedule,

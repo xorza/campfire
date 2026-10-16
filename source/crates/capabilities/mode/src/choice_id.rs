@@ -9,8 +9,8 @@ impl NameId for ChoiceId {
     type Scope = ();
     const LIMIT: usize = 1 << u16::BITS;
 
-    fn at(index: usize) -> ChoiceId {
-        ChoiceId(u16::try_from(index).expect("choices fit u16"))
+    fn at(index: usize) -> Self {
+        Self(u16::try_from(index).expect("choices fit u16"))
     }
 
     fn index(self) -> usize {
@@ -22,10 +22,10 @@ impl NameId for ChoiceId {
 impl TextArg for ChoiceId {
     const NAMES: NameKind = NameKind::Choice;
 
-    fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<ChoiceId> {
+    fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Self> {
         let names = ctx.get().view().names();
         let names = names
-            .table::<ChoiceId>()
+            .table::<Self>()
             .ok_or_else(|| ApiError::NoMode.fail())?;
         let choice = names.named(text.as_str());
         Ok(choice.ok_or_else(|| ApiError::Unknown(NameKind::Choice).fail())?)

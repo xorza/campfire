@@ -9,7 +9,7 @@ pub enum ActionRange {
     Global,
 }
 impl<'de> Deserialize<'de> for ActionRange {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ActionRange, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(rename_all = "snake_case")]
         enum Word {
@@ -22,8 +22,8 @@ impl<'de> Deserialize<'de> for ActionRange {
             Word(Word),
         }
         match Written::deserialize(deserializer) {
-            Ok(Written::Meters(meters)) if meters >= Num::ZERO => Ok(ActionRange::Meters(meters)),
-            Ok(Written::Word(Word::Global)) => Ok(ActionRange::Global),
+            Ok(Written::Meters(meters)) if meters >= Num::ZERO => Ok(Self::Meters(meters)),
+            Ok(Written::Word(Word::Global)) => Ok(Self::Global),
             _ => Err(Error::custom("a range is meters from 0, or global")),
         }
     }

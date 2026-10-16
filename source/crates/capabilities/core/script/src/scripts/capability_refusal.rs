@@ -47,12 +47,12 @@ mod tests {
 
     impl CapabilityRefusal for Sample {
         const OWNER: Capability = Capability::Combat;
-        const CASES: &'static [Sample] = &Sample::ALL;
+        const CASES: &'static [Self] = &Self::ALL;
 
         fn message(self) -> &'static str {
             match self {
-                Sample::First => "the first",
-                Sample::Second => "the second",
+                Self::First => "the first",
+                Self::Second => "the second",
             }
         }
     }
@@ -63,7 +63,7 @@ mod tests {
 
     impl CapabilityRefusal for Other {
         const OWNER: Capability = Capability::Stats;
-        const CASES: &'static [Other] = &[Other];
+        const CASES: &'static [Self] = &[Self];
 
         fn message(self) -> &'static str {
             "the first"

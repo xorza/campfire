@@ -128,10 +128,10 @@ impl OrderScript {
 
     /// The script in the file at `path`; an error for a file that does not read, and for text
     /// `parse` refuses.
-    pub fn read(path: &Path) -> Result<OrderScript, OrderScriptReadError> {
-        let text = InputFile::read_text(path, OrderScript::MAX_FILE_LEN)
-            .map_err(OrderScriptReadError::Read)?;
-        OrderScript::parse(&text).map_err(|error| OrderScriptReadError::Script {
+    pub fn read(path: &Path) -> Result<Self, OrderScriptReadError> {
+        let text =
+            InputFile::read_text(path, Self::MAX_FILE_LEN).map_err(OrderScriptReadError::Read)?;
+        Self::parse(&text).map_err(|error| OrderScriptReadError::Script {
             path: path.to_owned(),
             error,
         })
@@ -141,7 +141,7 @@ impl OrderScript {
     /// no action or two, or a target without a cast, when a coordinate is past what a sim number
     /// holds, when the ticks of its orders or of its inputs do not grow, or when the script ends
     /// before an order or an input.
-    pub fn parse(text: &str) -> Result<OrderScript, OrderScriptError> {
+    pub fn parse(text: &str) -> Result<Self, OrderScriptError> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct File {
@@ -257,7 +257,7 @@ impl OrderScript {
         {
             return Err(OrderScriptError::EndsEarly { end: end.get() });
         }
-        Ok(OrderScript {
+        Ok(Self {
             orders,
             inputs,
             end,

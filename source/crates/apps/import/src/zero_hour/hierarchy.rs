@@ -30,7 +30,7 @@ const NAME: usize = 16;
 const PIVOT: usize = NAME + 4 + 12 + 12 + 16;
 
 impl Hierarchy {
-    pub(crate) fn read(body: &[u8]) -> Result<Hierarchy, W3dError> {
+    pub(crate) fn read(body: &[u8]) -> Result<Self, W3dError> {
         let mut name = None;
         let mut pivots = Vec::new();
         for chunk in W3dChunks::of(body) {
@@ -75,7 +75,7 @@ impl Hierarchy {
                 _ => {}
             }
         }
-        Ok(Hierarchy {
+        Ok(Self {
             name: name.ok_or(W3dError::Missing)?,
             pivots,
         })

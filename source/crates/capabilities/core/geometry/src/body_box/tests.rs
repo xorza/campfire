@@ -521,7 +521,7 @@ impl Draws {
 
     /// A meter, scaled.
     const fn meter(&self) -> i64 {
-        Draws::ONE * self.scale
+        Self::ONE * self.scale
     }
 
     fn bits(&mut self, low: i64, high: i64) -> i64 {
@@ -537,9 +537,9 @@ impl Draws {
     /// A whole number of quarters, or any angle.
     fn angle(&mut self, quarters: bool) -> Num {
         if quarters {
-            Num::from_bits(self.bits(0, 4) * 90 * Draws::ONE)
+            Num::from_bits(self.bits(0, 4) * 90 * Self::ONE)
         } else {
-            Num::from_bits(self.bits(0, 360 * Draws::ONE))
+            Num::from_bits(self.bits(0, 360 * Self::ONE))
         }
     }
 

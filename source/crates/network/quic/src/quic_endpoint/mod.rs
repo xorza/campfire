@@ -91,14 +91,9 @@ impl QuicEndpoint {
     }
 
     /// A client's endpoint, which connects to `server` and takes only the key `pin`.
-    pub fn client(
-        server: SocketAddr,
-        pin: &TlsKey,
-        times: LinkTimes,
-    ) -> Result<QuicEndpoint, BindError> {
-        let config =
-            QuicEndpoint::client_config(PinnedKeyVerifier::new(pin).client_config(), times);
-        QuicEndpoint::client_of(server, *pin, config, CID_LEN)
+    pub fn client(server: SocketAddr, pin: &TlsKey, times: LinkTimes) -> Result<Self, BindError> {
+        let config = Self::client_config(PinnedKeyVerifier::new(pin).client_config(), times);
+        Self::client_of(server, *pin, config, CID_LEN)
     }
 
     fn client_of(
@@ -106,7 +101,7 @@ impl QuicEndpoint {
         pin: TlsKey,
         config: ClientConfig,
         cid_len: usize,
-    ) -> Result<QuicEndpoint, BindError> {
+    ) -> Result<Self, BindError> {
         let unspecified = if server.is_ipv4() {
             Ipv4Addr::UNSPECIFIED.into()
         } else {
@@ -117,10 +112,10 @@ impl QuicEndpoint {
             pin,
             config,
         };
-        QuicEndpoint::open(
+        Self::open(
             SocketAddr::new(unspecified, 0),
             None,
-            QuicEndpoint::endpoint_config(ResetKey::random(), cid_len),
+            Self::endpoint_config(ResetKey::random(), cid_len),
             side,
         )
     }
@@ -129,7 +124,7 @@ impl QuicEndpoint {
     /// handshake, each of which lets the client's next connection from its IP skip the Retry once
     /// within `TOKEN_LIFETIME` (D8).
     fn server_config(crypto: Arc<QuicServerConfig>, times: LinkTimes) -> ServerConfig {
-        let mut config = ServerConfig::new(crypto, QuicEndpoint::token_key());
+        let mut config = ServerConfig::new(crypto, Self::token_key());
         config.transport_config(Arc::new(times.transport()));
         let mut tokens = ValidationTokenConfig::default();
         tokens
@@ -157,11 +152,11 @@ impl QuicEndpoint {
         server: Option<Arc<ServerConfig>>,
         config: EndpointConfig,
         side: Side,
-    ) -> Result<QuicEndpoint, BindError> {
+    ) -> Result<Self, BindError> {
         let bind_error = |error| BindError { address, error };
         let port = UdpPort::bind(address).map_err(bind_error)?;
         let local = port.local_address().map_err(bind_error)?;
-        Ok(QuicEndpoint::run(port, local, server, config, side))
+        Ok(Self::run(port, local, server, config, side))
     }
 
     /// The endpoint of `port`, bound to `local`, with its thread running.
@@ -171,7 +166,7 @@ impl QuicEndpoint {
         server: Option<Arc<ServerConfig>>,
         config: EndpointConfig,
         side: Side,
-    ) -> QuicEndpoint {
+    ) -> Self {
         let max_payload =
             usize::try_from(config.get_max_udp_payload_size()).expect("a UDP payload fits usize");
         let endpoint = Endpoint::new(Arc::new(config), server, !port.may_fragment(), None);
@@ -179,7 +174,7 @@ impl QuicEndpoint {
         let shared = Arc::new(SharedEndpoint::new(state, port));
         let thread = IoThread::new(Arc::clone(&shared), max_payload);
         let worker = Worker::start("campfire-quic", move || thread.run());
-        QuicEndpoint {
+        Self {
             shared,
             side,
             local,
@@ -251,7 +246,7 @@ impl QuicEndpoint {
             }
             Err(error) => {
                 warn!(error = %ErrorReport::of(&error), %server, "the client does not connect");
-                QuicEndpoint::unlink(entity, LinkEnd::NotOpened, commands);
+                Self::unlink(entity, LinkEnd::NotOpened, commands);
             }
         }
     }
@@ -282,7 +277,7 @@ impl QuicEndpoint {
                         self.link_peer(endpoint, peer, commands);
                     }
                 }
-                News::Lost { entity, end, .. } => QuicEndpoint::unlink(entity, end, commands),
+                News::Lost { entity, end, .. } => Self::unlink(entity, end, commands),
             }
         }
         let arrived = LinkInstant::now();
@@ -329,7 +324,7 @@ impl QuicEndpoint {
                 let link = commands
                     .spawn((
                         LinkOf { server: endpoint },
-                        QuicEndpoint::link(),
+                        Self::link(),
                         PeerAddr(remote),
                         binding,
                         QuicLink::new(Arc::downgrade(&self.shared), peer.key()),
@@ -369,12 +364,12 @@ impl QuicEndpoint {
         }
         let end = LinkEnd::Closed(AppCode::STOPPED);
         let endpoint = world
-            .get::<QuicEndpoint>(entity)
+            .get::<Self>(entity)
             .expect("a hook of QuicEndpoint runs on an entity that holds one");
         let client = matches!(endpoint.side, Side::Client { .. });
         let mut commands = world.commands();
         if client {
-            QuicEndpoint::unlink(entity, end, &mut commands);
+            Self::unlink(entity, end, &mut commands);
         } else {
             commands.entity(entity).try_insert(Unlinked {
                 reason: UnlinkReason::TransportError(format!("{end:?}")),
@@ -444,14 +439,14 @@ impl ServerSocket {
         address: SocketAddr,
         secret: &Zeroizing<[u8; 32]>,
         times: LinkTimes,
-    ) -> Result<ServerSocket, BindError> {
+    ) -> Result<Self, BindError> {
         let key = ServerKey::derive(secret);
         let config = QuicEndpoint::server_config(key.server_config(), times);
         let port = UdpPort::bind(address).map_err(|error| BindError { address, error })?;
         let local = port
             .local_address()
             .map_err(|error| BindError { address, error })?;
-        Ok(ServerSocket {
+        Ok(Self {
             port,
             local,
             server: Arc::new(config),
@@ -473,7 +468,7 @@ impl ServerSocket {
     /// The server's endpoint, which takes connections within `limit` for each address once it
     /// starts.
     pub fn serve(self, limit: AddressLimit) -> QuicEndpoint {
-        let ServerSocket {
+        let Self {
             port,
             local,
             server,

@@ -8,7 +8,7 @@ pub(crate) struct ByteCursor<'a> {
 }
 
 impl<'a> ByteCursor<'a> {
-    pub(crate) const fn new(bytes: &'a [u8]) -> ByteCursor<'a> {
+    pub(crate) const fn new(bytes: &'a [u8]) -> Self {
         ByteCursor { rest: bytes }
     }
 

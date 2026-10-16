@@ -104,7 +104,7 @@ struct Joining {
 }
 
 impl Joining {
-    fn new(lobby: &Lobby) -> Joining {
+    fn new(lobby: &Lobby) -> Self {
         let granted = DelegationTerms {
             session_key: TestKey::of(2).x_only_public_key().0,
             server_key: TestKey::server().x_only_public_key().0,
@@ -112,7 +112,7 @@ impl Joining {
             seed_contribution: SeedContribution::new([6; 32]),
             expiration: TestKey::NOW + 60,
         };
-        Joining {
+        Self {
             granted,
             offered: Offered {
                 challenge: ConnectChallenge::new([9; 32]),

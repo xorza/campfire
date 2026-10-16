@@ -24,9 +24,9 @@ pub(crate) struct TeamRooms {
 
 impl TeamRooms {
     /// Takes a room from `allocator` for each team index.
-    pub(crate) fn new(allocator: &mut RoomAllocator) -> TeamRooms {
+    pub(crate) fn new(allocator: &mut RoomAllocator) -> Self {
         let rooms = TeamSet::ALL.iter().map(|_| allocator.allocate()).collect();
-        TeamRooms {
+        Self {
             rooms,
             everything: allocator.allocate(),
             fog: SpectatorFog::All,

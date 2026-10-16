@@ -34,11 +34,11 @@ pub(crate) struct ServerKey {
 
 impl ServerKey {
     /// The TLS key of the server whose own key's secret is `secret`.
-    pub(crate) fn derive(secret: &Zeroizing<[u8; 32]>) -> ServerKey {
-        ServerKey::from_seed(&DerivedSecret::TlsSeed.of(secret))
+    pub(crate) fn derive(secret: &Zeroizing<[u8; 32]>) -> Self {
+        Self::from_seed(&DerivedSecret::TlsSeed.of(secret))
     }
 
-    pub(crate) fn from_seed(seed: &Zeroizing<[u8; 32]>) -> ServerKey {
+    pub(crate) fn from_seed(seed: &Zeroizing<[u8; 32]>) -> Self {
         let pair = Ed25519KeyPair::from_seed_unchecked(seed.as_slice())
             .expect("any 32 bytes are an Ed25519 seed");
         let public = TlsKey::new(
@@ -47,10 +47,10 @@ impl ServerKey {
                 .try_into()
                 .expect("an Ed25519 public key is 32 bytes"),
         );
-        let pkcs8 = ServerKey::pkcs8(seed);
+        let pkcs8 = Self::pkcs8(seed);
         let signing = provider::sign::any_eddsa_type(&PrivatePkcs8KeyDer::from(&pkcs8[..]))
             .expect("ring loads its own Ed25519 encoding");
-        ServerKey { signing, public }
+        Self { signing, public }
     }
 
     /// The public key, which a listing names and a client pins.

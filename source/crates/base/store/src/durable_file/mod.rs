@@ -28,7 +28,7 @@ struct Written<'a> {
 impl DurableFile {
     /// Replaces the file at `path`, or makes it, with `bytes`.
     pub fn write(path: &Path, bytes: &[u8]) -> Result<(), PathError<DurableError>> {
-        DurableFile::write_case(path, bytes).map_err(PathError::at(path))
+        Self::write_case(path, bytes).map_err(PathError::at(path))
     }
 
     /// `write`, whose error its caller names the path of.
@@ -36,7 +36,7 @@ impl DurableFile {
         let Written {
             directory,
             temporary,
-        } = DurableFile::write_beside(path, ".part", bytes)?;
+        } = Self::write_beside(path, ".part", bytes)?;
         DurableName::rename(&temporary, path).map_err(DurableError::Rename)?;
         DurableName::sync_dir(directory).map_err(DurableError::SyncDirectory)
     }
@@ -46,7 +46,7 @@ impl DurableFile {
     /// other gets `Exists`. Each writer's temporary file holds its process's and its thread's
     /// numbers in its name, so no writer removes or names another's.
     pub fn create(path: &Path, bytes: &[u8]) -> Result<(), PathError<DurableCreateError>> {
-        DurableFile::create_case(path, bytes).map_err(PathError::at(path))
+        Self::create_case(path, bytes).map_err(PathError::at(path))
     }
 
     fn create_case(path: &Path, bytes: &[u8]) -> Result<(), DurableCreateError> {
@@ -57,7 +57,7 @@ impl DurableFile {
         let Written {
             directory,
             temporary,
-        } = DurableFile::write_beside(path, &suffix, bytes)?;
+        } = Self::write_beside(path, &suffix, bytes)?;
         match DurableName::create(&temporary, path) {
             Ok(()) => {}
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {

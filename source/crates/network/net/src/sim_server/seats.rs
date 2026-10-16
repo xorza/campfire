@@ -18,12 +18,12 @@ pub(crate) struct Seat {
 
 impl Seats {
     /// The seats of `slots` slots, each link of `links` seated in its slot, and the rest empty.
-    pub(crate) fn new(slots: u32, links: &[(PlayerSlot, Entity)]) -> Seats {
+    pub(crate) fn new(slots: u32, links: &[(PlayerSlot, Entity)]) -> Self {
         let mut seats = vec![Seat::default(); slots as usize];
         for &(slot, link) in links {
             seats[slot.index()].link = Some(link);
         }
-        Seats(seats)
+        Self(seats)
     }
 
     /// The seats of `slots` slots, whose players' links all went at `now`, as a restore finds
@@ -32,12 +32,12 @@ impl Seats {
         slots: u32,
         players: impl Iterator<Item = PlayerSlot>,
         now: Duration,
-    ) -> Seats {
+    ) -> Self {
         let mut seats = vec![Seat::default(); slots as usize];
         for slot in players {
             seats[slot.index()].gone_since = Some(now);
         }
-        Seats(seats)
+        Self(seats)
     }
 
     pub(crate) fn get(&self, slot: PlayerSlot) -> Seat {

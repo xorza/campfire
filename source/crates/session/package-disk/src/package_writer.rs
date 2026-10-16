@@ -24,9 +24,9 @@ pub struct PackageWriter {
 
 impl PackageWriter {
     /// A writer of the package in the new directory `root`; an error when one is there.
-    pub fn create(root: &Path) -> Result<PackageWriter, WriteError> {
+    pub fn create(root: &Path) -> Result<Self, WriteError> {
         DurableDir::create_new(root).map_err(WriteError::CreateDir)?;
-        Ok(PackageWriter {
+        Ok(Self {
             root: root.to_owned(),
             rows: PackageWalk::new(),
             firsts: BTreeMap::new(),

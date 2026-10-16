@@ -15,7 +15,7 @@ pub(crate) struct InputAck {
 
 impl InputAck {
     /// The acknowledgment of the inputs from seq `first` on, as the log placed them.
-    pub(crate) fn of(first: u64, applied: &[Applied]) -> InputAck {
+    pub(crate) fn of(first: u64, applied: &[Applied]) -> Self {
         let applied = applied
             .iter()
             .map(|applied| match *applied {
@@ -23,6 +23,6 @@ impl InputAck {
                 Applied::Late | Applied::Early => None,
             })
             .collect();
-        InputAck { first, applied }
+        Self { first, applied }
     }
 }

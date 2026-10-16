@@ -26,7 +26,7 @@ impl<T> PendingCalls<T> {
     }
 
     /// Moves the calls of `later` to the end, leaving it empty.
-    pub fn append(&mut self, later: &mut PendingCalls<T>) {
+    pub fn append(&mut self, later: &mut Self) {
         self.calls.append(&mut later.calls);
     }
 
@@ -41,14 +41,14 @@ impl<T> PendingCalls<T> {
 }
 
 impl<T> Default for PendingCalls<T> {
-    fn default() -> PendingCalls<T> {
-        PendingCalls { calls: Vec::new() }
+    fn default() -> Self {
+        Self { calls: Vec::new() }
     }
 }
 
 impl<T> FromIterator<T> for PendingCalls<T> {
-    fn from_iter<I: IntoIterator<Item = T>>(calls: I) -> PendingCalls<T> {
-        PendingCalls {
+    fn from_iter<I: IntoIterator<Item = T>>(calls: I) -> Self {
+        Self {
             calls: calls.into_iter().collect(),
         }
     }
@@ -62,7 +62,7 @@ impl<T> Extend<T> for PendingCalls<T> {
 }
 
 impl<T, const N: usize> From<[T; N]> for PendingCalls<T> {
-    fn from(calls: [T; N]) -> PendingCalls<T> {
+    fn from(calls: [T; N]) -> Self {
         calls.into_iter().collect()
     }
 }

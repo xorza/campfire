@@ -32,8 +32,8 @@ impl NameId for StateField {
     type Scope = ();
     const LIMIT: usize = u32::MAX as usize;
 
-    fn at(index: usize) -> StateField {
-        StateField(u32::try_from(index).expect("a field below the limit"))
+    fn at(index: usize) -> Self {
+        Self(u32::try_from(index).expect("a field below the limit"))
     }
 
     fn index(self) -> usize {
@@ -44,9 +44,7 @@ impl NameId for StateField {
 impl StateSchema {
     /// The schema of `fields`, each name with the class it syncs to and its declaration, in the
     /// order of their names, as data's tables give them.
-    pub fn new<'a>(
-        fields: impl IntoIterator<Item = (&'a str, SyncTo, &'a StateDecl)>,
-    ) -> StateSchema {
+    pub fn new<'a>(fields: impl IntoIterator<Item = (&'a str, SyncTo, &'a StateDecl)>) -> Self {
         let mut names = Names::default();
         let (mut initial, mut places) = (Vec::new(), Vec::new());
         let mut counts = [0; 4];
@@ -63,7 +61,7 @@ impl StateSchema {
             *class += 1;
             initial.push(decl.initial().clone());
         }
-        StateSchema {
+        Self {
             names,
             initial: initial.into(),
             places: places.into(),

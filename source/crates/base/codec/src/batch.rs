@@ -14,7 +14,7 @@ pub(crate) struct Batch<'a> {
 }
 
 impl<'a> Batch<'a> {
-    pub(crate) const fn new(sink: &'a mut dyn Sink) -> Batch<'a> {
+    pub(crate) const fn new(sink: &'a mut dyn Sink) -> Self {
         Batch {
             sink,
             buffer: ArrayVec::new_const(),

@@ -149,7 +149,7 @@ impl Replication for Relations {
 /// A snapshot is untrusted, so pairs out of order, of a team with itself, or that are the
 /// default fail to decode.
 impl<'de> Deserialize<'de> for Relations {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Relations, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let pairs = Vec::<RelationPair>::deserialize(deserializer)?;
         let ordered = pairs
             .windows(2)
@@ -162,7 +162,7 @@ impl<'de> Deserialize<'de> for Relations {
                 "relations out of order or held needlessly",
             ));
         }
-        Ok(Relations { pairs })
+        Ok(Self { pairs })
     }
 }
 

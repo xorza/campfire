@@ -41,11 +41,11 @@ const DIGITS: usize = 16;
 
 impl Golden {
     /// A record of a match of `packages` for `players` players.
-    pub(crate) fn new(packages: &ModePackages, players: u32) -> Golden {
+    pub(crate) fn new(packages: &ModePackages, players: u32) -> Self {
         let names = packages.data().resources.iter();
         let names: Names<ResourceId> = names.map(DeclaredName::as_str).collect();
         let resources = names.iter().map(|(resource, _)| resource).collect();
-        Golden {
+        Self {
             resources,
             players,
             ticks: Vec::new(),
@@ -136,7 +136,7 @@ impl Golden {
     /// Compares the record with the golden file `name` of the harness's tests, or writes the file
     /// with `CAMPFIRE_BLESS=1`. A difference names the first tick each column differs in.
     pub(crate) fn check(&self, name: &str) {
-        let path = Golden::path(name);
+        let path = Self::path(name);
         let lines = self.lines();
         let blessed = PinnedFile::new(&path)
             .bless(lines.as_bytes())
@@ -151,7 +151,7 @@ impl Golden {
     /// `CAMPFIRE_BLESS=1` it compares nothing, as the file it reads is being written again.
     pub(crate) fn compare(&self, name: &str) {
         if !PinnedFile::blessing() {
-            self.compare_lines(name, &Golden::path(name), &self.lines());
+            self.compare_lines(name, &Self::path(name), &self.lines());
         }
     }
 
@@ -170,7 +170,7 @@ impl Golden {
     /// Asserts that the golden file `name` at `path` holds `lines`, naming the first tick each
     /// column differs in.
     fn compare_lines(&self, name: &str, path: &Path, lines: &str) {
-        let pinned = InputFile::read_text(path, Golden::MAX_LEN).unwrap_or_else(|error| {
+        let pinned = InputFile::read_text(path, Self::MAX_LEN).unwrap_or_else(|error| {
             panic!(
                 "{}; run with CAMPFIRE_BLESS=1 to write it",
                 ErrorReport::of(&error)

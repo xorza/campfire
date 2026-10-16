@@ -102,7 +102,7 @@ pub(crate) struct CliffUv {
 impl Terrain {
     /// The terrain of `terrain`; an error unless its cells fill whole rows, every index each
     /// cell, blend and cliff names is in its list, and each class's tiles are within its count.
-    pub(crate) fn new(terrain: TerrainParts) -> Result<Terrain, TerrainError> {
+    pub(crate) fn new(terrain: TerrainParts) -> Result<Self, TerrainError> {
         let columns = usize::try_from(terrain.columns)
             .ok()
             .ok_or(TerrainError::Shape)?;
@@ -151,7 +151,7 @@ impl Terrain {
             terrain.edge_tiles,
             TerrainError::EdgeClassTiles,
         )?;
-        Ok(Terrain { parts: terrain })
+        Ok(Self { parts: terrain })
     }
 
     pub(crate) const fn parts(&self) -> &TerrainParts {

@@ -21,7 +21,7 @@ impl SpawnParts {
         entity: &mut EntityWorldMut<'_>,
         push: impl FnOnce(&World, Entity, &mut BundleWriter<'_>),
     ) {
-        let Some(mut scratch) = entity.world_scope(SpawnParts::take) else {
+        let Some(mut scratch) = entity.world_scope(Self::take) else {
             return;
         };
         let mut writer = scratch.writer();
@@ -33,14 +33,14 @@ impl SpawnParts {
             unsafe { writer.write(entity) };
         }
         entity.world_scope(|world| {
-            let mut parts = world.resource_mut::<SpawnParts>();
+            let mut parts = world.resource_mut::<Self>();
             *parts.0.get_mut().expect("no spawn panicked holding it") = scratch;
         });
     }
 
     /// The match's scratch, which it lends a spawn; none in a match with no part.
     fn take(world: &mut World) -> Option<BundleScratch> {
-        let mut parts = world.get_resource_mut::<SpawnParts>()?;
+        let mut parts = world.get_resource_mut::<Self>()?;
         let scratch = parts.0.get_mut().expect("no spawn panicked holding it");
         Some(mem::take(scratch))
     }

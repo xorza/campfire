@@ -679,8 +679,8 @@ impl Handoff {
     }
 
     /// Steps every end until `done`.
-    fn step_until(&mut self, done: impl Fn(&Handoff) -> bool) {
-        for _ in 0..Handoff::FRAMES {
+    fn step_until(&mut self, done: impl Fn(&Self) -> bool) {
+        for _ in 0..Self::FRAMES {
             if done(self) {
                 return;
             }
@@ -690,8 +690,8 @@ impl Handoff {
     }
 
     /// Steps the server and the first client alone until `done`.
-    fn step_first_until(&mut self, done: impl Fn(&Handoff) -> bool) {
-        for _ in 0..Handoff::FRAMES {
+    fn step_first_until(&mut self, done: impl Fn(&Self) -> bool) {
+        for _ in 0..Self::FRAMES {
             if done(self) {
                 return;
             }

@@ -22,15 +22,15 @@ pub struct ModeNames {
 impl ModeNames {
     /// The names of `data`; an error for a list with a name twice, or more names than the ids of
     /// their kind count.
-    pub fn of(data: &ModeData) -> Result<ModeNames, ModeNamesError> {
-        Ok(ModeNames {
-            pools: Arc::new(ModeNames::list(data.pools.keys(), ModeList::Pools)?),
-            resources: Arc::new(ModeNames::list(&data.resources, ModeList::Resources)?),
-            damage_kinds: Arc::new(ModeNames::list(
+    pub fn of(data: &ModeData) -> Result<Self, ModeNamesError> {
+        Ok(Self {
+            pools: Arc::new(Self::list(data.pools.keys(), ModeList::Pools)?),
+            resources: Arc::new(Self::list(&data.resources, ModeList::Resources)?),
+            damage_kinds: Arc::new(Self::list(
                 &data.combat.damage_kinds,
                 ModeList::DamageKinds,
             )?),
-            layers: ModeNames::list(&data.navigation.layers, ModeList::Layers)?,
+            layers: Self::list(&data.navigation.layers, ModeList::Layers)?,
         })
     }
 

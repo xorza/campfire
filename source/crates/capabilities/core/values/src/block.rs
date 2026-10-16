@@ -18,11 +18,11 @@ campfire_common::enum_all! {
 
 impl Block {
     /// Each block's name, in the order of `ALL`.
-    const NAMES: [&'static str; Block::ALL.len()] = {
-        let mut names = [""; Block::ALL.len()];
+    const NAMES: [&'static str; Self::ALL.len()] = {
+        let mut names = [""; Self::ALL.len()];
         let mut at = 0;
         while at < names.len() {
-            names[at] = Block::ALL[at].name();
+            names[at] = Self::ALL[at].name();
             at += 1;
         }
         names
@@ -31,22 +31,22 @@ impl Block {
     /// As a mode's `blocks` writes it.
     pub const fn name(self) -> &'static str {
         match self {
-            Block::Move => "move",
-            Block::Attack => "attack",
-            Block::Cast => "cast",
-            Block::Use => "use",
-            Block::Target => "target",
-            Block::Damage => "damage",
+            Self::Move => "move",
+            Self::Attack => "attack",
+            Self::Cast => "cast",
+            Self::Use => "use",
+            Self::Target => "target",
+            Self::Damage => "damage",
         }
     }
 }
 
 /// A block reads as the name `name` gives it, so the two never differ.
 impl<'de> Deserialize<'de> for Block {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Block, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        let found = Block::ALL.into_iter().find(|block| block.name() == text);
-        found.ok_or_else(|| D::Error::unknown_variant(&text, &Block::NAMES))
+        let found = Self::ALL.into_iter().find(|block| block.name() == text);
+        found.ok_or_else(|| D::Error::unknown_variant(&text, &Self::NAMES))
     }
 }
 

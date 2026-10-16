@@ -46,8 +46,8 @@ const DRAG_TURN: f32 = 0.01;
 
 impl Default for GameDataIni {
     /// The game's defaults.
-    fn default() -> GameDataIni {
-        GameDataIni {
+    fn default() -> Self {
+        Self {
             adjust_cliff_textures: false,
             three_way_blends: 1,
             camera_pitch: 0.0,
@@ -86,7 +86,7 @@ impl GameDataIni {
                     let lights = line.int()?;
                     self.global_lights = usize::try_from(lights)
                         .ok()
-                        .filter(|&lights| lights <= GameDataIni::MOST_LIGHTS)
+                        .filter(|&lights| lights <= Self::MOST_LIGHTS)
                         .ok_or(IniError::Range { line: line.number })?;
                 }
                 (true, word) => {

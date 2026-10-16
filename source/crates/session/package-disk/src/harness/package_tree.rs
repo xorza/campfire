@@ -49,14 +49,14 @@ enum Missing {
 
 impl PackageTree {
     /// The tree of `mode`, read from disk.
-    pub fn of(mode: TestMode) -> PackageTree {
+    pub fn of(mode: TestMode) -> Self {
         let mut files = BTreeMap::new();
-        PackageTree::read(
+        Self::read(
             &PackageDir::workspace(mode.tree()),
             Path::new(""),
             &mut files,
         );
-        PackageTree { mode, files }
+        Self { mode, files }
     }
 
     /// The text of `file`, by its path from the tree's root.
@@ -69,7 +69,7 @@ impl PackageTree {
     }
 
     /// Makes `edit` to `file`, by its path from the tree's root.
-    pub fn edit(&mut self, file: &str, edit: Edit<'_>) -> &mut PackageTree {
+    pub fn edit(&mut self, file: &str, edit: Edit<'_>) -> &mut Self {
         let edited = match edit {
             Edit::Create(text) => text.to_owned(),
             Edit::Append(more) => format!("{}\n{more}", self.text(file)),
@@ -81,19 +81,17 @@ impl PackageTree {
             Edit::Set(at, value) => {
                 let value =
                     Toml::parse::<Table>(&format!("value = {value}")).unwrap()["value"].clone();
-                PackageTree::at_path(self.text(file), at, Missing::Add, |parent, key| {
-                    PackageTree::put(parent, key, value);
+                Self::at_path(self.text(file), at, Missing::Add, |parent, key| {
+                    Self::put(parent, key, value);
                 })
             }
-            Edit::Remove(at) => {
-                PackageTree::at_path(self.text(file), at, Missing::Fail, |parent, key| {
-                    drop(PackageTree::remove(parent, key));
-                })
-            }
+            Edit::Remove(at) => Self::at_path(self.text(file), at, Missing::Fail, |parent, key| {
+                drop(Self::remove(parent, key));
+            }),
             Edit::Rename(at, name) => {
-                PackageTree::at_path(self.text(file), at, Missing::Fail, |parent, key| {
-                    let value = PackageTree::remove(parent, key);
-                    PackageTree::put(parent, name, value);
+                Self::at_path(self.text(file), at, Missing::Fail, |parent, key| {
+                    let value = Self::remove(parent, key);
+                    Self::put(parent, name, value);
                 })
             }
         };
@@ -120,7 +118,7 @@ impl PackageTree {
         for entry in DirEntries::read(dir).unwrap() {
             let (on_disk, path) = (dir.join(&entry.name), at.join(&entry.name));
             if entry.kind == EntryKind::Dir {
-                PackageTree::read(&on_disk, &path, files);
+                Self::read(&on_disk, &path, files);
             } else {
                 files.insert(path, InputFile::read(&on_disk, FILE_LEN).unwrap());
             }
@@ -131,7 +129,7 @@ impl PackageTree {
     fn put(parent: &mut Value, key: &str, value: Value) {
         match parent {
             Value::Table(table) => drop(table.insert(key.to_owned(), value)),
-            Value::Array(array) => array[PackageTree::index(key)] = value,
+            Value::Array(array) => array[Self::index(key)] = value,
             _ => panic!("{key} is inside a value"),
         }
     }
@@ -142,7 +140,7 @@ impl PackageTree {
             Value::Table(table) => table
                 .remove(key)
                 .unwrap_or_else(|| panic!("no {key} to remove")),
-            Value::Array(array) => array.remove(PackageTree::index(key)),
+            Value::Array(array) => array.remove(Self::index(key)),
             _ => panic!("{key} is inside a value"),
         }
     }
@@ -174,7 +172,7 @@ impl PackageTree {
                         .get_mut(key)
                         .unwrap_or_else(|| panic!("no {key} on the way to {path}")),
                 },
-                Value::Array(array) => &mut array[PackageTree::index(key)],
+                Value::Array(array) => &mut array[Self::index(key)],
                 _ => panic!("{path} passes through a value"),
             },
         );

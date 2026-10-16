@@ -68,13 +68,13 @@ struct Removals {
 }
 
 impl Removals {
-    fn of(world: &World) -> Removals {
+    fn of(world: &World) -> Self {
         let (mut held, mut written) = (0, 0);
         for (_, messages) in world.removed_components().iter() {
             held += messages.len();
             written += messages.oldest_message_count() + messages.len();
         }
-        Removals { held, written }
+        Self { held, written }
     }
 }
 

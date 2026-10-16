@@ -44,7 +44,7 @@ impl<'a> Command<'a> {
     /// place of its body in `payload`: whether the payload is exactly a list of commands. A
     /// client can send any bytes, so a reader of a payload with a flaw keeps none of the commands
     /// it was given.
-    pub fn read(payload: &'a [u8], mut read: impl FnMut(Command<'a>, Range<usize>)) -> bool {
+    pub fn read(payload: &'a [u8], mut read: impl FnMut(Self, Range<usize>)) -> bool {
         let Ok(Taken {
             value: count,
             mut rest,

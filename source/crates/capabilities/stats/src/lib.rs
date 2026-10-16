@@ -162,30 +162,29 @@ pub enum StatsSet {
 
 impl StatsSet {
     /// The steps in the stages.
-    const STEPS: [StatsSet; 8] = [
-        StatsSet::Expire,
-        StatsSet::Regenerate,
-        StatsSet::GrantAtInputs,
-        StatsSet::GrantAtStrike,
-        StatsSet::GrantAtResolve,
-        StatsSet::GrantAtEnd,
-        StatsSet::ClearDead,
-        StatsSet::Hold,
+    const STEPS: [Self; 8] = [
+        Self::Expire,
+        Self::Regenerate,
+        Self::GrantAtInputs,
+        Self::GrantAtStrike,
+        Self::GrantAtResolve,
+        Self::GrantAtEnd,
+        Self::ClearDead,
+        Self::Hold,
     ];
 
     /// The steps in the stages, then a refresh in each gap, `SimEdge::Start` first.
-    const ALL: [StatsSet; StatsSet::STEPS.len() + 1 + SimSet::ALL.len()] = {
-        let steps = StatsSet::STEPS.len();
-        let mut all =
-            [StatsSet::Refresh(SimEdge::Start); StatsSet::STEPS.len() + 1 + SimSet::ALL.len()];
+    const ALL: [Self; Self::STEPS.len() + 1 + SimSet::ALL.len()] = {
+        let steps = Self::STEPS.len();
+        let mut all = [Self::Refresh(SimEdge::Start); Self::STEPS.len() + 1 + SimSet::ALL.len()];
         let mut at = 0;
         while at < steps {
-            all[at] = StatsSet::STEPS[at];
+            all[at] = Self::STEPS[at];
             at += 1;
         }
         let mut stage = 0;
         while stage < SimSet::ALL.len() {
-            all[steps + 1 + stage] = StatsSet::Refresh(SimEdge::After(SimSet::ALL[stage]));
+            all[steps + 1 + stage] = Self::Refresh(SimEdge::After(SimSet::ALL[stage]));
             stage += 1;
         }
         all
@@ -194,18 +193,18 @@ impl StatsSet {
 
 impl ModuleSet for StatsSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
-    const ALL: &'static [StatsSet] = &StatsSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            StatsSet::Expire | StatsSet::Regenerate => SetPlace::Phase(Phase::Begin),
-            StatsSet::GrantAtInputs => SetPlace::Phase(Phase::GrantAtInputs),
-            StatsSet::GrantAtStrike => SetPlace::Phase(Phase::GrantAtStrike),
-            StatsSet::GrantAtResolve => SetPlace::Phase(Phase::GrantAtResolve),
-            StatsSet::GrantAtEnd => SetPlace::Phase(Phase::GrantAtEnd),
-            StatsSet::ClearDead => SetPlace::Phase(Phase::ClearDead),
-            StatsSet::Hold => SetPlace::Phase(Phase::HoldModifiers),
-            StatsSet::Refresh(edge) => SetPlace::Gap(edge),
+            Self::Expire | Self::Regenerate => SetPlace::Phase(Phase::Begin),
+            Self::GrantAtInputs => SetPlace::Phase(Phase::GrantAtInputs),
+            Self::GrantAtStrike => SetPlace::Phase(Phase::GrantAtStrike),
+            Self::GrantAtResolve => SetPlace::Phase(Phase::GrantAtResolve),
+            Self::GrantAtEnd => SetPlace::Phase(Phase::GrantAtEnd),
+            Self::ClearDead => SetPlace::Phase(Phase::ClearDead),
+            Self::Hold => SetPlace::Phase(Phase::HoldModifiers),
+            Self::Refresh(edge) => SetPlace::Gap(edge),
         }
     }
 }
@@ -458,7 +457,7 @@ pub mod internals {
             let id = world
                 .resource_mut::<ModifierBook>()
                 .push_changes(changes, tags);
-            Stats::load_modifier_params(world, id, &BTreeMap::new(), |_| StatId::new(0));
+            Self::load_modifier_params(world, id, &BTreeMap::new(), |_| StatId::new(0));
             id
         }
 
@@ -480,7 +479,7 @@ pub mod internals {
                 // A match that runs no scripts holds no script book, and its modifiers none.
                 let none = ScriptBook::default();
                 let scripts = world.get_resource::<ScriptBook>().unwrap_or(&none);
-                let places = Stats::stat_places(world, data.stats.keys());
+                let places = Self::stat_places(world, data.stats.keys());
                 let load = ModifierLoad {
                     scripts,
                     types: &mut types,
@@ -503,8 +502,8 @@ pub mod internals {
                 .named((package, name.as_str()))
                 .expect("the modifier loaded");
             ModifierBook::share_in(world);
-            let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
-            Stats::load_modifier_params(world, id, &data.params, |stat| places[stat]);
+            let places = Self::stat_places(world, data.params.values().flat_map(Param::stats));
+            Self::load_modifier_params(world, id, &data.params, |stat| places[stat]);
         }
 
         /// Gives a match with no mode the stat book `book`, with no pool stats; the pools its
@@ -522,7 +521,7 @@ pub mod internals {
         /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool stats;
         /// the pools its scripts name stay named.
         pub fn load_rules(world: &mut World, rules: &BTreeMap<Stat, StatRule>) {
-            Stats::load_book(world, StatBook::new(rules, Num::MAX));
+            Self::load_book(world, StatBook::new(rules, Num::MAX));
         }
 
         /// Adds the params of `action`, the one the match's action book loaded last, each stat at
@@ -535,7 +534,7 @@ pub mod internals {
         ) {
             let run = world.resource_mut::<ParamBook>().push_action(params, stat);
             assert_eq!(run, action.index(), "one run of params per action");
-            Stats::resolve_appliers(world);
+            Self::resolve_appliers(world);
         }
 
         /// Adds the params of `modifier`, the one the match's modifier book loaded last, each stat
@@ -550,7 +549,7 @@ pub mod internals {
                 .resource_mut::<ParamBook>()
                 .push_modifier(params, stat);
             assert_eq!(run, modifier.index(), "one run of params per modifier");
-            Stats::resolve_appliers(world);
+            Self::resolve_appliers(world);
         }
 
         /// Resolves the params the match's modifiers read from their abilities in each action's

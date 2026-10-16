@@ -40,13 +40,13 @@ pub enum Flight {
 }
 
 impl Flight {
-    pub(crate) const fn homing(target: StableId) -> Flight {
-        Flight::Homing { target }
+    pub(crate) const fn homing(target: StableId) -> Self {
+        Self::Homing { target }
     }
 
     /// A flight along `direction` for `range`, aimed at `aimed` if a unit.
-    pub(crate) const fn line(direction: Vec3, range: Num, aimed: Option<StableId>) -> Flight {
-        Flight::Line {
+    pub(crate) const fn line(direction: Vec3, range: Num, aimed: Option<StableId>) -> Self {
+        Self::Line {
             direction,
             range,
             aimed,
@@ -78,7 +78,7 @@ pub enum Payload {
 impl Projectile {
     /// `None` unless a line's range is not negative, an attack's amount is not negative, and its
     /// roll is at least 0 and less than 1.
-    pub fn new(source: StableId, flight: Flight, payload: Payload) -> Option<Projectile> {
+    pub fn new(source: StableId, flight: Flight, payload: Payload) -> Option<Self> {
         let flies = match flight {
             Flight::Homing { .. } => true,
             Flight::Line { range, .. } => range >= Num::ZERO,
@@ -89,7 +89,7 @@ impl Projectile {
             }
             Payload::Action { .. } => true,
         };
-        (flies && carries).then_some(Projectile {
+        (flies && carries).then_some(Self {
             source,
             flight,
             payload,
@@ -151,7 +151,7 @@ impl Replication for Projectile {
 
 /// A snapshot is untrusted, so a projectile that `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Projectile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Projectile, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             source: StableId,
@@ -163,7 +163,7 @@ impl<'de> Deserialize<'de> for Projectile {
             flight,
             payload,
         } = Fields::deserialize(deserializer)?;
-        Projectile::new(source, flight, payload)
+        Self::new(source, flight, payload)
             .ok_or_else(|| D::Error::custom("projectile out of its limits"))
     }
 }

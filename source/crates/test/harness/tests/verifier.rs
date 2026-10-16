@@ -576,7 +576,7 @@ struct Seen {
 }
 
 impl Seen {
-    fn of(game: &Match) -> Seen {
+    fn of(game: &Match) -> Self {
         let index = game.resource::<EntityIndex>();
         let entity = |id: u64| index.iter().find(|(unit, _)| unit.get() == id).unwrap().1;
         let targets = [0, 1, 3, 4, 5, 6].map(|id| {
@@ -588,7 +588,7 @@ impl Seen {
             .iter()
             .filter(|&(_, entity)| game.entity(entity).contains::<Projectile>())
             .count();
-        Seen {
+        Self {
             targets,
             hero_health: hero.current().round(),
             projectiles,

@@ -27,8 +27,8 @@ pub struct StoreFailure {
 impl PackageStore {
     /// Every package under `root`: each directory that holds a `manifest.toml`, which is not
     /// searched further; an error only when a directory that holds no package does not read.
-    pub fn scan(root: &Path) -> Result<PackageStore, ContentError> {
-        let mut store = PackageStore::default();
+    pub fn scan(root: &Path) -> Result<Self, ContentError> {
+        let mut store = Self::default();
         store.scan_dir(root)?;
         Ok(store)
     }

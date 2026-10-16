@@ -26,17 +26,17 @@ pub struct HashTrail {
 
 impl HashTrail {
     /// A trail of `totals` alone, such as a server's tick hashes.
-    pub fn of_totals(totals: impl IntoIterator<Item = StateHash>) -> HashTrail {
-        HashTrail {
+    pub fn of_totals(totals: impl IntoIterator<Item = StateHash>) -> Self {
+        Self {
             totals: totals.into_iter().collect(),
-            ..HashTrail::default()
+            ..Self::default()
         }
     }
 
     /// The state after each tick of `replay`, as it runs every tick its log holds after those
     /// that ran: what the match that wrote the log must have held.
-    pub fn of_replay(replay: &mut Replay<'_>) -> Result<HashTrail, ReplayError> {
-        let mut trail = HashTrail::default();
+    pub fn of_replay(replay: &mut Replay<'_>) -> Result<Self, ReplayError> {
+        let mut trail = Self::default();
         replay.run_each(|world| trail.record(world))?;
         Ok(trail)
     }
@@ -72,7 +72,7 @@ impl HashTrail {
 
     /// How `replayed` differs from it: the first tick of another hash, or another count of
     /// ticks; `None` when it holds the same ticks.
-    pub fn difference(&self, replayed: &HashTrail) -> Option<Difference> {
+    pub fn difference(&self, replayed: &Self) -> Option<Difference> {
         let tick = self
             .totals
             .iter()
@@ -89,13 +89,13 @@ impl HashTrail {
     }
 
     /// Asserts that `replayed` holds the same ticks, each of the same hash.
-    pub fn assert_same(&self, replayed: &HashTrail) {
+    pub fn assert_same(&self, replayed: &Self) {
         assert_eq!(self.difference(replayed), None);
     }
 
     /// The state types whose hashes differ between the two at `tick`; none when either holds
     /// only totals.
-    fn differing_types(&self, replayed: &HashTrail, tick: usize) -> Vec<&'static str> {
+    fn differing_types(&self, replayed: &Self, tick: usize) -> Vec<&'static str> {
         if self.types.is_empty() || replayed.types.is_empty() || self.names != replayed.names {
             return Vec::new();
         }

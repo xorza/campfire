@@ -23,15 +23,15 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for AbilitiesRefusal {
     const OWNER: Capability = Capability::Abilities;
-    const CASES: &'static [AbilitiesRefusal] = &AbilitiesRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            AbilitiesRefusal::NoCharges => "the ability has no charges",
-            AbilitiesRefusal::NoStart => "the call's action did not start",
-            AbilitiesRefusal::NotAFraction => "fraction is below 0 or above 1",
-            AbilitiesRefusal::NotCharged => "the call's action does not charge",
-            AbilitiesRefusal::NotHeld => "the unit does not hold the ability",
+            Self::NoCharges => "the ability has no charges",
+            Self::NoStart => "the call's action did not start",
+            Self::NotAFraction => "fraction is below 0 or above 1",
+            Self::NotCharged => "the call's action does not charge",
+            Self::NotHeld => "the unit does not hold the ability",
         }
     }
 }

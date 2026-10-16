@@ -16,11 +16,11 @@ impl ScriptRadius {
     }
 
     /// `radius`, or the refusal of one below 0.
-    fn checked(radius: Num) -> Checked<ScriptRadius> {
+    fn checked(radius: Num) -> Checked<Self> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
-        Ok(ScriptRadius(radius))
+        Ok(Self(radius))
     }
 }
 
@@ -31,11 +31,11 @@ impl ScriptArg for ScriptRadius {
     const ENUM: Option<EngineEnum> = None;
     const NUMBER: bool = true;
 
-    fn take(raw: Num, ctx: &ArgCtx<'_>) -> Checked<ScriptRadius> {
-        ScriptRadius::checked(Num::take(raw, ctx)?)
+    fn take(raw: Num, ctx: &ArgCtx<'_>) -> Checked<Self> {
+        Self::checked(Num::take(raw, ctx)?)
     }
 
-    fn take_int(raw: i64, ctx: &ArgCtx<'_>) -> Checked<ScriptRadius> {
-        ScriptRadius::checked(Num::take_int(raw, ctx)?)
+    fn take_int(raw: i64, ctx: &ArgCtx<'_>) -> Checked<Self> {
+        Self::checked(Num::take_int(raw, ctx)?)
     }
 }

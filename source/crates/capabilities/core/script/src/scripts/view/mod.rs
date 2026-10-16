@@ -57,8 +57,8 @@ struct ViewParts {
 impl View {
     /// The view of a match at `rate`, whose units `read` reads into its rows, with no names
     /// until the load and the mode give them.
-    pub fn new(rate: TickRate, read: fn(&mut World)) -> View {
-        View(Rc::new(ViewParts {
+    pub fn new(rate: TickRate, read: fn(&mut World)) -> Self {
+        Self(Rc::new(ViewParts {
             rate,
             names: RefCell::default(),
             rows: RefCell::default(),

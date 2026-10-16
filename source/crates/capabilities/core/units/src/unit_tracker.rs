@@ -74,8 +74,8 @@ where
 }
 
 impl<T> Default for UnitTracker<T> {
-    fn default() -> UnitTracker<T> {
-        UnitTracker {
+    fn default() -> Self {
+        Self {
             taken: None,
             checked: None,
             marked: false,
@@ -85,8 +85,8 @@ impl<T> Default for UnitTracker<T> {
 }
 
 impl<T: TrackedUnits> Cache for UnitTracker<T> {
-    fn installed() -> Option<UnitTracker<T>> {
-        Some(UnitTracker::default())
+    fn installed() -> Option<Self> {
+        Some(Self::default())
     }
 }
 
@@ -99,14 +99,14 @@ impl<T: TrackedUnits> UnitTracker<T> {
     /// The observer of Bevy's check of change ticks, which clamps old ones and wraps none: a take
     /// or a check older than the maximum change age reads no change as newer, and a run's tick
     /// may come again.
-    pub fn aged(_: On<'_, '_, CheckChangeTicks>, mut tracker: ResMut<'_, UnitTracker<T>>) {
+    pub fn aged(_: On<'_, '_, CheckChangeTicks>, mut tracker: ResMut<'_, Self>) {
         tracker.marked = true;
         tracker.checked = None;
     }
 
     /// The observer of a body lost, which no change tick shows: a unit of the group that holds
     /// its body as a part it may lack.
-    pub fn lost_body(_: On<'_, '_, Remove, Body>, mut tracker: ResMut<'_, UnitTracker<T>>) {
+    pub fn lost_body(_: On<'_, '_, Remove, Body>, mut tracker: ResMut<'_, Self>) {
         tracker.marked = true;
     }
 }

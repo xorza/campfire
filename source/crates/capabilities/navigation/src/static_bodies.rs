@@ -35,7 +35,7 @@ impl StaticBodies {
     pub(super) fn part_removed(
         removed: On<'_, '_, Remove, (Position, Body, StableId)>,
         parts: BodyParts<'_, '_>,
-        mut tracker: ResMut<'_, UnitTracker<StaticBodies>>,
+        mut tracker: ResMut<'_, UnitTracker<Self>>,
     ) {
         if parts
             .get(removed.entity)
@@ -49,9 +49,9 @@ impl StaticBodies {
     pub(super) fn state_inserted(
         inserted: On<'_, '_, Insert, (MoveStep, Dead)>,
         parts: BodyParts<'_, '_>,
-        tracker: ResMut<'_, UnitTracker<StaticBodies>>,
+        tracker: ResMut<'_, UnitTracker<Self>>,
     ) {
-        StaticBodies::state_changed(inserted.entity, &parts, tracker);
+        Self::state_changed(inserted.entity, &parts, tracker);
     }
 
     /// A unit lives again or stops walking: it becomes static if it lacks the other of the two.
@@ -59,9 +59,9 @@ impl StaticBodies {
     pub(super) fn state_removed(
         removed: On<'_, '_, Remove, (MoveStep, Dead)>,
         parts: BodyParts<'_, '_>,
-        tracker: ResMut<'_, UnitTracker<StaticBodies>>,
+        tracker: ResMut<'_, UnitTracker<Self>>,
     ) {
-        StaticBodies::state_changed(removed.entity, &parts, tracker);
+        Self::state_changed(removed.entity, &parts, tracker);
     }
 
     /// `entity` gained or lost walking or being dead: it was or becomes static unless it has
@@ -69,7 +69,7 @@ impl StaticBodies {
     fn state_changed(
         entity: Entity,
         parts: &BodyParts<'_, '_>,
-        mut tracker: ResMut<'_, UnitTracker<StaticBodies>>,
+        mut tracker: ResMut<'_, UnitTracker<Self>>,
     ) {
         if parts
             .get(entity)

@@ -15,14 +15,14 @@ pub enum Role {
 impl Role {
     /// Whether the match runs scripts: a server's within its budgets.
     pub const fn scripts(&self) -> bool {
-        matches!(self, Role::Server(Some(_)))
+        matches!(self, Self::Server(Some(_)))
     }
 
     /// The budgets the match's scripts run within; none for a match that runs no scripts.
     pub const fn budgets(&self) -> Option<&ScriptBudgets> {
         match self {
-            Role::Server(budgets) => budgets.as_ref(),
-            Role::Client => None,
+            Self::Server(budgets) => budgets.as_ref(),
+            Self::Client => None,
         }
     }
 }

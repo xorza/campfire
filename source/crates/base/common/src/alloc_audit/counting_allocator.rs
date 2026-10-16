@@ -104,7 +104,7 @@ impl CountingAllocator {
         BYTES.set(BYTES.get() + size as u64);
         CAPTURING.set(true);
         TRACES.with_borrow_mut(|traces| {
-            if traces.len() < CountingAllocator::TRACE_CAP {
+            if traces.len() < Self::TRACE_CAP {
                 traces.push(AllocTrace::new(Backtrace::new_unresolved()));
             }
         });
@@ -114,7 +114,7 @@ impl CountingAllocator {
 
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        CountingAllocator::track(layout.size());
+        Self::track(layout.size());
         // SAFETY: the caller's contract for `alloc` is `System.alloc`'s.
         unsafe { System.alloc(layout) }
     }
@@ -125,13 +125,13 @@ unsafe impl GlobalAlloc for CountingAllocator {
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        CountingAllocator::track(layout.size());
+        Self::track(layout.size());
         // SAFETY: the caller's contract for `alloc_zeroed` is `System.alloc_zeroed`'s.
         unsafe { System.alloc_zeroed(layout) }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        CountingAllocator::track(new_size);
+        Self::track(new_size);
         // SAFETY: `ptr` came from `System` with `layout`, and the caller's contract for `realloc`
         // is `System.realloc`'s.
         unsafe { System.realloc(ptr, layout, new_size) }

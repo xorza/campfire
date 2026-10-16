@@ -24,9 +24,7 @@ struct Requests {
 }
 
 impl FakeGateway {
-    pub(crate) fn start(
-        mut answer: impl FnMut(&[u8]) -> Vec<Vec<u8>> + Send + 'static,
-    ) -> FakeGateway {
+    pub(crate) fn start(mut answer: impl FnMut(&[u8]) -> Vec<Vec<u8>> + Send + 'static) -> Self {
         let socket = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         let SocketAddr::V4(address) = socket.local_addr().unwrap() else {
             unreachable!()
@@ -54,7 +52,7 @@ impl FakeGateway {
                 }
             })
         };
-        FakeGateway {
+        Self {
             address,
             requests,
             _worker: worker,

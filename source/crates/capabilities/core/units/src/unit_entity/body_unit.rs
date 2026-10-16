@@ -25,7 +25,7 @@ impl EntityKind for BodyUnit {
 
 impl SimComponent for BodyUnit {
     const NAME: &'static str = "units.body_unit";
-    type Host = BodyUnit;
+    type Host = Self;
 
     // A unit of a named id would stand where a player's or the match's entity is looked for; and
     // an entity is of one kind.

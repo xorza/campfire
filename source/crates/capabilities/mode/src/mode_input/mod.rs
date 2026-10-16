@@ -32,10 +32,7 @@ impl<'a> ModeInput<'a> {
 
     /// The input in `body`, when its name is one of `types` and its value is exactly of the
     /// type declared for it: a client can send any bytes.
-    pub fn decode(
-        body: &'a [u8],
-        types: impl Fn(&str) -> Option<InputType>,
-    ) -> Option<ModeInput<'a>> {
+    pub fn decode(body: &'a [u8], types: impl Fn(&str) -> Option<InputType>) -> Option<Self> {
         let Taken { value: name, rest } = Binary::take::<&str>(body).ok()?;
         let Taken { value, rest } = match types(name)? {
             InputType::String => {

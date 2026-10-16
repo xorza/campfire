@@ -41,9 +41,9 @@ impl Site {
         gain: Num,
         paid: &[ResourceAmount],
         holder: Option<StableId>,
-    ) -> Site {
+    ) -> Self {
         debug_assert!(gain >= Num::ZERO);
-        Site {
+        Self {
             action,
             rank,
             progress: Num::ZERO,
@@ -139,7 +139,7 @@ impl Replication for Site {
 
 /// A snapshot is untrusted, so a progress or a gain below 0 fails to decode.
 impl<'de> Deserialize<'de> for Site {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Site, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             action: ActionId,
@@ -160,7 +160,7 @@ impl<'de> Deserialize<'de> for Site {
         if progress < Num::ZERO || gain < Num::ZERO {
             return Err(D::Error::custom("a site's progress and gain from 0"));
         }
-        Ok(Site {
+        Ok(Self {
             action,
             rank,
             progress,

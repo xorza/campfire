@@ -72,7 +72,7 @@ impl Waypoint {
 impl SkirmishPoint {
     /// Whether it is a point of one of the slots `1..=slots`.
     const fn of_slots(self, slots: u8) -> bool {
-        let (SkirmishPoint::Start(n) | SkirmishPoint::Rally(n)) = self;
+        let (Self::Start(n) | Self::Rally(n)) = self;
         n <= slots
     }
 }
@@ -136,7 +136,7 @@ impl MapImport {
     /// walls of its cliffs within them (design 17, D3); and its first `lights` object lights, as
     /// the game draws `NumberGlobalLights` of each, which the terrain is lit by too; their ambient
     /// color is the first light's, as the game takes it.
-    pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<MapImport, MapError> {
+    pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<Self, MapError> {
         let MapSources {
             ini,
             locomotors,
@@ -145,17 +145,17 @@ impl MapImport {
             lights,
             game,
         } = sources;
-        let heights = MapImport::heights(&file.heights)?;
+        let heights = Self::heights(&file.heights)?;
         let map_lights = MapLights::new(
             file.lights[0].ambient,
             file.lights[..lights].iter().map(|light| MapLight {
                 color: light.diffuse,
-                direction: MapImport::axes(light),
+                direction: Self::axes(light),
             }),
         )
         .ok_or(MapError::Lighting)?;
         let terrain = Terrain::new(TerrainParts {
-            cells: MapImport::flipped(&file.terrain.cells, file.heights.width),
+            cells: Self::flipped(&file.terrain.cells, file.heights.width),
             ..file.terrain.clone()
         })
         .map_err(MapError::Terrain)?;
@@ -315,7 +315,7 @@ impl MapImport {
             units: bridges,
             markers,
         };
-        Ok(MapImport {
+        Ok(Self {
             map: Toml::write(&map),
             heights: Binary::encode(&heights),
             terrain: Binary::encode(&terrain),
@@ -362,7 +362,7 @@ impl MapImport {
             Num::int(CELL),
             STEP,
             u32::try_from(*width).ok().ok_or(MapError::Heights)?,
-            MapImport::flipped(samples, *width),
+            Self::flipped(samples, *width),
         )
         .ok_or(MapError::Heights)
     }

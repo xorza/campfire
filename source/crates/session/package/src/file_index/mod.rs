@@ -46,14 +46,14 @@ impl FileIndex {
 
     /// The index of `rows`, which hold no two paths that differ only in case and not the
     /// index's own path, as a package's builder makes it.
-    pub(crate) fn new(rows: BTreeMap<PackagePath, FileRow>) -> Result<FileIndex, ContentError> {
-        FileIndex::check_spellings(rows.keys())?;
-        if rows.keys().any(|path| path.as_str() == FileIndex::PATH) {
+    pub(crate) fn new(rows: BTreeMap<PackagePath, FileRow>) -> Result<Self, ContentError> {
+        Self::check_spellings(rows.keys())?;
+        if rows.keys().any(|path| path.as_str() == Self::PATH) {
             return Err(ContentError::IndexListsItself);
         }
-        let bytes = FileIndex::encode_rows(&rows);
+        let bytes = Self::encode_rows(&rows);
         let fingerprint = PackageFingerprint::of(&bytes);
-        Ok(FileIndex {
+        Ok(Self {
             rows,
             bytes,
             fingerprint,
@@ -63,7 +63,7 @@ impl FileIndex {
     /// The index `bytes` hold, refused unless they are this version's tag and the one encoding of
     /// rows in strict order of their paths' bytes, each a package path, none the index's own, of
     /// a file no larger than `MAX_FILE_LEN`, and no two that differ only in case.
-    pub fn decode(bytes: &[u8]) -> Result<FileIndex, ContentError> {
+    pub fn decode(bytes: &[u8]) -> Result<Self, ContentError> {
         let body = bytes
             .strip_prefix(INDEX_TAG.as_bytes())
             .and_then(|rest| rest.strip_prefix(b"\n"))
@@ -81,19 +81,19 @@ impl FileIndex {
             let (sha256, rest) = line.split_once(' ').ok_or_else(flawed)?;
             let (size, path) = rest.split_once(' ').ok_or_else(flawed)?;
             let sha256 = sha256.parse::<ContentHash>().map_err(|_| flawed())?;
-            let size = FileIndex::size(size).ok_or_else(flawed)?;
+            let size = Self::size(size).ok_or_else(flawed)?;
             let parsed =
                 PackagePath::parse(path).ok_or_else(|| ContentError::IndexPath(path.to_owned()))?;
             if previous.is_some_and(|previous| previous.as_bytes() >= path.as_bytes()) {
                 return Err(ContentError::IndexOrder(parsed));
             }
             previous = Some(path);
-            if size > FileIndex::MAX_FILE_LEN {
+            if size > Self::MAX_FILE_LEN {
                 return Err(ContentError::IndexFileLen(parsed));
             }
             rows.insert(parsed, FileRow { size, sha256 });
         }
-        let index = FileIndex::new(rows)?;
+        let index = Self::new(rows)?;
         debug_assert_eq!(
             index.bytes, bytes,
             "an index reads from its one encoding alone"

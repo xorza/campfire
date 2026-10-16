@@ -86,52 +86,52 @@ impl Phase {
     /// The stage it runs in.
     pub const fn stage(self) -> SimSet {
         match self {
-            Phase::Begin
-            | Phase::ModeInputs
-            | Phase::Toggles
-            | Phase::Learn
-            | Phase::Produce
-            | Phase::Trade
-            | Phase::Order
-            | Phase::HoldItems
-            | Phase::HoldAtInputs
-            | Phase::GrantAtInputs
-            | Phase::CheckBuilds => SimSet::Inputs,
-            Phase::Think => SimSet::Think,
-            Phase::Chase | Phase::Attack | Phase::Start | Phase::StartBuilds => SimSet::Act,
-            Phase::Move => SimSet::Move,
-            Phase::Collide => SimSet::Collide,
-            Phase::Fly
-            | Phase::Hits
-            | Phase::Trigger
-            | Phase::Deliver
-            | Phase::Pay
-            | Phase::HoldAtStrike
-            | Phase::GrantAtStrike
-            | Phase::Strike
-            | Phase::Fire
-            | Phase::CastResolve
-            | Phase::Launch
-            | Phase::Land
-            | Phase::Interval => SimSet::Hit,
-            Phase::Damage
-            | Phase::Resolve
-            | Phase::HoldAtResolve
-            | Phase::GrantAtResolve
-            | Phase::Die
-            | Phase::ClearDead
-            | Phase::HoldInside
-            | Phase::HoldModifiers => SimSet::Resolve,
-            Phase::Finish | Phase::ModeHooks => SimSet::Mode,
-            Phase::HoldAtEnd | Phase::GrantAtEnd | Phase::End => SimSet::Vision,
+            Self::Begin
+            | Self::ModeInputs
+            | Self::Toggles
+            | Self::Learn
+            | Self::Produce
+            | Self::Trade
+            | Self::Order
+            | Self::HoldItems
+            | Self::HoldAtInputs
+            | Self::GrantAtInputs
+            | Self::CheckBuilds => SimSet::Inputs,
+            Self::Think => SimSet::Think,
+            Self::Chase | Self::Attack | Self::Start | Self::StartBuilds => SimSet::Act,
+            Self::Move => SimSet::Move,
+            Self::Collide => SimSet::Collide,
+            Self::Fly
+            | Self::Hits
+            | Self::Trigger
+            | Self::Deliver
+            | Self::Pay
+            | Self::HoldAtStrike
+            | Self::GrantAtStrike
+            | Self::Strike
+            | Self::Fire
+            | Self::CastResolve
+            | Self::Launch
+            | Self::Land
+            | Self::Interval => SimSet::Hit,
+            Self::Damage
+            | Self::Resolve
+            | Self::HoldAtResolve
+            | Self::GrantAtResolve
+            | Self::Die
+            | Self::ClearDead
+            | Self::HoldInside
+            | Self::HoldModifiers => SimSet::Resolve,
+            Self::Finish | Self::ModeHooks => SimSet::Mode,
+            Self::HoldAtEnd | Self::GrantAtEnd | Self::End => SimSet::Vision,
         }
     }
 
     /// Puts the phase into its stage, after the phase before it in the list when that one is of
     /// the same stage.
     pub fn configure(self, schedule: &mut Schedule) {
-        let at = Phase::ALL.iter().position(|&phase| phase == self).unwrap();
-        let before = at.checked_sub(1).map(|before| Phase::ALL[before]);
+        let at = Self::ALL.iter().position(|&phase| phase == self).unwrap();
+        let before = at.checked_sub(1).map(|before| Self::ALL[before]);
         match before.filter(|before| before.stage() == self.stage()) {
             Some(before) => schedule.configure_sets(self.in_set(self.stage()).after(before)),
             None => schedule.configure_sets(self.in_set(self.stage())),

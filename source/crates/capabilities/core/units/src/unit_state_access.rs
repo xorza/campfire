@@ -19,8 +19,8 @@ pub(crate) struct UnitStateAccess {
 
 impl UnitStateAccess {
     /// The state of the unit `id` of `unit_type` in row `row` of the view.
-    pub(crate) const fn of_row(id: StableId, unit_type: UnitType, row: usize) -> UnitStateAccess {
-        UnitStateAccess {
+    pub(crate) const fn of_row(id: StableId, unit_type: UnitType, row: usize) -> Self {
+        Self {
             id,
             unit_type,
             row: Some(row),
@@ -28,8 +28,8 @@ impl UnitStateAccess {
     }
 
     /// The state of the unit `id` of `unit_type`, which the call creates.
-    pub(crate) const fn of_new(id: StableId, unit_type: UnitType) -> UnitStateAccess {
-        UnitStateAccess {
+    pub(crate) const fn of_new(id: StableId, unit_type: UnitType) -> Self {
+        Self {
             id,
             unit_type,
             row: None,
@@ -38,11 +38,9 @@ impl UnitStateAccess {
 
     /// Indexes `UnitState` by field name, to read and to write.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.ty::<UnitStateAccess>("UnitState")
-            .index(|args, state: &mut UnitStateAccess, name| state.get(args.get(), name))
-            .index_set(|args, state: &mut UnitStateAccess, name, value| {
-                state.set(args.get(), name, &value)
-            });
+        api.ty::<Self>("UnitState")
+            .index(|args, state: &mut Self, name| state.get(args.get(), name))
+            .index_set(|args, state: &mut Self, name, value| state.set(args.get(), name, &value));
     }
 
     /// The field `name`, as the call last wrote it, or else as the view holds it, or at its

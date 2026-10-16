@@ -16,7 +16,7 @@ pub struct VisionApi;
 
 impl VisionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        VisionApi::register_queries(api);
+        Self::register_queries(api);
         let reveal = MemberSpec::call(
             "reveal",
             &[&["pos", "radius", "ms"]],
@@ -26,7 +26,7 @@ impl VisionApi {
         api.call(
             reveal,
             |ctx: &mut Ctx, pos: ScriptPosition, radius: ScriptRadius, ms: i64| {
-                VisionApi::reveal(ctx, pos.get(), radius, ms)
+                Self::reveal(ctx, pos.get(), radius, ms)
             },
         )
         .tag_property(TagProperty::Hidden, Status::Runs(ApiVersion::FIRST))

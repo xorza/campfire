@@ -28,25 +28,25 @@ struct Fired {
 impl ClipShots {
     /// The part of a unit of `slots`, as `book` holds their actions: empty when a slot holds a
     /// weapon with a clip at some rank, none otherwise.
-    pub(crate) fn of(slots: &ActionSlots, book: &ActionBook) -> Option<ClipShots> {
+    pub(crate) fn of(slots: &ActionSlots, book: &ActionBook) -> Option<Self> {
         let clipped = slots
             .iter()
             .filter_map(|slot| book.get(slot.action?))
             .any(|action| action.ranks.iter().any(|values| values.clip.is_some()));
-        clipped.then(ClipShots::default)
+        clipped.then(Self::default)
     }
 
     /// Gives `entity` its count of shots when its slots hold a weapon with a clip and it holds
     /// none, as a grant can give a unit such a weapon after its spawn.
     pub fn hold(world: &mut World, entity: Entity) {
         let unit = world.entity(entity);
-        if unit.contains::<ClipShots>() {
+        if unit.contains::<Self>() {
             return;
         }
         let book = world.resource::<ActionBook>();
         let clips = unit
             .get::<ActionSlots>()
-            .and_then(|slots| ClipShots::of(slots, book));
+            .and_then(|slots| Self::of(slots, book));
         if let Some(clips) = clips {
             world.entity_mut(entity).insert(clips);
         }
@@ -73,14 +73,14 @@ impl ClipShots {
 /// A snapshot is untrusted, so weapons out of the order of their ids, one twice, or one of no shot,
 /// which a full clip is not in, fail to decode.
 impl<'de> Deserialize<'de> for ClipShots {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ClipShots, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let fired = Vec::<Fired>::deserialize(deserializer)?;
         if !fired.is_sorted_by(|a, b| a.action < b.action) || fired.iter().any(|f| f.shots == 0) {
             return Err(D::Error::custom(
                 "weapons in order, each once, each of a shot",
             ));
         }
-        Ok(ClipShots(fired))
+        Ok(Self(fired))
     }
 }
 

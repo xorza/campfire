@@ -23,7 +23,7 @@ impl Ai {
         script: ScriptId,
         scripts: &ScriptBook,
         rate: TickRate,
-    ) -> Result<Ai, AiError> {
+    ) -> Result<Self, AiError> {
         let thinks = scripts
             .defines(Some(script), ScriptRole::Ai)
             .contains(Hook::OnThink);
@@ -31,7 +31,7 @@ impl Ai {
         if !thinks {
             return Err(AiError::NoThink);
         }
-        Ok(Ai { script, period })
+        Ok(Self { script, period })
     }
 }
 

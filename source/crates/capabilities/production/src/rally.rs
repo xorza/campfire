@@ -14,8 +14,8 @@ use crate::rally_target::RallyTarget;
 pub struct Rally(RallyTarget);
 
 impl Rally {
-    pub const fn new(target: RallyTarget) -> Rally {
-        Rally(target)
+    pub const fn new(target: RallyTarget) -> Self {
+        Self(target)
     }
 
     pub const fn get(self) -> RallyTarget {

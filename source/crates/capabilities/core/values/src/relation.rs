@@ -17,24 +17,24 @@ pub enum Relation {
 impl Relation {
     /// Whether a unit may attack a unit of a team it regards so: a hostile or a neutral one.
     pub const fn may_attack(self) -> bool {
-        matches!(self, Relation::Hostile | Relation::Neutral)
+        matches!(self, Self::Hostile | Self::Neutral)
     }
 }
 
 /// `Relation::Hostile` and the others in scripts.
 impl ScriptEnum for Relation {
     const ENUM: EngineEnum = EngineEnum::Relation;
-    const MEMBERS: &'static [(&'static str, Relation)] = &[
-        ("Hostile", Relation::Hostile),
-        ("Neutral", Relation::Neutral),
-        ("Friendly", Relation::Friendly),
+    const MEMBERS: &'static [(&'static str, Self)] = &[
+        ("Hostile", Self::Hostile),
+        ("Neutral", Self::Neutral),
+        ("Friendly", Self::Friendly),
     ];
 
     fn data_name(self) -> &'static str {
         match self {
-            Relation::Hostile => "hostile",
-            Relation::Neutral => "neutral",
-            Relation::Friendly => "friendly",
+            Self::Hostile => "hostile",
+            Self::Neutral => "neutral",
+            Self::Friendly => "friendly",
         }
     }
 }

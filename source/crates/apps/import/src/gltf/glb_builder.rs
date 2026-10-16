@@ -30,8 +30,8 @@ const JSON_CHUNK: u32 = 0x4E4F_534A;
 const BIN_CHUNK: u32 = 0x004E_4942;
 
 impl GlbBuilder {
-    pub(crate) fn new() -> GlbBuilder {
-        GlbBuilder {
+    pub(crate) fn new() -> Self {
+        Self {
             document: GltfDocument {
                 asset: Asset {
                     version: "2.0",

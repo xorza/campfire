@@ -36,8 +36,8 @@ pub enum MatchResult {
 }
 
 impl MatchEnd {
-    pub const fn new(tick: Tick, result: MatchResult) -> MatchEnd {
-        MatchEnd { tick, result }
+    pub const fn new(tick: Tick, result: MatchResult) -> Self {
+        Self { tick, result }
     }
 
     pub const fn tick(self) -> Tick {
@@ -53,19 +53,19 @@ impl MatchEnd {
     /// the stage that ends the match is the last to run, its closing set with it. The tick still
     /// counts on, so a log may hold ticks after the end, which change nothing.
     pub fn stop_stages(schedule: &mut Schedule) {
-        schedule.configure_sets(SimEdge::Start.run_if(MatchEnd::running));
+        schedule.configure_sets(SimEdge::Start.run_if(Self::running));
         for stage in SimSet::ALL {
             let span = StageSpan(stage);
             schedule.configure_sets((
                 stage.in_set(span),
                 SimEdge::After(stage).in_set(span),
-                span.run_if(MatchEnd::running),
+                span.run_if(Self::running),
             ));
         }
     }
 
     /// Whether the match runs: a client holds its entity unpredicted, as the server sends it.
-    fn running(ended: Query<'_, '_, (), (With<MatchEnd>, Allow<Unpredicted>)>) -> bool {
+    fn running(ended: Query<'_, '_, (), (With<Self>, Allow<Unpredicted>)>) -> bool {
         ended.is_empty()
     }
 }

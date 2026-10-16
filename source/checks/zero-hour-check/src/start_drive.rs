@@ -52,17 +52,17 @@ impl StartDrive {
         packages: ModePackages,
         rate: NonZeroU32,
         failures: &mut Vec<Failure>,
-    ) -> Option<StartDrive> {
+    ) -> Option<Self> {
         let map = packages.map().clone();
         let (Some(start), Some(goal)) = (
-            StartDrive::waypoint(&map, "Player_1_Start"),
-            StartDrive::waypoint(&map, "Player_2_Start"),
+            Self::waypoint(&map, "Player_1_Start"),
+            Self::waypoint(&map, "Player_2_Start"),
         ) else {
             failures.push(Failure::NoStarts);
             return None;
         };
         let mut fixed = FixedSession::new(packages, rate, 1).start();
-        let drive = StartDrive::play(&mut fixed, &WallRect::of(&map), [start, goal], failures);
+        let drive = Self::play(&mut fixed, &WallRect::of(&map), [start, goal], failures);
         fixed.end();
         drive
     }
@@ -73,7 +73,7 @@ impl StartDrive {
         walls: &[WallRect],
         [start, goal]: [Vec3; 2],
         failures: &mut Vec<Failure>,
-    ) -> Option<StartDrive> {
+    ) -> Option<Self> {
         let mut tick = 0;
         fixed.game_mut().run_tick_alone();
         tick += 1;
@@ -138,7 +138,7 @@ impl StartDrive {
                 .is_some_and(|destination| destination.get().is_some());
             ordered |= walking;
             if ordered && !walking {
-                return Some(StartDrive {
+                return Some(Self {
                     ticks: tick,
                     end: pos,
                     left: pos.ground_offset(goal).length(),
@@ -171,7 +171,7 @@ impl StartDrive {
 
 impl WallRect {
     /// The walls of `map`'s navigation, each the rectangle of its points.
-    fn of(map: &MapData) -> Vec<WallRect> {
+    fn of(map: &MapData) -> Vec<Self> {
         let walls = map
             .navigation
             .iter()
@@ -182,7 +182,7 @@ impl WallRect {
                     MapPoint::Ground(at) => Some(*at),
                     MapPoint::Space(_) => None,
                 });
-                let mut rect = WallRect {
+                let mut rect = Self {
                     min: [Num::MAX; 2],
                     max: [Num::MIN; 2],
                 };

@@ -30,8 +30,8 @@ impl FixedMatch {
         signers: Vec<Signer>,
         terms: SessionTerms,
         log: LogCheck,
-    ) -> FixedMatch {
-        FixedMatch {
+    ) -> Self {
+        Self {
             game,
             chains,
             signers,

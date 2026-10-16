@@ -27,8 +27,8 @@ pub(crate) struct Receipts {
 }
 
 impl Receipts {
-    pub(crate) fn new(slots: u32) -> Receipts {
-        Receipts {
+    pub(crate) fn new(slots: u32) -> Self {
+        Self {
             given: vec![None; slots as usize],
             next: Duration::ZERO,
         }
@@ -37,7 +37,7 @@ impl Receipts {
     /// Gives each seated player whose durable head moved a receipt of it, once a second.
     pub(crate) fn give(
         time: Res<'_, Time<Real>>,
-        mut receipts: ResMut<'_, Receipts>,
+        mut receipts: ResMut<'_, Self>,
         mut session: ResMut<'_, Session>,
         journal: Option<Res<'_, JournalWatch>>,
         seats: Res<'_, Seats>,
@@ -63,7 +63,7 @@ impl Receipts {
             let Ok(mut sender) = links.get_mut(link) else {
                 continue;
             };
-            let receipt = Receipts::receipt(log.session_id(), slot, log.next_tick(), head);
+            let receipt = Self::receipt(log.session_id(), slot, log.next_tick(), head);
             sender.send::<MatchChannel>(SignedReceipt {
                 receipt,
                 signature: session.sign_receipt(&receipt),

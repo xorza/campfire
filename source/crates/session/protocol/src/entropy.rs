@@ -10,9 +10,9 @@ pub enum Entropy {
 impl Entropy {
     pub fn fill(self, bytes: &mut [u8; 32]) {
         match self {
-            Entropy::System => getrandom::fill(bytes).expect("the OS gives random bytes"),
+            Self::System => getrandom::fill(bytes).expect("the OS gives random bytes"),
             #[cfg(feature = "internals")]
-            Entropy::Fixed(byte) => bytes.fill(byte),
+            Self::Fixed(byte) => bytes.fill(byte),
         }
     }
 

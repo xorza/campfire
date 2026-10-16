@@ -18,8 +18,8 @@ pub(crate) struct CopyCheck {
 
 impl CopyCheck {
     /// A copy of the state of `game` as it stands.
-    pub(crate) fn of(game: &mut Match) -> CopyCheck {
-        CopyCheck {
+    pub(crate) fn of(game: &mut Match) -> Self {
+        Self {
             copy: StateCopy::of(game),
             copied: Vec::new(),
             own: Vec::new(),

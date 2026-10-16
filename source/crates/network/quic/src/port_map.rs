@@ -48,13 +48,13 @@ struct Listening {
 impl PortMap {
     /// The map of the server socket at `local`, at this host's gateway or router; none, logged,
     /// for a socket no router forwards to, or when its thread cannot wait.
-    pub fn start(local: SocketAddr) -> Option<PortMap> {
-        if !PortMap::forwardable(local) {
+    pub fn start(local: SocketAddr) -> Option<Self> {
+        if !Self::forwardable(local) {
             info!(%local, "the server listens where no router forwards; its port is not mapped");
             return None;
         }
         let mapper = PortMapper::new(local.port(), Routes::System, MapTimes::CAMPFIRE);
-        match PortMap::of(mapper) {
+        match Self::of(mapper) {
             Ok(map) => Some(map),
             Err(error) => {
                 warn!(error = %ErrorReport::of(&error), "the port map's thread cannot wait; the server's port is not mapped");
@@ -70,14 +70,14 @@ impl PortMap {
         matches!(local.ip(), IpAddr::V4(ip) if !ip.is_loopback())
     }
 
-    fn of(mapper: PortMapper) -> io::Result<PortMap> {
+    fn of(mapper: PortMapper) -> io::Result<Self> {
         let stop = Arc::new(Stop {
             stopped: AtomicBool::new(false),
             poller: Poller::new()?,
         });
         let listening = Listening::open(Arc::clone(&stop), mapper.routes())?;
         let worker = Worker::start("campfire-port-map", move || listening.run(mapper));
-        Ok(PortMap {
+        Ok(Self {
             stop,
             _worker: worker,
         })
@@ -96,7 +96,7 @@ impl Drop for PortMap {
 impl Listening {
     /// The wait of `stop`, and the announcements' socket of `routes`, non-blocking and watched;
     /// a socket that does not open is logged, and the map hears no announcement.
-    fn open(stop: Arc<Stop>, routes: Routes) -> io::Result<Listening> {
+    fn open(stop: Arc<Stop>, routes: Routes) -> io::Result<Self> {
         let announcements = match routes.announcements() {
             Ok(port) => {
                 port.socket().set_nonblocking(true)?;
@@ -112,7 +112,7 @@ impl Listening {
                 None
             }
         };
-        Ok(Listening {
+        Ok(Self {
             stop,
             announcements,
             events: Events::new(),

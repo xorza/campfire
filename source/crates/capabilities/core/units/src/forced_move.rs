@@ -60,7 +60,7 @@ impl ForcedMove {
             return Advanced { point, ends: true };
         };
         match self {
-            ForcedMove::Dash { step, .. } => {
+            Self::Dash { step, .. } => {
                 if point.within(goal.point, goal.reach + *step) {
                     let gap = (point.distance(goal.point) - goal.reach).max(Num::ZERO);
                     return Advanced {
@@ -73,7 +73,7 @@ impl ForcedMove {
                     ends: false,
                 }
             }
-            ForcedMove::KnockBack { left, .. } => {
+            Self::KnockBack { left, .. } => {
                 if *left <= 1 {
                     return Advanced {
                         point: goal.point,
@@ -109,7 +109,7 @@ impl SimComponent for ForcedMove {
         let reach = 2 * Position::BOUND.to_bits().unsigned_abs();
         let within = |value: Num| value.to_bits().unsigned_abs() <= reach;
         match *self {
-            ForcedMove::Dash { to, step, delivers } => {
+            Self::Dash { to, step, delivers } => {
                 let point = match to {
                     DashTo::Point(point) => Position::from(point).within_bound(),
                     DashTo::Unit(_) => true,
@@ -119,7 +119,7 @@ impl SimComponent for ForcedMove {
                     .is_none_or(ActionStart::within_bound);
                 step > Num::ZERO && within(step) && point && start
             }
-            ForcedMove::KnockBack { to, left } => {
+            Self::KnockBack { to, left } => {
                 (1..=Tick::LIMIT.get()).contains(&left)
                     && [to.x, to.y, to.z].into_iter().all(within)
             }

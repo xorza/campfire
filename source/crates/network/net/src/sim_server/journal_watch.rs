@@ -18,7 +18,7 @@ impl JournalWatch {
     /// frame.
     pub(crate) fn report_failure(world: &mut World) {
         let failure = world
-            .get_resource::<JournalWatch>()
+            .get_resource::<Self>()
             .and_then(|journal| journal.0.take_failure());
         if let Some(error) = failure {
             world.resource_mut::<Faults>().report(Fault::Journal(error));
@@ -26,7 +26,7 @@ impl JournalWatch {
     }
 
     /// Logs the slowest sync of the journal since the last frame, when one was slow.
-    pub(crate) fn warn_slow(journal: Res<'_, JournalWatch>) {
+    pub(crate) fn warn_slow(journal: Res<'_, Self>) {
         if let Some(slow) = journal.0.take_slow_sync() {
             JournalSyncSlow {
                 took_ns: u64::try_from(slow.took.as_nanos()).unwrap_or(u64::MAX),

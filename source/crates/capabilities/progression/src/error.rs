@@ -29,12 +29,12 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for ProgressionRefusal {
     const OWNER: Capability = Capability::Progression;
-    const CASES: &'static [ProgressionRefusal] = &ProgressionRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            ProgressionRefusal::NegativeXp => "experience is negative",
-            ProgressionRefusal::NoTrack => "the unit does not have the track",
+            Self::NegativeXp => "experience is negative",
+            Self::NoTrack => "the unit does not have the track",
         }
     }
 }

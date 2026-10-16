@@ -69,7 +69,7 @@ pub enum ActionError {
 }
 
 impl From<TimeTooLarge> for ActionError {
-    fn from(error: TimeTooLarge) -> ActionError {
-        ActionError::Problem(ActionProblem::Time(error))
+    fn from(error: TimeTooLarge) -> Self {
+        Self::Problem(ActionProblem::Time(error))
     }
 }

@@ -33,10 +33,7 @@ struct Slot<T, E> {
 
 impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
     /// Starts the worker `name`, which writes each value with `write`.
-    pub fn start(
-        name: &str,
-        mut write: impl FnMut(&T) -> Result<(), E> + Send + 'static,
-    ) -> LatestWriter<T, E> {
+    pub fn start(name: &str, mut write: impl FnMut(&T) -> Result<(), E> + Send + 'static) -> Self {
         let shared = Arc::new(LatestShared {
             slot: WorkerLock::new(Slot {
                 newest: None,
@@ -61,7 +58,7 @@ impl<T: Send + 'static, E: Send + 'static> LatestWriter<T, E> {
                 }
             }
         });
-        LatestWriter {
+        Self {
             shared,
             _worker: worker,
         }

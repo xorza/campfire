@@ -103,7 +103,7 @@ impl GatherLoop {
         view: &mut SystemState<GatherView<'_, '_>>,
         (mut order, mut held): (Local<'_, Ordered>, Local<'_, Vec<HeldNode>>),
     ) {
-        GatherLoop::free_left_nodes(world, workers, nodes, &mut held);
+        Self::free_left_nodes(world, workers, nodes, &mut held);
         let looping = workers
             .iter(world)
             .filter(|(.., gatherer)| gatherer.order().is_some())
@@ -125,9 +125,9 @@ impl GatherLoop {
             let Some((entity, mut step)) = next else {
                 break;
             };
-            for taken in 1..=GatherLoop::STEPS {
-                GatherLoop::apply::<F>(world, workers, entity, step);
-                if !step.goes_on() || taken == GatherLoop::STEPS {
+            for taken in 1..=Self::STEPS {
+                Self::apply::<F>(world, workers, entity, step);
+                if !step.goes_on() || taken == Self::STEPS {
                     break;
                 }
                 let read = view.get(world).expect("a gather view is always valid");
@@ -173,7 +173,7 @@ impl GatherLoop {
                         })
             });
             if !gathers {
-                GatherLoop::free(world, workers, node, id);
+                Self::free(world, workers, node, id);
             }
         }
     }
@@ -192,7 +192,7 @@ impl GatherLoop {
                 (order.node.node == id).then_some((since, worker_id, worker))
             })
             .min_by_key(|&(since, worker_id, _)| (since, worker_id));
-        if let Some(mut node) = GatherLoop::node_mut(world, entity) {
+        if let Some(mut node) = Self::node_mut(world, entity) {
             node.hold(first.map(|(_, worker_id, _)| worker_id));
         }
         if let Some((_, _, worker)) = first {
@@ -230,7 +230,7 @@ impl GatherLoop {
             Step::Interrupt(node) => {
                 set(world, with(GatherStep::ToNode));
                 let id = *world.get::<StableId>(node).expect("a node has an id");
-                GatherLoop::free(world, workers, node, id);
+                Self::free(world, workers, node, id);
             }
             Step::Retarget(next) => set(
                 world,
@@ -247,19 +247,19 @@ impl GatherLoop {
             Step::Take(node) => {
                 Navigation::go_to(world, entity, None);
                 let id = *world.get::<StableId>(entity).expect("a worker has an id");
-                if let Some(mut node) = GatherLoop::node_mut(world, node) {
+                if let Some(mut node) = Self::node_mut(world, node) {
                     node.hold(Some(id));
                 }
                 set(world, with(GatherStep::Gathering { since: now }));
             }
-            Step::Collect(node) => GatherLoop::collect(world, workers, entity, order, node),
+            Step::Collect(node) => Self::collect(world, workers, entity, order, node),
             Step::Choose(drop_off) => set(
                 world,
                 with(GatherStep::ToDropOff {
                     drop_off: Some(drop_off),
                 }),
             ),
-            Step::Deliver(back) => GatherLoop::deliver::<F>(world, entity, order, back),
+            Step::Deliver(back) => Self::deliver::<F>(world, entity, order, back),
         }
     }
 
@@ -279,7 +279,7 @@ impl GatherLoop {
         let Some(KindSpec::Gather(spec)) = action.map(|action| action.kind) else {
             panic!("a worker's loop is of its gather");
         };
-        let taken = match GatherLoop::node_mut(world, node) {
+        let taken = match Self::node_mut(world, node) {
             Some(mut held) => held.take(spec.take),
             None => world
                 .get::<Node>(node)
@@ -296,7 +296,7 @@ impl GatherLoop {
             ..order
         }));
         let id = *world.get::<StableId>(node).expect("a node has an id");
-        GatherLoop::free(world, workers, node, id);
+        Self::free(world, workers, node, id);
     }
 
     /// The node of `entity` to write; none on a client for a node it holds as the server sent

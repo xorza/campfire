@@ -10,7 +10,7 @@ pub(crate) struct Held {
 
 impl Held {
     /// Fills `held` with `units`, each once, in order.
-    pub(crate) fn collect(held: &mut Vec<Held>, units: impl IntoIterator<Item = Held>) {
+    pub(crate) fn collect(held: &mut Vec<Self>, units: impl IntoIterator<Item = Self>) {
         held.clear();
         held.extend(units);
         held.sort_unstable();

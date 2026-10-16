@@ -136,13 +136,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for ModeSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Mode);
-    const ALL: &'static [ModeSet] = &ModeSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            ModeSet::Inputs => Phase::ModeInputs,
-            ModeSet::Hooks => Phase::ModeHooks,
-            ModeSet::OutOfPlay => Phase::End,
+            Self::Inputs => Phase::ModeInputs,
+            Self::Hooks => Phase::ModeHooks,
+            Self::OutOfPlay => Phase::End,
         })
     }
 }
@@ -176,7 +176,7 @@ impl Module for Mode {
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
         d.report::<SaveAsked>();
-        d.check::<Player>(Mode::players_spawned);
+        d.check::<Player>(Self::players_spawned);
         d.part::<MatchEntity, Relations>(|at| {
             Some(at.world().non_send::<MatchMode>().relations.clone())
         });
@@ -264,7 +264,7 @@ impl Mode {
             ),
         };
         view.names_mut().set_table(Arc::clone(start.map.tags()));
-        Mode::load_units(world, &setup.units);
+        Self::load_units(world, &setup.units);
         let book = ModeSpec::new(
             setup,
             world.resource::<ScriptBook>(),
@@ -401,7 +401,7 @@ pub mod internals {
         ) -> StableId {
             let unit_type =
                 Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
-            Mode::spawn_at(world, unit_type, pos, Num::ZERO, team, parts)
+            Self::spawn_at(world, unit_type, pos, Num::ZERO, team, parts)
         }
 
         /// Spawns a unit of the mode's type `unit_type` at `pos`, turned `angle` degrees, on
@@ -424,7 +424,7 @@ pub mod internals {
                 pos,
                 angle,
             };
-            let spawner = Mode::test_spawner(world)
+            let spawner = Self::test_spawner(world)
                 .expect("the mode loaded its unit types before a unit spawns");
             spawner.spawn(world, at, parts);
             id
@@ -454,7 +454,7 @@ pub mod internals {
             team: Team,
             parts: impl Bundle,
         ) -> StableId {
-            Mode::spawn_turned(world, unit_type, pos, Num::ZERO, team, parts)
+            Self::spawn_turned(world, unit_type, pos, Num::ZERO, team, parts)
         }
 
         /// Spawns a unit as `spawn` does, turned `angle` degrees.
@@ -467,15 +467,15 @@ pub mod internals {
             parts: impl Bundle,
         ) -> StableId {
             Units::seal_once(world);
-            if Mode::test_spawner(world).is_none() {
-                Mode::load_test_units(world);
+            if Self::test_spawner(world).is_none() {
+                Self::load_test_units(world);
             }
-            Mode::spawn_at(world, unit_type, pos.into(), angle, team, parts)
+            Self::spawn_at(world, unit_type, pos.into(), angle, team, parts)
         }
 
         /// Starts the match as `start` does, every slot held.
         pub fn start_held(world: &mut World) -> Result<(), CallError> {
-            Mode::start(world, &vec![Seating::Held; Mode::slots(world)])
+            Self::start(world, &vec![Seating::Held; Self::slots(world)])
         }
 
         /// How many slots the session of the installed mode has.
@@ -498,7 +498,7 @@ pub mod internals {
             if world.get_non_send::<ClientFixtures>().is_some() {
                 world.insert_non_send(FixtureSpawner(units.spawner()));
             } else {
-                Mode::load_units(world, &units);
+                Self::load_units(world, &units);
             }
         }
 
@@ -527,7 +527,7 @@ pub mod internals {
         ) -> StableId {
             let unit_type =
                 Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
-            Mode::spawn(world, unit_type, pos, team, parts)
+            Self::spawn(world, unit_type, pos, team, parts)
         }
 
         /// Player `slot` picks `hero` in a tick: the hero it then owns.
@@ -536,7 +536,7 @@ pub mod internals {
                 name: "hero",
                 value: InputValue::String(hero),
             };
-            Mode::tick_inputs(world, &[(slot, input)]);
+            Self::tick_inputs(world, &[(slot, input)]);
             let player = PlayerSlot::new(slot);
             let mut owned = world.query::<(Entity, &Owner)>();
             let mut heroes = owned
@@ -576,7 +576,7 @@ pub mod internals {
 
         /// The state fields `phase`, `seen`, `count` and `inputs`.
         pub fn tracked_state(world: &World) -> [StateValue; 4] {
-            ["phase", "seen", "count", "inputs"].map(|name| Mode::field(world, name))
+            ["phase", "seen", "count", "inputs"].map(|name| Self::field(world, name))
         }
 
         /// The state field `name`: the state holds the fields in the order of their names.
@@ -640,7 +640,7 @@ pub mod internals {
             let modifiers = Modifiers::bundle([Application::refresh(instance)]);
             let grunt = Units::type_named(world, "grunt").unwrap();
             let parts = (Life::full(Num::int(1000)), modifiers);
-            Mode::spawn(world, grunt, Vec3::ZERO, team, parts)
+            Self::spawn(world, grunt, Vec3::ZERO, team, parts)
         }
 
         /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by

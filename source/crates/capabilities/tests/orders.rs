@@ -240,9 +240,9 @@ struct TwoHeroes {
 
 impl TwoHeroes {
     /// Spawns the heroes into `game`, an orders match.
-    fn place(game: &mut Match) -> TwoHeroes {
+    fn place(game: &mut Match) -> Self {
         let hero = armed(game, fighter_stats(), Some(meter()));
-        TwoHeroes {
+        Self {
             first: Orders::hero(game, hero, (0, 0, 0), Team::new(0), 0),
             second: Orders::hero(game, hero, (4, 2, 0), Team::new(0), 1),
         }

@@ -17,8 +17,8 @@ pub struct PackageReader {
 }
 
 impl PackageReader {
-    pub(crate) fn new(index: FileIndex, source: Arc<dyn PackageSource>) -> PackageReader {
-        PackageReader { index, source }
+    pub(crate) fn new(index: FileIndex, source: Arc<dyn PackageSource>) -> Self {
+        Self { index, source }
     }
 
     pub const fn fingerprint(&self) -> PackageFingerprint {

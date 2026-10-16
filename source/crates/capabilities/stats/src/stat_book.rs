@@ -46,7 +46,7 @@ struct Growth {
 impl StatBook {
     /// The book of the stats `rules` declares, with no unit type's values yet, under the cap
     /// `max_move_speed`.
-    pub fn new(rules: &BTreeMap<Stat, StatRule>, max_move_speed: Num) -> StatBook {
+    pub fn new(rules: &BTreeMap<Stat, StatRule>, max_move_speed: Num) -> Self {
         let names: Names<StatId> = rules.keys().map(Stat::name).collect();
         let count = names.len();
         let stats_len = u16::try_from(count).expect("stats fit u16");
@@ -56,7 +56,7 @@ impl StatBook {
                 engine[*stat as usize] = Some(at);
             }
         }
-        StatBook {
+        Self {
             order: (0..count).map(StatId::at).collect(),
             names: Arc::new(names),
             rules: rules.values().copied().collect(),
@@ -91,7 +91,7 @@ impl StatBook {
     /// The book with the stats in `order`, a permutation of their places, as a stat graph of
     /// the mode gives it.
     #[must_use]
-    pub fn with_order(self, order: impl IntoIterator<Item = StatId>) -> StatBook {
+    pub fn with_order(self, order: impl IntoIterator<Item = StatId>) -> Self {
         let order: Vec<StatId> = order.into_iter().collect();
         let mut sorted = order.clone();
         sorted.sort_unstable();
@@ -106,7 +106,7 @@ impl StatBook {
         for (position, &at) in (0..).zip(&order) {
             positions[at.index()] = position;
         }
-        StatBook {
+        Self {
             order,
             positions,
             ..self

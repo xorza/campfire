@@ -88,7 +88,7 @@ impl Showcase {
 
     /// Reads tick `tick` of the 3v3 of `moba`, which `world` just ran.
     pub(crate) fn read(&mut self, world: &World, moba: &ScriptedMode<Moba3v3>, tick: u64) {
-        if tick < Showcase::FIRST {
+        if tick < Self::FIRST {
             return;
         }
         let units = MatchUnits::of(world);
@@ -115,7 +115,7 @@ impl Showcase {
 
     /// Player `player`'s hero after tick `tick`.
     fn at(&self, tick: u64, player: u32) -> &HeroState {
-        let at = usize::try_from(tick - Showcase::FIRST).unwrap();
+        let at = usize::try_from(tick - Self::FIRST).unwrap();
         &self.ticks[at][usize::try_from(player).unwrap()]
     }
 }

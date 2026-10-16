@@ -88,11 +88,11 @@ impl DamagePass {
         let hooks = world.non_send::<CombatHooks>().clone();
         let weigh = world.resource::<Weighers>().get();
         if weigh.is_none() && hooks.events.is_none() {
-            DamagePass::drain(&mut PassRun::Plain(world), &hooks, weigh, &mut scratch);
+            Self::drain(&mut PassRun::Plain(world), &hooks, weigh, &mut scratch);
         } else if !world.resource::<PassQueue>().is_empty() {
             world.script_batch(|batch| {
                 let run = &mut PassRun::Scripted(batch);
-                DamagePass::drain(run, &hooks, weigh, &mut scratch);
+                Self::drain(run, &hooks, weigh, &mut scratch);
             });
         }
         world.resource_mut::<PassQueue>().end();
@@ -111,7 +111,7 @@ impl DamagePass {
             let damage = match entry {
                 PassEntry::Damage(damage) => damage,
                 PassEntry::Heal(heal) => {
-                    let Some(entity) = DamagePass::living(run.world(), heal.target) else {
+                    let Some(entity) = Self::living(run.world(), heal.target) else {
                         continue;
                     };
                     let amount = match (weigh, run.batch()) {
@@ -125,15 +125,15 @@ impl DamagePass {
                         },
                         _ => heal.amount,
                     };
-                    DamagePass::heal(run.world(), entity, amount);
+                    Self::heal(run.world(), entity, amount);
                     continue;
                 }
             };
-            let Some(target) = DamagePass::damageable(run.world(), damage.target) else {
+            let Some(target) = Self::damageable(run.world(), damage.target) else {
                 continue;
             };
             let damage = Damage {
-                amount: DamagePass::armored(run.world(), target, damage),
+                amount: Self::armored(run.world(), target, damage),
                 ..damage
             };
             let amount = match (weigh, run.batch()) {
@@ -148,20 +148,20 @@ impl DamagePass {
                 _ => damage.amount,
             };
             let weighed = Damage { amount, ..damage };
-            let landed = DamagePass::deal(run.world(), weighed, scratch);
+            let landed = Self::deal(run.world(), weighed, scratch);
             let Some(batch) = run.batch() else {
                 continue;
             };
             if landed != Landed::Nothing {
                 let ctx = batch.ctx().clone();
-                DamagePass::run_weapon_list(batch, &ctx, damage, now);
+                Self::run_weapon_list(batch, &ctx, damage, now);
             }
             if let Some(events) = &hooks.events {
                 let dealt = Damage {
                     amount: amount.max(Num::ZERO),
                     ..damage
                 };
-                DamagePass::answer(batch, events, dealt, landed, &mut scratch.assisters);
+                Self::answer(batch, events, dealt, landed, &mut scratch.assisters);
             }
         }
     }
@@ -188,7 +188,7 @@ impl DamagePass {
 
     /// The entity of `id`, when it is living and its tags let damage reach it.
     fn damageable(world: &World, id: StableId) -> Option<Entity> {
-        DamagePass::living(world, id)
+        Self::living(world, id)
             .filter(|&entity| !UnitTags::properties_of(world.get(entity)).blocks(Block::Damage))
     }
 
@@ -287,7 +287,7 @@ impl DamagePass {
     /// damage and `other` for the rest, times the life taken. Each write follows the reads it
     /// needs, which go to `scratch`.
     fn deal(world: &mut World, damage: Damage, scratch: &mut PassScratch) -> Landed {
-        let Some(entity) = DamagePass::damageable(world, damage.target) else {
+        let Some(entity) = Self::damageable(world, damage.target) else {
             return Landed::Nothing;
         };
         let now = world.resource::<SimTick>().start();
@@ -356,7 +356,7 @@ impl DamagePass {
             deaths.push(fallen, source, scratch.assisters.iter().copied())
         });
         if let Some((id, entity)) =
-            source.and_then(|id| DamagePass::living(world, id).map(|entity| (id, entity)))
+            source.and_then(|id| Self::living(world, id).map(|entity| (id, entity)))
         {
             let bindings = world.resource::<CombatBook>().bindings;
             let stat = if damage.cause.attack() {
@@ -364,7 +364,7 @@ impl DamagePass {
             } else {
                 bindings.leech_other
             };
-            let amount = scaled(taken, DamagePass::stat(world, entity, stat));
+            let amount = scaled(taken, Self::stat(world, entity, stat));
             if amount > Num::ZERO {
                 world.resource_mut::<PassQueue>().push_heal(Heal {
                     source: Some(id),
@@ -383,7 +383,7 @@ impl DamagePass {
     /// `heal_scale` stat.
     pub(super) fn heal(world: &mut World, entity: Entity, amount: Num) {
         let bindings = world.resource::<CombatBook>().bindings;
-        let scale = DamagePass::stat(world, entity, bindings.heal_scale);
+        let scale = Self::stat(world, entity, bindings.heal_scale);
         let received = Num::ONE.checked_add(scale).unwrap_or(Num::MAX);
         let amount = scaled(amount, received);
         if amount > Num::ZERO {
@@ -395,7 +395,7 @@ impl DamagePass {
     /// Restores `amount` of `id`'s `pool`, unscaled, when the unit exists, its life is above
     /// zero, and it has the pool.
     pub fn restore(world: &mut World, id: StableId, pool: PoolId, amount: Num) {
-        let Some(entity) = DamagePass::living(world, id) else {
+        let Some(entity) = Self::living(world, id) else {
             return;
         };
         if amount > Num::ZERO {

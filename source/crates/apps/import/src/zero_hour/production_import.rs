@@ -120,8 +120,8 @@ impl ProductionImport {
     /// The trains and builds of `sources`, from the unit types `names` holds, each type a
     /// converted button makes, or its object's prerequisites name, named there, and its own
     /// command set's buttons converted in turn.
-    pub(crate) fn of(sources: CommandSources<'_>, names: &mut ImportNames) -> ProductionImport {
-        let mut import = ProductionImport::default();
+    pub(crate) fn of(sources: CommandSources<'_>, names: &mut ImportNames) -> Self {
+        let mut import = Self::default();
         let mut queued: VecDeque<String> = names.typed_objects().into();
         let mut seen: BTreeSet<String> = queued.iter().cloned().collect();
         while let Some(name) = queued.pop_front() {
@@ -183,7 +183,7 @@ impl ProductionImport {
             return drop(DropCause::NoObject);
         };
         let build = made.build();
-        let requires = match ProductionImport::requires(sources, build) {
+        let requires = match Self::requires(sources, build) {
             Ok(requires) => requires,
             Err(cause) => return drop(cause),
         };
@@ -196,13 +196,13 @@ impl ProductionImport {
             _ => {}
         }
         let section = match making {
-            Making::Train => match ProductionImport::section(producer.build()) {
+            Making::Train => match Self::section(producer.build()) {
                 Some(section) => Some(section),
                 None => return drop(DropCause::NoQueue),
             },
             Making::Build => None,
         };
-        let Some(windup_ms) = ProductionImport::windup_ms(build.time) else {
+        let Some(windup_ms) = Self::windup_ms(build.time) else {
             return drop(DropCause::BadTime);
         };
         let mut units = Vec::with_capacity(requires.len());
@@ -224,7 +224,7 @@ impl ProductionImport {
         let message = format!("action-{}", id.as_str().replace('_', "-"));
         self.texts
             .entry(message.clone())
-            .or_insert_with(|| ProductionImport::text(sources.strings, button, made));
+            .or_insert_with(|| Self::text(sources.strings, button, made));
         self.actions
             .entry(id.clone())
             .or_insert_with(|| ImportedAction {
@@ -248,7 +248,7 @@ impl ProductionImport {
                     .imported
                     .life()
                     .filter(|_| making == Making::Build)
-                    .map(ProductionImport::one_life),
+                    .map(Self::one_life),
             });
         names.give_command(producer, id);
         if let Some(section) = section {

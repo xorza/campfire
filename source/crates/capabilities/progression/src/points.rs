@@ -20,10 +20,10 @@ pub struct Points(u32);
 impl Points {
     /// The points of a unit that spawns with `tracks`, at level 1: one, when they hold
     /// `level_track`, the mode's `level` track.
-    pub fn at_spawn(tracks: TrackSet, level_track: Option<TrackId>) -> Option<Points> {
+    pub fn at_spawn(tracks: TrackSet, level_track: Option<TrackId>) -> Option<Self> {
         level_track
             .is_some_and(|track| tracks.contains(track))
-            .then_some(Points(1))
+            .then_some(Self(1))
     }
 
     pub const fn get(self) -> u32 {

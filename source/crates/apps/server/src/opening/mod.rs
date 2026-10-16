@@ -52,7 +52,7 @@ impl Opening {
     pub(crate) fn of(
         found: Option<RestoredSession>,
         setup: OpeningSetup<'_>,
-    ) -> Result<Opening, OpeningError> {
+    ) -> Result<Self, OpeningError> {
         let rules = SessionRules::of(&setup.packages);
         let session = match found {
             Some(session) => Opened::Restored(Box::new(PendingRestore {
@@ -61,7 +61,7 @@ impl Opening {
                 server: setup.server,
                 bots: setup.bots,
             })),
-            None => Opened::New(Box::new(Opening::open(setup)?)),
+            None => Opened::New(Box::new(Self::open(setup)?)),
         };
         let terms = session.terms();
         let visibility = rules.check(terms).map_err(OpeningError::Terms)?;
@@ -70,7 +70,7 @@ impl Opening {
             .checked_add(visibility.max_spectators())
             .expect("a session's seats fit u32");
         let seats = NonZeroU32::new(seats).expect("the rules admit a session of a slot at least");
-        Ok(Opening { session, seats })
+        Ok(Self { session, seats })
     }
 
     /// The terms of the session it starts.
@@ -156,8 +156,8 @@ impl Opened {
     /// The session's terms.
     fn terms(&self) -> &SessionTerms {
         match self {
-            Opened::New(lobby) => lobby.terms(),
-            Opened::Restored(restore) => &restore.session.log.header().terms,
+            Self::New(lobby) => lobby.terms(),
+            Self::Restored(restore) => &restore.session.log.header().terms,
         }
     }
 }

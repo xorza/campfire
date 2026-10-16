@@ -61,14 +61,14 @@ pub enum EventError {
 }
 
 impl From<NostrError> for EventError {
-    fn from(error: NostrError) -> EventError {
+    fn from(error: NostrError) -> Self {
         match error.kind() {
-            ErrorKind::Malformed => EventError::Malformed,
-            ErrorKind::Invalid => EventError::Invalid,
-            ErrorKind::Missing => EventError::Missing,
-            ErrorKind::Unsupported => EventError::Unsupported,
-            ErrorKind::Crypto => EventError::Crypto,
-            _ => EventError::Other,
+            ErrorKind::Malformed => Self::Malformed,
+            ErrorKind::Invalid => Self::Invalid,
+            ErrorKind::Missing => Self::Missing,
+            ErrorKind::Unsupported => Self::Unsupported,
+            ErrorKind::Crypto => Self::Crypto,
+            _ => Self::Other,
         }
     }
 }

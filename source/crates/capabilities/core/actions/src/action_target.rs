@@ -16,9 +16,9 @@ impl ActionTarget {
     /// target, or a unit that is gone.
     pub fn pos(self, world: &World) -> Option<Vec3> {
         match self {
-            ActionTarget::None => None,
-            ActionTarget::Point(at) => Some(at),
-            ActionTarget::Unit(id) => {
+            Self::None => None,
+            Self::Point(at) => Some(at),
+            Self::Unit(id) => {
                 let entity = world.entity_of(id)?;
                 world.get::<Position>(entity).map(|pos| pos.get())
             }
@@ -28,28 +28,28 @@ impl ActionTarget {
     /// Whether each of its places lies within the world's bound, as a restore checks it.
     pub(crate) fn within_bound(self) -> bool {
         match self {
-            ActionTarget::Point(at) => Position::from(at).within_bound(),
-            ActionTarget::None | ActionTarget::Unit(_) => true,
+            Self::Point(at) => Position::from(at).within_bound(),
+            Self::None | Self::Unit(_) => true,
         }
     }
 
     pub const fn unit(self) -> Option<StableId> {
         match self {
-            ActionTarget::Unit(unit) => Some(unit),
-            ActionTarget::None | ActionTarget::Point(_) => None,
+            Self::Unit(unit) => Some(unit),
+            Self::None | Self::Point(_) => None,
         }
     }
 }
 
 impl From<StableId> for ActionTarget {
-    fn from(unit: StableId) -> ActionTarget {
-        ActionTarget::Unit(unit)
+    fn from(unit: StableId) -> Self {
+        Self::Unit(unit)
     }
 }
 
 impl From<Vec3> for ActionTarget {
-    fn from(point: Vec3) -> ActionTarget {
-        ActionTarget::Point(point)
+    fn from(point: Vec3) -> Self {
+        Self::Point(point)
     }
 }
 

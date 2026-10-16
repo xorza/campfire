@@ -14,7 +14,7 @@ pub struct StatChange {
 
 /// A table with no operation, or with two, fails to read.
 impl<'de> Deserialize<'de> for StatChange {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<StatChange, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Table {
@@ -29,20 +29,20 @@ impl<'de> Deserialize<'de> for StatChange {
             Plain(Number),
         }
         match Form::deserialize(deserializer)? {
-            Form::Plain(value) => Ok(StatChange {
+            Form::Plain(value) => Ok(Self {
                 op: StatOp::Add,
                 value,
             }),
             Form::Table(table) => match (table.add, table.pct, table.cut) {
-                (Some(value), None, None) => Ok(StatChange {
+                (Some(value), None, None) => Ok(Self {
                     op: StatOp::Add,
                     value,
                 }),
-                (None, Some(value), None) => Ok(StatChange {
+                (None, Some(value), None) => Ok(Self {
                     op: StatOp::Pct,
                     value,
                 }),
-                (None, None, Some(value)) => Ok(StatChange {
+                (None, None, Some(value)) => Ok(Self {
                     op: StatOp::Cut,
                     value,
                 }),

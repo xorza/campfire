@@ -143,31 +143,31 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for ModeRefusal {
     const OWNER: Capability = Capability::Mode;
-    const CASES: &'static [ModeRefusal] = &ModeRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            ModeRefusal::ChoiceCount => "count of values is not the choice's",
-            ModeRefusal::ChoiceTaken => "value is another player's choice",
-            ModeRefusal::Ended => "the match has ended",
-            ModeRefusal::MaxRank => "ability is at its last rank",
-            ModeRefusal::NoAbilitySlot => "unit has no ability in that slot",
-            ModeRefusal::NoEnemyTeam => "team has no one enemy team",
-            ModeRefusal::NoRoom => {
+            Self::ChoiceCount => "count of values is not the choice's",
+            Self::ChoiceTaken => "value is another player's choice",
+            Self::Ended => "the match has ended",
+            Self::MaxRank => "ability is at its last rank",
+            Self::NoAbilitySlot => "unit has no ability in that slot",
+            Self::NoEnemyTeam => "team has no one enemy team",
+            Self::NoRoom => {
                 "the box has no room there: past the bounds, or over a wall or a body that stands"
             }
-            ModeRefusal::NotAnAmount => "calc_damage or calc_heal returns no number",
-            ModeRefusal::OutOfBounds => "point is outside the map's bounds",
-            ModeRefusal::PlayerOffTeam => "player is not on the unit's team",
-            ModeRefusal::RepeatedChoiceValue => "value is chosen twice",
-            ModeRefusal::ResourceOverflow => "player resource overflows",
-            ModeRefusal::RespawnAlive => "unit to respawn is alive",
-            ModeRefusal::RespawnDespawns => "unit to respawn despawns when it dies",
-            ModeRefusal::SelfRelation => "a team's relation to itself is friendly",
-            ModeRefusal::SlotKindRanks => "action's ranks are not its slot kind's",
-            ModeRefusal::TimerData => "timer data is not a value state can hold",
-            ModeRefusal::TooManySlots => "a unit holds at most 256 slots",
-            ModeRefusal::UnknownChoiceValue => "value is not one the choice offers",
+            Self::NotAnAmount => "calc_damage or calc_heal returns no number",
+            Self::OutOfBounds => "point is outside the map's bounds",
+            Self::PlayerOffTeam => "player is not on the unit's team",
+            Self::RepeatedChoiceValue => "value is chosen twice",
+            Self::ResourceOverflow => "player resource overflows",
+            Self::RespawnAlive => "unit to respawn is alive",
+            Self::RespawnDespawns => "unit to respawn despawns when it dies",
+            Self::SelfRelation => "a team's relation to itself is friendly",
+            Self::SlotKindRanks => "action's ranks are not its slot kind's",
+            Self::TimerData => "timer data is not a value state can hold",
+            Self::TooManySlots => "a unit holds at most 256 slots",
+            Self::UnknownChoiceValue => "value is not one the choice offers",
         }
     }
 }

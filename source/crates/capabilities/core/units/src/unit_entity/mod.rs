@@ -23,7 +23,7 @@ pub struct UnitEntity;
 /// A unit of either kind hosts the state of every unit.
 impl HostRule for UnitEntity {
     fn holds(world: &World, entity: Entity) -> bool {
-        world.get::<UnitEntity>(entity).is_some()
+        world.get::<Self>(entity).is_some()
     }
 
     fn kinds(kinds: &mut Vec<TypeId>) -> bool {
@@ -35,7 +35,7 @@ impl HostRule for UnitEntity {
 
 impl SimComponent for UnitEntity {
     const NAME: &'static str = "units.unit";
-    type Host = UnitEntity;
+    type Host = Self;
 
     // A unit of a named id would stand where a player's or the match's entity is looked for, and
     // be of two kinds.

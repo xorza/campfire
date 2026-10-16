@@ -89,8 +89,8 @@ impl<I: NameId> Names<I> {
 
     /// The table of `keys`, each a name of the first key that names it: a repeat, or a key past
     /// `LIMIT`, has no id. For data a check has yet to refuse them in.
-    pub fn first_of<K: NameKey<I::Scope>>(keys: impl IntoIterator<Item = K>) -> Names<I> {
-        let mut names = Names::default();
+    pub fn first_of<K: NameKey<I::Scope>>(keys: impl IntoIterator<Item = K>) -> Self {
+        let mut names = Self::default();
         for key in keys {
             names.try_add(key).ok();
         }
@@ -101,8 +101,8 @@ impl<I: NameId> Names<I> {
     /// or past `LIMIT`.
     pub fn all_of<K: NameKey<I::Scope>>(
         keys: impl IntoIterator<Item = K>,
-    ) -> Result<Names<I>, NamesError> {
-        let mut names = Names::default();
+    ) -> Result<Self, NamesError> {
+        let mut names = Self::default();
         for key in keys {
             names.try_add(key)?;
         }
@@ -167,8 +167,8 @@ impl<I: NameId> Names<I> {
 }
 
 impl<I: NameId> Default for Names<I> {
-    fn default() -> Names<I> {
-        Names {
+    fn default() -> Self {
+        Self {
             text: String::new(),
             ends: Vec::new(),
             scopes: Vec::new(),
@@ -178,8 +178,8 @@ impl<I: NameId> Default for Names<I> {
 }
 
 impl<I: NameId, K: NameKey<I::Scope>> FromIterator<K> for Names<I> {
-    fn from_iter<T: IntoIterator<Item = K>>(keys: T) -> Names<I> {
-        let mut names = Names::default();
+    fn from_iter<T: IntoIterator<Item = K>>(keys: T) -> Self {
+        let mut names = Self::default();
         for key in keys {
             names.add(key);
         }
@@ -188,7 +188,7 @@ impl<I: NameId, K: NameKey<I::Scope>> FromIterator<K> for Names<I> {
 }
 
 impl<I: NameId, K: NameKey<I::Scope>, const N: usize> From<[K; N]> for Names<I> {
-    fn from(keys: [K; N]) -> Names<I> {
+    fn from(keys: [K; N]) -> Self {
         keys.into_iter().collect()
     }
 }
@@ -205,8 +205,8 @@ mod tests {
         type Scope = ();
         const LIMIT: usize = 3;
 
-        fn at(index: usize) -> Small {
-            Small(u8::try_from(index).unwrap())
+        fn at(index: usize) -> Self {
+            Self(u8::try_from(index).unwrap())
         }
 
         fn index(self) -> usize {
@@ -222,8 +222,8 @@ mod tests {
         type Scope = u16;
         const LIMIT: usize = 256;
 
-        fn at(index: usize) -> Scoped {
-            Scoped(u8::try_from(index).unwrap())
+        fn at(index: usize) -> Self {
+            Self(u8::try_from(index).unwrap())
         }
 
         fn index(self) -> usize {

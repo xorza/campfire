@@ -39,16 +39,16 @@ pub(crate) enum AddressKey {
 impl AddressKey {
     /// The key of `ip`, an IPv4 address mapped into IPv6 as the address it maps; none for a
     /// loopback address, whose peer runs on the server's own host, which no limit guards.
-    pub(crate) const fn of(ip: IpAddr) -> Option<AddressKey> {
+    pub(crate) const fn of(ip: IpAddr) -> Option<Self> {
         let ip = ip.to_canonical();
         if ip.is_loopback() {
             return None;
         }
         Some(match ip {
-            IpAddr::V4(ip) => AddressKey::V4(ip),
+            IpAddr::V4(ip) => Self::V4(ip),
             IpAddr::V6(ip) => {
                 let octets = ip.octets();
-                AddressKey::V6(*octets.first_chunk().expect("an IPv6 address holds 8 bytes"))
+                Self::V6(*octets.first_chunk().expect("an IPv6 address holds 8 bytes"))
             }
         })
     }
@@ -57,15 +57,15 @@ impl AddressKey {
     /// or an IPv4 address's past them.
     fn bits(self) -> u128 {
         match self {
-            AddressKey::V4(ip) => (1 << 64) | u128::from(ip.to_bits()),
-            AddressKey::V6(prefix) => u128::from(u64::from_be_bytes(prefix)),
+            Self::V4(ip) => (1 << 64) | u128::from(ip.to_bits()),
+            Self::V6(prefix) => u128::from(u64::from_be_bytes(prefix)),
         }
     }
 }
 
 impl Admission {
-    pub(crate) const fn new(limit: AddressLimit, now: Instant) -> Admission {
-        Admission {
+    pub(crate) const fn new(limit: AddressLimit, now: Instant) -> Self {
+        Self {
             limit,
             start: now,
             buckets: BTreeMap::new(),

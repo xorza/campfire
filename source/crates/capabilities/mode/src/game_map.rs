@@ -36,7 +36,7 @@ impl GameMap {
         paths: impl Iterator<Item = ScriptText>,
         markers: &[MarkerSpec],
         spawn_tags: &[DeclaredName],
-    ) -> GameMap {
+    ) -> Self {
         let names: BTreeSet<&str> = markers
             .iter()
             .flat_map(|marker| marker.tags.iter().map(DeclaredName::as_str))
@@ -70,7 +70,7 @@ impl GameMap {
                 params: params.collect(),
             })
         });
-        GameMap(Rc::new(MapParts {
+        Self(Rc::new(MapParts {
             paths: paths.map(ScriptValue::of).collect(),
             markers: markers.collect(),
             tags: Arc::new(tags),

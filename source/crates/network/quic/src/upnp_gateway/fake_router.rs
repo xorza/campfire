@@ -46,7 +46,7 @@ impl Call {
             .1
     }
 
-    fn of(action: &str, body: &str) -> Call {
+    fn of(action: &str, body: &str) -> Self {
         let mut rest = body
             .split_once(&format!("{action} xmlns"))
             .and_then(|(_, rest)| rest.split_once('>'))
@@ -64,7 +64,7 @@ impl Call {
             args.push((name.to_owned(), value.to_owned()));
             rest = after;
         }
-        Call {
+        Self {
             action: action.to_owned(),
             args,
         }
@@ -80,7 +80,7 @@ impl FakeRouter {
         self.ssdp
     }
 
-    pub(crate) fn start(mut answer: impl FnMut(&Call) -> Answer + Send + 'static) -> FakeRouter {
+    pub(crate) fn start(mut answer: impl FnMut(&Call) -> Answer + Send + 'static) -> Self {
         let http = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
         http.set_nonblocking(true).unwrap();
         let http_port = http.local_addr().unwrap().port();
@@ -112,7 +112,7 @@ impl FakeRouter {
                 while !stop.load(Ordering::Relaxed) {
                     match http.accept() {
                         Ok((stream, _)) => {
-                            FakeRouter::serve(stream, &mut |call| {
+                            Self::serve(stream, &mut |call| {
                                 let answer = answer(&call);
                                 calls.lock().unwrap().push(call);
                                 answer
@@ -129,7 +129,7 @@ impl FakeRouter {
                 }
             })
         };
-        FakeRouter {
+        Self {
             ssdp: ssdp_address,
             http_port,
             calls,
@@ -166,8 +166,8 @@ impl FakeRouter {
         let body = String::from_utf8_lossy(&request[head.len() + 4..]).into_owned();
         let path = head.split(' ').nth(1).unwrap();
         let (status, content) = match path {
-            "/desc.xml" => (200, FakeRouter::description()),
-            "/scpd.xml" => (200, FakeRouter::service()),
+            "/desc.xml" => (200, Self::description()),
+            "/scpd.xml" => (200, Self::service()),
             "/ctl" => {
                 let action = head
                     .lines()
@@ -180,21 +180,21 @@ impl FakeRouter {
                         let out = if action == "GetExternalIPAddress" {
                             format!(
                                 "<NewExternalIPAddress>{}</NewExternalIPAddress>",
-                                FakeRouter::EXTERNAL_IP
+                                Self::EXTERNAL_IP
                             )
                         } else {
                             String::new()
                         };
                         (
                             200,
-                            FakeRouter::envelope(&format!(
+                            Self::envelope(&format!(
                                 r#"<u:{action}Response xmlns:u="{SERVICE}">{out}</u:{action}Response>"#
                             )),
                         )
                     }
                     Answer::Error(code) => (
                         500,
-                        FakeRouter::envelope(&format!(
+                        Self::envelope(&format!(
                             r#"<s:Fault><faultcode>s:Client</faultcode><faultstring>UPnPError</faultstring><detail><UPnPError xmlns="urn:schemas-upnp-org:control-1-0"><errorCode>{code}</errorCode><errorDescription>refused</errorDescription></UPnPError></detail></s:Fault>"#
                         )),
                     ),

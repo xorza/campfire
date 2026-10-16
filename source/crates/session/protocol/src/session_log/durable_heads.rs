@@ -22,8 +22,8 @@ struct Journaled {
 
 impl DurableHeads {
     /// No head of any of `slots` slots.
-    pub(super) fn new(slots: usize) -> DurableHeads {
-        DurableHeads {
+    pub(super) fn new(slots: usize) -> Self {
+        Self {
             heads: vec![None; slots],
             journaled: VecDeque::new(),
         }

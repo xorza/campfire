@@ -32,8 +32,8 @@ impl<D: RowReads, C: ViewColumn> RowSource<D, C> {
         world: &mut World,
         column: usize,
         fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_, C>),
-    ) -> RowSource<D, C> {
-        RowSource {
+    ) -> Self {
+        Self {
             parts: QueryState::new(world),
             changed: SystemState::new(world),
             column,

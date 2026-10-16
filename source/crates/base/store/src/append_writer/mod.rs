@@ -70,7 +70,7 @@ impl AppendWriter {
         name: &str,
         path: &Path,
         head: &[u8],
-    ) -> Result<AppendWriter, PathError<AppendOpenError>> {
+    ) -> Result<Self, PathError<AppendOpenError>> {
         let open = || {
             DurableFile::write_case(path, head).map_err(AppendOpenError::Create)?;
             OpenOptions::new()
@@ -79,16 +79,12 @@ impl AppendWriter {
                 .map_err(AppendOpenError::Open)
         };
         let file = open().map_err(PathError::at(path))?;
-        Ok(AppendWriter::start(name, file))
+        Ok(Self::start(name, file))
     }
 
     /// The file at `path`, cut to its first `whole` bytes, those a read found whole, so a torn
     /// tail is gone before the next record, and open to append on the worker `name`.
-    pub fn reopen(
-        name: &str,
-        path: &Path,
-        whole: u64,
-    ) -> Result<AppendWriter, PathError<AppendOpenError>> {
+    pub fn reopen(name: &str, path: &Path, whole: u64) -> Result<Self, PathError<AppendOpenError>> {
         let open = || {
             let file = OpenOptions::new()
                 .write(true)
@@ -103,16 +99,16 @@ impl AppendWriter {
                 .map_err(AppendOpenError::Open)
         };
         let file = open().map_err(PathError::at(path))?;
-        Ok(AppendWriter::start(name, file))
+        Ok(Self::start(name, file))
     }
 
     /// A writer that appends to `file` on the worker `name`.
-    fn start<F: AppendFile>(name: &str, file: F) -> AppendWriter {
-        AppendWriter::start_slow_after(name, file, AppendWriter::SLOW_SYNC)
+    fn start<F: AppendFile>(name: &str, file: F) -> Self {
+        Self::start_slow_after(name, file, Self::SLOW_SYNC)
     }
 
     /// A writer whose syncs longer than `slow_after` are slow.
-    fn start_slow_after<F: AppendFile>(name: &str, file: F, slow_after: Duration) -> AppendWriter {
+    fn start_slow_after<F: AppendFile>(name: &str, file: F, slow_after: Duration) -> Self {
         let shared = Arc::new(AppendShared {
             pending: WorkerLock::default(),
             wake: Condvar::new(),
@@ -123,7 +119,7 @@ impl AppendWriter {
         });
         let writing = Arc::clone(&shared);
         let worker = Worker::start(name, move || writing.write(file));
-        AppendWriter {
+        Self {
             shared,
             _worker: worker,
         }
@@ -228,8 +224,8 @@ pub(crate) mod internals {
 
     impl AppendWriter {
         /// A writer on the worker `name` whose every sync fails, as a full or a failing disk's.
-        pub fn failing_sync(name: &str) -> AppendWriter {
-            AppendWriter::start(name, FailingSync)
+        pub fn failing_sync(name: &str) -> Self {
+            Self::start(name, FailingSync)
         }
     }
 }

@@ -10,8 +10,8 @@ use campfire_common::Ticks;
 pub struct TickRate(NonZeroU32);
 
 impl TickRate {
-    pub const fn new(hz: NonZeroU32) -> TickRate {
-        TickRate(hz)
+    pub const fn new(hz: NonZeroU32) -> Self {
+        Self(hz)
     }
 
     pub const fn hz(self) -> NonZeroU32 {

@@ -24,8 +24,8 @@ pub struct ModeVisibility {
 }
 
 impl Default for ModeVisibility {
-    fn default() -> ModeVisibility {
-        ModeVisibility {
+    fn default() -> Self {
+        Self {
             settings: Visibility::DEFAULT,
             host: vec![Setting::Spectators, Setting::Out],
         }
@@ -77,7 +77,7 @@ impl ModeVisibility {
 /// Each name a setting's, each setting once, each value one its setting takes, as
 /// `VisibilityError` names a flaw; `host` a list of settings a mode may set, each once.
 impl<'de> Deserialize<'de> for ModeVisibility {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModeVisibility, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         deserializer.deserialize_map(ModeVisibilityVisitor)
     }
 }

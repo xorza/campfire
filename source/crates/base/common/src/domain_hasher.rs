@@ -10,9 +10,9 @@ pub struct HashDomain(&'static str);
 pub struct DomainHasher(blake3::Hasher);
 
 impl HashDomain {
-    pub const fn new(tag: &'static str) -> HashDomain {
-        assert!(HashDomain::spelled(tag.as_bytes()), "campfire/<name>/v<n>");
-        HashDomain(tag)
+    pub const fn new(tag: &'static str) -> Self {
+        assert!(Self::spelled(tag.as_bytes()), "campfire/<name>/v<n>");
+        Self(tag)
     }
 
     pub const fn as_str(self) -> &'static str {
@@ -55,13 +55,13 @@ impl HashDomain {
 }
 
 impl DomainHasher {
-    pub fn new(domain: HashDomain) -> DomainHasher {
+    pub fn new(domain: HashDomain) -> Self {
         let mut hasher = blake3::Hasher::new();
         hasher.update(domain.as_str().as_bytes());
-        DomainHasher(hasher)
+        Self(hasher)
     }
 
-    pub fn update(&mut self, bytes: &[u8]) -> &mut DomainHasher {
+    pub fn update(&mut self, bytes: &[u8]) -> &mut Self {
         self.0.update(bytes);
         self
     }

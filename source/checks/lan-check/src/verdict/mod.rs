@@ -53,8 +53,8 @@ impl BotEvents {
         log: &ProcessLog,
         scripted: usize,
         whole: bool,
-    ) -> Result<BotEvents, CheckError> {
-        Ok(BotEvents {
+    ) -> Result<Self, CheckError> {
+        Ok(Self {
             bot,
             started: log.first::<MatchStarted>()?,
             sent: log.read_all::<OrdersSent>()?,

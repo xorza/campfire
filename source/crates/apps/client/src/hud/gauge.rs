@@ -107,28 +107,28 @@ impl GaugeKind {
     pub(crate) fn layout(self) -> Layout {
         let down = |row: u8| f32::from(row) * ROW;
         match self {
-            GaugeKind::Life { .. } => Layout {
+            Self::Life { .. } => Layout {
                 width: WIDE,
                 thickness: THICKNESS,
                 center: Vec3::ZERO,
             },
-            GaugeKind::Pool { row, .. } => Layout {
+            Self::Pool { row, .. } => Layout {
                 width: WIDE,
                 thickness: THICKNESS,
                 center: Vec3::new(0.0, 0.0, down(row)),
             },
-            GaugeKind::Cooldown { at, row, .. } => Layout {
+            Self::Cooldown { at, row, .. } => Layout {
                 width: PIP,
                 thickness: THICKNESS,
                 center: Vec3::new(at.across(), 0.0, down(row)),
             },
-            GaugeKind::Rank {
+            Self::Rank {
                 at,
                 rank: index,
                 ranks: count,
                 row,
             }
-            | GaugeKind::Charge {
+            | Self::Charge {
                 at,
                 charge: index,
                 max: count,
@@ -147,7 +147,7 @@ impl GaugeKind {
                     ),
                 }
             }
-            GaugeKind::Learnable { at, row } => Layout {
+            Self::Learnable { at, row } => Layout {
                 width: PIP,
                 thickness: MARK_THICKNESS,
                 center: Vec3::new(at.across(), 0.0, down(row)),

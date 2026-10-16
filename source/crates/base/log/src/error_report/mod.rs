@@ -8,7 +8,7 @@ use std::fmt;
 pub struct ErrorReport<'a>(&'a (dyn Error + 'static));
 
 impl<'a> ErrorReport<'a> {
-    pub const fn of(error: &'a (dyn Error + 'static)) -> ErrorReport<'a> {
+    pub const fn of(error: &'a (dyn Error + 'static)) -> Self {
         ErrorReport(error)
     }
 }

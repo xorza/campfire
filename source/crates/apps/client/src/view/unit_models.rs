@@ -58,8 +58,8 @@ impl Plugin for UnitModels {
         embedded_asset!(app, "file_material.wgsl");
         app.add_plugins(MaterialPlugin::<FileMaterial>::default());
         app.init_resource::<FileMaterials>();
-        app.add_systems(Startup, (UnitModels::load_looks, UnitModels::place_objects));
-        app.add_observer(UnitModels::dress);
+        app.add_systems(Startup, (Self::load_looks, Self::place_objects));
+        app.add_observer(Self::dress);
     }
 }
 
@@ -96,7 +96,7 @@ impl UnitModels {
             let root = commands
                 .spawn((
                     StillObject,
-                    UnitModels::placed(object, heights),
+                    Self::placed(object, heights),
                     Visibility::default(),
                 ))
                 .id();
@@ -160,7 +160,7 @@ impl UnitModels {
                 handle.clone()
             } else {
                 let file = &files[name];
-                let handle = materials.add(UnitModels::material(parts.package, file, &assets));
+                let handle = materials.add(Self::material(parts.package, file, &assets));
                 made.insert(name.to_owned(), handle.clone());
                 handle
             };
@@ -223,7 +223,7 @@ impl<'f> Dressing<'f> {
         hide: &[String],
         nodes: impl Iterator<Item = Node<'a>>,
         files: &'f BTreeMap<String, MaterialFile>,
-    ) -> Dressing<'f> {
+    ) -> Self {
         let mut dressing = Dressing::default();
         for node in nodes {
             if node

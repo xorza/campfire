@@ -170,7 +170,7 @@ impl Refresh {
                 stats.refill().extend_from_slice(values);
             }
         }
-        Refresh::hold_effects(scratch, (&book, &pool_book), life, *rate, &mut units.p4());
+        Self::hold_effects(scratch, (&book, &pool_book), life, *rate, &mut units.p4());
         // The value a live change last had is state, so a replay keeps it; its write marks a
         // change, which refreshes its carrier once more, to the value it now holds.
         let mut holders = units.p5();

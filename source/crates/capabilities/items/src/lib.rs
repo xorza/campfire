@@ -62,13 +62,13 @@ campfire_common::enum_all! {
 
 impl ModuleSet for ItemsSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Items);
-    const ALL: &'static [ItemsSet] = &ItemsSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            ItemsSet::Commands => Phase::Trade,
-            ItemsSet::HoldAtInputs => Phase::HoldItems,
-            ItemsSet::Want => Phase::Resolve,
+            Self::Commands => Phase::Trade,
+            Self::HoldAtInputs => Phase::HoldItems,
+            Self::Want => Phase::Resolve,
         })
     }
 }
@@ -80,7 +80,7 @@ impl Module for Items {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ItemsSet>();
-        d.callback::<CastSpends>((), Items::spend_use);
+        d.callback::<CastSpends>((), Self::spend_use);
         d.component::<Inventory>();
         d.component::<UseGroup>();
         d.require::<Inventory, UseGroup>();

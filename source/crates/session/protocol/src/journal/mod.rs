@@ -14,8 +14,8 @@ pub(crate) struct Journal {
 }
 
 impl Journal {
-    pub(crate) fn new(sink: Box<dyn RecordSink>) -> Journal {
-        Journal { sink, written: 0 }
+    pub(crate) fn new(sink: Box<dyn RecordSink>) -> Self {
+        Self { sink, written: 0 }
     }
 
     /// Frames the record `write` puts in the buffer it is given, and hands it to the sink.

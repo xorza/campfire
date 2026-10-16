@@ -22,9 +22,9 @@ pub(crate) struct Hidden<'a> {
 
 impl BrushMap {
     /// The brush of `areas`, in the map's order, on `grid`; none for no area.
-    pub fn new(grid: &Grid, areas: &[Polygon]) -> BrushMap {
+    pub fn new(grid: &Grid, areas: &[Polygon]) -> Self {
         if areas.is_empty() {
-            return BrushMap::default();
+            return Self::default();
         }
         let words = grid.cells().div_ceil(64);
         let mut of_cell = vec![0; grid.cells()];
@@ -42,7 +42,7 @@ impl BrushMap {
                 }
             });
         }
-        BrushMap {
+        Self {
             words,
             of_cell,
             cells,

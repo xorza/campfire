@@ -21,10 +21,7 @@ pub struct CarriedMut<'w> {
 }
 
 impl<'w> CarriedMut<'w> {
-    pub const fn new(
-        modifiers: Mut<'w, Modifiers>,
-        clocks: Mut<'w, ModifierClocks>,
-    ) -> CarriedMut<'w> {
+    pub const fn new(modifiers: Mut<'w, Modifiers>, clocks: Mut<'w, ModifierClocks>) -> Self {
         CarriedMut { modifiers, clocks }
     }
 

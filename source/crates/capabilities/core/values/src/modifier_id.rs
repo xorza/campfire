@@ -10,8 +10,8 @@ pub struct ModifierId(u16);
 
 impl ModifierId {
     /// The modifier at `index` of the book.
-    pub const fn new(index: u16) -> ModifierId {
-        ModifierId(index)
+    pub const fn new(index: u16) -> Self {
+        Self(index)
     }
 }
 
@@ -19,8 +19,8 @@ impl NameId for ModifierId {
     type Scope = PackageIndex;
     const LIMIT: usize = 1 << u16::BITS;
 
-    fn at(index: usize) -> ModifierId {
-        ModifierId(u16::try_from(index).expect("modifiers fit u16"))
+    fn at(index: usize) -> Self {
+        Self(u16::try_from(index).expect("modifiers fit u16"))
     }
 
     fn index(self) -> usize {

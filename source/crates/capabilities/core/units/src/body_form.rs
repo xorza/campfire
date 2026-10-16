@@ -23,8 +23,8 @@ enum Form {
 
 impl BodyForm {
     /// A circle of `radius` on the first layer, as `Body::new` takes it.
-    pub fn circle(radius: Num) -> Option<BodyForm> {
-        Body::new(radius).map(|_| BodyForm {
+    pub fn circle(radius: Num) -> Option<Self> {
+        Body::new(radius).map(|_| Self {
             form: Form::Circle(radius),
             layer: Layer::FIRST,
         })
@@ -32,8 +32,8 @@ impl BodyForm {
 
     /// A box of `size`, `[width, height]` in meters, on the first layer, when `BodyBox` takes
     /// that size: at every angle, as the size alone decides.
-    pub fn box_sized(size: [Num; 2]) -> Option<BodyForm> {
-        BodyBox::new(size, Num::ZERO).map(|_| BodyForm {
+    pub fn box_sized(size: [Num; 2]) -> Option<Self> {
+        BodyBox::new(size, Num::ZERO).map(|_| Self {
             form: Form::Box(size),
             layer: Layer::FIRST,
         })
@@ -41,8 +41,8 @@ impl BodyForm {
 
     /// The form on `layer`.
     #[must_use]
-    pub const fn on(self, layer: Layer) -> BodyForm {
-        BodyForm { layer, ..self }
+    pub const fn on(self, layer: Layer) -> Self {
+        Self { layer, ..self }
     }
 
     pub const fn layer(self) -> Layer {

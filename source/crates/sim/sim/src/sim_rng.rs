@@ -32,8 +32,8 @@ pub struct RngOpener {
 }
 
 impl SimRng {
-    pub const fn new(seed: SegmentSeed) -> SimRng {
-        SimRng {
+    pub const fn new(seed: SegmentSeed) -> Self {
+        Self {
             seed,
             tick: Tick::ZERO,
             starts: 0,

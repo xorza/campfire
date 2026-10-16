@@ -32,7 +32,7 @@ trait Queue: Slot + Debug {
 
 impl<E: Effect> Queue for VecDeque<E> {
     fn clear(&mut self) {
-        VecDeque::clear(self);
+        Self::clear(self);
     }
 }
 
@@ -44,7 +44,7 @@ impl Effects {
             .index_of::<VecDeque<E>>()
             .unwrap_or_else(|| self.queues.add(Box::new(VecDeque::<E>::new())));
         self.queues.typed_mut::<VecDeque<E>>(at).push_back(effect);
-        self.order.push(Effects::apply_first::<E>);
+        self.order.push(Self::apply_first::<E>);
     }
 
     /// The effects of type `E` queued and not applied yet, first first.

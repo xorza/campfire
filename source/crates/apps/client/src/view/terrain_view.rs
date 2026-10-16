@@ -40,7 +40,7 @@ impl Plugin for TerrainView {
             .package
             .files;
         app.insert_resource(ModeFiles(files.clone()));
-        app.add_systems(Startup, TerrainView::draw);
+        app.add_systems(Startup, Self::draw);
     }
 }
 

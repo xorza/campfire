@@ -45,10 +45,10 @@ pub enum InputError {
 }
 
 impl From<StampError> for InputError {
-    fn from(error: StampError) -> InputError {
+    fn from(error: StampError) -> Self {
         match error {
-            StampError::Back => InputError::StampBack,
-            StampError::TooMany => InputError::TooManyInputs,
+            StampError::Back => Self::StampBack,
+            StampError::TooMany => Self::TooManyInputs,
         }
     }
 }

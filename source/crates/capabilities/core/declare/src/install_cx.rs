@@ -28,7 +28,7 @@ pub struct MatchFacts<'a> {
 }
 
 impl<'a> InstallCx<'a> {
-    pub const fn new(schedule: &'a mut Schedule, facts: &'a MatchFacts<'a>) -> InstallCx<'a> {
+    pub const fn new(schedule: &'a mut Schedule, facts: &'a MatchFacts<'a>) -> Self {
         InstallCx { schedule, facts }
     }
 

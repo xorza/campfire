@@ -53,19 +53,19 @@ pub struct MapStart {
 
 impl ModeSpec {
     /// The mode of the match `ctx` runs in, once it installed.
-    pub fn of(ctx: &Ctx) -> Option<&ModeSpec> {
+    pub fn of(ctx: &Ctx) -> Option<&Self> {
         ctx.mode()?.downcast_ref()
     }
 
     /// The mode of the match `ctx` runs in, which has one: the mode's own systems and calls run
     /// only in such a match.
-    pub(crate) fn of_match(ctx: &Ctx) -> &ModeSpec {
-        ModeSpec::of(ctx).expect("a match with a mode")
+    pub(crate) fn of_match(ctx: &Ctx) -> &Self {
+        Self::of(ctx).expect("a match with a mode")
     }
 
     /// The mode of the match `ctx` runs in; an error in a match with none.
-    pub(crate) fn of_or_fail(ctx: &Ctx) -> Checked<&ModeSpec> {
-        ModeSpec::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())
+    pub(crate) fn of_or_fail(ctx: &Ctx) -> Checked<&Self> {
+        Self::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())
     }
 
     /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
@@ -78,7 +78,7 @@ impl ModeSpec {
         loadout_ranks: u8,
         bodies: &ByType<BodyForm>,
         spawn_slots: &ByType<ActionSlots>,
-    ) -> ModeSpec {
+    ) -> Self {
         let MapStart {
             teams,
             placed,
@@ -96,7 +96,7 @@ impl ModeSpec {
             };
             types.set(unit_type, held);
         }
-        ModeSpec {
+        Self {
             schema: ModeSchema::new(setup.script, scripts, setup.data),
             roster: Roster::new(setup.units.avatars, &setup.units.loadout),
             teams: Rc::new(teams),

@@ -102,7 +102,7 @@ impl Dismissing {
         if let Ok(mut refused) = commands.get_entity(link) {
             refused.remove::<(Joined, PlayerLink)>().insert((
                 Refused(error),
-                Dismissing {
+                Self {
                     dismissed,
                     told: None,
                 },
@@ -113,7 +113,7 @@ impl Dismissing {
     /// Tells each dismissed link's client, once.
     pub(crate) fn tell(
         time: Res<'_, Time<Real>>,
-        mut links: Query<'_, '_, (&mut Dismissing, &mut MessageSender<Dismissed>)>,
+        mut links: Query<'_, '_, (&mut Self, &mut MessageSender<Dismissed>)>,
     ) {
         for (mut dismissing, mut sender) in &mut links {
             if dismissing.told.is_none() {
@@ -126,7 +126,7 @@ impl Dismissing {
     /// Ends each dismissed link whose client was told `LINGER` ago and has not ended it.
     pub(crate) fn end(
         time: Res<'_, Time<Real>>,
-        links: Query<'_, '_, (Entity, &Dismissing), Without<Unlinked>>,
+        links: Query<'_, '_, (Entity, &Self), Without<Unlinked>>,
         mut commands: Commands<'_, '_>,
     ) {
         let now = time.elapsed();
@@ -135,7 +135,7 @@ impl Dismissing {
                 .told
                 .is_some_and(|told| now.saturating_sub(told) >= LINGER)
             {
-                commands.entity(link).remove::<Dismissing>();
+                commands.entity(link).remove::<Self>();
                 commands.trigger(CloseLink {
                     entity: link,
                     code: dismissing.dismissed.code().app(),
@@ -177,7 +177,7 @@ impl Offered {
     /// `CloseCode::Unanswered`.
     pub(crate) fn close_silent(
         time: Res<'_, Time<Real>>,
-        links: Query<'_, '_, (Entity, &Offered), (ToAnswer, Without<Unlinked>)>,
+        links: Query<'_, '_, (Entity, &Self), (ToAnswer, Without<Unlinked>)>,
         mut commands: Commands<'_, '_>,
     ) {
         let now = time.elapsed();
@@ -205,8 +205,8 @@ pub(crate) struct CheckedJoins {
 
 impl Offering {
     /// The offering of a session of `terms` on the server of `server`.
-    pub(crate) fn new(terms: SessionTerms, server: &ServerSetup) -> Offering {
-        Offering {
+    pub(crate) fn new(terms: SessionTerms, server: &ServerSetup) -> Self {
+        Self {
             terms,
             times: server.times,
             clock: server.os.clock.clone(),
@@ -260,7 +260,7 @@ impl Offering {
 
     /// Offers the terms to each connected link that has no offer, as `offer` does, from the
     /// offering `H` holds: the lobby's before the start, the door's after it.
-    pub(crate) fn offer_links<H: Resource + AsRef<Offering>>(
+    pub(crate) fn offer_links<H: Resource + AsRef<Self>>(
         holder: Res<'_, H>,
         timeline: Res<'_, LocalTimeline>,
         time: Res<'_, Time<Real>>,

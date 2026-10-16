@@ -70,9 +70,9 @@ impl BodyBox {
     /// rounded once, to nearest, ties to even. A multiple of 90° turns by exact sines; any other
     /// angle by those `sin_cos` gives. `None` for a size below `MIN_SIZE`, or for a diagonal past
     /// `MAX_DIAGONAL`.
-    pub fn new(size: [Num; 2], angle: Num) -> Option<BodyBox> {
+    pub fn new(size: [Num; 2], angle: Num) -> Option<Self> {
         let [width, height] = size;
-        if width < BodyBox::MIN_SIZE || height < BodyBox::MIN_SIZE {
+        if width < Self::MIN_SIZE || height < Self::MIN_SIZE {
             return None;
         }
         let square = |num: Num| {
@@ -80,7 +80,7 @@ impl BodyBox {
             bits * bits
         };
         // Each square is below 2¹²⁶, so the sum fits.
-        if square(width) + square(height) > square(BodyBox::MAX_DIAGONAL) {
+        if square(width) + square(height) > square(Self::MAX_DIAGONAL) {
             return None;
         }
         let SinCos { sin, cos } = SinCos::of_degrees(angle);
@@ -88,7 +88,7 @@ impl BodyBox {
             size.checked_mul_div_int(by, 2)
                 .expect("half a size within 4,094 m times at most 1 fits")
         };
-        let made = BodyBox::of_halves([
+        let made = Self::of_halves([
             [half(width, cos), -half(width, sin)],
             [half(height, sin), half(height, cos)],
         ]);
@@ -98,7 +98,7 @@ impl BodyBox {
 
     /// The box of the half edges `half`; `None` for one that lies flat or turns clockwise, or
     /// whose corners reach past `MAX_BOUND`.
-    fn of_halves(half: [[Num; 2]; 2]) -> Option<BodyBox> {
+    fn of_halves(half: [[Num; 2]; 2]) -> Option<Self> {
         // A component past the reach makes a corner past it; refused first, the products below
         // stay within i128 whatever an untrusted snapshot holds.
         let within = |num: &Num| num.to_bits().unsigned_abs() <= MAX_BOUND.to_bits().unsigned_abs();
@@ -114,7 +114,7 @@ impl BodyBox {
         let [a, b] = frame.halves;
         let farthest = (a + b).length_squared().max((a - b).length_squared());
         let bound = Num::from_bits(i64::try_from(farthest.ceil_root()).ok()?);
-        (bound <= MAX_BOUND).then_some(BodyBox { half, bound })
+        (bound <= MAX_BOUND).then_some(Self { half, bound })
     }
 
     pub const fn half_edges(&self) -> [[Num; 2]; 2] {
@@ -323,7 +323,7 @@ impl BodyBox {
 
     /// Whether the insides of the box at `center` and `other` at `other_center` share a point:
     /// touching is not overlap.
-    pub fn overlaps(&self, center: Vec3, other: &BodyBox, other_center: Vec3) -> bool {
+    pub fn overlaps(&self, center: Vec3, other: &Self, other_center: Vec3) -> bool {
         let apart = flat(other_center) - flat(center);
         self.frame().meets(apart, other.frame(), Closure::Open)
     }
@@ -333,7 +333,7 @@ impl BodyBox {
     pub(crate) fn nearest_box(
         &self,
         center: Vec3,
-        other: &BodyBox,
+        other: &Self,
         other_center: Vec3,
         reach: Num,
     ) -> Ordering {
@@ -429,13 +429,13 @@ impl BodyBox {
 /// A snapshot is untrusted, so half edges that lie flat, turn clockwise, or reach past 2,048 m fail
 /// to decode; the bound is derived again.
 impl<'de> Deserialize<'de> for BodyBox {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<BodyBox, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             half: [[Num; 2]; 2],
         }
         let Fields { half } = Fields::deserialize(deserializer)?;
-        BodyBox::of_halves(half).ok_or_else(|| {
+        Self::of_halves(half).ok_or_else(|| {
             D::Error::custom("a box's half edges turn counterclockwise, within 2,048 m")
         })
     }
@@ -540,13 +540,13 @@ impl Frame {
 
     /// Whether the boxes of `closure` meet: no axis of either separates them. `other`'s
     /// position lies `apart` from this one's.
-    fn meets(&self, apart: Flat, other: Frame, closure: Closure) -> bool {
+    fn meets(&self, apart: Flat, other: Self, closure: Closure) -> bool {
         !self.separates(apart, other, closure) && !other.separates(-apart, *self, closure)
     }
 
     /// Whether one of this box's slab axes separates it from `other`, whose position lies
     /// `apart` from this one's.
-    fn separates(&self, apart: Flat, other: Frame, closure: Closure) -> bool {
+    fn separates(&self, apart: Flat, other: Self, closure: Closure) -> bool {
         let area = self.quarter_area();
         let [their_a, their_b] = other.halves;
         let center = self.slabs(apart);

@@ -14,13 +14,13 @@ pub struct Tick(u64);
 pub struct Ticks(u64);
 
 impl Tick {
-    pub const ZERO: Tick = Tick(0);
+    pub const ZERO: Self = Self(0);
     /// The latest time a match makes, and the most of every count its state holds: 2⁶², which no
     /// match reaches, so no sum of two restored values overflows.
-    pub const LIMIT: Tick = Tick(1 << 62);
+    pub const LIMIT: Self = Self(1 << 62);
 
-    pub const fn new(tick: u64) -> Tick {
-        Tick(tick)
+    pub const fn new(tick: u64) -> Self {
+        Self(tick)
     }
 
     pub const fn get(self) -> u64 {
@@ -28,12 +28,12 @@ impl Tick {
     }
 
     /// The time `ticks` after this one. A match never runs long enough to pass `u64::MAX`.
-    pub const fn after(self, ticks: Ticks) -> Tick {
-        Tick(self.0.checked_add(ticks.0).expect("tick numbers exhausted"))
+    pub const fn after(self, ticks: Ticks) -> Self {
+        Self(self.0.checked_add(ticks.0).expect("tick numbers exhausted"))
     }
 
     /// The ticks from `earlier` to this time; `None` when `earlier` is later.
-    pub const fn since(self, earlier: Tick) -> Option<Ticks> {
+    pub const fn since(self, earlier: Self) -> Option<Ticks> {
         match self.0.checked_sub(earlier.0) {
             Some(ticks) => Some(Ticks(ticks)),
             None => None,
@@ -44,34 +44,34 @@ impl Tick {
 /// A snapshot or a message is untrusted, so a time past `Tick::LIMIT`, which no match makes,
 /// fails to decode, and no state holds one.
 impl<'de> Deserialize<'de> for Tick {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Tick, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let tick = u64::deserialize(deserializer)?;
-        if tick > Tick::LIMIT.0 {
+        if tick > Self::LIMIT.0 {
             return Err(D::Error::custom("a tick past the latest a match makes"));
         }
-        Ok(Tick(tick))
+        Ok(Self(tick))
     }
 }
 
 /// As a `Tick`'s: a length past `Ticks::LIMIT` fails to decode.
 impl<'de> Deserialize<'de> for Ticks {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Ticks, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let ticks = u64::deserialize(deserializer)?;
-        if ticks > Ticks::LIMIT.0 {
+        if ticks > Self::LIMIT.0 {
             return Err(D::Error::custom("a length past the longest a match makes"));
         }
-        Ok(Ticks(ticks))
+        Ok(Self(ticks))
     }
 }
 
 impl Ticks {
-    pub const ZERO: Ticks = Ticks(0);
-    pub const ONE: Ticks = Ticks(1);
+    pub const ZERO: Self = Self(0);
+    pub const ONE: Self = Self(1);
     /// The longest time a match makes: `Tick::LIMIT`'s.
-    pub const LIMIT: Ticks = Ticks(Tick::LIMIT.0);
+    pub const LIMIT: Self = Self(Tick::LIMIT.0);
 
-    pub const fn new(ticks: u64) -> Ticks {
-        Ticks(ticks)
+    pub const fn new(ticks: u64) -> Self {
+        Self(ticks)
     }
 
     pub const fn get(self) -> u64 {

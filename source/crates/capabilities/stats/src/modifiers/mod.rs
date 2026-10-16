@@ -556,7 +556,7 @@ impl Replication for Modifiers {
 /// buffers, stack ends out of order, empty, or that do not count an instance's stacks, and a
 /// negative aura radius fail to decode.
 impl<'de> Deserialize<'de> for Modifiers {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Modifiers, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             instances: Vec<Instance>,
@@ -579,7 +579,7 @@ impl<'de> Deserialize<'de> for Modifiers {
         {
             return Err(D::Error::custom("runs that cover the buffers exactly"));
         }
-        let modifiers = Modifiers {
+        let modifiers = Self {
             instances,
             ends,
             shares,
@@ -621,7 +621,7 @@ pub(crate) mod internals {
     impl Modifiers {
         /// A unit's modifiers and their clocks, of `applications` applied in order.
         pub fn bundle(applications: impl IntoIterator<Item = Application>) -> impl Bundle {
-            let (mut modifiers, mut clocks) = (Modifiers::default(), ModifierClocks::default());
+            let (mut modifiers, mut clocks) = (Self::default(), ModifierClocks::default());
             for application in applications {
                 modifiers.apply(&mut clocks, application);
             }

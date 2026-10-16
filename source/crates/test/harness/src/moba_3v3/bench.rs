@@ -24,7 +24,7 @@ struct ViewScene {
 }
 
 impl ViewScene {
-    fn new() -> ViewScene {
+    fn new() -> Self {
         let mut fixed = Moba3v3::load().start();
         let world = fixed.game_mut();
         Moba3v3::crowd_creeps(world);
@@ -32,7 +32,7 @@ impl ViewScene {
             .query_filtered::<Entity, (With<Position>, With<Team>)>()
             .iter(world)
             .collect();
-        ViewScene { fixed, units }
+        Self { fixed, units }
     }
 }
 

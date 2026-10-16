@@ -38,13 +38,13 @@ pub struct Raised {
 
 impl Experience {
     /// No experience on each of `tracks`, each at level 1.
-    pub fn new(tracks: TrackSet) -> Experience {
+    pub fn new(tracks: TrackSet) -> Self {
         let tracks = tracks.iter().map(|track| TrackXp {
             track,
             xp: Num::ZERO,
             level: Level::default(),
         });
-        Experience {
+        Self {
             tracks: tracks.collect(),
         }
     }
@@ -102,7 +102,7 @@ impl Replication for Experience {
 /// A snapshot is untrusted, so tracks out of order or twice, or negative experience, fail to
 /// decode.
 impl<'de> Deserialize<'de> for Experience {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Experience, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             tracks: Vec<TrackXp>,
@@ -114,7 +114,7 @@ impl<'de> Deserialize<'de> for Experience {
         if tracks.iter().any(|track| track.xp < Num::ZERO) {
             return Err(D::Error::custom("experience is not negative"));
         }
-        Ok(Experience { tracks })
+        Ok(Self { tracks })
     }
 }
 

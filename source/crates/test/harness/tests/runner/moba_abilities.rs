@@ -162,17 +162,17 @@ enum Kit {
 impl Kit {
     const fn unit_type(self) -> &'static str {
         match self {
-            Kit::Bare => "arena_bare",
-            Kit::Mana20 => "arena_mana_20",
-            Kit::Mana100 => "arena_mana_100",
-            Kit::Mana200 => "arena_mana_200",
-            Kit::Energy100 => "arena_energy_100",
-            Kit::Energy200 => "arena_energy_200",
-            Kit::Blade => "arena_blade",
-            Kit::Archer => "arena_archer",
-            Kit::CostlyArcher => "arena_costly_archer",
-            Kit::Striker => "arena_striker",
-            Kit::EnergyStriker => "arena_energy_striker",
+            Self::Bare => "arena_bare",
+            Self::Mana20 => "arena_mana_20",
+            Self::Mana100 => "arena_mana_100",
+            Self::Mana200 => "arena_mana_200",
+            Self::Energy100 => "arena_energy_100",
+            Self::Energy200 => "arena_energy_200",
+            Self::Blade => "arena_blade",
+            Self::Archer => "arena_archer",
+            Self::CostlyArcher => "arena_costly_archer",
+            Self::Striker => "arena_striker",
+            Self::EnergyStriker => "arena_energy_striker",
         }
     }
 }

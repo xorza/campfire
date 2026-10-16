@@ -19,8 +19,8 @@ impl ArchivePath {
     }
 
     /// The path the game finds `path` by: `/` read as `\`, letters folded to lowercase.
-    pub(crate) fn of(path: &str) -> ArchivePath {
-        ArchivePath(path.replace('/', "\\").to_ascii_lowercase())
+    pub(crate) fn of(path: &str) -> Self {
+        Self(path.replace('/', "\\").to_ascii_lowercase())
     }
 
     pub(crate) fn as_str(&self) -> &str {

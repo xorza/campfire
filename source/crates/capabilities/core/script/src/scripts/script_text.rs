@@ -11,8 +11,8 @@ impl ScriptText {
         self.0.as_str()
     }
 
-    pub(super) const fn of_engine(text: ImmutableString) -> ScriptText {
-        ScriptText(text)
+    pub(super) const fn of_engine(text: ImmutableString) -> Self {
+        Self(text)
     }
 
     pub(super) fn into_engine(self) -> ImmutableString {
@@ -29,13 +29,13 @@ impl Deref for ScriptText {
 }
 
 impl From<&str> for ScriptText {
-    fn from(text: &str) -> ScriptText {
-        ScriptText(text.into())
+    fn from(text: &str) -> Self {
+        Self(text.into())
     }
 }
 
 impl From<String> for ScriptText {
-    fn from(text: String) -> ScriptText {
-        ScriptText(text.into())
+    fn from(text: String) -> Self {
+        Self(text.into())
     }
 }

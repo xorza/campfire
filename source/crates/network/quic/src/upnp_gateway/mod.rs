@@ -33,7 +33,7 @@ impl UpnpGateway {
     /// The first router on IPv4 that answers a search sent to `ssdp` within `timeout`. A search
     /// sent to one host, not to SSDP's group, trusts that host's description at its address,
     /// loopback too, as it asked that host alone.
-    pub(crate) fn search(ssdp: SocketAddr, timeout: Duration) -> Result<UpnpGateway, MapError> {
+    pub(crate) fn search(ssdp: SocketAddr, timeout: Duration) -> Result<Self, MapError> {
         let mut options = SearchOptions::default();
         options.broadcast_address = ssdp;
         options.allowed_gateway_ips = vec![ssdp.ip()];
@@ -41,7 +41,7 @@ impl UpnpGateway {
         options.single_search_timeout = Some(timeout);
         options.gateway_ip_version = GatewayIpVersion::V4;
         let router = igd_next::search_gateway(options).map_err(MapError::UpnpSearch)?;
-        UpnpGateway::of(router)
+        Self::of(router)
     }
 
     /// The router of `announcement`, built as `igd-next` builds one from a search's answer: its
@@ -50,12 +50,12 @@ impl UpnpGateway {
     pub(crate) fn announced(
         announcement: &SsdpAnnouncement,
         timeout: Duration,
-    ) -> Result<UpnpGateway, MapError> {
+    ) -> Result<Self, MapError> {
         let location = announcement.location();
-        let description = UpnpGateway::fetch(location, timeout)?;
+        let description = Self::fetch(location, timeout)?;
         let description =
             RouterDescription::parse(&description, location).ok_or(MapError::UpnpDescription)?;
-        let schema = UpnpGateway::fetch(description.schema(), timeout)?;
+        let schema = Self::fetch(description.schema(), timeout)?;
         let schema = ControlSchema::parse(&schema).ok_or(MapError::UpnpSchema)?;
         // `igd-next` takes a path of the router's own address, else a whole URL.
         let reference = |url: &RouterUrl| {
@@ -65,7 +65,7 @@ impl UpnpGateway {
                 url.whole()
             }
         };
-        UpnpGateway::of(igd_next::Gateway {
+        Self::of(igd_next::Gateway {
             addr: SocketAddr::V4(location.addr()),
             root_url: location.path().to_owned(),
             control_url: reference(description.control()),
@@ -76,13 +76,13 @@ impl UpnpGateway {
     }
 
     /// `router`, with this host's address on its side.
-    fn of(router: igd_next::Gateway) -> Result<UpnpGateway, MapError> {
+    fn of(router: igd_next::Gateway) -> Result<Self, MapError> {
         let socket = UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).map_err(MapError::Io)?;
         socket.connect(router.addr).map_err(MapError::Io)?;
         let IpAddr::V4(local) = socket.local_addr().map_err(MapError::Io)?.ip() else {
             unreachable!("a router on IPv4 is reached from an IPv4 address");
         };
-        Ok(UpnpGateway { router, local })
+        Ok(Self { router, local })
     }
 
     /// The document at `url`, within `timeout` and `MAX_DOCUMENT` bytes, as `igd-next` reads one:

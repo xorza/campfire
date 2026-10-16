@@ -10,8 +10,8 @@ pub(crate) struct MemorySink(pub(crate) Arc<Mutex<Vec<u8>>>);
 
 impl MemorySink {
     /// A file that holds the journal's tag alone, as a new journal does.
-    pub(crate) fn new() -> MemorySink {
-        MemorySink(Arc::new(Mutex::new(JournalFrames::TAG.to_vec())))
+    pub(crate) fn new() -> Self {
+        Self(Arc::new(Mutex::new(JournalFrames::TAG.to_vec())))
     }
 
     pub(crate) fn bytes(&self) -> Vec<u8> {

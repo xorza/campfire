@@ -44,7 +44,7 @@ impl OutputFile {
             Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
                 Err(PathError::at(path)(error))
             }
-            Err(_) => OutputFile::write_new(path, bytes),
+            Err(_) => Self::write_new(path, bytes),
         }
     }
 }

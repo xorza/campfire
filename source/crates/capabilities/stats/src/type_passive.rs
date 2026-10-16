@@ -28,8 +28,8 @@ impl TypePassive {
         let unit = world.entity(entity);
         let unit_type = *unit.get::<UnitType>().expect("a unit has a type");
         let id = *unit.get::<StableId>().expect("a unit has a stable id");
-        let passive = world.resource::<ByType<TypePassive>>().get(unit_type);
-        let Some(&TypePassive(modifier)) = passive else {
+        let passive = world.resource::<ByType<Self>>().get(unit_type);
+        let Some(&Self(modifier)) = passive else {
             return;
         };
         let grant = Grant {

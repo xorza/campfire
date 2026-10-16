@@ -29,7 +29,7 @@ pub enum LogLevel {
 
 impl LogLine {
     /// The line `text` holds; an error when it is not a JSON event.
-    pub fn parse(text: &str) -> Result<LogLine, JsonError> {
+    pub fn parse(text: &str) -> Result<Self, JsonError> {
         Json::parse(text)
     }
 

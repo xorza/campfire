@@ -11,8 +11,8 @@ use crate::wall::Wall;
 pub struct Walls(Arc<[Wall]>);
 
 impl Walls {
-    pub fn new(walls: &[Wall]) -> Walls {
-        Walls(walls.into())
+    pub fn new(walls: &[Wall]) -> Self {
+        Self(walls.into())
     }
 
     pub fn walls(&self) -> &[Wall] {
@@ -21,7 +21,7 @@ impl Walls {
 
     /// Whether `other` shares these walls, by their one allocation: a copy of a match's walls is
     /// them, with no compare of their points.
-    pub(crate) fn same(&self, other: &Walls) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
@@ -29,7 +29,7 @@ impl Walls {
     /// with none: it lies within `bounds`, and its inside shares no point with a wall of its
     /// layer. The bodies that stand there are the caller's to test.
     pub fn room_for(
-        walls: Option<&Walls>,
+        walls: Option<&Self>,
         bounds: Bounds,
         pos: Vec3,
         body: &BodyBox,

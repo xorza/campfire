@@ -24,27 +24,27 @@ impl Number {
     /// The param it reads, if it reads one.
     pub const fn param(&self) -> Option<&DeclaredName> {
         match self {
-            Number::Value(_) => None,
-            Number::Param(reference) => Some(&reference.param),
+            Self::Value(_) => None,
+            Self::Param(reference) => Some(&reference.param),
         }
     }
 }
 
 impl From<Scalar> for Number {
-    fn from(value: Scalar) -> Number {
-        Number::Value(value)
+    fn from(value: Scalar) -> Self {
+        Self::Value(value)
     }
 }
 
 impl From<i64> for Number {
-    fn from(value: i64) -> Number {
-        Number::Value(Scalar::Int(value))
+    fn from(value: i64) -> Self {
+        Self::Value(Scalar::Int(value))
     }
 }
 
 impl From<Num> for Number {
-    fn from(value: Num) -> Number {
-        Number::Value(Scalar::Decimal(value))
+    fn from(value: Num) -> Self {
+        Self::Value(Scalar::Decimal(value))
     }
 }
 

@@ -12,8 +12,8 @@ pub struct ScriptList(Vec<ScriptValue>);
 impl ScriptList {
     /// The list of the engine's `array`. A value has the layout of the engine's, so `collect`
     /// reuses the buffer, as std's in-place iteration does.
-    pub(crate) fn of_engine(array: Array) -> ScriptList {
-        ScriptList(array.into_iter().map(ScriptValue::of_engine).collect())
+    pub(crate) fn of_engine(array: Array) -> Self {
+        Self(array.into_iter().map(ScriptValue::of_engine).collect())
     }
 
     /// The list in the engine's form, its buffer reused as `of_engine`'s is.
@@ -32,14 +32,14 @@ impl Deref for ScriptList {
 }
 
 impl FromIterator<ScriptValue> for ScriptList {
-    fn from_iter<I: IntoIterator<Item = ScriptValue>>(values: I) -> ScriptList {
-        ScriptList(values.into_iter().collect())
+    fn from_iter<I: IntoIterator<Item = ScriptValue>>(values: I) -> Self {
+        Self(values.into_iter().collect())
     }
 }
 
 impl<const N: usize> From<[ScriptValue; N]> for ScriptList {
-    fn from(values: [ScriptValue; N]) -> ScriptList {
-        ScriptList::from_iter(values)
+    fn from(values: [ScriptValue; N]) -> Self {
+        Self::from_iter(values)
     }
 }
 

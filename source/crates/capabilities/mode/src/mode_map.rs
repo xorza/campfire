@@ -71,7 +71,7 @@ impl ModeMap {
         layers: &Names<Layer>,
         unit_type: impl Fn(&str) -> Option<UnitType>,
     ) -> Result<ResolvedMap, ModeError> {
-        let team_names = ModeMap::team_names(teams)?;
+        let team_names = Self::team_names(teams)?;
         let team = |name: &DeclaredName| {
             let team = team_names.named(name.as_str());
             team.ok_or_else(|| ModeError::UnknownTeam(name.clone()))
@@ -131,14 +131,14 @@ impl ModeMap {
                 angle: unit.angle,
             });
         }
-        let markers = ModeMap::markers(map, team)?;
+        let markers = Self::markers(map, team)?;
         let vision = grid.map(|grid| VisionGrid {
             brush: BrushMap::new(&grid, &brush),
             grid,
             teams: team_names.len(),
         });
         Ok(ResolvedMap {
-            map: ModeMap {
+            map: Self {
                 teams: team_names,
                 relations: resolved,
                 placed,

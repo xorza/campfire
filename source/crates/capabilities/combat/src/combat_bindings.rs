@@ -18,10 +18,10 @@ impl CombatBindings {
     pub fn new<E>(
         rules: &ModeCombatData,
         stat: impl Fn(&Stat) -> Result<StatId, E>,
-    ) -> Result<CombatBindings, E> {
+    ) -> Result<Self, E> {
         let leech = rules.leech.as_ref();
         let bound = |held: Option<&Stat>| held.map(&stat).transpose();
-        Ok(CombatBindings {
+        Ok(Self {
             leech_attack: bound(leech.and_then(|leech| leech.attack.as_ref()))?,
             leech_other: bound(leech.and_then(|leech| leech.other.as_ref()))?,
             heal_scale: bound(rules.heal_scale.as_ref())?,

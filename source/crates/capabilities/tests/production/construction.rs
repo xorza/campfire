@@ -53,7 +53,7 @@ struct Rules<'a> {
 }
 
 impl<'a> Rules<'a> {
-    const fn of(style: Style<'a>) -> Rules<'a> {
+    const fn of(style: Style<'a>) -> Self {
         Rules {
             start: BuildStart::Arrival,
             style,
@@ -76,7 +76,7 @@ impl Yard {
     /// `walls`, for walkers of a half meter. Its depot is a box of 4 by 2 m of 100 life; its build,
     /// within 1 m, takes 4 ticks and 15 gold, its site starting at 0.1 of its life, a cancel giving
     /// back 0.5. Player 0 holds 100 gold.
-    fn place(game: &mut Match, shop: Shop, rules: Rules<'_>) -> Yard {
+    fn place(game: &mut Match, shop: Shop, rules: Rules<'_>) -> Self {
         let depot = shop.depot;
         let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
         Shop::give(game, depot, form);
@@ -120,7 +120,7 @@ impl Yard {
         Units::give_type(game, builder, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, builder, Builder::default());
         Mode::load_test_units(game);
-        Yard { build, builder }
+        Self { build, builder }
     }
 
     /// A builder of `team`, owned by player `owner`, at `pos`, of a half meter, that walks a

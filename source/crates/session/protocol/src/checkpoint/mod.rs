@@ -56,10 +56,10 @@ impl Checkpoint {
 
     /// The record at the front of `bytes`, and the bytes after it; an error for bytes that do
     /// not decode, and for a delegation that does not parse.
-    pub(crate) fn take(bytes: &[u8]) -> Result<Taken<'_, Checkpoint>, CheckpointDecodeError> {
+    pub(crate) fn take(bytes: &[u8]) -> Result<Taken<'_, Self>, CheckpointDecodeError> {
         let Taken { value: wire, rest } =
             Binary::take::<Wire<'_>>(bytes).map_err(CheckpointDecodeError::Malformed)?;
-        let record = Checkpoint {
+        let record = Self {
             segment: wire.segment,
             tick: wire.tick,
             state_hash: wire.state_hash,

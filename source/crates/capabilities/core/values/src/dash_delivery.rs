@@ -26,8 +26,8 @@ impl DashDelivery {
         action: ActionId,
         rank: Rank,
         start: Option<ActionStart>,
-    ) -> DashDelivery {
-        DashDelivery {
+    ) -> Self {
+        Self {
             source,
             action,
             rank,

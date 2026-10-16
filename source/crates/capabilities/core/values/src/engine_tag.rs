@@ -14,8 +14,8 @@ pub struct EngineTag {
 
 impl EngineTag {
     /// The engine tag of number `number`, which its place among the declared ones must be.
-    pub const fn new(number: u8, name: &'static str, properties: TagProperties) -> EngineTag {
-        EngineTag {
+    pub const fn new(number: u8, name: &'static str, properties: TagProperties) -> Self {
+        Self {
             tag: Tag::new(number),
             name,
             properties,
@@ -36,7 +36,7 @@ impl EngineTag {
     }
 
     /// The tag of `tags`, the release's engine tags, named `name`, if one is.
-    pub fn named(tags: &[EngineTag], name: &str) -> Option<EngineTag> {
+    pub fn named(tags: &[Self], name: &str) -> Option<Self> {
         tags.iter().copied().find(|tag| tag.name == name)
     }
 }

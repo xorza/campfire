@@ -8,7 +8,7 @@ pub(super) struct Declaring<'a, D> {
 }
 
 impl<'a, D: Declarations> Declaring<'a, D> {
-    pub(super) const fn new(set: CapabilitySet, d: &'a mut D) -> Declaring<'a, D> {
+    pub(super) const fn new(set: CapabilitySet, d: &'a mut D) -> Self {
         Declaring { set, d }
     }
 

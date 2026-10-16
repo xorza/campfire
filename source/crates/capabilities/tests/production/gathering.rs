@@ -25,7 +25,7 @@ impl Mine {
     /// of a half meter. Its minerals are nodes of gold, boxes of 2 by 1 m of the neutral team 2; its
     /// hall, player 0's, a box of 4 by 2 m, takes gold. A worker's gather takes 5 a trip in 3
     /// ticks, within 1 m of its body's edge, and looks 4 m from its node for another.
-    fn place(game: &mut Match, shop: Shop) -> Mine {
+    fn place(game: &mut Match, shop: Shop) -> Self {
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
         game.resource_mut::<MapBook>().bounds = bounds;
         let walker = Walker {
@@ -56,7 +56,7 @@ impl Mine {
         Units::give_type(game, worker, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, worker, Gatherer::default());
         Mode::load_test_units(game);
-        Mine {
+        Self {
             gather,
             mineral,
             worker,

@@ -27,7 +27,7 @@ const HEADER: usize = 16;
 
 impl BigArchive {
     /// The entries of the archive at `path`, which `file` opens, each checked to lie within it.
-    pub(crate) fn read(file: &mut InputRanges, path: &Path) -> Result<BigArchive, ZeroHourError> {
+    pub(crate) fn read(file: &mut InputRanges, path: &Path) -> Result<Self, ZeroHourError> {
         let refused = |error| ZeroHourError::Archive {
             archive: path.to_owned(),
             error,
@@ -72,7 +72,7 @@ impl BigArchive {
             });
             at += 8 + end + 1;
         }
-        Ok(BigArchive { entries })
+        Ok(Self { entries })
     }
 }
 

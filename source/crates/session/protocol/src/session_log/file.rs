@@ -92,17 +92,14 @@ impl SessionLog {
     /// Decodes a log file. Its entries are recorded again, which checks every chain link and
     /// signature, and only the bytes `encode` gives for the decoded log are accepted, so a log has
     /// one file.
-    pub fn decode(bytes: &[u8]) -> Result<SessionLog, LogError> {
-        SessionLog::decode_within(bytes, POSITION_BOUND)
+    pub fn decode(bytes: &[u8]) -> Result<Self, LogError> {
+        Self::decode_within(bytes, POSITION_BOUND)
     }
 
-    pub(super) fn decode_within(
-        bytes: &[u8],
-        position_bound: usize,
-    ) -> Result<SessionLog, LogError> {
+    pub(super) fn decode_within(bytes: &[u8], position_bound: usize) -> Result<Self, LogError> {
         let mut rest = bytes.strip_prefix(LOG_TAG).ok_or(LogError::NotLog)?;
         let header = take_header(&mut rest)?;
-        let mut log = SessionLog::new(header).map_err(LogError::Header)?;
+        let mut log = Self::new(header).map_err(LogError::Header)?;
         log.position_bound = position_bound;
         let mut inputs = Vec::new();
         let mut applied = Vec::new();

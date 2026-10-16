@@ -15,7 +15,7 @@ pub struct MatchUnits<'a> {
 
 impl<'a> MatchUnits<'a> {
     /// The units of `world`, a running match.
-    pub const fn of(world: &'a World) -> MatchUnits<'a> {
+    pub const fn of(world: &'a World) -> Self {
         MatchUnits { world }
     }
 

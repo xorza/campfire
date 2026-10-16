@@ -19,8 +19,8 @@ use crate::pool_book::PoolBook;
 pub struct Life(Meter);
 
 impl Life {
-    pub const fn new(meter: Meter) -> Life {
-        Life(meter)
+    pub const fn new(meter: Meter) -> Self {
+        Self(meter)
     }
 
     pub const fn current(self) -> Num {
@@ -93,14 +93,14 @@ pub(crate) mod internals {
     impl Life {
         /// The same life with `amount` of it spent.
         #[must_use]
-        pub fn spent(mut self, amount: Num) -> Life {
+        pub fn spent(mut self, amount: Num) -> Self {
             self.take(amount);
             self
         }
 
         /// A full life of `max`, which is positive.
-        pub const fn full(max: Num) -> Life {
-            Life(Meter::new(max).expect("a positive maximum"))
+        pub const fn full(max: Num) -> Self {
+            Self(Meter::new(max).expect("a positive maximum"))
         }
     }
 }

@@ -44,23 +44,22 @@ impl TerrainAtlas {
     pub(crate) const TILE: u32 = 64;
     /// The space between two cells of the grid: a border on each side.
     const OFFSET: u32 = 8;
-    const BORDER: u32 = TerrainAtlas::OFFSET / 2;
+    const BORDER: u32 = Self::OFFSET / 2;
     /// The cells of a row of the grid, and of its rows.
-    const CELLS: usize =
-        (TerrainAtlas::WIDTH / (TerrainAtlas::TILE + TerrainAtlas::OFFSET)) as usize;
+    const CELLS: usize = (Self::WIDTH / (Self::TILE + Self::OFFSET)) as usize;
     const LEVELS: u32 = 3;
     /// The most tiles a side of a class's texture gives.
     const MOST_TILES: u32 = 10;
 
     /// The atlas of `terrain`'s classes and their textures.
-    pub(crate) fn new(terrain: &TerrainParts) -> TerrainAtlas {
+    pub(crate) fn new(terrain: &TerrainParts) -> Self {
         let tiles = usize::try_from(terrain.tiles).expect("a u32 fits usize");
         let mut sources = vec![None; tiles];
         for class in &terrain.classes {
             let Some(texture) = &class.texture else {
                 continue;
             };
-            let Some(side) = TerrainAtlas::read_side(class.tiles, texture.size) else {
+            let Some(side) = Self::read_side(class.tiles, texture.size) else {
                 continue;
             };
             for at in 0..side * side {
@@ -75,7 +74,7 @@ impl TerrainAtlas {
         let BlockPlaces {
             corners: classes,
             height,
-        } = TerrainAtlas::place(terrain);
+        } = Self::place(terrain);
         let mut corners = vec![None; tiles];
         for (data, corner) in terrain.classes.iter().zip(&classes) {
             let Some(UVec2 { x, y }) = *corner else {
@@ -90,13 +89,13 @@ impl TerrainAtlas {
                         continue;
                     };
                     *corner = Some(UVec2::new(
-                        x + column * TerrainAtlas::TILE,
-                        y + (data.width - row - 1) * TerrainAtlas::TILE,
+                        x + column * Self::TILE,
+                        y + (data.width - row - 1) * Self::TILE,
                     ));
                 }
             }
         }
-        let tile = TerrainAtlas::TILE;
+        let tile = Self::TILE;
         let mut copies = Vec::new();
         let mut placed = Vec::with_capacity(tiles);
         for (corner, source) in corners.iter().zip(&sources) {
@@ -123,16 +122,16 @@ impl TerrainAtlas {
                 Some(BorderWrap {
                     at: (*corner)?,
                     size: UVec2::splat(data.width * tile),
-                    border: TerrainAtlas::BORDER,
+                    border: Self::BORDER,
                 })
             })
             .collect();
-        TerrainAtlas {
+        Self {
             classes,
             tiles: placed,
             texture: TerrainTexture {
-                size: UVec2::new(TerrainAtlas::WIDTH, height),
-                levels: TerrainAtlas::LEVELS,
+                size: UVec2::new(Self::WIDTH, height),
+                levels: Self::LEVELS,
                 copies,
                 wraps,
             },
@@ -161,13 +160,11 @@ impl TerrainAtlas {
     /// sides, at most 10, and loads only when that holds the class's tiles, the largest square of
     /// them; none when it does not.
     fn read_side(tiles: u32, size: UVec2) -> Option<u32> {
-        let given = (size / TerrainAtlas::TILE)
-            .min_element()
-            .min(TerrainAtlas::MOST_TILES);
+        let given = (size / Self::TILE).min_element().min(Self::MOST_TILES);
         if tiles == 0 || given * given < tiles {
             return None;
         }
-        (1..=TerrainAtlas::MOST_TILES)
+        (1..=Self::MOST_TILES)
             .rev()
             .find(|side| side * side <= tiles)
     }
@@ -178,8 +175,8 @@ impl TerrainAtlas {
     /// past the grid, has none. The texture's height: the least power of two that holds every
     /// block and its border.
     fn place(terrain: &TerrainParts) -> BlockPlaces {
-        let cells = TerrainAtlas::CELLS;
-        let mut free = vec![[true; TerrainAtlas::CELLS]; cells];
+        let cells = Self::CELLS;
+        let mut free = vec![[true; Self::CELLS]; cells];
         let mut corners = vec![None; terrain.classes.len()];
         let mut used = 0;
         for width in (1..=cells).rev() {
@@ -200,13 +197,13 @@ impl TerrainAtlas {
                         free[row + j][column + i] = false;
                     }
                 }
-                let cell = TerrainAtlas::TILE + TerrainAtlas::OFFSET;
+                let cell = Self::TILE + Self::OFFSET;
                 let at = |index: usize| {
-                    TerrainAtlas::BORDER + u32::try_from(index).expect("a cell of the grid") * cell
+                    Self::BORDER + u32::try_from(index).expect("a cell of the grid") * cell
                 };
                 let [x, y] = [at(column), at(row)];
                 corners[class] = Some(UVec2::new(x, y));
-                used = used.max(y + data.width * TerrainAtlas::TILE + TerrainAtlas::BORDER);
+                used = used.max(y + data.width * Self::TILE + Self::BORDER);
             }
         }
         BlockPlaces {

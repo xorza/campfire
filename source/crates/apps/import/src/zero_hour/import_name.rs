@@ -8,7 +8,7 @@ use campfire_values::DeclaredName;
 pub(crate) struct ImportName(String);
 
 impl ImportName {
-    pub(crate) fn of(original: &[u8]) -> ImportName {
+    pub(crate) fn of(original: &[u8]) -> Self {
         let mut name: String = original
             .iter()
             .map(|&byte| match byte.to_ascii_lowercase() {
@@ -19,7 +19,7 @@ impl ImportName {
         if !name.starts_with(|first: char| first.is_ascii_lowercase()) {
             name.insert(0, 'x');
         }
-        ImportName(name)
+        Self(name)
     }
 
     pub(crate) fn as_str(&self) -> &str {

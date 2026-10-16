@@ -234,8 +234,8 @@ struct Due {
 
 impl Slot {
     /// A slot of `control` with no input yet.
-    fn of(control: Control) -> Slot {
-        Slot {
+    fn of(control: Control) -> Self {
+        Self {
             control,
             leaver: None,
             stamps: StampCount::default(),
@@ -248,8 +248,8 @@ impl Slot {
 impl Control {
     /// The player of `delegation`, the log's `index`th, in `slot`, whose chain starts from its
     /// id.
-    const fn player(slot: PlayerSlot, delegation: &Delegation, index: u32) -> Control {
-        Control::Player {
+    const fn player(slot: PlayerSlot, delegation: &Delegation, index: u32) -> Self {
+        Self::Player {
             delegation: index,
             chain: InputChain::new(slot, delegation.chain_root()),
         }
@@ -267,7 +267,7 @@ impl SessionLog {
     /// another server or session than `header`, whose terms the session id hashes, when there
     /// are more slots than a `u32` counts, or when the terms let a journal record hold more than
     /// a journal frame takes, so no entry the log takes later can.
-    pub fn new(header: SessionHeader) -> Result<SessionLog, HeaderError> {
+    pub fn new(header: SessionHeader) -> Result<Self, HeaderError> {
         if u32::try_from(header.slots.len()).is_err() {
             return Err(HeaderError::TooManySlots);
         }
@@ -301,7 +301,7 @@ impl SessionLog {
             };
             slots.push(Slot::of(control));
         }
-        Ok(SessionLog {
+        Ok(Self {
             slots,
             delegations,
             segments: vec![SegmentStart {
@@ -1028,7 +1028,7 @@ impl SessionLog {
     /// applied, from what the log holds, with no check done twice. Once the last is sealed, the
     /// log is as it was. A log that replays takes no entry.
     #[must_use]
-    pub fn rewound(mut self) -> SessionLog {
+    pub fn rewound(mut self) -> Self {
         if self.tick_ends.is_empty() {
             return self;
         }
@@ -1061,8 +1061,8 @@ impl SessionLog {
         }
         let mut bytes = Vec::new();
         self.encode_through(at, &mut bytes);
-        let mut loaded = SessionLog::decode_within(&bytes, self.position_bound)
-            .expect("the log's own past decodes");
+        let mut loaded =
+            Self::decode_within(&bytes, self.position_bound).expect("the log's own past decodes");
         if let Some(mut journal) = self.journal.take() {
             journal_records::loaded(&mut journal, segment);
             loaded.journal = Some(journal);

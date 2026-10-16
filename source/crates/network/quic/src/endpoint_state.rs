@@ -57,14 +57,14 @@ pub(crate) enum News {
 impl News {
     const fn key(&self) -> PeerKey {
         match self {
-            News::Connected { key } | News::Lost { key, .. } => *key,
+            Self::Connected { key } | Self::Lost { key, .. } => *key,
         }
     }
 }
 
 impl EndpointState {
-    pub(crate) const fn new(endpoint: Endpoint, max_segments: usize) -> EndpointState {
-        EndpointState {
+    pub(crate) const fn new(endpoint: Endpoint, max_segments: usize) -> Self {
+        Self {
             endpoint,
             peers: Vec::new(),
             news: VecDeque::new(),
@@ -147,7 +147,7 @@ impl EndpointState {
     /// one costs no state (D8); a refusal for one past its address's limit, before its handshake,
     /// so it costs no signature (D13); and the connection for any other.
     fn admit(&mut self, now: Instant, incoming: Incoming, outbox: &mut Outbox) {
-        let EndpointState {
+        let Self {
             endpoint,
             peers,
             admission,
@@ -238,7 +238,7 @@ impl EndpointState {
     /// that finds it, so every connection the frame sees between two passes carries its link
     /// (D5). A drained connection leaves the table.
     fn serve(&mut self, now: Instant, outbox: &mut Outbox) {
-        let EndpointState {
+        let Self {
             endpoint,
             peers,
             news,

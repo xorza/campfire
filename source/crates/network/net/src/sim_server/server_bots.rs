@@ -20,8 +20,8 @@ pub struct SlotBot {
 
 impl SlotBot {
     /// The bot of the slot of index `slot`, which plays `script`.
-    pub const fn new(slot: u32, script: OrderScript) -> SlotBot {
-        SlotBot {
+    pub const fn new(slot: u32, script: OrderScript) -> Self {
+        Self {
             slot: PlayerSlot::new(slot),
             script,
         }

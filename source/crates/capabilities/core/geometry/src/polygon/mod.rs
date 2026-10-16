@@ -21,11 +21,11 @@ impl Polygon {
     /// bound, beyond which its edges' products leave a `Flat`'s range, or for two edges that meet
     /// where they should not: two that do not follow each other meet anywhere, or two that do
     /// overlap beyond the point they share, as a zero-length edge or a turn straight back does.
-    pub fn new(points: impl IntoIterator<Item = [Num; 2]>) -> Result<Polygon, PolygonError> {
-        Polygon::of(points.into_iter().collect())
+    pub fn new(points: impl IntoIterator<Item = [Num; 2]>) -> Result<Self, PolygonError> {
+        Self::of(points.into_iter().collect())
     }
 
-    fn of(points: Vec<[Num; 2]>) -> Result<Polygon, PolygonError> {
+    fn of(points: Vec<[Num; 2]>) -> Result<Self, PolygonError> {
         let count = points.len();
         if count < 3 {
             return Err(PolygonError::TooFewPoints);
@@ -34,7 +34,7 @@ impl Polygon {
         if let Some(point) = points.iter().position(past) {
             return Err(PolygonError::PastBound { point });
         }
-        let polygon = Polygon { points };
+        let polygon = Self { points };
         for first in 0..count {
             for second in first + 1..count {
                 if polygon.edges_meet(first, second) {

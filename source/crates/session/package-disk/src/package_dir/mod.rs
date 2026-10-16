@@ -41,19 +41,16 @@ enum Source {
 
 impl PackageDir {
     /// The package on disk at `root`.
-    pub fn new(root: impl Into<PathBuf>) -> PackageDir {
-        PackageDir {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self {
             root: root.into(),
             source: Source::Disk,
         }
     }
 
     /// The package at `root` of the tree `files`, whose keys are paths from the tree's root.
-    pub fn in_memory(
-        files: Arc<BTreeMap<PathBuf, Vec<u8>>>,
-        root: impl Into<PathBuf>,
-    ) -> PackageDir {
-        PackageDir {
+    pub fn in_memory(files: Arc<BTreeMap<PathBuf, Vec<u8>>>, root: impl Into<PathBuf>) -> Self {
+        Self {
             root: normal(&root.into()),
             source: Source::Memory(files),
         }
@@ -61,13 +58,13 @@ impl PackageDir {
 
     /// The package at `relative` from this one's root, as a manifest names a dependency.
     #[must_use]
-    fn join(&self, relative: &Path) -> PackageDir {
+    fn join(&self, relative: &Path) -> Self {
         let root = self.root.join(relative);
         let root = match self.source {
             Source::Disk => root,
             Source::Memory(_) => normal(&root),
         };
-        PackageDir {
+        Self {
             root,
             source: self.source.clone(),
         }
@@ -99,7 +96,7 @@ impl PackageDir {
     /// The mode in this directory with its map `map`, and its dependencies at the paths its
     /// manifest gives from it, each read once.
     pub fn mode_packages(&self, map: &MapName) -> Result<ModePackages, LoadError> {
-        let read = |dir: &PackageDir, package: PackageRef| {
+        let read = |dir: &Self, package: PackageRef| {
             dir.files()
                 .map_err(|error| LoadError::new(package, LoadProblem::Content(error)))
         };
@@ -306,7 +303,7 @@ pub(crate) mod internals {
                 .filter(|path| path.file_name() == Some(PackageFiles::MANIFEST.as_ref()))
                 .map(|path| {
                     let root = path.parent().expect("a manifest is in a directory");
-                    let index = PackageDir::in_memory(Arc::clone(&tree), root)
+                    let index = Self::in_memory(Arc::clone(&tree), root)
                         .index_files()
                         .unwrap();
                     (root.join(FileIndex::PATH), index.bytes().to_vec())

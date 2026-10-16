@@ -318,7 +318,7 @@ impl TrainPlaces {
     /// The places of the producer of `entity`: its exit point and its default rally point, of
     /// its type's `production`, each turned with it and taken into the bounds; and its rally
     /// point, where one is set to a point or a living unit, in place of the default.
-    fn of(world: &World, entity: Entity) -> TrainPlaces {
+    fn of(world: &World, entity: Entity) -> Self {
         let producer = world.entity(entity);
         let pos = producer.get::<Position>().expect("a producer stands").get();
         let angle = producer
@@ -331,7 +331,7 @@ impl TrainPlaces {
             let at = point?.placed(pos, angle);
             Some(bounds.ground_point([at.x, at.z], at))
         };
-        TrainPlaces {
+        Self {
             exit: place(data.and_then(|data| data.exit)),
             rally: Trains::rally_point(world, entity).or_else(|| place(data?.rally)),
         }

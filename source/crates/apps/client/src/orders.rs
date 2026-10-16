@@ -73,12 +73,12 @@ impl Plugin for Orders {
         app.add_systems(
             Update,
             (
-                Orders::click.run_if(
+                Self::click.run_if(
                     input_just_pressed(MouseButton::Right)
                         .and_then(not(resource_exists::<Placing>)),
                 ),
-                Orders::cast.run_if(Orders::cast_pressed),
-                Orders::stop.run_if(input_just_pressed(STOP_KEY)),
+                Self::cast.run_if(Self::cast_pressed),
+                Self::stop.run_if(input_just_pressed(STOP_KEY)),
             )
                 .in_set(OrderSystems)
                 .after(SelectionSystems),
@@ -116,7 +116,7 @@ impl Orders {
             point,
             selected: Selected::of(held),
         };
-        let order = match Orders::click_action(click, uses) {
+        let order = match Self::click_action(click, uses) {
             Some(action @ Action::Orders(OrdersAction::Use { .. })) => {
                 avatar.map(|avatar| Order::one(avatar.id, action))
             }
@@ -175,7 +175,7 @@ impl Orders {
             let target = Takes::of(aim).target(under, point);
             orders.push(Order::one(
                 avatar.id,
-                Orders::slot_action(slot, key_use, target),
+                Self::slot_action(slot, key_use, target),
             ));
         }
     }
@@ -266,16 +266,16 @@ struct Mover {
 
 impl Selected {
     /// What a selection of `units` holds: producers when one trains and none walks.
-    fn of(units: impl IntoIterator<Item = Mover>) -> Selected {
+    fn of(units: impl IntoIterator<Item = Mover>) -> Self {
         let (mut walks, mut trains) = (false, false);
         for unit in units {
             walks |= unit.walks;
             trains |= unit.trains;
         }
         if trains && !walks {
-            Selected::Producers
+            Self::Producers
         } else {
-            Selected::Movers
+            Self::Movers
         }
     }
 }
@@ -298,11 +298,11 @@ enum Takes {
 
 impl Takes {
     /// What an action that aims as `aim` says takes; nothing for no action.
-    const fn of(aim: Option<&Aim>) -> Takes {
+    const fn of(aim: Option<&Aim>) -> Self {
         match aim {
-            Some(Aim::Unit(_)) => Takes::Unit,
-            Some(Aim::Point { .. } | Aim::Direction) => Takes::Point,
-            Some(Aim::None) | None => Takes::Nothing,
+            Some(Aim::Unit(_)) => Self::Unit,
+            Some(Aim::Point { .. } | Aim::Direction) => Self::Point,
+            Some(Aim::None) | None => Self::Nothing,
         }
     }
 
@@ -310,9 +310,9 @@ impl Takes {
     /// it: none when the cursor shows none, which the sim refuses of an action that needs one.
     fn target(self, under: Option<StableId>, point: Option<SimVec3>) -> ActionTarget {
         let target = match self {
-            Takes::Unit => under.map(ActionTarget::Unit),
-            Takes::Point => point.map(ActionTarget::Point),
-            Takes::Nothing => None,
+            Self::Unit => under.map(ActionTarget::Unit),
+            Self::Point => point.map(ActionTarget::Point),
+            Self::Nothing => None,
         };
         target.unwrap_or(ActionTarget::None)
     }

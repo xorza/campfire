@@ -19,11 +19,11 @@ pub struct TurnStep(Num);
 
 impl TurnStep {
     /// `None` for a negative step.
-    pub const fn new(step: Num) -> Option<TurnStep> {
+    pub const fn new(step: Num) -> Option<Self> {
         if step.to_bits() < 0 {
             return None;
         }
-        Some(TurnStep(step))
+        Some(Self(step))
     }
 
     pub const fn get(self) -> Num {
@@ -48,8 +48,8 @@ impl Replication for TurnStep {
 
 /// A snapshot is untrusted, so a negative step fails to decode.
 impl<'de> Deserialize<'de> for TurnStep {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TurnStep, D::Error> {
-        TurnStep::new(Num::deserialize(deserializer)?)
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(Num::deserialize(deserializer)?)
             .ok_or_else(|| D::Error::custom("negative turn step"))
     }
 }

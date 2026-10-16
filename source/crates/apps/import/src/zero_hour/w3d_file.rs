@@ -33,8 +33,8 @@ const EMITTER_HEAD: usize = 4;
 const EMITTER_NAME: usize = 16;
 
 impl W3dFile {
-    pub(crate) fn read(bytes: &[u8]) -> Result<W3dFile, W3dError> {
-        let mut file = W3dFile::default();
+    pub(crate) fn read(bytes: &[u8]) -> Result<Self, W3dError> {
+        let mut file = Self::default();
         for chunk in W3dChunks::of(bytes) {
             let chunk = chunk?;
             match chunk.id {

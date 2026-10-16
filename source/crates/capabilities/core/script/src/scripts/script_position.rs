@@ -18,11 +18,11 @@ impl ScriptPosition {
     }
 
     /// `point`, or the refusal of one past the world's bound.
-    fn checked(point: Vec3) -> Checked<ScriptPosition> {
+    fn checked(point: Vec3) -> Checked<Self> {
         if !Position::from(point).within_bound() {
             return Err(ApiError::PastBound.fail().into());
         }
-        Ok(ScriptPosition(point))
+        Ok(Self(point))
     }
 }
 
@@ -33,11 +33,11 @@ impl ScriptArg for ScriptPosition {
     const ENUM: Option<EngineEnum> = None;
     const NUMBER: bool = false;
 
-    fn take(raw: Vec3, _: &ArgCtx<'_>) -> Checked<ScriptPosition> {
-        ScriptPosition::checked(raw)
+    fn take(raw: Vec3, _: &ArgCtx<'_>) -> Checked<Self> {
+        Self::checked(raw)
     }
 
-    fn take_int(raw: Vec3, _: &ArgCtx<'_>) -> Checked<ScriptPosition> {
-        ScriptPosition::checked(raw)
+    fn take_int(raw: Vec3, _: &ArgCtx<'_>) -> Checked<Self> {
+        Self::checked(raw)
     }
 }

@@ -5,8 +5,8 @@ use crate::worker::worker_lock::WorkerLock;
 pub(crate) struct Failure<E>(WorkerLock<Option<E>>);
 
 impl<E> Failure<E> {
-    pub(crate) const fn new() -> Failure<E> {
-        Failure(WorkerLock::new(None))
+    pub(crate) const fn new() -> Self {
+        Self(WorkerLock::new(None))
     }
 
     /// Keeps `error`, the one failure that stopped the worker.

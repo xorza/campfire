@@ -45,8 +45,8 @@ pub enum DurableCreateError {
 
 /// The failure of a directory on a write's way, as the write's.
 impl From<PathError<DurableDirError>> for PathError<DurableError> {
-    fn from(failure: PathError<DurableDirError>) -> PathError<DurableError> {
-        PathError {
+    fn from(failure: PathError<DurableDirError>) -> Self {
+        Self {
             path: failure.path,
             error: DurableError::Dir(failure.error),
         }

@@ -428,7 +428,7 @@ impl HostRule for Healthy {
     }
 
     fn kinds(kinds: &mut Vec<TypeId>) -> bool {
-        kinds.push(TypeId::of::<Healthy>());
+        kinds.push(TypeId::of::<Self>());
         true
     }
 }
@@ -655,8 +655,8 @@ struct Following {
 }
 
 impl Following {
-    fn new(registry: StateRegistry, world: World) -> Following {
-        let mut following = Following {
+    fn new(registry: StateRegistry, world: World) -> Self {
+        let mut following = Self {
             registry,
             world,
             copy: World::new(),
@@ -972,7 +972,7 @@ enum Swapped {
 struct Refused<T>(T);
 
 impl<'de, T: Deserialize<'de>> Deserialize<'de> for Refused<T> {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Refused<T>, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         T::deserialize(deserializer)?;
         Err(D::Error::custom("refused"))
     }

@@ -80,11 +80,7 @@ struct Standing<'f> {
 impl<'f> Standing<'f> {
     /// The type `name` of the package at `index`: the mode's in its scope, another package's,
     /// a summon or a faction's unit, in the package's own.
-    fn declared(
-        index: PackageIndex,
-        name: &'f DeclaredName,
-        file: &'f UnitTypeData,
-    ) -> Standing<'f> {
+    fn declared(index: PackageIndex, name: &'f DeclaredName, file: &'f UnitTypeData) -> Self {
         Standing {
             name: name.as_str(),
             scope: TypeScope::of_package(index),
@@ -94,7 +90,7 @@ impl<'f> Standing<'f> {
     }
 
     /// The avatar of the package `package` names, in the mode's scope.
-    const fn avatar(package: &'f str, file: &'f UnitTypeData) -> Standing<'f> {
+    const fn avatar(package: &'f str, file: &'f UnitTypeData) -> Self {
         Standing {
             name: package,
             scope: TypeScope::Mode,
@@ -133,7 +129,7 @@ impl<'a> BookBuilder<'a> {
     /// The builder of `input`'s books, its tags and unit types declared, in the order their ids
     /// follow, and its stat and pool books built for them; an error for a name the mode does not
     /// declare.
-    pub(crate) fn new(input: &'a BookInput<'a>) -> Result<BookBuilder<'a>, BookError> {
+    pub(crate) fn new(input: &'a BookInput<'a>) -> Result<Self, BookError> {
         let data = input.data;
         let mut script_starts = Vec::with_capacity(input.packages.len());
         let mut start = 0;

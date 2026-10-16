@@ -27,9 +27,9 @@ pub struct Level(NonZeroU32);
 
 impl Level {
     /// `None` for 0.
-    pub const fn new(level: u32) -> Option<Level> {
+    pub const fn new(level: u32) -> Option<Self> {
         match NonZeroU32::new(level) {
-            Some(level) => Some(Level(level)),
+            Some(level) => Some(Self(level)),
             None => None,
         }
     }
@@ -41,12 +41,12 @@ impl Level {
     /// The observer that sets a unit's level as progression raises it.
     pub(crate) fn raise(
         raised: On<'_, '_, LevelRaised>,
-        mut levels: Query<'_, '_, &mut Level, Allow<Unpredicted>>,
+        mut levels: Query<'_, '_, &mut Self, Allow<Unpredicted>>,
     ) {
         let mut level = levels
             .get_mut(raised.entity)
             .expect("a unit whose level rises has one");
-        let to = Level(raised.level);
+        let to = Self(raised.level);
         debug_assert!(to > *level, "a level only rises");
         *level = to;
     }
@@ -67,7 +67,7 @@ impl Level {
             return;
         };
         let level = world
-            .get::<Level>(entity)
+            .get::<Self>(entity)
             .expect("the hook's own component")
             .get();
         let stats = UnitStats::new(book.base_values(unit_type, level));
@@ -78,13 +78,13 @@ impl Level {
 }
 
 impl Default for Level {
-    fn default() -> Level {
-        Level(NonZeroU32::MIN)
+    fn default() -> Self {
+        Self(NonZeroU32::MIN)
     }
 }
 
 impl From<Level> for NonZeroU32 {
-    fn from(level: Level) -> NonZeroU32 {
+    fn from(level: Level) -> Self {
         level.0
     }
 }
@@ -106,8 +106,8 @@ impl Replication for Level {
 
 /// A snapshot is untrusted, so level 0 fails to decode.
 impl<'de> Deserialize<'de> for Level {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Level, D::Error> {
-        Level::new(u32::deserialize(deserializer)?)
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::new(u32::deserialize(deserializer)?)
             .ok_or_else(|| D::Error::custom("a level is at least 1"))
     }
 }

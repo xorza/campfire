@@ -13,8 +13,8 @@ pub(crate) struct SharedEndpoint {
 }
 
 impl SharedEndpoint {
-    pub(crate) const fn new(state: EndpointState, port: UdpPort) -> SharedEndpoint {
-        SharedEndpoint {
+    pub(crate) const fn new(state: EndpointState, port: UdpPort) -> Self {
+        Self {
             state: Mutex::new(state),
             port,
         }

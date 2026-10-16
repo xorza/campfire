@@ -38,7 +38,7 @@ impl Dependent {
         files: &PackageFiles,
         host: &ScriptHost,
         api: &ScriptApi,
-    ) -> Result<Dependent, LoadError> {
+    ) -> Result<Self, LoadError> {
         let fail = |problem| LoadError::of(name, problem);
         let manifest: Manifest = files
             .read_data(&PackageFiles::engine_path(PackageFiles::MANIFEST))
@@ -70,7 +70,7 @@ impl Dependent {
             Manifest::Mode(_) | Manifest::Locale(_) => return Err(fail(LoadProblem::WrongKind)),
         };
         let package = Package::read(files, header, host, api)?;
-        Ok(Dependent {
+        Ok(Self {
             package,
             content,
             kind,

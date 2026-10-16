@@ -44,17 +44,17 @@ impl PackageFiles {
     /// list reads. The open checks that the source holds every file the index lists by its exact
     /// name, and fails on the first it does not (`PackageSource::check_names`). Nothing changes
     /// an open package, so a read after the open takes the path as it is.
-    pub fn read(source: Arc<dyn PackageSource>) -> Result<PackageFiles, ContentError> {
+    pub fn read(source: Arc<dyn PackageSource>) -> Result<Self, ContentError> {
         let index = FileIndex::decode(&source.read_index()?)?;
         source.check_names(&mut index.rows().map(|(path, _)| path))?;
         let reader = PackageReader::new(index, source);
         let mut files = BTreeMap::new();
         for (path, row) in reader.index().rows() {
-            if PackageFiles::reads(path) {
+            if Self::reads(path) {
                 files.insert(path.clone(), reader.read_row(path, row)?);
             }
         }
-        Ok(PackageFiles { files, reader })
+        Ok(Self { files, reader })
     }
 
     /// One of the engine's paths in a package, as a package names its files.
@@ -65,7 +65,7 @@ impl PackageFiles {
     /// Whether a load reads the file at `path`: the manifest, and the files of its data, its
     /// scripts and its locales.
     pub(crate) fn reads(path: &PackagePath) -> bool {
-        path.as_str() == PackageFiles::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
+        path.as_str() == Self::MANIFEST || READ_DIRS.iter().any(|dir| path.is_under(dir))
     }
 
     pub const fn fingerprint(&self) -> PackageFingerprint {
@@ -96,7 +96,7 @@ impl PackageFiles {
             .files
             .get(path)
             .ok_or_else(|| ContentError::Missing { path: path.clone() })?;
-        PackageFiles::text(path, bytes)
+        Self::text(path, bytes)
     }
 
     /// The TOML data file at `path`, which a load does not keep, read now and checked against its
@@ -106,7 +106,7 @@ impl PackageFiles {
         path: &PackagePath,
     ) -> Result<T, ContentError> {
         let bytes = self.read_file(path)?;
-        Toml::parse(PackageFiles::text(path, &bytes)?).map_err(|error| ContentError::Data {
+        Toml::parse(Self::text(path, &bytes)?).map_err(|error| ContentError::Data {
             path: path.clone(),
             error,
         })
@@ -132,7 +132,7 @@ impl PackageFiles {
     /// read, or of another kind of package.
     pub fn mode_manifest(&self, package: &PackageRef) -> Result<ModeManifest, LoadError> {
         let fail = |problem| LoadError::new(package.clone(), problem);
-        let manifest = self.read_data(&PackageFiles::engine_path(PackageFiles::MANIFEST));
+        let manifest = self.read_data(&Self::engine_path(Self::MANIFEST));
         match manifest.map_err(LoadProblem::Content).map_err(fail)? {
             Manifest::Mode(manifest) => Ok(manifest),
             _ => Err(fail(LoadProblem::WrongKind)),

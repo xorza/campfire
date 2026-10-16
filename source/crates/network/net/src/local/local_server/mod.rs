@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
@@ -23,6 +22,7 @@ use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{LinkOf, Linked, PeerAddr};
 use tracing::error;
 
+use crate::local::local_link::LocalLink;
 use crate::local::local_pace::LocalPace;
 use crate::local::local_server::error::LocalServerError;
 use crate::net_protocol::NetProtocol;
@@ -66,14 +66,6 @@ pub struct LocalServer {
 /// which the client takes; see `LocalRelink`.
 #[derive(Clone, Default)]
 pub struct Relinks(Arc<Mutex<Option<CrossbeamIo>>>);
-
-/// The client's end of a local link and the binding both ends take, which the client inserts on
-/// its entity as one, so no client holds the link with no binding.
-#[derive(Bundle)]
-pub struct LocalLink {
-    io: CrossbeamIo,
-    binding: LinkBinding,
-}
 
 /// What the local server's thread keeps across the apps it runs: one, then a new one after each
 /// load, which restores the session from its data.
@@ -119,7 +111,7 @@ impl LocalServer {
     /// Opens the local server's data directory and session, and starts its thread. An error when
     /// the directory does not open, a session an earlier start left does not end, or the new
     /// one does not open.
-    pub fn start(setup: LocalServerSetup) -> Result<LocalServer, LocalServerError> {
+    pub fn start(setup: LocalServerSetup) -> Result<Self, LocalServerError> {
         let LocalServerSetup {
             packages,
             data,
@@ -130,7 +122,7 @@ impl LocalServer {
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
         let key = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
             .map_err(LocalServerError::Key)?;
-        LocalServer::end_earlier(Publisher {
+        Self::end_earlier(Publisher {
             data: &dir,
             packages: &packages,
             signer: &Signer::new(key, os.entropy),
@@ -177,7 +169,7 @@ impl LocalServer {
             app.insert_resource(lobby);
             runs.run(app);
         });
-        Ok(LocalServer {
+        Ok(Self {
             stop,
             pin: ServerPin {
                 key: key.x_only_public_key().0,
@@ -202,10 +194,10 @@ impl LocalServer {
 
     /// The client's end of the link, once, with the binding both ends take.
     pub const fn take_link(&mut self) -> LocalLink {
-        LocalLink {
-            io: self.link.take().expect("the client takes the link once"),
-            binding: LinkBinding(LocalServer::BINDING),
-        }
+        LocalLink::new(
+            self.link.take().expect("the client takes the link once"),
+            LinkBinding(Self::BINDING),
+        )
     }
 
     /// Ends aborted a session an earlier start left under the publisher's data directory, and
@@ -336,14 +328,6 @@ impl Relinks {
 
     fn lock(&self) -> MutexGuard<'_, Option<CrossbeamIo>> {
         self.0.lock().expect("no thread panics holding the link")
-    }
-}
-
-impl fmt::Debug for LocalLink {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("LocalLink")
-            .field("binding", &self.binding)
-            .finish_non_exhaustive()
     }
 }
 

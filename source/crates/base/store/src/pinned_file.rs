@@ -18,7 +18,7 @@ impl<'a> PinnedFile<'a> {
     /// The variable whose value `1` writes every pinned file again.
     const BLESS: &'static str = "CAMPFIRE_BLESS";
 
-    pub const fn new(path: &'a Path) -> PinnedFile<'a> {
+    pub const fn new(path: &'a Path) -> Self {
         PinnedFile { path }
     }
 

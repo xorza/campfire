@@ -21,8 +21,8 @@ pub struct SecretFile {
 }
 
 impl SecretFile {
-    pub const fn at(path: PathBuf) -> SecretFile {
-        SecretFile { path }
+    pub const fn at(path: PathBuf) -> Self {
+        Self { path }
     }
 
     /// The bytes of the file, at most `max_len`, checked from its open handle before any is

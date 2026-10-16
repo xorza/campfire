@@ -109,7 +109,7 @@ impl CombatColumn {
     /// combat.
     pub fn stays(unit: &Unit) -> bool {
         let view = unit.view();
-        let stays = view.column(|column: &CombatColumn| column.rows.now().stays[unit.row_index()]);
+        let stays = view.column(|column: &Self| column.rows.now().stays[unit.row_index()]);
         stays.unwrap_or(false)
     }
 
@@ -121,7 +121,7 @@ impl CombatColumn {
             .ok_or_else(|| ApiError::NegativeTime.fail())?;
         let view = unit.view();
         let (window, now) = (view.window(ms), view.now());
-        let attackers = view.column(|column: &CombatColumn| {
+        let attackers = view.column(|column: &Self| {
             column
                 .rows
                 .now()
@@ -140,10 +140,7 @@ impl CombatColumn {
     /// Fills a row of the script view with what combat holds: whether the unit lives and whether it
     /// may be a target, in the core's row; whether it stays when dead, and who struck it recently,
     /// in combat's column.
-    pub(super) fn fill_row(
-        parts: ROQueryItem<'_, '_, RowReads>,
-        fill: &mut RowFill<'_, CombatColumn>,
-    ) {
+    pub(super) fn fill_row(parts: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
         let (dead, life, tags, on_death, recent) = parts;
         let alive = !dead;
         fill.row.alive = alive;

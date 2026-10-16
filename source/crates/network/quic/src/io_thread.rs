@@ -23,9 +23,9 @@ pub(crate) struct IoThread {
 }
 
 impl IoThread {
-    pub(crate) fn new(shared: Arc<SharedEndpoint>, max_payload: usize) -> IoThread {
+    pub(crate) fn new(shared: Arc<SharedEndpoint>, max_payload: usize) -> Self {
         let batch = RecvBatch::new(shared.port(), max_payload);
-        IoThread {
+        Self {
             shared,
             events: Events::new(),
             batch,

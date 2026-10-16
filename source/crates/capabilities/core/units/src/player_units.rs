@@ -72,10 +72,10 @@ impl Commanded {
     pub(crate) fn avatar_among<'a>(
         avatars: impl Iterator<Item = (Entity, &'a StableId, &'a Owner)>,
         slot: PlayerSlot,
-    ) -> Option<Commanded> {
+    ) -> Option<Self> {
         avatars
             .filter(|&(_, _, owner)| owner.slot() == slot)
-            .map(|(entity, &id, _)| Commanded { entity, id })
+            .map(|(entity, &id, _)| Self { entity, id })
             .min_by_key(|unit| unit.id)
     }
 }
@@ -86,8 +86,8 @@ impl HeldPlayerUnits {
         self.0.get(world).expect("its params are always valid")
     }
 
-    pub fn new(world: &mut World) -> HeldPlayerUnits {
-        HeldPlayerUnits(SystemState::new(world))
+    pub fn new(world: &mut World) -> Self {
+        Self(SystemState::new(world))
     }
 }
 

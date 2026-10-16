@@ -16,14 +16,14 @@ pub enum Amount {
 impl Amount {
     /// `number`, which its effect list's book holds a sim number, its param resolved by
     /// `names`; an error for a param its action does not declare.
-    pub fn of(number: &Number, names: &impl EffectNames) -> Result<Amount, UnknownName> {
+    pub fn of(number: &Number, names: &impl EffectNames) -> Result<Self, UnknownName> {
         Ok(match number {
-            Number::Value(value) => Amount::Value(
+            Number::Value(value) => Self::Value(
                 value
                     .to_num()
                     .expect("an effect list's book holds each number a sim number"),
             ),
-            Number::Param(reference) => Amount::Param(names.param(&reference.param)?),
+            Number::Param(reference) => Self::Param(names.param(&reference.param)?),
         })
     }
 
@@ -31,8 +31,8 @@ impl Amount {
     /// source's stats can make it, as the load checks every other number not negative.
     pub fn number(self, frame: &Frame) -> Num {
         match self {
-            Amount::Value(value) => value,
-            Amount::Param(at) => StatsCall::ability_value(frame, at)
+            Self::Value(value) => value,
+            Self::Param(at) => StatsCall::ability_value(frame, at)
                 .to_num()
                 .expect("an effect list's book holds each param it reads a number")
                 .max(Num::ZERO),

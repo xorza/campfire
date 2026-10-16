@@ -40,58 +40,58 @@ impl Hook {
     pub const PREFIXES: [&'static str; 2] = ["on_", "calc_"];
 
     /// The hook named `name`, of any role.
-    pub fn named(name: &str) -> Option<Hook> {
-        Hook::ALL.into_iter().find(|hook| hook.name() == name)
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|hook| hook.name() == name)
     }
 
     /// The script function the engine calls.
     pub const fn name(self) -> &'static str {
         match self {
-            Hook::OnResolve => "on_resolve",
-            Hook::OnHit => "on_hit",
-            Hook::OnEnd => "on_end",
-            Hook::OnChannelTick => "on_channel_tick",
-            Hook::OnInterrupt => "on_interrupt",
-            Hook::OnInterval => "on_interval",
-            Hook::OnAttack => "on_attack",
-            Hook::OnAttackHit => "on_attack_hit",
-            Hook::OnDamageTaken => "on_damage_taken",
-            Hook::OnKill => "on_kill",
-            Hook::OnTakedown => "on_takedown",
-            Hook::OnMatchStart => "on_match_start",
-            Hook::OnModeInput => "on_mode_input",
-            Hook::OnTimer => "on_timer",
-            Hook::OnPlayerJoin => "on_player_join",
-            Hook::OnPlayerLeave => "on_player_leave",
-            Hook::OnUnitDied => "on_unit_died",
-            Hook::CalcDamage => "calc_damage",
-            Hook::CalcHeal => "calc_heal",
-            Hook::OnThink => "on_think",
-            Hook::OnLevelUp => "on_level_up",
-            Hook::OnGenerate => "on_generate",
+            Self::OnResolve => "on_resolve",
+            Self::OnHit => "on_hit",
+            Self::OnEnd => "on_end",
+            Self::OnChannelTick => "on_channel_tick",
+            Self::OnInterrupt => "on_interrupt",
+            Self::OnInterval => "on_interval",
+            Self::OnAttack => "on_attack",
+            Self::OnAttackHit => "on_attack_hit",
+            Self::OnDamageTaken => "on_damage_taken",
+            Self::OnKill => "on_kill",
+            Self::OnTakedown => "on_takedown",
+            Self::OnMatchStart => "on_match_start",
+            Self::OnModeInput => "on_mode_input",
+            Self::OnTimer => "on_timer",
+            Self::OnPlayerJoin => "on_player_join",
+            Self::OnPlayerLeave => "on_player_leave",
+            Self::OnUnitDied => "on_unit_died",
+            Self::CalcDamage => "calc_damage",
+            Self::CalcHeal => "calc_heal",
+            Self::OnThink => "on_think",
+            Self::OnLevelUp => "on_level_up",
+            Self::OnGenerate => "on_generate",
         }
     }
 
     /// The names of the function's parameters, `ctx` first, as the reference shows them.
     pub(crate) const fn param_names(self) -> &'static [&'static str] {
         match self {
-            Hook::OnMatchStart => &["ctx"],
-            Hook::OnThink => &["ctx", "unit"],
-            Hook::OnInterval => &["ctx", "m"],
-            Hook::OnPlayerJoin | Hook::OnPlayerLeave => &["ctx", "player"],
-            Hook::OnGenerate => &["ctx", "region"],
-            Hook::CalcDamage => &["ctx", "d"],
-            Hook::CalcHeal => &["ctx", "h"],
-            Hook::OnResolve | Hook::OnChannelTick | Hook::OnInterrupt => &["ctx", "unit", "target"],
-            Hook::OnEnd => &["ctx", "unit", "hit"],
-            Hook::OnAttack => &["ctx", "m", "target"],
-            Hook::OnAttackHit | Hook::OnDamageTaken => &["ctx", "m", "d"],
-            Hook::OnKill | Hook::OnTakedown => &["ctx", "m", "victim"],
-            Hook::OnTimer => &["ctx", "name", "data"],
-            Hook::OnHit => &["ctx", "unit", "target", "hit"],
-            Hook::OnModeInput => &["ctx", "player", "name", "value"],
-            Hook::OnUnitDied => &["ctx", "unit", "killer", "assisters"],
-            Hook::OnLevelUp => &["ctx", "unit", "track", "level"],
+            Self::OnMatchStart => &["ctx"],
+            Self::OnThink => &["ctx", "unit"],
+            Self::OnInterval => &["ctx", "m"],
+            Self::OnPlayerJoin | Self::OnPlayerLeave => &["ctx", "player"],
+            Self::OnGenerate => &["ctx", "region"],
+            Self::CalcDamage => &["ctx", "d"],
+            Self::CalcHeal => &["ctx", "h"],
+            Self::OnResolve | Self::OnChannelTick | Self::OnInterrupt => &["ctx", "unit", "target"],
+            Self::OnEnd => &["ctx", "unit", "hit"],
+            Self::OnAttack => &["ctx", "m", "target"],
+            Self::OnAttackHit | Self::OnDamageTaken => &["ctx", "m", "d"],
+            Self::OnKill | Self::OnTakedown => &["ctx", "m", "victim"],
+            Self::OnTimer => &["ctx", "name", "data"],
+            Self::OnHit => &["ctx", "unit", "target", "hit"],
+            Self::OnModeInput => &["ctx", "player", "name", "value"],
+            Self::OnUnitDied => &["ctx", "unit", "killer", "assisters"],
+            Self::OnLevelUp => &["ctx", "unit", "track", "level"],
         }
     }
 
@@ -102,28 +102,28 @@ impl Hook {
 
     pub const fn role(self) -> ScriptRole {
         match self {
-            Hook::OnResolve
-            | Hook::OnHit
-            | Hook::OnEnd
-            | Hook::OnChannelTick
-            | Hook::OnInterrupt => ScriptRole::Action,
-            Hook::OnInterval
-            | Hook::OnAttack
-            | Hook::OnAttackHit
-            | Hook::OnDamageTaken
-            | Hook::OnKill
-            | Hook::OnTakedown => ScriptRole::Modifier,
-            Hook::OnMatchStart
-            | Hook::OnModeInput
-            | Hook::OnTimer
-            | Hook::OnPlayerJoin
-            | Hook::OnPlayerLeave
-            | Hook::OnUnitDied
-            | Hook::CalcDamage
-            | Hook::CalcHeal
-            | Hook::OnLevelUp
-            | Hook::OnGenerate => ScriptRole::Mode,
-            Hook::OnThink => ScriptRole::Ai,
+            Self::OnResolve
+            | Self::OnHit
+            | Self::OnEnd
+            | Self::OnChannelTick
+            | Self::OnInterrupt => ScriptRole::Action,
+            Self::OnInterval
+            | Self::OnAttack
+            | Self::OnAttackHit
+            | Self::OnDamageTaken
+            | Self::OnKill
+            | Self::OnTakedown => ScriptRole::Modifier,
+            Self::OnMatchStart
+            | Self::OnModeInput
+            | Self::OnTimer
+            | Self::OnPlayerJoin
+            | Self::OnPlayerLeave
+            | Self::OnUnitDied
+            | Self::CalcDamage
+            | Self::CalcHeal
+            | Self::OnLevelUp
+            | Self::OnGenerate => ScriptRole::Mode,
+            Self::OnThink => ScriptRole::Ai,
         }
     }
 }

@@ -48,16 +48,16 @@ impl CombatEffect {
         _: &View,
     ) -> Result<(), CallError> {
         let effect = match does {
-            CapabilityDoesSpec::Damage { amount, kind } => CombatEffect::Damage {
+            CapabilityDoesSpec::Damage { amount, kind } => Self::Damage {
                 unit: id,
                 amount: amount.number(frame),
                 kind,
             },
-            CapabilityDoesSpec::Heal { amount } => CombatEffect::Heal {
+            CapabilityDoesSpec::Heal { amount } => Self::Heal {
                 unit: id,
                 amount: amount.number(frame),
             },
-            CapabilityDoesSpec::Restore { pool, amount } => CombatEffect::Restore {
+            CapabilityDoesSpec::Restore { pool, amount } => Self::Restore {
                 unit: id,
                 pool,
                 amount: amount.number(frame),
@@ -88,11 +88,11 @@ impl Effect for CombatEffect {
             hit: frame.hit(),
         };
         match self {
-            CombatEffect::Damage { unit, amount, kind } => {
+            Self::Damage { unit, amount, kind } => {
                 let damage = damage(unit, amount, kind, DamageCause::Effect);
                 world.resource_mut::<PassQueue>().push_damage(damage);
             }
-            CombatEffect::Heal { unit, amount } => {
+            Self::Heal { unit, amount } => {
                 world.resource_mut::<PassQueue>().push_heal(Heal {
                     source,
                     target: unit,
@@ -102,17 +102,17 @@ impl Effect for CombatEffect {
                     depth,
                 });
             }
-            CombatEffect::Restore { unit, pool, amount } => {
+            Self::Restore { unit, pool, amount } => {
                 DamagePass::restore(world, unit, pool, amount);
             }
-            CombatEffect::Kill { unit } => {
+            Self::Kill { unit } => {
                 if let Some(entity) = DamagePass::living(world, unit) {
                     let mut life = world.get_mut::<Life>(entity).expect("a living unit's life");
                     let all = life.current();
                     life.take(all);
                 }
             }
-            CombatEffect::AttackHit { unit: target } => {
+            Self::AttackHit { unit: target } => {
                 let index = world.resource::<EntityIndex>();
                 let Some(unit) = source.and_then(|source| index.get(source)) else {
                     return;

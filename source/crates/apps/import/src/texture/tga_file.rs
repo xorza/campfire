@@ -37,7 +37,7 @@ impl TgaHeader {
     /// The header of the TGA `bytes` hold, refused unless it is uncompressed true color of 24 or
     /// 32 bits with no color map, and its texels end the file or a footer that names no extension
     /// area follows them.
-    pub(crate) fn read(bytes: &[u8]) -> Result<TgaHeader, TextureError> {
+    pub(crate) fn read(bytes: &[u8]) -> Result<Self, TextureError> {
         if bytes.len() < HEADER {
             return Err(TextureError::Length {
                 expected: HEADER,
@@ -58,7 +58,7 @@ impl TgaHeader {
         if width == 0 || height == 0 {
             return Err(TextureError::Size { width, height });
         }
-        let header = TgaHeader {
+        let header = Self {
             width,
             height,
             texel,
@@ -94,7 +94,7 @@ impl TgaHeader {
 
 impl TgaFile {
     /// The TGA `bytes` hold, refused as `TgaHeader::read` refuses its header.
-    pub(crate) fn read(bytes: &[u8]) -> Result<TgaFile, TextureError> {
+    pub(crate) fn read(bytes: &[u8]) -> Result<Self, TextureError> {
         let header = TgaHeader::read(bytes)?;
         let TgaHeader {
             width,
@@ -129,7 +129,7 @@ impl TgaFile {
                 ]);
             }
         }
-        Ok(TgaFile {
+        Ok(Self {
             width,
             height,
             rgba,

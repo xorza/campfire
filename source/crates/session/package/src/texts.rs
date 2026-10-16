@@ -33,10 +33,10 @@ struct PackageBundles {
 impl Texts {
     /// The text of `packages`, with the translations `locales` give them; an error when a
     /// translation defines a message its package's own language does not.
-    pub fn new(packages: &ModePackages, locales: &[LocalePackage]) -> Result<Texts, LoadError> {
+    pub fn new(packages: &ModePackages, locales: &[LocalePackage]) -> Result<Self, LoadError> {
         let mut locales: Vec<&LocalePackage> = locales.iter().collect();
         locales.sort_by(|a, b| a.name.cmp(&b.name));
-        let mut texts = Texts {
+        let mut texts = Self {
             packages: BTreeMap::new(),
         };
         for view in packages.packages() {

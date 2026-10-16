@@ -114,8 +114,8 @@ impl ViewRows {
 }
 
 impl Default for ViewRows {
-    fn default() -> ViewRows {
-        ViewRows {
+    fn default() -> Self {
+        Self {
             now: Tick::ZERO,
             units: Vec::new(),
             relations: Relations::default(),

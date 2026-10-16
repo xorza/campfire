@@ -39,16 +39,16 @@ impl Density {
     /// The case's name.
     pub const fn name(self) -> &'static str {
         match self {
-            Density::Crowded => "crowded",
-            Density::Spread => "spread",
+            Self::Crowded => "crowded",
+            Self::Spread => "spread",
         }
     }
 
     /// Half the side of the square the units stand in, in meters.
     pub const fn span(self) -> u64 {
         match self {
-            Density::Crowded => 20,
-            Density::Spread => 60,
+            Self::Crowded => 20,
+            Self::Spread => 60,
         }
     }
 }
@@ -57,9 +57,9 @@ impl KernelScene {
     /// The units of a kernel case: the count design 04 sets for an RTS battle.
     pub const UNITS: usize = 1000;
 
-    pub fn new(seed: u64) -> KernelScene {
+    pub fn new(seed: u64) -> Self {
         let stream = RngStream::new("scene");
-        KernelScene {
+        Self {
             rng: Rng::new(&SegmentSeed::ZERO, stream, seed, Tick::ZERO),
         }
     }
@@ -69,7 +69,7 @@ impl KernelScene {
     pub fn point(&mut self, span: u64) -> Vec3 {
         let mut coordinate = || {
             let cm = self.rng.below(span * 200).cast_signed();
-            KernelScene::centimeters(cm - span.cast_signed() * 100)
+            Self::centimeters(cm - span.cast_signed() * 100)
         };
         let x = coordinate();
         Vec3::new(x, Num::ZERO, coordinate())
@@ -83,7 +83,7 @@ impl KernelScene {
         (0..count)
             .map(|_| {
                 let point = self.point(span);
-                let radius = KernelScene::centimeters(20 + self.below(100).cast_signed());
+                let radius = Self::centimeters(20 + self.below(100).cast_signed());
                 let movable = self.below(4) != 0;
                 let layer = match layers {
                     1 => 0,

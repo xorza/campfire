@@ -10,24 +10,24 @@ pub(crate) struct Pose {
 }
 
 impl Pose {
-    pub(crate) const IDENTITY: Pose = Pose {
+    pub(crate) const IDENTITY: Self = Self {
         translation: [0.0; 3],
         rotation: [0.0, 0.0, 0.0, 1.0],
     };
 
     /// A pivot's placement in its parent's frame.
-    pub(crate) const fn of(pivot: &Pivot) -> Pose {
-        Pose {
+    pub(crate) const fn of(pivot: &Pivot) -> Self {
+        Self {
             translation: pivot.translation,
             rotation: pivot.rotation,
         }
     }
 
     /// The placement of each pivot in the model's frame: its parent's, then its own.
-    pub(crate) fn of_each(pivots: &[Pivot]) -> Vec<Pose> {
-        let mut poses: Vec<Pose> = Vec::with_capacity(pivots.len());
+    pub(crate) fn of_each(pivots: &[Pivot]) -> Vec<Self> {
+        let mut poses: Vec<Self> = Vec::with_capacity(pivots.len());
         for pivot in pivots {
-            let local = Pose::of(pivot);
+            let local = Self::of(pivot);
             let pose = match pivot.parent {
                 Some(parent) => poses[parent].then(local),
                 None => local,
@@ -38,23 +38,23 @@ impl Pose {
     }
 
     /// `child`, placed in this pose's frame.
-    pub(crate) fn then(self, child: Pose) -> Pose {
-        Pose {
-            translation: Pose::add(self.rotate(child.translation), self.translation),
-            rotation: Pose::multiply(self.rotation, child.rotation),
+    pub(crate) fn then(self, child: Self) -> Self {
+        Self {
+            translation: Self::add(self.rotate(child.translation), self.translation),
+            rotation: Self::multiply(self.rotation, child.rotation),
         }
     }
 
     pub(crate) fn place(self, point: [f32; 3]) -> [f32; 3] {
-        Pose::add(self.rotate(point), self.translation)
+        Self::add(self.rotate(point), self.translation)
     }
 
     /// `vector` turned by the rotation: `v + 2w (q × v) + 2 q × (q × v)`.
     pub(crate) fn rotate(self, vector: [f32; 3]) -> [f32; 3] {
         let [x, y, z, w] = self.rotation;
         let axis = [x, y, z];
-        let once = Pose::cross(axis, vector);
-        let twice = Pose::cross(axis, once);
+        let once = Self::cross(axis, vector);
+        let twice = Self::cross(axis, once);
         let mut out = [0.0; 3];
         for at in 0..3 {
             out[at] = vector[at] + 2.0 * (w * once[at]) + 2.0 * twice[at];

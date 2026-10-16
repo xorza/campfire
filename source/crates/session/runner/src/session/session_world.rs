@@ -144,7 +144,7 @@ impl SessionWorld for World {
     fn replay_to<E>(
         &mut self,
         tick: Tick,
-        mut on_boundary: impl FnMut(&mut World) -> Result<(), E>,
+        mut on_boundary: impl FnMut(&mut Self) -> Result<(), E>,
     ) -> Result<(), E> {
         debug_assert!(
             self.session().log().next_tick() <= tick,

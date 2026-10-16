@@ -51,10 +51,10 @@ pub trait UnitsFixtures {
 
 impl UnitsFixtures for Units {
     fn load_test_modifiers(world: &mut World) {
-        if Units::loads_test_modifiers(world) {
+        if Self::loads_test_modifiers(world) {
             return;
         }
-        let mut tags = Units::test_tags();
+        let mut tags = Self::test_tags();
         tags.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
         for (name, _) in tags {
             let grants = ModifierData {
@@ -66,7 +66,7 @@ impl UnitsFixtures for Units {
     }
 
     fn loads_test_modifiers(world: &World) -> bool {
-        let (first, _) = &Units::test_tags()[0];
+        let (first, _) = &Self::test_tags()[0];
         world.get_resource::<ModifierBook>().is_some()
             && Stats::modifier(world, TEST_PACKAGE, first.as_str()).is_some()
     }
@@ -77,8 +77,8 @@ impl UnitsFixtures for Units {
             .into_iter()
             .chain([properties.hidden(), properties.detects()]);
         let entity = world.unit_entity(id);
-        Units::load_test_modifiers(world);
-        for ((name, _), wanted) in Units::test_tags().iter().zip(wanted) {
+        Self::load_test_modifiers(world);
+        for ((name, _), wanted) in Self::test_tags().iter().zip(wanted) {
             let modifier = Stats::modifier(world, TEST_PACKAGE, name.as_str()).unwrap();
             let held = world
                 .get::<Modifiers>(entity)
@@ -109,7 +109,7 @@ impl UnitsFixtures for Units {
             .fold(TagProperties::default(), |properties, &block| {
                 properties.with_block(block)
             });
-        Units::hold_properties(world, id, properties);
+        Self::hold_properties(world, id, properties);
     }
 
     fn block_at(
@@ -121,7 +121,7 @@ impl UnitsFixtures for Units {
     ) {
         let block = move |world: &mut World| {
             if world.resource::<SimTick>().start() == Tick::new(tick) {
-                Units::set_blocks(world, id, blocks);
+                Self::set_blocks(world, id, blocks);
             }
         };
         world
@@ -177,6 +177,6 @@ pub trait FilterFixtures {
 
 impl FilterFixtures for Filter {
     fn of_release_relations(relations: RelationSet) -> Filter {
-        Filter::of_relations(relations, &TagNames::new(&Release::engine_tags()))
+        Self::of_relations(relations, &TagNames::new(&Release::engine_tags()))
     }
 }

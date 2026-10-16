@@ -71,8 +71,8 @@ enum Listened {
 impl Played {
     /// A match whose server never listened, which ended as `server` says, of `bots` bots none of
     /// which started.
-    fn unplayed(server: ProcessOutcome, bots: usize) -> Played {
-        Played {
+    fn unplayed(server: ProcessOutcome, bots: usize) -> Self {
+        Self {
             server,
             server_again: ProcessOutcome::NotStarted,
             bots: vec![ProcessOutcome::NotStarted; bots],

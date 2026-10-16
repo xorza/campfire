@@ -20,11 +20,9 @@ pub(crate) enum Manifest {
 impl Manifest {
     pub(crate) const fn header(&self) -> &PackageHeader {
         match self {
-            Manifest::Mode(mode) => &mode.header,
-            Manifest::Avatar(header) | Manifest::Loadout(header) | Manifest::Rules(header) => {
-                header
-            }
-            Manifest::Locale(locale) => &locale.header,
+            Self::Mode(mode) => &mode.header,
+            Self::Avatar(header) | Self::Loadout(header) | Self::Rules(header) => header,
+            Self::Locale(locale) => &locale.header,
         }
     }
 }

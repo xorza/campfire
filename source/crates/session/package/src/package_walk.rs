@@ -20,8 +20,8 @@ pub struct PackageWalk {
 const STREAM_CHUNK: usize = 64 * 1024;
 
 impl PackageWalk {
-    pub const fn new() -> PackageWalk {
-        PackageWalk {
+    pub const fn new() -> Self {
+        Self {
             rows: BTreeMap::new(),
             stream: Vec::new(),
         }

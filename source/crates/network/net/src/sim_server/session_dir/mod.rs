@@ -70,11 +70,11 @@ impl SessionDir {
     pub fn create(
         data: &ServerDir,
         private: &SessionPrivate,
-    ) -> Result<SessionDir, PathError<DurableError>> {
+    ) -> Result<Self, PathError<DurableError>> {
         DurableDir::create(&data.layout().sessions_dir())?;
         let path = data.layout().session_dir(private.terms.session_id());
         DurableDir::create(&path)?;
-        let dir = SessionDir { path };
+        let dir = Self { path };
         let mut bytes = Vec::new();
         private.encode(&mut bytes);
         DurableFile::write(&dir.private(), &bytes)?;
@@ -106,7 +106,7 @@ impl SessionDir {
     /// session id. The sessions and the published logs are each listed once, so every answer
     /// comes from one moment, and in the order of their names, so a directory with several
     /// flaws gives the same error on every OS.
-    pub fn find(data: &ServerDir) -> Result<Option<SessionDir>, FindError> {
+    pub fn find(data: &ServerDir) -> Result<Option<Self>, FindError> {
         let layout = data.layout();
         let listed = |path: &Path| match DirEntries::read(path) {
             Ok(entries) => Ok(entries),
@@ -135,7 +135,7 @@ impl SessionDir {
             if found.is_some() {
                 return Err(FindError::Several);
             }
-            found = Some(SessionDir {
+            found = Some(Self {
                 path: layout.session_dir(session),
             });
         }
@@ -147,7 +147,7 @@ impl SessionDir {
     /// whose directory goes. An error as `find` and `restore` give one, and for a directory that
     /// does not go.
     pub fn waiting(data: &ServerDir) -> Result<Option<RestoredSession>, WaitingError> {
-        let Some(dir) = SessionDir::find(data).map_err(WaitingError::Find)? else {
+        let Some(dir) = Self::find(data).map_err(WaitingError::Find)? else {
             return Ok(None);
         };
         let session = dir.restore().map_err(WaitingError::Restore)?;
@@ -231,7 +231,7 @@ impl RestoredSession {
         signer: Signer,
         mut after_tick: impl FnMut(&mut World),
     ) -> Result<SnapshotDir, RestoreMatchError> {
-        let RestoredSession {
+        let Self {
             private,
             log,
             files: SessionFiles { journal, snapshots },

@@ -185,7 +185,7 @@ impl ModelImport {
                 )
                 .map_err(error)?,
         };
-        Ok(Converted::Model(Box::new(ModelImport {
+        Ok(Converted::Model(Box::new(Self {
             glb: builder.glb,
             materials: builder.materials,
             parts,
@@ -348,7 +348,7 @@ impl ModelBuilder {
             positions.push(Pose::y_up(pose.place(*position)));
             normals.push(Pose::y_up(pose.rotate(*normal)));
         }
-        ModelBuilder::fill_zero_normals(&positions, &mesh.triangles, &mut normals);
+        Self::fill_zero_normals(&positions, &mesh.triangles, &mut normals);
         let position = self.glb.positions(&positions);
         let normal = self.glb.vectors(&normals);
         let attributes = |texcoord, color| Attributes {
@@ -364,7 +364,7 @@ impl ModelBuilder {
             let stage = pass.stage.as_ref();
             let lit =
                 (0..mesh.triangles.len()).any(|at| !mesh.shader(pass.shaders.get(at)).unlit());
-            if pass.colors.is_some() && lit && !ModelBuilder::colors_are_diffuse(mesh, pass) {
+            if pass.colors.is_some() && lit && !Self::colors_are_diffuse(mesh, pass) {
                 return Err(ModelError::VertexColors);
             }
             let texcoord = stage.map(|stage| self.coordinates(stage, mesh.positions.len()));
@@ -574,8 +574,8 @@ impl ModelBuilder {
         let (lit_color, lit_emissive) = match colors {
             None => ([1.0; 4], [0.0; 3]),
             Some(material) => {
-                let [r, g, b] = material.diffuse.map(ModelBuilder::linear);
-                let emissive = material.emissive.map(ModelBuilder::linear);
+                let [r, g, b] = material.diffuse.map(Self::linear);
+                let emissive = material.emissive.map(Self::linear);
                 ([r, g, b, material.opacity], emissive)
             }
         };
@@ -609,7 +609,7 @@ impl ModelBuilder {
             let wrap = |clamp: bool| if clamp { CLAMP_TO_EDGE } else { REPEAT };
             let uri = format!(
                 "../{}",
-                ModelBuilder::uri(texture.path.as_str().trim_start_matches("client/"))
+                Self::uri(texture.path.as_str().trim_start_matches("client/"))
             );
             TextureRef {
                 index: self

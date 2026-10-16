@@ -14,11 +14,11 @@ pub struct Meter {
 
 impl Meter {
     /// A full meter of `max`; `None` unless `max` is positive.
-    pub const fn new(max: Num) -> Option<Meter> {
+    pub const fn new(max: Num) -> Option<Self> {
         if max.to_bits() <= 0 {
             return None;
         }
-        Some(Meter {
+        Some(Self {
             current: max,
             max,
             carry: 0,
@@ -111,7 +111,7 @@ impl Meter {
 
 /// A snapshot is untrusted, so a meter outside 0 to a positive maximum fails to decode.
 impl<'de> Deserialize<'de> for Meter {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Meter, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             current: Num,
@@ -126,7 +126,7 @@ impl<'de> Deserialize<'de> for Meter {
         if max <= Num::ZERO || current < Num::ZERO || current > max {
             return Err(D::Error::custom("meter outside 0 to a positive maximum"));
         }
-        Ok(Meter {
+        Ok(Self {
             current,
             max,
             carry,

@@ -12,8 +12,8 @@ pub struct UseSpec {
 }
 
 impl UseSpec {
-    pub const fn new(action: ActionId, users: Filter) -> UseSpec {
-        UseSpec { action, users }
+    pub const fn new(action: ActionId, users: Filter) -> Self {
+        Self { action, users }
     }
 
     pub const fn action(self) -> ActionId {

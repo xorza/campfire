@@ -45,7 +45,7 @@ impl<'a> KindData<'a> {
     /// What the kind of `data`, one the release runs, needs, as `data` gives it; an error names the
     /// first field the kind refuses, or needs and `data` does not give, as the table of action
     /// fields says.
-    pub fn of(data: &'a ActionData) -> Result<KindData<'a>, ActionDataField> {
+    pub fn of(data: &'a ActionData) -> Result<Self, ActionDataField> {
         if let Some(field) = ActionDataField::misused(data, data.kind) {
             return Err(field);
         }

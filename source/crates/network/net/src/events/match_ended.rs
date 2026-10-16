@@ -14,8 +14,8 @@ pub(crate) struct MatchEnded {
 }
 
 impl MatchEnded {
-    pub(crate) const fn of(end: MatchEnd) -> MatchEnded {
-        MatchEnded {
+    pub(crate) const fn of(end: MatchEnd) -> Self {
+        Self {
             tick: end.tick(),
             result: end.result(),
         }

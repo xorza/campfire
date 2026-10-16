@@ -11,56 +11,56 @@ pub(crate) struct F64x4([f64; 4]);
 /// 2⁵², whose last place is 1: an integer from 0 to 2⁵² − 1 fills its low bits.
 const TWO_52: f64 = 4_503_599_627_370_496.0;
 /// 2⁸⁴, whose last place is 2³²: an integer below 2³² in its low bits counts 2³² each.
-const TWO_84: f64 = 19_342_813_113_834_066_795_298_816.0;
+const TWO_84: f64 = 19_342_813_113_834_067_000_000_000.0;
 /// 1.5 · 2⁵², whose last place is 1: an integer within 2⁵¹ either side moves only its low bits.
 const SIGNED_52: f64 = 6_755_399_441_055_744.0;
 
 impl F64x4 {
     /// Each lane exactly; each below 2⁵¹ in magnitude.
-    pub(crate) const fn from_exact(lanes: [i64; 4]) -> F64x4 {
+    pub(crate) const fn from_exact(lanes: [i64; 4]) -> Self {
         let [a, b, c, d] = lanes;
-        F64x4([
-            F64x4::exact(a),
-            F64x4::exact(b),
-            F64x4::exact(c),
-            F64x4::exact(d),
+        Self([
+            Self::exact(a),
+            Self::exact(b),
+            Self::exact(c),
+            Self::exact(d),
         ])
     }
 
     /// Each lane rounded once to the nearest `f64`, for every `u64`: its two halves convert
     /// exactly, and only their sum rounds.
-    pub(crate) const fn from_u64(lanes: [u64; 4]) -> F64x4 {
+    pub(crate) const fn from_u64(lanes: [u64; 4]) -> Self {
         let [a, b, c, d] = lanes;
-        F64x4([
-            F64x4::rounded(a),
-            F64x4::rounded(b),
-            F64x4::rounded(c),
-            F64x4::rounded(d),
+        Self([
+            Self::rounded(a),
+            Self::rounded(b),
+            Self::rounded(c),
+            Self::rounded(d),
         ])
     }
 
-    pub(crate) const fn div(self, rhs: F64x4) -> F64x4 {
+    pub(crate) const fn div(self, rhs: Self) -> Self {
         let [a, b] = [self.0, rhs.0];
-        F64x4([a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3]])
+        Self([a[0] / b[0], a[1] / b[1], a[2] / b[2], a[3] / b[3]])
     }
 
-    pub(crate) const fn floor(self) -> F64x4 {
+    pub(crate) const fn floor(self) -> Self {
         let [a, b, c, d] = self.0;
-        F64x4([a.floor(), b.floor(), c.floor(), d.floor()])
+        Self([a.floor(), b.floor(), c.floor(), d.floor()])
     }
 
-    pub(crate) fn sqrt(self) -> F64x4 {
-        F64x4(self.0.map(f64::sqrt))
+    pub(crate) fn sqrt(self) -> Self {
+        Self(self.0.map(f64::sqrt))
     }
 
     /// Each lane, a whole number below 2⁵¹ in magnitude, as an `i64`.
     pub(crate) const fn to_exact(self) -> [i64; 4] {
         let [a, b, c, d] = self.0;
         [
-            F64x4::whole(a),
-            F64x4::whole(b),
-            F64x4::whole(c),
-            F64x4::whole(d),
+            Self::whole(a),
+            Self::whole(b),
+            Self::whole(c),
+            Self::whole(d),
         ]
     }
 
@@ -68,10 +68,10 @@ impl F64x4 {
     pub(crate) const fn round_to_u64(self) -> [u64; 4] {
         let [a, b, c, d] = self.0;
         [
-            F64x4::nearest(a),
-            F64x4::nearest(b),
-            F64x4::nearest(c),
-            F64x4::nearest(d),
+            Self::nearest(a),
+            Self::nearest(b),
+            Self::nearest(c),
+            Self::nearest(d),
         ]
     }
 

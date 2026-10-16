@@ -29,8 +29,8 @@ pub struct Arena {
 impl Arena {
     /// The arena of `tree`'s mode, the unit types of the units a test spawns and their actions
     /// added to its files.
-    pub fn load(tree: &PackageTree) -> Arena {
-        Arena {
+    pub fn load(tree: &PackageTree) -> Self {
+        Self {
             packages: tree.packages(),
         }
     }

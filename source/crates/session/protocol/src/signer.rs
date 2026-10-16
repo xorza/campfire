@@ -14,8 +14,8 @@ pub struct Signer {
 }
 
 impl Signer {
-    pub fn new(key: Keypair, entropy: Entropy) -> Signer {
-        Signer {
+    pub fn new(key: Keypair, entropy: Entropy) -> Self {
+        Self {
             key,
             secp: Secp256k1::signing_only(),
             entropy,

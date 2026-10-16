@@ -36,8 +36,8 @@ impl Param {
     /// a scaling param's base's, as its source's stats add to it only as it applies.
     pub fn numbers(&self) -> impl Iterator<Item = Option<Num>> + '_ {
         let (ranked, base): (&[Scalar], &[Num]) = match self {
-            Param::Ranked(ranked) => (ranked.values(), &[]),
-            Param::Scaling(scaling) => (&[], scaling.base.values()),
+            Self::Ranked(ranked) => (ranked.values(), &[]),
+            Self::Scaling(scaling) => (&[], scaling.base.values()),
         };
         let ranked = ranked.iter().map(|value| value.to_num());
         ranked.chain(base.iter().copied().map(Some))
@@ -46,8 +46,8 @@ impl Param {
     /// Every stat its scaling table names, its bonus ratios' among them.
     pub fn stats(&self) -> impl Iterator<Item = &Stat> {
         let scaling = match self {
-            Param::Ranked(_) => None,
-            Param::Scaling(scaling) => Some(scaling),
+            Self::Ranked(_) => None,
+            Self::Scaling(scaling) => Some(scaling),
         };
         scaling
             .into_iter()
@@ -57,8 +57,8 @@ impl Param {
     /// How many ranks it has values for; `None` when it fits any rank.
     pub const fn ranks(&self) -> Option<usize> {
         match self {
-            Param::Ranked(ranked) => ranked.ranks(),
-            Param::Scaling(scaling) => scaling.base.ranks(),
+            Self::Ranked(ranked) => ranked.ranks(),
+            Self::Scaling(scaling) => scaling.base.ranks(),
         }
     }
 }

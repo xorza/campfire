@@ -17,7 +17,7 @@ impl VisionBook {
     }
 
     /// The run condition of what sees: whether the map has a grid.
-    pub(crate) fn has_grid(book: Res<'_, VisionBook>) -> bool {
+    pub(crate) fn has_grid(book: Res<'_, Self>) -> bool {
         book.0.is_some()
     }
 }

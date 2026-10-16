@@ -16,8 +16,8 @@ pub(crate) enum FilterRefused {
 impl fmt::Display for FilterRefused {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            FilterRefused::NotUnicode(_) => "the value is not Unicode",
-            FilterRefused::NotFilter(_) => "the value is no filter",
+            Self::NotUnicode(_) => "the value is not Unicode",
+            Self::NotFilter(_) => "the value is no filter",
         })
     }
 }
@@ -25,8 +25,8 @@ impl fmt::Display for FilterRefused {
 impl Error for FilterRefused {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            FilterRefused::NotUnicode(error) => Some(error),
-            FilterRefused::NotFilter(error) => Some(error),
+            Self::NotUnicode(error) => Some(error),
+            Self::NotFilter(error) => Some(error),
         }
     }
 }

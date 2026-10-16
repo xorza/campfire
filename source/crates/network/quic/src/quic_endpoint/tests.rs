@@ -77,27 +77,27 @@ struct ClientApp {
 }
 
 impl Loopback {
-    fn new(times: LinkTimes) -> Loopback {
-        let mut loopback = Loopback::bind(times);
+    fn new(times: LinkTimes) -> Self {
+        let mut loopback = Self::bind(times);
         loopback.start();
         loopback
     }
 
     /// The server's endpoint on a port of the OS's choice, bound and not started.
-    fn bind(times: LinkTimes) -> Loopback {
-        Loopback::bind_at(SocketAddr::from(([127, 0, 0, 1], 0)), times)
+    fn bind(times: LinkTimes) -> Self {
+        Self::bind_at(SocketAddr::from(([127, 0, 0, 1], 0)), times)
     }
 
     /// The server's endpoint on `address`, bound and not started, its key and its reset key the
     /// same at each bind.
-    fn bind_at(address: SocketAddr, times: LinkTimes) -> Loopback {
+    fn bind_at(address: SocketAddr, times: LinkTimes) -> Self {
         let quic = ServerSocket::bind(address, &server_secret(), times).unwrap();
         let address = quic.local_address();
         let key = quic.tls_key();
         let mut server = App::new();
         server.add_plugins(QuicPlugin);
         let endpoint = server.world_mut().spawn(quic.serve(ROOMY)).id();
-        Loopback {
+        Self {
             server,
             endpoint,
             address,
@@ -143,7 +143,7 @@ impl Loopback {
                     .iter_entities()
                     .any(|link| link.contains::<LinkOf>() && link.contains::<Linked>())
         });
-        Loopback::links(self.server.world_mut())[0]
+        Self::links(self.server.world_mut())[0]
     }
 
     /// The server's linked links.
@@ -163,12 +163,12 @@ impl Loopback {
 }
 
 impl ClientApp {
-    fn start(quic: QuicEndpoint) -> ClientApp {
+    fn start(quic: QuicEndpoint) -> Self {
         let mut app = App::new();
         app.add_plugins(QuicPlugin);
         let entity = app.world_mut().spawn((QuicEndpoint::link(), quic)).id();
         app.world_mut().trigger(LinkStart { entity });
-        ClientApp { app, entity }
+        Self { app, entity }
     }
 
     fn is<C: Component>(&self) -> bool {
@@ -596,16 +596,16 @@ struct Ending {
 
 impl Ending {
     /// Every way a link ends that the other end hears at once.
-    fn all() -> Vec<Ending> {
-        let mut ends = Ending::by_client();
-        ends.extend(Ending::by_server());
+    fn all() -> Vec<Self> {
+        let mut ends = Self::by_client();
+        ends.extend(Self::by_server());
         ends
     }
 
-    fn by_client() -> Vec<Ending> {
+    fn by_client() -> Vec<Self> {
         vec![
             // The client unlinks, with no reason.
-            Ending {
+            Self {
                 act: |_, client| {
                     let entity = client.entity;
                     client.app.world_mut().trigger(Unlink {
@@ -617,7 +617,7 @@ impl Ending {
                 at_client: Some(LinkEnd::Closed(AppCode::ENDED)),
             },
             // The client closes with its app's code.
-            Ending {
+            Self {
                 act: |_, client| {
                     let entity = client.entity;
                     let code = AppCode::new(17);
@@ -627,7 +627,7 @@ impl Ending {
                 at_client: Some(LinkEnd::Closed(AppCode::new(17))),
             },
             // The client's endpoint leaves its entity: removed, or replaced by another.
-            Ending {
+            Self {
                 act: |_, client| {
                     client
                         .app
@@ -638,7 +638,7 @@ impl Ending {
                 at_server: Some(LinkEnd::PeerStopped),
                 at_client: Some(LinkEnd::Closed(AppCode::STOPPED)),
             },
-            Ending {
+            Self {
                 act: |loopback, client| {
                     let quic =
                         QuicEndpoint::client(loopback.address, &loopback.key, LinkTimes::CAMPFIRE)
@@ -655,10 +655,10 @@ impl Ending {
         ]
     }
 
-    fn by_server() -> Vec<Ending> {
+    fn by_server() -> Vec<Self> {
         vec![
             // The server despawns its link.
-            Ending {
+            Self {
                 act: |loopback, _| {
                     let link = Loopback::links(loopback.server.world_mut())[0];
                     loopback.server.world_mut().despawn(link);
@@ -667,7 +667,7 @@ impl Ending {
                 at_client: Some(LinkEnd::Ended),
             },
             // The server closes its link with its app's code.
-            Ending {
+            Self {
                 act: |loopback, _| {
                     let entity = Loopback::links(loopback.server.world_mut())[0];
                     let code = AppCode::new(18);
@@ -680,7 +680,7 @@ impl Ending {
                 at_client: Some(LinkEnd::ClosedByPeer(AppCode::new(18))),
             },
             // The server ends, which despawns its links.
-            Ending {
+            Self {
                 act: |loopback, _| {
                     let entity = loopback.endpoint;
                     loopback.server.world_mut().trigger(Unlink {
@@ -693,7 +693,7 @@ impl Ending {
             },
             // The server's endpoint leaves its entity, which unlinks and despawns its links, or goes
             // with its entity, which despawns them too.
-            Ending {
+            Self {
                 act: |loopback, _| {
                     let entity = loopback.endpoint;
                     loopback
@@ -705,7 +705,7 @@ impl Ending {
                 at_server: None,
                 at_client: Some(LinkEnd::PeerStopped),
             },
-            Ending {
+            Self {
                 act: |loopback, _| {
                     let entity = loopback.endpoint;
                     loopback.server.world_mut().despawn(entity);
@@ -714,7 +714,7 @@ impl Ending {
                 at_client: Some(LinkEnd::PeerStopped),
             },
             // The server's app exits, and drops its world.
-            Ending {
+            Self {
                 act: |loopback, _| loopback.server = App::new(),
                 at_server: None,
                 at_client: Some(LinkEnd::PeerStopped),
@@ -819,20 +819,20 @@ impl Blob {
         clippy::unnecessary_wraps,
         reason = "Lightyear's function type returns a Result"
     )]
-    fn write(blob: &Blob, writer: &mut Writer) -> Result<(), SerializationError> {
+    fn write(blob: &Self, writer: &mut Writer) -> Result<(), SerializationError> {
         let len = u32::try_from(blob.0.len()).unwrap();
         writer.extend_from_slice(&len.to_le_bytes());
         writer.extend_from_slice(&blob.0);
         Ok(())
     }
 
-    fn read(reader: &mut Reader) -> Result<Blob, SerializationError> {
+    fn read(reader: &mut Reader) -> Result<Self, SerializationError> {
         let (len, rest) = reader
             .remaining_slice()
             .split_first_chunk::<4>()
             .ok_or(SerializationError::InvalidValue)?;
         let len = usize::try_from(u32::from_le_bytes(*len)).unwrap();
-        let blob = Blob(
+        let blob = Self(
             rest.get(..len)
                 .ok_or(SerializationError::InvalidValue)?
                 .to_vec(),
@@ -847,15 +847,15 @@ impl Blob {
             ..ChannelSettings::default()
         })
         .add_direction(NetworkDirection::ClientToServer);
-        app.register_message_custom_serde::<Blob>(SerializeFns {
-            serialize: Blob::write,
-            deserialize: Blob::read,
+        app.register_message_custom_serde::<Self>(SerializeFns {
+            serialize: Self::write,
+            deserialize: Self::read,
         })
         .add_direction(NetworkDirection::ClientToServer);
     }
 
     fn receive(
-        mut links: Query<'_, '_, &mut MessageReceiver<Blob>>,
+        mut links: Query<'_, '_, &mut MessageReceiver<Self>>,
         mut received: ResMut<'_, Received>,
     ) {
         for mut link in &mut links {
@@ -962,17 +962,17 @@ struct Limited {
 impl Limited {
     const SERVER: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1)), 4433);
 
-    fn new(limit: AddressLimit) -> Limited {
+    fn new(limit: AddressLimit) -> Self {
         let config = QuicEndpoint::server_config(server_key().server_config(), LinkTimes::CAMPFIRE);
         let mut server = FixtureEnd::new(
             QuicEndpoint::endpoint_config(ResetKey::derive(&server_secret()), CID_LEN),
             Some(Arc::new(config)),
             [1; 32],
-            Limited::SERVER,
+            Self::SERVER,
         );
         let now = Instant::now();
         server.state.start_accepting(limit, now);
-        Limited {
+        Self {
             server,
             clients: Vec::new(),
             now,
@@ -995,7 +995,7 @@ impl Limited {
         );
         let key = client
             .state
-            .connect(self.now, config, Limited::SERVER, Entity::PLACEHOLDER)
+            .connect(self.now, config, Self::SERVER, Entity::PLACEHOLDER)
             .unwrap();
         self.clients.push(client);
         for _ in 0..32 {

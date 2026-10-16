@@ -20,7 +20,7 @@ impl AreasApi {
         )
         .roles(RoleSet::ACTION);
         api.call(area, |ctx: &mut Ctx, pos: ScriptPosition| {
-            AreasApi::land(ctx, pos.get())
+            Self::land(ctx, pos.get())
         })
         .data::<DeliveryData>(&["area"], &[])
         .shared_data(DataTable::UnitType, &["area"], &[])

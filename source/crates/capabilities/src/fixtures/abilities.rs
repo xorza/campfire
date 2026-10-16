@@ -78,10 +78,10 @@ impl AbilitiesFixtures for Abilities {
     fn load_types(world: &mut World) {
         let core = UnitTypeCore::default();
         let combatant = Units::load_type(world, TypeScope::Mode, "combatant", &core);
-        Abilities::give_combatant(world, combatant);
+        Self::give_combatant(world, combatant);
         for name in ["caster", "walking caster"] {
             let caster = Units::load_type(world, TypeScope::Mode, name, &core);
-            Abilities::give_caster(world, caster, 100, 20);
+            Self::give_caster(world, caster, 100, 20);
         }
         let walking = Units::type_named(world, "walking caster").unwrap();
         Units::give_type(world, walking, MoveStep::new(Num::ONE).unwrap());
@@ -94,7 +94,7 @@ impl AbilitiesFixtures for Abilities {
     }
 
     fn give_caster(world: &mut World, unit_type: UnitType, mana: i64, rage: i64) {
-        Abilities::give_combatant(world, unit_type);
+        Self::give_combatant(world, unit_type);
         let pools = [(MANA, mana), (RAGE, rage)];
         let pools = Pools::new(pools.map(|(pool, max)| (pool, Num::int(max)))).unwrap();
         Units::give_type(world, unit_type, pools);
@@ -132,7 +132,7 @@ impl AbilitiesFixtures for Abilities {
     }
 
     fn caster(world: &mut World, action: ActionId, rank: u8) -> StableId {
-        Abilities::caster_of(world, "caster", action, rank)
+        Self::caster_of(world, "caster", action, rank)
     }
 
     fn caster_of(world: &mut World, name: &str, action: ActionId, rank: u8) -> StableId {
@@ -152,7 +152,7 @@ impl AbilitiesFixtures for Abilities {
     }
 
     fn walking_caster(world: &mut World, action: ActionId) -> StableId {
-        Abilities::caster_of(world, "walking caster", action, 1)
+        Self::caster_of(world, "walking caster", action, 1)
     }
 
     fn load(world: &mut World, name: &str, data: &ActionData, source: &str) -> ActionId {

@@ -113,32 +113,32 @@ impl ProgressionColumn {
         let Some(row) = view.row_index(id) else {
             return false;
         };
-        view.column(|column: &ProgressionColumn| column.find(row, track).is_some())
+        view.column(|column: &Self| column.find(row, track).is_some())
             .unwrap_or(false)
     }
 
     /// The experience of the unit in row `row` on `track`; an error for a track it does not
     /// have.
     pub(crate) fn xp(view: &View, row: usize, track: TrackId) -> Checked<Num> {
-        Ok(ProgressionColumn::held(view, row, track)?.xp)
+        Ok(Self::held(view, row, track)?.xp)
     }
 
     /// The level of the unit in row `row` on `track`, as `xp` refuses.
     pub(crate) fn level(view: &View, row: usize, track: TrackId) -> Checked<Level> {
-        Ok(ProgressionColumn::held(view, row, track)?.level)
+        Ok(Self::held(view, row, track)?.level)
     }
 
     /// The unspent points of the unit in row `row`; an error for a unit without the `level`
     /// track.
     pub(crate) fn points(view: &View, row: usize) -> Checked<Points> {
-        let points = view.column(|column: &ProgressionColumn| column.rows.now().rows[row].points);
+        let points = view.column(|column: &Self| column.rows.now().rows[row].points);
         Ok(points
             .flatten()
             .ok_or_else(|| ProgressionRefusal::NoTrack.fail())?)
     }
 
     fn held(view: &View, row: usize, track: TrackId) -> Checked<TrackXp> {
-        let held = view.column(|column: &ProgressionColumn| column.find(row, track));
+        let held = view.column(|column: &Self| column.find(row, track));
         Ok(held
             .flatten()
             .ok_or_else(|| ProgressionRefusal::NoTrack.fail())?)
@@ -153,7 +153,7 @@ impl ProgressionColumn {
     /// Fills a row of the script view with a unit's tracks, its progress on each, and its points.
     pub(super) fn fill_row(
         (experience, points): ROQueryItem<'_, '_, RowReads>,
-        fill: &mut RowFill<'_, ProgressionColumn>,
+        fill: &mut RowFill<'_, Self>,
     ) {
         fill.column.push(experience, points);
     }

@@ -1043,7 +1043,7 @@ impl Reaching {
     ];
 
     /// Loads Hop and Jab into `game`, a match of `CAPABILITIES`.
-    fn place(game: &mut Match) -> Reaching {
+    fn place(game: &mut Match) -> Self {
         let hop = ActionData {
             script: Some(PackagePath::parse("hop.rhai").unwrap()),
             range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
@@ -1067,7 +1067,7 @@ impl Reaching {
             r#"fn on_resolve(ctx, caster, target) { ctx.damage(target, 10, "true"); }"#;
         let hop = Abilities::load(game, "hop", &hop, hop_script);
         let jab = Abilities::load(game, "jab", &jab, jab_script);
-        Reaching { hop, jab }
+        Self { hop, jab }
     }
 }
 
@@ -3159,7 +3159,7 @@ impl Veil {
 
     /// Loads Veil's type, stats and modifiers into `game`, a match of `CAPABILITIES`, and spawns
     /// her.
-    fn place(game: &mut Match) -> Veil {
+    fn place(game: &mut Match) -> Self {
         let veil_type = Units::load_type(game, TypeScope::Mode, "game", &UnitTypeCore::default());
         Abilities::give_combatant(game, veil_type);
         let attack_damage = Stat::named("attack_damage").unwrap();
@@ -3206,7 +3206,7 @@ impl Veil {
         let veil = Mode::spawn(game, veil_type, Vec3::ZERO, Team::new(0), ());
         Abilities::give(game, veil, "dual_path");
         Abilities::give(game, veil, "fortify");
-        Veil {
+        Self {
             id: veil,
             unit_type: veil_type,
             places,

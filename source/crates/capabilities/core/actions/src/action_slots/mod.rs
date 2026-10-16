@@ -27,6 +27,7 @@ use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
 
 pub(crate) mod slot_times;
+pub(crate) mod timed_slots;
 
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank,
 /// whose times its `SlotTimes` holds; the action it was ordered or has under way, one at a time;
@@ -124,7 +125,7 @@ impl ActionSlots {
 
     /// Slots of `(action, kind, rank)`, in the order of their kinds, each at its rank, none before
     /// it is learned.
-    pub fn new(slots: impl IntoIterator<Item = (ActionId, SlotKind, Option<Rank>)>) -> ActionSlots {
+    pub fn new(slots: impl IntoIterator<Item = (ActionId, SlotKind, Option<Rank>)>) -> Self {
         let slots: Vec<ActionSlot> = slots
             .into_iter()
             .map(|(action, kind, rank)| ActionSlot {
@@ -137,7 +138,7 @@ impl ActionSlots {
             slots.is_sorted_by_key(|slot| slot.kind),
             "a unit's slots are kind after kind"
         );
-        ActionSlots {
+        Self {
             slots,
             underway: None,
             attack_target: None,
@@ -167,7 +168,7 @@ impl ActionSlots {
     /// The same slots with `count` empty slots of `kind`, an inventory's or a use slot's, of one
     /// rank, after the slots of that kind, as a new unit's are, before it has times.
     #[must_use]
-    pub fn with_empty(mut self, kind: SlotKind, count: u8) -> ActionSlots {
+    pub fn with_empty(mut self, kind: SlotKind, count: u8) -> Self {
         let rank = Some(Rank::FIRST);
         let added = (0..count).map(|_| ActionSlot {
             action: None,
@@ -548,7 +549,7 @@ impl ActionSlots {
 /// A snapshot is untrusted, so slots past the most a unit holds, or not kind after kind, which a
 /// grant's search for its kind's end relies on, fail to decode.
 impl<'de> Deserialize<'de> for ActionSlots {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ActionSlots, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             slots: Vec<ActionSlot>,
@@ -562,12 +563,12 @@ impl<'de> Deserialize<'de> for ActionSlots {
             attack_target,
             interrupted,
         } = Fields::deserialize(deserializer)?;
-        if slots.len() > ActionSlots::LIMIT || !slots.is_sorted_by_key(|slot| slot.kind) {
+        if slots.len() > Self::LIMIT || !slots.is_sorted_by_key(|slot| slot.kind) {
             return Err(D::Error::custom(
                 "a unit's slots are at most 256, kind after kind",
             ));
         }
-        Ok(ActionSlots {
+        Ok(Self {
             slots,
             underway,
             attack_target,

@@ -36,7 +36,7 @@ impl TestKey {
 
     /// The key the tests' servers sign with.
     pub fn server() -> Keypair {
-        TestKey::of(TestKey::SERVER)
+        Self::of(Self::SERVER)
     }
 
     /// A signer of `key` whose auxiliary randomness is 32 zero bytes, so each run signs alike.
@@ -47,21 +47,21 @@ impl TestKey {
     /// The keys of every player by slot, each main key sorting after every lower slot's, as a
     /// server orders the joins of one frame by main key. The main keys take the odd bytes below
     /// `2 × PLAYERS`, and each session key the byte after its main key's.
-    pub fn players() -> [PlayerKeys; TestKey::PLAYERS as usize] {
-        let mut players: [PlayerKeys; TestKey::PLAYERS as usize] =
-            array::from_fn(|slot| TestKey::pair(u8::try_from(2 * slot + 1).unwrap()));
+    pub fn players() -> [PlayerKeys; Self::PLAYERS as usize] {
+        let mut players: [PlayerKeys; Self::PLAYERS as usize] =
+            array::from_fn(|slot| Self::pair(u8::try_from(2 * slot + 1).unwrap()));
         players.sort_by_key(|keys| keys.main.x_only_public_key().0.serialize());
         players
     }
 
     /// The keys of the player of `slot`, as `players` gives them.
     pub fn player(slot: u32) -> PlayerKeys {
-        TestKey::players()[usize::try_from(slot).unwrap()]
+        Self::players()[usize::try_from(slot).unwrap()]
     }
 
     /// The keys of the `n`th spectator, past every player's, the server's among them.
     pub fn spectator(n: u32) -> PlayerKeys {
-        TestKey::pair(u8::try_from(100 + 2 * n).expect("a few spectators"))
+        Self::pair(u8::try_from(100 + 2 * n).expect("a few spectators"))
     }
 
     /// The seed chain the tests' servers commit to, of room for `room` segments.
@@ -71,8 +71,8 @@ impl TestKey {
 
     fn pair(main: u8) -> PlayerKeys {
         PlayerKeys {
-            main: TestKey::of(main),
-            session: TestKey::of(main + 1),
+            main: Self::of(main),
+            session: Self::of(main + 1),
         }
     }
 }

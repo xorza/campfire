@@ -32,23 +32,23 @@ impl Fault {
     /// keeps it in memory and the next replaces it.
     pub(crate) const fn policy(&self) -> FaultPolicy {
         match self {
-            Fault::Journal(_) | Fault::Snapshot(_) => FaultPolicy::EndServer,
-            Fault::Receipt(_) => FaultPolicy::Log,
+            Self::Journal(_) | Self::Snapshot(_) => FaultPolicy::EndServer,
+            Self::Receipt(_) => FaultPolicy::Log,
         }
     }
 
     /// Logs the fault's event.
     pub(crate) fn log(&self) {
         match self {
-            Fault::Journal(error) => JournalFailed {
+            Self::Journal(error) => JournalFailed {
                 error: ErrorReport::of(error).to_string(),
             }
             .log(),
-            Fault::Snapshot(error) => CheckpointFailed {
+            Self::Snapshot(error) => CheckpointFailed {
                 error: ErrorReport::of(error).to_string(),
             }
             .log(),
-            Fault::Receipt(error) => ReceiptUnsaved {
+            Self::Receipt(error) => ReceiptUnsaved {
                 error: ErrorReport::of(error).to_string(),
             }
             .log(),

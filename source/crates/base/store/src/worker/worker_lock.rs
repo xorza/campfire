@@ -11,8 +11,8 @@ pub(crate) struct WorkerLock<S>(Mutex<S>);
 const POISONED: &str = "no code panics holding a worker's state";
 
 impl<S> WorkerLock<S> {
-    pub(crate) const fn new(state: S) -> WorkerLock<S> {
-        WorkerLock(Mutex::new(state))
+    pub(crate) const fn new(state: S) -> Self {
+        Self(Mutex::new(state))
     }
 
     pub(crate) fn lock(&self) -> MutexGuard<'_, S> {

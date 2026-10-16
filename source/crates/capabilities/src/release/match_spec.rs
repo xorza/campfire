@@ -26,8 +26,8 @@ pub struct MatchSpec {
 impl MatchSpec {
     /// A match at `rate`, drawing from `seed`: a server's of no capability but the core, and
     /// running no scripts, until the spec says otherwise.
-    pub const fn new(seed: SegmentSeed, rate: TickRate) -> MatchSpec {
-        MatchSpec {
+    pub const fn new(seed: SegmentSeed, rate: TickRate) -> Self {
+        Self {
             seed,
             rate,
             set: CapabilitySet::CORE,
@@ -41,21 +41,21 @@ impl MatchSpec {
     }
 
     /// The match's capabilities.
-    pub fn capabilities(self, set: CapabilitySet) -> MatchSpec {
-        MatchSpec { set, ..self }
+    pub fn capabilities(self, set: CapabilitySet) -> Self {
+        Self { set, ..self }
     }
 
     /// The match's role. A client's predicts: each of its sim's queries skips the units the
     /// client holds as the server sent them, `Unpredicted`, unless it names them, as the marker's
     /// filter is in place before any system's query is made.
-    pub fn role(self, role: Role) -> MatchSpec {
-        MatchSpec { role, ..self }
+    pub fn role(self, role: Role) -> Self {
+        Self { role, ..self }
     }
 
     /// The match of a session whose players out of play see as `out` says, as its terms carry it;
     /// `OutView::Team` until the spec says otherwise.
-    pub fn out_view(self, out: OutView) -> MatchSpec {
-        MatchSpec { out, ..self }
+    pub fn out_view(self, out: OutView) -> Self {
+        Self { out, ..self }
     }
 }
 
@@ -66,8 +66,8 @@ pub(crate) mod internals {
     impl MatchSpec {
         /// The match with no automatic sync points in its tick's schedule, so its build panics
         /// on every pair of systems that only a sync point keeps in order.
-        pub fn without_sync_points(self) -> MatchSpec {
-            MatchSpec {
+        pub fn without_sync_points(self) -> Self {
+            Self {
                 without_sync_points: true,
                 ..self
             }
@@ -75,8 +75,8 @@ pub(crate) mod internals {
 
         /// The match with its tick's schedule left unbuilt in its world, each system in the
         /// schedule's graph, so a test reads what each accesses; it runs no tick.
-        pub fn unbuilt(self) -> MatchSpec {
-            MatchSpec {
+        pub fn unbuilt(self) -> Self {
+            Self {
                 unbuilt: true,
                 ..self
             }

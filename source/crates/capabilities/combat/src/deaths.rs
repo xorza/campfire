@@ -48,8 +48,8 @@ pub struct DeathView<'a> {
 
 impl Fallen {
     /// `id` as it dies: of `team`, and owned by `owner`, if it has them.
-    pub fn of(id: StableId, team: Option<&Team>, owner: Option<&Owner>) -> Fallen {
-        Fallen {
+    pub fn of(id: StableId, team: Option<&Team>, owner: Option<&Owner>) -> Self {
+        Self {
             id,
             team: team.copied(),
             owner: owner.map(|owner| owner.slot()),
@@ -124,8 +124,8 @@ impl Deaths {
 }
 
 impl Report for Deaths {
-    fn installed() -> Option<Deaths> {
-        Some(Deaths::default())
+    fn installed() -> Option<Self> {
+        Some(Self::default())
     }
 }
 

@@ -96,11 +96,11 @@ impl Regions {
     const CHUNK: usize = 64;
 
     /// The regions of the layer whose blocked cells `blocked` marks, one bit a cell, on `grid`.
-    pub(crate) fn new(grid: &Grid, blocked: &[u64]) -> Regions {
+    pub(crate) fn new(grid: &Grid, blocked: &[u64]) -> Self {
         let (columns, rows) = (grid.columns(), grid.rows());
-        let chunk_columns = columns.div_ceil(Regions::CHUNK);
-        let chunks = chunk_columns * rows.div_ceil(Regions::CHUNK);
-        let mut regions = Regions {
+        let chunk_columns = columns.div_ceil(Self::CHUNK);
+        let chunks = chunk_columns * rows.div_ceil(Self::CHUNK);
+        let mut regions = Self {
             columns,
             rows,
             chunk_columns,
@@ -134,9 +134,9 @@ impl Regions {
             return;
         }
         let row = cells.start / self.columns;
-        let mut chunk = cells.start % self.columns / Regions::CHUNK;
-        let last = (cells.end - 1) % self.columns / Regions::CHUNK;
-        let base = row / Regions::CHUNK * self.chunk_columns;
+        let mut chunk = cells.start % self.columns / Self::CHUNK;
+        let last = (cells.end - 1) % self.columns / Self::CHUNK;
+        let base = row / Self::CHUNK * self.chunk_columns;
         while chunk <= last {
             dirty[base + chunk] = true;
             chunk += 1;
@@ -239,16 +239,16 @@ impl Regions {
 
     const fn chunk_of(&self, cell: usize) -> usize {
         let (column, row) = (cell % self.columns, cell / self.columns);
-        row / Regions::CHUNK * self.chunk_columns + column / Regions::CHUNK
+        row / Self::CHUNK * self.chunk_columns + column / Self::CHUNK
     }
 
     /// The columns and rows of `chunk`, each from its first to past its last.
     fn bounds(&self, chunk: usize) -> [Range<usize>; 2] {
-        let column = chunk % self.chunk_columns * Regions::CHUNK;
-        let row = chunk / self.chunk_columns * Regions::CHUNK;
+        let column = chunk % self.chunk_columns * Self::CHUNK;
+        let row = chunk / self.chunk_columns * Self::CHUNK;
         [
-            column..(column + Regions::CHUNK).min(self.columns),
-            row..(row + Regions::CHUNK).min(self.rows),
+            column..(column + Self::CHUNK).min(self.columns),
+            row..(row + Self::CHUNK).min(self.rows),
         ]
     }
 
@@ -290,7 +290,7 @@ impl Regions {
         for row in rows {
             let first = row * self.columns + columns.start;
             self.local[first..first + width].fill(0);
-            let mut open = !Regions::bits(blocked, first) & full;
+            let mut open = !Self::bits(blocked, first) & full;
             let here = self.runs.len();
             let mut above = before.start;
             while open != 0 {
@@ -311,7 +311,7 @@ impl Regions {
                 let mut over = above;
                 while over < before.end && self.runs[over].start < end {
                     let earlier = u32::try_from(over).expect("a chunk's runs fit u32");
-                    Regions::unite(&mut self.run_parents, earlier, at);
+                    Self::unite(&mut self.run_parents, earlier, at);
                     over += 1;
                 }
             }
@@ -324,7 +324,7 @@ impl Regions {
         for at in 0..self.runs.len() {
             let run = self.runs[at];
             let number = u32::try_from(at).expect("a chunk's runs fit u32");
-            let root = Regions::root(&mut self.run_parents, number) as usize;
+            let root = Self::root(&mut self.run_parents, number) as usize;
             let (low, high) = (
                 [column + run.start, run.row],
                 [column + run.end - 1, run.row],
@@ -406,19 +406,19 @@ impl Regions {
                 };
                 let here = self.starts[chunk] + u32::from(pair.here) - 1;
                 let there = self.starts[beyond] + u32::from(pair.there) - 1;
-                Regions::unite(&mut self.parents, here, there);
+                Self::unite(&mut self.parents, here, there);
             }
         }
         for (chunk, held) in self.chunks.iter_mut().enumerate() {
             for (number, region) in (self.starts[chunk]..).zip(&mut held.regions) {
-                region.set = Regions::root(&mut self.parents, number);
+                region.set = Self::root(&mut self.parents, number);
             }
         }
     }
 
     /// Joins the regions, or runs, numbered `a` and `b` in `parents`, the lower number the root.
     fn unite(parents: &mut [u32], a: u32, b: u32) {
-        let (first, second) = (Regions::root(parents, a), Regions::root(parents, b));
+        let (first, second) = (Self::root(parents, a), Self::root(parents, b));
         let (low, high) = (first.min(second), first.max(second));
         parents[high as usize] = low;
     }
@@ -455,7 +455,7 @@ impl Reach {
 
     /// Whether the two share a reachable set: a walker can go from a cell of one to a cell of the
     /// other.
-    pub(crate) fn meets(self, other: Reach) -> bool {
+    pub(crate) fn meets(self, other: Self) -> bool {
         self.sets[..usize::from(self.count)]
             .iter()
             .any(|&set| other.contains(set))

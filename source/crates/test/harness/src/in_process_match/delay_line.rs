@@ -37,14 +37,9 @@ struct Held {
 impl DelayLine {
     /// A line of `model` in an app that runs `frames` frames a step of `step`; `stream` keeps
     /// the draws of two lines with the same model apart.
-    pub(crate) const fn new(
-        model: LinkModel,
-        frames: u32,
-        stream: u64,
-        step: Duration,
-    ) -> DelayLine {
+    pub(crate) const fn new(model: LinkModel, frames: u32, stream: u64, step: Duration) -> Self {
         let steps = 2 * (model.delay + model.jitter);
-        DelayLine {
+        Self {
             model,
             frames,
             round_trip: step
@@ -60,7 +55,7 @@ impl DelayLine {
 
     /// Takes the packets each link sent this frame into its line, and gives back to the link those
     /// due by now, in the order they are due, then in the order they were sent.
-    pub(crate) fn pass(mut links: Query<'_, '_, (&mut Link, &mut DelayLine)>) {
+    pub(crate) fn pass(mut links: Query<'_, '_, (&mut Link, &mut Self)>) {
         for (mut link, mut line) in &mut links {
             line.frame += 1;
             while let Some(payload) = link.send.pop() {
@@ -82,7 +77,7 @@ impl DelayLine {
     /// trip a lead must cover for no input to arrive late. The `=0.30.1` pin of Lightyear keeps the
     /// two fields this writes where they are.
     pub(crate) fn pin_round_trip(
-        mut links: Query<'_, '_, (&mut Link, Option<&mut PingManager>, &DelayLine)>,
+        mut links: Query<'_, '_, (&mut Link, Option<&mut PingManager>, &Self)>,
     ) {
         for (mut link, ping, line) in &mut links {
             link.stats.rtt = line.round_trip;

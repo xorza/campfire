@@ -60,8 +60,8 @@ const UNITS: &str = "client/units.toml";
 const MATERIALS: &str = "client/materials";
 
 impl ClientData {
-    pub(crate) fn read(packages: &ModePackages) -> ClientData {
-        let mut data = ClientData::default();
+    pub(crate) fn read(packages: &ModePackages) -> Self {
+        let mut data = Self::default();
         for view in packages.packages() {
             data.read_package(view.index, &view.package.files);
         }
@@ -75,13 +75,13 @@ impl ClientData {
     fn read_map(&mut self, mode: &PackageReader, map: &MapName) {
         let heights = format!("map/{map}/heights.bin");
         let heights = PackagePath::parse(&heights).expect("a map's name is a package path's");
-        let grid = ClientData::read_file(mode, &heights)
-            .and_then(|bytes| ClientData::logged(&heights, Binary::decode::<HeightGrid>(&bytes)));
+        let grid = Self::read_file(mode, &heights)
+            .and_then(|bytes| Self::logged(&heights, Binary::decode::<HeightGrid>(&bytes)));
         let terrain = PackagePath::parse(&TerrainFile::path(map.as_str()))
             .expect("a map's name is a package path's");
         self.terrain = grid.as_ref().and_then(|grid| {
-            let bytes = ClientData::read_file(mode, &terrain)?;
-            let file = ClientData::logged(&terrain, Binary::decode::<TerrainFile>(&bytes))?;
+            let bytes = Self::read_file(mode, &terrain)?;
+            let file = Self::logged(&terrain, Binary::decode::<TerrainFile>(&bytes))?;
             let fits = file.quads().fits(grid);
             if !fits {
                 error!(path = %terrain, "a map's terrain is not the shape of its heights");
@@ -90,13 +90,13 @@ impl ClientData {
         });
         let quads = self.terrain.as_ref().map(TerrainFile::quads);
         self.heights = grid.map(|grid| GroundHeights::of(grid, quads));
-        self.camera = ClientData::toml(mode, CameraFile::PATH, Toml::parse);
-        self.lights = ClientData::toml(mode, &MapLights::path(map.as_str()), Toml::parse);
+        self.camera = Self::toml(mode, CameraFile::PATH, Toml::parse);
+        self.lights = Self::toml(mode, &MapLights::path(map.as_str()), Toml::parse);
         let objects = ClientObjects::path(map.as_str());
-        self.objects = ClientData::toml(mode, &objects, Toml::parse).unwrap_or_default();
+        self.objects = Self::toml(mode, &objects, Toml::parse).unwrap_or_default();
         // The map's conditions are fixed for the match, so each look takes its variant once.
         let conditions = MapConditions::path(map.as_str());
-        let conditions = ClientData::toml::<MapConditions>(mode, &conditions, Toml::parse)
+        let conditions = Self::toml::<MapConditions>(mode, &conditions, Toml::parse)
             .unwrap_or_default()
             .conditions;
         for units in &mut self.units {
@@ -112,7 +112,7 @@ impl ClientData {
             self.units.len(),
             "packages read in their places' order"
         );
-        let units = ClientData::toml::<ClientUnits>(files, UNITS, Toml::parse);
+        let units = Self::toml::<ClientUnits>(files, UNITS, Toml::parse);
         self.units.push(units.unwrap_or_default());
         let mut materials = BTreeMap::new();
         for path in files.files_under(MATERIALS) {
@@ -124,7 +124,7 @@ impl ClientData {
             else {
                 continue;
             };
-            let file = ClientData::toml::<MaterialFile>(files, path.as_str(), Toml::parse);
+            let file = Self::toml::<MaterialFile>(files, path.as_str(), Toml::parse);
             if let Some(file) = file {
                 materials.insert(name.to_owned(), file);
             }
@@ -148,7 +148,7 @@ impl ClientData {
         match files.read_file(path) {
             Ok(bytes) => Some(bytes),
             Err(ContentError::Missing { .. }) => None,
-            Err(problem) => ClientData::logged(path, Err::<Vec<u8>, _>(problem)),
+            Err(problem) => Self::logged(path, Err::<Vec<u8>, _>(problem)),
         }
     }
 
@@ -160,12 +160,12 @@ impl ClientData {
         parse: fn(&str) -> Result<T, TomlError>,
     ) -> Option<T> {
         let path = PackagePath::parse(path).expect("a client data file's path is a package path");
-        let text = ClientData::text(&path, ClientData::read_file(files, &path)?)?;
-        ClientData::logged(&path, parse(&text))
+        let text = Self::text(&path, Self::read_file(files, &path)?)?;
+        Self::logged(&path, parse(&text))
     }
 
     fn text(path: &PackagePath, bytes: Vec<u8>) -> Option<String> {
-        ClientData::logged(path, String::from_utf8(bytes))
+        Self::logged(path, String::from_utf8(bytes))
     }
 
     /// `result`'s value; none, logged with `path`, for its error.

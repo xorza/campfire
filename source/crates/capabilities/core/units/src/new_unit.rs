@@ -16,13 +16,13 @@ pub struct NewUnit {
 impl NewUnit {
     /// The `NewUnit` handle's fields.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.ty::<NewUnit>("NewUnit").bind(
+        api.ty::<Self>("NewUnit").bind(
             MemberSpec::field(
                 ApiOwner::NewUnit,
                 "state",
                 "its script state, by name, at its type's defaults but what the call wrote, which applies as it spawns",
             ),
-            |unit: &mut NewUnit| UnitStateAccess::of_new(unit.id, unit.unit_type),
+            |unit: &mut Self| UnitStateAccess::of_new(unit.id, unit.unit_type),
         );
     }
 }

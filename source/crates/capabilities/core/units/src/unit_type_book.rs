@@ -46,16 +46,16 @@ pub struct UnitTypeBook {
 /// No tag and no type, as a match's declaration puts the book in before the release gives it
 /// the engine's tags.
 impl Default for UnitTypeBook {
-    fn default() -> UnitTypeBook {
-        UnitTypeBook::new(Vec::new())
+    fn default() -> Self {
+        Self::new(Vec::new())
     }
 }
 
 impl UnitTypeBook {
     /// The engine's tags `engine` at their places, as the release lists them, and no type.
-    pub fn new(engine: impl IntoIterator<Item = EngineTag>) -> UnitTypeBook {
+    pub fn new(engine: impl IntoIterator<Item = EngineTag>) -> Self {
         let engine: Vec<EngineTag> = engine.into_iter().collect();
-        UnitTypeBook {
+        Self {
             tags: TagNames::new(&engine),
             engine,
             staged_tags: Some(Vec::new()),

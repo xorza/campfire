@@ -25,7 +25,7 @@ impl CombatApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         DamageHandle::register(api);
         HealHandle::register(api);
-        CombatApi::register_unit(api);
+        Self::register_unit(api);
         let call = |name, signature, description| MemberSpec::call(name, signature, description);
         let damage = call(
             "damage",
@@ -58,11 +58,11 @@ impl CombatApi {
         api.call(
             damage,
             |ctx: &mut Ctx, target: Unit, amount: Num, kind: DamageKind| {
-                CombatApi::damage(ctx, &target, amount, kind)
+                Self::damage(ctx, &target, amount, kind)
             },
         )
         .call(heal, |ctx: &mut Ctx, unit: Unit, amount: Num| {
-            CombatApi::mend(ctx, amount, |amount| CombatEffect::Heal {
+            Self::mend(ctx, amount, |amount| CombatEffect::Heal {
                 unit: unit.id,
                 amount,
             })
@@ -70,7 +70,7 @@ impl CombatApi {
         .call(
             restore,
             |ctx: &mut Ctx, unit: Unit, pool: PoolId, amount: Num| {
-                CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
+                Self::mend(ctx, amount, |amount| CombatEffect::Restore {
                     unit: unit.id,
                     pool,
                     amount,
@@ -78,7 +78,7 @@ impl CombatApi {
             },
         )
         .call(attack_hit, |ctx: &mut Ctx, target: Unit| {
-            CombatApi::attack_hit(ctx, &target)
+            Self::attack_hit(ctx, &target)
         })
         .call(kill, |ctx: &mut Ctx, unit: Unit| {
             ctx.queue(CombatEffect::Kill { unit: unit.id })

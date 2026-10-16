@@ -25,7 +25,7 @@ struct Weighted {
 impl MipChain {
     /// The chain of `base`, `width` by `height` texels of red, green, blue and alpha, rows from
     /// the top.
-    pub(crate) fn of(width: u32, height: u32, base: Vec<u8>) -> MipChain {
+    pub(crate) fn of(width: u32, height: u32, base: Vec<u8>) -> Self {
         let (mut width, mut height) = (
             usize::try_from(width).expect("a u32 fits usize"),
             usize::try_from(height).expect("a u32 fits usize"),
@@ -33,19 +33,19 @@ impl MipChain {
         debug_assert_eq!(base.len(), width * height * 4);
         let mut levels = vec![base];
         while width > 1 || height > 1 {
-            let next = MipChain::down(width, height, levels.last().expect("a base"));
+            let next = Self::down(width, height, levels.last().expect("a base"));
             levels.push(next);
             (width, height) = ((width / 2).max(1), (height / 2).max(1));
         }
-        MipChain { levels }
+        Self { levels }
     }
 
     /// The level below one of `width` by `height`: each texel the weighted mean of the texels it
     /// covers, its color in linear light encoded back to the nearest code, its alpha rounded half
     /// up.
     fn down(width: usize, height: usize, above: &[u8]) -> Vec<u8> {
-        let columns = MipChain::shares(width);
-        let rows = MipChain::shares(height);
+        let columns = Self::shares(width);
+        let rows = Self::shares(height);
         // Each side's weights sum to its count of texels above.
         let total = u64::try_from(width * height).expect("a usize fits u64");
         let mut below = Vec::with_capacity(columns.len() * rows.len() * 4);

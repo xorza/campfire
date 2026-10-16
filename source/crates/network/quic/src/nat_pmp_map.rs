@@ -74,23 +74,23 @@ impl NatPmpMap {
 
     /// A gateway's reply to a mapping request, from a datagram of untrusted bytes.
     pub(crate) fn decode(bytes: &[u8]) -> Result<NatPmpReply<NatPmpMapping>, ReplyError> {
-        if let Some(refusal) = NatPmpMap::refusal(bytes, MAP_UDP)? {
+        if let Some(refusal) = Self::refusal(bytes, MAP_UDP)? {
             return Ok(NatPmpReply::Refused(refusal));
         }
-        NatPmpMap::require(bytes, MAP_REPLY_LEN)?;
+        Self::require(bytes, MAP_REPLY_LEN)?;
         Ok(NatPmpReply::Granted(NatPmpMapping {
             internal_port: u16::from_be_bytes([bytes[8], bytes[9]]),
             external_port: u16::from_be_bytes([bytes[10], bytes[11]]),
-            lifetime: Duration::from_secs(u64::from(NatPmpMap::u32_at(bytes, 12))),
+            lifetime: Duration::from_secs(u64::from(Self::u32_at(bytes, 12))),
         }))
     }
 
     /// A gateway's reply to the request for its external address.
     pub(crate) fn decode_address(bytes: &[u8]) -> Result<NatPmpReply<NatPmpAddress>, ReplyError> {
-        if let Some(refusal) = NatPmpMap::refusal(bytes, ADDRESS)? {
+        if let Some(refusal) = Self::refusal(bytes, ADDRESS)? {
             return Ok(NatPmpReply::Refused(refusal));
         }
-        NatPmpMap::require(bytes, ADDRESS_REPLY_LEN)?;
+        Self::require(bytes, ADDRESS_REPLY_LEN)?;
         Ok(NatPmpReply::Granted(NatPmpAddress {
             address: Ipv4Addr::new(bytes[8], bytes[9], bytes[10], bytes[11]),
         }))
@@ -98,7 +98,7 @@ impl NatPmpMap {
 
     /// A reply header's refusal, none for success, once its version and opcode answer `opcode`.
     fn refusal(bytes: &[u8], opcode: u8) -> Result<Option<NatPmpRefusal>, ReplyError> {
-        NatPmpMap::require(bytes, HEADER_LEN)?;
+        Self::require(bytes, HEADER_LEN)?;
         if bytes[0] != VERSION {
             return Err(ReplyError::Version(bytes[0]));
         }

@@ -12,16 +12,16 @@ impl ControlSchema {
     /// The schema `body` holds: the actions of its first `actionList`, each with a name and an
     /// `argumentList`, as `igd-next` reads them; none for a document that does not read or holds
     /// no list.
-    pub(crate) fn parse(body: &[u8]) -> Option<ControlSchema> {
+    pub(crate) fn parse(body: &[u8]) -> Option<Self> {
         let root = router_xml::parse(body)?;
         let list = router_xml::children(&root, "actionList").next()?;
         let actions = router_xml::children(list, "action").filter_map(|action| {
             let name = action.get_child("name")?.get_text()?.into_owned();
             let arguments = action.get_child("argumentList")?;
-            let ins = router_xml::children(arguments, "argument").filter_map(ControlSchema::input);
+            let ins = router_xml::children(arguments, "argument").filter_map(Self::input);
             Some((name, ins.collect()))
         });
-        Some(ControlSchema(actions.collect()))
+        Some(Self(actions.collect()))
     }
 
     /// The name of `argument` when it goes in.

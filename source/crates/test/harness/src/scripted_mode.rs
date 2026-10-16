@@ -13,8 +13,8 @@ pub struct ScriptedMode<P> {
 }
 
 impl<P: Plan> ScriptedMode<P> {
-    pub(crate) const fn new(session: FixedSession, script: Vec<Scripted<P>>) -> ScriptedMode<P> {
-        ScriptedMode { session, script }
+    pub(crate) const fn new(session: FixedSession, script: Vec<Scripted<P>>) -> Self {
+        Self { session, script }
     }
 
     pub const fn packages(&self) -> &ModePackages {

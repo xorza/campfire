@@ -16,20 +16,20 @@ pub struct Filter {
 
 impl Filter {
     /// The filter `text` names, with its tags among the match's.
-    pub fn parse(text: &str, tags: &TagNames) -> Result<Filter, ApiError> {
+    pub fn parse(text: &str, tags: &TagNames) -> Result<Self, ApiError> {
         let syntax = FilterSyntax::parse(text).ok_or(ApiError::Unknown(NameKind::Filter))?;
         let terms = syntax.tags().map(|term| (term.name, term.negated));
-        Filter::of(syntax.relations, terms, tags).ok_or(ApiError::Unknown(NameKind::Tag))
+        Self::of(syntax.relations, terms, tags).ok_or(ApiError::Unknown(NameKind::Tag))
     }
 
     /// The run-time form of `filter`, data's, with its tags among the match's; an error that
     /// names the filter for a tag the match does not have.
-    pub fn resolve(filter: &FilterData, tags: &TagNames) -> Result<Filter, UnknownName> {
+    pub fn resolve(filter: &FilterData, tags: &TagNames) -> Result<Self, UnknownName> {
         let terms = filter
             .tags
             .iter()
             .map(|tag| (tag.name.as_str(), tag.negated));
-        Filter::of(filter.relations, terms, tags)
+        Self::of(filter.relations, terms, tags)
             .ok_or_else(|| UnknownName::new(NameKind::Filter, filter))
     }
 
@@ -38,17 +38,17 @@ impl Filter {
     pub fn resolve_or_enemies(
         data: Option<&FilterData>,
         tags: &TagNames,
-    ) -> Result<Filter, UnknownName> {
+    ) -> Result<Self, UnknownName> {
         data.map_or_else(
-            || Ok(Filter::of_relations(RelationSet::Enemies, tags)),
-            |data| Filter::resolve(data, tags),
+            || Ok(Self::of_relations(RelationSet::Enemies, tags)),
+            |data| Self::resolve(data, tags),
         )
     }
 
     /// The filter of `relations` alone: every unit it selects, but those of a tag of `tags` that
     /// a filter selects only when it names it, as deliveries.
-    pub const fn of_relations(relations: RelationSet, tags: &TagNames) -> Filter {
-        Filter {
+    pub const fn of_relations(relations: RelationSet, tags: &TagNames) -> Self {
+        Self {
             relations,
             all: TagSet::NONE,
             none: tags.named_only(),
@@ -61,8 +61,8 @@ impl Filter {
         relations: RelationSet,
         terms: impl Iterator<Item = (&'a str, bool)>,
         tags: &TagNames,
-    ) -> Option<Filter> {
-        let mut filter = Filter {
+    ) -> Option<Self> {
+        let mut filter = Self {
             relations,
             all: TagSet::NONE,
             none: TagSet::NONE,
@@ -100,16 +100,16 @@ pub(crate) mod internals {
 
     impl Filter {
         /// The filter of `relations` alone, of the tags of the match `world` holds.
-        pub fn of_match_relations(world: &World, relations: RelationSet) -> Filter {
+        pub fn of_match_relations(world: &World, relations: RelationSet) -> Self {
             let view = world.non_send::<View>();
             let names = view.names();
-            Filter::of_relations(relations, names.tags())
+            Self::of_relations(relations, names.tags())
         }
 
         /// The filter `text` names, of the tags of the match `world` holds.
-        pub fn of_match(world: &World, text: &str) -> Filter {
+        pub fn of_match(world: &World, text: &str) -> Self {
             let view = world.non_send::<View>();
-            Filter::parse(text, view.names().tags()).expect("a filter of the match's tags")
+            Self::parse(text, view.names().tags()).expect("a filter of the match's tags")
         }
     }
 }

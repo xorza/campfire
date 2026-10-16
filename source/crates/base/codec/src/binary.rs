@@ -34,7 +34,7 @@ impl Binary {
 
     /// Writes the bytes of `value` into `sink`, in batches.
     pub fn encode_to<T: Serialize + ?Sized>(value: &T, sink: &mut dyn Sink) {
-        Binary::encode_each_to([value], sink);
+        Self::encode_each_to([value], sink);
     }
 
     /// Writes the bytes of each of `values` into `sink`, one after another, in batches.
@@ -55,7 +55,7 @@ impl Binary {
 
     /// The value `bytes` hold, all of them.
     pub fn decode<'a, T: Deserialize<'a> + Serialize>(bytes: &'a [u8]) -> Result<T, BinaryError> {
-        let taken = Binary::take(bytes)?;
+        let taken = Self::take(bytes)?;
         if !taken.rest.is_empty() {
             return Err(BinaryError::NotCanonical);
         }
@@ -67,7 +67,7 @@ impl Binary {
     pub fn encode_tagged<T: Serialize + ?Sized>(tag: &[u8], value: &T, out: &mut Vec<u8>) {
         out.clear();
         out.extend_from_slice(tag);
-        Binary::encode_into(value, out);
+        Self::encode_into(value, out);
     }
 
     /// The value of a file's `bytes` that `encode_tagged` wrote with `tag`: an error for bytes of
@@ -77,7 +77,7 @@ impl Binary {
         bytes: &'a [u8],
     ) -> Result<T, TaggedError> {
         let value = bytes.strip_prefix(tag).ok_or(TaggedError::OtherTag)?;
-        Ok(Binary::decode(value)?)
+        Ok(Self::decode(value)?)
     }
 
     /// The value at the front of `bytes`, and the bytes after it.
@@ -111,7 +111,7 @@ pub(crate) mod internals {
     impl Binary {
         /// How many `Some`s `value` holds, each nested one that its outer one holds among them.
         pub fn options<T: Serialize + ?Sized>(value: &T) -> usize {
-            Binary::without_option(value, usize::MAX).seen
+            Self::without_option(value, usize::MAX).seen
         }
 
         /// The bytes of `value` with its `Some` at `at`, in the order it encodes them, written as
@@ -120,7 +120,7 @@ pub(crate) mod internals {
             value: &T,
             at: usize,
         ) -> Option<Vec<u8>> {
-            let dropped = Binary::without_option(value, at);
+            let dropped = Self::without_option(value, at);
             (dropped.seen > at).then_some(dropped.bytes)
         }
 

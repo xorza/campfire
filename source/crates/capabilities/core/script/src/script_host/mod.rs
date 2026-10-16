@@ -47,9 +47,9 @@ impl ScriptId {
         clippy::cast_possible_truncation,
         reason = "the index is checked to fit u32 just before"
     )]
-    pub const fn nth(index: usize) -> ScriptId {
+    pub const fn nth(index: usize) -> Self {
         assert!(index <= u32::MAX as usize, "scripts fit u32");
-        ScriptId(index as u32)
+        Self(index as u32)
     }
 
     /// Its place among the host's scripts, in the order it compiled them.
@@ -82,7 +82,7 @@ pub struct ScriptHost {
 
 impl ScriptHost {
     /// A host whose calls each run at most `per_call` operations.
-    pub fn new(per_call: NonZeroU64) -> ScriptHost {
+    pub fn new(per_call: NonZeroU64) -> Self {
         // The seed is set once in a process: the set of each host after the first fails, keeps
         // the seed there, and gives back the one passed, so only the read after tells which
         // seed holds.
@@ -129,7 +129,7 @@ impl ScriptHost {
             call_counted.set(count);
             (count > call_allowed.get()).then_some(Dynamic::UNIT)
         });
-        let mut host = ScriptHost {
+        let mut host = Self {
             engine,
             scripts: Vec::new(),
             allowed,

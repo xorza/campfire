@@ -95,13 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 0. Workspace configuration
-
-`source/Cargo.toml`, and the code each new lint flags. First, so that each later batch builds under the full lint list.
-
-- [ ] source/Cargo.toml `[workspace.lints.clippy]` — lacks `lossy_float_literal`, `mem_forget`, `rc_buffer` and `use_self` from the user's list. → Add them, and fix or `expect` (with a reason) each case they flag.
-- [ ] source/Cargo.toml profiles — differ from the user's block: release `debug = false`, `split-debuginfo = "packed"`, `strip = "debuginfo"`; release-dev `lto = false`, `split-debuginfo = "unpacked"`; bench adds `inherits = "release"` (Cargo's default) and `split-debuginfo = "off"`; dev `split-debuginfo = "unpacked"`. → Each profile is the user's block exactly, plus `overflow-checks = true` in dev and release, which stays with a comment: an overflow in the sim crashes on every machine, never wraps silently (commit `3059c7db`). No packaging step exists yet, so a release binary keeps its full debug info until one moves it out (`objcopy` on Linux, `strip -S` of a `.dSYM` build on macOS); an issue-log item under Ready (**Driver**) records that.
-
 ### 1. Protocol: the verifier holds design 05
 
 `protocol`: `session_log`, `delegation`, `checkpoint`; `runner`: `session_world`, `replay`; `net`: `sim_server/session_dir`. Format: the joined chain's root. First, as these holes let a signed log verify when it should not.

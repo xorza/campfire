@@ -54,14 +54,14 @@ impl NavigationEffect {
         id: StableId,
         to: DashTo,
         speed: Num,
-    ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, id)?;
+    ) -> Result<Self, ApiError> {
+        Self::walker(view, id)?;
         let hz = NonZeroI64::from(view.rate().hz()).get();
         let step = speed
             .checked_div_int(hz)
             .filter(|&step| step > Num::ZERO)
             .ok_or_else(|| NavigationRefusal::NotASpeed.refused())?;
-        Ok(NavigationEffect::Dash {
+        Ok(Self::Dash {
             id,
             to,
             step,
@@ -77,13 +77,13 @@ impl NavigationEffect {
         from: Vec3,
         distance: Num,
         ms: i64,
-    ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, id)?;
+    ) -> Result<Self, ApiError> {
+        Self::walker(view, id)?;
         if distance <= Num::ZERO || distance > Position::BOUND {
             return Err(NavigationRefusal::NotADistance.refused());
         }
         let ticks = view.lasting(ms)?;
-        Ok(NavigationEffect::KnockBack {
+        Ok(Self::KnockBack {
             id,
             from,
             distance,
@@ -92,13 +92,9 @@ impl NavigationEffect {
     }
 
     /// A teleport of `id`, which walks, to `to`.
-    pub(crate) fn teleport(
-        view: &View,
-        id: StableId,
-        to: Vec3,
-    ) -> Result<NavigationEffect, ApiError> {
-        NavigationEffect::walker(view, id)?;
-        Ok(NavigationEffect::Teleport { id, to })
+    pub(crate) fn teleport(view: &View, id: StableId, to: Vec3) -> Result<Self, ApiError> {
+        Self::walker(view, id)?;
+        Ok(Self::Teleport { id, to })
     }
 
     /// Queues a listed forced move of `id`, whose other unit is the acting unit or `reached`,
@@ -118,14 +114,13 @@ impl NavigationEffect {
             EffectTo::Source => acting.ok_or(ApiError::NoActingUnit),
         };
         let effect = match does {
-            CapabilityDoesSpec::Dash { to, speed } => other(to).and_then(|to| {
-                NavigationEffect::dash(view, frame, id, DashTo::Unit(to), speed.number(frame))
-            }),
+            CapabilityDoesSpec::Dash { to, speed } => other(to)
+                .and_then(|to| Self::dash(view, frame, id, DashTo::Unit(to), speed.number(frame))),
             CapabilityDoesSpec::KnockBack { from, distance, ms } => other(from).and_then(|from| {
                 let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
                 // Whole, as the load checked, so the floor is exact.
                 let ms = ms.number(frame).floor();
-                NavigationEffect::knock_back(view, id, from, distance.number(frame), ms)
+                Self::knock_back(view, id, from, distance.number(frame), ms)
             }),
             _ => unreachable!("navigation queues only its own listed effects"),
         };
@@ -160,9 +155,7 @@ impl Effect for NavigationEffect {
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
         let id = match self {
-            NavigationEffect::Dash { id, .. }
-            | NavigationEffect::KnockBack { id, .. }
-            | NavigationEffect::Teleport { id, .. } => id,
+            Self::Dash { id, .. } | Self::KnockBack { id, .. } | Self::Teleport { id, .. } => id,
         };
         let Some(entity) = world.entity_of(id) else {
             return;
@@ -171,10 +164,10 @@ impl Effect for NavigationEffect {
             return;
         }
         let forced = match self {
-            NavigationEffect::Dash {
+            Self::Dash {
                 to, step, delivers, ..
             } => ForcedMove::Dash { to, step, delivers },
-            NavigationEffect::KnockBack {
+            Self::KnockBack {
                 from,
                 distance,
                 ticks,
@@ -186,7 +179,7 @@ impl Effect for NavigationEffect {
                     left: ticks.get(),
                 }
             }
-            NavigationEffect::Teleport { to, .. } => {
+            Self::Teleport { to, .. } => {
                 teleport(world, entity, id, to, now);
                 return;
             }

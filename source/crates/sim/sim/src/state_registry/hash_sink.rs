@@ -10,7 +10,7 @@ use crate::state_registry::PartHash;
 #[derive(Debug)]
 pub(crate) struct HashSink {
     hasher: Hasher,
-    buffer: ArrayVec<u8, { HashSink::FLUSH }>,
+    buffer: ArrayVec<u8, { Self::FLUSH }>,
 }
 
 impl HashSink {
@@ -18,8 +18,8 @@ impl HashSink {
     /// SIMD BLAKE3 hashes at once.
     const FLUSH: usize = 16 * 1024;
 
-    pub(crate) fn new() -> HashSink {
-        HashSink {
+    pub(crate) fn new() -> Self {
+        Self {
             hasher: Hasher::new(),
             buffer: ArrayVec::new_const(),
         }

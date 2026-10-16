@@ -19,8 +19,8 @@ pub struct MarkerInfo {
 }
 
 impl Marker {
-    pub fn new(info: MarkerInfo) -> Marker {
-        Marker(Rc::new(info))
+    pub fn new(info: MarkerInfo) -> Self {
+        Self(Rc::new(info))
     }
 
     pub(crate) fn info(&self) -> &MarkerInfo {

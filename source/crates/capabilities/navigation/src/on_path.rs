@@ -17,8 +17,8 @@ use crate::navigation_book::NavigationBook;
 pub struct OnPath(PathId);
 
 impl OnPath {
-    pub const fn new(path: PathId) -> OnPath {
-        OnPath(path)
+    pub const fn new(path: PathId) -> Self {
+        Self(path)
     }
 
     pub const fn get(self) -> PathId {

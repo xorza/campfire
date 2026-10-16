@@ -11,7 +11,7 @@ pub struct LinkModel {
 
 impl LinkModel {
     /// Every packet arrives in the step it was sent.
-    pub const PERFECT: LinkModel = LinkModel {
+    pub const PERFECT: Self = Self {
         delay: 0,
         jitter: 0,
         loss_per_mille: 0,
@@ -19,7 +19,7 @@ impl LinkModel {
     };
 
     /// Every packet waits 3 to 5 steps, and none is lost.
-    pub const DELAYED: LinkModel = LinkModel {
+    pub const DELAYED: Self = Self {
         delay: 3,
         jitter: 2,
         loss_per_mille: 0,

@@ -108,26 +108,20 @@ pub(crate) enum NavigationSet {
 
 impl NavigationSet {
     /// The steps in the stages and after Collide.
-    const STEPS: [NavigationSet; 4] = [
-        NavigationSet::TrackStatics,
-        NavigationSet::Move,
-        NavigationSet::Collide,
-        NavigationSet::Bounds,
-    ];
+    const STEPS: [Self; 4] = [Self::TrackStatics, Self::Move, Self::Collide, Self::Bounds];
 
     /// The steps, then a report in each gap, `SimEdge::Start` first.
-    const ALL: [NavigationSet; NavigationSet::STEPS.len() + 1 + SimSet::ALL.len()] = {
-        let steps = NavigationSet::STEPS.len();
-        let mut all = [NavigationSet::Report(SimEdge::Start);
-            NavigationSet::STEPS.len() + 1 + SimSet::ALL.len()];
+    const ALL: [Self; Self::STEPS.len() + 1 + SimSet::ALL.len()] = {
+        let steps = Self::STEPS.len();
+        let mut all = [Self::Report(SimEdge::Start); Self::STEPS.len() + 1 + SimSet::ALL.len()];
         let mut at = 0;
         while at < steps {
-            all[at] = NavigationSet::STEPS[at];
+            all[at] = Self::STEPS[at];
             at += 1;
         }
         let mut stage = 0;
         while stage < SimSet::ALL.len() {
-            all[steps + 1 + stage] = NavigationSet::Report(SimEdge::After(SimSet::ALL[stage]));
+            all[steps + 1 + stage] = Self::Report(SimEdge::After(SimSet::ALL[stage]));
             stage += 1;
         }
         all
@@ -136,15 +130,15 @@ impl NavigationSet {
 
 impl ModuleSet for NavigationSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
-    const ALL: &'static [NavigationSet] = &NavigationSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            NavigationSet::TrackStatics => SetPlace::Phase(Phase::Begin),
-            NavigationSet::Move => SetPlace::Phase(Phase::Move),
-            NavigationSet::Collide => SetPlace::Phase(Phase::Collide),
-            NavigationSet::Bounds => SetPlace::Gap(SimEdge::After(SimSet::Collide)),
-            NavigationSet::Report(edge) => SetPlace::Gap(edge),
+            Self::TrackStatics => SetPlace::Phase(Phase::Begin),
+            Self::Move => SetPlace::Phase(Phase::Move),
+            Self::Collide => SetPlace::Phase(Phase::Collide),
+            Self::Bounds => SetPlace::Gap(SimEdge::After(SimSet::Collide)),
+            Self::Report(edge) => SetPlace::Gap(edge),
         }
     }
 }
@@ -161,7 +155,7 @@ impl Module for Navigation {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<NavigationSet>();
-        d.callback::<SpawnHooks>(Capability::Navigation, Navigation::make_room);
+        d.callback::<SpawnHooks>(Capability::Navigation, Self::make_room);
         d.component::<PathWalker>();
         d.component::<OnPath>();
         d.component::<Route>();
@@ -322,7 +316,7 @@ pub mod internals {
             walkers: impl IntoIterator<Item = Walker>,
         ) {
             let cell = cell.into();
-            Navigation::load_walled(world, cell, min, max, walkers, &[]);
+            Self::load_walled(world, cell, min, max, walkers, &[]);
         }
 
         /// Loads a pathing grid as `load_pathing` does, with `walls`.
@@ -337,8 +331,8 @@ pub mod internals {
             let cell = cell.into();
             let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
             let grid = Grid::new(cell, bounds).unwrap();
-            Navigation::load_walls(world, walls);
-            Navigation::load_pathing(world, grid, walkers);
+            Self::load_walls(world, walls);
+            Self::load_pathing(world, grid, walkers);
         }
 
         /// Gives the match the walls `walls`, which a pathing grid loaded after blocks.

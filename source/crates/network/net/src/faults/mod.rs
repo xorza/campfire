@@ -24,7 +24,7 @@ impl Faults {
 
     /// A client's system: applies the faults of the frame, and exits as they say.
     pub(crate) fn watch(world: &mut World) {
-        if let Some(exit) = Faults::apply(world) {
+        if let Some(exit) = Self::apply(world) {
             world.write_message(exit);
         }
     }
@@ -32,7 +32,7 @@ impl Faults {
     /// Applies the policy of each fault reported: logs each, and gives the exit of a server one
     /// of them ends.
     pub(crate) fn apply(world: &mut World) -> Option<AppExit> {
-        let mut faults = world.resource_mut::<Faults>();
+        let mut faults = world.resource_mut::<Self>();
         let mut exit = None;
         for fault in faults.pending.drain(..) {
             fault.log();

@@ -23,7 +23,7 @@ impl OrdersApi {
                 &[&["unit", "target"]],
                 "`unit` attacks `target`, a living enemy that one of its weapons selects",
             ),
-            |ctx: &mut Ctx, unit: Unit, target: Unit| OrdersApi::attack(ctx, &unit, &target),
+            |ctx: &mut Ctx, unit: Unit, target: Unit| Self::attack(ctx, &unit, &target),
         )
         .call(
             order(
@@ -31,7 +31,7 @@ impl OrdersApi {
                 &[&["unit"]],
                 "`unit` drops its target and walks its path again",
             ),
-            |ctx: &mut Ctx, unit: Unit| OrdersApi::order(ctx, &unit, UnitOrder::FollowPath),
+            |ctx: &mut Ctx, unit: Unit| Self::order(ctx, &unit, UnitOrder::FollowPath),
         )
         .call(
             order(
@@ -41,7 +41,7 @@ impl OrdersApi {
             ),
             |ctx: &mut Ctx, unit: Unit, to: ScriptPosition| {
                 let to = to.get();
-                OrdersApi::order(ctx, &unit, UnitOrder::Move {
+                Self::order(ctx, &unit, UnitOrder::Move {
                         x: to.x,
                         z: to.z,
                         party: None,
@@ -55,7 +55,7 @@ impl OrdersApi {
                 "`unit` drops its target and walks home, taking no order until there, where its pools fill",
             ),
             |ctx: &mut Ctx, unit: Unit| {
-                let reset = OrdersApi::order(ctx, &unit, UnitOrder::Reset);
+                let reset = Self::order(ctx, &unit, UnitOrder::Reset);
                 // The acting unit, which only a unit the mode spawned is, holds its spawn place
                 // as a part the modules declare.
                 debug_assert!(
@@ -86,7 +86,7 @@ impl OrdersApi {
                 Ok(())
             })
         })?;
-        OrdersApi::order(ctx, unit, UnitOrder::Attack { target: target.id })
+        Self::order(ctx, unit, UnitOrder::Attack { target: target.id })
     }
 
     /// Queues `order` for `unit`, which must be the unit that thinks.

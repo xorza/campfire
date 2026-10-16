@@ -13,8 +13,8 @@ pub(crate) struct ChainHistory {
 
 impl ChainHistory {
     /// The history of `chain` from where it stands.
-    pub(crate) const fn of(chain: &InputChain) -> ChainHistory {
-        ChainHistory {
+    pub(crate) const fn of(chain: &InputChain) -> Self {
+        Self {
             first_seq: chain.next_seq(),
             base: chain.head(),
             heads: Vec::new(),

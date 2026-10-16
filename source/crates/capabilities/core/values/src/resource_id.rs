@@ -19,8 +19,8 @@ impl NameId for ResourceId {
     /// The most player resources a mode declares: every index a `u8` holds.
     const LIMIT: usize = 1 << u8::BITS;
 
-    fn at(index: usize) -> ResourceId {
-        ResourceId(u8::try_from(index).expect("resources fit u8"))
+    fn at(index: usize) -> Self {
+        Self(u8::try_from(index).expect("resources fit u8"))
     }
 
     fn index(self) -> usize {
@@ -34,8 +34,8 @@ pub(crate) mod internals {
 
     impl ResourceId {
         /// The resource at `index` of the mode's.
-        pub const fn new(index: u8) -> ResourceId {
-            ResourceId(index)
+        pub const fn new(index: u8) -> Self {
+            Self(index)
         }
     }
 }

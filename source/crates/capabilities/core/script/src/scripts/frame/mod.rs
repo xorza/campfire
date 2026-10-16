@@ -196,10 +196,10 @@ pub(crate) mod internals {
     impl Frame {
         /// A frame whose mode call runs in tick `now`, as a test applies an effect in: it reads
         /// no world.
-        pub fn in_tick(now: Tick) -> Frame {
-            Frame {
+        pub fn in_tick(now: Tick) -> Self {
+            Self {
                 call: Some(CallStart::mode(ScriptRole::Mode, now)),
-                ..Frame::default()
+                ..Self::default()
             }
         }
     }

@@ -49,9 +49,9 @@ pub struct ScriptApi {
 impl ScriptApi {
     /// The script API of the release, which `bind` binds into `host` as a match's engine binds
     /// it, recorded with the names the engine has before.
-    pub fn release(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> ScriptApi {
-        let builtins = ScriptApi::functions(host.engine_mut());
-        let mut api = ScriptApi::bind(host, bind);
+    pub fn release(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> Self {
+        let builtins = Self::functions(host.engine_mut());
+        let mut api = Self::bind(host, bind);
         api.builtins = builtins;
         api
     }
@@ -64,8 +64,8 @@ impl ScriptApi {
     }
 
     /// Binds into `host` the script API that `bind` binds, and records it.
-    pub fn bind(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> ScriptApi {
-        let mut api = ScriptApi {
+    pub fn bind(host: &mut ScriptHost, bind: impl FnOnce(&mut ApiBuilder<'_>)) -> Self {
+        let mut api = Self {
             members: Vec::new(),
             hooks: Vec::new(),
             tag_properties: Vec::new(),

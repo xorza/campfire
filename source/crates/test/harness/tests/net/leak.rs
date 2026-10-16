@@ -70,12 +70,12 @@ impl Role {
         };
         let any = seen.iter().next().is_some();
         match self {
-            Role::Player { team, out, .. } => {
+            Self::Player { team, out, .. } => {
                 seen.contains(team)
                     || (out && (visibility.spectators() == SpectatorFog::All || any))
             }
-            Role::Spectator { teams: None } => true,
-            Role::Spectator { teams: Some(teams) } => seen.iter().any(|team| teams.contains(team)),
+            Self::Spectator { teams: None } => true,
+            Self::Spectator { teams: Some(teams) } => seen.iter().any(|team| teams.contains(team)),
         }
     }
 
@@ -94,16 +94,16 @@ impl Role {
             return false;
         }
         let recipient = match self {
-            Role::Player { slot, .. } if Some(slot) == owner => return true,
-            Role::Player { team: own, out, .. } if team.is_some_and(|team| team != own) => {
+            Self::Player { slot, .. } if Some(slot) == owner => return true,
+            Self::Player { team: own, out, .. } if team.is_some_and(|team| team != own) => {
                 if out {
                     Recipients::SPECTATORS
                 } else {
                     Recipients::ENEMIES
                 }
             }
-            Role::Player { .. } => Recipients::ALLIES,
-            Role::Spectator { .. } => Recipients::SPECTATORS,
+            Self::Player { .. } => Recipients::ALLIES,
+            Self::Spectator { .. } => Recipients::SPECTATORS,
         };
         visibility.audience(kind).contains(recipient)
     }
@@ -228,7 +228,7 @@ impl LeakCheck {
         packages: ModePackages,
         host: &'static [&'static str],
         spectators: &[Option<TeamSet>],
-    ) -> LeakCheck {
+    ) -> Self {
         let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
         setup.players = PLAYERS;
         setup.visibility = host;
@@ -299,7 +299,7 @@ impl LeakCheck {
                     .collect()
             })
             .collect();
-        LeakCheck {
+        Self {
             local,
             roles,
             visibility,

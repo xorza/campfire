@@ -30,7 +30,7 @@ pub(crate) struct LocaleManifest {
 
 /// The flat table of a locale package's manifest, its header's fields beside its dependencies.
 impl<'de> Deserialize<'de> for LocaleManifest {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<LocaleManifest, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -41,7 +41,7 @@ impl<'de> Deserialize<'de> for LocaleManifest {
             dependencies: BTreeMap<PackageName, Dependency>,
         }
         let fields = Fields::deserialize(deserializer)?;
-        Ok(LocaleManifest {
+        Ok(Self {
             header: PackageHeader {
                 name: fields.name,
                 version: fields.version,

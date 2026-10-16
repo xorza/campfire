@@ -50,31 +50,23 @@ impl MemberSpec {
     pub(crate) const ARGS: usize = 4;
 
     /// A value of `ctx`, for every role and of the core until said otherwise.
-    pub const fn value(name: &'static str, description: &'static str) -> MemberSpec {
-        MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Value, &[], description)
+    pub const fn value(name: &'static str, description: &'static str) -> Self {
+        Self::new(ApiOwner::Ctx, name, MemberKind::Value, &[], description)
     }
 
     /// A call of `ctx`, in the forms `forms`.
-    pub const fn call(name: &'static str, forms: Forms, description: &'static str) -> MemberSpec {
-        MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Call, forms, description)
+    pub const fn call(name: &'static str, forms: Forms, description: &'static str) -> Self {
+        Self::new(ApiOwner::Ctx, name, MemberKind::Call, forms, description)
     }
 
     /// A call of `ctx` for the mode's script only, in the forms `forms`.
-    pub const fn mode_call(
-        name: &'static str,
-        forms: Forms,
-        description: &'static str,
-    ) -> MemberSpec {
-        MemberSpec::call(name, forms, description).roles(RoleSet::MODE)
+    pub const fn mode_call(name: &'static str, forms: Forms, description: &'static str) -> Self {
+        Self::call(name, forms, description).roles(RoleSet::MODE)
     }
 
     /// A field of `owner`'s handle.
-    pub const fn field(
-        owner: ApiOwner,
-        name: &'static str,
-        description: &'static str,
-    ) -> MemberSpec {
-        MemberSpec::new(owner, name, MemberKind::Field, &[], description)
+    pub const fn field(owner: ApiOwner, name: &'static str, description: &'static str) -> Self {
+        Self::new(owner, name, MemberKind::Field, &[], description)
     }
 
     /// A method of `owner`'s handle, in the forms `forms`.
@@ -83,17 +75,13 @@ impl MemberSpec {
         name: &'static str,
         forms: Forms,
         description: &'static str,
-    ) -> MemberSpec {
-        MemberSpec::new(owner, name, MemberKind::Method, forms, description)
+    ) -> Self {
+        Self::new(owner, name, MemberKind::Method, forms, description)
     }
 
     /// The operator `name` on `owner`'s handles.
-    pub const fn operator(
-        owner: ApiOwner,
-        name: &'static str,
-        description: &'static str,
-    ) -> MemberSpec {
-        MemberSpec::new(owner, name, MemberKind::Operator, &[], description)
+    pub const fn operator(owner: ApiOwner, name: &'static str, description: &'static str) -> Self {
+        Self::new(owner, name, MemberKind::Operator, &[], description)
     }
 
     const fn new(
@@ -102,8 +90,8 @@ impl MemberSpec {
         kind: MemberKind,
         forms: Forms,
         description: &'static str,
-    ) -> MemberSpec {
-        MemberSpec {
+    ) -> Self {
+        Self {
             owner,
             name,
             kind,
@@ -111,33 +99,33 @@ impl MemberSpec {
             capability: None,
             forms,
             description,
-            names: [None; MemberSpec::ARGS],
-            enums: [None; MemberSpec::ARGS],
+            names: [None; Self::ARGS],
+            enums: [None; Self::ARGS],
             applies: None,
         }
     }
 
     /// The same, for `roles` only.
-    pub const fn roles(mut self, roles: RoleSet) -> MemberSpec {
+    pub const fn roles(mut self, roles: RoleSet) -> Self {
         self.roles = roles;
         self
     }
 
     /// The same, of `capability`.
-    pub const fn capability(mut self, capability: Capability) -> MemberSpec {
+    pub const fn capability(mut self, capability: Capability) -> Self {
         self.capability = Some(capability);
         self
     }
 
     /// The same, its argument that names a modifier applying it as `applies` says.
-    pub const fn applies(mut self, applies: Applies) -> MemberSpec {
+    pub const fn applies(mut self, applies: Applies) -> Self {
         self.applies = Some(applies);
         self
     }
 
     /// The same, its arguments naming and taking what `args` says, the receiver aside, as the
     /// types of a form's arguments say.
-    pub const fn with_args(mut self, args: ArgKinds) -> MemberSpec {
+    pub const fn with_args(mut self, args: ArgKinds) -> Self {
         self.names = args.names;
         self.enums = args.enums;
         self

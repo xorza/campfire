@@ -70,7 +70,7 @@ impl SinCos {
     /// The sine and the cosine of `angle` degrees: exact at each multiple of 90°, and else those
     /// `Num::sin_cos` gives of its radians, the angle taken modulo 360° first, so a turn by any
     /// whole number of turns more turns alike.
-    pub fn of_degrees(angle: Num) -> SinCos {
+    pub fn of_degrees(angle: Num) -> Self {
         const FULL: i64 = 360 << Num::FRAC_BITS;
         const QUARTER: i64 = 90 << Num::FRAC_BITS;
         let degrees = angle.to_bits().rem_euclid(FULL);
@@ -81,7 +81,7 @@ impl SinCos {
                 2 => [Num::ZERO, -Num::ONE],
                 _ => [-Num::ONE, Num::ZERO],
             };
-            return SinCos { sin, cos };
+            return Self { sin, cos };
         }
         let radians = Num::from_bits(degrees)
             .checked_mul_div_int(Num::PI, 180)

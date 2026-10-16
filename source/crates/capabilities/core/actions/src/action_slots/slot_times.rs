@@ -1,6 +1,5 @@
 use std::iter;
 
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -65,13 +64,6 @@ pub struct ActionCheck<'b, 'a, R, L> {
     pub living: L,
 }
 
-/// A unit's slots with their times, each ready at once, as a unit gains slots.
-#[derive(Bundle, Debug)]
-pub struct TimedSlots {
-    times: SlotTimes,
-    slots: ActionSlots,
-}
-
 impl SlotCharges {
     /// One charge more, up to `max`: a slot that holds its most, even 255, holds it still, and
     /// one that holds more, as a rank's rule may give fewer, holds the most.
@@ -82,7 +74,7 @@ impl SlotCharges {
 
 impl SlotTime {
     /// Ready at once, with no charges and no toggle on.
-    const READY: SlotTime = SlotTime {
+    const READY: Self = Self {
         ready_at: Tick::ZERO,
         charges: None,
         toggle: None,
@@ -108,15 +100,6 @@ impl SlotTime {
             charges.next = charges.next.after(rule.recharge);
         }
         Some(charges)
-    }
-}
-
-impl TimedSlots {
-    pub fn new(slots: ActionSlots) -> TimedSlots {
-        TimedSlots {
-            times: SlotTimes::ready(&slots),
-            slots,
-        }
     }
 }
 
@@ -177,8 +160,8 @@ impl SlotTimes {
     }
 
     /// The times of `slots`, each ready at once, with no charges and no toggle on.
-    pub fn ready(slots: &ActionSlots) -> SlotTimes {
-        SlotTimes(vec![SlotTime::READY; slots.len()])
+    pub fn ready(slots: &ActionSlots) -> Self {
+        Self(vec![SlotTime::READY; slots.len()])
     }
 
     pub fn slot(&self, slot: u8) -> Option<SlotTime> {
@@ -380,12 +363,12 @@ impl SlotTimes {
 
 /// A snapshot is untrusted, so times past the most slots a unit holds fail to decode.
 impl<'de> Deserialize<'de> for SlotTimes {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<SlotTimes, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let times = Vec::<SlotTime>::deserialize(deserializer)?;
         if times.len() > ActionSlots::LIMIT {
             return Err(D::Error::custom("a unit's slots are at most 256"));
         }
-        Ok(SlotTimes(times))
+        Ok(Self(times))
     }
 }
 

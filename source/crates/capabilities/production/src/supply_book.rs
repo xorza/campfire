@@ -12,7 +12,7 @@ pub struct SupplyBook(pub Option<ModeSupplyData>);
 
 impl SupplyBook {
     /// The run condition of what counts supply: whether the mode counts it.
-    pub(crate) fn counts(book: Res<'_, SupplyBook>) -> bool {
+    pub(crate) fn counts(book: Res<'_, Self>) -> bool {
         book.0.is_some()
     }
 }

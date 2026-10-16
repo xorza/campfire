@@ -19,8 +19,8 @@ impl Dismissed {
     /// The code the link closes with.
     pub(crate) const fn code(self) -> CloseCode {
         match self {
-            Dismissed::Superseded => CloseCode::Superseded,
-            Dismissed::JoinRefused => CloseCode::JoinRefused,
+            Self::Superseded => CloseCode::Superseded,
+            Self::JoinRefused => CloseCode::JoinRefused,
         }
     }
 }

@@ -12,8 +12,8 @@ pub struct ClientLayout {
 }
 
 impl ClientLayout {
-    pub const fn at(root: PathBuf) -> ClientLayout {
-        ClientLayout { root }
+    pub const fn at(root: PathBuf) -> Self {
+        Self { root }
     }
 
     pub(crate) fn receipts_dir(&self) -> PathBuf {

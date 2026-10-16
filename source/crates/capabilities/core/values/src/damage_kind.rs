@@ -14,8 +14,8 @@ impl NameId for DamageKind {
     /// The most damage kinds a mode declares: as many as a byte tells apart.
     const LIMIT: usize = 1 << u8::BITS;
 
-    fn at(index: usize) -> DamageKind {
-        DamageKind(u8::try_from(index).expect("damage kinds fit u8"))
+    fn at(index: usize) -> Self {
+        Self(u8::try_from(index).expect("damage kinds fit u8"))
     }
 
     fn index(self) -> usize {
@@ -29,8 +29,8 @@ pub(crate) mod internals {
 
     impl DamageKind {
         /// The damage kind at `index` of the mode's.
-        pub const fn new(index: u8) -> DamageKind {
-            DamageKind(index)
+        pub const fn new(index: u8) -> Self {
+            Self(index)
         }
     }
 }

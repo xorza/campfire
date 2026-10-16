@@ -64,12 +64,12 @@ struct Shown(Option<StableId>);
 impl Plugin for ShopPanel {
     fn build(&self, app: &mut App) {
         app.init_resource::<Shown>();
-        app.add_systems(Startup, ShopPanel::spawn);
+        app.add_systems(Startup, Self::spawn);
         app.add_systems(
             Update,
             (
-                ShopPanel::toggle.run_if(input_just_pressed(KeyCode::KeyP)),
-                ShopPanel::show,
+                Self::toggle.run_if(input_just_pressed(KeyCode::KeyP)),
+                Self::show,
             )
                 .chain()
                 .after(ViewSystems),
@@ -144,7 +144,7 @@ impl ShopPanel {
             commands.entity(*rows).despawn_related::<Children>();
             let sold = shop.and_then(|shop| shopping.shop(shop));
             for &item in sold.map_or(&[][..], |sold| sold.items()) {
-                ShopPanel::spawn_row(&mut commands, *rows, item, names.of(item));
+                Self::spawn_row(&mut commands, *rows, item, names.of(item));
             }
             return;
         }
@@ -214,7 +214,7 @@ impl ShopPanel {
         commands
             .entity(row)
             .insert(ShopRow { item, name, price })
-            .observe(ShopPanel::buy);
+            .observe(Self::buy);
     }
 
     /// A left click on a row buys its item at the shop the panel shows.

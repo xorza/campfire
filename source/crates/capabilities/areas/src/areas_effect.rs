@@ -53,7 +53,7 @@ impl AreasEffect {
             start: frame.start(),
             launch: Some(launch),
         };
-        frame.queue(AreasEffect {
+        frame.queue(Self {
             id: None,
             by,
             unit_type: area,

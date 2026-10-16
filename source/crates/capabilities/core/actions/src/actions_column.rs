@@ -161,7 +161,7 @@ impl ActionsColumn {
 
     /// Whether action `id` has charges.
     pub fn has_charges(view: &View, id: ActionId) -> bool {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             let action = column.book.get(id).expect("an action of the match");
             action.ranks.iter().any(|values| values.charges.is_some())
         })
@@ -169,25 +169,25 @@ impl ActionsColumn {
 
     /// Whether the unit in row `row` holds action `id` in a slot.
     pub fn holds(view: &View, row: usize, id: ActionId) -> bool {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column.run(row).iter().any(|slot| slot.action == Some(id))
         })
     }
 
     /// How many ranks an action in `kind` has.
     pub fn kind_ranks(view: &View, kind: SlotKind) -> u8 {
-        ActionsColumn::read(view, |column| column.kinds.ranks(kind))
+        Self::read(view, |column| column.kinds.ranks(kind))
     }
 
     /// The rank an action in `kind` has as it is granted: the first for a kind with no `ranks`,
     /// none for one whose ranks are learned.
     pub fn first_rank(view: &View, kind: SlotKind) -> Option<Rank> {
-        ActionsColumn::read(view, |column| column.kinds.first_rank(kind))
+        Self::read(view, |column| column.kinds.first_rank(kind))
     }
 
     /// The range of action `id` at `rank`, one of its ranks.
     pub fn range(view: &View, id: ActionId, rank: Rank) -> ActionRange {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column
                 .book
                 .get(id)
@@ -198,29 +198,29 @@ impl ActionsColumn {
     }
 
     /// What `read` gives of the column, which every match's pipeline adds.
-    fn read<R>(view: &View, read: impl FnOnce(&ActionsColumn) -> R) -> R {
+    fn read<R>(view: &View, read: impl FnOnce(&Self) -> R) -> R {
         view.column(read)
             .expect("the action pipeline adds its column to every match's view")
     }
 
     /// The unit the attacks of the unit in row `row` aim at.
     pub fn target(view: &View, row: usize) -> Option<StableId> {
-        ActionsColumn::read(view, |column| column.rows.now().rows[row].target)
+        Self::read(view, |column| column.rows.now().rows[row].target)
     }
 
     /// The range of the first weapon of the unit in row `row`, in meters; none with no weapon.
     pub fn attack_range(view: &View, row: usize) -> Option<Num> {
-        ActionsColumn::read(view, |column| column.rows.now().rows[row].attack_range)
+        Self::read(view, |column| column.rows.now().rows[row].attack_range)
     }
 
     /// How many ability slots the unit in row `row` has.
     pub fn slot_count(view: &View, row: usize) -> usize {
-        ActionsColumn::read(view, |column| column.rows.now().rows[row].slots.len())
+        Self::read(view, |column| column.rows.now().rows[row].slots.len())
     }
 
     /// Ability slot `slot` of the unit in row `row`, when it has one.
     pub fn slot(view: &View, row: usize, slot: u8) -> Option<SlotRow> {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column.run(row).get(usize::from(slot)).copied()
         })
     }
@@ -229,7 +229,7 @@ impl ActionsColumn {
     pub fn armed_against(view: &View, row: usize, unit: &UnitRow, target: &UnitRow) -> bool {
         let relation = view.relation(unit.team, target.team);
         let target = Some((relation, target.tags.tags));
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column
                 .run(row)
                 .iter()
@@ -239,7 +239,7 @@ impl ActionsColumn {
 
     /// How action `id` delivers, if other than at once.
     pub fn delivers(view: &View, id: ActionId) -> Option<Delivery> {
-        ActionsColumn::read(view, |column| {
+        Self::read(view, |column| {
             column
                 .book
                 .get(id)
@@ -254,7 +254,7 @@ impl ActionsColumn {
     }
 
     /// Adds a unit's actions to the actions' column of the script view.
-    pub fn fill_row(slots: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, ActionsColumn>) {
+    pub fn fill_row(slots: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
         fill.column.push(slots);
     }
 }

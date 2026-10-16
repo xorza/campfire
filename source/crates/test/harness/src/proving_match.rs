@@ -108,7 +108,7 @@ impl ProvingMatch {
     pub const JOIN: u64 = 1;
     pub const LEAVE: u64 = 400;
 
-    pub fn load() -> ScriptedMode<ProvingMatch> {
+    pub fn load() -> ScriptedMode<Self> {
         let packages = TestMode::Proving.packages();
         let plan = [SlotPlan::Player, SlotPlan::Open];
         let session = FixedSession::planned(packages, TICK_HZ, InputRules::ROOMY, plan);
@@ -122,40 +122,40 @@ impl Plan for ProvingMatch {
     fn order(self, units: MatchUnits<'_>, slot: u32) -> Order {
         let hero = units.hero(slot);
         let (unit, action) = match self {
-            ProvingMatch::Move { x, z } => (
+            Self::Move { x, z } => (
                 hero,
                 OrdersAction::Move {
                     x: Num::int(x),
                     z: Num::int(z),
                 },
             ),
-            ProvingMatch::AttackBoulder => (
+            Self::AttackBoulder => (
                 hero,
                 OrdersAction::Attack {
                     target: boulder(units),
                 },
             ),
-            ProvingMatch::AttackHero { slot } => (
+            Self::AttackHero { slot } => (
                 hero,
                 OrdersAction::Attack {
                     target: units.hero(slot),
                 },
             ),
-            ProvingMatch::Train { barracks: at } => (
+            Self::Train { barracks: at } => (
                 barracks(units, slot)[at],
                 OrdersAction::Slot {
                     slot: 0,
                     target: ActionTarget::None,
                 },
             ),
-            ProvingMatch::Ward { barracks: at, x, z } => (
+            Self::Ward { barracks: at, x, z } => (
                 barracks(units, slot)[at],
                 OrdersAction::Slot {
                     slot: 1,
                     target: ActionTarget::Point(Vec3::from((Num::int(x), 0, Num::int(z)))),
                 },
             ),
-            ProvingMatch::Cast { slot, at } => (
+            Self::Cast { slot, at } => (
                 hero,
                 OrdersAction::Slot {
                     slot,

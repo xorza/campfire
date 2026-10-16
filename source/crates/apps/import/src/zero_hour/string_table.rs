@@ -23,7 +23,7 @@ impl StringTable {
     /// `LBL `, its count of strings, its name; each string the tag `STR ` or `STRW`, its length
     /// in UTF-16 units and those units each inverted bit by bit, and for `STRW` a speech file's
     /// name. A label read again keeps its first text, as the game's search finds the first.
-    pub(crate) fn read(bytes: &[u8]) -> Result<StringTable, CsfError> {
+    pub(crate) fn read(bytes: &[u8]) -> Result<Self, CsfError> {
         let mut at = ByteCursor::new(bytes);
         if at.take(4)? != CSF {
             return Err(CsfError::NotCsf);
@@ -33,14 +33,14 @@ impl StringTable {
             .map(|field| field.map_err(CsfError::from));
         let skip = usize::try_from(skip?).map_err(|_| CsfError::NotCsf)?;
         at.take(skip)?;
-        let mut table = StringTable::default();
+        let mut table = Self::default();
         let mut index = 0;
         while !at.is_empty() {
             if at.take(4)? != LABEL {
                 return Err(CsfError::NotLabel { index });
             }
             let strings = at.i32()?;
-            let name = StringTable::bytes(&mut at)?;
+            let name = Self::bytes(&mut at)?;
             let label: String = name.iter().map(|&byte| char::from(byte)).collect();
             let mut first = None;
             for _ in 0..strings {
@@ -53,12 +53,12 @@ impl StringTable {
                     .map(|_| at.u16().map(|unit| !unit))
                     .collect::<Result<_, _>>()?;
                 if tag == STRING_WITH_WAVE {
-                    StringTable::bytes(&mut at)?;
+                    Self::bytes(&mut at)?;
                 }
                 if first.is_none() {
                     let text =
                         String::from_utf16(&units).map_err(|_| CsfError::NotText { index })?;
-                    first = Some(StringTable::stripped(&text));
+                    first = Some(Self::stripped(&text));
                 }
             }
             table

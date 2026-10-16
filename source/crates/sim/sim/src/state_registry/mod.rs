@@ -176,8 +176,8 @@ impl StateRegistry {
 
     /// A registry with the sim's own state: the entity list, the id allocator, the tick and
     /// positions.
-    pub fn new() -> StateRegistry {
-        let mut registry = StateRegistry {
+    pub fn new() -> Self {
+        let mut registry = Self {
             entries: Vec::new(),
             foreign: Vec::new(),
         };
@@ -314,7 +314,7 @@ impl StateRegistry {
     pub fn snapshot(&self, world: &World, out: &mut Vec<u8>) -> StateHash {
         out.clear();
         out.extend_from_slice(SNAPSHOT_TAG);
-        out.extend_from_slice(&StateRegistry::DATA_VERSION.to_le_bytes());
+        out.extend_from_slice(&Self::DATA_VERSION.to_le_bytes());
         let mut total = DomainHasher::new(HASH_DOMAIN);
         for entry in &self.entries {
             out.extend_from_slice(&name_len(entry.name).to_le_bytes());
@@ -351,10 +351,10 @@ impl StateRegistry {
             .split_first_chunk::<VERSION_BYTES>()
             .ok_or(SnapshotError::Truncated)?;
         let version = u32::from_le_bytes(*version);
-        if version != StateRegistry::DATA_VERSION {
+        if version != Self::DATA_VERSION {
             return Err(SnapshotError::OtherVersion {
                 found: version,
-                read: StateRegistry::DATA_VERSION,
+                read: Self::DATA_VERSION,
             });
         }
         let mut bodies = Vec::with_capacity(self.entries.len());
@@ -553,8 +553,8 @@ impl StateRegistry {
 }
 
 impl Default for StateRegistry {
-    fn default() -> StateRegistry {
-        StateRegistry::new()
+    fn default() -> Self {
+        Self::new()
     }
 }
 

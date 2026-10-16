@@ -97,11 +97,11 @@ struct Learning {
 }
 
 impl Learning {
-    fn of(world: &World, hero: StableId) -> Learning {
+    fn of(world: &World, hero: StableId) -> Self {
         let entity = world.entity_of(hero).unwrap();
         let unit = world.entity(entity);
         let slots = unit.get::<ActionSlots>().unwrap();
-        Learning {
+        Self {
             ranks: [0, 1, 2, 3].map(|slot| Rank::count(slots.slot(slot).unwrap().rank)),
             points: unit.get::<Points>().unwrap().get(),
             dead: unit.contains::<Dead>(),

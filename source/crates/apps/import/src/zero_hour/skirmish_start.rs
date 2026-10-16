@@ -31,7 +31,7 @@ impl SkirmishStart {
         ini: &ObjectIni,
         locomotors: &LocomotorIni,
         names: &mut ImportNames,
-    ) -> Result<SkirmishStart, ZeroHourError> {
+    ) -> Result<Self, ZeroHourError> {
         let no_start = || ZeroHourError::NoStart(FACTION.to_owned());
         let template = templates.get(FACTION).ok_or_else(no_start)?;
         let building = template.building.as_deref().ok_or_else(no_start)?;
@@ -43,13 +43,13 @@ impl SkirmishStart {
             names
                 .unit_type(object, locomotors)
                 .map(|named| named.name)
-                .map_err(|error| SkirmishStart::type_error(object, error))
+                .map_err(|error| Self::type_error(object, error))
         };
         let building = object(building)?;
         let half = building.geometry().bounding_sphere() / 2.0;
-        let offset = Num::try_from(half)
-            .map_err(|_| SkirmishStart::type_error(building, TypeError::Number))?;
-        Ok(SkirmishStart {
+        let offset =
+            Num::try_from(half).map_err(|_| Self::type_error(building, TypeError::Number))?;
+        Ok(Self {
             building: unit_type(building)?,
             units: template
                 .units()

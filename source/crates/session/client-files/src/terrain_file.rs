@@ -97,7 +97,7 @@ impl TerrainFile {
         quads: TerrainQuads,
         texture: TerrainTexture,
         surface: TerrainSurface,
-    ) -> Result<TerrainFile, TerrainFileError> {
+    ) -> Result<Self, TerrainFileError> {
         let cells = quads.columns.checked_sub(1).filter(|&cells| cells > 0);
         let Some(cells) = cells.map(|cells| cells as usize) else {
             return Err(TerrainFileError::Shape);
@@ -125,7 +125,7 @@ impl TerrainFile {
         if !factors.iter().all(|factor| (0.0..=1.0).contains(factor)) {
             return Err(TerrainFileError::Surface);
         }
-        Ok(TerrainFile {
+        Ok(Self {
             quads,
             texture,
             surface,
@@ -205,7 +205,7 @@ impl TerrainTexture {
 
 /// A package's file is untrusted, so a terrain `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for TerrainFile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TerrainFile, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             quads: TerrainQuads,
@@ -217,7 +217,7 @@ impl<'de> Deserialize<'de> for TerrainFile {
             texture,
             surface,
         } = Fields::deserialize(deserializer)?;
-        TerrainFile::new(quads, texture, surface).map_err(D::Error::custom)
+        Self::new(quads, texture, surface).map_err(D::Error::custom)
     }
 }
 

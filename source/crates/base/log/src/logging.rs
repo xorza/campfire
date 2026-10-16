@@ -117,13 +117,13 @@ impl Logging {
 impl ChosenFilter {
     /// The filter `value`, a variable's, gives: `default` when the variable is not set, or when
     /// it holds no filter, with why.
-    fn of(value: Result<String, env::VarError>, default: &str) -> ChosenFilter {
+    fn of(value: Result<String, env::VarError>, default: &str) -> Self {
         let refused = match value {
             Err(env::VarError::NotPresent) => None,
             Err(error) => Some(FilterRefused::NotUnicode(error)),
             Ok(text) => match EnvFilter::try_new(&text) {
                 Ok(filter) => {
-                    return ChosenFilter {
+                    return Self {
                         filter,
                         refused: None,
                     };
@@ -131,7 +131,7 @@ impl ChosenFilter {
                 Err(error) => Some(FilterRefused::NotFilter(error)),
             },
         };
-        ChosenFilter {
+        Self {
             filter: EnvFilter::new(default),
             refused,
         }

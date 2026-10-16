@@ -64,10 +64,10 @@ pub(crate) mod internals {
     impl LogCheck {
         /// The thread's check: the one its fixtures share, or a new one, which becomes the
         /// thread's subscriber.
-        pub fn start() -> LogCheck {
+        pub fn start() -> Self {
             SHARED.with(|shared| {
                 let held = shared.borrow().upgrade();
-                LogCheck(held.unwrap_or_else(|| {
+                Self(held.unwrap_or_else(|| {
                     let kept = Rc::new(Kept::install());
                     *shared.borrow_mut() = Rc::downgrade(&kept);
                     kept
@@ -97,14 +97,14 @@ pub(crate) mod internals {
     impl Kept {
         /// Makes the thread's subscriber one that keeps its events at Warn and Error, with no
         /// time, so a failure names the same lines in every run.
-        fn install() -> Kept {
+        fn install() -> Self {
             let lines = Arc::new(Mutex::new(Vec::new()));
             let writer = {
                 let lines = Arc::clone(&lines);
                 move || Captured(Arc::clone(&lines))
             };
             let layer = json(writer).without_time().with_filter(LevelFilter::WARN);
-            Kept {
+            Self {
                 lines,
                 _subscriber: tracing_subscriber::registry().with(layer).set_default(),
             }

@@ -367,9 +367,9 @@ impl ObjectKinds {
     /// does not read changes nothing.
     fn set_by(&mut self, at: &IniLine<'_>) -> Result<(), IniError> {
         match at.flags()? {
-            FlagList::Clear => *self = ObjectKinds::default(),
+            FlagList::Clear => *self = Self::default(),
             FlagList::Only(names) => {
-                *self = ObjectKinds::default();
+                *self = Self::default();
                 for name in names {
                     self.set(name, true);
                 }
@@ -400,7 +400,7 @@ impl ObjectKinds {
 
 impl Geometry {
     /// A thing's geometry until its fields say otherwise: a sphere of radius 1, not small.
-    const DEFAULT: Geometry = Geometry {
+    const DEFAULT: Self = Self {
         shape: GeometryShape::Sphere,
         major: 1.0,
         minor: 1.0,
@@ -459,8 +459,8 @@ impl Geometry {
 
 impl DrawModule {
     /// A module of `kind`, of no state yet.
-    fn new(kind: DrawKind) -> DrawModule {
-        DrawModule {
+    fn new(kind: DrawKind) -> Self {
+        Self {
             kind,
             model: None,
             look: StateLook::default(),
@@ -522,7 +522,7 @@ impl DrawModule {
 impl ConditionSet {
     /// The set of flags of a state's line `at`, from its second token, as `ModelConditionFlags`
     /// reads them: `NONE` none, a name of either case once however often it is named.
-    fn of(at: &IniLine<'_>) -> Result<ConditionSet, IniError> {
+    fn of(at: &IniLine<'_>) -> Result<Self, IniError> {
         let names: Vec<&str> = match at.flags()? {
             FlagList::Clear => Vec::new(),
             FlagList::Only(names) => names,
@@ -535,7 +535,7 @@ impl ConditionSet {
         let mut flags: Vec<String> = names.iter().map(|name| name.to_ascii_lowercase()).collect();
         flags.sort_unstable();
         flags.dedup();
-        let mut set = ConditionSet::default();
+        let mut set = Self::default();
         for flag in &flags {
             match flag.as_str() {
                 "night" => set.conditions.night = true,

@@ -29,42 +29,42 @@ impl Action {
     /// The capability that owns it, to which its order is a command.
     pub const fn capability(self) -> Capability {
         match self {
-            Action::Orders(_) => OrdersAction::CAPABILITY,
-            Action::Progression(_) => ProgressionAction::CAPABILITY,
-            Action::Production(_) => ProductionAction::CAPABILITY,
-            Action::Items(_) => ItemsAction::CAPABILITY,
+            Self::Orders(_) => OrdersAction::CAPABILITY,
+            Self::Progression(_) => ProgressionAction::CAPABILITY,
+            Self::Production(_) => ProductionAction::CAPABILITY,
+            Self::Items(_) => ItemsAction::CAPABILITY,
         }
     }
 }
 
 impl From<OrdersAction> for Action {
-    fn from(action: OrdersAction) -> Action {
-        Action::Orders(action)
+    fn from(action: OrdersAction) -> Self {
+        Self::Orders(action)
     }
 }
 
 impl From<ProgressionAction> for Action {
-    fn from(action: ProgressionAction) -> Action {
-        Action::Progression(action)
+    fn from(action: ProgressionAction) -> Self {
+        Self::Progression(action)
     }
 }
 
 impl From<ProductionAction> for Action {
-    fn from(action: ProductionAction) -> Action {
-        Action::Production(action)
+    fn from(action: ProductionAction) -> Self {
+        Self::Production(action)
     }
 }
 
 impl From<ItemsAction> for Action {
-    fn from(action: ItemsAction) -> Action {
-        Action::Items(action)
+    fn from(action: ItemsAction) -> Self {
+        Self::Items(action)
     }
 }
 
 impl Order {
     /// The order of `action` to `id` alone.
-    pub fn one(id: StableId, action: impl Into<Action>) -> Order {
-        Order {
+    pub fn one(id: StableId, action: impl Into<Action>) -> Self {
+        Self {
             units: OrderUnits::one(id),
             action: action.into(),
         }
@@ -88,8 +88,8 @@ impl Order {
     }
 
     /// A payload of `orders` alone, one command each, to its action's capability.
-    pub fn payload(orders: &[Order]) -> Vec<u8> {
-        let bodies: Vec<Vec<u8>> = orders.iter().map(Order::encode).collect();
+    pub fn payload(orders: &[Self]) -> Vec<u8> {
+        let bodies: Vec<Vec<u8>> = orders.iter().map(Self::encode).collect();
         let commands: Vec<Command<'_>> = orders
             .iter()
             .zip(&bodies)

@@ -15,7 +15,7 @@ pub(crate) struct W3dChunks<'a> {
 }
 
 impl<'a> W3dChunks<'a> {
-    pub(crate) const fn of(bytes: &'a [u8]) -> W3dChunks<'a> {
+    pub(crate) const fn of(bytes: &'a [u8]) -> Self {
         W3dChunks { rest: bytes }
     }
 

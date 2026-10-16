@@ -392,7 +392,7 @@ impl ActionDataField {
     /// The fields `capability` runs, none for the action pipeline's, each by its name with its
     /// status in the script API.
     pub fn of(capability: Option<Capability>) -> impl Iterator<Item = (&'static str, Status)> {
-        ActionDataField::ALL
+        Self::ALL
             .into_iter()
             .filter(move |field| field.capability() == capability)
             .map(|field| (field.name(), Status::Runs(ApiVersion::FIRST)))
@@ -429,8 +429,8 @@ impl ActionDataField {
 
     /// The first field `data` of kind `kind` gives that its kind refuses, does not give that its
     /// kind needs, or gives with its other field of a pair its kind needs one of, or without it.
-    pub fn misused(data: &ActionData, kind: ActionKind) -> Option<ActionDataField> {
-        ActionDataField::ALL
+    pub fn misused(data: &ActionData, kind: ActionKind) -> Option<Self> {
+        Self::ALL
             .into_iter()
             .find(|field| match field.use_by(kind) {
                 Takes => false,

@@ -52,15 +52,15 @@ pub(crate) enum ShotDelay {
 }
 
 impl Default for IniWeapon {
-    fn default() -> IniWeapon {
-        IniWeapon {
+    fn default() -> Self {
+        Self {
             damage: 0.0,
             radius: 0.0,
             secondary_radius: 0.0,
             scatter: 0.0,
             infantry_scatter: 0.0,
             range: 0.0,
-            speed: IniWeapon::INSTANT,
+            speed: Self::INSTANT,
             laser: false,
             anti_ground: true,
             suicide: false,
@@ -78,8 +78,8 @@ impl Default for IniWeapon {
 }
 
 impl Default for ShotDelay {
-    fn default() -> ShotDelay {
-        ShotDelay::Fixed(0)
+    fn default() -> Self {
+        Self::Fixed(0)
     }
 }
 

@@ -55,7 +55,7 @@ pub(crate) struct GameLight {
 
 impl GameLight {
     /// The light the game starts each with.
-    const DARK: GameLight = GameLight {
+    const DARK: Self = Self {
         ambient: [0.0; 3],
         diffuse: [0.0; 3],
         position: [0.0, 0.0, -1.0],
@@ -89,8 +89,8 @@ enum ClassForm {
 
 impl MapFile {
     /// The map whose file, packed or not, is `packed`.
-    pub(crate) fn read(packed: &[u8]) -> Result<MapFile, MapError> {
-        let bytes = MapFile::unpack(packed)?;
+    pub(crate) fn read(packed: &[u8]) -> Result<Self, MapError> {
+        let bytes = Self::unpack(packed)?;
         let mut reader = ChunkReader::new(&bytes);
         if reader.take(4) != Ok(b"CkMp") {
             return Err(MapError::NotChunks);
@@ -125,22 +125,21 @@ impl MapFile {
             }
         }
         let [heights, terrain, objects, lighting, world] = chunks;
-        let heights = MapFile::heights(heights.ok_or(MapError::Missing(Chunk::HeightMapData))?)?;
-        let terrain = MapFile::terrain(
+        let heights = Self::heights(heights.ok_or(MapError::Missing(Chunk::HeightMapData))?)?;
+        let terrain = Self::terrain(
             terrain.ok_or(MapError::Missing(Chunk::BlendTileData))?,
             &heights,
         )?;
-        let objects = MapFile::objects(
+        let objects = Self::objects(
             objects.ok_or(MapError::Missing(Chunk::ObjectsList))?,
             &names,
         )?;
-        let lighting =
-            MapFile::lighting(lighting.ok_or(MapError::Missing(Chunk::GlobalLighting))?)?;
+        let lighting = Self::lighting(lighting.ok_or(MapError::Missing(Chunk::GlobalLighting))?)?;
         let snow = match world {
-            Some(world) => MapFile::snowy(world, &names)?,
+            Some(world) => Self::snowy(world, &names)?,
             None => false,
         };
-        Ok(MapFile {
+        Ok(Self {
             heights,
             terrain,
             objects,
@@ -227,7 +226,7 @@ impl MapFile {
         let extra_blends = body.i16s(len)?;
         let cliff_uvs = body.i16s(len)?;
         let cliffs = if version == 6 {
-            MapFile::cliffs_of_heights(heights)
+            Self::cliffs_of_heights(heights)
         } else {
             let row = if version == 7 {
                 (heights.width + 1) / 8
@@ -246,26 +245,26 @@ impl MapFile {
         let blend_count = body.count()?;
         let cliff_count = body.count()?;
         let classes = (0..body.count()?)
-            .map(|_| MapFile::texture_class(&mut body, ClassForm::Terrain))
+            .map(|_| Self::texture_class(&mut body, ClassForm::Terrain))
             .collect::<Result<_, _>>()?;
         let edge_tiles = body.non_negative()?;
         let edge_classes = (0..body.count()?)
-            .map(|_| MapFile::texture_class(&mut body, ClassForm::Edge))
+            .map(|_| Self::texture_class(&mut body, ClassForm::Edge))
             .collect::<Result<_, _>>()?;
         let blend_tiles = (1..blend_count)
-            .map(|at| MapFile::blend_tile(&mut body, at))
+            .map(|at| Self::blend_tile(&mut body, at))
             .collect::<Result<_, _>>()?;
         let cliff_tiles = (1..cliff_count)
-            .map(|_| MapFile::cliff_uv(&mut body))
+            .map(|_| Self::cliff_uv(&mut body))
             .collect::<Result<_, _>>()?;
         body.ended(Chunk::BlendTileData)?;
         let cells = (0..len)
             .map(|at| {
                 Ok(TerrainCell {
-                    tile: MapFile::index(tiles[at])?,
-                    blend: MapFile::entry(blends[at])?,
-                    extra_blend: MapFile::entry(extra_blends[at])?,
-                    cliff_uv: MapFile::entry(cliff_uvs[at])?,
+                    tile: Self::index(tiles[at])?,
+                    blend: Self::entry(blends[at])?,
+                    extra_blend: Self::entry(extra_blends[at])?,
+                    cliff_uv: Self::entry(cliff_uvs[at])?,
                     cliff: cliffs[at],
                 })
             })
@@ -330,7 +329,7 @@ impl MapFile {
     /// which exactly one is set, its inverted bits, its long diagonal, its custom edge class or
     /// −1, and the mark that ends it.
     fn blend_tile(body: &mut ChunkReader<'_>, at: usize) -> Result<BlendTile, MapError> {
-        let tile = MapFile::index(MapFile::i16(body.i32()?)?)?;
+        let tile = Self::index(Self::i16(body.i32()?)?)?;
         let [horizontal, vertical, right, left, inverted, long] =
             body.take(6)?.try_into().expect("six bytes");
         let long = long != 0;
@@ -346,7 +345,7 @@ impl MapFile {
         }
         let custom_edge = match body.i32()? {
             -1 => None,
-            edge => Some(MapFile::index(MapFile::i16(edge)?)?),
+            edge => Some(Self::index(Self::i16(edge)?)?),
         };
         if body.u32()? != BLEND_MARK {
             return Err(MapError::BlendMark(at));
@@ -362,7 +361,7 @@ impl MapFile {
 
     /// Cliff UVs: its tile, a `[u, v]` for each corner, and two bytes the game reads as bools.
     fn cliff_uv(body: &mut ChunkReader<'_>) -> Result<CliffUv, MapError> {
-        let tile = MapFile::index(MapFile::i16(body.i32()?)?)?;
+        let tile = Self::index(Self::i16(body.i32()?)?)?;
         let mut corners = [[0.0; 2]; 4];
         for corner in &mut corners {
             *corner = [body.f32()?, body.f32()?];
@@ -393,16 +392,16 @@ impl MapFile {
             - 1;
         let mut times = [[GameLight::DARK; 3]; 4];
         for lights in &mut times {
-            MapFile::light(&mut body)?;
-            lights[0] = MapFile::light(&mut body)?;
+            Self::light(&mut body)?;
+            lights[0] = Self::light(&mut body)?;
             if version >= 2 {
                 for light in &mut lights[1..] {
-                    *light = MapFile::light(&mut body)?;
+                    *light = Self::light(&mut body)?;
                 }
             }
             if version >= 3 {
                 for _ in 1..3 {
-                    MapFile::light(&mut body)?;
+                    Self::light(&mut body)?;
                 }
             }
         }
@@ -490,7 +489,7 @@ impl MapFile {
 
     /// An index into a list past its unused entry 0: `None` for 0.
     fn entry(value: i16) -> Result<Option<u16>, MapError> {
-        Ok(MapFile::index(value)?.checked_sub(1))
+        Ok(Self::index(value)?.checked_sub(1))
     }
 }
 

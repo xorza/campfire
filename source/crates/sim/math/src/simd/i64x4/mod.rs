@@ -9,12 +9,12 @@ use crate::simd::u64x4::U64x4;
 pub struct I64x4([i64; 4]);
 
 impl I64x4 {
-    pub const fn splat(value: i64) -> I64x4 {
-        I64x4([value; 4])
+    pub const fn splat(value: i64) -> Self {
+        Self([value; 4])
     }
 
-    pub const fn from_array(lanes: [i64; 4]) -> I64x4 {
-        I64x4(lanes)
+    pub const fn from_array(lanes: [i64; 4]) -> Self {
+        Self(lanes)
     }
 
     pub const fn to_array(self) -> [i64; 4] {
@@ -22,9 +22,9 @@ impl I64x4 {
     }
 
     #[must_use]
-    pub const fn wrapping_add(self, rhs: I64x4) -> I64x4 {
+    pub const fn wrapping_add(self, rhs: Self) -> Self {
         let [a, b] = [self.0, rhs.0];
-        I64x4([
+        Self([
             a[0].wrapping_add(b[0]),
             a[1].wrapping_add(b[1]),
             a[2].wrapping_add(b[2]),
@@ -33,9 +33,9 @@ impl I64x4 {
     }
 
     #[must_use]
-    pub const fn wrapping_sub(self, rhs: I64x4) -> I64x4 {
+    pub const fn wrapping_sub(self, rhs: Self) -> Self {
         let [a, b] = [self.0, rhs.0];
-        I64x4([
+        Self([
             a[0].wrapping_sub(b[0]),
             a[1].wrapping_sub(b[1]),
             a[2].wrapping_sub(b[2]),
@@ -46,40 +46,40 @@ impl I64x4 {
     /// The exact products of lanes that each fit an `i32`: one widening multiply, as AVX2 has
     /// none of two `i64`s.
     #[must_use]
-    pub const fn mul_narrow(self, rhs: I64x4) -> I64x4 {
+    pub const fn mul_narrow(self, rhs: Self) -> Self {
         let [a, b] = [self.0, rhs.0];
-        I64x4([
-            I64x4::narrow_product(a[0], b[0]),
-            I64x4::narrow_product(a[1], b[1]),
-            I64x4::narrow_product(a[2], b[2]),
-            I64x4::narrow_product(a[3], b[3]),
+        Self([
+            Self::narrow_product(a[0], b[0]),
+            Self::narrow_product(a[1], b[1]),
+            Self::narrow_product(a[2], b[2]),
+            Self::narrow_product(a[3], b[3]),
         ])
     }
 
     #[must_use]
-    pub const fn max(self, rhs: I64x4) -> I64x4 {
+    pub const fn max(self, rhs: Self) -> Self {
         let [a, b] = [self.0, rhs.0];
-        I64x4([
-            I64x4::larger(a[0], b[0]),
-            I64x4::larger(a[1], b[1]),
-            I64x4::larger(a[2], b[2]),
-            I64x4::larger(a[3], b[3]),
+        Self([
+            Self::larger(a[0], b[0]),
+            Self::larger(a[1], b[1]),
+            Self::larger(a[2], b[2]),
+            Self::larger(a[3], b[3]),
         ])
     }
 
     #[must_use]
-    pub const fn min(self, rhs: I64x4) -> I64x4 {
+    pub const fn min(self, rhs: Self) -> Self {
         let [a, b] = [self.0, rhs.0];
-        I64x4([
-            I64x4::smaller(a[0], b[0]),
-            I64x4::smaller(a[1], b[1]),
-            I64x4::smaller(a[2], b[2]),
-            I64x4::smaller(a[3], b[3]),
+        Self([
+            Self::smaller(a[0], b[0]),
+            Self::smaller(a[1], b[1]),
+            Self::smaller(a[2], b[2]),
+            Self::smaller(a[3], b[3]),
         ])
     }
 
     /// Holds where `self`'s lane is at most `rhs`'s.
-    pub const fn simd_le(self, rhs: I64x4) -> Mask64x4 {
+    pub const fn simd_le(self, rhs: Self) -> Mask64x4 {
         let [a, b] = [self.0, rhs.0];
         Mask64x4::from_holds([a[0] <= b[0], a[1] <= b[1], a[2] <= b[2], a[3] <= b[3]])
     }
@@ -90,16 +90,16 @@ impl I64x4 {
     /// 1 / `divisor` below the next whole number, more than the half of its last place by which
     /// it rounds, as the lane is below 2⁵³.
     #[must_use]
-    pub const fn div_euclid(self, divisor: i64) -> I64x4 {
+    pub const fn div_euclid(self, divisor: i64) -> Self {
         debug_assert!(0 < divisor && divisor < 1 << 51);
         let divisor = F64x4::from_exact([divisor; 4]);
-        I64x4(F64x4::from_exact(self.0).div(divisor).floor().to_exact())
+        Self(F64x4::from_exact(self.0).div(divisor).floor().to_exact())
     }
 
     /// Each lane of `lanes`, its bits read as signed.
-    pub const fn cast_signed(lanes: U64x4) -> I64x4 {
+    pub const fn cast_signed(lanes: U64x4) -> Self {
         let [a, b, c, d] = lanes.to_array();
-        I64x4([
+        Self([
             a.cast_signed(),
             b.cast_signed(),
             c.cast_signed(),

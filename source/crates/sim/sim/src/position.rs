@@ -25,7 +25,7 @@ impl Position {
 
     /// Whether each of its coordinates lies within ±`BOUND`.
     pub const fn within_bound(self) -> bool {
-        let bound = Position::BOUND.to_bits().unsigned_abs();
+        let bound = Self::BOUND.to_bits().unsigned_abs();
         self.0.x.to_bits().unsigned_abs() <= bound
             && self.0.y.to_bits().unsigned_abs() <= bound
             && self.0.z.to_bits().unsigned_abs() <= bound
@@ -48,25 +48,25 @@ impl DerefMut for Position {
 }
 
 impl From<Vec3> for Position {
-    fn from(point: Vec3) -> Position {
-        Position(point)
+    fn from(point: Vec3) -> Self {
+        Self(point)
     }
 }
 
 impl<X: Into<Num>, Y: Into<Num>, Z: Into<Num>> From<(X, Y, Z)> for Position {
-    fn from(point: (X, Y, Z)) -> Position {
-        Position(Vec3::from(point))
+    fn from(point: (X, Y, Z)) -> Self {
+        Self(Vec3::from(point))
     }
 }
 
 impl<T: Into<Num>> From<[T; 3]> for Position {
-    fn from(point: [T; 3]) -> Position {
-        Position(Vec3::from(point))
+    fn from(point: [T; 3]) -> Self {
+        Self(Vec3::from(point))
     }
 }
 
 impl From<Position> for Vec3 {
-    fn from(place: Position) -> Vec3 {
+    fn from(place: Position) -> Self {
         place.0
     }
 }

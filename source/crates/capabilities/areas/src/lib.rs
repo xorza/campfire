@@ -67,14 +67,14 @@ campfire_common::enum_all! {
 
 impl ModuleSet for AreasSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Areas);
-    const ALL: &'static [AreasSet] = &AreasSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            AreasSet::Trigger => Phase::Trigger,
-            AreasSet::Land => Phase::Land,
-            AreasSet::LandAtResolve => Phase::Resolve,
-            AreasSet::HoldInside => Phase::HoldInside,
+            Self::Trigger => Phase::Trigger,
+            Self::Land => Phase::Land,
+            Self::LandAtResolve => Phase::Resolve,
+            Self::HoldInside => Phase::HoldInside,
         })
     }
 }
@@ -86,12 +86,12 @@ impl Module for Areas {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<AreasSet>();
-        d.engine_tags(&[Areas::TAG]);
+        d.engine_tags(&[Self::TAG]);
         d.component::<Area>();
         d.component::<AreaTrigger>();
         d.state::<DeliveryEntity, AreaTrigger>();
         d.scratch::<AreaLaunches>();
-        d.callback::<Deliverers>(DeliveryKind::Area, Areas::deliver);
+        d.callback::<Deliverers>(DeliveryKind::Area, Self::deliver);
         d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);
         d.book::<ByType<AreaSpec>>();
         d.api(AreasApi::register);
@@ -128,7 +128,7 @@ impl Areas {
             None if target == ActionTarget::None => from,
             None => return,
         };
-        Areas::push(world, by, unit_type, at, target.unit(), None);
+        Self::push(world, by, unit_type, at, target.unit(), None);
     }
 
     /// Queues an area of `unit_type` of `by` to land at `pos`, aimed at `aimed`; with `id`, the id
@@ -177,7 +177,7 @@ pub mod internals {
         ) {
             let rate = *world.resource::<TickRate>();
             let mut types = world.resource_mut::<UnitTypeBook>();
-            types.give_tag(unit_type, Areas::TAG.tag());
+            types.give_tag(unit_type, Self::TAG.tag());
             let modifier = |name: &DeclaredName| {
                 Stats::modifier(world, package, name.as_str())
                     .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))

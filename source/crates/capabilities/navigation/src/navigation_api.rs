@@ -21,7 +21,7 @@ impl NavigationApi {
             "the name of the path it walks, `()` with none",
         );
         api.bind(path, |unit: &mut Unit| NavigationColumn::path(unit));
-        NavigationApi::register_forced(api);
+        Self::register_forced(api);
     }
 
     /// `ctx.dash`, `ctx.knock_back` and `ctx.teleport`.
@@ -46,19 +46,19 @@ impl NavigationApi {
         api.call(
             dash,
             move |ctx: &mut Ctx, of: Unit, to: ScriptPosition, speed: Num| {
-                NavigationApi::dash(ctx, &of, point(to.get()), speed)
+                Self::dash(ctx, &of, point(to.get()), speed)
             },
         )
         .call(
             dash,
             move |ctx: &mut Ctx, of: Unit, to: Unit, speed: Num| {
-                NavigationApi::dash(ctx, &of, unit(to), speed)
+                Self::dash(ctx, &of, unit(to), speed)
             },
         )
         .call(
             knock_back,
             |ctx: &mut Ctx, of: Unit, from: ScriptPosition, distance: Num, ms: i64| {
-                NavigationApi::knock_back(ctx, &of, from.get(), distance, ms)
+                Self::knock_back(ctx, &of, from.get(), distance, ms)
             },
         )
         .call(teleport, |ctx: &mut Ctx, of: Unit, to: ScriptPosition| {

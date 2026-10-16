@@ -76,7 +76,7 @@ impl NavigationColumn {
             .iter()
             .filter(|other| other.layer == layer)
             .all(|other| !other.overlaps_box(pos, &boxed));
-        let room = view.column(|column: &NavigationColumn| {
+        let room = view.column(|column: &Self| {
             let rows = column.rows.now();
             let mut clear = Walls::room_for(Some(&column.walls), view.bounds(), pos, &boxed, layer);
             view.each_row(|place, row| {
@@ -101,8 +101,7 @@ impl NavigationColumn {
     /// with no navigation.
     pub(crate) fn path(unit: &Unit) -> ScriptValue {
         let view = unit.view();
-        let path =
-            view.column(|column: &NavigationColumn| column.rows.now()[unit.row_index()].path);
+        let path = view.column(|column: &Self| column.rows.now()[unit.row_index()].path);
         let name = path.flatten().and_then(|path| view.names().name(path));
         name.map_or(ScriptValue::UNIT, ScriptValue::of)
     }
@@ -112,7 +111,7 @@ impl NavigationColumn {
         let Some(row) = view.row_index(id) else {
             return false;
         };
-        let walks = view.column(|column: &NavigationColumn| column.rows.now()[row].walks);
+        let walks = view.column(|column: &Self| column.rows.now()[row].walks);
         walks.unwrap_or(false)
     }
 
@@ -120,7 +119,7 @@ impl NavigationColumn {
     /// and its layer.
     pub(super) fn fill_row(
         (path, walks, body): ROQueryItem<'_, '_, RowReads>,
-        fill: &mut RowFill<'_, NavigationColumn>,
+        fill: &mut RowFill<'_, Self>,
     ) {
         let path = path.map(|path| path.get());
         fill.column.push(path, walks, Body::layer_of(body));

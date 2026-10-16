@@ -13,8 +13,8 @@ const CHAIN_DOMAIN: HashDomain = HashDomain::new("campfire/seed-chain/v1");
 pub struct ServerSeed(Secret<32>);
 
 impl ServerSeed {
-    pub const fn new(bytes: [u8; 32]) -> ServerSeed {
-        ServerSeed(Secret::new(bytes))
+    pub const fn new(bytes: [u8; 32]) -> Self {
+        Self(Secret::new(bytes))
     }
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
@@ -32,8 +32,8 @@ impl ServerSeed {
     }
 
     /// `C(s_k) = s_(k−1)`, where `C(x) = BLAKE3(domain ‖ x)`.
-    pub(crate) fn earlier(&self) -> ServerSeed {
-        ServerSeed(Secret::new(self.link().get()))
+    pub(crate) fn earlier(&self) -> Self {
+        Self(Secret::new(self.link().get()))
     }
 
     /// `C(s_0)`, when this is the first segment's seed.

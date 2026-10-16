@@ -15,8 +15,8 @@ pub struct BotScript {
 }
 
 impl BotScript {
-    pub const fn new(script: OrderScript) -> BotScript {
-        BotScript {
+    pub const fn new(script: OrderScript) -> Self {
+        Self {
             script,
             next_order: 0,
             next_input: 0,

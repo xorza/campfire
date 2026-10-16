@@ -38,19 +38,19 @@ impl SourceFile {
         let mut kept = vec![true; lines.len()];
         let mut at = 0;
         while at < lines.len() {
-            if !SourceFile::GATES.contains(&lines[at].trim()) {
+            if !Self::GATES.contains(&lines[at].trim()) {
                 at += 1;
                 continue;
             }
-            let indent = SourceFile::indentation(lines[at]);
+            let indent = Self::indentation(lines[at]);
             let mut start = at;
             while start > 0
                 && lines[start - 1].trim_start().starts_with("///")
-                && SourceFile::indentation(lines[start - 1]) == indent
+                && Self::indentation(lines[start - 1]) == indent
             {
                 start -= 1;
             }
-            let end = SourceFile::item_end(&lines, SourceFile::item_start(&lines, at), indent);
+            let end = Self::item_end(&lines, Self::item_start(&lines, at), indent);
             kept[start..=end].fill(false);
             at = end + 1;
         }
@@ -65,7 +65,7 @@ impl SourceFile {
     /// The first line of the item the gate at `gate` holds, past its further attributes and doc
     /// comments, an attribute over several lines among them.
     fn item_start(lines: &[&str], gate: usize) -> usize {
-        let indent = SourceFile::indentation(lines[gate]);
+        let indent = Self::indentation(lines[gate]);
         let mut first = gate + 1;
         while first < lines.len() {
             let line = lines[first].trim();
@@ -74,7 +74,7 @@ impl SourceFile {
             } else if line.starts_with("#[") {
                 let close = (first + 1..lines.len())
                     .find(|&at| {
-                        SourceFile::indentation(lines[at]) == indent
+                        Self::indentation(lines[at]) == indent
                             && lines[at].trim_start().starts_with(')')
                     })
                     .expect("an attribute over several lines closes at its indentation");
@@ -101,7 +101,7 @@ impl SourceFile {
             if text.is_empty() {
                 continue;
             }
-            let depth = SourceFile::indentation(line);
+            let depth = Self::indentation(line);
             if depth < indent {
                 return last;
             }
@@ -148,10 +148,10 @@ impl SourceFile {
         let lines: Vec<&str> = self.text.split('\n').collect();
         let mut gated = Vec::new();
         for (at, line) in lines.iter().enumerate() {
-            if *line != line.trim_start() || !SourceFile::GATES.contains(line) {
+            if *line != line.trim_start() || !Self::GATES.contains(line) {
                 continue;
             }
-            let declared = lines[SourceFile::item_start(&lines, at)];
+            let declared = lines[Self::item_start(&lines, at)];
             let module = declared
                 .trim_start_matches("pub ")
                 .trim_start_matches("pub(crate) ")
@@ -180,7 +180,7 @@ impl SourceFiles {
     /// marked when a gate holds its module.
     pub fn under(dir: &Path) -> Vec<SourceFile> {
         let mut found = Vec::new();
-        SourceFiles::walk(dir, "", &mut found);
+        Self::walk(dir, "", &mut found);
         let gated: Vec<String> = found.iter().flat_map(SourceFile::gated_modules).collect();
         for file in &mut found {
             file.gated = gated.iter().any(|module| {
@@ -201,7 +201,7 @@ impl SourceFiles {
             };
             match entry.kind {
                 EntryKind::Dir if name != "target" => {
-                    SourceFiles::walk(&dir.join(name), &path, found);
+                    Self::walk(&dir.join(name), &path, found);
                 }
                 EntryKind::File if Path::new(name).extension().is_some_and(|ext| ext == "rs") => {
                     let text = InputFile::read_text(&dir.join(name), MAX_LEN)

@@ -51,7 +51,7 @@ impl PathingGrid {
         grid: Grid,
         walkers: impl IntoIterator<Item = Walker>,
         terrain: &Terrain,
-    ) -> PathingGrid {
+    ) -> Self {
         let mut walkers: Vec<Walker> = walkers.into_iter().collect();
         walkers.sort_unstable();
         walkers.dedup();
@@ -61,21 +61,21 @@ impl PathingGrid {
         for (at, walker) in walkers.iter().enumerate() {
             if let Some(blocked) = terrain.blocked(walker.layer) {
                 let cells = &mut walled[at * words..(at + 1) * words];
-                PathingGrid::clear_of(&grid, blocked, walker.radius, cells);
+                Self::clear_of(&grid, blocked, walker.radius, cells);
                 walls[at] = true;
             }
         }
         let mut walled_columns = vec![0; walled.len()];
         for at in 0..walkers.len() {
             let span = at * words..(at + 1) * words;
-            PathingGrid::by_column(&grid, &walled[span.clone()], &mut walled_columns[span]);
+            Self::by_column(&grid, &walled[span.clone()], &mut walled_columns[span]);
         }
         let blocked = walled.clone();
         let regions: Vec<Regions> = (0..walkers.len())
             .map(|at| Regions::new(&grid, &blocked[at * words..(at + 1) * words]))
             .collect();
         let chunks = regions.first().map_or(0, Regions::chunks);
-        PathingGrid {
+        Self {
             grid,
             blocked,
             walled,
@@ -94,7 +94,7 @@ impl PathingGrid {
     /// open, then the bodies still near mark them again, and each body it put in marks its own;
     /// each clearance's regions are labeled again in the chunks those cells lie in.
     pub(crate) fn update(&mut self, statics: &BodyIndex) {
-        let PathingGrid {
+        let Self {
             grid,
             walkers,
             words: count,
@@ -233,7 +233,7 @@ impl PathingGrid {
     /// Whether the unit of `entity` in `world` walks as one of the mode's kinds of walker, which
     /// routes and steering read its cells by; every unit does in a match with no pathing grid.
     pub(super) fn serves(world: &World, entity: Entity) -> bool {
-        world.get_resource::<PathingGrid>().is_none_or(|grid| {
+        world.get_resource::<Self>().is_none_or(|grid| {
             Walker::of(world.get::<Body>(entity))
                 .is_some_and(|walker| grid.walkers.binary_search(&walker).is_ok())
         })
@@ -318,7 +318,7 @@ impl Clearance<'_> {
 
 /// The map's install builds it, of the map's walkers.
 impl Cache for PathingGrid {
-    fn installed() -> Option<PathingGrid> {
+    fn installed() -> Option<Self> {
         None
     }
 }

@@ -11,16 +11,16 @@ pub(crate) struct LookConditions {
 
 impl LookConditions {
     /// The conditions a look writes a variant for: a night map's, a snowy map's, and both.
-    pub(crate) const VARIANTS: [LookConditions; 3] = [
-        LookConditions {
+    pub(crate) const VARIANTS: [Self; 3] = [
+        Self {
             night: true,
             snow: false,
         },
-        LookConditions {
+        Self {
             night: false,
             snow: true,
         },
-        LookConditions {
+        Self {
             night: true,
             snow: true,
         },

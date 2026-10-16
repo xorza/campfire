@@ -57,15 +57,13 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for NavigationRefusal {
     const OWNER: Capability = Capability::Navigation;
-    const CASES: &'static [NavigationRefusal] = &NavigationRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            NavigationRefusal::NotADistance => {
-                "distance is not more than 0, or beyond the world's bound"
-            }
-            NavigationRefusal::NotASpeed => "speed moves less than a bit a tick",
-            NavigationRefusal::NoWalker => "the unit does not walk",
+            Self::NotADistance => "distance is not more than 0, or beyond the world's bound",
+            Self::NotASpeed => "speed moves less than a bit a tick",
+            Self::NoWalker => "the unit does not walk",
         }
     }
 }

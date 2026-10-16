@@ -52,7 +52,7 @@ impl Delegation {
     pub const MAX_JSON: usize = 4096;
 
     /// `terms` signed by `main`, the player's main key, at `created_at`, in Unix seconds.
-    pub fn sign(main: &Signer, terms: &DelegationTerms, created_at: u64) -> Delegation {
+    pub fn sign(main: &Signer, terms: &DelegationTerms, created_at: u64) -> Self {
         let tags = [
             custom(
                 DelegationTag::SessionKey,
@@ -84,13 +84,13 @@ impl Delegation {
         let event = unsigned
             .add_signature(signature)
             .expect("a fresh signature holds");
-        Delegation::parse(&event.as_json()).expect("a signed delegation parses")
+        Self::parse(&event.as_json()).expect("a signed delegation parses")
     }
 
     /// Reads a delegation from its event's JSON, at most `MAX_JSON` bytes, checking the event's
     /// id and signature, its kind, and each term's tag. Other tags and the content are ignored.
-    pub fn parse(json: &str) -> Result<Delegation, DelegationError> {
-        if json.len() > Delegation::MAX_JSON {
+    pub fn parse(json: &str) -> Result<Self, DelegationError> {
+        if json.len() > Self::MAX_JSON {
             return Err(DelegationError::TooLong);
         }
         let event = Event::from_json(json)
@@ -117,7 +117,7 @@ impl Delegation {
         };
         let session_key = key(DelegationTag::SessionKey)?;
         let server_key = key(DelegationTag::ServerKey)?;
-        Ok(Delegation {
+        Ok(Self {
             json: json.to_owned(),
             id: DelegationId::new(event.id.to_bytes()),
             main_key: MainKey::new(event.pubkey.to_bytes()),

@@ -121,19 +121,19 @@ campfire_common::enum_all! {
 
 impl ModuleSet for CombatSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Combat);
-    const ALL: &'static [CombatSet] = &CombatSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            CombatSet::Respawn => Phase::Begin,
-            CombatSet::Attack => Phase::Attack,
-            CombatSet::Hits => Phase::Hits,
-            CombatSet::Pay => Phase::Pay,
-            CombatSet::Strike => Phase::Strike,
-            CombatSet::Interval => Phase::Interval,
-            CombatSet::Damage => Phase::Damage,
-            CombatSet::Die => Phase::Die,
-            CombatSet::Despawn => Phase::End,
+            Self::Respawn => Phase::Begin,
+            Self::Attack => Phase::Attack,
+            Self::Hits => Phase::Hits,
+            Self::Pay => Phase::Pay,
+            Self::Strike => Phase::Strike,
+            Self::Interval => Phase::Interval,
+            Self::Damage => Phase::Damage,
+            Self::Die => Phase::Die,
+            Self::Despawn => Phase::End,
         })
     }
 }
@@ -298,8 +298,8 @@ pub mod internals {
 
     impl Arms {
         /// A melee weapon of `range`, `windup` ticks, `period` ticks and `damage`.
-        pub const fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Arms {
-            Arms {
+        pub const fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Self {
+            Self {
                 range,
                 windup: Ticks::new(windup),
                 period: Ticks::new(period),
@@ -310,8 +310,8 @@ pub mod internals {
 
         /// The same weapon, firing projectiles of the homing type `projectile`.
         #[must_use]
-        pub const fn ranged(self, projectile: UnitType) -> Arms {
-            Arms {
+        pub const fn ranged(self, projectile: UnitType) -> Self {
+            Self {
                 projectile: Some(projectile),
                 ..self
             }
@@ -353,8 +353,8 @@ pub mod internals {
     impl Armed {
         /// A unit of `life` that despawns when it dies, with a melee weapon of `range`, `windup`
         /// ticks, `period` ticks and `damage`.
-        pub const fn melee(life: Num, range: Num, windup: u64, period: u64, damage: Num) -> Armed {
-            Armed {
+        pub const fn melee(life: Num, range: Num, windup: u64, period: u64, damage: Num) -> Self {
+            Self {
                 life,
                 on_death: OnDeath::Despawn,
                 arms: Some(Arms::melee(range, windup, period, damage)),
@@ -363,13 +363,13 @@ pub mod internals {
 
         /// A unit of 10 life that stays when it dies, with a melee weapon of 2 m that winds up no
         /// tick and deals nothing, each tick.
-        pub const fn sparring() -> Armed {
-            Armed::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO).on_death(OnDeath::Stay)
+        pub const fn sparring() -> Self {
+            Self::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO).on_death(OnDeath::Stay)
         }
 
         /// A unit of `life` with no weapon, that despawns when it dies.
-        pub const fn unarmed(life: Num) -> Armed {
-            Armed {
+        pub const fn unarmed(life: Num) -> Self {
+            Self {
                 life,
                 on_death: OnDeath::Despawn,
                 arms: None,
@@ -378,18 +378,18 @@ pub mod internals {
 
         /// The same unit, which `on_death` says whether it stays when it dies.
         #[must_use]
-        pub const fn on_death(self, on_death: OnDeath) -> Armed {
-            Armed { on_death, ..self }
+        pub const fn on_death(self, on_death: OnDeath) -> Self {
+            Self { on_death, ..self }
         }
 
         /// The same unit, its weapon firing projectiles of the homing type `projectile`.
         #[must_use]
-        pub const fn ranged(self, projectile: UnitType) -> Armed {
+        pub const fn ranged(self, projectile: UnitType) -> Self {
             let arms = self
                 .arms
                 .expect("a ranged unit is armed")
                 .ranged(projectile);
-            Armed {
+            Self {
                 arms: Some(arms),
                 ..self
             }
@@ -468,7 +468,7 @@ pub mod internals {
 
     impl Attack {
         /// The attack of unit `id` of `world`, whose one weapon sits in its first slot.
-        pub fn of(world: &World, id: StableId) -> Attack {
+        pub fn of(world: &World, id: StableId) -> Self {
             let slots = world.part::<ActionSlots>(id);
             let slot = slots.slot(0).unwrap();
             let time = world.part::<SlotTimes>(id).slot(0).unwrap();
@@ -476,7 +476,7 @@ pub mod internals {
             let windup = book.get(slot.action.unwrap()).unwrap().ranks[0].windup;
             let started = slots.attacking().and_then(|_| slots.in_progress());
             let started = started.and_then(InProgress::resolves_at);
-            Attack {
+            Self {
                 target: slots.attack_target(),
                 started: started.map(|at| Tick::new(at.get() - windup.get())),
                 ready_at: time.ready_at,

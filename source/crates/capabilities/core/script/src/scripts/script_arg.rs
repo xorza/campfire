@@ -138,19 +138,19 @@ plain_script_arg!((), i64, bool, Vec3);
 enum_script_arg!(Relation);
 
 impl ScriptArg for Num {
-    type Raw = Num;
+    type Raw = Self;
     type Int = i64;
     const NAMES: Option<NameKind> = None;
     const ENUM: Option<EngineEnum> = None;
     const NUMBER: bool = true;
 
-    fn take(raw: Num, _: &ArgCtx<'_>) -> Checked<Num> {
+    fn take(raw: Self, _: &ArgCtx<'_>) -> Checked<Self> {
         Ok(raw)
     }
 
     /// A script's integer as a `Num`; one beyond a `Num` fails the call.
-    fn take_int(raw: i64, _: &ArgCtx<'_>) -> Checked<Num> {
-        Num::from_int(raw).ok_or_else(|| ApiError::IntegerBeyondNum.fail().into())
+    fn take_int(raw: i64, _: &ArgCtx<'_>) -> Checked<Self> {
+        Self::from_int(raw).ok_or_else(|| ApiError::IntegerBeyondNum.fail().into())
     }
 }
 
@@ -190,8 +190,8 @@ engine_script_arg!(
 impl TextArg for Filter {
     const NAMES: NameKind = NameKind::Filter;
 
-    fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Filter> {
-        let filter = Filter::parse(&text, ctx.get().view().names().tags());
+    fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Self> {
+        let filter = Self::parse(&text, ctx.get().view().names().tags());
         Ok(filter.map_err(ApiError::fail)?)
     }
 }

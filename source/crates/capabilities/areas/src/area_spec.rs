@@ -38,10 +38,10 @@ impl AreaSpec {
         types: &UnitTypeBook,
         rate: TickRate,
         modifier: impl Fn(&DeclaredName) -> Result<ModifierId, UnknownName>,
-    ) -> Result<AreaSpec, AreaError> {
+    ) -> Result<Self, AreaError> {
         let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier).transpose();
         let ticks = |ms| rate.ticks(ms).ok_or(TimeTooLarge);
-        Ok(AreaSpec {
+        Ok(Self {
             radius: data.radius,
             delay: ticks(data.delay_ms)?,
             duration: ticks(data.duration_ms)?,

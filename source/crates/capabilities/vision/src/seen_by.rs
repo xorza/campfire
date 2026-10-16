@@ -16,18 +16,18 @@ pub struct SeenBy(Option<TeamSet>);
 
 /// Every unit spawns untold, which the Vision stage tells.
 impl Default for SeenBy {
-    fn default() -> SeenBy {
-        SeenBy::UNTOLD
+    fn default() -> Self {
+        Self::UNTOLD
     }
 }
 
 impl SeenBy {
     /// Of a unit no Vision stage has spoken of: one that spawned after the last, or in a match
     /// whose map gives no grid. Each reader decides who sees it.
-    pub(crate) const UNTOLD: SeenBy = SeenBy(None);
+    pub(crate) const UNTOLD: Self = Self(None);
 
-    pub const fn new(teams: TeamSet) -> SeenBy {
-        SeenBy(Some(teams))
+    pub const fn new(teams: TeamSet) -> Self {
+        Self(Some(teams))
     }
 
     /// The teams that see the unit; `None` while no Vision stage has spoken of it.
@@ -60,8 +60,8 @@ pub(crate) mod internals {
     impl SeenBy {
         /// Seen by every team, for a test's unit in a match whose Vision stage never runs, as one
         /// with no map.
-        pub const fn all() -> SeenBy {
-            SeenBy::new(TeamSet::ALL)
+        pub const fn all() -> Self {
+            Self::new(TeamSet::ALL)
         }
     }
 }

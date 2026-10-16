@@ -61,7 +61,7 @@ pub(crate) struct Opened {
 impl InputFile {
     /// The bytes of the file at `path`, at most `max_len`.
     pub fn read(path: &Path, max_len: usize) -> Result<Vec<u8>, PathError<ReadError>> {
-        InputFile::open(path)
+        Self::open(path)
             .and_then(|opened| opened.read(max_len))
             .map_err(PathError::at(path))
     }
@@ -71,7 +71,7 @@ impl InputFile {
         path: &Path,
         max_len: usize,
     ) -> Result<Option<Vec<u8>>, PathError<ReadError>> {
-        match InputFile::open(path).and_then(|opened| opened.read(max_len)) {
+        match Self::open(path).and_then(|opened| opened.read(max_len)) {
             Ok(bytes) => Ok(Some(bytes)),
             Err(ReadError::Missing) => Ok(None),
             Err(error) => Err(PathError::at(path)(error)),
@@ -80,7 +80,7 @@ impl InputFile {
 
     /// The UTF-8 text of the file at `path`, at most `max_len` bytes.
     pub fn read_text(path: &Path, max_len: usize) -> Result<String, PathError<ReadError>> {
-        let bytes = InputFile::read(path, max_len)?;
+        let bytes = Self::read(path, max_len)?;
         String::from_utf8(bytes)
             .map_err(|error| PathError::at(path)(ReadError::NotText(error.utf8_error())))
     }
@@ -89,7 +89,7 @@ impl InputFile {
     /// open handle.
     pub fn read_stamped(path: &Path, max_len: usize) -> Result<Stamped, PathError<ReadError>> {
         let read = || {
-            let opened = InputFile::open(path)?;
+            let opened = Self::open(path)?;
             let modified = opened.metadata.modified().map_err(ReadError::Read)?;
             let bytes = opened.read(max_len)?;
             Ok(Stamped { bytes, modified })
@@ -99,7 +99,7 @@ impl InputFile {
 
     /// The regular file at `path`, open to read in pieces; its reader bounds what it takes.
     pub fn stream(path: &Path) -> Result<InputStream, PathError<ReadError>> {
-        let Opened { file, metadata } = InputFile::open(path).map_err(PathError::at(path))?;
+        let Opened { file, metadata } = Self::open(path).map_err(PathError::at(path))?;
         Ok(InputStream {
             len: metadata.len(),
             file,
@@ -109,7 +109,7 @@ impl InputFile {
     /// The regular file at `path`, open to read ranges of; each read is bounded by its range.
     pub fn ranges(path: &Path) -> Result<InputRanges, PathError<ReadError>> {
         let open = || {
-            let Opened { file, metadata } = InputFile::open(path)?;
+            let Opened { file, metadata } = Self::open(path)?;
             let modified = metadata.modified().map_err(ReadError::Read)?;
             Ok(InputRanges {
                 path: path.to_owned(),

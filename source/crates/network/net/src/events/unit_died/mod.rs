@@ -25,8 +25,8 @@ pub(crate) struct UnitDied {
 
 impl UnitDied {
     /// The death `death` of `tick`, as the server logs it.
-    pub(crate) const fn of(tick: Tick, death: &DeathView<'_>) -> UnitDied {
-        UnitDied {
+    pub(crate) const fn of(tick: Tick, death: &DeathView<'_>) -> Self {
+        Self {
             tick: Some(tick),
             unit: death.fallen.id,
             team: death.fallen.team,
@@ -37,8 +37,8 @@ impl UnitDied {
 
     /// The death of `fallen`, as a client learns it from the server's state at its own `tick`,
     /// with no killer.
-    pub(crate) const fn learned(tick: Option<Tick>, fallen: Fallen) -> UnitDied {
-        UnitDied {
+    pub(crate) const fn learned(tick: Option<Tick>, fallen: Fallen) -> Self {
+        Self {
             tick,
             unit: fallen.id,
             team: fallen.team,

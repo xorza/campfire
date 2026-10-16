@@ -119,8 +119,8 @@ impl CombatImport {
     pub(crate) fn of(
         sources: CombatSources<'_>,
         names: &mut ImportNames,
-    ) -> Result<CombatImport, ZeroHourError> {
-        let mut import = CombatImport::default();
+    ) -> Result<Self, ZeroHourError> {
+        let mut import = Self::default();
         let mut armors = BTreeMap::new();
         for (name, armor) in sources.armors.iter() {
             let id = DeclaredName::new(&name.to_ascii_lowercase())
@@ -212,7 +212,7 @@ impl CombatImport {
 impl ImportedWeapon {
     /// The attack of `weapon`; why the import drops it, when it hits no one target at once by the
     /// engine's rules, or holds a number the engine does not.
-    fn of(weapon: &IniWeapon) -> Result<ImportedWeapon, WeaponDrop> {
+    fn of(weapon: &IniWeapon) -> Result<Self, WeaponDrop> {
         if weapon.projectile.is_some() {
             return Err(WeaponDrop::Projectile);
         }
@@ -246,7 +246,7 @@ impl ImportedWeapon {
         let ShotDelay::Fixed(delay) = weapon.delay else {
             return Err(WeaponDrop::RandomDelay);
         };
-        let period_ms = match ImportedWeapon::ms(delay)? {
+        let period_ms = match Self::ms(delay)? {
             0 => return Err(WeaponDrop::NoDelay),
             ms => ms,
         };
@@ -272,10 +272,10 @@ impl ImportedWeapon {
             0 => None,
             size => Some(ImportedClip {
                 shots: u16::try_from(size).map_err(|_| WeaponDrop::BadNumber)?,
-                reload_ms: ImportedWeapon::ms(weapon.clip_reload_ms)?,
+                reload_ms: Self::ms(weapon.clip_reload_ms)?,
             }),
         };
-        Ok(ImportedWeapon {
+        Ok(Self {
             kind: "attack",
             targeting: "enemies",
             range: number(weapon.range)?,

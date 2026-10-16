@@ -16,11 +16,11 @@ pub struct CombatHooks {
 impl CombatHooks {
     /// The hooks as the install of `role`'s match finds them in `world`: the modifiers' events
     /// in a match that runs scripts, which hear them through its `ctx`.
-    pub(crate) fn install(world: &World, role: &Role) -> CombatHooks {
+    pub(crate) fn install(world: &World, role: &Role) -> Self {
         let events = role.scripts().then(|| {
             let hooks = ModifierHooks::new(world.non_send::<Ctx>().clone());
             CombatEvents::new(move |batch, event| hooks.hear(batch, event))
         });
-        CombatHooks { events }
+        Self { events }
     }
 }

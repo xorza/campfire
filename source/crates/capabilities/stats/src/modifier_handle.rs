@@ -51,12 +51,12 @@ impl ModifierHandle {
     /// `schema`: `spare`, a handle no script holds any more, filled again when given, so its
     /// buffers serve once more.
     pub fn new(
-        spare: Option<ModifierHandle>,
+        spare: Option<Self>,
         of: HandleOf,
         state: &[StateValue],
         schema: Arc<StateSchema>,
         view: View,
-    ) -> ModifierHandle {
+    ) -> Self {
         let HandleOf {
             carrier,
             id,
@@ -78,7 +78,7 @@ impl ModifierHandle {
             data.view = view;
             return handle;
         }
-        ModifierHandle(Rc::new(RefCell::new(HandleData {
+        Self(Rc::new(RefCell::new(HandleData {
             carrier,
             id,
             source,
@@ -122,44 +122,39 @@ impl ModifierHandle {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let field = |name, description| MemberSpec::field(ApiOwner::Modifier, name, description);
         let stacks = field("stacks", "its stacks, which a call may write and read back");
-        api.ty::<ModifierHandle>("Modifier")
+        api.ty::<Self>("Modifier")
             .bind(
                 field("carrier", "the unit that carries it"),
-                |handle: &mut ModifierHandle| {
+                |handle: &mut Self| {
                     let data = handle.data();
                     data.view.unit_value(Some(data.carrier))
                 },
             )
             .bind(
                 field("source", "the unit that applied it, `()` when gone or none"),
-                |handle: &mut ModifierHandle| {
+                |handle: &mut Self| {
                     let data = handle.data();
                     data.source
                         .and_then(|source| data.view.unit(source))
                         .map_or(ScriptValue::UNIT, ScriptValue::of)
                 },
             )
-            .bind(stacks, |handle: &mut ModifierHandle| {
-                i64::from(handle.data().stacks)
+            .bind(stacks, |handle: &mut Self| i64::from(handle.data().stacks))
+            .bind_set(stacks, |handle: &mut Self, stacks: i64| -> Checked<()> {
+                let stacks = u32::try_from(stacks)
+                    .ok()
+                    .ok_or_else(|| StatsRefusal::NegativeStacks.fail())?;
+                let mut data = handle.data();
+                data.stacks = stacks;
+                data.written = true;
+                Ok(())
             })
-            .bind_set(
-                stacks,
-                |handle: &mut ModifierHandle, stacks: i64| -> Checked<()> {
-                    let stacks = u32::try_from(stacks)
-                        .ok()
-                        .ok_or_else(|| StatsRefusal::NegativeStacks.fail())?;
-                    let mut data = handle.data();
-                    data.stacks = stacks;
-                    data.written = true;
-                    Ok(())
-                },
-            )
             .bind(
                 field(
                     "state",
                     "its script state, by name, which a call may write and read back",
                 ),
-                |handle: &mut ModifierHandle| ModifierState(handle.clone()),
+                |handle: &mut Self| ModifierState(handle.clone()),
             );
         api.ty::<ModifierState>("ModifierState")
             .index(|_, state: &mut ModifierState, name: &str| {

@@ -18,10 +18,10 @@ pub enum BinaryError {
 }
 
 impl From<postcard::Error> for BinaryError {
-    fn from(error: postcard::Error) -> BinaryError {
+    fn from(error: postcard::Error) -> Self {
         match error {
-            postcard::Error::DeserializeUnexpectedEnd => BinaryError::Truncated,
-            error => BinaryError::Malformed(error),
+            postcard::Error::DeserializeUnexpectedEnd => Self::Truncated,
+            error => Self::Malformed(error),
         }
     }
 }

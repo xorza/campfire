@@ -77,8 +77,8 @@ pub(super) struct Decimal {
 }
 
 impl Decimal {
-    pub(super) const fn new(value: Num) -> Decimal {
-        let mut decimal = Decimal {
+    pub(super) const fn new(value: Num) -> Self {
+        let mut decimal = Self {
             bytes: [0; MAX_LEN],
             len: 0,
         };

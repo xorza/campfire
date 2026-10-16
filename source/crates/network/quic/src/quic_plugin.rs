@@ -107,14 +107,14 @@ impl Plugin for QuicPlugin {
         if !app.is_plugin_added::<ServerLinkPlugin>() {
             app.add_plugins(ServerLinkPlugin);
         }
-        app.add_observer(QuicPlugin::start);
-        app.add_observer(QuicPlugin::unlink);
-        app.add_observer(QuicPlugin::close);
-        app.add_observer(QuicPlugin::relink);
+        app.add_observer(Self::start);
+        app.add_observer(Self::unlink);
+        app.add_observer(Self::close);
+        app.add_observer(Self::relink);
         app.add_systems(
             PreUpdate,
-            QuicPlugin::receive.in_set(LinkReceiveSystems::BufferToLink),
+            Self::receive.in_set(LinkReceiveSystems::BufferToLink),
         );
-        app.add_systems(PostUpdate, QuicPlugin::send.in_set(LinkSystems::Send));
+        app.add_systems(PostUpdate, Self::send.in_set(LinkSystems::Send));
     }
 }

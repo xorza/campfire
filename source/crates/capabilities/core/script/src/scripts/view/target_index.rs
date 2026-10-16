@@ -59,7 +59,7 @@ impl TargetIndex {
         visit: impl FnMut(&Indexed<usize>),
     ) {
         self.index(rows.units());
-        TargetIndex::each_reached(&self.bodies, rows, query, seen, visit);
+        Self::each_reached(&self.bodies, rows, query, seen, visit);
     }
 
     /// The rows of the targets of `rows` that `query` reaches and `seen` lets, in row order.
@@ -71,7 +71,7 @@ impl TargetIndex {
     ) -> &[usize] {
         self.index(rows.units());
         self.found.clear();
-        TargetIndex::each_reached(&self.bodies, rows, query, seen, |entry| {
+        Self::each_reached(&self.bodies, rows, query, seen, |entry| {
             self.found.push(entry.key);
         });
         self.found.sort_unstable();

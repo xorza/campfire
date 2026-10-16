@@ -23,7 +23,7 @@ impl EntityKind for MatchEntity {
 
 impl SimComponent for MatchEntity {
     const NAME: &'static str = "players.match";
-    type Host = MatchEntity;
+    type Host = Self;
 
     // An id not the match's would hide the match's state from where it is looked for; and an
     // entity is of one kind.

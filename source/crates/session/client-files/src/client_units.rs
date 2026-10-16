@@ -40,8 +40,8 @@ pub struct LookVariant {
 
 impl ClientUnit {
     /// The look of `models`, of no variant.
-    pub const fn new(models: Vec<ClientModel>) -> ClientUnit {
-        ClientUnit {
+    pub const fn new(models: Vec<ClientModel>) -> Self {
+        Self {
             models,
             variants: Vec::new(),
             placement_angle: None,
@@ -91,12 +91,12 @@ pub struct ClientModel {
 pub struct ModelScale(f32);
 
 impl ModelScale {
-    pub const ONE: ModelScale = ModelScale(1.0);
+    pub const ONE: Self = Self(1.0);
 
     /// `None` unless `factor` is positive and finite.
-    pub const fn new(factor: f32) -> Option<ModelScale> {
+    pub const fn new(factor: f32) -> Option<Self> {
         if factor.is_finite() && factor > 0.0 {
-            Some(ModelScale(factor))
+            Some(Self(factor))
         } else {
             None
         }
@@ -119,17 +119,16 @@ impl ModelScale {
 impl Eq for ModelScale {}
 
 impl Default for ModelScale {
-    fn default() -> ModelScale {
-        ModelScale::ONE
+    fn default() -> Self {
+        Self::ONE
     }
 }
 
 /// A package's file is untrusted, so a scale that is not positive and finite fails to read.
 impl<'de> Deserialize<'de> for ModelScale {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModelScale, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let factor = f32::deserialize(deserializer)?;
-        ModelScale::new(factor)
-            .ok_or_else(|| D::Error::custom("a model's scale is positive and finite"))
+        Self::new(factor).ok_or_else(|| D::Error::custom("a model's scale is positive and finite"))
     }
 }
 

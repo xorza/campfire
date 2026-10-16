@@ -8,8 +8,8 @@ use serde::{Deserialize, Serialize};
 pub struct Offer(u16);
 
 impl Offer {
-    pub fn new(index: usize) -> Offer {
-        Offer(u16::try_from(index).expect("a mode's offers fit u16"))
+    pub fn new(index: usize) -> Self {
+        Self(u16::try_from(index).expect("a mode's offers fit u16"))
     }
 }
 
@@ -17,8 +17,8 @@ impl NameId for Offer {
     type Scope = ();
     const LIMIT: usize = 1 << u16::BITS;
 
-    fn at(index: usize) -> Offer {
-        Offer::new(index)
+    fn at(index: usize) -> Self {
+        Self::new(index)
     }
 
     fn index(self) -> usize {

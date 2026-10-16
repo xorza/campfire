@@ -101,8 +101,8 @@ pub struct Refusal {
 }
 
 impl Refusal {
-    pub(crate) const fn new(owner: Capability, code: u8, message: &'static str) -> Refusal {
-        Refusal {
+    pub(crate) const fn new(owner: Capability, code: u8, message: &'static str) -> Self {
+        Self {
             owner,
             code,
             message,
@@ -111,7 +111,7 @@ impl Refusal {
 }
 
 impl PartialEq for Refusal {
-    fn eq(&self, other: &Refusal) -> bool {
+    fn eq(&self, other: &Self) -> bool {
         (self.owner, self.code) == (other.owner, other.code)
     }
 }
@@ -129,8 +129,8 @@ pub struct UnknownName {
 
 impl UnknownName {
     /// The name `name`, which names no `of`.
-    pub fn new(of: NameKind, name: &(impl ToString + ?Sized)) -> UnknownName {
-        UnknownName {
+    pub fn new(of: NameKind, name: &(impl ToString + ?Sized)) -> Self {
+        Self {
             of,
             name: name.to_string(),
         }
@@ -179,12 +179,12 @@ pub enum ParamProblem {
 
 impl CallError {
     /// A failed call's error: the API's own when it refused the call.
-    pub fn from_script(error: ScriptError) -> CallError {
+    pub fn from_script(error: ScriptError) -> Self {
         let refused = match &error {
             ScriptError::Raised(raised) => raised.get::<ApiError>(),
             _ => None,
         };
-        refused.map_or(CallError::Script(error), CallError::Api)
+        refused.map_or(Self::Script(error), CallError::Api)
     }
 }
 
@@ -215,14 +215,14 @@ pub(crate) mod internals {
     impl CallError {
         pub fn kind(&self) -> FailureKind {
             match self {
-                CallError::Api(api) => FailureKind::Api(*api),
-                CallError::Script(ScriptError::Compile(_)) => FailureKind::Compile,
-                CallError::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
-                CallError::Script(ScriptError::TickBudget) => FailureKind::TickBudget,
-                CallError::Script(ScriptError::Raised(raised)) => {
+                Self::Api(api) => FailureKind::Api(*api),
+                Self::Script(ScriptError::Compile(_)) => FailureKind::Compile,
+                Self::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
+                Self::Script(ScriptError::TickBudget) => FailureKind::TickBudget,
+                Self::Script(ScriptError::Raised(raised)) => {
                     FailureKind::Raised(raised.get::<NumError>())
                 }
-                CallError::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
+                Self::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
             }
         }
     }

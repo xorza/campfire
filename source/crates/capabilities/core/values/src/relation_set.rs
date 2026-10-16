@@ -17,8 +17,8 @@ campfire_common::enum_all! {
 
 impl RelationSet {
     /// A filter's relation by its name.
-    pub fn named(name: &str) -> Option<RelationSet> {
-        RelationSet::ALL
+    pub fn named(name: &str) -> Option<Self> {
+        Self::ALL
             .into_iter()
             .find(|relation| relation.name() == name)
     }
@@ -26,22 +26,22 @@ impl RelationSet {
     /// The relation as filters write it.
     pub const fn name(self) -> &'static str {
         match self {
-            RelationSet::Enemies => "enemies",
-            RelationSet::Hostiles => "hostiles",
-            RelationSet::Neutrals => "neutrals",
-            RelationSet::Allies => "allies",
-            RelationSet::All => "all",
+            Self::Enemies => "enemies",
+            Self::Hostiles => "hostiles",
+            Self::Neutrals => "neutrals",
+            Self::Allies => "allies",
+            Self::All => "all",
         }
     }
 
     /// Whether it selects a unit of a team regarded with `relation`.
     pub const fn selects(self, relation: Relation) -> bool {
         match self {
-            RelationSet::Enemies => relation.may_attack(),
-            RelationSet::Hostiles => matches!(relation, Relation::Hostile),
-            RelationSet::Neutrals => matches!(relation, Relation::Neutral),
-            RelationSet::Allies => matches!(relation, Relation::Friendly),
-            RelationSet::All => true,
+            Self::Enemies => relation.may_attack(),
+            Self::Hostiles => matches!(relation, Relation::Hostile),
+            Self::Neutrals => matches!(relation, Relation::Neutral),
+            Self::Allies => matches!(relation, Relation::Friendly),
+            Self::All => true,
         }
     }
 }

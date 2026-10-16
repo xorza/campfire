@@ -17,13 +17,13 @@ use crate::unit_entity::UnitEntity;
 pub struct StatusTags(TagSet);
 
 impl FromIterator<EngineTag> for StatusTags {
-    fn from_iter<I: IntoIterator<Item = EngineTag>>(tags: I) -> StatusTags {
-        StatusTags(tags.into_iter().map(EngineTag::tag).collect())
+    fn from_iter<I: IntoIterator<Item = EngineTag>>(tags: I) -> Self {
+        Self(tags.into_iter().map(EngineTag::tag).collect())
     }
 }
 
 impl<const N: usize> From<[EngineTag; N]> for StatusTags {
-    fn from(tags: [EngineTag; N]) -> StatusTags {
+    fn from(tags: [EngineTag; N]) -> Self {
         tags.into_iter().collect()
     }
 }
@@ -36,9 +36,9 @@ impl StatusTags {
     /// It with `tag` when `on`, else without it; every other tag stays, as each belongs to the
     /// capability that gives it.
     #[must_use]
-    pub const fn turned(self, tag: EngineTag, on: bool) -> StatusTags {
+    pub const fn turned(self, tag: EngineTag, on: bool) -> Self {
         let tag = tag.tag();
-        StatusTags(if on {
+        Self(if on {
             self.0.with(tag)
         } else {
             self.0.without(tag)

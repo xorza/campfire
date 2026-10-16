@@ -13,8 +13,8 @@ pub struct StatTotals {
 
 impl StatTotals {
     /// The totals of a stat whose base is `base` bits, before any change.
-    pub(crate) const fn base(base: i128) -> StatTotals {
-        StatTotals {
+    pub(crate) const fn base(base: i128) -> Self {
+        Self {
             add: base,
             pct: 0,
             cut: 0,

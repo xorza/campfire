@@ -40,7 +40,7 @@ pub struct SupplyUnit<'a> {
 
 impl SupplyCostBook {
     /// The costs of `types`, and of the trains of `book`.
-    pub fn new(types: ByType<SupplyData>, book: &ActionBook) -> SupplyCostBook {
+    pub fn new(types: ByType<SupplyData>, book: &ActionBook) -> Self {
         let trains = (0..)
             .map_while(|at| book.get(ActionId::new(at)))
             .map(|action| match action.kind {
@@ -52,7 +52,7 @@ impl SupplyCostBook {
                 | KindSpec::Gather(_) => 0,
             })
             .collect();
-        SupplyCostBook {
+        Self {
             types: Arc::new(types),
             trains,
         }
@@ -60,7 +60,7 @@ impl SupplyCostBook {
 
     /// Whether `other` is this book as one load made it, not a book of another load: the costs a
     /// row filled from it holds.
-    pub(crate) fn same(&self, other: &SupplyCostBook) -> bool {
+    pub(crate) fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.types, &other.types) && Arc::ptr_eq(&self.trains, &other.trains)
     }
 

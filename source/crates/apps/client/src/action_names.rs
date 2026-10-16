@@ -26,7 +26,7 @@ struct NamedPackages(Arc<ModePackages>);
 impl Plugin for ActionNames {
     fn build(&self, app: &mut App) {
         app.insert_resource(NamedPackages(Arc::clone(&self.packages)));
-        app.add_systems(Startup, ActionNames::read);
+        app.add_systems(Startup, Self::read);
     }
 }
 

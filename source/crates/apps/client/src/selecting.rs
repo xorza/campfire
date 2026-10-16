@@ -60,17 +60,17 @@ impl Plugin for Selecting {
     fn build(&self, app: &mut App) {
         app.init_resource::<Selection>();
         app.init_resource::<Held>();
-        app.add_systems(Startup, Selecting::add_box);
+        app.add_systems(Startup, Self::add_box);
         app.add_systems(
             Update,
             (
-                Selecting::keep,
-                Selecting::press.run_if(
+                Self::keep,
+                Self::press.run_if(
                     input_just_pressed(MouseButton::Left).and_then(not(resource_exists::<Placing>)),
                 ),
-                Selecting::follow,
-                Selecting::release.run_if(input_just_released(MouseButton::Left)),
-                Selecting::draw_box,
+                Self::follow,
+                Self::release.run_if(input_just_released(MouseButton::Left)),
+                Self::draw_box,
             )
                 .chain()
                 .in_set(SelectionSystems)

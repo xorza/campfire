@@ -17,7 +17,7 @@ pub struct DurableDir;
 impl DurableDir {
     /// Makes the directory `path` when it is missing; one already there stays as it is.
     pub fn create(path: &Path) -> Result<(), PathError<DurableDirError>> {
-        DurableDir::create_case(path).map_err(PathError::at(path))
+        Self::create_case(path).map_err(PathError::at(path))
     }
 
     fn create_case(path: &Path) -> Result<(), DurableDirError> {
@@ -38,7 +38,7 @@ impl DurableDir {
             .take_while(|dir| !dir.as_os_str().is_empty() && !dir.is_dir())
             .collect();
         for dir in missing.into_iter().rev() {
-            DurableDir::create(dir)?;
+            Self::create(dir)?;
         }
         Ok(())
     }

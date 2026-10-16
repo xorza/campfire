@@ -38,7 +38,7 @@ impl PlayerSupply {
         rules: Res<'_, SupplyBook>,
         costs: Res<'_, SupplyCostBook>,
         units: Query<'_, '_, Counted>,
-        mut players: Query<'_, '_, (&Player, &mut PlayerSupply)>,
+        mut players: Query<'_, '_, (&Player, &mut Self)>,
         mut supply: Local<'_, Supply>,
     ) {
         let rules = rules.0.expect("supply is counted in a mode that counts it");
@@ -55,7 +55,7 @@ impl PlayerSupply {
             });
         supply.count(&costs, rules, counted);
         for (player, mut held) in &mut players {
-            held.set_if_neq(PlayerSupply {
+            held.set_if_neq(Self {
                 used: supply.used(player.slot()),
                 cap: supply.cap(player.slot()),
             });

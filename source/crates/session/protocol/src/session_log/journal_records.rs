@@ -72,7 +72,7 @@ impl SessionLog {
     /// tick, and a record that does not decode or that the log refuses.
     pub fn from_journal<'a>(
         records: impl IntoIterator<Item = &'a [u8]>,
-    ) -> Result<SessionLog, JournalReplayError> {
+    ) -> Result<Self, JournalReplayError> {
         let failed = |record, error| JournalReplayError::Record { record, error };
         let mut records = records.into_iter();
         let first = records.next().ok_or(JournalReplayError::NoHeader)?;
@@ -83,8 +83,7 @@ impl SessionLog {
         if !rest.is_empty() {
             return Err(failed(0, LogError::Trailing));
         }
-        let mut log =
-            SessionLog::new(header).map_err(|error| failed(0, LogError::Header(error)))?;
+        let mut log = Self::new(header).map_err(|error| failed(0, LogError::Header(error)))?;
         let mut inputs = Vec::new();
         let mut applied = Vec::new();
         for (index, record) in (1..).zip(records) {

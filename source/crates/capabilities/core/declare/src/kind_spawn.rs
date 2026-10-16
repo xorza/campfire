@@ -20,7 +20,7 @@ pub struct KindSpawn<'w, H> {
 
 impl<'w, H> KindSpawn<'w, H> {
     /// `entity` of `world`, as it stands.
-    pub const fn of(world: &'w World, entity: Entity) -> KindSpawn<'w, H> {
+    pub const fn of(world: &'w World, entity: Entity) -> Self {
         KindSpawn {
             world,
             entity,

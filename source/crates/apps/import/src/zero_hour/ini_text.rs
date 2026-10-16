@@ -30,8 +30,8 @@ pub(crate) struct IniLine<'a> {
 }
 
 impl IniText {
-    pub(crate) fn of(bytes: &[u8]) -> IniText {
-        IniText(bytes.iter().map(|&byte| char::from(byte)).collect())
+    pub(crate) fn of(bytes: &[u8]) -> Self {
+        Self(bytes.iter().map(|&byte| char::from(byte)).collect())
     }
 
     /// Its lines that hold a token, in order.

@@ -43,52 +43,51 @@ pub struct Visibility {
 }
 
 impl SpectatorFog {
-    const NAMED: [(&'static str, SpectatorFog); 2] =
-        [("all", SpectatorFog::All), ("teams", SpectatorFog::Teams)];
+    const NAMED: [(&'static str, Self); 2] = [("all", Self::All), ("teams", Self::Teams)];
 
-    pub fn named(name: &str) -> Option<SpectatorFog> {
-        SpectatorFog::NAMED
+    pub fn named(name: &str) -> Option<Self> {
+        Self::NAMED
             .into_iter()
             .find_map(|(named, fog)| (named == name).then_some(fog))
     }
 
     const fn code(self) -> u8 {
         match self {
-            SpectatorFog::All => 0,
-            SpectatorFog::Teams => 1,
+            Self::All => 0,
+            Self::Teams => 1,
         }
     }
 
-    const fn of_code(code: u8) -> Option<SpectatorFog> {
+    const fn of_code(code: u8) -> Option<Self> {
         match code {
-            0 => Some(SpectatorFog::All),
-            1 => Some(SpectatorFog::Teams),
+            0 => Some(Self::All),
+            1 => Some(Self::Teams),
             _ => None,
         }
     }
 }
 
 impl OutView {
-    const NAMED: [(&'static str, OutView); 2] =
-        [("team", OutView::Team), ("spectators", OutView::Spectators)];
+    const NAMED: [(&'static str, Self); 2] =
+        [("team", Self::Team), ("spectators", Self::Spectators)];
 
-    pub fn named(name: &str) -> Option<OutView> {
-        OutView::NAMED
+    pub fn named(name: &str) -> Option<Self> {
+        Self::NAMED
             .into_iter()
             .find_map(|(named, out)| (named == name).then_some(out))
     }
 
     const fn code(self) -> u8 {
         match self {
-            OutView::Team => 0,
-            OutView::Spectators => 1,
+            Self::Team => 0,
+            Self::Spectators => 1,
         }
     }
 
-    const fn of_code(code: u8) -> Option<OutView> {
+    const fn of_code(code: u8) -> Option<Self> {
         match code {
-            0 => Some(OutView::Team),
-            1 => Some(OutView::Spectators),
+            0 => Some(Self::Team),
+            1 => Some(Self::Spectators),
             _ => None,
         }
     }
@@ -97,8 +96,8 @@ impl OutView {
 impl Visibility {
     /// What no mode or host changes: each kind's default audience, every unit to spectators
     /// through any fog, a player out of play seeing what its team sees, and no spectator.
-    pub const DEFAULT: Visibility = Visibility {
-        audiences: Visibility::default_audiences(),
+    pub const DEFAULT: Self = Self {
+        audiences: Self::default_audiences(),
         spectators: SpectatorFog::All,
         out: OutView::Team,
         max_spectators: 0,
@@ -122,7 +121,7 @@ impl Visibility {
     }
 
     /// Admits at most `count` spectators.
-    pub(crate) const fn with_max_spectators(mut self, count: u32) -> Visibility {
+    pub(crate) const fn with_max_spectators(mut self, count: u32) -> Self {
         self.max_spectators = count;
         self
     }
@@ -152,7 +151,7 @@ impl Visibility {
     /// may set, in the order `DataKind` declares them, its recipients' bits; the spectators' fog;
     /// what a player out of play sees; and the most spectators, a `u32` little-endian.
     pub fn encode(&self) -> Vec<u8> {
-        let kinds = Visibility::settable_kinds();
+        let kinds = Self::settable_kinds();
         let mut bytes = Vec::with_capacity(kinds.clone().count() + 2 + 4);
         bytes.extend(kinds.map(|kind| self.audience(kind).bits()));
         bytes.push(self.spectators.code());
@@ -163,13 +162,13 @@ impl Visibility {
 
     /// The visibility of `bytes`, which `encode` wrote; an error for bytes no visibility encodes
     /// as, a recipient no mode sets for its kind among them, so each visibility has one encoding.
-    pub fn decode(bytes: &[u8]) -> Result<Visibility, VisibilityDecodeError> {
-        let kinds = Visibility::settable_kinds();
+    pub fn decode(bytes: &[u8]) -> Result<Self, VisibilityDecodeError> {
+        let kinds = Self::settable_kinds();
         let length = kinds.clone().count() + 2 + 4;
         if bytes.len() != length {
             return Err(VisibilityDecodeError::Length(bytes.len()));
         }
-        let mut visibility = Visibility::DEFAULT;
+        let mut visibility = Self::DEFAULT;
         for (kind, &bits) in kinds.zip(bytes) {
             let audience = Recipients::from_bits(bits)
                 .filter(|audience| {

@@ -12,16 +12,16 @@ pub enum SlotStart {
 
 impl SlotStart {
     /// The start of the player of `delegation`.
-    pub fn player(delegation: Delegation) -> SlotStart {
-        SlotStart::Player(Box::new(delegation))
+    pub fn player(delegation: Delegation) -> Self {
+        Self::Player(Box::new(delegation))
     }
 
     /// The plan this start keeps.
     pub const fn plan(&self) -> SlotPlan {
         match self {
-            SlotStart::Player(_) => SlotPlan::Player,
-            SlotStart::Bot => SlotPlan::Bot,
-            SlotStart::Open => SlotPlan::Open,
+            Self::Player(_) => SlotPlan::Player,
+            Self::Bot => SlotPlan::Bot,
+            Self::Open => SlotPlan::Open,
         }
     }
 }

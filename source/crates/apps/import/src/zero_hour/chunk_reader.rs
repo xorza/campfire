@@ -19,7 +19,7 @@ pub(crate) struct RawChunk<'a> {
 }
 
 impl<'a> ChunkReader<'a> {
-    pub(crate) const fn new(bytes: &'a [u8]) -> ChunkReader<'a> {
+    pub(crate) const fn new(bytes: &'a [u8]) -> Self {
         ChunkReader {
             cursor: ByteCursor::new(bytes),
         }

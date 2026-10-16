@@ -5,22 +5,22 @@ use crate::scripts::hook::Hook;
 pub struct HookSet(u32);
 
 impl FromIterator<Hook> for HookSet {
-    fn from_iter<I: IntoIterator<Item = Hook>>(hooks: I) -> HookSet {
+    fn from_iter<I: IntoIterator<Item = Hook>>(hooks: I) -> Self {
         hooks
             .into_iter()
-            .fold(HookSet(0), |set, hook| HookSet(set.0 | HookSet::bit(hook)))
+            .fold(Self(0), |set, hook| Self(set.0 | Self::bit(hook)))
     }
 }
 
 impl<const N: usize> From<[Hook; N]> for HookSet {
-    fn from(hooks: [Hook; N]) -> HookSet {
+    fn from(hooks: [Hook; N]) -> Self {
         hooks.into_iter().collect()
     }
 }
 
 impl HookSet {
     pub const fn contains(self, hook: Hook) -> bool {
-        self.0 & HookSet::bit(hook) != 0
+        self.0 & Self::bit(hook) != 0
     }
 
     const fn bit(hook: Hook) -> u32 {

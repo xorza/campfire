@@ -43,23 +43,23 @@ impl Collider {
     /// that both walk, or both stand, share it, the higher id taking the odd bit of each
     /// coordinate; one that may not be pushed leaves the whole overlap to the other. Two on one
     /// spot part along x, the higher id towards +x.
-    pub(crate) fn resolve(colliders: &mut [Collider], contacts: &[Contact]) {
+    pub(crate) fn resolve(colliders: &mut [Self], contacts: &[Contact]) {
         debug_assert!(colliders.is_sorted_by_key(|collider| collider.id));
         for &Contact { first, second } in contacts {
             debug_assert!(first < second);
             let (head, tail) = colliders.split_at_mut(second);
-            Collider::part(&mut head[first], &mut tail[0]);
+            Self::part(&mut head[first], &mut tail[0]);
         }
     }
 
     /// Whether the bodies of `self` and `other` overlap on the ground plane, exactly: touching is
     /// not overlap. Two that may not be pushed never part, so they have no contact, nor have two
     /// of other layers, nor two that both gather.
-    pub(crate) fn overlaps(&self, other: &Collider) -> bool {
+    pub(crate) fn overlaps(&self, other: &Self) -> bool {
         if !self.may_part(other) {
             return false;
         }
-        match Collider::boxed(self, other) {
+        match Self::boxed(self, other) {
             Some((body, at, mover)) => body.push_out(at, mover.point, mover.radius()).is_some(),
             None => self.overlap(other).is_some(),
         }
@@ -67,7 +67,7 @@ impl Collider {
 
     /// Whether the two may part: they stand on one layer, one of them may be pushed, and not both
     /// gather.
-    fn may_part(&self, other: &Collider) -> bool {
+    fn may_part(&self, other: &Self) -> bool {
         self.layer == other.layer
             && (self.movable || other.movable)
             && !(self.gathering && other.gathering)
@@ -83,7 +83,7 @@ impl Collider {
 
     /// The box of the two, where it stands, and the other, which may be pushed: none when
     /// neither is a box. Only a body that may not be pushed is one.
-    const fn boxed<'a>(a: &'a Collider, b: &'a Collider) -> Option<(BodyBox, Vec3, &'a Collider)> {
+    const fn boxed<'a>(a: &'a Self, b: &'a Self) -> Option<(BodyBox, Vec3, &'a Self)> {
         let (body, at, mover) = match (a.shape, b.shape) {
             (Shape::Box(body), _) => (body, a.point, b),
             (_, Shape::Box(body)) => (body, b.point, a),
@@ -94,7 +94,7 @@ impl Collider {
 
     /// How `other` lies from `self`, two circles, when the two overlap and may part, in bits of a
     /// `Num`: a position and a radius are within 2⁴⁵ bits, so squares fit i128.
-    fn overlap(&self, other: &Collider) -> Option<Overlap> {
+    fn overlap(&self, other: &Self) -> Option<Overlap> {
         if !self.may_part(other) {
             return None;
         }
@@ -105,11 +105,11 @@ impl Collider {
         (square < reach * reach).then_some(Overlap { dx, dz, reach })
     }
 
-    fn part(a: &mut Collider, b: &mut Collider) {
+    fn part(a: &mut Self, b: &mut Self) {
         if !a.may_part(b) {
             return;
         }
-        if let Some((body, at, _)) = Collider::boxed(a, b) {
+        if let Some((body, at, _)) = Self::boxed(a, b) {
             let mover = if b.movable { b } else { a };
             if let Some(moved) = body.push_out(at, mover.point, mover.radius()) {
                 mover.point = moved;
@@ -135,8 +135,8 @@ impl Collider {
             (true, false) => along,
             _ => 0,
         });
-        a.point = Collider::moved(a.point, back.map(|along| -along));
-        b.point = Collider::moved(b.point, [0, 1].map(|axis| change[axis] - back[axis]));
+        a.point = Self::moved(a.point, back.map(|along| -along));
+        b.point = Self::moved(b.point, [0, 1].map(|axis| change[axis] - back[axis]));
     }
 
     /// `point` moved by `by` bits along x and z; its height stays.

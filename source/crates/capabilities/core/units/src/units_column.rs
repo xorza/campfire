@@ -117,7 +117,7 @@ impl UnitsColumn {
         unit_type: UnitType,
         read: impl FnOnce(&StateSchema) -> R,
     ) -> R {
-        view.column(|column: &UnitsColumn| {
+        view.column(|column: &Self| {
             read(
                 column
                     .book
@@ -130,14 +130,14 @@ impl UnitsColumn {
 
     /// The field `name` of a unit of `unit_type`; one its type does not declare fails the call.
     pub(crate) fn field(view: &View, unit_type: UnitType, name: &str) -> Checked<StateField> {
-        let found = UnitsColumn::schema(view, unit_type, |schema| schema.field(name));
+        let found = Self::schema(view, unit_type, |schema| schema.field(name));
         Ok(found.ok_or_else(|| ApiError::UnknownState.fail())?)
     }
 
     /// The value of `field` of the unit in row `row`, as a script reads it.
     pub(crate) fn read(view: &View, row: usize, field: StateField) -> ScriptValue {
         let value = view
-            .column(|column: &UnitsColumn| {
+            .column(|column: &Self| {
                 let rows = column.rows.now();
                 rows.values[rows.rows[row].start as usize + field.index()].clone()
             })
@@ -147,7 +147,7 @@ impl UnitsColumn {
 
     /// The first value of `field` of `unit_type`, as a script reads it.
     pub(crate) fn initial(view: &View, unit_type: UnitType, field: StateField) -> ScriptValue {
-        let value = UnitsColumn::schema(view, unit_type, |schema| {
+        let value = Self::schema(view, unit_type, |schema| {
             schema.initial()[field.index()].clone()
         });
         value.to_value(view)
@@ -156,7 +156,7 @@ impl UnitsColumn {
     /// Writes `value` to `field` of the unit in row `row`, as a call's write applies to the
     /// unit's state too, so a later call of the stage reads it.
     pub(crate) fn write(view: &View, row: usize, field: StateField, value: StateValue) {
-        view.write_rows(|column: &mut UnitsColumn| {
+        view.write_rows(|column: &mut Self| {
             let rows = column.rows.now_mut();
             let start = rows.rows[row].start as usize;
             rows.values[start + field.index()] = value;
@@ -166,7 +166,7 @@ impl UnitsColumn {
     /// Adds a unit's script state to the view's column of it.
     pub(super) fn fill_state(
         state: ROQueryItem<'_, '_, StateRowReads>,
-        fill: &mut RowFill<'_, UnitsColumn>,
+        fill: &mut RowFill<'_, Self>,
     ) {
         fill.column.push(state.0.copied(), state);
     }

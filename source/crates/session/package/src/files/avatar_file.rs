@@ -16,7 +16,7 @@ pub struct AvatarFile {
 }
 
 impl<'de> Deserialize<'de> for AvatarFile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<AvatarFile, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             name: MessageId,
@@ -26,7 +26,7 @@ impl<'de> Deserialize<'de> for AvatarFile {
         let Fields { name, mut rest } = Fields::deserialize(deserializer)?;
         let content = ContentTable::take(&mut rest)?;
         let unit = UnitTypeData::deserialize(toml::Value::Table(rest)).map_err(D::Error::custom)?;
-        Ok(AvatarFile {
+        Ok(Self {
             name,
             unit,
             content,

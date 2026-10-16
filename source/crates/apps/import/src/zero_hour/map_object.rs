@@ -64,7 +64,7 @@ impl MapObject {
     pub(crate) fn read(
         body: &mut ChunkReader<'_>,
         names: &BTreeMap<u32, &[u8]>,
-    ) -> Result<MapObject, MapError> {
+    ) -> Result<Self, MapError> {
         let pos = [body.f32()?, body.f32()?, body.f32()?];
         let angle = body.f32()?;
         let flags = body.u32()?;
@@ -85,7 +85,7 @@ impl MapObject {
             (b"waypointName", _) => name = None,
             _ => {}
         })?;
-        Ok(MapObject {
+        Ok(Self {
             pos,
             angle,
             flags,
@@ -130,7 +130,7 @@ impl MapObject {
         Some(Placement {
             ground: self.ground()?,
             height: Num::try_from(self.pos[2]).ok()?,
-            degrees: MapObject::degrees(MapObject::normalized(self.angle)?)?,
+            degrees: Self::degrees(Self::normalized(self.angle)?)?,
         })
     }
 

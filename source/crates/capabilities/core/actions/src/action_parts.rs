@@ -40,7 +40,7 @@ impl ActionParts {
         ranks: u8,
         rate: TickRate,
         names: &impl ActionNames,
-    ) -> Result<ActionParts, ActionError> {
+    ) -> Result<Self, ActionError> {
         let passive = data.passive_modifier.as_ref().map(|name| {
             Ok::<_, UnknownName>(Passive {
                 modifier: names.modifier(package, name)?,
@@ -115,7 +115,7 @@ impl ActionParts {
         let delivery = delivery.transpose()?;
         let hold = data.hold.as_ref().map(|name| names.modifier(package, name));
         let hold = hold.transpose()?;
-        Ok(ActionParts {
+        Ok(Self {
             kind,
             passive,
             hold,

@@ -46,7 +46,7 @@ pub struct Books {
 impl Books {
     /// The books of `input`, which the package load checked; an error for what the check does
     /// not see and the books cannot hold.
-    pub fn build(input: &BookInput<'_>) -> Result<Books, BookError> {
+    pub fn build(input: &BookInput<'_>) -> Result<Self, BookError> {
         BookBuilder::new(input)?.build()
     }
 
@@ -115,7 +115,7 @@ impl Books {
     /// its install put an empty one. A book declared and not built, or built and not declared, is
     /// a logic error.
     pub fn install(self, world: &mut World) -> ModeInputs {
-        let Books {
+        let Self {
             mut built,
             damage_kinds,
             resources,
@@ -128,7 +128,7 @@ impl Books {
             names.set_table(damage_kinds);
             names.set_table(resources);
         }
-        Books::fill(&mut built, world);
+        Self::fill(&mut built, world);
         inputs
     }
 

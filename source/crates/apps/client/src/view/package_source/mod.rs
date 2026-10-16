@@ -50,8 +50,8 @@ impl PackageSource {
     /// The source's name, which an asset path of it names.
     pub(crate) const NAME: &'static str = "package";
 
-    pub(crate) fn of(packages: &ModePackages) -> PackageSource {
-        PackageSource::new(
+    pub(crate) fn of(packages: &ModePackages) -> Self {
+        Self::new(
             packages
                 .packages()
                 .map(|view| view.package.files.clone())
@@ -59,8 +59,8 @@ impl PackageSource {
         )
     }
 
-    fn new(packages: Vec<PackageReader>) -> PackageSource {
-        PackageSource {
+    fn new(packages: Vec<PackageReader>) -> Self {
+        Self {
             packages,
             models: Arc::new(Semaphore::new(MODELS_AT_ONCE)),
         }
@@ -75,7 +75,7 @@ impl PackageSource {
     /// The asset path of the file at `path` in the package at `place`.
     pub(crate) fn asset_path(place: PackageIndex, path: &PackagePath) -> String {
         let place = place.get();
-        format!("{}://{place}/{}", PackageSource::NAME, path.as_str())
+        format!("{}://{place}/{}", Self::NAME, path.as_str())
     }
 
     /// The bytes of the file at `path`, a package's place then its path there; not found for a
@@ -110,7 +110,7 @@ impl PackageSource {
 impl AssetReader for PackageSource {
     fn read<'a>(&'a self, path: &'a Path) -> impl AssetReaderFuture<Value: Reader + 'a> {
         async move {
-            let permit = if PackageSource::is_model(path) {
+            let permit = if Self::is_model(path) {
                 Some(self.models.acquire_arc().await)
             } else {
                 None

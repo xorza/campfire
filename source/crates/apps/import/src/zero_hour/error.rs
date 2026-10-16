@@ -368,12 +368,12 @@ impl Chunk {
     /// Its name in a map's table.
     pub(crate) const fn name(self) -> &'static str {
         match self {
-            Chunk::HeightMapData => "HeightMapData",
-            Chunk::BlendTileData => "BlendTileData",
-            Chunk::ObjectsList => "ObjectsList",
-            Chunk::Object => "Object",
-            Chunk::GlobalLighting => "GlobalLighting",
-            Chunk::WorldInfo => "WorldInfo",
+            Self::HeightMapData => "HeightMapData",
+            Self::BlendTileData => "BlendTileData",
+            Self::ObjectsList => "ObjectsList",
+            Self::Object => "Object",
+            Self::GlobalLighting => "GlobalLighting",
+            Self::WorldInfo => "WorldInfo",
         }
     }
 }
@@ -481,8 +481,8 @@ pub enum CsfError {
 }
 
 impl From<Short> for CsfError {
-    fn from(_: Short) -> CsfError {
-        CsfError::Short
+    fn from(_: Short) -> Self {
+        Self::Short
     }
 }
 
@@ -554,13 +554,13 @@ pub enum ModelError {
 pub struct Short;
 
 impl From<Short> for MapError {
-    fn from(_: Short) -> MapError {
-        MapError::Short
+    fn from(_: Short) -> Self {
+        Self::Short
     }
 }
 
 impl From<Short> for W3dError {
-    fn from(_: Short) -> W3dError {
-        W3dError::Short
+    fn from(_: Short) -> Self {
+        Self::Short
     }
 }

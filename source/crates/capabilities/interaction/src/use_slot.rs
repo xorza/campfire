@@ -8,8 +8,8 @@ use campfire_sim::Capability;
 pub struct UseSlot(SlotKind);
 
 impl UseSlot {
-    pub const fn new(kind: SlotKind) -> UseSlot {
-        UseSlot(kind)
+    pub const fn new(kind: SlotKind) -> Self {
+        Self(kind)
     }
 
     pub const fn kind(self) -> SlotKind {

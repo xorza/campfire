@@ -290,8 +290,8 @@ struct TestType {
 
 impl TestType {
     /// A grunt of `unit_type`: a step of 1 m, no body, track, slot or passive.
-    fn grunt(unit_type: UnitType) -> TestType {
-        TestType {
+    fn grunt(unit_type: UnitType) -> Self {
+        Self {
             unit_type,
             step: Some(MoveStep::new(Num::ONE).unwrap()),
             body: None,
@@ -315,7 +315,7 @@ impl TestType {
     }
 
     /// Loads the parts of `types` into `game`, each book as the install loads it.
-    fn load(game: &mut Match, types: &[TestType]) {
+    fn load(game: &mut Match, types: &[Self]) {
         let mut lives = ByType::default();
         let mut deaths = ByType::default();
         let mut steps = ByType::default();

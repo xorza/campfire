@@ -102,7 +102,7 @@ impl ModifierSpec {
         data: &ModifierData,
         names: &SpecNames<'_, S, M>,
         appliers: &mut Names<ApplierParam>,
-    ) -> Result<ModifierSpec, SpecError>
+    ) -> Result<Self, SpecError>
     where
         S: Fn(&Stat) -> Result<StatId, UnknownName>,
         M: Fn(&str) -> Result<ModifierId, UnknownName>,
@@ -142,7 +142,7 @@ impl ModifierSpec {
             }),
             None => None,
         };
-        Ok(ModifierSpec {
+        Ok(Self {
             duration,
             interval,
             stacks_expire,
@@ -187,8 +187,8 @@ impl SpecTime {
     /// Its ticks at `rate`, a param's read by `param`, which its way checked counts in ticks.
     pub(crate) fn ticks(&self, rate: TickRate, param: impl Fn(ParamPlace) -> Num) -> Ticks {
         match self {
-            SpecTime::Fixed(ticks) => *ticks,
-            SpecTime::Param(place) => {
+            Self::Fixed(ticks) => *ticks,
+            Self::Param(place) => {
                 ModifierData::ticks(param(*place), rate).expect("its way checked the time")
             }
         }
@@ -199,8 +199,8 @@ impl ParamPlace {
     /// The applier's param it is; none for one of the modifier's own.
     pub(crate) const fn applier(self) -> Option<ApplierParam> {
         match self {
-            ParamPlace::Own(_) => None,
-            ParamPlace::Applier(param) => Some(param),
+            Self::Own(_) => None,
+            Self::Applier(param) => Some(param),
         }
     }
 }

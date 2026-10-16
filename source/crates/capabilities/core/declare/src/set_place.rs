@@ -15,8 +15,8 @@ impl SetPlace {
     /// The set of the sim schedule it names.
     pub fn set(self) -> InternedSystemSet {
         match self {
-            SetPlace::Phase(phase) => phase.intern(),
-            SetPlace::Gap(edge) => edge.intern(),
+            Self::Phase(phase) => phase.intern(),
+            Self::Gap(edge) => edge.intern(),
         }
     }
 }

@@ -13,7 +13,7 @@ pub struct Walker {
 
 impl Walker {
     /// The walker of a unit with `body`, a circle or none; `None` for a box, which never walks.
-    pub const fn of(body: Option<&Body>) -> Option<Walker> {
+    pub const fn of(body: Option<&Body>) -> Option<Self> {
         let radius = match body {
             Some(body) => match body.radius() {
                 Some(radius) => radius,
@@ -21,7 +21,7 @@ impl Walker {
             },
             None => Num::ZERO,
         };
-        Some(Walker {
+        Some(Self {
             layer: Body::layer_of(body),
             radius,
         })
@@ -29,19 +29,19 @@ impl Walker {
 
     /// The walker of a unit that walks, with `body`: a circle or none, as a box never walks,
     /// which `MoveStep`'s check holds of a snapshot too.
-    pub(crate) const fn walking(body: Option<&Body>) -> Walker {
-        Walker::of(body).expect("a unit that walks has a circle for a body, or none")
+    pub(crate) const fn walking(body: Option<&Body>) -> Self {
+        Self::of(body).expect("a unit that walks has a circle for a body, or none")
     }
 
     /// The walker of a unit type of `form`, a circle or none; `None` for a box.
-    pub fn of_form(form: Option<BodyForm>) -> Option<Walker> {
+    pub fn of_form(form: Option<BodyForm>) -> Option<Self> {
         let Some(form) = form else {
-            return Some(Walker {
+            return Some(Self {
                 layer: Layer::FIRST,
                 radius: Num::ZERO,
             });
         };
-        Some(Walker {
+        Some(Self {
             layer: form.layer(),
             radius: form.circle_radius()?,
         })

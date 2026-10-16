@@ -82,10 +82,7 @@ impl ImportedType {
     /// The unit type of `object`, its locomotors found in `locomotors`; an error for a locomotor
     /// no file defines, as the game refuses one, a number past what the engine holds, or a body
     /// a unit type's load refuses.
-    pub(crate) fn of(
-        object: &IniObject,
-        locomotors: &LocomotorIni,
-    ) -> Result<ImportedType, TypeError> {
+    pub(crate) fn of(object: &IniObject, locomotors: &LocomotorIni) -> Result<Self, TypeError> {
         let mut drive = None;
         for name in object.locomotors() {
             let locomotor = locomotors
@@ -145,7 +142,7 @@ impl ImportedType {
             }
             None => None,
         };
-        Ok(ImportedType {
+        Ok(Self {
             pools: stats.life.map(|_| [LIFE]),
             tags: object.counts_for_victory().then_some([VICTORY]),
             stats,

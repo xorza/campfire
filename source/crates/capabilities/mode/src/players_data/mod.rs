@@ -19,7 +19,7 @@ pub struct PlayersData {
 impl PlayersData {
     /// What a mode with no `[players]` says: no late join, no bot takeover, and a leaver's slot
     /// reserved.
-    pub const DEFAULT: PlayersData = PlayersData {
+    pub const DEFAULT: Self = Self {
         late_join: false,
         bot_takeover: false,
         leaver: AfterLeave::Reserve,
@@ -27,8 +27,8 @@ impl PlayersData {
 }
 
 impl Default for PlayersData {
-    fn default() -> PlayersData {
-        PlayersData::DEFAULT
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 

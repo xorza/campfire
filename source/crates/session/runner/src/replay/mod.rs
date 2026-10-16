@@ -31,7 +31,7 @@ impl<'p> Replay<'p> {
     /// The replay of `published` with the log's own randomness, on `packages`, the mode its terms
     /// name; an error when the log does not reveal the server seed its header commits to, or its
     /// match does not start on `packages`.
-    pub fn of(published: SessionLog, packages: &'p ModePackages) -> Result<Replay<'p>, StartError> {
+    pub fn of(published: SessionLog, packages: &'p ModePackages) -> Result<Self, StartError> {
         let seeds = published
             .revealed_seeds()
             .ok_or(StartError::Seed(SeedError::NotRevealed))?;

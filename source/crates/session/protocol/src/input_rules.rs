@@ -20,7 +20,7 @@ pub struct InputRules {
 
 impl InputRules {
     /// The limits the reference server runs a session on a LAN by.
-    pub const LAN: InputRules = InputRules {
+    pub const LAN: Self = Self {
         max_delay: Ticks::new(10),
         max_lead: Ticks::new(30),
         max_payload_len: 64,
@@ -36,7 +36,7 @@ pub(crate) mod internals {
 
     impl InputRules {
         /// Limits no test reaches.
-        pub const ROOMY: InputRules = InputRules {
+        pub const ROOMY: Self = Self {
             max_delay: Ticks::new(10),
             max_lead: Ticks::new(10),
             max_payload_len: 256,

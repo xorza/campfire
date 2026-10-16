@@ -16,7 +16,7 @@ pub(crate) struct Terrain {
 
 impl Terrain {
     /// The cells of `grid` that `walls` block.
-    pub(crate) fn new(grid: &Grid, walls: &[Wall]) -> Terrain {
+    pub(crate) fn new(grid: &Grid, walls: &[Wall]) -> Self {
         let words = grid.cells().div_ceil(64);
         let layers = walls
             .iter()
@@ -29,7 +29,7 @@ impl Terrain {
             let cells = &mut blocked[layer * words..(layer + 1) * words];
             grid.polygon_cells(&wall.area, |cell| cells[cell / 64] |= 1 << (cell % 64));
         }
-        Terrain { words, blocked }
+        Self { words, blocked }
     }
 
     /// The cells the walls of `layer` block; none for a layer with no wall.

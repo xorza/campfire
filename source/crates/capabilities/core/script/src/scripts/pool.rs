@@ -13,10 +13,10 @@ pub enum Pool {
 
 impl Pool {
     /// The pool of a unit's calls: its player's, when `owner` controls it, or the think pool.
-    pub const fn of(owner: Option<PlayerSlot>) -> Pool {
+    pub const fn of(owner: Option<PlayerSlot>) -> Self {
         match owner {
-            Some(slot) => Pool::Player(slot),
-            None => Pool::Think,
+            Some(slot) => Self::Player(slot),
+            None => Self::Think,
         }
     }
 }

@@ -10,8 +10,8 @@ pub struct StatId(u16);
 
 impl StatId {
     /// The stat at `index` among the mode's.
-    pub const fn new(index: u16) -> StatId {
-        StatId(index)
+    pub const fn new(index: u16) -> Self {
+        Self(index)
     }
 }
 
@@ -19,8 +19,8 @@ impl NameId for StatId {
     type Scope = ();
     const LIMIT: usize = 1 << u16::BITS;
 
-    fn at(index: usize) -> StatId {
-        StatId(u16::try_from(index).expect("stats fit u16"))
+    fn at(index: usize) -> Self {
+        Self(u16::try_from(index).expect("stats fit u16"))
     }
 
     fn index(self) -> usize {

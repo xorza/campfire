@@ -15,20 +15,20 @@ pub struct UnitTags {
 
 impl UnitTags {
     /// The properties of a unit with `tags`: none for one with no tags.
-    pub fn properties_of(tags: Option<&UnitTags>) -> TagProperties {
+    pub fn properties_of(tags: Option<&Self>) -> TagProperties {
         tags.map_or_else(TagProperties::default, |tags| tags.properties)
     }
 
     /// Whether a unit with `tags` passes through each unit that passes too, as a worker in its
     /// gather loop does.
-    pub fn passes(tags: Option<&UnitTags>) -> bool {
-        UnitTags::properties_of(tags).passes()
+    pub fn passes(tags: Option<&Self>) -> bool {
+        Self::properties_of(tags).passes()
     }
 
     /// Whether a unit with `tags`, under a forced move when `forced`, is kept from `block`: by its
     /// tags, or by the forced move from a step, a cast or an attack.
-    pub fn blocks(tags: Option<&UnitTags>, forced: bool, block: Block) -> bool {
-        UnitTags::properties_of(tags).blocks(block)
+    pub fn blocks(tags: Option<&Self>, forced: bool, block: Block) -> bool {
+        Self::properties_of(tags).blocks(block)
             || forced && matches!(block, Block::Move | Block::Cast | Block::Attack)
     }
 }

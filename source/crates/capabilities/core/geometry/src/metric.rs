@@ -22,8 +22,8 @@ impl Metric {
     /// The offset from `a` to `b` that counts towards a distance: a planar map drops the height.
     pub fn offset(self, a: Vec3, b: Vec3) -> Vec3 {
         match self {
-            Metric::Planar => a.ground_offset(b),
-            Metric::Spatial => b - a,
+            Self::Planar => a.ground_offset(b),
+            Self::Spatial => b - a,
         }
     }
 
@@ -31,8 +31,8 @@ impl Metric {
     /// height; `None` for a vector of no length there.
     pub fn direction(self, vector: Vec3) -> Option<Vec3> {
         match self {
-            Metric::Planar => Vec3::new(vector.x, Num::ZERO, vector.z).normalized(),
-            Metric::Spatial => vector.normalized(),
+            Self::Planar => Vec3::new(vector.x, Num::ZERO, vector.z).normalized(),
+            Self::Spatial => vector.normalized(),
         }
     }
 
@@ -40,8 +40,8 @@ impl Metric {
     /// is at most `step` away: a planar map steps on the ground plane, at `from`'s height.
     pub fn step_toward(self, from: Vec3, to: Vec3, step: Num) -> Vec3 {
         let to = match self {
-            Metric::Planar => Vec3::new(to.x, from.y, to.z),
-            Metric::Spatial => to,
+            Self::Planar => Vec3::new(to.x, from.y, to.z),
+            Self::Spatial => to,
         };
         from.step_toward(to, step)
     }
@@ -68,7 +68,7 @@ impl Metric {
         ) = (from, to);
         debug_assert!(range >= Num::ZERO);
         let within = |body: &BodyBox, pos: Vec3, other: Vec3, radius: Num| {
-            debug_assert!(self == Metric::Planar, "a box lies on a planar map");
+            debug_assert!(self == Self::Planar, "a box lies on a planar map");
             let reach = range.checked_add(radius);
             reach.is_none_or(|reach| body.nearest(pos, other, reach) != Ordering::Greater)
         };
@@ -82,7 +82,7 @@ impl Metric {
             (Shape::Circle(radius), Shape::Box(body)) => within(&body, to, from, radius.get()),
             (Shape::Box(body), Shape::Circle(radius)) => within(&body, from, to, radius.get()),
             (Shape::Box(body), Shape::Box(other)) => {
-                debug_assert!(self == Metric::Planar, "a box lies on a planar map");
+                debug_assert!(self == Self::Planar, "a box lies on a planar map");
                 body.nearest_box(from, &other, to, range) != Ordering::Greater
             }
         }
@@ -100,7 +100,7 @@ impl Metric {
                 radius.get(),
             ),
             Shape::Box(body) => {
-                debug_assert!(self == Metric::Planar, "a box lies on a planar map");
+                debug_assert!(self == Self::Planar, "a box lies on a planar map");
                 body.approach(pos, from, to, reach)
             }
         }

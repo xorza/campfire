@@ -57,11 +57,7 @@ struct CheckpointCopy {
 impl CheckpointThread {
     /// Starts the thread of a session whose state types `registry` holds and whose whole state
     /// `base` holds, writing snapshots into `snapshots`. The base is the first delta sent.
-    pub(crate) fn start(
-        registry: StateRegistry,
-        base: StateDelta,
-        snapshots: SnapshotDir,
-    ) -> CheckpointThread {
+    pub(crate) fn start(registry: StateRegistry, base: StateDelta, snapshots: SnapshotDir) -> Self {
         let mut world = World::new();
         world.init_resource::<EntityIndex>();
         let mut copy = CheckpointCopy {
@@ -72,7 +68,7 @@ impl CheckpointThread {
         };
         let mut exchange = Exchange::start("checkpoints", move |job: &mut Job| copy.run(job));
         exchange.send(|job| job.delta = base);
-        CheckpointThread {
+        Self {
             exchange,
             queued: VecDeque::new(),
             spares: Vec::new(),

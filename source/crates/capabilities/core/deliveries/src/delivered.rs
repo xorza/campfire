@@ -24,16 +24,16 @@ impl Reached {
     /// The list that runs for it.
     pub(crate) const fn list(self) -> ListHook {
         match self {
-            Reached::Hit(_) => ListHook::OnHit,
-            Reached::End => ListHook::OnEnd,
+            Self::Hit(_) => ListHook::OnHit,
+            Self::End => ListHook::OnEnd,
         }
     }
 
     /// The unit it hit, if any.
     pub const fn unit(self) -> Option<StableId> {
         match self {
-            Reached::Hit(unit) => Some(unit),
-            Reached::End => None,
+            Self::Hit(unit) => Some(unit),
+            Self::End => None,
         }
     }
 }

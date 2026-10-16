@@ -27,8 +27,8 @@ pub struct InputChain {
 
 impl InputChain {
     /// A chain with no input yet: the first one links to `root`.
-    pub const fn new(slot: PlayerSlot, root: InputHash) -> InputChain {
-        InputChain {
+    pub const fn new(slot: PlayerSlot, root: InputHash) -> Self {
+        Self {
             slot,
             head: root,
             next_seq: 0,
@@ -37,8 +37,8 @@ impl InputChain {
 
     /// A chain whose next input is the `next_seq`th, linking to `head`: as the log holds it, for
     /// a player who takes their chain up again from there.
-    pub const fn resume(slot: PlayerSlot, head: InputHash, next_seq: u64) -> InputChain {
-        InputChain {
+    pub const fn resume(slot: PlayerSlot, head: InputHash, next_seq: u64) -> Self {
+        Self {
             slot,
             head,
             next_seq,

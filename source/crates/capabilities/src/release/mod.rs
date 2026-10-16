@@ -88,13 +88,13 @@ impl Release {
     /// The capabilities of the list, each with what it builds on.
     fn rows() -> CapabilityRows {
         let mut rows = CapabilityRows::default();
-        Release::modules(&mut rows);
+        Self::modules(&mut rows);
         rows
     }
 
     /// Every capability the release runs.
     pub fn capabilities() -> CapabilitySet {
-        Release::rows()
+        Self::rows()
             .0
             .iter()
             .fold(CapabilitySet::CORE, |set, row| set.with(row.capability))
@@ -113,7 +113,7 @@ impl Release {
             }
             set = set.with(capability);
         }
-        let rows = Release::rows();
+        let rows = Self::rows();
         for capability in set.iter() {
             let needs = rows
                 .needs(capability)
@@ -129,7 +129,7 @@ impl Release {
     /// tags of every match, whatever its capabilities, so a tag has one number in all.
     pub fn engine_tags() -> Vec<EngineTag> {
         let mut list = EngineTagList::default();
-        Release::declare(Release::capabilities(), &mut list);
+        Self::declare(Self::capabilities(), &mut list);
         for (at, tag) in list.0.iter().enumerate() {
             assert_eq!(
                 tag.tag().index(),
@@ -144,43 +144,43 @@ impl Release {
     /// The script API of the release, recorded as a match's engine binds it, with the names the
     /// engine has before: every capability's, whether a mode declares it or not.
     pub fn script_api() -> ScriptApi {
-        Release::bind_script_api(&mut ScriptHost::new(NonZeroU64::MIN))
+        Self::bind_script_api(&mut ScriptHost::new(NonZeroU64::MIN))
     }
 
     /// Binds the script API of the release into `host`, as `script_api` records it, so `host`
     /// compiles a script as a match's engine does: with the engine enums' modules.
     pub fn bind_script_api(host: &mut ScriptHost) -> ScriptApi {
-        ScriptApi::release(host, Release::bind_api)
+        ScriptApi::release(host, Self::bind_api)
     }
 
     /// Visits, with `d`, the declarations of a match of `set`: each module's of the list that the
     /// match runs, in the order they install, then the mode's.
     pub(crate) fn declare<D: Declarations>(set: CapabilitySet, d: &mut D) {
         let mut declaring = Declaring::new(set, d);
-        Release::modules(&mut declaring);
+        Self::modules(&mut declaring);
         declaring.declare::<Mode>();
     }
 
     /// The registries of callbacks the modules of a match of `set` call or declare callbacks in.
     fn called(set: CapabilitySet) -> Vec<TypeId> {
         let mut called = CalledRegistries::default();
-        Release::declare(set, &mut called);
+        Self::declare(set, &mut called);
         called.0
     }
 
     /// Lists, into `types`, the state types of a match of `set`, as its install registers them.
     pub fn state_types<T: StateTypes>(set: CapabilitySet, types: &mut T) {
-        Release::declare(set, &mut StateOnly(types));
+        Self::declare(set, &mut StateOnly(types));
     }
 
     /// Visits, with `v`, each kind of entity of a match, whatever its capabilities.
     pub fn kinds<V: KindVisitor>(v: &mut V) {
-        Release::declare(Release::capabilities(), &mut KindsOnly(v));
+        Self::declare(Self::capabilities(), &mut KindsOnly(v));
     }
 
     /// Binds into `builder` the script API of every module the release runs.
     fn bind_api(builder: &mut ApiBuilder<'_>) {
-        Release::declare(Release::capabilities(), &mut ApiBinder(builder));
+        Self::declare(Self::capabilities(), &mut ApiBinder(builder));
     }
 
     /// Builds the match of `spec` in the world, a new world: prepares it for the sim, and
@@ -207,7 +207,7 @@ impl Release {
         world.insert_resource(spec.out);
         Units::open(world, role.budgets().cloned());
         if role.scripts() {
-            ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Release::bind_api);
+            ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Self::bind_api);
         }
         MatchEnd::stop_stages(schedule);
         for phase in Phase::ALL {
@@ -216,12 +216,12 @@ impl Release {
         let facts = MatchFacts {
             set,
             role: &role,
-            called: Release::called(set),
+            called: Self::called(set),
         };
-        Release::modules(&mut Installing::new(
+        Self::modules(&mut Installing::new(
             world, schedule, registry, &role, &facts,
         ));
-        UnitTypeBook::new(Release::engine_tags()).load_into(world);
+        UnitTypeBook::new(Self::engine_tags()).load_into(world);
         #[cfg(feature = "internals")]
         if spec.unbuilt {
             sim.leave_unbuilt();
@@ -247,7 +247,7 @@ impl Release {
         let facts = MatchFacts {
             set,
             role: &role,
-            called: Release::called(set),
+            called: Self::called(set),
         };
         Installing::new(world, schedule, registry, &role, &facts).install::<Mode>();
         Mode::load(world, setup, load);
@@ -316,7 +316,7 @@ pub(crate) mod internals {
         /// sets each game system of a match of `set` sits in.
         pub fn module_sets(set: CapabilitySet) -> Vec<InternedSystemSet> {
             let mut sets = ModuleSets::default();
-            Release::declare(set, &mut sets);
+            Self::declare(set, &mut sets);
             sets.0
         }
 
@@ -350,7 +350,7 @@ pub(crate) mod internals {
         /// entity list's, which the state registry holds.
         pub fn unlisted_components(set: CapabilitySet, world: &World) -> Vec<String> {
             let mut listed = ListedTypes::default();
-            Release::state_types(set, &mut listed);
+            Self::state_types(set, &mut listed);
             listed.push::<StableId>();
             let components = world.components();
             let Some(unit) = components.component_id::<StableId>() else {
@@ -380,7 +380,7 @@ pub(crate) mod internals {
         /// unit it does not predict keeps what it received, unwritten: a read of state the
         /// client lacks shows as a difference.
         pub fn sync_held(declared: &[Capability], ticks: u64, scene: impl Fn(&mut Match)) {
-            let set = Release::capability_set(declared).expect("a test declares a valid set");
+            let set = Self::capability_set(declared).expect("a test declares a valid set");
             let mut worlds = [(); 2].map(|()| {
                 let mut game = Match::predicting(declared);
                 scene(&mut game);
@@ -430,7 +430,7 @@ pub(crate) mod internals {
             if Units::loads_test_modifiers(world) {
                 Units::load_test_modifiers(fresh);
             }
-            Release::clear(fresh);
+            Self::clear(fresh);
             let mut snapshot = Vec::new();
             world.snapshot(&mut snapshot);
             fresh.restore(&snapshot).err()
@@ -447,7 +447,7 @@ pub(crate) mod internals {
         /// asserts that the two hash the same.
         pub fn restore_into(world: &World, fresh: &mut World) {
             assert_eq!(
-                Release::refusal_into(world, fresh),
+                Self::refusal_into(world, fresh),
                 None,
                 "a match's own snapshot restores"
             );

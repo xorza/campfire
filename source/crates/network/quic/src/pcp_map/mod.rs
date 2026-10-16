@@ -93,24 +93,24 @@ impl PcpMap {
 }
 
 impl MapNonce {
-    pub(crate) fn random() -> MapNonce {
+    pub(crate) fn random() -> Self {
         let mut nonce = [0; 12];
         SystemRandom::new()
             .fill(&mut nonce)
             .expect("the OS gives random bytes");
-        MapNonce(nonce)
+        Self(nonce)
     }
 }
 
 impl PcpReply {
     /// A gateway's reply to a MAP request, from a datagram of untrusted bytes.
-    pub(crate) fn decode(bytes: &[u8]) -> Result<PcpReply, ReplyError> {
+    pub(crate) fn decode(bytes: &[u8]) -> Result<Self, ReplyError> {
         let too_short = |needed| ReplyError::TooShort {
             len: bytes.len(),
             needed,
         };
         match bytes.first() {
-            Some(0) => return Ok(PcpReply::NatPmpOnly),
+            Some(0) => return Ok(Self::NatPmpOnly),
             Some(&VERSION) => {}
             Some(&version) => return Err(ReplyError::Version(version)),
             None => return Err(too_short(HEADER_LEN)),
@@ -121,9 +121,9 @@ impl PcpReply {
         if bytes[1] != REPLY | MAP {
             return Err(ReplyError::Opcode(bytes[1]));
         }
-        let lifetime = Duration::from_secs(u64::from(PcpReply::u32_at(bytes, 4)));
+        let lifetime = Duration::from_secs(u64::from(Self::u32_at(bytes, 4)));
         if let Some(refusal) = PcpRefusal::of(bytes[3])? {
-            return Ok(PcpReply::Refused {
+            return Ok(Self::Refused {
                 refusal,
                 lasts: lifetime,
             });
@@ -141,7 +141,7 @@ impl PcpReply {
         let address = Ipv6Addr::from(address)
             .to_ipv4_mapped()
             .ok_or(ReplyError::NotIpv4)?;
-        Ok(PcpReply::Granted(PcpMapping {
+        Ok(Self::Granted(PcpMapping {
             nonce: MapNonce(nonce),
             internal_port: u16::from_be_bytes([bytes[40], bytes[41]]),
             external: SocketAddrV4::new(address, u16::from_be_bytes([bytes[42], bytes[43]])),
@@ -156,22 +156,22 @@ impl PcpReply {
 
 impl PcpRefusal {
     /// The refusal a result code names, none for SUCCESS.
-    fn of(code: u8) -> Result<Option<PcpRefusal>, ReplyError> {
+    fn of(code: u8) -> Result<Option<Self>, ReplyError> {
         Ok(Some(match code {
             0 => return Ok(None),
-            1 => PcpRefusal::UnsupportedVersion,
-            2 => PcpRefusal::NotAuthorized,
-            3 => PcpRefusal::MalformedRequest,
-            4 => PcpRefusal::UnsupportedOpcode,
-            5 => PcpRefusal::UnsupportedOption,
-            6 => PcpRefusal::MalformedOption,
-            7 => PcpRefusal::NetworkFailure,
-            8 => PcpRefusal::NoResources,
-            9 => PcpRefusal::UnsupportedProtocol,
-            10 => PcpRefusal::UserExceededQuota,
-            11 => PcpRefusal::CannotProvideExternal,
-            12 => PcpRefusal::AddressMismatch,
-            13 => PcpRefusal::ExcessiveRemotePeers,
+            1 => Self::UnsupportedVersion,
+            2 => Self::NotAuthorized,
+            3 => Self::MalformedRequest,
+            4 => Self::UnsupportedOpcode,
+            5 => Self::UnsupportedOption,
+            6 => Self::MalformedOption,
+            7 => Self::NetworkFailure,
+            8 => Self::NoResources,
+            9 => Self::UnsupportedProtocol,
+            10 => Self::UserExceededQuota,
+            11 => Self::CannotProvideExternal,
+            12 => Self::AddressMismatch,
+            13 => Self::ExcessiveRemotePeers,
             code => return Err(ReplyError::Result(u16::from(code))),
         }))
     }

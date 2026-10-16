@@ -6,8 +6,8 @@ use crate::simd::f64x4::F64x4;
 pub struct U64x4([u64; 4]);
 
 impl U64x4 {
-    pub const fn from_array(lanes: [u64; 4]) -> U64x4 {
-        U64x4(lanes)
+    pub const fn from_array(lanes: [u64; 4]) -> Self {
+        Self(lanes)
     }
 
     pub const fn to_array(self) -> [u64; 4] {
@@ -29,14 +29,14 @@ impl FloorRoot for U64x4 {
     /// Exact for every `u64`. The value rounds once to `f64`, by at most 2⁻⁵³ of itself, and the
     /// root once more, so the estimate lies within 2⁻²⁰ of the root, below 2³²; rounded to the
     /// nearest integer, it is the floor or one above it, and one step down corrects it.
-    fn floor_root(self) -> U64x4 {
+    fn floor_root(self) -> Self {
         let estimate = F64x4::from_u64(self.0).sqrt().round_to_u64();
         let [a, b, c, d] = self.0;
-        U64x4([
-            U64x4::corrected(a, estimate[0]),
-            U64x4::corrected(b, estimate[1]),
-            U64x4::corrected(c, estimate[2]),
-            U64x4::corrected(d, estimate[3]),
+        Self([
+            Self::corrected(a, estimate[0]),
+            Self::corrected(b, estimate[1]),
+            Self::corrected(c, estimate[2]),
+            Self::corrected(d, estimate[3]),
         ])
     }
 }

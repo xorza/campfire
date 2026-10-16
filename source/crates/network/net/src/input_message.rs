@@ -22,14 +22,14 @@ struct InputFrame {
 impl InputMessage {
     /// A message of `inputs`, with `signature` over the chain head after the last. Its buffers
     /// take their exact sizes first, from a pass over the inputs.
-    pub fn new<'a, I>(inputs: I, signature: Signature) -> InputMessage
+    pub fn new<'a, I>(inputs: I, signature: Signature) -> Self
     where
         I: IntoIterator<Item = PlayerInput<'a>>,
         I::IntoIter: ExactSizeIterator + Clone,
     {
         let inputs = inputs.into_iter();
         let bytes = inputs.clone().map(|input| input.payload.len()).sum();
-        let mut message = InputMessage {
+        let mut message = Self {
             frames: Vec::with_capacity(inputs.len()),
             payloads: Vec::with_capacity(bytes),
             signature,

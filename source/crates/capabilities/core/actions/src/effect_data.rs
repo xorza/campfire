@@ -90,8 +90,8 @@ enum MoveUnit {
 impl MoveUnit {
     const fn to(self) -> EffectTo {
         match self {
-            MoveUnit::Source => EffectTo::Source,
-            MoveUnit::Reached => EffectTo::Reached,
+            Self::Source => EffectTo::Source,
+            Self::Reached => EffectTo::Reached,
         }
     }
 }
@@ -150,14 +150,14 @@ struct MoveFields {
 impl MoveFields {
     fn data(self) -> Option<MoveData> {
         match self {
-            MoveFields {
+            Self {
                 to: Some(to),
                 speed: Some(speed),
                 from: None,
                 distance: None,
                 ms: None,
             } => Some(MoveData::Dash { to: to.to(), speed }),
-            MoveFields {
+            Self {
                 to: None,
                 speed: None,
                 from: Some(from),
@@ -195,17 +195,17 @@ impl DoesData {
     /// back's distance and time.
     pub fn numbers(&self) -> impl Iterator<Item = &Number> + '_ {
         let numbers = match self {
-            DoesData::Damage(DamageFields { amount, .. })
-            | DoesData::Heal(HealFields { amount })
-            | DoesData::Restore(RestoreFields { amount, .. })
-            | DoesData::Xp(XpFields { amount, .. })
-            | DoesData::Move(MoveData::Dash { speed: amount, .. }) => [Some(amount), None],
-            DoesData::Modifier(ModifierFields { duration_ms, .. })
-            | DoesData::Spawn(SpawnFields { duration_ms, .. }) => [duration_ms.as_ref(), None],
-            DoesData::Move(MoveData::KnockBack { distance, ms, .. }) => [Some(distance), Some(ms)],
-            DoesData::Purge(PurgeFields { .. })
-            | DoesData::Launch(LaunchFields { .. })
-            | DoesData::Planned(_) => [None, None],
+            Self::Damage(DamageFields { amount, .. })
+            | Self::Heal(HealFields { amount })
+            | Self::Restore(RestoreFields { amount, .. })
+            | Self::Xp(XpFields { amount, .. })
+            | Self::Move(MoveData::Dash { speed: amount, .. }) => [Some(amount), None],
+            Self::Modifier(ModifierFields { duration_ms, .. })
+            | Self::Spawn(SpawnFields { duration_ms, .. }) => [duration_ms.as_ref(), None],
+            Self::Move(MoveData::KnockBack { distance, ms, .. }) => [Some(distance), Some(ms)],
+            Self::Purge(PurgeFields { .. })
+            | Self::Launch(LaunchFields { .. })
+            | Self::Planned(_) => [None, None],
         };
         numbers.into_iter().flatten()
     }
@@ -213,7 +213,7 @@ impl DoesData {
     /// The effects of the lists it holds: a launch's `on_hit`, then its `on_end`.
     pub fn nested(&self) -> impl Iterator<Item = &EffectData> + '_ {
         let (on_hit, on_end): (&[EffectData], &[EffectData]) = match self {
-            DoesData::Launch(LaunchFields { on_hit, on_end, .. }) => (on_hit, on_end),
+            Self::Launch(LaunchFields { on_hit, on_end, .. }) => (on_hit, on_end),
             _ => (&[], &[]),
         };
         on_hit.iter().chain(on_end)
@@ -222,7 +222,7 @@ impl DoesData {
     /// The modifier of its package it applies, if it applies one.
     pub const fn modifier(&self) -> Option<&DeclaredName> {
         match self {
-            DoesData::Modifier(ModifierFields { id, .. }) => Some(id),
+            Self::Modifier(ModifierFields { id, .. }) => Some(id),
             _ => None,
         }
     }
@@ -240,15 +240,15 @@ impl PlannedEffect {
     /// The effect's key in data.
     pub const fn name(self) -> &'static str {
         match self {
-            PlannedEffect::Loot => "loot",
-            PlannedEffect::Noise => "noise",
+            Self::Loot => "loot",
+            Self::Noise => "noise",
         }
     }
 }
 
 /// The table of exactly one effect's key, and `to` beside it.
 impl<'de> Deserialize<'de> for EffectData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<EffectData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -304,7 +304,7 @@ impl<'de> Deserialize<'de> for EffectData {
             Some(ToName::Source) => EffectTo::Source,
             None => EffectTo::Reached,
         };
-        Ok(EffectData { does, to })
+        Ok(Self { does, to })
     }
 }
 

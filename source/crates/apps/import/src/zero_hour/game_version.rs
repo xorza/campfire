@@ -30,15 +30,15 @@ pub struct ArchiveHash {
 
 impl ArchiveHash {
     /// The archive at `path` whose SHA-256 is the 64 lowercase hex digits `hex`.
-    pub const fn new(path: &'static str, hex: &str) -> ArchiveHash {
+    pub const fn new(path: &'static str, hex: &str) -> Self {
         let sha256 = ContentHash::of_hex(hex);
-        ArchiveHash { path, sha256 }
+        Self { path, sha256 }
     }
 }
 
 impl GameVersion {
     /// The versions the importer reads.
-    pub const KNOWN: &[GameVersion] = &[GameVersion {
+    pub const KNOWN: &[Self] = &[Self {
         name: "Steam: Zero Hour, and Generals in ZH_Generals",
         archives: &[
             ArchiveHash::new(
@@ -188,8 +188,8 @@ impl GameVersion {
     /// SHA-256; otherwise how the first archive that differs from the first version differs.
     pub(crate) fn identify<'a>(
         found: &[HashedArchive],
-        known: &'a [GameVersion],
-    ) -> Result<&'a GameVersion, ZeroHourError> {
+        known: &'a [Self],
+    ) -> Result<&'a Self, ZeroHourError> {
         let found: BTreeMap<String, ContentHash> = found
             .iter()
             .map(|archive| (archive.name.to_ascii_lowercase(), archive.sha256))

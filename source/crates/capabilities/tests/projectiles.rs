@@ -84,7 +84,7 @@ struct Volley {
 impl Volley {
     /// Loads the projectile types into `game`, a match with combat and projectiles, then the
     /// unit types.
-    fn place(game: &mut Match) -> Volley {
+    fn place(game: &mut Match) -> Self {
         let types = [
             ("bolt", projectile(true, Num::ZERO, None, false)),
             (
@@ -113,7 +113,7 @@ impl Volley {
         Units::give_type(game, round, BodyForm::circle(Num::ONE).unwrap());
         let block_body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
         Units::give_type(game, block, block_body);
-        Volley {
+        Self {
             shooter,
             target,
             round,

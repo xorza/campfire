@@ -42,7 +42,7 @@ impl Connection {
         args: &Args,
         packages: &Arc<ModePackages>,
         pace: &Arc<Pace>,
-    ) -> Result<Connection, ExitCode> {
+    ) -> Result<Self, ExitCode> {
         match &args.server {
             Server::Remote {
                 address,
@@ -50,19 +50,19 @@ impl Connection {
                 key,
                 tick_hz,
                 data,
-            } => Ok(Connection::Remote {
+            } => Ok(Self::Remote {
                 pin: ServerPin {
                     key: *key,
                     tls_key: *tls_key,
                     tick_hz: *tick_hz,
                 },
                 address: *address,
-                data: data.as_deref().map(Connection::open_dir).transpose()?,
+                data: data.as_deref().map(Self::open_dir).transpose()?,
             }),
             Server::Local { bots, data } => {
-                let data = Connection::open_dir(data)?;
-                let server = Connection::start_local(&data, packages, bots, pace)?;
-                Ok(Connection::Local { server, data })
+                let data = Self::open_dir(data)?;
+                let server = Self::start_local(&data, packages, bots, pace)?;
+                Ok(Self::Local { server, data })
             }
         }
     }
@@ -70,8 +70,8 @@ impl Connection {
     /// The client's data directory, if it has one.
     pub(crate) fn data(&self) -> Option<Arc<ClientDir>> {
         match self {
-            Connection::Remote { data, .. } => data.clone(),
-            Connection::Local { data, .. } => Some(Arc::clone(data)),
+            Self::Remote { data, .. } => data.clone(),
+            Self::Local { data, .. } => Some(Arc::clone(data)),
         }
     }
 
@@ -86,8 +86,8 @@ impl Connection {
     /// What the client pins of the server.
     pub(crate) const fn pin(&self) -> ServerPin {
         match self {
-            Connection::Remote { pin, .. } => *pin,
-            Connection::Local { server, .. } => server.pin(),
+            Self::Remote { pin, .. } => *pin,
+            Self::Local { server, .. } => server.pin(),
         }
     }
 
@@ -103,7 +103,7 @@ impl Connection {
         tick: Duration,
     ) -> Result<(), ExitCode> {
         match self {
-            Connection::Remote { pin, address, .. } => {
+            Self::Remote { pin, address, .. } => {
                 let endpoint = QuicEndpoint::client(*address, &pin.tls_key, LinkTimes::CAMPFIRE).map_err(
                     |error| {
                         error!(error = %ErrorReport::of(&error), "the client's socket does not open");
@@ -112,7 +112,7 @@ impl Connection {
                 )?;
                 app.world_mut().entity_mut(client).insert(endpoint);
             }
-            Connection::Local { server, .. } => {
+            Self::Local { server, .. } => {
                 app.world_mut()
                     .entity_mut(client)
                     .insert(server.take_link());

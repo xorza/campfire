@@ -21,3 +21,4 @@ The issue log: every open problem of the project, under the step it waits for. T
 ## Ready
 
 - **Combat.** An attack lands its damage in the tick it fires, where Zero Hour deals a weapon of no projectile `distance / WeaponSpeed` frames after the shot, rounded up, when that is a frame or more (`WeaponStore::setDelayedDamage`): the import drops each non-laser weapon whose `WeaponSpeed` is below the default, 7 of the install's starting weapons, `HumveeGun` and `SentryDroneGun` among them (design 19, D6).
+- **Driver.** No packaging step moves a release build's debug info out of its binary: `profile.release` keeps `debug = "full"` with `split-debuginfo = "off"`, so a shipped binary carries all of it, where the release packaging is to keep it beside the binary, by `objcopy --only-keep-debug` and `objcopy --strip-debug --add-gnu-debuglink` on Linux and a `CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed` build with `strip -S` on macOS.

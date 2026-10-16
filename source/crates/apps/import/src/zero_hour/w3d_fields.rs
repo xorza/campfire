@@ -8,7 +8,7 @@ pub(crate) struct W3dFields<'a> {
 }
 
 impl<'a> W3dFields<'a> {
-    pub(crate) const fn of(body: &'a [u8]) -> W3dFields<'a> {
+    pub(crate) const fn of(body: &'a [u8]) -> Self {
         W3dFields {
             cursor: ByteCursor::new(body),
         }

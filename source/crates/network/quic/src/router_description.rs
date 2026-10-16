@@ -24,7 +24,7 @@ impl RouterDescription {
     /// devices' tree read depth first, as `igd-next` reads it; its URLs read against its
     /// `URLBase`, else its location. None for a document that does not read, holds no such
     /// service, or names a URL at another address.
-    pub(crate) fn parse(body: &[u8], location: &RouterUrl) -> Option<RouterDescription> {
+    pub(crate) fn parse(body: &[u8], location: &RouterUrl) -> Option<Self> {
         let root = router_xml::parse(body)?;
         let base = match root.get_child("URLBase").and_then(Element::get_text) {
             Some(base) => location.join(&base)?,
@@ -49,7 +49,7 @@ impl RouterDescription {
                     (url.addr().ip() == location.addr().ip()).then_some(url)
                 };
                 let (control, schema) = (url("controlURL")?, url("SCPDURL")?);
-                return Some(RouterDescription {
+                return Some(Self {
                     service_type: service_type.into_owned(),
                     control,
                     schema,

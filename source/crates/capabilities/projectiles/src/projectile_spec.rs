@@ -30,12 +30,12 @@ impl ProjectileSpec {
         data: &ProjectileData,
         types: &UnitTypeBook,
         rate: TickRate,
-    ) -> Result<ProjectileSpec, UnknownName> {
+    ) -> Result<Self, UnknownName> {
         let hits = match &data.hits {
             ProjectileHits::Nothing => None,
             ProjectileHits::Units(filter) => Some(Filter::resolve(filter, types.tags())?),
         };
-        Ok(ProjectileSpec {
+        Ok(Self {
             speed: data
                 .speed
                 .checked_div_int(NonZeroI64::from(rate.hz()).get())

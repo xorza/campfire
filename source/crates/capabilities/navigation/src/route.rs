@@ -199,7 +199,7 @@ impl Replication for Route {
 /// A snapshot is untrusted, so a next waypoint past the last, or waypoints ahead with no place
 /// their leg began, fail to decode.
 impl<'de> Deserialize<'de> for Route {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Route, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             goal: Option<Goal>,
@@ -221,7 +221,7 @@ impl<'de> Deserialize<'de> for Route {
         if from.is_none() && (next as usize) < waypoints.len() {
             return Err(D::Error::custom("a route's leg with no start"));
         }
-        Ok(Route {
+        Ok(Self {
             goal,
             waypoints,
             next,

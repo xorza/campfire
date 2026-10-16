@@ -47,8 +47,8 @@ pub struct Purchase {
 
 impl Inventory {
     /// `slots` empty slots.
-    pub fn new(slots: NonZeroU8) -> Inventory {
-        Inventory {
+    pub fn new(slots: NonZeroU8) -> Self {
+        Self {
             slots: vec![None; NonZeroUsize::from(slots).get()],
         }
     }

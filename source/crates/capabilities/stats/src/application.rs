@@ -50,8 +50,8 @@ pub(crate) mod internals {
     impl NewInstance {
         /// A new instance of `id` from `source`: one stack at rank 1 of no ability, that lasts
         /// until it is removed, with no clock, shield, stat share or state.
-        pub const fn bare(id: ModifierId, source: Option<StableId>) -> NewInstance {
-            NewInstance {
+        pub const fn bare(id: ModifierId, source: Option<StableId>) -> Self {
+            Self {
                 id,
                 source,
                 action: None,
@@ -71,8 +71,8 @@ pub(crate) mod internals {
 
     impl Application {
         /// `instance`, which a second application refreshes, with no stack limit.
-        pub const fn refresh(instance: NewInstance) -> Application {
-            Application {
+        pub const fn refresh(instance: NewInstance) -> Self {
+            Self {
                 instance,
                 reapply: Reapply::Refresh,
                 max_stacks: None,

@@ -19,10 +19,10 @@ impl LoadoutSetup {
 
     /// The same entries, sorted by id: each entry's offer is its place in that order.
     #[must_use]
-    pub fn sorted(&self) -> LoadoutSetup {
+    pub fn sorted(&self) -> Self {
         let mut order: Vec<Offer> = self.ids.iter().map(|(offer, _)| offer).collect();
         order.sort_by(|&a, &b| self.id(a).cmp(self.id(b)));
-        let mut sorted = LoadoutSetup::default();
+        let mut sorted = Self::default();
         for offer in order {
             sorted.push(self.id(offer), self.ability(offer));
         }

@@ -10,9 +10,9 @@ pub struct Signature {
 }
 
 impl Signature {
-    pub const fn from_bytes(bytes: [u8; 64]) -> Signature {
+    pub const fn from_bytes(bytes: [u8; 64]) -> Self {
         let (r, s) = bytes.split_at(32);
-        let mut signature = Signature {
+        let mut signature = Self {
             r: [0; 32],
             s: [0; 32],
         };

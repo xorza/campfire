@@ -10,25 +10,25 @@ pub struct Share(u32);
 
 impl Share {
     /// All of an amount.
-    pub const ALL: Share = Share(Share::WHOLE);
+    pub const ALL: Self = Self(Self::WHOLE);
 
     /// The most fractional digits a share holds.
     const DIGITS: u32 = 9;
 
     /// All of an amount in billionths, the parts of a share of nine digits.
-    const WHOLE: u32 = 10_u32.pow(Share::DIGITS);
+    const WHOLE: u32 = 10_u32.pow(Self::DIGITS);
 
     /// The share of `amount`, rounded down to a whole amount, exactly.
     pub fn of(self, amount: i64) -> i64 {
         let share = i128::from(amount) * i128::from(self.0);
-        let share = Rounding::Floor.divide(share, i128::from(Share::WHOLE));
+        let share = Rounding::Floor.divide(share, i128::from(Self::WHOLE));
         i64::try_from(share).expect("a share of at most 1 of an amount fits")
     }
 
     /// The share of `value`, rounded down to the least amount a `Num` holds, exactly.
     pub fn of_num(self, value: Num) -> Num {
         value
-            .checked_mul_ratio(self.0.into(), Share::WHOLE.into(), Rounding::Floor)
+            .checked_mul_ratio(self.0.into(), Self::WHOLE.into(), Rounding::Floor)
             .expect("a share of at most 1 of a value fits")
     }
 
@@ -38,30 +38,30 @@ impl Share {
     }
 
     /// The share `text` writes, `[0|1][.digits]`; `None` past 1 or for anything else.
-    fn parse(text: &str) -> Option<Share> {
+    fn parse(text: &str) -> Option<Self> {
         let (int, frac) = text.split_once('.').unwrap_or((text, ""));
         let digits = |part: &str| part.bytes().all(|byte| byte.is_ascii_digit());
         let places = u32::try_from(frac.len())
             .ok()
-            .filter(|&len| len <= Share::DIGITS);
+            .filter(|&len| len <= Self::DIGITS);
         let places = places.filter(|_| matches!(int, "0" | "1") && digits(frac))?;
         if text.contains('.') && frac.is_empty() {
             return None;
         }
-        let scale = 10_u32.pow(Share::DIGITS - places);
+        let scale = 10_u32.pow(Self::DIGITS - places);
         let frac: u32 = if frac.is_empty() {
             0
         } else {
             frac.parse().ok()?
         };
-        let parts = u32::from(int == "1") * Share::WHOLE + frac * scale;
-        (parts <= Share::WHOLE).then_some(Share(parts))
+        let parts = u32::from(int == "1") * Self::WHOLE + frac * scale;
+        (parts <= Self::WHOLE).then_some(Self(parts))
     }
 }
 
 /// The integer 0 or 1, or a decimal string from 0 to 1, as `Share::parse` reads it.
 impl<'de> Deserialize<'de> for Share {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Share, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(untagged)]
         enum Written {
@@ -69,9 +69,9 @@ impl<'de> Deserialize<'de> for Share {
             Text(String),
         }
         let share = match Written::deserialize(deserializer)? {
-            Written::Int(int @ (0 | 1)) => Some(Share(u32::from(int) * Share::WHOLE)),
+            Written::Int(int @ (0 | 1)) => Some(Self(u32::from(int) * Self::WHOLE)),
             Written::Int(_) => None,
-            Written::Text(text) => Share::parse(&text),
+            Written::Text(text) => Self::parse(&text),
         };
         share.ok_or_else(|| {
             D::Error::custom("a share is 0, 1, or a decimal from 0 to 1 of at most 9 digits")

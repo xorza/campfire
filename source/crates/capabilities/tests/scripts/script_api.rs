@@ -300,8 +300,8 @@ impl fmt::Display for Read {
 impl Error for Read {}
 
 impl de::Error for Read {
-    fn custom<T: fmt::Display>(_: T) -> Read {
-        Read
+    fn custom<T: fmt::Display>(_: T) -> Self {
+        Self
     }
 }
 

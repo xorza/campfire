@@ -18,9 +18,9 @@ impl CellLevels {
     pub const MIN_BASE: Num = Num::from_bits(1 << 21);
 
     /// Levels from a base cell of `base`, or of `MIN_BASE` when `base` is narrower.
-    pub const fn new(base: Num) -> CellLevels {
-        let min = CellLevels::MIN_BASE.to_bits();
-        CellLevels {
+    pub const fn new(base: Num) -> Self {
+        let min = Self::MIN_BASE.to_bits();
+        Self {
             base: if base.to_bits() < min {
                 min
             } else {

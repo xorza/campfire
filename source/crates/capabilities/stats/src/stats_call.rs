@@ -116,7 +116,7 @@ impl StatsCall {
     }
 
     /// The stats' part of `frame`; stats adds it as it installs.
-    pub fn of(frame: &Frame) -> &StatsCall {
+    pub fn of(frame: &Frame) -> &Self {
         frame
             .part()
             .expect("a match whose calls read params or apply modifiers has stats")
@@ -128,7 +128,7 @@ impl StatsCall {
     }
 
     /// The stats' part of `frame`, to change; stats adds it as it installs.
-    pub fn of_mut(frame: &mut Frame) -> &mut StatsCall {
+    pub fn of_mut(frame: &mut Frame) -> &mut Self {
         frame
             .part_mut()
             .expect("a match whose calls take modifier handles has stats")
@@ -136,7 +136,7 @@ impl StatsCall {
 
     /// The running call's ability's param at `at`, at its rank.
     pub fn ability_value(frame: &Frame, at: usize) -> Scalar {
-        StatsCall::of(frame).values[at]
+        Self::of(frame).values[at]
     }
 }
 

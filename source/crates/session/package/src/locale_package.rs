@@ -23,7 +23,7 @@ pub struct LocalePackage {
 impl LocalePackage {
     /// The locale package of `files`: each file under `locale/` is `<package>/<language>.ftl`
     /// of a package it depends on, and reads.
-    pub fn read(files: &PackageFiles) -> Result<LocalePackage, LoadError> {
+    pub fn read(files: &PackageFiles) -> Result<Self, LoadError> {
         let fail = LoadError::new;
         let manifest_path = PackagePath::parse(PackageFiles::MANIFEST).expect("a package path");
         let unnamed = || PackageRef::PackageFingerprint(files.fingerprint());
@@ -62,7 +62,7 @@ impl LocalePackage {
                 .or_default()
                 .insert(language, file);
         }
-        Ok(LocalePackage { name, translations })
+        Ok(Self { name, translations })
     }
 
     /// Its translations of the package `name`, by language.

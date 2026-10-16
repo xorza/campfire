@@ -24,8 +24,8 @@ pub struct Pools([Option<Meter>; PoolId::LIMIT]);
 impl Pools {
     /// Full pools of each maximum in `maxes`, a pool named at most once; `None` unless every
     /// maximum is positive.
-    pub fn new(maxes: impl IntoIterator<Item = (PoolId, Num)>) -> Option<Pools> {
-        let mut pools = Pools([None; PoolId::LIMIT]);
+    pub fn new(maxes: impl IntoIterator<Item = (PoolId, Num)>) -> Option<Self> {
+        let mut pools = Self([None; PoolId::LIMIT]);
         for (pool, max) in maxes {
             debug_assert!(pools.0[pool.index()].is_none(), "a pool is named once");
             pools.0[pool.index()] = Some(Meter::new(max)?);
@@ -103,7 +103,7 @@ pub(crate) mod internals {
     impl Pools {
         /// The same pools with `amount` of `pool`, which they have, spent.
         #[must_use]
-        pub fn spent(mut self, pool: PoolId, amount: Num) -> Pools {
+        pub fn spent(mut self, pool: PoolId, amount: Num) -> Self {
             self.take(pool, amount);
             self
         }

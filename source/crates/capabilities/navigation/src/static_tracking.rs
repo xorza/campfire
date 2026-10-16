@@ -20,8 +20,8 @@ pub struct StaticTrackingRun(pub(super) SystemId);
 impl OneShot for StaticTrackingRun {
     type In = ();
 
-    fn new(id: SystemId) -> StaticTrackingRun {
-        StaticTrackingRun(id)
+    fn new(id: SystemId) -> Self {
+        Self(id)
     }
 }
 

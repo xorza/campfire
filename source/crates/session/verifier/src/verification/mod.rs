@@ -36,7 +36,7 @@ impl Verification {
         }
         let bytes = InputFile::read(log, SessionLog::MAX_FILE_LEN).map_err(VerifyError::ReadLog)?;
         let decoded = SessionLog::decode(&bytes).map_err(VerifyError::Decode)?;
-        let packages = Verification::packages(&store, &decoded.header().terms)?;
+        let packages = Self::packages(&store, &decoded.header().terms)?;
         let mut replay = Replay::of(decoded, &packages).map_err(VerifyError::Start)?;
         if let Some(dir) = snapshots {
             for record in replay.game().session().log().checkpoints() {

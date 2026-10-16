@@ -38,7 +38,7 @@ impl PoolBook {
         names: Arc<Names<PoolId>>,
         life: Option<PoolId>,
         stat: impl Fn(&DeclaredName, &Stat) -> Result<StatId, E>,
-    ) -> Result<PoolBook, E> {
+    ) -> Result<Self, E> {
         assert_eq!(names.len(), pools.len(), "a pool has a name");
         let pools = pools.iter().map(|(name, pool)| {
             Ok(PoolStats {
@@ -50,7 +50,7 @@ impl PoolBook {
                     .transpose()?,
             })
         });
-        Ok(PoolBook {
+        Ok(Self {
             names,
             pools: pools.collect::<Result<_, E>>()?,
             life,

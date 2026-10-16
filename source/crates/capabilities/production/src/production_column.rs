@@ -85,7 +85,7 @@ impl ProductionColumn {
         let row = unit.row_index();
         let load = unit
             .view()
-            .column(|column: &ProductionColumn| column.rows.now()[row].load);
+            .column(|column: &Self| column.rows.now()[row].load);
         i64::from(load.unwrap_or(0))
     }
 
@@ -95,7 +95,7 @@ impl ProductionColumn {
 
     /// `slot`'s supply as `view` read the match; `None` in a mode with no supply.
     pub(crate) fn supply(view: &View, slot: PlayerSlot) -> Option<ReadSupply> {
-        view.column(|column: &ProductionColumn| {
+        view.column(|column: &Self| {
             let rules = column.rules?;
             let mut total = SupplySums::default();
             let rows = column.rows.now().iter();
@@ -114,7 +114,7 @@ impl ProductionColumn {
     /// what it carries.
     pub(super) fn fill_row(
         (owner, unit_type, dead, queue, site, gatherer): ROQueryItem<'_, '_, RowReads>,
-        fill: &mut RowFill<'_, ProductionColumn>,
+        fill: &mut RowFill<'_, Self>,
     ) {
         let counted = unit_type.map_or_default(|&unit_type| {
             fill.column.costs().unit(SupplyUnit {

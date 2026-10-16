@@ -18,9 +18,9 @@ pub(crate) struct ReceiptWriter(LatestWriter<SignedReceipt, PathError<DurableErr
 
 impl ReceiptWriter {
     /// A writer into the data directory `data`, which it holds locked while it runs.
-    pub(crate) fn start(data: Arc<ClientDir>) -> ReceiptWriter {
+    pub(crate) fn start(data: Arc<ClientDir>) -> Self {
         let mut bytes = Vec::new();
-        ReceiptWriter(LatestWriter::start(
+        Self(LatestWriter::start(
             "receipts",
             move |receipt: &SignedReceipt| {
                 DurableDir::create(&data.layout().receipts_dir())?;
@@ -37,10 +37,7 @@ impl ReceiptWriter {
     }
 
     /// Reports to `Faults` each write that failed since the last frame.
-    pub(crate) fn report_failures(
-        writer: Option<Res<'_, ReceiptWriter>>,
-        mut faults: ResMut<'_, Faults>,
-    ) {
+    pub(crate) fn report_failures(writer: Option<Res<'_, Self>>, mut faults: ResMut<'_, Faults>) {
         if let Some(writer) = writer {
             for failure in writer.0.take_failures() {
                 faults.report(Fault::Receipt(failure));

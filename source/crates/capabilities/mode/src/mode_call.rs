@@ -78,8 +78,8 @@ impl CallParams for ModeCall {
 }
 
 impl ModeCall {
-    pub fn new(book: Rc<ModeSpec>) -> ModeCall {
-        ModeCall {
+    pub fn new(book: Rc<ModeSpec>) -> Self {
+        Self {
             book,
             running: false,
             state: Vec::new(),
@@ -92,14 +92,14 @@ impl ModeCall {
     }
 
     /// The mode's part of `frame`, which the mode added as it installed.
-    pub fn of(frame: &Frame) -> &ModeCall {
+    pub fn of(frame: &Frame) -> &Self {
         frame
             .part()
             .expect("a match whose mode installed has its part of the frame")
     }
 
     /// The mode's part of `frame`, to change.
-    pub fn of_mut(frame: &mut Frame) -> &mut ModeCall {
+    pub fn of_mut(frame: &mut Frame) -> &mut Self {
         frame
             .part_mut()
             .expect("a match whose mode installed has its part of the frame")

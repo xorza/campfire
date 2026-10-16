@@ -36,23 +36,23 @@ impl StatsEffect {
     /// dead or gone unit, or one that carries no modifiers.
     pub(crate) fn apply_by(self, world: &mut World, applier: Applier) {
         match self {
-            StatsEffect::Add {
+            Self::Add {
                 target,
                 id,
                 duration,
             } => Stats::add_modifier(world, target, id, applier, duration),
-            StatsEffect::AddPlayer { player, id } => {
+            Self::AddPlayer { player, id } => {
                 world
                     .player_modifiers_mut(player)
                     .expect("a player of the session holds its modifiers")
                     .add(id);
             }
-            StatsEffect::Remove {
+            Self::Remove {
                 carrier,
                 id,
                 source,
             } => Stats::remove_modifier(world, carrier, id, source),
-            StatsEffect::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
+            Self::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
         }
     }
 }

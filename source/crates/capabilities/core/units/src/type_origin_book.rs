@@ -21,15 +21,15 @@ pub struct TypeOrigin {
 }
 
 impl FromIterator<TypeOrigin> for TypeOriginBook {
-    fn from_iter<I: IntoIterator<Item = TypeOrigin>>(origins: I) -> TypeOriginBook {
-        TypeOriginBook {
+    fn from_iter<I: IntoIterator<Item = TypeOrigin>>(origins: I) -> Self {
+        Self {
             origins: origins.into_iter().collect(),
         }
     }
 }
 
 impl<const N: usize> From<[TypeOrigin; N]> for TypeOriginBook {
-    fn from(origins: [TypeOrigin; N]) -> TypeOriginBook {
+    fn from(origins: [TypeOrigin; N]) -> Self {
         origins.into_iter().collect()
     }
 }

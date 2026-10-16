@@ -104,9 +104,7 @@ impl<'a> ServerInput<'a> {
 
     /// The input at the front of `bytes`, and the bytes after it; an error for bytes that do not
     /// decode, and for a delegation that does not parse.
-    pub(crate) fn take(
-        bytes: &'a [u8],
-    ) -> Result<Taken<'a, ServerInput<'a>>, ServerInputDecodeError> {
+    pub(crate) fn take(bytes: &'a [u8]) -> Result<Taken<'a, Self>, ServerInputDecodeError> {
         let Taken { value: wire, rest } =
             Binary::take::<Wire<'a>>(bytes).map_err(ServerInputDecodeError::Malformed)?;
         let delegation =

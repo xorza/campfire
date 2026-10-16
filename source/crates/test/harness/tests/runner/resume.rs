@@ -36,7 +36,7 @@ impl Checkpointed {
         at: [u64; 3],
         ticks: u64,
         mut play: impl FnMut(&mut FixedMatch, u64),
-    ) -> Checkpointed {
+    ) -> Self {
         let mut snapshots = Vec::new();
         let mut hashes = Vec::new();
         let (mut deaths, mut respawns) = (Vec::new(), Vec::new());
@@ -73,7 +73,7 @@ impl Checkpointed {
         }
         let mut log = Vec::new();
         fixed.game().session().log().encode(&mut log);
-        Checkpointed {
+        Self {
             log,
             snapshots,
             hashes,

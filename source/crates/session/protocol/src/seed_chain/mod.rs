@@ -18,8 +18,8 @@ pub struct SeedChain {
 }
 
 impl SeedChain {
-    pub const fn new(root: [u8; 32], len: NonZeroU32) -> SeedChain {
-        SeedChain {
+    pub const fn new(root: [u8; 32], len: NonZeroU32) -> Self {
+        Self {
             root: ServerSeed::new(root),
             len,
         }

@@ -56,10 +56,10 @@ impl Viewer {
         team: Team,
         status: PlayStatus,
         visibility: Option<&Visibility>,
-    ) -> Viewer {
+    ) -> Self {
         let sees_as_spectator =
             visibility.is_some_and(|visibility| visibility.out() == OutView::Spectators);
-        Viewer::Player {
+        Self::Player {
             slot,
             team,
             out: status == PlayStatus::Out && sees_as_spectator,
@@ -67,7 +67,7 @@ impl Viewer {
     }
 
     /// The view of the player of `slot`, of `team`, in `world`, as its entity stands.
-    pub(crate) fn of_player(world: &World, slot: PlayerSlot, team: Team) -> Viewer {
+    pub(crate) fn of_player(world: &World, slot: PlayerSlot, team: Team) -> Self {
         let entity = world.player_entity(slot);
         let out = entity.is_some_and(|entity| world.entity(entity).contains::<OutOfPlay>());
         let status = if out {
@@ -76,7 +76,7 @@ impl Viewer {
             PlayStatus::Playing
         };
         let visibility = world.get_resource::<MatchVisibility>();
-        Viewer::player(
+        Self::player(
             slot,
             team,
             status,
@@ -89,13 +89,13 @@ impl Viewer {
     /// an enemy of another, or a spectator of it while out of play; a spectator.
     pub(crate) fn recipient(self, owner: Option<PlayerSlot>, team: Option<Team>) -> Recipients {
         match self {
-            Viewer::Player { slot, .. } if Some(slot) == owner => Recipients::NONE,
-            Viewer::Player { team: own, out, .. } => match team {
+            Self::Player { slot, .. } if Some(slot) == owner => Recipients::NONE,
+            Self::Player { team: own, out, .. } => match team {
                 Some(team) if team != own && out => Recipients::SPECTATORS,
                 Some(team) if team != own => Recipients::ENEMIES,
                 _ => Recipients::ALLIES,
             },
-            Viewer::Spectator(_) => Recipients::SPECTATORS,
+            Self::Spectator(_) => Recipients::SPECTATORS,
         }
     }
 
@@ -107,13 +107,13 @@ impl Viewer {
                 let link = *world
                     .get::<PlayerLink>(linked.entity)
                     .expect("an insert's own component");
-                let viewer = Viewer::of_player(&world, link.slot(), link.team());
+                let viewer = Self::of_player(&world, link.slot(), link.team());
                 world.commands().entity(linked.entity).insert(viewer);
             },
         );
         app.add_observer(
             |unlinked: On<'_, '_, Remove, PlayerLink>, mut commands: Commands<'_, '_>| {
-                commands.entity(unlinked.entity).try_remove::<Viewer>();
+                commands.entity(unlinked.entity).try_remove::<Self>();
             },
         );
     }
@@ -129,7 +129,7 @@ impl Viewer {
              visibility: Option<Res<'_, MatchVisibility>>,
              commands: Commands<'_, '_>| {
                 let visibility = visibility.as_deref().map(|visibility| &visibility.0);
-                Viewer::view_again(
+                Self::view_again(
                     out.entity,
                     PlayStatus::Out,
                     &players,
@@ -147,7 +147,7 @@ impl Viewer {
              commands: Commands<'_, '_>| {
                 let visibility = visibility.as_deref().map(|visibility| &visibility.0);
                 let status = PlayStatus::Playing;
-                Viewer::view_again(back.entity, status, &players, &links, visibility, commands);
+                Self::view_again(back.entity, status, &players, &links, visibility, commands);
             },
         );
     }
@@ -166,7 +166,7 @@ impl Viewer {
         };
         for (link, seat) in links {
             if seat.slot() == player.slot() {
-                let viewer = Viewer::player(seat.slot(), seat.team(), status, visibility);
+                let viewer = Self::player(seat.slot(), seat.team(), status, visibility);
                 commands.entity(link).insert(viewer);
             }
         }
@@ -174,18 +174,18 @@ impl Viewer {
 
     fn enter_rooms(mut world: DeferredWorld<'_>, context: HookContext) {
         let viewer = *world
-            .get::<Viewer>(context.entity)
+            .get::<Self>(context.entity)
             .expect("on_insert runs on an entity with a Viewer");
         let rooms = world.resource::<TeamRooms>();
         let rooms = match viewer {
-            Viewer::Player {
+            Self::Player {
                 team, out: false, ..
             } => rooms.of(team),
-            Viewer::Player {
+            Self::Player {
                 team, out: true, ..
             } => rooms.out_of_play(team),
-            Viewer::Spectator(Watching::Everything) => rooms.everything(),
-            Viewer::Spectator(Watching::Teams(teams)) => rooms.watching(teams),
+            Self::Spectator(Watching::Everything) => rooms.everything(),
+            Self::Spectator(Watching::Teams(teams)) => rooms.watching(teams),
         };
         world.commands().entity(context.entity).insert(rooms);
     }

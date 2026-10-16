@@ -72,7 +72,7 @@ impl<'a> PoolMeters<'a> {
         life_pool: Option<PoolId>,
         life: Option<&'a Life>,
         pools: Option<&'a Pools>,
-    ) -> PoolMeters<'a> {
+    ) -> Self {
         PoolMeters {
             life_pool,
             life,

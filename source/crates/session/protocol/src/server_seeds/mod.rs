@@ -12,13 +12,13 @@ pub struct ServerSeeds {
 
 impl ServerSeeds {
     /// The seeds up to segment `last`, whose seed is `server_seed`: `last` hashes.
-    pub fn new(last: u32, server_seed: ServerSeed) -> ServerSeeds {
+    pub fn new(last: u32, server_seed: ServerSeed) -> Self {
         let count = usize::try_from(last).expect("segments fit usize") + 1;
         let mut seeds = vec![server_seed; count];
         for at in (0..count - 1).rev() {
             seeds[at] = seeds[at + 1].earlier();
         }
-        ServerSeeds { seeds }
+        Self { seeds }
     }
 
     /// The last segment whose seed is known.

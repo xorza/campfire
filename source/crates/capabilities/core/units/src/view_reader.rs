@@ -76,7 +76,7 @@ impl ViewReader {
 
     /// The mark bit of the source at `at` among the sources.
     const fn source_mark(at: usize) -> usize {
-        ViewReader::CORE_MARK + 1 + at
+        Self::CORE_MARK + 1 + at
     }
 
     /// Reads the units of `world` into its script view's rows, as the view asks before each
@@ -84,7 +84,7 @@ impl ViewReader {
     pub(crate) fn read(world: &mut World) {
         let view = world.non_send::<View>().clone();
         let mut reader = world
-            .remove_non_send::<ViewReader>()
+            .remove_non_send::<Self>()
             .expect("the core reads the view");
         reader.read_into(world, &mut view.rows_mut());
         world.insert_non_send(reader);
@@ -122,12 +122,12 @@ impl ViewReader {
         core.parts.update_archetypes(world);
         let changed = core.changed.get(world).expect("a query is always valid");
         for entity in &changed {
-            self.marks.mark(entity, ViewReader::CORE_MARK);
+            self.marks.mark(entity, Self::CORE_MARK);
         }
         let (columns, marks) = (rows.columns_mut(), &mut self.marks);
         let sources = self.sources.iter_mut().enumerate();
         self.reads.begin(sources.map(|(at, source)| {
-            source.begin(world, columns, ViewReader::source_mark(at), marks) || refill
+            source.begin(world, columns, Self::source_mark(at), marks) || refill
         }));
         refill
     }
@@ -181,7 +181,7 @@ impl ViewReader {
             }
             self.reads.take_clean(&self.sources, rows.columns_mut());
             let kept_row = kept.map(|at| self.kept_units[at]);
-            let row = if kept.is_some() && !self.marks.marked(entity, ViewReader::CORE_MARK) {
+            let row = if kept.is_some() && !self.marks.marked(entity, Self::CORE_MARK) {
                 kept_row
             } else {
                 core.row(world, id, entity, kept_row)
@@ -197,7 +197,7 @@ impl ViewReader {
             };
             let sources = self.sources.iter().zip(self.reads.each()).enumerate();
             for (at, (source, read)) in sources {
-                let mark = ViewReader::source_mark(at);
+                let mark = Self::source_mark(at);
                 match kept {
                     Some(kept) if !read.refills() && !self.marks.marked(entity, mark) => {
                         read.keep(source.as_ref(), rows.columns_mut(), kept..kept + 1);
@@ -239,10 +239,10 @@ impl ViewReader {
             .index_of::<C>()
             .expect("the column was added");
         let mut reader = world
-            .remove_non_send::<ViewReader>()
+            .remove_non_send::<Self>()
             .expect("the core reads the view");
         assert!(
-            ViewReader::source_mark(reader.sources.len()) < RowMarks::SOURCES,
+            Self::source_mark(reader.sources.len()) < RowMarks::SOURCES,
             "the marks have room for every source and the core"
         );
         reader
@@ -263,8 +263,8 @@ impl fmt::Debug for CoreSource {
 }
 
 impl CoreSource {
-    fn new(world: &mut World) -> CoreSource {
-        CoreSource {
+    fn new(world: &mut World) -> Self {
+        Self {
             parts: QueryState::new(world),
             changed: SystemState::new(world),
         }

@@ -25,8 +25,8 @@ campfire_common::enum_all! {
 }
 
 impl Default for Pace {
-    fn default() -> Pace {
-        Pace {
+    fn default() -> Self {
+        Self {
             paused: AtomicBool::new(false),
             speed: AtomicU8::new(PaceSpeed::Normal as u8),
         }
@@ -55,10 +55,10 @@ impl PaceSpeed {
     /// The tick length at this speed of a session whose ticks last `tick`.
     pub const fn tick(self, tick: Duration) -> Duration {
         match self {
-            PaceSpeed::Half => tick.saturating_mul(2),
-            PaceSpeed::Normal => tick,
-            PaceSpeed::Double => tick.checked_div(2).expect("2 is not 0"),
-            PaceSpeed::Quadruple => tick.checked_div(4).expect("4 is not 0"),
+            Self::Half => tick.saturating_mul(2),
+            Self::Normal => tick,
+            Self::Double => tick.checked_div(2).expect("2 is not 0"),
+            Self::Quadruple => tick.checked_div(4).expect("4 is not 0"),
         }
     }
 }

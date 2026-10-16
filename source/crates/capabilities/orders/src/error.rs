@@ -27,12 +27,12 @@ campfire_common::enum_all! {
 
 impl CapabilityRefusal for OrdersRefusal {
     const OWNER: Capability = Capability::Orders;
-    const CASES: &'static [OrdersRefusal] = &OrdersRefusal::ALL;
+    const CASES: &'static [Self] = &Self::ALL;
 
     fn message(self) -> &'static str {
         match self {
-            OrdersRefusal::NotAnEnemy => "target is not a living enemy",
-            OrdersRefusal::OtherUnit => "an AI orders only the unit that thinks",
+            Self::NotAnEnemy => "target is not a living enemy",
+            Self::OtherUnit => "an AI orders only the unit that thinks",
         }
     }
 }

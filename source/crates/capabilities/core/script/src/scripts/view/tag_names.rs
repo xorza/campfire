@@ -12,13 +12,13 @@ pub struct TagNames {
 
 impl TagNames {
     /// The engine's tags `engine`, at their places, and no other.
-    pub fn new(engine: &[EngineTag]) -> TagNames {
+    pub fn new(engine: &[EngineTag]) -> Self {
         let named_only = engine
             .iter()
             .filter(|tag| tag.properties().named_only())
             .map(|tag| tag.tag())
             .collect();
-        TagNames {
+        Self {
             names: Arc::new(engine.iter().map(|tag| tag.name()).collect()),
             named_only,
         }

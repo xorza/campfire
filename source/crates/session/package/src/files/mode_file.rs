@@ -16,7 +16,7 @@ pub(crate) struct ModeFile {
 }
 
 impl<'de> Deserialize<'de> for ModeFile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModeFile, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let mut table = toml::Table::deserialize(deserializer)?;
         if table.contains_key("units") {
             return Err(D::Error::custom("units are in data/units.toml"));
@@ -27,7 +27,7 @@ impl<'de> Deserialize<'de> for ModeFile {
         let script = ModeScript::deserialize(script).map_err(D::Error::custom)?;
         let content = ContentTable::take(&mut table)?;
         let data = ModeData::deserialize(toml::Value::Table(table)).map_err(D::Error::custom)?;
-        Ok(ModeFile {
+        Ok(Self {
             script,
             data,
             content,

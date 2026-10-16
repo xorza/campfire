@@ -23,7 +23,7 @@ pub(crate) struct SsdpAnnouncement {
 impl SsdpAnnouncement {
     /// The announcement `datagram` holds, sent from `from`: none for anything but a gateway's
     /// `ssdp:alive` at a location of its sender's address.
-    pub(crate) fn parse(datagram: &[u8], from: SocketAddr) -> Option<SsdpAnnouncement> {
+    pub(crate) fn parse(datagram: &[u8], from: SocketAddr) -> Option<Self> {
         let text = std::str::from_utf8(datagram).ok()?;
         let start = text.split("\r\n").next()?;
         if !start.eq_ignore_ascii_case("NOTIFY * HTTP/1.1") {
@@ -39,7 +39,7 @@ impl SsdpAnnouncement {
         let gateway = header("NT").is_some_and(|nt| GATEWAY_TYPES.contains(&nt));
         let location = RouterUrl::parse(header("LOCATION")?)?;
         let own = from.ip() == IpAddr::V4(*location.addr().ip());
-        (alive && gateway && own).then_some(SsdpAnnouncement { location })
+        (alive && gateway && own).then_some(Self { location })
     }
 
     pub(crate) const fn location(&self) -> &RouterUrl {

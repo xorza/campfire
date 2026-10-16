@@ -17,10 +17,10 @@ pub struct NextThink(Option<Tick>);
 
 impl NextThink {
     /// Before the unit's first think.
-    pub const FIRST: NextThink = NextThink(None);
+    pub const FIRST: Self = Self(None);
 
-    pub const fn new(tick: Tick) -> NextThink {
-        NextThink(Some(tick))
+    pub const fn new(tick: Tick) -> Self {
+        Self(Some(tick))
     }
 
     pub const fn get(self) -> Option<Tick> {

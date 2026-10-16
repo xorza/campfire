@@ -41,11 +41,11 @@ pub(crate) struct StateAccess(Ctx);
 impl ModeApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         api.engine_enum::<Relation>().engine_enum::<PathEnd>();
-        ModeApi::register_map(api);
-        ModeApi::register_reads(api);
-        ModeApi::register_choices(api);
-        ModeApi::register_spawns(api);
-        ModeApi::register_changes(api);
+        Self::register_map(api);
+        Self::register_reads(api);
+        Self::register_choices(api);
+        Self::register_spawns(api);
+        Self::register_changes(api);
         api.hook(Hook::OnMatchStart, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnModeInput, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnTimer, Status::Runs(ApiVersion::FIRST))
@@ -191,7 +191,7 @@ impl ModeApi {
                 &[&["player"]],
                 "whether a player or a bot held `player`'s slot as the match started",
             ),
-            |ctx: &mut Ctx, player: i64| ModeApi::held(ctx, player),
+            |ctx: &mut Ctx, player: i64| Self::held(ctx, player),
         )
         .call(
             MemberSpec::mode_call(
@@ -199,13 +199,13 @@ impl ModeApi {
                 &[&["player"]],
                 "the living units `player` owns, by stable id",
             ),
-            |ctx: &mut Ctx, player: i64| ModeApi::units_of(ctx, player),
+            |ctx: &mut Ctx, player: i64| Self::units_of(ctx, player),
         );
         api.ty::<StateAccess>("ModeState")
-            .index(|_, state: &mut StateAccess, name: &str| ModeApi::state(&state.0, name))
+            .index(|_, state: &mut StateAccess, name: &str| Self::state(&state.0, name))
             .index_set(
                 |_, state: &mut StateAccess, name: &str, value: ScriptValue| {
-                    ModeApi::set_state(&state.0, name, &value)
+                    Self::set_state(&state.0, name, &value)
                 },
             );
     }
@@ -224,13 +224,13 @@ impl ModeApi {
         api.call(
             choose,
             |ctx: &mut Ctx, player: i64, choice: ChoiceId, values: ScriptList| {
-                ModeApi::choose(ctx, player, choice, &values)
+                Self::choose(ctx, player, choice, &values)
             },
         )
         .call(
             choose,
             |ctx: &mut Ctx, player: i64, choice: ChoiceId, value: ScriptText| {
-                ModeApi::choose(ctx, player, choice, &[ScriptValue::of(value)])
+                Self::choose(ctx, player, choice, &[ScriptValue::of(value)])
             },
         )
         .call(
@@ -239,7 +239,7 @@ impl ModeApi {
                 &[&["player", "choice"]],
                 "the values `player` chose of `choice`, in order; empty before the player chose",
             ),
-            |ctx: &mut Ctx, player: i64, choice: ChoiceId| ModeApi::chosen(ctx, player, choice),
+            |ctx: &mut Ctx, player: i64, choice: ChoiceId| Self::chosen(ctx, player, choice),
         )
         .call(
             MemberSpec::mode_call(
@@ -249,7 +249,7 @@ impl ModeApi {
                  unique choice",
             ),
             |ctx: &mut Ctx, player: i64, choice: ChoiceId, value: ScriptText| {
-                ModeApi::available(ctx, player, choice, &value)
+                Self::available(ctx, player, choice, &value)
             },
         )
         .call(
@@ -259,7 +259,7 @@ impl ModeApi {
                 "the values `choice` offers, in order: the avatars in the order of the mode's \
                  dependencies, or the loadout entries by id",
             ),
-            |ctx: &mut Ctx, choice: ChoiceId| ModeApi::offers(ctx, choice),
+            |ctx: &mut Ctx, choice: ChoiceId| Self::offers(ctx, choice),
         );
     }
 
@@ -282,20 +282,20 @@ impl ModeApi {
         api.call(
             spawn_unit,
             |ctx: &mut Ctx, unit_type: UnitType, team: Team, pos: ScriptPosition| {
-                ModeApi::spawn_unit(ctx, unit_type, team, pos.get(), None)
+                Self::spawn_unit(ctx, unit_type, team, pos.get(), None)
             },
         )
         .call(
             spawn_unit,
             |ctx: &mut Ctx, unit_type: UnitType, team: Team, pos: ScriptPosition, player: i64| {
-                ModeApi::spawn_unit(ctx, unit_type, team, pos.get(), Some(player))
+                Self::spawn_unit(ctx, unit_type, team, pos.get(), Some(player))
             },
         )
         .call(
             grant,
             |ctx: &mut Ctx, unit: Unit, kind: SlotKind, ids: ScriptList| {
                 let slots = ActionsColumn::slot_count(ctx.view(), unit.row_index());
-                ModeApi::grant(ctx, unit.id, slots, kind, &ids)
+                Self::grant(ctx, unit.id, slots, kind, &ids)
             },
         )
         .call(
@@ -303,7 +303,7 @@ impl ModeApi {
             |ctx: &mut Ctx, unit: NewUnit, kind: SlotKind, ids: ScriptList| {
                 let book = ModeSpec::of_or_fail(ctx)?;
                 let slots = book.spawn_slots(unit.unit_type);
-                ModeApi::grant(ctx, unit.id, slots, kind, &ids)
+                Self::grant(ctx, unit.id, slots, kind, &ids)
             },
         )
         .call(
@@ -314,7 +314,7 @@ impl ModeApi {
                  there",
             ),
             |ctx: &mut Ctx, team: Team, path: PathId, from: PathEnd, types: ScriptList| {
-                ModeApi::spawn_group(ctx, team, path, from, &types)
+                Self::spawn_group(ctx, team, path, from, &types)
             },
         );
     }
@@ -334,7 +334,7 @@ impl ModeApi {
                 "calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one",
             ),
             |ctx: &mut Ctx, name: ScriptText, ms: i64, repeat: bool, data: ScriptValue| {
-                ModeApi::timer(ctx, &name, ms, repeat, &data)
+                Self::timer(ctx, &name, ms, repeat, &data)
             },
         )
         .call(
@@ -344,7 +344,7 @@ impl ModeApi {
                 "brings back `unit`, dead and of a type that stays, `ms` from the call",
             )
             .capability(Capability::Combat),
-            |ctx: &mut Ctx, unit: Unit, ms: i64| ModeApi::respawn(ctx, &unit, ms),
+            |ctx: &mut Ctx, unit: Unit, ms: i64| Self::respawn(ctx, &unit, ms),
         )
         .call(
             MemberSpec::mode_call(
@@ -353,7 +353,7 @@ impl ModeApi {
                 "the ability in `slot` a rank more, up to its last",
             )
             .capability(Capability::Abilities),
-            |ctx: &mut Ctx, unit: Unit, slot: i64| ModeApi::learn(ctx, &unit, slot),
+            |ctx: &mut Ctx, unit: Unit, slot: i64| Self::learn(ctx, &unit, slot),
         )
         .call(
             MemberSpec::call(
@@ -362,7 +362,7 @@ impl ModeApi {
                 "adds `amount` of the player resource `name`, one the mode declares, to `player`",
             ),
             |ctx: &mut Ctx, player: i64, resource: ResourceId, amount: i64| {
-                ModeApi::add_resource(ctx, player, resource, amount)
+                Self::add_resource(ctx, player, resource, amount)
             },
         )
         .call(
@@ -371,7 +371,7 @@ impl ModeApi {
                 &[&["player", "out"]],
                 "holds `player` out of play while `out`, as when every avatar it holds is dead",
             ),
-            |ctx: &mut Ctx, player: i64, out: bool| ModeApi::set_out(ctx, player, out),
+            |ctx: &mut Ctx, player: i64, out: bool| Self::set_out(ctx, player, out),
         )
         .call(
             MemberSpec::call(
@@ -380,14 +380,14 @@ impl ModeApi {
                 "sets how teams `a` and `b` regard each other, their vision as it was",
             ),
             |ctx: &mut Ctx, a: Team, b: Team, relation: Relation| {
-                ModeApi::set_relation(ctx, a, b, relation)
+                Self::set_relation(ctx, a, b, relation)
             },
         )
         .call(end, |ctx: &mut Ctx, team: Team| {
-            ModeApi::end(ctx, MatchResult::Won(team))
+            Self::end(ctx, MatchResult::Won(team))
         })
         .call(end, |ctx: &mut Ctx, (): ()| {
-            ModeApi::end(ctx, MatchResult::Draw)
+            Self::end(ctx, MatchResult::Draw)
         });
     }
 
@@ -560,7 +560,7 @@ impl ModeApi {
         if !ctx.view().bounds().contains(pos) {
             return Err(ModeRefusal::OutOfBounds.fail().into());
         }
-        let unit_type = ModeApi::spawnable(book, unit_type)?;
+        let unit_type = Self::spawnable(book, unit_type)?;
         let boxed = book.body(unit_type).filter(|form| form.is_box());
         let body = boxed.map(|form| form.at(Num::ZERO));
         if let Some(body) = body {
@@ -656,7 +656,7 @@ impl ModeApi {
             .map(|name| {
                 let name = name.clone().into_text();
                 let name = name.ok_or_else(|| ApiError::Unknown(NameKind::UnitType).fail())?;
-                ModeApi::spawnable(book, UnitType::take_text(name, &ArgCtx::Ctx(ctx))?)
+                Self::spawnable(book, UnitType::take_text(name, &ArgCtx::Ctx(ctx))?)
             })
             .collect::<Checked<Vec<UnitType>>>()?;
         let mut frame = ctx.write()?;
@@ -679,7 +679,7 @@ impl ModeApi {
     /// Queues a timer `ms` milliseconds from the call, rounded up to whole ticks, at least one.
     fn timer(ctx: &Ctx, name: &str, ms: i64, repeat: bool, data: &ScriptValue) -> Checked<()> {
         let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
-        let data = ModeApi::timer_data(data).map_err(ApiError::fail)?;
+        let data = Self::timer_data(data).map_err(ApiError::fail)?;
         ctx.queue(ModeEffect::Timer {
             name: name.to_owned(),
             ticks,

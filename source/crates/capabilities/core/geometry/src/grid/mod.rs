@@ -27,7 +27,7 @@ impl Grid {
 
     /// The grid of `cell`-meter cells over `bounds`; `None` unless `cell` is positive and at most
     /// the world's bound, and the cells are at most `MAX_CELLS`.
-    pub fn new(cell: Num, bounds: Bounds) -> Option<Grid> {
+    pub fn new(cell: Num, bounds: Bounds) -> Option<Self> {
         if cell <= Num::ZERO || cell > Position::BOUND {
             return None;
         }
@@ -38,10 +38,10 @@ impl Grid {
             let cells = span.div_ceil(cell.to_bits().unsigned_abs());
             size[axis] = u32::try_from(cells).ok()?;
         }
-        if u64::from(size[0]) * u64::from(size[1]) > Grid::MAX_CELLS {
+        if u64::from(size[0]) * u64::from(size[1]) > Self::MAX_CELLS {
             return None;
         }
-        Some(Grid { cell, bounds, size })
+        Some(Self { cell, bounds, size })
     }
 
     pub const fn cells(&self) -> usize {
@@ -468,11 +468,11 @@ impl Grid {
         let (first, end) = match part {
             CellPart::Center => (
                 Rounding::Ceiling.divide(low - min - cell, 2 * cell),
-                Grid::floor_halves(high - min - cell, 2 * cell),
+                Self::floor_halves(high - min - cell, 2 * cell),
             ),
             CellPart::Square => (
-                Grid::floor_halves(low - min, 2 * cell),
-                Grid::floor_halves(high - min, 2 * cell),
+                Self::floor_halves(low - min, 2 * cell),
+                Self::floor_halves(high - min, 2 * cell),
             ),
         };
         first.max(0)..=end.min(i128::from(self.size[axis]) - 1)
@@ -537,9 +537,9 @@ impl Run {
     fn of_row(
         low: i128,
         high: i128,
-        near: Option<Run>,
+        near: Option<Self>,
         hits: impl Fn(i128) -> bool,
-    ) -> Option<Run> {
+    ) -> Option<Self> {
         let first = near
             .and_then(|near| {
                 let (first, end) = (near.first.clamp(low, high), near.end.clamp(low, high));
@@ -568,7 +568,7 @@ impl Run {
                 .find(|&column| hits(column))
                 .expect("the first is hit")
         };
-        Some(Run { first, end })
+        Some(Self { first, end })
     }
 }
 
@@ -584,12 +584,12 @@ impl Quotient {
     /// `value` over `by`, which is positive. A segment's values within the world's bound stay
     /// below 2¹⁰⁰, and every floor and rest within them, so the wrapping steps here skip the
     /// checks a release build makes.
-    fn of(value: i128, by: i128) -> Quotient {
+    fn of(value: i128, by: i128) -> Self {
         // The floor of a positive divisor's quotient, as `div_euclid` gives it: `Rounding`'s
         // division takes one native division for magnitudes within 64 bits, where `i128`'s is a
         // library call.
         let floor = Rounding::Floor.divide(value, by);
-        Quotient {
+        Self {
             floor,
             rest: value.wrapping_sub(floor.wrapping_mul(by)),
         }
@@ -601,10 +601,10 @@ impl Quotient {
     }
 
     /// The sum of the values of `self` and `other`, over the same `by`.
-    const fn plus(self, other: Quotient, by: i128) -> Quotient {
+    const fn plus(self, other: Self, by: i128) -> Self {
         let rest = self.rest.wrapping_add(other.rest);
         let carry = rest >= by;
-        Quotient {
+        Self {
             floor: self
                 .floor
                 .wrapping_add(other.floor)

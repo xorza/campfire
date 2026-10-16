@@ -48,7 +48,7 @@ pub(crate) struct ModelReport {
 }
 
 impl<'i, W: FnMut(&str, &[u8]) -> Result<(), ZeroHourError>> ModelWriter<'i, W> {
-    pub(crate) const fn new(assets: ModelAssets<'i>, write: W) -> ModelWriter<'i, W> {
+    pub(crate) const fn new(assets: ModelAssets<'i>, write: W) -> Self {
         ModelWriter {
             converter: Converter {
                 assets,

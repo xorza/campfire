@@ -20,7 +20,7 @@ pub struct SimServerPlugins {
 
 impl PluginGroup for SimServerPlugins {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<SimServerPlugins>()
+        PluginGroupBuilder::start::<Self>()
             .add(TaskPoolPlugin::default())
             .add(TimePlugin)
             .add(StatesPlugin)

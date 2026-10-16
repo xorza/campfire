@@ -27,7 +27,7 @@ impl Launcher {
     /// The running action, from its acting unit, for an action's call that launches one more of
     /// its deliveries, and the type it delivers; an error for an action whose delivery's shape
     /// `shape` refuses.
-    pub fn of(ctx: &Ctx, shape: fn(DeliveryShape) -> bool) -> Checked<Launcher> {
+    pub fn of(ctx: &Ctx, shape: fn(DeliveryShape) -> bool) -> Checked<Self> {
         let frame = ctx.frame();
         let source = frame.acting().expect("an action's call has its unit");
         let action = frame.action().expect("an action's call has its action");
@@ -44,6 +44,6 @@ impl Launcher {
             start,
             launch: None,
         };
-        Ok(Launcher { by, delivery })
+        Ok(Self { by, delivery })
     }
 }

@@ -9,8 +9,8 @@ impl NameId for ApplierParam {
     type Scope = ();
     const LIMIT: usize = 1 << u16::BITS;
 
-    fn at(index: usize) -> ApplierParam {
-        ApplierParam(u16::try_from(index).expect("applier params fit u16"))
+    fn at(index: usize) -> Self {
+        Self(u16::try_from(index).expect("applier params fit u16"))
     }
 
     fn index(self) -> usize {

@@ -31,20 +31,20 @@ impl Scratch {
         clippy::new_without_default,
         reason = "a scratch directory is made on the disk, which `Default` does not promise"
     )]
-    pub fn new() -> Scratch {
-        Scratch::made(TempDir::new())
+    pub fn new() -> Self {
+        Self::made(TempDir::new())
     }
 
     /// A scratch directory under `parent`, as a test keeps its files in its own target's.
-    pub fn new_in(parent: impl AsRef<Path>) -> Scratch {
-        Scratch::made(TempDir::new_in(parent))
+    pub fn new_in(parent: impl AsRef<Path>) -> Self {
+        Self::made(TempDir::new_in(parent))
     }
 
-    fn made(temp: io::Result<TempDir>) -> Scratch {
+    fn made(temp: io::Result<TempDir>) -> Self {
         let temp = temp.expect("a temporary directory is made");
         let root = temp.path().join("scratch");
         OwnerOnly::create_dir(&root).expect("the scratch directory is made");
-        Scratch { root, _temp: temp }
+        Self { root, _temp: temp }
     }
 
     /// The scratch directory itself.

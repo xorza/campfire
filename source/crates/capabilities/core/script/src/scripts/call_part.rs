@@ -90,7 +90,7 @@ impl CallParts {
         debug_assert!(scope.is_none(), "one part holds a scope's params");
         *scope = Some(ParamsAt {
             at,
-            param: CallParts::param_of::<P>,
+            param: Self::param_of::<P>,
         });
     }
 

@@ -52,12 +52,12 @@ impl SimResource for StruckUnits {
 /// A snapshot is untrusted, so hits out of order, or one twice, fail to decode: a search of them
 /// relies on the order.
 impl<'de> Deserialize<'de> for StruckUnits {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<StruckUnits, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let hits = Vec::<Struck>::deserialize(deserializer)?;
         if !hits.is_sorted_by(|a, b| a < b) {
             return Err(D::Error::custom("struck units out of order, or one twice"));
         }
-        Ok(StruckUnits(hits))
+        Ok(Self(hits))
     }
 }
 

@@ -89,9 +89,8 @@ pub use crate::action_kind::{ActionKind, MeteredKind};
 pub use crate::action_names::ActionNames;
 pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
-pub use crate::action_slots::slot_times::{
-    ActionCheck, SlotCharges, SlotTime, SlotTimes, TimedSlots,
-};
+pub use crate::action_slots::slot_times::{ActionCheck, SlotCharges, SlotTime, SlotTimes};
+pub use crate::action_slots::timed_slots::TimedSlots;
 pub use crate::action_slots::{ActionSlot, ActionSlots};
 pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
@@ -182,20 +181,20 @@ campfire_common::enum_all! {
 
 impl ModuleSet for ActionsSet {
     const CAPABILITY: Option<Capability> = None;
-    const ALL: &'static [ActionsSet] = &ActionsSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            ActionsSet::Start => Phase::Start,
-            ActionsSet::Deliver => Phase::Deliver,
-            ActionsSet::Fire => Phase::Fire,
-            ActionsSet::Launch => Phase::Launch,
-            ActionsSet::Land => Phase::Land,
-            ActionsSet::Resolve => Phase::Resolve,
-            ActionsSet::HoldAtInputs => Phase::HoldAtInputs,
-            ActionsSet::HoldAtStrike => Phase::HoldAtStrike,
-            ActionsSet::HoldAtResolve => Phase::HoldAtResolve,
-            ActionsSet::HoldAtEnd => Phase::HoldAtEnd,
+            Self::Start => Phase::Start,
+            Self::Deliver => Phase::Deliver,
+            Self::Fire => Phase::Fire,
+            Self::Launch => Phase::Launch,
+            Self::Land => Phase::Land,
+            Self::Resolve => Phase::Resolve,
+            Self::HoldAtInputs => Phase::HoldAtInputs,
+            Self::HoldAtStrike => Phase::HoldAtStrike,
+            Self::HoldAtResolve => Phase::HoldAtResolve,
+            Self::HoldAtEnd => Phase::HoldAtEnd,
         })
     }
 }
@@ -291,7 +290,7 @@ pub mod internals {
             range: Num,
             time: Ticks,
         ) -> ActionId {
-            Actions::push(
+            Self::push(
                 world,
                 "gather",
                 Action {
@@ -362,8 +361,8 @@ pub mod internals {
     impl TestWeapon {
         /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
         /// rate and damage, costing nothing.
-        pub fn new(aim: Filter, range: ActionRange, windup: Ticks) -> TestWeapon {
-            TestWeapon {
+        pub fn new(aim: Filter, range: ActionRange, windup: Ticks) -> Self {
+            Self {
                 aim,
                 range,
                 windup,
@@ -392,7 +391,7 @@ pub mod internals {
                     homes: true,
                 },
             });
-            Actions::push(
+            Self::push(
                 world,
                 "weapon",
                 Action {
@@ -452,7 +451,7 @@ pub mod internals {
             time: Ticks,
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
-            Actions::push(
+            Self::push(
                 world,
                 "train",
                 Action {
@@ -492,7 +491,7 @@ pub mod internals {
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
             let range = range.into();
-            Actions::push(
+            Self::push(
                 world,
                 "build",
                 Action {

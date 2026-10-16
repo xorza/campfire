@@ -23,8 +23,8 @@ pub(crate) struct LogLines(pub(crate) StreamSender);
 pub(crate) struct LineWriter<'a>(&'a StreamSender);
 
 impl LogFile {
-    pub(crate) const fn of(writer: StreamWriter) -> LogFile {
-        LogFile(Some(writer))
+    pub(crate) const fn of(writer: StreamWriter) -> Self {
+        Self(Some(writer))
     }
 }
 

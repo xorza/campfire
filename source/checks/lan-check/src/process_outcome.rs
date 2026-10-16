@@ -22,11 +22,11 @@ pub(crate) enum ProcessOutcome {
 }
 
 impl ProcessOutcome {
-    pub(crate) fn of(status: ExitStatus) -> ProcessOutcome {
+    pub(crate) fn of(status: ExitStatus) -> Self {
         if status.success() {
-            ProcessOutcome::Succeeded
+            Self::Succeeded
         } else {
-            ProcessOutcome::Failed(status)
+            Self::Failed(status)
         }
     }
 }

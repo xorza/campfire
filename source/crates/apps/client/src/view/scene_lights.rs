@@ -30,7 +30,7 @@ pub(crate) const EXPOSURE: Exposure = Exposure::BLENDER;
 
 impl SceneLights {
     /// The lights of `lights`.
-    pub(crate) fn of(lights: &MapLights) -> SceneLights {
+    pub(crate) fn of(lights: &MapLights) -> Self {
         let full = 1.0 / EXPOSURE.exposure();
         let color = |[red, green, blue]: [f32; 3]| {
             Color::LinearRgba(LinearRgba::from(Srgba::new(red, green, blue, 1.0)))
@@ -55,7 +55,7 @@ impl SceneLights {
                 }
             })
             .collect();
-        SceneLights {
+        Self {
             ambient: GlobalAmbientLight {
                 color: color(lights.ambient),
                 brightness: full,

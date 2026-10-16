@@ -23,11 +23,11 @@ pub struct DataDir {
 
 impl DataDir {
     /// The data directory at `path`, made when missing, and locked.
-    pub fn open(path: &Path) -> Result<DataDir, PathError<DataDirError>> {
-        DataDir::open_case(path).map_err(PathError::at(path))
+    pub fn open(path: &Path) -> Result<Self, PathError<DataDirError>> {
+        Self::open_case(path).map_err(PathError::at(path))
     }
 
-    fn open_case(path: &Path) -> Result<DataDir, DataDirError> {
+    fn open_case(path: &Path) -> Result<Self, DataDirError> {
         DurableDir::create_all(path).map_err(DataDirError::Create)?;
         if let Some(exposure) = OwnerOnly::dir_exposure(path).map_err(DataDirError::Inspect)? {
             return Err(DataDirError::Exposed(exposure));
@@ -38,7 +38,7 @@ impl DataDir {
             Err(TryLockError::WouldBlock) => return Err(DataDirError::Locked),
             Err(TryLockError::Error(error)) => return Err(DataDirError::Lock(error)),
         }
-        Ok(DataDir {
+        Ok(Self {
             path: path.to_owned(),
             _lock: lock,
         })

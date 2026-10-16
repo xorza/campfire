@@ -25,13 +25,13 @@ pub struct SlotRanks {
 impl SlotRanks {
     /// `count` ranks that need `levels`; `None` for levels that are not one for each rank, or
     /// one below the one before.
-    pub fn new(count: NonZeroU8, levels: Option<Vec<Level>>) -> Option<SlotRanks> {
+    pub fn new(count: NonZeroU8, levels: Option<Vec<Level>>) -> Option<Self> {
         if let Some(levels) = &levels
             && (levels.len() != usize::from(count.get()) || !levels.is_sorted())
         {
             return None;
         }
-        Some(SlotRanks {
+        Some(Self {
             count,
             levels: levels.map(Vec::into_boxed_slice),
         })
@@ -50,7 +50,7 @@ impl SlotRanks {
 /// Data is untrusted, so `levels` on a kind with no `ranks`, or levels that `SlotRanks::new`
 /// refuses, fail to read.
 impl<'de> Deserialize<'de> for SlotKindData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<SlotKindData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -75,7 +75,7 @@ impl<'de> Deserialize<'de> for SlotKindData {
                 )
             })?),
         };
-        Ok(SlotKindData { name, ranks })
+        Ok(Self { name, ranks })
     }
 }
 

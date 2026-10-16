@@ -90,9 +90,9 @@ impl Reapply {
     /// `max_stacks`.
     pub(crate) const fn stacks(self, stacks: u32, max_stacks: Option<NonZeroU32>) -> u32 {
         match (self, max_stacks) {
-            (Reapply::Stack, Some(max)) if stacks >= max.get() => stacks,
-            (Reapply::Stack, _) => stacks.saturating_add(1),
-            (Reapply::Refresh | Reapply::Ignore, _) => stacks,
+            (Self::Stack, Some(max)) if stacks >= max.get() => stacks,
+            (Self::Stack, _) => stacks.saturating_add(1),
+            (Self::Refresh | Self::Ignore, _) => stacks,
         }
     }
 }

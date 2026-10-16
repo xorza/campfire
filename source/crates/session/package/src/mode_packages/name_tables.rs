@@ -45,7 +45,7 @@ pub(crate) struct NameTables<'a> {
 }
 
 impl<'a> NameTables<'a> {
-    pub(crate) fn of(packages: &'a ModePackages) -> Result<NameTables<'a>, BookError> {
+    pub(crate) fn of(packages: &'a ModePackages) -> Result<Self, BookError> {
         let data = &packages.data;
         let book_packages = packages.book_packages();
         let types = Books::unit_types(packages.tag_names(), &book_packages);

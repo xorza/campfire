@@ -53,20 +53,18 @@ impl InProgress {
     /// Whether each of its places lies within the world's bound, as a restore checks it.
     pub(crate) fn within_bound(self) -> bool {
         match self {
-            InProgress::Attack { .. } => true,
-            InProgress::Order { aim, phase } => {
+            Self::Attack { .. } => true,
+            Self::Order { aim, phase } => {
                 let started = match phase {
                     OrderPhase::Started(started) => started.start.within_bound(),
                     OrderPhase::Ordered | OrderPhase::Approaching => true,
                 };
                 aim.target.within_bound() && started
             }
-            InProgress::Charge { aim, origin, .. } => {
+            Self::Charge { aim, origin, .. } => {
                 aim.target.within_bound() && Position::from(origin).within_bound()
             }
-            InProgress::Channel { aim, start, .. } => {
-                aim.target.within_bound() && start.within_bound()
-            }
+            Self::Channel { aim, start, .. } => aim.target.within_bound() && start.within_bound(),
         }
     }
 
@@ -79,16 +77,16 @@ impl InProgress {
     /// The slot, to move when slots are added before it.
     pub(super) const fn slot_mut(&mut self) -> &mut u8 {
         match self {
-            InProgress::Attack { slot, .. }
-            | InProgress::Order {
+            Self::Attack { slot, .. }
+            | Self::Order {
                 aim: SlotAim { slot, .. },
                 ..
             }
-            | InProgress::Charge {
+            | Self::Charge {
                 aim: SlotAim { slot, .. },
                 ..
             }
-            | InProgress::Channel {
+            | Self::Channel {
                 aim: SlotAim { slot, .. },
                 ..
             } => slot,
@@ -98,7 +96,7 @@ impl InProgress {
     /// The call of a started order that resolves by `now`: of a cast, as only a cast starts.
     pub fn cast_due(self, now: Tick) -> Option<ActionCall> {
         match self {
-            InProgress::Order {
+            Self::Order {
                 aim,
                 phase: OrderPhase::Started(Started { resolves_at, start }),
             } if resolves_at <= now => Some(ActionCall { aim, start }),
@@ -109,17 +107,17 @@ impl InProgress {
     /// The tick it resolves in, once started.
     pub const fn resolves_at(self) -> Option<Tick> {
         match self {
-            InProgress::Attack { resolves_at, .. }
-            | InProgress::Order {
+            Self::Attack { resolves_at, .. }
+            | Self::Order {
                 phase: OrderPhase::Started(Started { resolves_at, .. }),
                 ..
             } => Some(resolves_at),
-            InProgress::Order {
+            Self::Order {
                 phase: OrderPhase::Ordered | OrderPhase::Approaching,
                 ..
             }
-            | InProgress::Charge { .. }
-            | InProgress::Channel { .. } => None,
+            | Self::Charge { .. }
+            | Self::Channel { .. } => None,
         }
     }
 }

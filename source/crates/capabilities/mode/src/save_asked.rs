@@ -10,8 +10,8 @@ pub struct SaveAsked {
 }
 
 impl SaveAsked {
-    pub const fn new(at: Tick) -> SaveAsked {
-        SaveAsked { at }
+    pub const fn new(at: Tick) -> Self {
+        Self { at }
     }
 
     /// The boundary, by the tick it comes before.
@@ -22,7 +22,7 @@ impl SaveAsked {
 
 /// The mode puts it in as it asks for a save.
 impl Report for SaveAsked {
-    fn installed() -> Option<SaveAsked> {
+    fn installed() -> Option<Self> {
         None
     }
 }

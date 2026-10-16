@@ -55,7 +55,7 @@ impl Session {
         world: &mut World,
         source: SessionSource<'_>,
         segment: u32,
-    ) -> Result<Session, StartError> {
+    ) -> Result<Self, StartError> {
         let SessionSource {
             log,
             seeds,
@@ -97,7 +97,7 @@ impl Session {
             rate.ticks(NonZeroU64::from(ms).get())
                 .expect("a tick at least")
         });
-        Ok(Session {
+        Ok(Self {
             seeds,
             segment,
             log,
@@ -281,7 +281,7 @@ impl Session {
             Tick::new(0),
             "a session starts before its first tick"
         );
-        let session = Session::build(world, source, 0)?;
+        let session = Self::build(world, source, 0)?;
         Mode::start(world, &session.seatings()).map_err(StartError::MatchStart)?;
         world.insert_resource(session);
         Ok(())
@@ -310,8 +310,8 @@ impl Session {
             .find(|record| record.segment == at.segment)
             .ok_or(ResumeError::NoCheckpoint)?
             .clone();
-        let mut session = Session::build(world, source, at.segment).map_err(ResumeError::Start)?;
-        Session::restore_checked(world, &record, at.snapshot).map_err(ResumeError::Snapshot)?;
+        let mut session = Self::build(world, source, at.segment).map_err(ResumeError::Start)?;
+        Self::restore_checked(world, &record, at.snapshot).map_err(ResumeError::Snapshot)?;
         session.log.seal_until(record.tick);
         world.insert_resource(session);
         Ok(())
@@ -322,7 +322,7 @@ impl Session {
     /// it.
     pub fn start_match(source: SessionSource<'_>) -> Result<Match, StartError> {
         let mut world = World::new();
-        Session::start(&mut world, source)?;
+        Self::start(&mut world, source)?;
         Ok(Match::from_built(world))
     }
 
@@ -330,7 +330,7 @@ impl Session {
     /// `Session::resume` resumes it.
     pub fn resume_match(source: SessionSource<'_>, at: ResumeAt<'_>) -> Result<Match, ResumeError> {
         let mut world = World::new();
-        Session::resume(&mut world, source, at)?;
+        Self::resume(&mut world, source, at)?;
         Ok(Match::from_built(world))
     }
 }
@@ -354,9 +354,9 @@ pub(crate) mod internals {
             at: ResumeAt<'_>,
         ) -> Result<Match, ResumeError> {
             let session = game
-                .remove_resource::<Session>()
+                .remove_resource::<Self>()
                 .expect("a session's match holds its session");
-            let Session {
+            let Self {
                 mut log,
                 seeds,
                 signer,
@@ -369,7 +369,7 @@ pub(crate) mod internals {
                 packages,
                 signer,
             };
-            Session::resume_match(source, at)
+            Self::resume_match(source, at)
         }
     }
 }

@@ -12,12 +12,12 @@ use crate::vec3::Vec3;
 pub struct Flat([i64; 2]);
 
 impl Flat {
-    pub const fn new(x: i128, z: i128) -> Flat {
-        Flat([Flat::narrow(x), Flat::narrow(z)])
+    pub const fn new(x: i128, z: i128) -> Self {
+        Self([Self::narrow(x), Self::narrow(z)])
     }
 
-    pub const fn from_array(axes: [i128; 2]) -> Flat {
-        Flat::new(axes[0], axes[1])
+    pub const fn from_array(axes: [i128; 2]) -> Self {
+        Self::new(axes[0], axes[1])
     }
 
     pub const fn to_array(self) -> [i128; 2] {
@@ -25,22 +25,22 @@ impl Flat {
     }
 
     /// `[x, z]` of `nums`, in their bits.
-    pub const fn from_nums(nums: [Num; 2]) -> Flat {
-        Flat([nums[0].to_bits(), nums[1].to_bits()])
+    pub const fn from_nums(nums: [Num; 2]) -> Self {
+        Self([nums[0].to_bits(), nums[1].to_bits()])
     }
 
     /// Where `point` stands on the ground plane, in a `Num`'s bits.
-    pub const fn ground(point: Vec3) -> Flat {
-        Flat::from_nums([point.x, point.z])
+    pub const fn ground(point: Vec3) -> Self {
+        Self::from_nums([point.x, point.z])
     }
 
-    pub const fn dot(self, rhs: Flat) -> i128 {
-        Flat::product(self.0[0], rhs.0[0]) + Flat::product(self.0[1], rhs.0[1])
+    pub const fn dot(self, rhs: Self) -> i128 {
+        Self::product(self.0[0], rhs.0[0]) + Self::product(self.0[1], rhs.0[1])
     }
 
     /// Positive when `rhs` turns counterclockwise from `self`, seen from above.
-    pub const fn cross(self, rhs: Flat) -> i128 {
-        Flat::product(self.0[0], rhs.0[1]) - Flat::product(self.0[1], rhs.0[0])
+    pub const fn cross(self, rhs: Self) -> i128 {
+        Self::product(self.0[0], rhs.0[1]) - Self::product(self.0[1], rhs.0[0])
     }
 
     pub const fn length_squared(self) -> u128 {
@@ -49,8 +49,8 @@ impl Flat {
 
     /// `f` of each axis.
     #[must_use]
-    pub fn map(self, f: impl FnMut(i128) -> i128) -> Flat {
-        Flat::from_array(self.to_array().map(f))
+    pub fn map(self, f: impl FnMut(i128) -> i128) -> Self {
+        Self::from_array(self.to_array().map(f))
     }
 
     #[expect(clippy::cast_possible_truncation, reason = "checked within i64")]
@@ -77,34 +77,34 @@ impl Index<usize> for Flat {
 }
 
 impl Add for Flat {
-    type Output = Flat;
+    type Output = Self;
 
-    fn add(self, rhs: Flat) -> Flat {
-        Flat([self.0[0] + rhs.0[0], self.0[1] + rhs.0[1]])
+    fn add(self, rhs: Self) -> Self {
+        Self([self.0[0] + rhs.0[0], self.0[1] + rhs.0[1]])
     }
 }
 
 impl Sub for Flat {
-    type Output = Flat;
+    type Output = Self;
 
-    fn sub(self, rhs: Flat) -> Flat {
-        Flat([self.0[0] - rhs.0[0], self.0[1] - rhs.0[1]])
+    fn sub(self, rhs: Self) -> Self {
+        Self([self.0[0] - rhs.0[0], self.0[1] - rhs.0[1]])
     }
 }
 
 impl Neg for Flat {
-    type Output = Flat;
+    type Output = Self;
 
-    fn neg(self) -> Flat {
-        Flat([-self.0[0], -self.0[1]])
+    fn neg(self) -> Self {
+        Self([-self.0[0], -self.0[1]])
     }
 }
 
 impl Mul<i64> for Flat {
-    type Output = Flat;
+    type Output = Self;
 
-    fn mul(self, factor: i64) -> Flat {
-        Flat([self.0[0] * factor, self.0[1] * factor])
+    fn mul(self, factor: i64) -> Self {
+        Self([self.0[0] * factor, self.0[1] * factor])
     }
 }
 

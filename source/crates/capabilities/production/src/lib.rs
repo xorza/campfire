@@ -113,15 +113,15 @@ campfire_common::enum_all! {
 
 impl ModuleSet for ProductionSet {
     const CAPABILITY: Option<Capability> = Some(Capability::Production);
-    const ALL: &'static [ProductionSet] = &ProductionSet::ALL;
+    const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
-            ProductionSet::Commands => Phase::Produce,
-            ProductionSet::CheckBuilds => Phase::CheckBuilds,
-            ProductionSet::Start => Phase::StartBuilds,
-            ProductionSet::Finish => Phase::Finish,
-            ProductionSet::Supply => Phase::End,
+            Self::Commands => Phase::Produce,
+            Self::CheckBuilds => Phase::CheckBuilds,
+            Self::Start => Phase::StartBuilds,
+            Self::Finish => Phase::Finish,
+            Self::Supply => Phase::End,
         })
     }
 }
@@ -138,10 +138,10 @@ impl Module for Production {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ProductionSet>();
         d.engine_tags(&[
-            Production::CONSTRUCTING,
-            Production::NODE,
-            Production::DROP_OFF,
-            Production::GATHERING,
+            Self::CONSTRUCTING,
+            Self::NODE,
+            Self::DROP_OFF,
+            Self::GATHERING,
         ]);
         d.component::<TrainQueue>();
         d.derived_sent::<PlayerSupply>();
@@ -203,10 +203,7 @@ impl Module for Production {
             cx.server(Trains::finish_trains.in_set(ProductionSet::Finish));
             return;
         }
-        cx.by_role(
-            Production::builds::<ByVision>(),
-            Production::builds::<ByHolding>(),
-        );
+        cx.by_role(Self::builds::<ByVision>(), Self::builds::<ByHolding>());
         cx.systems(Construction::progress_sites.in_set(ProductionSet::Finish));
         cx.server(
             Trains::finish_trains

@@ -91,12 +91,12 @@ enum Part {
 }
 
 impl Edges {
-    pub(super) fn of(frame: Frame) -> Edges {
+    pub(super) fn of(frame: Frame) -> Self {
         let [a, b] = frame.halves;
         let dot = |u: Flat, v: Flat| product(u[0], v[0]).wrapping_add(product(u[1], v[1]));
         let (aa, ab, bb) = (dot(a, a), dot(a, b), dot(b, b));
         let twice_ab = ab << 1;
-        Edges {
+        Self {
             frame,
             area: cross(a, b),
             corners: frame.corners(),
@@ -351,13 +351,13 @@ impl LineBounds {
     /// lies from the floor root to the ceiling one, so `far` takes the ceiling and `near` the
     /// floor. A reach and a half edge within the world's bound keep each below 2¹⁰², so the
     /// wrapping steps skip the checks a release build makes.
-    pub(super) fn of(square: i128, reach: i128) -> LineBounds {
+    pub(super) fn of(square: i128, reach: i128) -> Self {
         debug_assert!(square > 0 && reach >= 0);
         let square = square.cast_unsigned();
         let root = square.floor_root();
         let ceiling = root.wrapping_add(u128::from(root.wrapping_mul(root) < square));
         let reach = reach.cast_unsigned();
-        LineBounds {
+        Self {
             far: reach.wrapping_add(2).wrapping_mul(ceiling),
             near: if reach >= 1 {
                 (reach - 1).wrapping_mul(root)
@@ -369,9 +369,9 @@ impl LineBounds {
 }
 
 impl Reach {
-    pub(super) const fn of(units: i128) -> Reach {
+    pub(super) const fn of(units: i128) -> Self {
         debug_assert!(units >= 0);
-        Reach {
+        Self {
             units,
             square_limit: if units > 0 { units * units - units } else { -1 },
         }

@@ -16,11 +16,11 @@ pub struct RunDir {
 impl RunDir {
     /// Creates the directory of a run that started at `start` below `root`, and `root` if it
     /// does not exist; an error if the directory exists.
-    pub fn create(root: &Path, start: SystemTime) -> Result<RunDir, RunDirError> {
-        let path = root.join(RunDir::name(start));
+    pub fn create(root: &Path, start: SystemTime) -> Result<Self, RunDirError> {
+        let path = root.join(Self::name(start));
         DurableDir::create_all(root).map_err(RunDirError::Root)?;
         DurableDir::create_new(&path).map_err(RunDirError::Dir)?;
-        Ok(RunDir { path })
+        Ok(Self { path })
     }
 
     pub fn path(&self) -> &Path {
@@ -32,7 +32,7 @@ impl RunDir {
             .duration_since(UNIX_EPOCH)
             .expect("the clock is after 1970");
         let seconds = since.as_secs();
-        let [year, month, day] = RunDir::civil(seconds / 86_400);
+        let [year, month, day] = Self::civil(seconds / 86_400);
         let time = seconds % 86_400;
         format!(
             "{year:04}-{month:02}-{day:02}T{:02}-{:02}-{:02}.{:03}Z",

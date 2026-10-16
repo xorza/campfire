@@ -22,8 +22,8 @@ pub(crate) struct PinnedKeyVerifier {
 }
 
 impl PinnedKeyVerifier {
-    pub(crate) fn new(pin: &TlsKey) -> PinnedKeyVerifier {
-        PinnedKeyVerifier {
+    pub(crate) fn new(pin: &TlsKey) -> Self {
+        Self {
             spki: Spki::of(pin),
             algorithms: ring::default_provider().signature_verification_algorithms,
         }
@@ -32,7 +32,7 @@ impl PinnedKeyVerifier {
     /// TLS for a client that takes this verifier's key alone: TLS 1.3, no key of its own, and no
     /// resumption, so each handshake presents the key and the verifier checks it (D7).
     pub(crate) fn client_config(self) -> Arc<QuicClientConfig> {
-        PinnedKeyVerifier::config_of(Arc::new(self))
+        Self::config_of(Arc::new(self))
     }
 
     fn config_of(verifier: Arc<dyn ServerCertVerifier>) -> Arc<QuicClientConfig> {
@@ -118,7 +118,7 @@ pub(crate) mod internals {
     impl PinnedKeyVerifier {
         /// TLS for a client whose verifier counts each server key it reads into `checks`.
         pub(crate) fn counting(self, checks: &Arc<AtomicUsize>) -> Arc<QuicClientConfig> {
-            PinnedKeyVerifier::config_of(Arc::new(CountingVerifier {
+            Self::config_of(Arc::new(CountingVerifier {
                 inner: self,
                 checks: Arc::clone(checks),
             }))

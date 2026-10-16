@@ -50,8 +50,8 @@ pub(crate) const ALL;
 
 impl DamageType {
     /// The type `name`, of either case, as `INI::scanIndexList` finds it.
-    pub(crate) fn of(name: &str) -> Option<DamageType> {
-        DamageType::ALL
+    pub(crate) fn of(name: &str) -> Option<Self> {
+        Self::ALL
             .into_iter()
             .find(|known| name.eq_ignore_ascii_case(known.name()))
     }
@@ -64,10 +64,7 @@ impl DamageType {
     /// Whether an armor's share applies to it: `ArmorTemplate::adjustDamage` passes
     /// `UNRESISTABLE` and `SUBDUAL_UNRESISTABLE` whole, whatever an armor says of them.
     pub(crate) const fn resisted(self) -> bool {
-        !matches!(
-            self,
-            DamageType::Unresistable | DamageType::SubdualUnresistable
-        )
+        !matches!(self, Self::Unresistable | Self::SubdualUnresistable)
     }
 
     /// Whether it takes life, as `IsHealthDamagingDamage` holds: a status, the four subdual
@@ -77,13 +74,13 @@ impl DamageType {
     pub(crate) const fn takes_life(self) -> bool {
         !matches!(
             self,
-            DamageType::Status
-                | DamageType::SubdualMissile
-                | DamageType::SubdualVehicle
-                | DamageType::SubdualBuilding
-                | DamageType::SubdualUnresistable
-                | DamageType::KillPilot
-                | DamageType::KillGarrisoned
+            Self::Status
+                | Self::SubdualMissile
+                | Self::SubdualVehicle
+                | Self::SubdualBuilding
+                | Self::SubdualUnresistable
+                | Self::KillPilot
+                | Self::KillGarrisoned
         )
     }
 
@@ -96,44 +93,44 @@ impl DamageType {
     /// Its name, as the game's INI writes it.
     pub(crate) const fn name(self) -> &'static str {
         match self {
-            DamageType::Explosion => "EXPLOSION",
-            DamageType::Crush => "CRUSH",
-            DamageType::ArmorPiercing => "ARMOR_PIERCING",
-            DamageType::SmallArms => "SMALL_ARMS",
-            DamageType::Gattling => "GATTLING",
-            DamageType::Radiation => "RADIATION",
-            DamageType::Flame => "FLAME",
-            DamageType::Laser => "LASER",
-            DamageType::Sniper => "SNIPER",
-            DamageType::Poison => "POISON",
-            DamageType::Healing => "HEALING",
-            DamageType::Unresistable => "UNRESISTABLE",
-            DamageType::Water => "WATER",
-            DamageType::Deploy => "DEPLOY",
-            DamageType::Surrender => "SURRENDER",
-            DamageType::Hack => "HACK",
-            DamageType::KillPilot => "KILL_PILOT",
-            DamageType::Penalty => "PENALTY",
-            DamageType::Falling => "FALLING",
-            DamageType::Melee => "MELEE",
-            DamageType::Disarm => "DISARM",
-            DamageType::HazardCleanup => "HAZARD_CLEANUP",
-            DamageType::ParticleBeam => "PARTICLE_BEAM",
-            DamageType::Toppling => "TOPPLING",
-            DamageType::InfantryMissile => "INFANTRY_MISSILE",
-            DamageType::AuroraBomb => "AURORA_BOMB",
-            DamageType::LandMine => "LAND_MINE",
-            DamageType::JetMissiles => "JET_MISSILES",
-            DamageType::StealthjetMissiles => "STEALTHJET_MISSILES",
-            DamageType::MolotovCocktail => "MOLOTOV_COCKTAIL",
-            DamageType::ComancheVulcan => "COMANCHE_VULCAN",
-            DamageType::SubdualMissile => "SUBDUAL_MISSILE",
-            DamageType::SubdualVehicle => "SUBDUAL_VEHICLE",
-            DamageType::SubdualBuilding => "SUBDUAL_BUILDING",
-            DamageType::SubdualUnresistable => "SUBDUAL_UNRESISTABLE",
-            DamageType::Microwave => "MICROWAVE",
-            DamageType::KillGarrisoned => "KILL_GARRISONED",
-            DamageType::Status => "STATUS",
+            Self::Explosion => "EXPLOSION",
+            Self::Crush => "CRUSH",
+            Self::ArmorPiercing => "ARMOR_PIERCING",
+            Self::SmallArms => "SMALL_ARMS",
+            Self::Gattling => "GATTLING",
+            Self::Radiation => "RADIATION",
+            Self::Flame => "FLAME",
+            Self::Laser => "LASER",
+            Self::Sniper => "SNIPER",
+            Self::Poison => "POISON",
+            Self::Healing => "HEALING",
+            Self::Unresistable => "UNRESISTABLE",
+            Self::Water => "WATER",
+            Self::Deploy => "DEPLOY",
+            Self::Surrender => "SURRENDER",
+            Self::Hack => "HACK",
+            Self::KillPilot => "KILL_PILOT",
+            Self::Penalty => "PENALTY",
+            Self::Falling => "FALLING",
+            Self::Melee => "MELEE",
+            Self::Disarm => "DISARM",
+            Self::HazardCleanup => "HAZARD_CLEANUP",
+            Self::ParticleBeam => "PARTICLE_BEAM",
+            Self::Toppling => "TOPPLING",
+            Self::InfantryMissile => "INFANTRY_MISSILE",
+            Self::AuroraBomb => "AURORA_BOMB",
+            Self::LandMine => "LAND_MINE",
+            Self::JetMissiles => "JET_MISSILES",
+            Self::StealthjetMissiles => "STEALTHJET_MISSILES",
+            Self::MolotovCocktail => "MOLOTOV_COCKTAIL",
+            Self::ComancheVulcan => "COMANCHE_VULCAN",
+            Self::SubdualMissile => "SUBDUAL_MISSILE",
+            Self::SubdualVehicle => "SUBDUAL_VEHICLE",
+            Self::SubdualBuilding => "SUBDUAL_BUILDING",
+            Self::SubdualUnresistable => "SUBDUAL_UNRESISTABLE",
+            Self::Microwave => "MICROWAVE",
+            Self::KillGarrisoned => "KILL_GARRISONED",
+            Self::Status => "STATUS",
         }
     }
 }

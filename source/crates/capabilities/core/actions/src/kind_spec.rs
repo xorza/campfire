@@ -22,24 +22,20 @@ impl KindSpec {
     /// The kind as data names it.
     pub const fn kind(self) -> ActionKind {
         match self {
-            KindSpec::Cast => ActionKind::Cast,
-            KindSpec::Attack(_) => ActionKind::Attack,
-            KindSpec::Use => ActionKind::Use,
-            KindSpec::Train(_) => ActionKind::Train,
-            KindSpec::Build(_) => ActionKind::Build,
-            KindSpec::Gather(_) => ActionKind::Gather,
+            Self::Cast => ActionKind::Cast,
+            Self::Attack(_) => ActionKind::Attack,
+            Self::Use => ActionKind::Use,
+            Self::Train(_) => ActionKind::Train,
+            Self::Build(_) => ActionKind::Build,
+            Self::Gather(_) => ActionKind::Gather,
         }
     }
 
     /// What it deals, for an attack.
     pub const fn weapon(self) -> Option<Weapon> {
         match self {
-            KindSpec::Attack(weapon) => Some(weapon),
-            KindSpec::Cast
-            | KindSpec::Use
-            | KindSpec::Train(_)
-            | KindSpec::Build(_)
-            | KindSpec::Gather(_) => None,
+            Self::Attack(weapon) => Some(weapon),
+            Self::Cast | Self::Use | Self::Train(_) | Self::Build(_) | Self::Gather(_) => None,
         }
     }
 }

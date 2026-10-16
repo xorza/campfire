@@ -30,7 +30,7 @@ impl ProgressionApi {
         api.call(
             add_xp,
             |ctx: &mut Ctx, unit: Unit, track: TrackId, amount: Num| {
-                ProgressionApi::add_xp(ctx, &unit, track, amount)
+                Self::add_xp(ctx, &unit, track, amount)
             },
         )
         .plan(call(

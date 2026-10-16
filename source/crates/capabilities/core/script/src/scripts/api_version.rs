@@ -14,13 +14,13 @@ pub struct ApiVersion {
 
 impl ApiVersion {
     /// The first version, which every name of the release came in.
-    pub const FIRST: ApiVersion = ApiVersion { major: 1, minor: 0 };
+    pub const FIRST: Self = Self { major: 1, minor: 0 };
     /// The version the release runs.
-    pub const RELEASE: ApiVersion = ApiVersion::FIRST;
+    pub const RELEASE: Self = Self::FIRST;
 
     /// `text` as a version; `None` unless it is two decimal numbers joined by a dot, with no
     /// leading zero but a lone one.
-    pub fn parse(text: &str) -> Option<ApiVersion> {
+    pub fn parse(text: &str) -> Option<Self> {
         let (major, minor) = text.split_once('.')?;
         let number = |part: &str| {
             let plain = part.bytes().all(|byte| byte.is_ascii_digit())
@@ -28,7 +28,7 @@ impl ApiVersion {
                 && (part == "0" || !part.starts_with('0'));
             plain.then(|| part.parse::<u16>().ok()).flatten()
         };
-        Some(ApiVersion {
+        Some(Self {
             major: number(major)?,
             minor: number(minor)?,
         })
@@ -37,16 +37,15 @@ impl ApiVersion {
     /// Whether a release of this version loads a package that targets `package`: of the same
     /// major, and a minor no higher, as every name and field it names is then one this release
     /// has, with the same meaning.
-    pub const fn loads(self, package: ApiVersion) -> bool {
+    pub const fn loads(self, package: Self) -> bool {
         package.major == self.major && package.minor <= self.minor
     }
 }
 
 impl<'de> Deserialize<'de> for ApiVersion {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ApiVersion, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
-        ApiVersion::parse(&text)
-            .ok_or_else(|| D::Error::custom(format!("{text:?} is not major.minor")))
+        Self::parse(&text).ok_or_else(|| D::Error::custom(format!("{text:?} is not major.minor")))
     }
 }
 

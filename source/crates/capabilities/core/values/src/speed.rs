@@ -8,11 +8,11 @@ pub struct Speed(Num);
 
 impl Speed {
     /// `None` unless `meters_a_second` is positive.
-    pub const fn new(meters_a_second: Num) -> Option<Speed> {
+    pub const fn new(meters_a_second: Num) -> Option<Self> {
         if meters_a_second.to_bits() <= 0 {
             return None;
         }
-        Some(Speed(meters_a_second))
+        Some(Self(meters_a_second))
     }
 
     /// In meters a second.
@@ -23,9 +23,9 @@ impl Speed {
 
 /// A number, or a decimal string, that is positive.
 impl<'de> Deserialize<'de> for Speed {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Speed, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let speed = Num::deserialize(deserializer)?;
-        Speed::new(speed).ok_or_else(|| D::Error::custom("a speed is a positive number"))
+        Self::new(speed).ok_or_else(|| D::Error::custom("a speed is a positive number"))
     }
 }
 

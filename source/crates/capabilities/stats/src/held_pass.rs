@@ -102,7 +102,7 @@ impl HeldPass {
         let rate = clock.rate();
         held.clear();
         held.extend(others.0.drain(..));
-        HeldPass::hold_player_modifiers(&mut held, &book, &players, &units);
+        Self::hold_player_modifiers(&mut held, &book, &players, &units);
         let granting = tag_book.granting();
         let written = units
             .iter()

@@ -89,7 +89,7 @@ impl EffectListBook {
         let resolved: Vec<EffectSpec> = list
             .iter()
             .map(|effect| {
-                EffectListBook::holds(data, hook, &effect.does)?;
+                Self::holds(data, hook, &effect.does)?;
                 Ok(EffectSpec {
                     does: self.resolve(data, hook, &effect.does, names)?,
                     to: effect.to,
@@ -245,7 +245,7 @@ impl EffectListBook {
         let ListCall { of, hook, reached } = call;
         let mut held = ctx.frame();
         let (frame, view) = (&mut *held, ctx.view());
-        let list = world.resource::<EffectListBook>().of(of, hook);
+        let list = world.resource::<Self>().of(of, hook);
         if list.is_empty() {
             return Ok(());
         }
@@ -338,8 +338,8 @@ pub(crate) mod internals {
 
     impl LaunchId {
         /// The launch at `at` among the match's launches.
-        pub const fn nth(at: u32) -> LaunchId {
-            LaunchId(at)
+        pub const fn nth(at: u32) -> Self {
+            Self(at)
         }
     }
 }

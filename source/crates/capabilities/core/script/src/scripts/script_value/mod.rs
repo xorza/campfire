@@ -25,16 +25,16 @@ impl<T: Variant + Clone> ScriptType for T {}
 
 impl ScriptValue {
     /// No value, `()`.
-    pub const UNIT: ScriptValue = ScriptValue(Dynamic::UNIT);
+    pub const UNIT: Self = Self(Dynamic::UNIT);
 
     /// `value`, as a script holds it.
-    pub fn of<T: ScriptType>(value: T) -> ScriptValue {
-        ScriptValue(ScriptValue::engine(value))
+    pub fn of<T: ScriptType>(value: T) -> Self {
+        Self(Self::engine(value))
     }
 
     /// The value as a `T`, if it is one.
     pub fn try_cast<T: ScriptType>(self) -> Option<T> {
-        let value = match same::<T, ScriptValue>(self) {
+        let value = match same::<T, Self>(self) {
             Ok(value) => return Some(value),
             Err(value) => value,
         };
@@ -79,7 +79,7 @@ impl ScriptValue {
     /// `value` in the engine's form: a value, a list, a table or a text of `scripts` as the
     /// engine's own, any other type as itself, so a script reads each as it reads the engine's.
     pub(super) fn engine<T: ScriptType>(value: T) -> Dynamic {
-        let value = match same::<ScriptValue, T>(value) {
+        let value = match same::<Self, T>(value) {
             Ok(value) => return value.0,
             Err(value) => value,
         };
@@ -98,8 +98,8 @@ impl ScriptValue {
         Dynamic::from(value)
     }
 
-    pub(super) const fn of_engine(value: Dynamic) -> ScriptValue {
-        ScriptValue(value)
+    pub(super) const fn of_engine(value: Dynamic) -> Self {
+        Self(value)
     }
 
     pub(super) fn into_engine(self) -> Dynamic {
@@ -109,10 +109,10 @@ impl ScriptValue {
 
 /// The value as a script sees it: an integer, or a `Num`.
 impl From<Scalar> for ScriptValue {
-    fn from(value: Scalar) -> ScriptValue {
+    fn from(value: Scalar) -> Self {
         match value {
-            Scalar::Int(value) => ScriptValue::of(value),
-            Scalar::Decimal(value) => ScriptValue::of(value),
+            Scalar::Int(value) => Self::of(value),
+            Scalar::Decimal(value) => Self::of(value),
         }
     }
 }
@@ -146,7 +146,7 @@ pub(crate) mod internals {
             world: &mut World,
             source: &str,
             args: impl ScriptArgs,
-        ) -> Result<ScriptValue, CallError> {
+        ) -> Result<Self, CallError> {
             let mut host = world.non_send_mut::<ScriptHost>();
             let script = host.compile(source).expect("a probe compiles");
             host.call(
@@ -155,7 +155,7 @@ pub(crate) mod internals {
                 "probe",
                 args.into_engine(),
             )
-            .map(ScriptValue::of_engine)
+            .map(Self::of_engine)
             .map_err(CallError::from_script)
         }
 

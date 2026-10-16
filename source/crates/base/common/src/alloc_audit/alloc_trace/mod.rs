@@ -37,8 +37,8 @@ const FULL_BACKTRACE: &str = "CAMPFIRE_ALLOC_FULL_BT";
 const ALLOCATOR_SHIM: &str = "__rust_";
 
 impl AllocTrace {
-    pub(crate) const fn new(backtrace: Backtrace) -> AllocTrace {
-        AllocTrace(backtrace)
+    pub(crate) const fn new(backtrace: Backtrace) -> Self {
+        Self(backtrace)
     }
 
     /// The call stack from the fixture's call down to the allocation, its frames the workspace's
@@ -62,7 +62,7 @@ impl AllocTrace {
                 line: symbol.lineno().unwrap_or(0),
                 column: symbol.colno().unwrap_or(0),
             });
-        let mut out = AllocTrace::workspace_frames(symbols);
+        let mut out = Self::workspace_frames(symbols);
         if out.is_empty() {
             write!(
                 out,
@@ -89,10 +89,10 @@ impl AllocTrace {
             {
                 continue;
             }
-            let Some(relative) = symbol.file.as_deref().and_then(AllocTrace::relative) else {
+            let Some(relative) = symbol.file.as_deref().and_then(Self::relative) else {
                 continue;
             };
-            match AllocTrace::kind(&relative) {
+            match Self::kind(&relative) {
                 FrameKind::Other => continue,
                 // The frames past the fixture's first are the test's wrappers.
                 FrameKind::Fixture if fixture_seen => break,
@@ -102,7 +102,7 @@ impl AllocTrace {
             let name = symbol
                 .name
                 .as_deref()
-                .map_or("<unknown>", AllocTrace::without_generics);
+                .map_or("<unknown>", Self::without_generics);
             writeln!(out, "  {index:>2}: {name}").expect("a String takes every write");
             writeln!(
                 out,
@@ -143,7 +143,7 @@ impl AllocTrace {
     /// workspace's absolute root goes; a PDB on Windows keeps the path cargo passed, which is
     /// relative for a workspace member and absolute for a dependency or std.
     fn relative(file: &str) -> Option<String> {
-        let root = AllocTrace::workspace_root();
+        let root = Self::workspace_root();
         let relative = match file.strip_prefix(root.to_string_lossy().as_ref()) {
             Some(tail) => tail.trim_start_matches(path::is_separator),
             None if Path::new(file).is_absolute() => return None,

@@ -13,14 +13,14 @@ pub struct Bounds {
 
 impl Bounds {
     /// The whole world, within `Position::BOUND`: the bounds of a match without a map.
-    pub const WORLD: Bounds = Bounds {
+    pub const WORLD: Self = Self {
         min: [Num::from_bits(-Position::BOUND.to_bits()); 2],
         max: [Position::BOUND; 2],
     };
 
     /// The bounds from `min` to `max`; `None` unless `min` is below `max` on both axes and both
     /// are within the world's bound.
-    pub const fn new(min: [Num; 2], max: [Num; 2]) -> Option<Bounds> {
+    pub const fn new(min: [Num; 2], max: [Num; 2]) -> Option<Self> {
         let bound = Position::BOUND.to_bits();
         let mut axis = 0;
         while axis < 2 {
@@ -30,7 +30,7 @@ impl Bounds {
             }
             axis += 1;
         }
-        Some(Bounds { min, max })
+        Some(Self { min, max })
     }
 
     pub const fn min(self) -> [Num; 2] {
@@ -98,7 +98,7 @@ impl Bounds {
 
 /// A map's `[bounds]`: `min` and `max` as `[x, z]`, refused unless they make bounds.
 impl<'de> Deserialize<'de> for Bounds {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Bounds, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -106,7 +106,7 @@ impl<'de> Deserialize<'de> for Bounds {
             max: [Num; 2],
         }
         let Fields { min, max } = Fields::deserialize(deserializer)?;
-        Bounds::new(min, max).ok_or_else(|| {
+        Self::new(min, max).ok_or_else(|| {
             D::Error::custom("bounds need min below max, both within the world's bound")
         })
     }

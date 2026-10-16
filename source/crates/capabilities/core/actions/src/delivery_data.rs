@@ -24,9 +24,7 @@ impl DeliveryData {
     /// The name of the unit type it launches, in its package.
     pub const fn unit_type(&self) -> &DeclaredName {
         match self {
-            DeliveryData::Projectile { unit_type, .. } | DeliveryData::Area { unit_type } => {
-                unit_type
-            }
+            Self::Projectile { unit_type, .. } | Self::Area { unit_type } => unit_type,
         }
     }
 }
@@ -35,7 +33,7 @@ impl DeliveryData {
 /// area with a count or a spread, or a spread that is negative or past a full turn, fails to
 /// read.
 impl<'de> Deserialize<'de> for DeliveryData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<DeliveryData, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -52,14 +50,14 @@ impl<'de> Deserialize<'de> for DeliveryData {
                     Some(spread) if spread >= Num::ZERO && spread <= Num::int(360) => spread,
                     Some(_) => return Err(D::Error::custom("a spread from 0 to 360 degrees")),
                 };
-                Ok(DeliveryData::Projectile {
+                Ok(Self::Projectile {
                     unit_type,
                     count: fields.count.unwrap_or(NonZeroU8::MIN),
                     spread_deg,
                 })
             }
             (None, Some(unit_type)) if fields.count.is_none() && fields.spread_deg.is_none() => {
-                Ok(DeliveryData::Area { unit_type })
+                Ok(Self::Area { unit_type })
             }
             (None, Some(_)) => Err(D::Error::custom("an area takes no count or spread_deg")),
             _ => Err(D::Error::custom("a delivery names a projectile or an area")),

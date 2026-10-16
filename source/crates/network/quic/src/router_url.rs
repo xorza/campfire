@@ -10,7 +10,7 @@ pub(crate) struct RouterUrl {
 }
 
 impl RouterUrl {
-    pub(crate) fn parse(text: &str) -> Option<RouterUrl> {
+    pub(crate) fn parse(text: &str) -> Option<Self> {
         let text = text.trim();
         let scheme = text.get(..7)?;
         if !scheme.eq_ignore_ascii_case("http://") {
@@ -23,7 +23,7 @@ impl RouterUrl {
             None => SocketAddrV4::new(authority.parse::<Ipv4Addr>().ok()?, 80),
         };
         let path = path.split('#').next().unwrap_or("/");
-        (addr.port() != 0).then(|| RouterUrl {
+        (addr.port() != 0).then(|| Self {
             addr,
             path: path.to_owned(),
         })
@@ -31,22 +31,22 @@ impl RouterUrl {
 
     /// The URL `reference` names, read against this one: a whole URL, a path from the root, or a
     /// path beside this one's.
-    pub(crate) fn join(&self, reference: &str) -> Option<RouterUrl> {
+    pub(crate) fn join(&self, reference: &str) -> Option<Self> {
         let reference = reference.trim();
         if reference.is_empty() || reference.starts_with("//") {
             return None;
         }
         if reference.starts_with('/') {
-            return Some(RouterUrl {
+            return Some(Self {
                 addr: self.addr,
                 path: reference.to_owned(),
             });
         }
         if reference.contains("://") {
-            return RouterUrl::parse(reference);
+            return Self::parse(reference);
         }
         let directory = self.path.rfind('/').map_or("/", |at| &self.path[..=at]);
-        Some(RouterUrl {
+        Some(Self {
             addr: self.addr,
             path: format!("{directory}{reference}"),
         })

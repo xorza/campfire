@@ -22,14 +22,14 @@ pub struct MapLight {
 impl MapLights {
     /// The lights of `ambient` and `lights`; none for a number that is not finite, or a light
     /// whose direction has no length, which no directional light has.
-    pub fn new(ambient: [f32; 3], lights: impl IntoIterator<Item = MapLight>) -> Option<MapLights> {
+    pub fn new(ambient: [f32; 3], lights: impl IntoIterator<Item = MapLight>) -> Option<Self> {
         let lights: Vec<MapLight> = lights.into_iter().collect();
         let finite = |values: [f32; 3]| values.iter().all(|value| value.is_finite());
         let holds = finite(ambient)
             && lights.iter().all(|light| {
                 finite(light.color) && light.direction.is_finite() && light.direction != Vec3::ZERO
             });
-        holds.then_some(MapLights { ambient, lights })
+        holds.then_some(Self { ambient, lights })
     }
 
     /// The file of a map, by its name.
@@ -41,7 +41,7 @@ impl MapLights {
 /// A package's file is untrusted, so lights of a number that is not finite, or a direction of no
 /// length, fail to read.
 impl<'de> Deserialize<'de> for MapLights {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<MapLights, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -49,7 +49,7 @@ impl<'de> Deserialize<'de> for MapLights {
             lights: Vec<MapLight>,
         }
         let Fields { ambient, lights } = Fields::deserialize(deserializer)?;
-        MapLights::new(ambient, lights).ok_or_else(|| {
+        Self::new(ambient, lights).ok_or_else(|| {
             D::Error::custom("a light's number is not finite, or its direction has no length")
         })
     }

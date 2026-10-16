@@ -24,22 +24,22 @@ pub enum SyncTo {
 
 impl SyncTo {
     /// Every class, in the order of their places.
-    pub const ALL: [SyncTo; 4] = [SyncTo::None, SyncTo::Owner, SyncTo::Team, SyncTo::All];
+    pub const ALL: [Self; 4] = [Self::None, Self::Owner, Self::Team, Self::All];
 
     /// Its place among the classes: none, owner, team, all.
     pub const fn index(self) -> usize {
         match self {
-            SyncTo::None => 0,
-            SyncTo::Owner => 1,
-            SyncTo::Team => 2,
-            SyncTo::All => 3,
+            Self::None => 0,
+            Self::Owner => 1,
+            Self::Team => 2,
+            Self::All => 3,
         }
     }
 }
 
 /// A default not of its field's type fails to read, where the data enters.
 impl<'de> Deserialize<'de> for SyncedStateDecl {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<SyncedStateDecl, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -55,6 +55,6 @@ impl<'de> Deserialize<'de> for SyncedStateDecl {
             sync,
         } = Fields::deserialize(deserializer)?;
         let decl = StateDecl::of::<D::Error>(kind, default)?;
-        Ok(SyncedStateDecl { decl, sync })
+        Ok(Self { decl, sync })
     }
 }

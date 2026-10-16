@@ -44,10 +44,10 @@ pub(super) struct DrivenBot {
 impl BotDriver {
     /// The driver of `bots` in the match of `world`, from tick `next` on: what their scripts had
     /// for earlier ticks was logged already, by the run a restore follows.
-    pub(crate) fn new(bots: ServerBots, next: Tick, world: &mut World) -> BotDriver {
+    pub(crate) fn new(bots: ServerBots, next: Tick, world: &mut World) -> Self {
         let ServerBots { slots, takeover } = bots;
-        let bots = BotDriver::planned(slots, world.resource::<Session>().log(), next);
-        BotDriver {
+        let bots = Self::planned(slots, world.resource::<Session>().log(), next);
+        Self {
             bots,
             takeover,
             payload: Vec::new(),
@@ -74,7 +74,7 @@ impl BotDriver {
 
     /// Logs the bots' inputs for the next tick of the session in `world`.
     pub(crate) fn drive(world: &mut World) {
-        world.resource_scope(|world, mut driver: Mut<'_, BotDriver>| {
+        world.resource_scope(|world, mut driver: Mut<'_, Self>| {
             let tick = world.resource::<Session>().log().next_tick();
             driver.follow_controllers(world.resource::<Session>(), tick);
             world.resource_scope(|world, mut session: Mut<'_, Session>| {
@@ -109,7 +109,7 @@ impl BotDriver {
     /// Logs what each bot's script has due by `tick` into `session`: its mode inputs, then its
     /// orders, each for the slot's units it names.
     fn log_due(&mut self, world: &World, session: &mut Session, tick: Tick) {
-        let BotDriver {
+        let Self {
             bots,
             payload,
             body,
@@ -125,7 +125,7 @@ impl BotDriver {
             for input in driven.script.due_inputs(script_tick) {
                 payload.clear();
                 input.write_payload(body, payload);
-                BotDriver::log(session, driven.slot, payload);
+                Self::log(session, driven.slot, payload);
             }
             let types = world.resource::<UnitTypeBook>().types();
             let units = players.get(world);
@@ -144,7 +144,7 @@ impl BotDriver {
                 };
                 payload.clear();
                 order.write_payload(body, payload);
-                BotDriver::log(session, driven.slot, payload);
+                Self::log(session, driven.slot, payload);
             }
         }
     }
@@ -170,14 +170,14 @@ impl BotDriver {
 impl DrivenBot {
     /// The bot of `slot` that plays `script` from tick `since`, from tick `next` on: what the
     /// script had for earlier ticks was logged already, by the run a restore follows.
-    fn new(slot: PlayerSlot, script: OrderScript, since: Tick, next: Tick) -> DrivenBot {
+    fn new(slot: PlayerSlot, script: OrderScript, since: Tick, next: Tick) -> Self {
         let mut script = BotScript::new(script);
         let played = next.since(since).expect("a bot plays from its start on");
         if let Some(before) = played.get().checked_sub(1) {
             script.due_inputs(Tick::new(before));
             script.due_orders(Tick::new(before));
         }
-        DrivenBot {
+        Self {
             slot,
             script,
             since,

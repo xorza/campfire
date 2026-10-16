@@ -13,8 +13,8 @@ pub struct MapBook {
 }
 
 impl Default for MapBook {
-    fn default() -> MapBook {
-        MapBook {
+    fn default() -> Self {
+        Self {
             metric: Metric::default(),
             bounds: Bounds::WORLD,
         }

@@ -63,12 +63,12 @@ impl RecentAttackers {
 /// A snapshot is untrusted, so attackers out of the order of their stable ids, or one twice, which
 /// `record`'s search relies on, fail to decode.
 impl<'de> Deserialize<'de> for RecentAttackers {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<RecentAttackers, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let attacks = Vec::<RecentAttack>::deserialize(deserializer)?;
         if !attacks.is_sorted_by(|a, b| a.source < b.source) {
             return Err(D::Error::custom("attackers in order, each once"));
         }
-        Ok(RecentAttackers(attacks))
+        Ok(Self(attacks))
     }
 }
 

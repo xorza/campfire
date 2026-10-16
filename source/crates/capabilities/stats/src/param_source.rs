@@ -26,7 +26,7 @@ impl<'a> ParamSource<'a> {
         unit_type: UnitType,
         level: u32,
         values: &'a [Num],
-    ) -> ParamSource<'a> {
+    ) -> Self {
         ParamSource {
             book,
             unit_type,
@@ -42,7 +42,7 @@ impl<'a> ParamSource<'a> {
         unit_type: UnitType,
         level: Option<&Level>,
         stats: Option<&'a UnitStats>,
-    ) -> ParamSource<'a> {
+    ) -> Self {
         let level = level.map_or(1, |level| level.get());
         let values = stats.map_or(&[][..], UnitStats::values);
         ParamSource::new(book, unit_type, level, values)

@@ -23,8 +23,8 @@ impl<C: Copy, const N: usize> CallbackTable<C, N> {
 }
 
 impl<C, const N: usize> Default for CallbackTable<C, N> {
-    fn default() -> CallbackTable<C, N> {
-        CallbackTable([const { None }; N])
+    fn default() -> Self {
+        Self([const { None }; N])
     }
 }
 

@@ -14,6 +14,6 @@ impl Halves {
 
     /// Where `pos` stands on the ground plane, in halves of a bit.
     pub(crate) const fn ground(pos: Vec3) -> Flat {
-        Flat::new(Halves::of(pos.x), Halves::of(pos.z))
+        Flat::new(Self::of(pos.x), Self::of(pos.z))
     }
 }

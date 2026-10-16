@@ -9,12 +9,12 @@ pub struct TrackId(u8);
 
 impl TrackId {
     /// The track at `index`, which is below the limit.
-    pub const fn new(index: u8) -> TrackId {
+    pub const fn new(index: u8) -> Self {
         assert!(
-            (index as usize) < <TrackId as NameId>::LIMIT,
+            (index as usize) < <Self as NameId>::LIMIT,
             "a track is below the limit"
         );
-        TrackId(index)
+        Self(index)
     }
 
     /// Its place in the mode's tracks.
@@ -28,8 +28,8 @@ impl NameId for TrackId {
     /// The most tracks a mode declares: every place a `TrackSet` holds.
     const LIMIT: usize = 32;
 
-    fn at(index: usize) -> TrackId {
-        TrackId::new(u8::try_from(index).expect("tracks fit u8"))
+    fn at(index: usize) -> Self {
+        Self::new(u8::try_from(index).expect("tracks fit u8"))
     }
 
     fn index(self) -> usize {

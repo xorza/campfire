@@ -36,8 +36,8 @@ struct CtxParts {
 pub struct Params(pub(crate) Ctx);
 
 impl Ctx {
-    pub fn new(view: View) -> Ctx {
-        Ctx(Rc::new(CtxParts {
+    pub fn new(view: View) -> Self {
+        Self(Rc::new(CtxParts {
             frame: RefCell::default(),
             view,
             mode: OnceCell::new(),
@@ -51,9 +51,9 @@ impl Ctx {
     }
 
     /// The `ctx` of the match whose script makes `call`: the host's tag.
-    pub(super) fn of_call(call: &NativeCallContext<'_>) -> Ctx {
+    pub(super) fn of_call(call: &NativeCallContext<'_>) -> Self {
         call.tag()
-            .and_then(Dynamic::read_lock::<Ctx>)
+            .and_then(Dynamic::read_lock::<Self>)
             .expect("the host is tagged with the ctx")
             .clone()
     }

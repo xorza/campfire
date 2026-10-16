@@ -54,8 +54,8 @@ const SLOTS: u8 = 6;
 
 impl Plugin for InventoryBar {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, InventoryBar::spawn);
-        app.add_systems(Update, InventoryBar::show.after(ViewSystems));
+        app.add_systems(Startup, Self::spawn);
+        app.add_systems(Update, Self::show.after(ViewSystems));
     }
 }
 
@@ -88,8 +88,8 @@ impl InventoryBar {
                     TextColor(TEXT),
                     ChildOf(bar),
                 ))
-                .observe(InventoryBar::sell)
-                .observe(InventoryBar::swap);
+                .observe(Self::sell)
+                .observe(Self::swap);
         }
     }
 

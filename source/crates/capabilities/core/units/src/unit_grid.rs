@@ -33,8 +33,8 @@ impl TrackedUnits for GridUnits {
 }
 
 impl Cache for UnitGrid {
-    fn installed() -> Option<UnitGrid> {
-        Some(UnitGrid::default())
+    fn installed() -> Option<Self> {
+        Some(Self::default())
     }
 }
 

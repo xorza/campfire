@@ -20,8 +20,8 @@ pub(crate) struct IniArmor {
 }
 
 impl Default for IniArmor {
-    fn default() -> IniArmor {
-        IniArmor {
+    fn default() -> Self {
+        Self {
             shares: [1.0; DamageType::ALL.len()],
         }
     }

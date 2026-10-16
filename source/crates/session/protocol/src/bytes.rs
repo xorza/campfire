@@ -13,7 +13,7 @@ impl Serialize for Bytes<'_> {
 }
 
 impl<'de: 'a, 'a> Deserialize<'de> for Bytes<'a> {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Bytes<'a>, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         <&'a [u8]>::deserialize(deserializer).map(Bytes)
     }
 }

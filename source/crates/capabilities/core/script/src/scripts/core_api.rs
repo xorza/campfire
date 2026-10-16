@@ -33,14 +33,14 @@ impl CoreApi {
                 ),
                 |ctx: &mut Ctx| Ok(Params(ctx.clone())),
             )
-            .call(chance, |ctx: &mut Ctx, p: Num| CoreApi::chance(ctx, p))
+            .call(chance, |ctx: &mut Ctx, p: Num| Self::chance(ctx, p))
             .call(
                 MemberSpec::call(
                     "pick",
                     &[&["list"]],
                     "an entry of `list`, each as likely, from the secret stream",
                 ),
-                |ctx: &mut Ctx, list: ScriptList| CoreApi::pick(ctx, &list),
+                |ctx: &mut Ctx, list: ScriptList| Self::pick(ctx, &list),
             )
             .shared_data(DataTable::UnitType, &["tags", "params", "state", "collision"], &[]);
         api.tag_property(
@@ -61,7 +61,7 @@ impl CoreApi {
             return Err(ApiError::NotAProbability.fail().into());
         }
         let mut frame = ctx.write()?;
-        Ok(CoreApi::draws(&mut frame).chance(p))
+        Ok(Self::draws(&mut frame).chance(p))
     }
 
     /// Draws an entry of `list`, each as likely, on the running call's sequence.
@@ -70,7 +70,7 @@ impl CoreApi {
             return Err(ApiError::EmptyPick.fail().into());
         }
         let mut frame = ctx.write()?;
-        let at = CoreApi::draws(&mut frame).pick(list.len());
+        let at = Self::draws(&mut frame).pick(list.len());
         Ok(list[at].clone())
     }
 

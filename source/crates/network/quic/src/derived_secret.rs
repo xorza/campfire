@@ -15,8 +15,8 @@ pub(crate) enum DerivedSecret {
 impl DerivedSecret {
     const fn label(self) -> &'static [u8] {
         match self {
-            DerivedSecret::TlsSeed => b"campfire/tls/v1",
-            DerivedSecret::ResetKey => b"campfire/quic-reset/v1",
+            Self::TlsSeed => b"campfire/tls/v1",
+            Self::ResetKey => b"campfire/quic-reset/v1",
         }
     }
 

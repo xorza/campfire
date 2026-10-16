@@ -21,7 +21,7 @@ impl KeyFile {
     /// The key in `file`, or, when there is no file, a new key from `entropy`'s random bytes,
     /// created there first; when another process created it meanwhile, its key.
     pub fn read_or_create(file: &SecretFile, entropy: Entropy) -> Result<Keypair, KeyFileError> {
-        match KeyFile::read(file) {
+        match Self::read(file) {
             Err(KeyFileError::Read(PathError {
                 error: ReadError::Missing,
                 ..
@@ -32,7 +32,7 @@ impl KeyFile {
                     Err(PathError {
                         error: DurableCreateError::Exists,
                         ..
-                    }) => KeyFile::read(file),
+                    }) => Self::read(file),
                     Err(PathError {
                         path,
                         error: DurableCreateError::Write(error),

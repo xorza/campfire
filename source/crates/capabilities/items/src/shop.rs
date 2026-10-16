@@ -35,8 +35,8 @@ impl Shop {
         reach: Num,
         buyers: Filter,
         sell_share: Share,
-    ) -> Shop {
-        Shop {
+    ) -> Self {
+        Self {
             sells,
             resource,
             reach,

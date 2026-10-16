@@ -207,8 +207,8 @@ pub(crate) enum Retry {
 }
 
 impl JoinState {
-    pub(crate) const fn new(player: Joining) -> JoinState {
-        JoinState {
+    pub(crate) const fn new(player: Joining) -> Self {
+        Self {
             player,
             step: Step::Waiting,
         }
@@ -482,7 +482,7 @@ impl JoinState {
             history,
             lost_at: now,
             tries: 0,
-            next_try: now + JoinState::wait(0, random),
+            next_try: now + Self::wait(0, random),
         });
         LinkLoss::Rejoining
     }
@@ -504,7 +504,7 @@ impl JoinState {
             return Retry::Wait;
         }
         rejoining.tries += 1;
-        rejoining.next_try = now + JoinState::wait(rejoining.tries, random);
+        rejoining.next_try = now + Self::wait(rejoining.tries, random);
         Retry::Connect
     }
 

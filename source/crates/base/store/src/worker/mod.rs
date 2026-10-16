@@ -18,12 +18,12 @@ pub struct Worker {
 
 impl Worker {
     /// Starts the thread `name`, which runs `job`.
-    pub fn start(name: &str, job: impl FnOnce() + Send + 'static) -> Worker {
+    pub fn start(name: &str, job: impl FnOnce() + Send + 'static) -> Self {
         let thread = thread::Builder::new()
             .name(name.to_owned())
             .spawn(job)
             .expect("the OS starts a thread");
-        Worker {
+        Self {
             thread: Some(thread),
         }
     }

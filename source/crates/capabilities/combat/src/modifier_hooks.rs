@@ -39,8 +39,8 @@ struct HeardInstance {
 }
 
 impl ModifierHooks {
-    pub const fn new(ctx: Ctx) -> ModifierHooks {
-        ModifierHooks {
+    pub const fn new(ctx: Ctx) -> Self {
+        Self {
             ctx,
             heard: RefCell::new(Vec::new()),
         }
@@ -175,7 +175,7 @@ impl ModifierHooks {
             .script
             .expect("a modifier whose script defines a hook has one");
         let (action, rank, package) = (instance.action, instance.rank, entry.package);
-        let pool = ModifierHooks::pool(world, heard.source);
+        let pool = Self::pool(world, heard.source);
         let now = world.resource::<SimTick>().start();
         let start = CallStart {
             acting: heard.source,

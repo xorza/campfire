@@ -22,10 +22,10 @@ impl StopSignals {
     pub const EXIT_CODE: u8 = 130;
 
     /// Catches the stop's signals, once in a process; an error when the OS refuses a handler.
-    pub fn catch() -> io::Result<StopSignals> {
+    pub fn catch() -> io::Result<Self> {
         let received = Arc::new(AtomicBool::new(false));
         Os::catch_stop(&received)?;
-        Ok(StopSignals { received })
+        Ok(Self { received })
     }
 
     /// Whether a stop's signal arrived.

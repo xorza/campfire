@@ -205,7 +205,7 @@ impl Replication for ModifierClocks {
 /// A snapshot is untrusted, so runs of state that do not cover the buffer, an interval of no
 /// ticks, and a negative shield fail to decode.
 impl<'de> Deserialize<'de> for ModifierClocks {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModifierClocks, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             clocks: Vec<Clock>,
@@ -224,7 +224,7 @@ impl<'de> Deserialize<'de> for ModifierClocks {
                 "clocks that do not cover their state, or out of their limits",
             ));
         }
-        Ok(ModifierClocks { clocks, state })
+        Ok(Self { clocks, state })
     }
 }
 

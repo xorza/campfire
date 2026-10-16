@@ -539,8 +539,8 @@ pub(crate) mod internals {
 
     impl ActionData {
         /// A cast of `targeting` and nothing more, as a table that names its targeting alone reads.
-        pub fn cast(targeting: Targeting) -> ActionData {
-            ActionData {
+        pub fn cast(targeting: Targeting) -> Self {
+            Self {
                 name: None,
                 kind: ActionKind::default(),
                 script: None,

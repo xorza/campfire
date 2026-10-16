@@ -72,7 +72,7 @@ impl StatsApi {
 
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         ModifierHandle::register(api);
-        StatsApi::register_unit(api);
+        Self::register_unit(api);
         let call = |name, signature, description| MemberSpec::call(name, signature, description);
         let add = call(
             "add_modifier",
@@ -83,13 +83,13 @@ impl StatsApi {
         )
         .applies(Applies::WithAction);
         api.call(add, |ctx: &mut Ctx, target: Unit, id: ModifierId| {
-            StatsApi::add_modifier(ctx, &target, id, None)
+            Self::add_modifier(ctx, &target, id, None)
         })
         .call(
             add,
             |ctx: &mut Ctx, target: Unit, id: ModifierId, ms: i64| {
                 let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
-                StatsApi::add_modifier(ctx, &target, id, Some(ticks))
+                Self::add_modifier(ctx, &target, id, Some(ticks))
             },
         )
         .call(
@@ -101,9 +101,7 @@ impl StatsApi {
                  action, so the modifier declares each param it reads",
             )
             .applies(Applies::WithoutAction),
-            |ctx: &mut Ctx, player: i64, id: ModifierId| {
-                StatsApi::add_player_modifier(ctx, player, id)
-            },
+            |ctx: &mut Ctx, player: i64, id: ModifierId| Self::add_player_modifier(ctx, player, id),
         )
         .call(
             call(

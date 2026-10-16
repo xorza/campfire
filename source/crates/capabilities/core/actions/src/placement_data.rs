@@ -23,7 +23,7 @@ pub struct PlacementRule {
 
 /// `{ filter, distance }`, the distance a number from 0.
 impl<'de> Deserialize<'de> for PlacementRule {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<PlacementRule, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
@@ -36,6 +36,6 @@ impl<'de> Deserialize<'de> for PlacementRule {
                 "a placement's distance is a number from 0",
             ));
         }
-        Ok(PlacementRule { filter, distance })
+        Ok(Self { filter, distance })
     }
 }

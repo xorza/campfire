@@ -111,7 +111,7 @@ impl BucketKey {
     /// Its layer, level and row.
     const fn layer_row(self) -> (LayerLevel, i64) {
         let high = (self.0 >> 64) as u64;
-        let row = (high & ((1 << 50) - 1)).cast_signed() - BucketKey::ROWS;
+        let row = (high & ((1 << 50) - 1)).cast_signed() - Self::ROWS;
         let at = LayerLevel {
             layer: Layer::new((high >> 56) as u8),
             level: ((high >> 50) & 0x3f) as u8,
@@ -119,26 +119,26 @@ impl BucketKey {
         (at, row)
     }
 
-    const fn new(at: LayerLevel, row: i64, column: i64) -> BucketKey {
-        debug_assert!(at.level < BucketKey::LEVELS);
-        let row = if row < -BucketKey::ROWS {
+    const fn new(at: LayerLevel, row: i64, column: i64) -> Self {
+        debug_assert!(at.level < Self::LEVELS);
+        let row = if row < -Self::ROWS {
             0
-        } else if row >= BucketKey::ROWS {
-            2 * BucketKey::ROWS - 1
+        } else if row >= Self::ROWS {
+            2 * Self::ROWS - 1
         } else {
-            row + BucketKey::ROWS
+            row + Self::ROWS
         };
         let high =
             ((at.layer.get() as u64) << 56) | ((at.level as u64) << 50) | row.cast_unsigned();
         let low = column.cast_unsigned() ^ (1 << 63);
-        BucketKey(((high as u128) << 64) | low as u128)
+        Self(((high as u128) << 64) | low as u128)
     }
 }
 
 impl IndexedBody {
     /// The body `body` of unit `id`, standing at `pos`.
-    pub const fn of(id: StableId, pos: Vec3, body: &Body) -> IndexedBody {
-        IndexedBody {
+    pub const fn of(id: StableId, pos: Vec3, body: &Body) -> Self {
+        Self {
             id,
             pos,
             shape: body.shape(),
@@ -173,23 +173,23 @@ impl IndexedBody {
 
 impl BodyIndex {
     /// An empty index for walkers at most `widest` in radius, 0 when none has a body.
-    pub fn new(widest: Num) -> BodyIndex {
+    pub fn new(widest: Num) -> Self {
         // With no walker of a body any width serves, and a bucket of 0 divides by 0.
         let widest = if widest > Num::ZERO {
             widest
         } else {
             MAX_BOUND
         };
-        BodyIndex::of_levels(CellLevels::new(widest + widest))
+        Self::of_levels(CellLevels::new(widest + widest))
     }
 
     /// An empty index with the same buckets.
-    pub(crate) fn sibling(&self) -> BodyIndex {
-        BodyIndex::of_levels(self.levels)
+    pub(crate) fn sibling(&self) -> Self {
+        Self::of_levels(self.levels)
     }
 
-    fn of_levels(levels: CellLevels) -> BodyIndex {
-        BodyIndex {
+    fn of_levels(levels: CellLevels) -> Self {
+        Self {
             levels,
             bodies: Vec::new(),
             entries: Vec::new(),
@@ -421,9 +421,9 @@ impl BodyIndex {
 
 impl Square {
     /// The square `reach` from `point` on each side.
-    const fn around(point: Vec3, reach: Num) -> Square {
+    const fn around(point: Vec3, reach: Num) -> Self {
         let (x, z, reach) = (point.x.to_bits(), point.z.to_bits(), reach.to_bits());
-        Square {
+        Self {
             low: [x - reach, z - reach],
             high: [x + reach, z + reach],
         }
@@ -433,9 +433,9 @@ impl Square {
 impl Buckets {
     /// The buckets of width `cell`, in raw units, that cover `center` less `reach` to `center`
     /// plus `reach`.
-    const fn covering(cell: i64, center: Num, reach: Num) -> Buckets {
+    const fn covering(cell: i64, center: Num, reach: Num) -> Self {
         let (center, reach) = (center.to_bits(), reach.to_bits());
-        Buckets {
+        Self {
             low: (center - reach).div_euclid(cell),
             high: (center + reach).div_euclid(cell),
         }
@@ -444,8 +444,8 @@ impl Buckets {
 
 /// Over the world's whole bound.
 impl Cache for BodyIndex {
-    fn installed() -> Option<BodyIndex> {
-        Some(BodyIndex::new(MAX_BOUND))
+    fn installed() -> Option<Self> {
+        Some(Self::new(MAX_BOUND))
     }
 }
 

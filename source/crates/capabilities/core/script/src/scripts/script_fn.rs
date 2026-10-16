@@ -15,7 +15,7 @@ pub struct ScriptFn<Arg, Out>(Rc<dyn Fn(&mut ScriptBatch<'_>, Arg) -> Out>);
 
 impl<Arg, Out> ScriptFn<Arg, Out> {
     pub fn new(call: impl Fn(&mut ScriptBatch<'_>, Arg) -> Out + 'static) -> Self {
-        ScriptFn(Rc::new(call))
+        Self(Rc::new(call))
     }
 
     /// What it gives for `arg`, in `batch`.
@@ -26,7 +26,7 @@ impl<Arg, Out> ScriptFn<Arg, Out> {
 
 impl<Arg, Out> Clone for ScriptFn<Arg, Out> {
     fn clone(&self) -> Self {
-        ScriptFn(Rc::clone(&self.0))
+        Self(Rc::clone(&self.0))
     }
 }
 

@@ -38,8 +38,8 @@ impl DamageCause {
     /// The roll of an attack, at least 0 and less than 1; `None` for any other cause.
     pub const fn roll(self) -> Option<Num> {
         match self {
-            DamageCause::Attack { roll, .. } => Some(roll),
-            DamageCause::ExtraAttack { .. } | DamageCause::Effect => None,
+            Self::Attack { roll, .. } => Some(roll),
+            Self::ExtraAttack { .. } | Self::Effect => None,
         }
     }
 
@@ -47,8 +47,8 @@ impl DamageCause {
     /// effect.
     pub(crate) const fn weapon_rank(self) -> Option<Rank> {
         match self {
-            DamageCause::Attack { rank, .. } | DamageCause::ExtraAttack { rank } => Some(rank),
-            DamageCause::Effect => None,
+            Self::Attack { rank, .. } | Self::ExtraAttack { rank } => Some(rank),
+            Self::Effect => None,
         }
     }
 }

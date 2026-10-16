@@ -78,17 +78,12 @@ const DROP_KEY: KeyCode = KeyCode::Escape;
 
 impl Plugin for BuildPreview {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, BuildPreview::add_tints);
+        app.add_systems(Startup, Self::add_tints);
         app.add_systems(
             Update,
             (
-                BuildPreview::show,
-                (
-                    BuildPreview::follow,
-                    BuildPreview::judge,
-                    BuildPreview::tint,
-                    BuildPreview::click,
-                )
+                Self::show,
+                (Self::follow, Self::judge, Self::tint, Self::click)
                     .chain()
                     .run_if(resource_exists::<Placing>),
             )

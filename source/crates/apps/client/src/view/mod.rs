@@ -234,27 +234,27 @@ type NewShots<'w, 's> = Query<
 
 impl Plugin for View {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, View::set_scene);
-        app.add_systems(FixedPostUpdate, View::step);
+        app.add_systems(Startup, Self::set_scene);
+        app.add_systems(FixedPostUpdate, Self::step);
         app.add_systems(
             Update,
             (
-                View::draw_new,
-                View::fit_models,
-                View::draw_shots,
-                View::draw_areas,
-                View::mourn,
-                View::follow,
-                View::glide,
-                View::lean,
+                Self::draw_new,
+                Self::fit_models,
+                Self::draw_shots,
+                Self::draw_areas,
+                Self::mourn,
+                Self::follow,
+                Self::glide,
+                Self::lean,
             )
                 .chain()
                 .in_set(ViewSystems),
         );
-        app.add_systems(Update, View::show_end);
+        app.add_systems(Update, Self::show_end);
         app.add_systems(
             Update,
-            View::ring_selection
+            Self::ring_selection
                 .after(ViewSystems)
                 .after(SelectionSystems),
         );
@@ -529,7 +529,7 @@ impl View {
         mut commands: Commands<'_, '_>,
     ) {
         for (root, mut shape) in &mut roots {
-            match View::fit(root, (&models, &nodes), &assets, &mut walk) {
+            match Self::fit(root, (&models, &nodes), &assets, &mut walk) {
                 Fit::Waits => continue,
                 Fit::Top(top) => shape.height = top.max(0.0),
                 Fit::Nothing => {}
@@ -570,7 +570,7 @@ impl View {
             let at = parent * transform.compute_affine();
             match bounds {
                 Some(bounds) => {
-                    let reach = View::bounds_top(at, bounds);
+                    let reach = Self::bounds_top(at, bounds);
                     top = Some(top.map_or(reach, |top| top.max(reach)));
                 }
                 None if mesh => return Fit::Waits,
@@ -817,11 +817,11 @@ impl View {
 impl Standing {
     /// How `result` stands for the team `own`; `None` for a match someone won when the team is
     /// not known.
-    fn of(result: MatchResult, own: Option<Team>) -> Option<Standing> {
+    fn of(result: MatchResult, own: Option<Team>) -> Option<Self> {
         match (result, own) {
-            (MatchResult::Draw, _) => Some(Standing::Draw),
-            (MatchResult::Won(winner), Some(own)) if winner == own => Some(Standing::Victory),
-            (MatchResult::Won(_), Some(_)) => Some(Standing::Defeat),
+            (MatchResult::Draw, _) => Some(Self::Draw),
+            (MatchResult::Won(winner), Some(own)) if winner == own => Some(Self::Victory),
+            (MatchResult::Won(_), Some(_)) => Some(Self::Defeat),
             (MatchResult::Won(_), None) => None,
         }
     }

@@ -30,7 +30,7 @@ impl Plugin for Bot {
                 after,
                 asked: false,
             });
-            app.add_systems(Update, Bot::leave);
+            app.add_systems(Update, Self::leave);
         }
     }
 }
