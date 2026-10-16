@@ -1,7 +1,7 @@
 use secp256k1::{Secp256k1, VerifyOnly, XOnlyPublicKey, schnorr};
 
 use crate::signature::Signature;
-use crate::signed::Signed;
+use crate::signed::{self, Signed};
 
 /// The context that checks signatures, and the scratch a message of no fixed length is written
 /// into, cleared and refilled, so no check allocates.
@@ -26,7 +26,7 @@ impl Verifier {
         key: &XOnlyPublicKey,
         record: &impl Signed,
     ) -> bool {
-        record.write_message(&mut self.message);
+        signed::write_message(record, &mut self.message);
         let signature = schnorr::Signature::from_byte_array(signature.to_bytes());
         self.secp
             .verify_schnorr(&signature, &self.message, key)

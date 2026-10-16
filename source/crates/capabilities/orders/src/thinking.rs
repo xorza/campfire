@@ -4,7 +4,7 @@ use bevy_ecs::system::{Commands, Local, Query};
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_declare::ByType;
-use campfire_script::{CallError, CallStart, Hook, Pool, ScriptId, ScriptsWorld};
+use campfire_script::{CallError, CallStart, Hook, HookCall, Pool, ScriptId, ScriptsWorld};
 use campfire_sim::{SimTick, StableId};
 use campfire_stats::UnitPools;
 use campfire_units::{Dead, Destination};
@@ -116,7 +116,12 @@ impl Thinking {
                 };
                 let args = (ctx.clone(), unit);
                 let thought = batch.run(CallStart::think(id, now), |batch| {
-                    batch.call(Pool::Think, script, Hook::OnThink, args)
+                    let call = HookCall {
+                        script,
+                        hook: Hook::OnThink,
+                        args,
+                    };
+                    batch.call(Pool::Think, call)
                 });
                 // A unit whose think finds the pool spent thinks again in a later tick.
                 let next = match thought {

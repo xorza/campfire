@@ -98,6 +98,15 @@ pub struct MemberUse {
     pub kind: MemberKind,
 }
 
+/// What the first link of a chain names: a member of a value, a name of `ctx`, or data, as after
+/// `ctx.p`; only a member is recorded as one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ChainHead {
+    Member,
+    Ctx,
+    Data,
+}
+
 impl ScriptFacts {
     /// The facts of `source`, as `host` parses it; an error when it does not parse. `ctx` is the
     /// variable of that name, as every hook's first parameter is by convention and every helper
@@ -139,7 +148,12 @@ impl ScriptFacts {
                         if on_ctx {
                             facts.read_ctx(&dot.rhs, api);
                         }
-                        facts.read_chain(&dot.rhs, on_ctx, false, api);
+                        let head = if on_ctx {
+                            ChainHead::Ctx
+                        } else {
+                            ChainHead::Member
+                        };
+                        facts.read_chain(&dot.rhs, head, api);
                     }
                     if let Expr::MethodCall(call, _) = &dot.rhs
                         && !on_ctx
@@ -247,16 +261,16 @@ impl ScriptFacts {
         self.read_args(spec, args);
     }
 
-    /// The members a chain of links reads, from `link`: its first is a name of `ctx` when
-    /// `on_ctx`, and data when `data`, as after `ctx.p`; neither is a member.
-    fn read_chain(&mut self, link: &Expr, on_ctx: bool, data: bool, api: &ScriptApi) {
+    /// The members a chain of links reads, from `link`, whose first `head` names.
+    fn read_chain(&mut self, link: &Expr, head: ChainHead, api: &ScriptApi) {
+        let member = head == ChainHead::Member;
         let read = |facts: &mut Self, link: &Expr| -> bool {
             let (name, kind) = match link {
                 Expr::Property(property, _) => (property.2.as_str(), MemberKind::Field),
                 Expr::MethodCall(call, _) => (call.name.as_str(), MemberKind::Method),
                 _ => return false,
             };
-            if !on_ctx && !data {
+            if member {
                 facts.members.push(MemberUse {
                     name: name.to_owned(),
                     kind,
@@ -266,19 +280,23 @@ impl ScriptFacts {
         };
         match link {
             Expr::Dot(next, ..) => {
-                let next_data = read(self, &next.lhs);
-                if !on_ctx && !data && property(&next.lhs) == Some("state") {
+                let rest = if read(self, &next.lhs) {
+                    ChainHead::Data
+                } else {
+                    ChainHead::Member
+                };
+                if member && property(&next.lhs) == Some("state") {
                     self.state_fields.extend(data_name(&next.rhs));
                 }
-                self.read_chain(&next.rhs, false, next_data, api);
+                self.read_chain(&next.rhs, rest, api);
             }
             Expr::Index(next, ..) => {
                 read(self, &next.lhs);
-                if !on_ctx && !data && property(&next.lhs) == Some("state") {
+                if member && property(&next.lhs) == Some("state") {
                     self.state_fields.extend(data_name(&next.rhs));
                 }
                 if let Expr::Dot(element, ..) = &next.rhs {
-                    self.read_chain(&element.rhs, false, false, api);
+                    self.read_chain(&element.rhs, ChainHead::Member, api);
                 }
             }
             link => drop(read(self, link)),

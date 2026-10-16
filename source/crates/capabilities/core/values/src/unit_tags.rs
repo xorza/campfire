@@ -20,6 +20,14 @@ pub enum Motion {
     Forced,
 }
 
+impl Motion {
+    /// The motion of a unit under a forced move when `forced`, as a query's `Has<ForcedMove>`
+    /// reads it.
+    pub const fn of(forced: bool) -> Self {
+        if forced { Self::Forced } else { Self::Own }
+    }
+}
+
 impl UnitTags {
     /// Whether a unit with these tags passes through each unit that passes too, as a worker in
     /// its gather loop does.

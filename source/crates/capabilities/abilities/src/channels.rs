@@ -7,11 +7,11 @@ use campfire_actions::{
     ChannelStep, UseGroup,
 };
 use campfire_common::{Tick, Ticks};
-use campfire_script::{CallStart, Hook, Pool, ScriptBatch, ScriptsWorld};
+use campfire_script::{CallStart, Hook, HookCall, Pool, ScriptBatch, ScriptsWorld};
 use campfire_sim::{Keyed, Ordered, SimTick, StableId};
 use campfire_stats::{Held, HeldModifiers};
 use campfire_units::{ForcedMove, Owner};
-use campfire_values::UnitTags;
+use campfire_values::{Motion, UnitTags};
 
 use crate::Abilities;
 
@@ -92,7 +92,7 @@ impl Channels {
         let forced = unit.contains::<ForcedMove>();
         let book = world.resource::<ActionBook>();
         let channel = Self::channel(slots, progress);
-        let blocked = Caster::of(unit.get(), forced, unit.get()).blocked(channel, book);
+        let blocked = Caster::of(unit.get(), Motion::of(forced), unit.get()).blocked(channel, book);
         let tick = Self::channel_tick(book, channel);
         let mut progress = world
             .get_mut::<ActionProgress>(entity)
@@ -135,9 +135,8 @@ impl Channels {
         let pool = Pool::of(owner);
         let target = Abilities::target(ctx.view(), aim.target);
         batch.hook_call(start, hook, Some(caster), |batch| {
-            batch
-                .call(pool, script, hook, (ctx.clone(), handle, target))
-                .map(drop)
+            let args = (ctx.clone(), handle, target);
+            batch.call(pool, HookCall { script, hook, args }).map(drop)
         });
     }
 
@@ -167,7 +166,7 @@ impl Channels {
                 continue;
             }
             let channel = Self::channel(slots, &progress);
-            let blocked = Caster::of(tags, forced, used).blocked(channel, &book);
+            let blocked = Caster::of(tags, Motion::of(forced), used).blocked(channel, &book);
             let tick = Self::channel_tick(&book, channel);
             if blocked {
                 progress.cut_channel();

@@ -258,7 +258,7 @@ impl QuicEndpoint {
         links: &mut Query<'_, '_, (&mut Link, &mut PeerAddr)>,
         commands: &mut Commands<'_, '_>,
     ) {
-        let Ok(mut state) = self.shared.try_lock() else {
+        let Ok(mut state) = self.shared.lock_result() else {
             self.worker.resume_panic();
         };
         if !state.ended() {

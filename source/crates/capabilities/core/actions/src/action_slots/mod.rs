@@ -117,26 +117,6 @@ impl ActionSlots {
         Self { slots }
     }
 
-    /// Puts `actions` in `kind` at `rank`, each ready at once in `times`, after the slots of that
-    /// kind it has: the slots of later kinds, and an action under way or cut from one, move
-    /// along.
-    pub fn grant(
-        &mut self,
-        (times, progress): (&mut SlotTimes, &mut ActionProgress),
-        kind: SlotKind,
-        actions: &[ActionId],
-        rank: Option<Rank>,
-    ) {
-        let added = actions.iter().map(|&action| ActionSlot {
-            action: Some(action),
-            kind,
-            rank,
-        });
-        let at = self.insert(kind, added);
-        times.insert(at, actions.len());
-        progress.slots_added(at, actions.len());
-    }
-
     /// The same slots with `count` empty slots of `kind`, an inventory's or a use slot's, of one
     /// rank, after the slots of that kind, as a new unit's are, before it has times.
     #[must_use]
@@ -169,28 +149,6 @@ impl ActionSlots {
         u8::try_from(at).expect("a unit's slots fit u8")
     }
 
-    /// Puts `action`, or none, in `slot` afresh: ready at once in `times`, with no charges and no
-    /// toggle on, as a slot an item fills or leaves; what is under way from the slot stops in
-    /// `progress`, a channel cut.
-    pub fn fill(
-        &mut self,
-        (times, progress): (&mut SlotTimes, &mut ActionProgress),
-        slot: u8,
-        action: Option<ActionId>,
-    ) {
-        progress.slot_emptied(slot);
-        self.slots[usize::from(slot)].action = action;
-        times.reset(slot);
-    }
-
-    /// Swaps slots `a` and `b`, each keeping its times in `times`; what is under way or cut from
-    /// either follows it in `progress`.
-    pub fn swap(&mut self, (times, progress): (&mut SlotTimes, &mut ActionProgress), a: u8, b: u8) {
-        self.slots.swap(usize::from(a), usize::from(b));
-        times.swap(a, b);
-        progress.slots_swapped(a, b);
-    }
-
     pub fn slot(&self, slot: u8) -> Option<ActionSlot> {
         self.slots.get(usize::from(slot)).copied()
     }
@@ -218,6 +176,47 @@ impl ActionSlots {
         let slot = &mut self.slots[usize::from(slot)];
         let next = slot.rank.map_or(Some(Rank::FIRST), Rank::next);
         slot.rank = Some(next.expect("a rank below the action's ranks"));
+    }
+}
+
+/// A unit's slot table, to change, with the parts that follow each change: the slots' times, and
+/// what it has under way.
+#[derive(Debug)]
+pub struct SlotsMut<'a> {
+    pub slots: &'a mut ActionSlots,
+    pub times: &'a mut SlotTimes,
+    pub progress: &'a mut ActionProgress,
+}
+
+impl SlotsMut<'_> {
+    /// Puts `actions` in `kind` at `rank`, each ready at once, after the slots of that kind it
+    /// has: the slots of later kinds, and an action under way or cut from one, move along.
+    pub fn grant(&mut self, kind: SlotKind, actions: &[ActionId], rank: Option<Rank>) {
+        let added = actions.iter().map(|&action| ActionSlot {
+            action: Some(action),
+            kind,
+            rank,
+        });
+        let at = self.slots.insert(kind, added);
+        self.times.insert(at, actions.len());
+        self.progress.slots_added(at, actions.len());
+    }
+
+    /// Puts `action`, or none, in `slot` afresh: ready at once, with no charges and no toggle
+    /// on, as a slot an item fills or leaves; what is under way from the slot stops, a channel
+    /// cut.
+    pub fn fill(&mut self, slot: u8, action: Option<ActionId>) {
+        self.progress.slot_emptied(slot);
+        self.slots.slots[usize::from(slot)].action = action;
+        self.times.reset(slot);
+    }
+
+    /// Swaps slots `a` and `b`, each keeping its times; what is under way or cut from either
+    /// follows it.
+    pub fn swap(&mut self, a: u8, b: u8) {
+        self.slots.slots.swap(usize::from(a), usize::from(b));
+        self.times.swap(a, b);
+        self.progress.slots_swapped(a, b);
     }
 }
 

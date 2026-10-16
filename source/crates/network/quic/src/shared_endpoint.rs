@@ -26,8 +26,9 @@ impl SharedEndpoint {
             .expect("no thread panics while it holds an endpoint")
     }
 
-    /// The state, or an error once a thread panicked while it held it.
-    pub(crate) fn try_lock(&self) -> LockResult<MutexGuard<'_, EndpointState>> {
+    /// The state, which it waits for as `lock` does, or an error once a thread panicked while it
+    /// held it.
+    pub(crate) fn lock_result(&self) -> LockResult<MutexGuard<'_, EndpointState>> {
         self.state.lock()
     }
 

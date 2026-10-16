@@ -1,7 +1,7 @@
 use std::slice;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionProgress, ActionSlots, SlotKind, SlotTimes, TimedSlots};
+use campfire_actions::{ActionProgress, ActionSlots, SlotKind, SlotTimes, SlotsMut, TimedSlots};
 use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_declare::ByType;
@@ -65,8 +65,8 @@ pub(crate) struct SlotGrant {
 }
 
 impl SlotGrant {
-    fn apply(&self, slots: &mut ActionSlots, held: (&mut SlotTimes, &mut ActionProgress)) {
-        slots.grant(held, self.kind, &self.abilities, self.rank);
+    fn apply(&self, unit: &mut SlotsMut<'_>) {
+        unit.grant(self.kind, &self.abilities, self.rank);
     }
 }
 
@@ -74,8 +74,13 @@ impl SlotGrant {
 fn granted(mut slots: ActionSlots, grants: &[SlotGrant]) -> TimedSlots {
     let mut times = SlotTimes::ready(&slots);
     let mut progress = ActionProgress::default();
+    let mut unit = SlotsMut {
+        slots: &mut slots,
+        times: &mut times,
+        progress: &mut progress,
+    };
     for grant in grants {
-        grant.apply(&mut slots, (&mut times, &mut progress));
+        grant.apply(&mut unit);
     }
     TimedSlots::new(slots)
 }
@@ -119,7 +124,11 @@ impl Effect for ModeEffect {
                     .get_components_mut::<(&mut ActionSlots, &mut SlotTimes, &mut ActionProgress)>(
                     );
                 if let Ok((mut slots, mut times, mut progress)) = held {
-                    grant.apply(&mut slots, (&mut times, &mut progress));
+                    grant.apply(&mut SlotsMut {
+                        slots: &mut slots,
+                        times: &mut times,
+                        progress: &mut progress,
+                    });
                 } else {
                     let granted = granted(ActionSlots::new([]), slice::from_ref(&grant));
                     unit.insert(granted);

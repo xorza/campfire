@@ -6,7 +6,7 @@ use campfire_actions::{ActionBook, ActionSlots, Caster, SlotTimes, TogglePer, Us
 use campfire_sim::TickClock;
 use campfire_stats::{PoolBook, UnitPools};
 use campfire_units::Dead;
-use campfire_values::UnitTags;
+use campfire_values::{Motion, UnitTags};
 
 use crate::Abilities;
 
@@ -68,7 +68,7 @@ impl Toggles {
                     continue;
                 };
                 // A tag that blocks casting turns a toggle off; a forced move does not.
-                let caster = Caster::of(tags, false, used);
+                let caster = Caster::of(tags, Motion::Own, used);
                 if dead || caster.blocked(Some(slot), &book) {
                     times.toggle_off(at);
                     continue;

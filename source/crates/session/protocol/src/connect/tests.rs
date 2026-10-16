@@ -11,6 +11,7 @@ use crate::harness::test_key::TestKey;
 use crate::input_rules::InputRules;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
+use crate::signed;
 use crate::slot_plan::SlotPlan;
 
 const EXPIRATION: u64 = TestKey::NOW + 60;
@@ -120,11 +121,11 @@ fn a_server_takes_only_an_answer_to_its_challenge_over_its_binding() {
 
     // The signed message is the domain, the challenge and the binding, end to end.
     let mut message = Vec::new();
-    ConnectAnswer {
+    let answer = ConnectAnswer {
         challenge: &challenge,
         binding: &binding,
-    }
-    .write_message(&mut message);
+    };
+    signed::write_message(&answer, &mut message);
     assert_eq!(&message[..19], b"campfire/connect/v2");
     assert_eq!(
         (&message[19..51], &message[51..]),

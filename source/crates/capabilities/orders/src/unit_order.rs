@@ -1,6 +1,6 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::query::QueryData;
-use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, SlotTimes};
+use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, SlotTimes, SlotsMut};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
@@ -134,7 +134,12 @@ impl UnitOrder {
                     .expect("a user's slots have their progress");
                 if slots.slot(slot).and_then(|held| held.action) != Some(action) {
                     let mut times = times.expect("a user's slots have times");
-                    slots.fill((&mut times, underway), slot, Some(action));
+                    let mut unit = SlotsMut {
+                        slots,
+                        times: &mut times,
+                        progress: underway,
+                    };
+                    unit.fill(slot, Some(action));
                 }
                 underway.order(slot, ActionTarget::Unit(target));
                 return;

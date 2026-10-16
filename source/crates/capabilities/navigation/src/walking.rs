@@ -76,7 +76,7 @@ impl Walking {
             .iter()
             .map(|(&id, &at, body, destination, tags)| TickBody {
                 body: IndexedBody::of(id, at.get(), body),
-                walks: Self::walks(destination, tags, false),
+                walks: Self::walks(destination, tags, Motion::Own),
                 gathers: tags.is_some_and(|tags| tags.passes()),
             });
         steering.read(&statics, read);
@@ -87,7 +87,7 @@ impl Walking {
         let ordered = walkers
             .iter()
             .filter(|&(_, _, _, destination, _, _, route, _, tags, forced)| {
-                Self::walks(Some(destination), tags, forced)
+                Self::walks(Some(destination), tags, Motion::of(forced))
                     && route.asked().is_none()
                     && !route.ahead().is_empty()
             })
@@ -176,7 +176,7 @@ impl Walking {
             forced,
         ) in &mut units
         {
-            if !Self::walks(Some(&destination), tags, forced) {
+            if !Self::walks(Some(&destination), tags, Motion::of(forced)) {
                 continue;
             }
             let mut at = position.get();
@@ -260,7 +260,7 @@ impl Walking {
                         shape: body.shape(),
                         layer: body.layer(),
                         movable,
-                        walking: Self::walks(destination, tags, false),
+                        walking: Self::walks(destination, tags, Motion::Own),
                         gathering: tags.is_some_and(|tags| tags.passes()),
                     },
                 ),
@@ -295,14 +295,14 @@ impl Walking {
         }
     }
 
-    /// Whether a unit walks this tick: it has a destination, and neither its tags nor a forced
-    /// move, when `forced`, stop it. One they stop stands, to the units round it as to itself.
-    fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, forced: bool) -> bool {
+    /// Whether a unit walks this tick: it has a destination, and neither its tags nor its
+    /// `motion`, when forced, stop it. One they stop stands, to the units round it as to itself.
+    fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, motion: Motion) -> bool {
         destination.is_some_and(|destination| destination.get().is_some())
-            && !tags.copied().unwrap_or_default().blocks(
-                if forced { Motion::Forced } else { Motion::Own },
-                Block::Move,
-            )
+            && !tags
+                .copied()
+                .unwrap_or_default()
+                .blocks(motion, Block::Move)
     }
 
     /// Clamps each unit that walks into the bounds: those whose place changed since the last run,

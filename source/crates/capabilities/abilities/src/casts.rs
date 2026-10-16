@@ -14,12 +14,13 @@ use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
 use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
 use campfire_script::{
-    CallError, CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptId, ScriptValue, ScriptsWorld, Unit,
+    CallError, CallStart, Ctx, Hook, HookCall, Pool, ScriptBatch, ScriptId, ScriptValue,
+    ScriptsWorld, Unit,
 };
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
 use campfire_units::{ArrivedShort, Body, Dead, Destination, ForcedMove, Owner};
-use campfire_values::{ActionId, DashDelivery, Rank, Team, UnitTags};
+use campfire_values::{ActionId, DashDelivery, Motion, Rank, Team, UnitTags};
 
 use crate::Abilities;
 
@@ -97,7 +98,8 @@ impl Casts {
                 continue;
             };
             let underway_slot = slots.slot(underway.slot()).expect("a slot the unit has");
-            let blocked = Caster::of(tags, forced, used).blocked(Some(underway_slot), &book)
+            let blocked = Caster::of(tags, Motion::of(forced), used)
+                .blocked(Some(underway_slot), &book)
                 || !pools.lives();
             if let InProgress::Charge { .. } = underway {
                 if blocked {
@@ -238,7 +240,8 @@ impl Casts {
             let used = unit.get::<UseGroup>();
             let book = world.resource::<ActionBook>();
             let can_cast = world.lives(entity)
-                && !Caster::of(unit.get::<UnitTags>(), forced, used).blocked(Some(slot), book);
+                && !Caster::of(unit.get::<UnitTags>(), Motion::of(forced), used)
+                    .blocked(Some(slot), book);
             if !can_cast {
                 world
                     .get_mut::<ActionProgress>(entity)
@@ -298,7 +301,9 @@ impl Casts {
                 continue;
             };
             let slot = slots.slot(casting.slot).expect("a cast's slot");
-            if Caster::of(tags, forced, used).blocked(Some(slot), &book) || !pools.lives() {
+            if Caster::of(tags, Motion::of(forced), used).blocked(Some(slot), &book)
+                || !pools.lives()
+            {
                 progress.interrupt();
                 continue;
             }
@@ -515,8 +520,11 @@ impl Casts {
         let target = mem::take(&mut prepared.target);
         let caster = prepared.caster.clone();
         let args = (ctx.clone(), caster, target);
-        batch
-            .call(Pool::of(prepared.owner), script, Hook::OnResolve, args)
-            .map(drop)
+        let call = HookCall {
+            script,
+            hook: Hook::OnResolve,
+            args,
+        };
+        batch.call(Pool::of(prepared.owner), call).map(drop)
     }
 }

@@ -12,7 +12,7 @@ use campfire_script::ScriptsWorld;
 use campfire_sim::{Position, SimRng, SimTick, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
 use campfire_units::{Body, Dead, ForcedMove, Owner};
-use campfire_values::{Block, Team, UnitTags};
+use campfire_values::{Block, Motion, Team, UnitTags};
 
 use crate::ROLL_STREAM;
 use crate::clip_shots::ClipShots;
@@ -98,7 +98,8 @@ impl Attacks {
         for (&position, &team, (slots, mut progress), times, pools, owner, body, tags, forced) in
             &mut units
         {
-            let blocked = Caster::of(tags, forced, None).blocks(Block::Attack) || !pools.lives();
+            let blocked =
+                Caster::of(tags, Motion::of(forced), None).blocks(Block::Attack) || !pools.lives();
             match progress.in_progress() {
                 Some(
                     InProgress::Order { .. }
@@ -171,12 +172,16 @@ impl Attacks {
         let life = world.life_pool();
         going.clear();
         for off in world.resource::<Volley>().iter() {
-            let Ok((slots, tags, forced, pools, owner)) = attackers.get(world, off.entity) else {
+            let Ok(((slots, progress), tags, forced, pools, owner)) =
+                attackers.get(world, off.entity)
+            else {
                 continue;
             };
             let lives = pools.lives();
             let purse = Purse::of(pools.of(life), world.owner_resources(owner));
-            if lives && Self::wielded(book, slots).strikes(tags, forced, purse) {
+            if lives
+                && Self::wielded(book, slots, progress).strikes(tags, Motion::of(forced), purse)
+            {
                 going.push(off);
             }
         }
@@ -215,7 +220,8 @@ impl Attacks {
     ) {
         let life = life.life();
         for off in volley.iter() {
-            let Ok((slots, mut times, tags, forced, pools, owner)) = attackers.get_mut(off.entity)
+            let Ok(((slots, progress), mut times, tags, forced, pools, owner)) =
+                attackers.get_mut(off.entity)
             else {
                 continue;
             };
@@ -224,9 +230,9 @@ impl Attacks {
             }
             let mut pools = pools.of(life);
             let purse = Purse::of(pools.read(), resources.of(owner));
-            let wielded = Self::wielded(&book, slots);
-            if wielded.strikes(tags, forced, purse) {
-                times.pay_attack_toggles(slots.0, &book, &mut pools, &wielded.values.cost);
+            let wielded = Self::wielded(&book, slots, progress);
+            if wielded.strikes(tags, Motion::of(forced), purse) {
+                times.pay_attack_toggles(slots, &book, &mut pools, &wielded.values.cost);
             }
         }
     }
@@ -300,8 +306,8 @@ impl Attacks {
             let lives = pools.lives();
             let pools = pools.of(life);
             let purse = Purse::of(pools.read(), resources.of(owner));
-            let wielded = Self::wielded(&book, (slots, &progress));
-            if !lives || !wielded.strikes(tags, forced, purse) {
+            let wielded = Self::wielded(&book, slots, &progress);
+            if !lives || !wielded.strikes(tags, Motion::of(forced), purse) {
                 progress.interrupt();
                 continue;
             }
@@ -365,10 +371,11 @@ impl Attacks {
         }
     }
 
-    /// The weapon of the attack under way of a unit with `slots`.
+    /// The weapon of the attack `progress` has under way, of a unit with `slots`.
     fn wielded<'a>(
         book: &'a ActionBook,
-        (slots, progress): (&ActionSlots, &ActionProgress),
+        slots: &ActionSlots,
+        progress: &ActionProgress,
     ) -> Wielded<'a> {
         let underway = progress.in_progress().expect("an attack is under way");
         let slot = slots.slot(underway.slot()).expect("an attack's slot");

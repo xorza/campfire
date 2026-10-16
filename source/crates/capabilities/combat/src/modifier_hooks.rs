@@ -3,7 +3,7 @@ use std::mem;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_script::{CallStart, Ctx, Hook, Pool, ScriptBatch, ScriptValue};
+use campfire_script::{CallStart, Ctx, Hook, HookCall, Pool, ScriptBatch, ScriptValue};
 use campfire_sim::{SimTick, SimWorld, StableId};
 use campfire_stats::{
     HandleOf, Instance, ModifierBook, ModifierClocks, Modifiers, StatsCall, StatsColumn,
@@ -200,13 +200,12 @@ impl ModifierHooks {
                 };
                 StatsColumn::held_handle(ctx.view(), call, of, clocks.state(at))
             };
-            match arg {
-                Some(arg) => batch
-                    .call(pool, script, hook, (ctx.clone(), handle, arg))
-                    .map(drop),
-                None => batch
-                    .call(pool, script, hook, (ctx.clone(), handle))
-                    .map(drop),
+            if let Some(arg) = arg {
+                let args = (ctx.clone(), handle, arg);
+                batch.call(pool, HookCall { script, hook, args }).map(drop)
+            } else {
+                let args = (ctx.clone(), handle);
+                batch.call(pool, HookCall { script, hook, args }).map(drop)
             }
         });
     }

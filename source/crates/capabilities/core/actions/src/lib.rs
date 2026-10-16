@@ -93,7 +93,7 @@ pub use crate::action_range::ActionRange;
 pub use crate::action_slots::action_progress::ActionProgress;
 pub use crate::action_slots::slot_times::{ActionCheck, SlotCharges, SlotTime, SlotTimes};
 pub use crate::action_slots::timed_slots::TimedSlots;
-pub use crate::action_slots::{ActionSlot, ActionSlots};
+pub use crate::action_slots::{ActionSlot, ActionSlots, SlotsMut};
 pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
 pub use crate::amount::Amount;

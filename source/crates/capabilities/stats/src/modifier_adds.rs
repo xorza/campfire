@@ -29,7 +29,7 @@ pub(crate) struct ModifierAdd {
 /// What an added modifier reads of the match and writes: the book, the params and the units
 /// they read from, the tick and its rate, and the living units' modifiers, those a predicting
 /// client holds as the server sent them among them.
-#[derive(SystemParam)]
+#[derive(SystemParam, Debug)]
 pub(crate) struct ModifierAdds<'w, 's> {
     book: Res<'w, ModifierBook>,
     params: ModifierParams<'w, 's>,

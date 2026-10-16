@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::RemovedComponents;
@@ -21,12 +23,18 @@ use crate::player_modifiers::PlayerModifiers;
 pub(crate) struct PlayerGrants;
 
 /// The units whose player grants a run visits again though no part of theirs changed: those
-/// that lost their owner, or came back to life, since the last run. No `Debug`:
-/// `RemovedComponents` has none.
+/// that lost their owner, or came back to life, since the last run.
 #[derive(SystemParam)]
 pub(crate) struct Revisits<'w, 's> {
     unowned: RemovedComponents<'w, 's, Owner>,
     revived: RemovedComponents<'w, 's, Dead>,
+}
+
+/// Its removals print nothing: `RemovedComponents` has no `Debug`.
+impl fmt::Debug for Revisits<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Revisits").finish_non_exhaustive()
+    }
 }
 
 /// The parts of a unit its player's grants read.

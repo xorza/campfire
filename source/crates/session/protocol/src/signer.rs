@@ -2,7 +2,7 @@ use secp256k1::{Keypair, Secp256k1, SignOnly, XOnlyPublicKey};
 
 use crate::entropy::Entropy;
 use crate::signature::Signature;
-use crate::signed::Signed;
+use crate::signed::{self, Signed};
 
 /// A key that signs, the context its signatures take, and what fills their randomness: each
 /// signature takes fresh auxiliary randomness, as BIP-340 recommends against side channels.
@@ -44,7 +44,7 @@ impl Signer {
     /// The key's signature over `record`, its message written into `scratch`, as a signer that
     /// signs often keeps one.
     pub fn sign_with(&self, record: &impl Signed, scratch: &mut Vec<u8>) -> Signature {
-        record.write_message(scratch);
+        signed::write_message(record, scratch);
         self.sign_message(scratch)
     }
 

@@ -12,7 +12,7 @@ use campfire_actions::{
     ChargesData, ClipData, CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectTo,
     FromData, InProgress, KindData, KindError, LaunchFields, ModifierFields, MoveData, OrderPhase,
     PurgeFields, RangeField, RestoreFields, SlotAim, SlotKind, SlotKindBook, SlotKindData,
-    SlotKinds, SlotRanks, SlotTimes, Started, Targeting, TimedSlots, Toggle, XpFields,
+    SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting, TimedSlots, Toggle, XpFields,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas};
 use campfire_capabilities::internals::*;
@@ -1489,7 +1489,12 @@ fn on_interrupt(ctx, caster, target) {
         let (mut slots, mut times, mut progress) = unit
             .get_components_mut::<(&mut ActionSlots, &mut SlotTimes, &mut ActionProgress)>()
             .unwrap();
-        slots.fill((&mut times, &mut progress), 0, None);
+        let mut held = SlotsMut {
+            slots: &mut slots,
+            times: &mut times,
+            progress: &mut progress,
+        };
+        held.fill(0, None);
     });
     assert_eq!(health(&emptied), cut);
 }

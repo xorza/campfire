@@ -13,12 +13,11 @@ pub struct Caster<'a> {
 }
 
 impl<'a> Caster<'a> {
-    /// The caster of `tags`, none for a unit with no tags, under a forced move when `forced`,
-    /// of the use group `used`.
-    pub fn of(tags: Option<&UnitTags>, forced: bool, used: Option<&'a UseGroup>) -> Self {
+    /// The caster of `tags`, none for a unit with no tags, in `motion`, of the use group `used`.
+    pub fn of(tags: Option<&UnitTags>, motion: Motion, used: Option<&'a UseGroup>) -> Self {
         Self {
             tags: tags.copied().unwrap_or_default(),
-            motion: if forced { Motion::Forced } else { Motion::Own },
+            motion,
             used,
         }
     }

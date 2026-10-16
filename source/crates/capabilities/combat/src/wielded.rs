@@ -1,6 +1,6 @@
 use campfire_actions::{Caster, Purse, RankValues, Weapon};
 use campfire_players::ResourceAmount;
-use campfire_values::{ActionId, Block, Rank, UnitTags, UnitType};
+use campfire_values::{ActionId, Block, Motion, Rank, UnitTags, UnitType};
 
 /// The weapon of an attack under way: its slot, what it deals, and its values and its cost in
 /// player resources at the slot's rank.
@@ -18,11 +18,16 @@ pub(super) struct Wielded<'a> {
 }
 
 impl Wielded<'_> {
-    /// Whether its attack, going off, strikes for a unit with `tags`, under a forced move when
-    /// `forced`: neither keeps it from attacking, and `purse` still affords its cost, as the
-    /// checks run again at delivery.
-    pub(super) fn strikes(&self, tags: Option<&UnitTags>, forced: bool, purse: Purse<'_>) -> bool {
-        !Caster::of(tags, forced, None).blocks(Block::Attack)
+    /// Whether its attack, going off, strikes for a unit with `tags`, in `motion`: neither keeps
+    /// it from attacking, and `purse` still affords its cost, as the checks run again at
+    /// delivery.
+    pub(super) fn strikes(
+        &self,
+        tags: Option<&UnitTags>,
+        motion: Motion,
+        purse: Purse<'_>,
+    ) -> bool {
+        !Caster::of(tags, motion, None).blocks(Block::Attack)
             && purse.affords(&self.values.cost, self.resource_cost)
     }
 }

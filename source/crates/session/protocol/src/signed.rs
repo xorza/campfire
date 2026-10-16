@@ -22,17 +22,19 @@ pub struct InSession<'a, T> {
     pub record: &'a T,
 }
 
-/// A record a key signs: the message is its kind's domain, then its body.
+/// A record a key signs: the message is its kind's domain, then its body, as `write_message`
+/// writes it, which no record changes.
 pub trait Signed {
     const DOMAIN: SignatureDomain;
 
     /// Appends the record's body to `message`.
     fn write_body(&self, message: &mut Vec<u8>);
+}
 
-    /// Writes the signed message, `domain ‖ body`, into `message`, in place of what it held.
-    fn write_message(&self, message: &mut Vec<u8>) {
-        message.clear();
-        message.extend_from_slice(Self::DOMAIN.as_bytes());
-        self.write_body(message);
-    }
+/// Writes the message a key signs of `record`, `domain ‖ body`, into `message`, in place of what
+/// it held.
+pub(crate) fn write_message<S: Signed>(record: &S, message: &mut Vec<u8>) {
+    message.clear();
+    message.extend_from_slice(S::DOMAIN.as_bytes());
+    record.write_body(message);
 }

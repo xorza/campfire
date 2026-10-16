@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf};
-use campfire_script::{CallStart, Pool, ScriptValue, ScriptsWorld};
+use campfire_script::{CallStart, HookCall, Pool, ScriptValue, ScriptsWorld};
 use campfire_sim::{SimTick, SimWorld};
 use campfire_units::{HitHandle, Owner};
 
@@ -97,12 +97,14 @@ impl DeliveryHooks {
                     };
                     let hit = ScriptValue::of(HitHandle::new(hit, view.clone()));
                     match reach {
-                        Reached::Hit(_) => batch
-                            .call(pool, script, hook, (ctx.clone(), caster, target, hit))
-                            .map(drop),
-                        Reached::End => batch
-                            .call(pool, script, hook, (ctx.clone(), caster, hit))
-                            .map(drop),
+                        Reached::Hit(_) => {
+                            let args = (ctx.clone(), caster, target, hit);
+                            batch.call(pool, HookCall { script, hook, args }).map(drop)
+                        }
+                        Reached::End => {
+                            let args = (ctx.clone(), caster, hit);
+                            batch.call(pool, HookCall { script, hook, args }).map(drop)
+                        }
                     }
                 });
             }

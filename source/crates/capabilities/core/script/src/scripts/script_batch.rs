@@ -22,6 +22,14 @@ pub struct ScriptBatch<'a> {
     pub(super) ctx: Ctx,
 }
 
+/// A call of `hook` of `script` with `args`, one argument for each of the hook's parameters.
+#[derive(Debug, Clone)]
+pub struct HookCall<A> {
+    pub script: ScriptId,
+    pub hook: Hook,
+    pub args: A,
+}
+
 impl ScriptBatch<'_> {
     /// The `ctx` of the batch's calls.
     pub const fn ctx(&self) -> &Ctx {
@@ -61,33 +69,25 @@ impl ScriptBatch<'_> {
         }
     }
 
-    /// Calls `hook` of `script` with `args` in the running call, which writes, from the budget of
-    /// `pool`: one argument for each of the hook's parameters.
-    pub fn call<A: ScriptArgs>(
+    /// Makes `call` in the running call, which writes, from the budget of `pool`.
+    pub fn call(
         &mut self,
         pool: Pool,
-        script: ScriptId,
-        hook: Hook,
-        args: A,
+        call: HookCall<impl ScriptArgs>,
     ) -> Result<ScriptValue, CallError> {
         debug_assert!(!self.ctx.frame().pure(), "a pure call draws from no pool");
         let budgets = self.world.resource_mut::<ScriptBudgets>().into_inner();
-        call_in(self.host, budgets.get_mut(pool), script, hook, args)
+        call_in(self.host, budgets.get_mut(pool), call)
     }
 
-    /// Calls `hook` of `script` with `args` in the running call, which is pure, from no pool: only
-    /// the limit per call bounds it.
-    pub fn call_pure(
-        &mut self,
-        script: ScriptId,
-        hook: Hook,
-        args: impl ScriptArgs,
-    ) -> Result<ScriptValue, CallError> {
+    /// Makes `call` in the running call, which is pure, from no pool: only the limit per call
+    /// bounds it.
+    pub fn call_pure(&mut self, call: HookCall<impl ScriptArgs>) -> Result<ScriptValue, CallError> {
         debug_assert!(
             self.ctx.frame().pure(),
             "only a pure call draws from no pool"
         );
-        call_in(self.host, &mut Budget::new(u64::MAX), script, hook, args)
+        call_in(self.host, &mut Budget::new(u64::MAX), call)
     }
 
     /// Records that a call of `hook`, for `id` if any, failed with `error`.
@@ -102,14 +102,13 @@ impl ScriptBatch<'_> {
     }
 }
 
-/// Calls `hook` of `script` with `args` on `host`, drawing from `budget`.
+/// Makes `call` on `host`, drawing from `budget`.
 fn call_in<A: ScriptArgs>(
     host: &mut ScriptHost,
     budget: &mut Budget,
-    script: ScriptId,
-    hook: Hook,
-    args: A,
+    call: HookCall<A>,
 ) -> Result<ScriptValue, CallError> {
+    let HookCall { script, hook, args } = call;
     debug_assert_eq!(
         A::LEN,
         hook.params(),

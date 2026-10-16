@@ -31,7 +31,7 @@ use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::segments::{LoggedCheckpoint, Segments};
 use crate::session_log::session_header::SessionHeader;
-use crate::session_log::slot_control::{Control, Slot, SlotControl};
+use crate::session_log::slot_control::{Control, Slot, SlotControl, TakenPacket};
 use crate::session_result::SessionResult;
 use crate::signature::Signature;
 use crate::signed::{InSession, Signed};
@@ -560,7 +560,7 @@ impl SessionLog {
             inputs: inputs.clone(),
             signature,
         };
-        file::write_packet(&mut self.message, written, count);
+        file::write_packet(&mut self.message, written);
         let growth = self.entry_growth(len(self.message.len()));
         if !self.has_room(growth) {
             return Err(InputError::LogFull);
@@ -573,7 +573,12 @@ impl SessionLog {
             return Err(InputError::BadSignature);
         }
 
-        self.control.took_packet(slot, delegation, chain, stamps);
+        let taken = TakenPacket {
+            delegation,
+            chain,
+            stamps,
+        };
+        self.control.took_packet(slot, taken);
         applied.clear();
         applied.reserve_exact(at(count));
         let next = self.next_tick();

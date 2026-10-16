@@ -57,6 +57,13 @@ pub(super) type LeftWorkers<'w, 's> = (
 pub(super) type Gatherers =
     QueryState<(Entity, &'static StableId, &'static Gatherer), Without<Dead>>;
 
+/// A loop a worker left: the worker's entity, and its order in the loop.
+#[derive(Debug, Clone, Copy)]
+struct LeftLoop {
+    worker: Entity,
+    order: GatherOrder,
+}
+
 impl GatherLoop {
     /// The most steps a worker's loop takes in a tick: a gather that ends, a drop-off chosen, a
     /// load delivered and a node chosen, before it walks.
@@ -235,9 +242,13 @@ impl GatherLoop {
         }
     }
 
-    /// Frees the node the worker of `entity` held in its loop `order`, which it left, when it
-    /// gathered there and the node stands and holds it.
-    fn leave(world: &mut World, workers: &mut Gatherers, entity: Entity, order: GatherOrder) {
+    /// Frees the node its worker held in the loop it `left`, when it gathered there and the node
+    /// stands and holds it.
+    fn leave(world: &mut World, workers: &mut Gatherers, left: LeftLoop) {
+        let LeftLoop {
+            worker: entity,
+            order,
+        } = left;
         if !matches!(order.step, GatherStep::Gathering { .. }) {
             return;
         }
@@ -273,7 +284,11 @@ impl GatherLoop {
             Step::Stop => {
                 Navigation::go_to(world, entity, None);
                 set(world, None);
-                Self::leave(world, workers, entity, order);
+                let left = LeftLoop {
+                    worker: entity,
+                    order,
+                };
+                Self::leave(world, workers, left);
             }
             Step::Interrupt(node) => {
                 set(world, with(GatherStep::ToNode));
@@ -289,7 +304,11 @@ impl GatherLoop {
                         ..order
                     }),
                 );
-                Self::leave(world, workers, entity, order);
+                let left = LeftLoop {
+                    worker: entity,
+                    order,
+                };
+                Self::leave(world, workers, left);
             }
             Step::Wait => {
                 Navigation::go_to(world, entity, None);

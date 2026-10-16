@@ -39,6 +39,15 @@ pub(super) enum Control {
     Reserved,
 }
 
+/// What a slot holds once it takes its player's packet: the delegation whose key signed it, the
+/// player's chain after it, and the stamps of their inputs.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct TakenPacket {
+    pub(super) delegation: u32,
+    pub(super) chain: InputChain,
+    pub(super) stamps: StampCount,
+}
+
 impl Slot {
     /// A slot of `control` with no input yet.
     pub(super) fn of(control: Control) -> Self {
@@ -121,15 +130,13 @@ impl SlotControl {
         })
     }
 
-    /// Takes `slot`'s packet: its player's chain is `chain` after it, signed by the delegation
-    /// `delegation`, and its stamps `stamps`.
-    pub(super) fn took_packet(
-        &mut self,
-        slot: PlayerSlot,
-        delegation: u32,
-        chain: InputChain,
-        stamps: StampCount,
-    ) {
+    /// Takes `slot`'s packet, as `taken` holds it.
+    pub(super) fn took_packet(&mut self, slot: PlayerSlot, taken: TakenPacket) {
+        let TakenPacket {
+            delegation,
+            chain,
+            stamps,
+        } = taken;
         let held = &mut self.slots[slot.index()];
         held.control = Control::Player { delegation, chain };
         held.stamps = stamps;

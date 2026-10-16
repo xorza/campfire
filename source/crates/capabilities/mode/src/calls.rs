@@ -6,8 +6,8 @@ use campfire_combat::{Damage, DamageHandle, Heal, HealHandle};
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::{
-    CallError, CallStart, CapabilityRefusal, Ctx, Hook, Pool, ScriptArgs, ScriptBatch, ScriptRole,
-    ScriptValue, ScriptsWorld,
+    CallError, CallStart, CapabilityRefusal, Ctx, Hook, HookCall, Pool, ScriptArgs, ScriptBatch,
+    ScriptRole, ScriptValue, ScriptsWorld,
 };
 use campfire_sim::{SimTick, StableId};
 
@@ -61,7 +61,7 @@ impl Calls<'_, '_> {
         let script = self.book().schema.script;
         let start = CallStart::mode(ScriptRole::Mode, self.now);
         self.batch.run(start, |batch| {
-            batch.call(pool, script, hook, args).map(drop)
+            batch.call(pool, HookCall { script, hook, args }).map(drop)
         })
     }
 
@@ -135,7 +135,11 @@ impl Calls<'_, '_> {
         let ctx = batch.ctx().clone();
         let script = ctx.match_mode_spec().schema.script;
         let value = batch.run(CallStart::pure(now), |batch| {
-            batch.call_pure(script, hook, (ctx, handle))
+            batch.call_pure(HookCall {
+                script,
+                hook,
+                args: (ctx, handle),
+            })
         })?;
         let amount = match value.as_int() {
             Some(int) => Num::from_int(int),

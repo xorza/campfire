@@ -44,7 +44,7 @@ pub use crate::scripts::script_api::hook_status::HookStatus;
 pub use crate::scripts::script_api::tag_property_status::TagPropertyStatus;
 pub use crate::scripts::script_arg::{ScriptArg, TextArg};
 pub use crate::scripts::script_args::ScriptArgs;
-pub use crate::scripts::script_batch::ScriptBatch;
+pub use crate::scripts::script_batch::{HookCall, ScriptBatch};
 pub use crate::scripts::script_budgets::ScriptBudgets;
 pub use crate::scripts::script_call::ScriptCall;
 pub use crate::scripts::script_cut::ScriptCut;

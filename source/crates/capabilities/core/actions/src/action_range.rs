@@ -9,6 +9,9 @@ pub enum ActionRange {
     Meters(Num),
     Global,
 }
+
+/// Every value that is not a range fails with the one message, a word or a number past what a
+/// number holds as a negative number does.
 impl<'de> Deserialize<'de> for ActionRange {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
@@ -22,10 +25,11 @@ impl<'de> Deserialize<'de> for ActionRange {
             Meters(Num),
             Word(Word),
         }
-        match Written::deserialize(deserializer)? {
+        let refused = || D::Error::custom("a range is meters from 0, or global");
+        match Written::deserialize(deserializer).map_err(|_| refused())? {
             Written::Meters(meters) => Distance::new(meters)
                 .map(|meters| Self::Meters(meters.get()))
-                .ok_or_else(|| Error::custom("a range is meters from 0, or global")),
+                .ok_or_else(refused),
             Written::Word(Word::Global) => Ok(Self::Global),
         }
     }
@@ -54,7 +58,11 @@ mod tests {
         assert_eq!(read("0").unwrap(), ActionRange::Meters(Num::ZERO));
         assert_eq!(read("\"global\"").unwrap(), ActionRange::Global);
         for refused in ["-1", "\"-0.5\"", "\"far\"", "1.5", "1099511627776"] {
-            assert!(read(refused).is_err(), "{refused}");
+            let error = read(refused).unwrap_err().to_string();
+            assert!(
+                error.contains("a range is meters from 0, or global"),
+                "{refused}: {error}"
+            );
         }
     }
 }

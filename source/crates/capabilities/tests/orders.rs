@@ -4,7 +4,7 @@ use bevy_ecs::change_detection::DetectChanges;
 use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
     ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, InProgress, OrderPhase,
-    SlotAim, SlotKind, SlotTimes, TimedSlots,
+    SlotAim, SlotKind, SlotTimes, SlotsMut, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
@@ -310,8 +310,12 @@ fn trainer(game: &mut Match) -> TwoHeroes {
     let (mut slots, mut times, mut progress) = unit
         .get_components_mut::<(&mut ActionSlots, &mut SlotTimes, &mut ActionProgress)>()
         .unwrap();
-    let held = (&mut *times, &mut *progress);
-    slots.grant(held, SlotKind::new(0), &[train], Some(Rank::FIRST));
+    let mut held = SlotsMut {
+        slots: &mut slots,
+        times: &mut times,
+        progress: &mut progress,
+    };
+    held.grant(SlotKind::new(0), &[train], Some(Rank::FIRST));
     heroes
 }
 

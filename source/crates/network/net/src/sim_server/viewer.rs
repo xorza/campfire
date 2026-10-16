@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bevy_app::App;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
@@ -56,6 +58,13 @@ pub(crate) struct PlayerViews<'w, 's> {
     links: Query<'w, 's, (Entity, &'static PlayerLink)>,
     visibility: Option<Res<'w, MatchVisibility>>,
     commands: Commands<'w, 's>,
+}
+
+/// Its queries and its commands print nothing: `Commands` has no `Debug`.
+impl fmt::Debug for PlayerViews<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PlayerViews").finish_non_exhaustive()
+    }
 }
 
 impl PlayerViews<'_, '_> {

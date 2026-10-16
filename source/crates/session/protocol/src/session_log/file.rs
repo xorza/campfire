@@ -190,13 +190,12 @@ impl SessionLog {
             let input = self.entries.input(index);
             (input.stamp, input.payload)
         });
-        let count = packet.inputs.end - packet.inputs.start;
         let written = PlayerPacket {
             slot,
             inputs,
             signature: &packet.signature,
         };
-        write_packet(out, written, count);
+        write_packet(out, written);
     }
 
     /// Writes the server input `index` and its signature.
@@ -287,13 +286,13 @@ impl SessionLog {
     }
 }
 
-/// Writes `packet`: its `u32` slot, its `count` inputs as a `u32` count and each input's stamp
-/// and payload bytes, and its signature.
+/// Writes `packet`: its `u32` slot, its inputs as a `u32` count and each input's stamp and
+/// payload bytes, and its signature.
 pub(super) fn write_packet<'a>(
     out: &mut Vec<u8>,
-    packet: PlayerPacket<'_, impl Iterator<Item = (Tick, &'a [u8])>>,
-    count: u32,
+    packet: PlayerPacket<'_, impl Iterator<Item = (Tick, &'a [u8])> + Clone>,
 ) {
+    let count = u32::try_from(packet.inputs.clone().count()).expect("a packet's inputs fit u32");
     put(out, &packet.slot.get());
     put(out, &count);
     for (stamp, payload) in packet.inputs {

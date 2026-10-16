@@ -3,7 +3,7 @@ use std::num::{NonZeroU8, NonZeroU32, NonZeroUsize};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionProgress, ActionSlots, SlotTimes, UseGroup};
+use campfire_actions::{ActionSlots, SlotsMut, UseGroup};
 use campfire_declare::PerType;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
@@ -21,13 +21,11 @@ pub struct Inventory {
     slots: Vec<Option<ItemStack>>,
 }
 
-/// A carrier's action slots, their times and what it has under way, and the use group whose
-/// slots its inventory fills.
+/// A carrier's action slots, with what follows them, and the use group whose slots its inventory
+/// fills.
 #[derive(Debug)]
 pub struct CarrierSlots<'a> {
-    pub(crate) slots: &'a mut ActionSlots,
-    pub(crate) times: &'a mut SlotTimes,
-    pub(crate) progress: &'a mut ActionProgress,
+    pub(crate) unit: SlotsMut<'a>,
     pub(crate) group: UseGroup,
 }
 
@@ -195,20 +193,15 @@ impl Inventory {
         carrier: CarrierSlots<'_>,
         before: &[Option<ItemId>],
     ) {
-        let CarrierSlots {
-            slots,
-            times,
-            progress,
-            group,
-        } = carrier;
-        let first = slots.first_of(group.kind());
+        let CarrierSlots { mut unit, group } = carrier;
+        let first = unit.slots.first_of(group.kind());
         for (at, (slot, &was)) in self.slots.iter().zip(before).enumerate() {
             let item = slot.map(|carried| carried.item);
             if item != was {
                 let action =
                     item.and_then(|item| book.get(item).expect("an item of the book").action);
                 let at = u8::try_from(at).expect("a slot index fits u8");
-                slots.fill((times, progress), first + at, action);
+                unit.fill(first + at, action);
             }
         }
     }
@@ -218,13 +211,8 @@ impl Inventory {
     /// the next fresh, and the inventory slot with the last item, its action slot then empty and
     /// ready.
     pub(crate) fn spend_use(&mut self, book: &ItemBook, carrier: CarrierSlots<'_>, slot: u8) {
-        let CarrierSlots {
-            slots,
-            times,
-            progress,
-            group,
-        } = carrier;
-        let first = slots.first_of(group.kind());
+        let CarrierSlots { mut unit, group } = carrier;
+        let first = unit.slots.first_of(group.kind());
         let Some(at) = slot
             .checked_sub(first)
             .filter(|&at| usize::from(at) < self.slots.len())
@@ -247,7 +235,7 @@ impl Inventory {
             carried.uses = book.get(carried.item).expect("an item of the book").uses;
         } else {
             *held = None;
-            slots.fill((times, progress), slot, None);
+            unit.fill(slot, None);
         }
     }
 
@@ -258,15 +246,9 @@ impl Inventory {
             return;
         }
         self.slots.swap(usize::from(from), usize::from(to));
-        if let Some(CarrierSlots {
-            slots,
-            times,
-            progress,
-            group,
-        }) = carrier
-        {
-            let first = slots.first_of(group.kind());
-            slots.swap((times, progress), first + from, first + to);
+        if let Some(CarrierSlots { mut unit, group }) = carrier {
+            let first = unit.slots.first_of(group.kind());
+            unit.swap(first + from, first + to);
         }
     }
 }
