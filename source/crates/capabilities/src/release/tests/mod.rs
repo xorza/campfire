@@ -513,9 +513,9 @@ const ROLES: [(&str, &str, &str); 4] = [
     ("struct ", "Api", "api"),
 ];
 
-/// The types that hold a role but are named for what they are: the orders' effect, which is the
-/// order to a unit, and the core's script API, which spans `units`, `scripts` and `players`.
-const ROLE_EXCEPTIONS: [&str; 2] = ["UnitOrder", "CoreApi"];
+/// The types that hold a role but are named for what they are: the core's script API, which spans
+/// `units`, `scripts` and `players`.
+const ROLE_EXCEPTIONS: [&str; 1] = ["CoreApi"];
 
 /// The types of `code`, the file `file` of the module `module`, that hold a role and are not
 /// named `<Module><Role>` in `<module>_<role>.rs`, as `(file, type)`; a `mod.rs` is named by its
@@ -629,6 +629,12 @@ fn each_role_of_a_module_takes_the_modules_name() {
             "orders",
             "unit_order",
             "impl Effect for UnitOrder {".to_owned(),
+            vec![("unit_order", "UnitOrder")],
+        ),
+        (
+            "orders",
+            "orders_effect",
+            "impl Effect for OrdersEffect {".to_owned(),
             vec![],
         ),
         (

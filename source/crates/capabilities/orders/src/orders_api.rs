@@ -6,6 +6,7 @@ use campfire_script::{
 
 use crate::ai_data::AiData;
 use crate::error::OrdersRefusal;
+use crate::orders_effect::OrdersEffect;
 use crate::unit_order::UnitOrder;
 
 /// The script API of `orders`: the orders an AI gives the unit that thinks.
@@ -65,6 +66,11 @@ impl OrdersApi {
                 reset
             },
         )
+        .plan(order(
+            "order_action",
+            &[&["unit", "slot", "target"]],
+            "`unit` casts the action in its slot `slot` at `target`, as a player's action order does",
+        ))
         .hook(Hook::OnThink, Status::Runs(ApiVersion::FIRST))
         .data::<AiData>(&["ai", "think_ms"], &[])
         .shared_data(DataTable::UnitType, &["orders"], &[]);
@@ -94,6 +100,6 @@ impl OrdersApi {
         if ctx.acting() != Some(unit.id) {
             return Err(OrdersRefusal::OtherUnit.fail().into());
         }
-        ctx.queue(order)
+        ctx.queue(OrdersEffect(order))
     }
 }

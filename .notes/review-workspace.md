@@ -124,8 +124,7 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 `orders`, `areas`, `projectiles`, `progression`, `interaction`, `items`, `production`: `production_orders`; `players`: `tick_commands`; `navigation`: `route`; `actions`: `targets`; `capabilities`: `book_builder`. After batches 11 and 19.
 
-- [ ] orders/src/orders_api.rs:16-71, interaction/src/interaction_api.rs:12-16 — `ctx.order_action`, `unit.inside` and `unit.passengers` are in the docs, and neither bound nor planned. → Each name a capability doc lists is bound or `.plan`ned, and a test reads the docs' Script API sections to hold it.
-- [ ] orders/src/unit_order.rs:76, 111, 171-246; navigation/src/route.rs:77 — the orders effect is `UnitOrder`, not `OrdersEffect`; its `apply` shares `Effect::apply`'s name; it writes navigation's `Route`, `Progress`, `PathWalker` and production's `Builder`, `Gatherer`, and must pair `route.ask` with `progress.restart()`. → `OrdersEffect`; asks through contract parts of `units`; `Route::ask` restarts the progress.
+- [ ] orders/src/unit_order.rs:171-246 — the orders effect writes navigation's `Route`, `Progress`, `PathWalker` and production's `Builder`, `Gatherer`. → Asks through contract parts of `units`. **Skipped: see `review-workspace_QUESTIONS.md`, batch 20, item 2.**
 - [ ] orders, items, progression, production — `OrderInputs`/`PlayerOrders` against `<X>Orders`; `OrdersSet::Orders` against `<X>Set::Commands`. → One naming.
 - [ ] orders/src/error.rs:10, ai.rs:30 — `AiError::TimeTooLarge` is its own case. → `Time(#[from] TimeTooLarge)`.
 - [ ] items/src/trade_orders.rs:53-61, progression/src/learn_orders.rs:30-39, orders/src/order_inputs.rs:317-324, production/src/production_orders.rs:73 — each resolves id → entity → query → `controls(owner)`. → A `TickCommand` method in `players` that yields the controlled entities.

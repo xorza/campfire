@@ -23,6 +23,7 @@ mod next_think;
 mod order_inputs;
 mod orders_action;
 mod orders_api;
+mod orders_effect;
 mod resetting;
 mod thinking;
 mod unit_order;

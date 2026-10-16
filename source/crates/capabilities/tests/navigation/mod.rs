@@ -1132,7 +1132,6 @@ fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
 fn every_navigation_type_is_state() {
     let mut game = walk_match();
     let id = Navigation::unit(&mut game, (0, 0, 0), Some(Vec3::from((0, 0, 5))));
-    let entity = game.unit_entity(id);
     game.insert_parts(
         id,
         (
@@ -1140,8 +1139,12 @@ fn every_navigation_type_is_state() {
             OnPath::new(PathId::new(0)),
         ),
     );
-    let mut route = game.get_mut::<Route>(entity).unwrap();
-    route.ask(Vec3::from((3, 0, 4)), Tick::new(2), None);
+    let ask = RouteAsk {
+        goal: Vec3::from((3, 0, 4)),
+        tick: Tick::new(2),
+        party: None,
+    };
+    Navigation::ask_route(&mut game, id, ask);
     let lane = || Paths::new([("lane", &[Vec3::from((0, 0, 0)), Vec3::from((0, 0, 5))][..])]);
     Navigation::load_paths(&mut game, lane());
     // A restore loads the map first, as the packages give it.

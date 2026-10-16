@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_actions::{ActionProgress, SlotCharges, SlotTimes, TimedSlots};
 use campfire_common::Tick;
-use campfire_navigation::{Party, PartyKey};
+use campfire_navigation::{Party, PartyKey, Progress, RouteAsk};
 use campfire_orders::NextThink;
 use campfire_production::{Gatherer, NodeAt};
 use campfire_progression::{LevelUp, LevelUps};
@@ -386,7 +386,13 @@ fn a_restore_keeps_each_time_within_the_limit() {
         attackers.record(unit, at, game.resource::<EntityIndex>());
         assert_eq!(Match::decodes(&attackers), holds, "{at}");
         let mut route = game.get::<Route>(grunt).unwrap().clone();
-        route.ask(game.get::<Position>(grunt).unwrap().get(), at, None);
+        let goal = game.get::<Position>(grunt).unwrap().get();
+        let ask = RouteAsk {
+            goal,
+            tick: at,
+            party: None,
+        };
+        route.ask(ask, &mut Progress::default());
         assert_eq!(Match::decodes(&route), holds, "{at}");
     }
 }
@@ -585,9 +591,11 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
         let started = dash(DashTo::Unit(id), Some(start(point)));
         assert_eq!(started.check(&game, grunt), holds);
         let mut route = game.get::<Route>(grunt).unwrap().clone();
-        route.ask(point, Tick::new(0), None);
+        let tick = Tick::new(0);
+        let ask = |goal, party| RouteAsk { goal, tick, party };
+        route.ask(ask(point, None), &mut Progress::default());
         assert_eq!(route.check(&game, grunt), holds, "{point:?}");
-        route.ask(at, Tick::new(0), Some(party(point)));
+        route.ask(ask(at, Some(party(point))), &mut Progress::default());
         assert_eq!(route.check(&game, grunt), holds, "{point:?}");
         let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
         let mut progress = ActionProgress::default();

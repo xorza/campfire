@@ -111,7 +111,12 @@ impl StatsApi {
                 "ends the modifier, projectile or area at once",
             ),
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(StatsEffect::removing(&handle)),
-        );
+        )
+        .plan(call(
+            "purge",
+            &[&["unit", "tag"]],
+            "ends every modifier on `unit` that grants `tag`",
+        ));
         api.hook(Hook::OnInterval, Status::Runs(ApiVersion::FIRST))
             .tag_property(TagProperty::Immune, Status::Runs(ApiVersion::FIRST));
         api.data::<ModifierData>(

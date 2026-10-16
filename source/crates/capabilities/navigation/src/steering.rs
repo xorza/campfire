@@ -226,6 +226,8 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
+    use crate::progress::Progress;
+    use crate::route::RouteAsk;
     use crate::terrain::Terrain;
     use crate::walker_kinds::WalkerKinds;
 
@@ -274,7 +276,12 @@ mod tests {
         steering.read(&statics, [still]);
         let goal = eighths(64, 0);
         let mut route = Route::default();
-        route.ask(goal, Tick::new(0), None);
+        let ask = RouteAsk {
+            goal,
+            tick: Tick::new(0),
+            party: None,
+        };
+        route.ask(ask, &mut Progress::default());
         route.answer(eighths(7, 0), &[goal], true);
         let steered = Steered {
             id,
@@ -313,7 +320,12 @@ mod tests {
         };
         let goal = eighths(48, 0);
         let mut route = Route::default();
-        route.ask(goal, Tick::new(0), None);
+        let ask = RouteAsk {
+            goal,
+            tick: Tick::new(0),
+            party: None,
+        };
+        route.ask(ask, &mut Progress::default());
         route.answer(eighths(0, 0), &[goal], true);
         let detours = [true, false].map(|gathering| {
             let mut planner = RoutePlanner::new(&cells);

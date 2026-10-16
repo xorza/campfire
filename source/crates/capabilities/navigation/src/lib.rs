@@ -77,7 +77,7 @@ pub use crate::path_walker::{PathEnd, PathWalker};
 pub use crate::paths::Paths;
 pub use crate::progress::Progress;
 pub use crate::room_making::{RoomMaking, RoomMakingRun};
-pub use crate::route::Route;
+pub use crate::route::{Route, RouteAsk};
 pub use crate::route_planner::RoutePlanner;
 pub use crate::routing::Routing;
 pub use crate::segment::Segment;
@@ -284,6 +284,7 @@ pub mod internals {
     use campfire_declare::Book;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::Num;
+    use campfire_sim::{SimWorld, StableId};
     use campfire_units::{Destination, MoveStep};
 
     use crate::Navigation;
@@ -292,7 +293,7 @@ pub mod internals {
     use crate::pathing_grid::PathingGrid;
     use crate::paths::Paths;
     use crate::progress::Progress;
-    use crate::route::Route;
+    use crate::route::{Route, RouteAsk};
     use crate::walker::Walker;
     use crate::walker_kinds::WalkerKinds;
     use crate::wall::Wall;
@@ -307,6 +308,16 @@ pub mod internals {
                 Route::default(),
                 Progress::default(),
             )
+        }
+
+        /// Asks the route `ask` names for the walker `id`, with its progress.
+        pub fn ask_route(world: &mut World, id: StableId, ask: RouteAsk) {
+            let entity = world.entity_of(id).expect("a walker of the match");
+            let mut unit = world.entity_mut(entity);
+            let (mut route, mut progress) = unit
+                .get_components_mut::<(&mut Route, &mut Progress)>()
+                .expect("a walker has a route and its progress");
+            route.ask(ask, &mut progress);
         }
 
         /// Whether the pathing grid of `world` holds the cell at `cell` open to `walker`.

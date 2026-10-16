@@ -73,6 +73,23 @@ impl ModeApi {
                 &[&["region"]],
                 "builds the map's region `region` through `on_generate`",
             ))
+            .plan(
+                MemberSpec::call(
+                    "quest_stage",
+                    &[&["player", "id", "stage"]],
+                    "sets the stage of `player`'s quest `id`",
+                )
+                .capability(Capability::Quests),
+            )
+            .plan(
+                MemberSpec::call(
+                    "quest",
+                    &[&["player", "id"]],
+                    "the stage of `player`'s quest `id`, `()` before it starts",
+                )
+                .capability(Capability::Quests),
+            )
+            .plan_hook(Hook::OnStageDone, Capability::Quests)
             .shared_data(
                 DataTable::Mode,
                 &[

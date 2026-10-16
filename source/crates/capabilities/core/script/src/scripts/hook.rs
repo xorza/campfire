@@ -31,6 +31,7 @@ campfire_common::enum_all! {
         OnLevelUp,
         OnGenerate,
         OnSystem,
+        OnStageDone,
     }
     pub const ALL;
 }
@@ -71,6 +72,7 @@ impl Hook {
             Self::OnLevelUp => "on_level_up",
             Self::OnGenerate => "on_generate",
             Self::OnSystem => "on_system",
+            Self::OnStageDone => "on_stage_done",
         }
     }
 
@@ -95,6 +97,7 @@ impl Hook {
             Self::OnModeInput => &["ctx", "player", "name", "value"],
             Self::OnUnitDied => &["ctx", "unit", "killer", "assisters"],
             Self::OnLevelUp => &["ctx", "unit", "track", "level"],
+            Self::OnStageDone => &["ctx", "player", "quest", "stage"],
         }
     }
 
@@ -126,7 +129,8 @@ impl Hook {
             | Self::CalcHeal
             | Self::OnLevelUp
             | Self::OnGenerate
-            | Self::OnSystem => ScriptRole::Mode,
+            | Self::OnSystem
+            | Self::OnStageDone => ScriptRole::Mode,
             Self::OnThink => ScriptRole::Ai,
         }
     }

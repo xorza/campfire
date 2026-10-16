@@ -11,7 +11,7 @@ use crate::body_index::{BodyIndex, IndexedBody};
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::Route;
+use crate::route::{Route, RouteAsk};
 use crate::static_bodies::StaticBodies;
 use crate::walker::Walker;
 
@@ -99,21 +99,23 @@ impl StaticTracking {
         let opened = !statics.removed().is_empty();
         let added = !statics.added().is_empty();
         for (mut destination, mut route, mut progress, body, path) in walkers.iter_mut() {
-            let party = |goal| path?.party(goal);
+            let ask = |goal| RouteAsk {
+                goal,
+                tick: now,
+                party: path.and_then(|path| path.party(goal)),
+            };
             match destination.get() {
                 None if opened && route.arrived_short() => {
                     let goal = route.goal().expect("a route that arrived short has a goal");
                     destination.set_if_neq(Destination::to(Some(goal)));
-                    route.ask(goal, now, party(goal));
-                    progress.restart();
+                    route.ask(ask(goal), &mut progress);
                 }
                 Some(goal) if route.goal() == Some(goal) && route.asked().is_none() => {
                     let walker = Walker::walking(body);
                     let blocked =
                         added && route.legs().any(|leg| statics.added_blocks(leg, walker));
                     if blocked || (opened && !route.reached()) {
-                        route.ask(goal, now, party(goal));
-                        progress.restart();
+                        route.ask(ask(goal), &mut progress);
                     }
                 }
                 _ => {}

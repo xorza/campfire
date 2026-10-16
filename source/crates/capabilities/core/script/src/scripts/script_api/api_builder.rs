@@ -242,6 +242,16 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
+    /// Records `hook` as planned, of `capability`, whose module does not bind yet.
+    pub fn plan_hook(&mut self, hook: Hook, capability: Capability) -> &mut Self {
+        self.api.record_hook(HookStatus {
+            hook,
+            status: Status::Planned,
+            capability: Some(capability),
+        });
+        self
+    }
+
     /// Records whether the release honours `property`, as the code that honours it says.
     pub fn tag_property(&mut self, property: TagProperty, status: Status) -> &mut Self {
         self.api.record_tag_property(property, status);

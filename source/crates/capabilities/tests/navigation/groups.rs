@@ -66,8 +66,15 @@ const fn ordered(goal: Vec3) -> Party {
 /// A walker of no body at `pos` that asks in tick 0 for its route to `goal` as one of `party`.
 fn member(game: &mut Match, pos: Vec3, goal: Vec3, party: Party) -> StableId {
     let id = Navigation::unit(game, pos, Some(goal));
-    game.part_mut::<Route>(id)
-        .ask(goal, Tick::new(0), Some(party));
+    Navigation::ask_route(
+        game,
+        id,
+        RouteAsk {
+            goal,
+            tick: Tick::new(0),
+            party: Some(party),
+        },
+    );
     id
 }
 
@@ -137,16 +144,37 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
     let mut game = walled(&[]);
     let goal = Vec3::from((8, 0, 1));
     let early = Navigation::unit(&mut game, (2, 0, 1), Some(Vec3::from((9, 0, 5))));
-    game.part_mut::<Route>(early)
-        .ask(Vec3::from((9, 0, 5)), Tick::new(0), None);
+    Navigation::ask_route(
+        &mut game,
+        early,
+        RouteAsk {
+            goal: Vec3::from((9, 0, 5)),
+            tick: Tick::new(0),
+            party: None,
+        },
+    );
     *game.part_mut::<Destination>(early) = Destination::to(Some(goal));
     let party = ordered(goal);
-    game.part_mut::<Route>(early)
-        .ask(goal, Tick::new(3), Some(party));
+    Navigation::ask_route(
+        &mut game,
+        early,
+        RouteAsk {
+            goal,
+            tick: Tick::new(3),
+            party: Some(party),
+        },
+    );
     assert_eq!(game.part::<Route>(early).asked(), Some(Tick::new(0)));
     let late = Navigation::unit(&mut game, (3, 0, 1), Some(goal));
-    game.part_mut::<Route>(late)
-        .ask(goal, Tick::new(3), Some(party));
+    Navigation::ask_route(
+        &mut game,
+        late,
+        RouteAsk {
+            goal,
+            tick: Tick::new(3),
+            party: Some(party),
+        },
+    );
     game.step();
     assert_eq!(route_searches(&game), 1);
     for id in [early, late] {
@@ -189,8 +217,15 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
     let body = BodyForm::circle(Num::QUARTER).unwrap().on(AIR);
     let air = [1, 2].map(|z| {
         let id = Navigation::body_on(&mut game, (2, 0, z), Some(goal), Some(Num::ONE), body);
-        game.part_mut::<Route>(id)
-            .ask(goal, Tick::new(0), Some(party));
+        Navigation::ask_route(
+            &mut game,
+            id,
+            RouteAsk {
+                goal,
+                tick: Tick::new(0),
+                party: Some(party),
+            },
+        );
         id
     });
     game.step();

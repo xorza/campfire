@@ -46,6 +46,14 @@ struct Ask {
     party: Option<Party>,
 }
 
+/// A walker's ask for a route: to `goal`, in `tick`, as one of `party` when it has one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RouteAsk {
+    pub goal: Vec3,
+    pub tick: Tick,
+    pub party: Option<Party>,
+}
+
 impl Route {
     pub fn goal(&self) -> Option<Vec3> {
         self.goal.map(|goal| goal.pos)
@@ -72,24 +80,30 @@ impl Route {
             && self.ahead().is_empty()
     }
 
-    /// Asks the planner in `tick` for a route to `goal`, as one of `party` when it has one; the
-    /// walker keeps to the route it has until the planner answers. An ask while one waits changes
-    /// the goal and the party and keeps the first tick, so a walker whose goal moves each tick
-    /// keeps its place among the routes that wait.
-    pub fn ask(&mut self, goal: Vec3, tick: Tick, party: Option<Party>) {
+    /// Asks the planner for the route `ask` names, and forgets the walker's `progress` along the
+    /// route it had; the walker keeps to that route until the planner answers. An ask while one
+    /// waits changes the goal and the party and keeps the first tick, so a walker whose goal moves
+    /// each tick keeps its place among the routes that wait.
+    pub fn ask(&mut self, ask: RouteAsk, progress: &mut Progress) {
+        let RouteAsk { goal, tick, party } = ask;
         let tick = self.asked().unwrap_or(tick);
         self.goal = Some(Goal {
             pos: goal,
             asked: Some(Ask { tick, party }),
         });
+        progress.restart();
     }
 
-    /// Asks in `tick` for a route to `goal` again, if there is one, and forgets `progress`: a
-    /// unit a forced move left elsewhere walks to it from there.
+    /// Asks in `tick` for a route to `goal` again, if there is one, as `ask` does: a unit a forced
+    /// move left elsewhere walks to it from there.
     pub(crate) fn ask_again(&mut self, goal: Option<Vec3>, progress: &mut Progress, tick: Tick) {
         if let Some(goal) = goal {
-            self.ask(goal, tick, None);
-            progress.restart();
+            let ask = RouteAsk {
+                goal,
+                tick,
+                party: None,
+            };
+            self.ask(ask, progress);
         }
     }
 
@@ -252,14 +266,20 @@ pub(crate) mod internals {
     use campfire_common::Tick;
     use campfire_math::Vec3;
 
-    use crate::route::Route;
+    use crate::progress::Progress;
+    use crate::route::{Route, RouteAsk};
 
     impl Route {
         /// The route to `goal` that the planner gave from `from` by `waypoints`, the last the
         /// goal: for a test that holds a route no plan of its match would give.
         pub fn planned(goal: Vec3, from: Vec3, waypoints: &[Vec3]) -> Self {
             let mut route = Self::default();
-            route.ask(goal, Tick::new(0), None);
+            let ask = RouteAsk {
+                goal,
+                tick: Tick::new(0),
+                party: None,
+            };
+            route.ask(ask, &mut Progress::default());
             route.answer(from, waypoints, waypoints.last() == Some(&goal));
             route
         }
@@ -283,7 +303,12 @@ mod tests {
         assert_eq!(legs(&route), []);
         // From (0, 0), to (0, 0) again, then (4, 0), then (4, −3): the leg of no length is passed
         // over, so the way is along `x`, 0°. Its legs are its own three.
-        route.ask(at(4, -3), Tick::new(0), None);
+        let ask = RouteAsk {
+            goal: at(4, -3),
+            tick: Tick::new(0),
+            party: None,
+        };
+        route.ask(ask, &mut Progress::default());
         route.answer(at(0, 0), &[at(0, 0), at(4, 0), at(4, -3)], true);
         assert_eq!(degrees(&route), Some(Num::ZERO));
         let leg = |from, to| Segment::new(from, to);
@@ -315,7 +340,12 @@ mod tests {
     #[test]
     fn a_route_of_waypoints_ahead_and_no_leg_start_does_not_decode() {
         let mut route = Route::default();
-        route.ask(Vec3::from((1, 0, 0)), Tick::new(0), None);
+        let ask = RouteAsk {
+            goal: Vec3::from((1, 0, 0)),
+            tick: Tick::new(0),
+            party: None,
+        };
+        route.ask(ask, &mut Progress::default());
         route.answer(Vec3::from((0, 0, 0)), &[Vec3::from((1, 0, 0))], true);
         assert_eq!(
             Binary::decode::<Route>(&Binary::encode(&route)).ok(),

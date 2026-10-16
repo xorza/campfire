@@ -1,20 +1,16 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::query::QueryData;
-use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, SlotTimes};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{Party, PathWalker, Progress, Route};
+use campfire_navigation::{Party, PathWalker, Progress, Route, RouteAsk};
 use campfire_production::{
     BuildOrder, BuildTarget, Builder, GatherOrder, GatherStep, Gatherer, NodeAt,
 };
-use campfire_script::{Effect, Frame};
-use campfire_sim::{Position, SimWorld, StableId};
-use campfire_units::{Destination, MapBook, SpawnPoint};
+use campfire_sim::{Position, StableId};
+use campfire_units::{Destination, SpawnPoint};
 use campfire_values::ActionId;
-
-use crate::resetting::Resetting;
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
 /// bot's input, or an order an AI call queued for the unit that thinks.
@@ -71,34 +67,9 @@ pub struct OrderedUnit {
     pub(crate) gatherer: Option<&'static mut Gatherer>,
 }
 
-/// For the unit that thinks in the call, which checked the order against the units as the phase
-/// began; no unit dies within Think. A unit that resets takes none, and a reset marks the unit
-/// as resetting until it is home.
-impl Effect for UnitOrder {
-    fn apply(self, world: &mut World, frame: &mut Frame) {
-        let now = frame.now();
-        let id = frame
-            .acting()
-            .expect("an order comes from the unit that thinks");
-        let entity = world.entity_of(id).expect("a unit that thinks lives");
-        let bounds = world.resource::<MapBook>().bounds;
-        let mut unit = world.entity_mut(entity);
-        if unit.contains::<Resetting>() {
-            return;
-        }
-        let parts = unit
-            .get_components_mut::<OrderedUnit>()
-            .expect("an ordered unit stands");
-        self.apply(parts, &bounds, now);
-        if self == Self::Reset {
-            unit.insert(Resetting);
-        }
-    }
-}
-
 impl UnitOrder {
-    /// Applies the order, which its source checked, to `unit`, within `bounds`, in `now`: every
-    /// order of every source applies here. A move or a reset drops the unit's target and leaves its
+    /// Gives the order, which its source checked, to `unit`, within `bounds`, in `now`: every
+    /// order of every source is given here. A move or a reset drops the unit's target and leaves its
     /// path until it is told to follow it again; a move's point clamps to the bounds, and a slot's
     /// point to the ground within them, at the unit's height. A group's move asks for its route at
     /// once, as one of its party. An attack on another target cancels one in its windup; a slot's
@@ -109,7 +80,7 @@ impl UnitOrder {
     /// order, its point taken into the bounds, and a gather its gather loop, each dropping the
     /// target and the destination; every other order ends both. Every order cuts a channel and ends
     /// a cast that walks in range, with its walk, and an attack cancels a charge.
-    pub fn apply(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) {
+    pub fn give(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) {
         let OrderedUnitItem {
             pos: &at,
             spawn,
@@ -200,12 +171,16 @@ impl UnitOrder {
         if let Some(mut destination) = destination {
             destination.set_if_neq(Destination::to(to));
         }
-        if let (Self::Move { party, .. }, Some(to), Some(mut route), Some(mut progress)) =
+        if let (Self::Move { party, .. }, Some(goal), Some(mut route), Some(mut progress)) =
             (self, to, route, progress)
             && party.is_some()
         {
-            route.ask(to, now, party);
-            progress.restart();
+            let ask = RouteAsk {
+                goal,
+                tick: now,
+                party,
+            };
+            route.ask(ask, &mut progress);
         }
     }
 

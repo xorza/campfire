@@ -79,3 +79,19 @@
 | C. A match-wide table of texts | `StateValue::Text` holds an index into a table of each text as both types | The table grows with every distinct text a script makes, and is state a snapshot must hold, in a fixed order |
 
 **Blocked.** Item 6 alone.
+
+## Batch 20, item 2: orders asks other capabilities through contract parts (orders, navigation, production, units)
+
+**Item.** The orders effect writes navigation's `Route`, `Progress` and `PathWalker`, and production's `Builder` and `Gatherer`. The item asks that orders ask for this work through contract parts of `units`. Its other parts are done: the effect is `OrdersEffect`, `UnitOrder::apply` is `UnitOrder::give`, and `Route::ask` takes a `RouteAsk` and restarts the walker's `Progress`.
+
+**Why it needs a decision.** Design 02, Contracts, says that "`orders` keeps its dependency on `production`, whose build and gather orders a unit takes". So the design allows the production writes that the item removes. A contract part also moves each write from the order's effect to a system of its owner, which must run between the orders' stage and the first read, or the goldens move.
+
+**Options.**
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| A. Contracts for navigation alone (recommended) | `units` gains a path order (leave or rejoin) and a group ask on `Destination`, which navigation pursues; production's orders stay, as design 02 says | A design step for navigation's two parts, and a check that no golden moves |
+| B. Contracts for both | Production's `Builder` and `Gatherer` take their orders from a part of `units` too; design 02's sentence changes | Two more parts and systems, and the same check |
+| C. Keep the writes | Orders writes the parts as now | The Direction's contract rule stays broken for navigation |
+
+**Blocked.** The contract part of item 2 alone.

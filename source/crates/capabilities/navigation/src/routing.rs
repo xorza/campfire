@@ -10,7 +10,7 @@ use crate::body_index::BodyIndex;
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::Route;
+use crate::route::{Route, RouteAsk};
 use crate::route_asks::{Ask, AskingUnits, Member, RouteAsks};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
@@ -93,8 +93,12 @@ impl Routing {
                     {
                         route.move_goal(goal);
                     } else {
-                        route.ask(goal, now, path.and_then(|path| path.party(goal)));
-                        progress.restart();
+                        let ask = RouteAsk {
+                            goal,
+                            tick: now,
+                            party: path.and_then(|path| path.party(goal)),
+                        };
+                        route.ask(ask, &mut progress);
                     }
                 }
             }
