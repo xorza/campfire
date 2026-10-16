@@ -17,7 +17,7 @@ use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{BodyUnit, Dead, Player, SpawnHooks};
+use campfire_units::{BodyUnit, Dead, Owner, Player, SpawnHooks};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
 use crate::application::{Adding, ApplyAt};
@@ -222,6 +222,9 @@ impl Module for Stats {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<StatsSet>();
+        d.removals::<Dead>();
+        d.removals::<Modifiers>();
+        d.removals::<Owner>();
         d.component::<PlayerModifiers>();
         d.component::<Level>();
         d.component::<Modifiers>();

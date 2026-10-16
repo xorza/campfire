@@ -1,8 +1,7 @@
 use bevy_ecs::change_detection::{DetectChanges, Mut, Ref};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{DueRun, SimTick, StableId, TickClock, Unpredicted};
+use campfire_sim::{DueRun, Removals, SimTick, StableId, TickClock, Unpredicted};
 use campfire_stats::{
     Grant, GrantFrom, Grants, Hold, ModifierBook, ModifierParams, Modifiers, StatBook,
 };
@@ -29,7 +28,7 @@ impl Holds {
         actions: Res<'_, ActionBook>,
         tick: Res<'_, SimTick>,
         mut units: Query<'_, '_, (Entity, Ref<'_, ActionSlots>, &mut SlotTimes)>,
-        mut returned: RemovedComponents<'_, '_, Unpredicted>,
+        mut returned: Removals<'_, '_, Unpredicted>,
         (mut due, mut visits, mut charges): (
             Local<'_, DueRun>,
             Local<'_, Vec<Entity>>,

@@ -11,7 +11,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_sim::Capability;
+use campfire_sim::{Capability, Unpredicted};
 use campfire_stats::ParamBook;
 use campfire_units::BodyUnit;
 
@@ -210,6 +210,7 @@ impl Module for Actions {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ActionsSet>();
+        d.removals::<Unpredicted>();
         d.component::<ActionSlots>();
         d.component::<ActionProgress>();
         d.component::<SlotTimes>();

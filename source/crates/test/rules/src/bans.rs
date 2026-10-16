@@ -480,3 +480,48 @@ fn the_ban_checks_fail_on_what_breaks_them() {
         assert_eq!(misplaced_exemptions(path, &text), lines, "{text}");
     }
 }
+
+/// The crates whose code a tick runs, where a removal reaches its reader through `Removals` alone
+/// (02-engine-core.md, A tick's removals are the tick's).
+const TICK_CRATES: [&str; 2] = ["crates/sim/", "crates/capabilities/"];
+
+/// The line of each place where the code of `text` that every build holds, not a comment nor a
+/// test module, names Bevy's `RemovedComponents`.
+fn app_removals(text: &str) -> Vec<usize> {
+    let built = text
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(text);
+    (1..)
+        .zip(built.lines())
+        .filter(|(_, line)| {
+            let code = line.split_once("//").map_or(*line, |(code, _)| code);
+            code.contains("RemovedComponents")
+        })
+        .map(|(at, _)| at)
+        .collect()
+}
+
+#[test]
+fn no_tick_reads_removals_that_age_with_the_app() {
+    let found: Vec<String> = sources()
+        .iter()
+        .filter(|file| file.gate.is_none())
+        .filter(|file| TICK_CRATES.iter().any(|dir| file.path.starts_with(dir)))
+        .flat_map(|file| {
+            app_removals(&file.text)
+                .into_iter()
+                .map(move |line| format!("{}:{line}", file.path))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+    // A reader in code is found; a mention in a comment, and a test's reader, are not.
+    let sample = concat!(
+        "/// Unlike `RemovedComponents`.\n",
+        "fn f(gone: RemovedComponents<'_, '_, A>) {} // here\n",
+        "\n#[cfg(test)]\nmod tests {\n",
+        "    fn g(gone: RemovedComponents<'_, '_, A>) {}\n",
+        "}\n",
+    );
+    assert_eq!(app_removals(sample), [2]);
+}

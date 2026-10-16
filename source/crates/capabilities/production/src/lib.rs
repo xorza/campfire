@@ -15,8 +15,8 @@ use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
 use campfire_sim::Capability;
-use campfire_units::{BodyUnit, Player};
-use campfire_values::{Block, EngineTag, TagProperties};
+use campfire_units::{BodyUnit, Dead, Owner, Player};
+use campfire_values::{Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 use crate::holdings::Holdings;
@@ -134,6 +134,12 @@ impl Module for Production {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<ProductionSet>();
+        d.removals::<Dead>();
+        d.removals::<Gatherer>();
+        d.removals::<Owner>();
+        d.removals::<Site>();
+        d.removals::<TrainQueue>();
+        d.removals::<UnitType>();
         d.engine_tags(&[
             Self::CONSTRUCTING,
             Self::NODE,

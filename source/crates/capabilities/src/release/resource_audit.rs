@@ -5,6 +5,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
+use bevy_ecs::message::Messages;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
@@ -14,7 +15,9 @@ use campfire_declare::{
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ScriptBudgets, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, SimWorldBuilder};
+use campfire_sim::{
+    Breach, Capability, HostRule, Removed, SimComponent, SimResource, SimWorldBuilder,
+};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_units::EntityKinds;
 use campfire_values::EngineTag;
@@ -168,6 +171,10 @@ impl Declarations for DeclaredResources {
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 
     fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
+
+    fn removals<C: Component>(&mut self) {
+        self.ids.push(TypeId::of::<Messages<Removed<C>>>());
+    }
 
     fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {
         self.ids.push(TypeId::of::<R>());

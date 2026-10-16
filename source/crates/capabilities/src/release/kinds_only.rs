@@ -84,6 +84,8 @@ impl<V: KindVisitor> Declarations for KindsOnly<'_, V> {
 
     fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
 
+    fn removals<C: Component>(&mut self) {}
+
     fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {}
 
     fn non_send_loaded<R: 'static>(&mut self) {}

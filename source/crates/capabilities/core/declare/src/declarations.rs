@@ -94,6 +94,10 @@ pub trait Declarations: StateTypes + KindVisitor {
     /// `observer`, which runs as each event `E` of `B` reaches it.
     fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>);
 
+    /// The removals of `C`, which a system of the module reads through `Removals<C>`, recorded as
+    /// each happens and aged by the tick, alike on every host.
+    fn removals<C: Component>(&mut self);
+
     /// `system`, which the module runs out of the schedule, by the id `R` keeps.
     fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static);
 

@@ -1,6 +1,5 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::{Added, Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
 use bevy_ecs::world::{Mut, World};
@@ -8,7 +7,9 @@ use campfire_actions::{ActionBook, ActionSlots, KindSpec};
 use campfire_declare::RoleForm;
 use campfire_navigation::Navigation;
 use campfire_players::PlayersWorld;
-use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
+use campfire_sim::{
+    EntityIndex, Keyed, Ordered, Position, Removals, SimTick, StableId, Unpredicted,
+};
 use campfire_units::{ArrivedShort, Body, Dead, Destination, Owner, StatusTags};
 use campfire_values::{Team, UnitTags};
 
@@ -49,7 +50,7 @@ pub(super) type Worker = (
 /// workers whose loop another system changed, and those that went.
 pub(super) type LeftWorkers<'w, 's> = (
     Query<'w, 's, (), Changed<Gatherer>>,
-    RemovedComponents<'w, 's, Gatherer>,
+    Removals<'w, 's, Gatherer>,
 );
 
 /// The living units that gather, which the loop visits and a freed node's waiting workers are

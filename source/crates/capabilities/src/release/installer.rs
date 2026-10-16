@@ -14,7 +14,8 @@ use campfire_declare::{
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, Ctx, RowReads, ViewColumn};
 use campfire_sim::{
-    Breach, Capability, HostRule, SimComponent, SimEdge, SimResource, SimSet, StateRegistry,
+    Breach, Capability, HostRule, Removals, SimComponent, SimEdge, SimResource, SimSet,
+    StateRegistry,
 };
 use campfire_state_types::{Replication, StateTypes};
 use campfire_units::{EntityKinds, ViewReader};
@@ -202,6 +203,10 @@ impl Declarations for Installer<'_> {
 
     fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>) {
         self.world.add_observer(observer);
+    }
+
+    fn removals<C: Component>(&mut self) {
+        Removals::<C>::track(self.world, self.schedule);
     }
 
     fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static) {

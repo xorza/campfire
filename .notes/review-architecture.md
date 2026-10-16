@@ -629,7 +629,7 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 1: the crash and the divergence
 
-**1.1 Transport bounds.**
+**1.1 Transport bounds.** Waits for Q1 in `review-architecture_QUESTIONS.md`: the fix goes in the Lightyear fork.
 - **Touches:** the Lightyear fork's transport crate, `net_protocol` and 05-protocol-spec.md.
 - **Why first:** one datagram stops the server.
 - **Steps:**
@@ -637,15 +637,6 @@ Each change folds into its document when its batch lands. Each line names the de
   2. Each registered message declares its largest encoding. The fork refuses a fragment count past that bound before it allocates, caps the half-built messages for each channel and link, and expires them on reliable channels (N-1).
   3. A link carries only the join channel, with a window of one, until it joins (N-2).
 - **Format:** the network protocol's version rises.
-
-**1.2 Removals held by the tick.**
-- **Touches:** `actions` (holds), `navigation` (routing), `production` (player supply, gather loop), `stats` (aura carriers, player grants, refresh), `rules`.
-- **Why here:** a valid session can fail its verification.
-- **Steps:**
-  1. A harness test runs several server frames for each tick and compares the server's state hashes with the replay's after a lifespan's despawn and a death (E-1).
-  2. Each reader takes its removals through an `On<Remove, C>` observer into a declared scratch.
-  3. A `rules` test bans `RemovedComponents` in the sim's and the capabilities' crates.
-- **Goldens:** none move, because goldens come from replays.
 
 ### Phase 2: confirmed bugs
 
@@ -1034,7 +1025,7 @@ All 16 items of `.notes/ISSUES.md` are still true at HEAD (A8). This plan takes 
 | Item | Takes it |
 | --- | --- |
 | Mode, the pool of `on_mode_input` (Decide) | D32, then 8.2 |
-| Stats, `Unpredicted` change ticks (Research) | 1.2: E-1 is a cause, the client's aging of removals for each frame |
+| Stats, `Unpredicted` change ticks (Research) | Stays in Research. The removals of `Unpredicted` now reach their readers by the tick (E-1, fixed); the change ticks that a hidden unit keeps are its open part. |
 | Server, a restore keeps its visibility (Ready) | 6.2 |
 | Verifier, no replay from `LogCarry` (Ready) | A planned item of design. It goes to PLAN.md as its own step after 6.4. |
 | Mode, a spatial map's heights unread (Ready) | Its own decision: refuse at the load, or read in the sim. With A-12 in 2.4, the client is ready for either. |
@@ -1055,7 +1046,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
-| E-1 | Removal messages age for each app frame on the server and the client, and for each tick in a replay. A removal after its reader runs is lost on the server. | `holds.rs:32`, `player_supply.rs:83-87`, `aura_carriers.rs:34-41`, `sim_world.rs:76-79`, `session_world.rs:131-133`, `bevy_app sub_app.rs:157` | Checked mechanism. The divergence is plausible. | 1.2 |
 | E-2 | A `Restoring` world flag switches hooks into a trusting mode that each hook must remember | `restoring.rs:1-7`, `entity_kinds.rs:38`, `level.rs:59` | Confirmed | 7.5 |
 | E-3 | `Phase` names 44 steps of named capabilities and chains them into one total order | `declare/src/phase.rs:10-81` | Confirmed | 4.2 |
 | E-4 | About 90 functions take `&mut World`, so the tick is bound to one thread whatever the executor | `damage_pass.rs:103-124`, `attacks.rs:262`, `trains.rs:194` | Confirmed | 11.1 |

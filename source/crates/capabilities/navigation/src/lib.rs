@@ -16,8 +16,8 @@ use campfire_actions::EffectQueues;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, SimEdge, SimSet};
-use campfire_units::{BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
+use campfire_sim::{Capability, SimEdge, SimSet, Unpredicted};
+use campfire_units::{BodyUnit, Dead, Destination, MoveStep, SpawnHooks, UnitTracker};
 
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
@@ -165,6 +165,8 @@ impl Module for Navigation {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<NavigationSet>();
+        d.removals::<Dead>();
+        d.removals::<Unpredicted>();
         d.callback::<SpawnHooks>(Capability::Navigation, Self::make_room);
         d.component::<PathWalker>();
         d.component::<OnPath>();

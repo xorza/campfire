@@ -1,10 +1,9 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, StableId, TickRate, Unpredicted};
+use campfire_sim::{EntityIndex, Removals, StableId, TickRate, Unpredicted};
 use campfire_units::{Dead, MoveStep, StatusTags, TagEffect, TurnStep};
 use campfire_values::{NameId, UnitTags, UnitType};
 
@@ -92,7 +91,7 @@ impl Refresh {
                 Query<'_, '_, &mut Modifiers>,
             ),
         >,
-        mut revived: RemovedComponents<'_, '_, Dead>,
+        mut revived: Removals<'_, '_, Dead>,
         mut scratch: Local<'_, RefreshScratch>,
         mut visits: Local<'_, Vec<Entity>>,
     ) {

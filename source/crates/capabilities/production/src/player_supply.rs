@@ -1,13 +1,10 @@
-use std::fmt;
-
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::{Added, Changed, Or};
 use bevy_ecs::system::{Local, Query, Res, SystemParam};
 use bevy_ecs::world::World;
-use campfire_sim::SimComponent;
+use campfire_sim::{Removals, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::{Dead, Owner, Player};
 use campfire_values::UnitType;
@@ -63,9 +60,8 @@ impl PlayerSupply {
 }
 
 /// What changes a player's supply: a unit's owner, type or queue that changed, or one that died,
-/// came back, became a site or completed, or went; and a player that joined. No `Debug`:
-/// `RemovedComponents` has none.
-#[derive(SystemParam)]
+/// came back, became a site or completed, or went; and a player that joined.
+#[derive(SystemParam, Debug)]
 pub(super) struct SupplyChanges<'w, 's> {
     changed: Query<
         'w,
@@ -80,17 +76,11 @@ pub(super) struct SupplyChanges<'w, 's> {
         )>,
     >,
     players: Query<'w, 's, (), Added<Player>>,
-    lived: RemovedComponents<'w, 's, Dead>,
-    completed: RemovedComponents<'w, 's, Site>,
-    unowned: RemovedComponents<'w, 's, Owner>,
-    untyped: RemovedComponents<'w, 's, UnitType>,
-    unqueued: RemovedComponents<'w, 's, TrainQueue>,
-}
-
-impl fmt::Debug for SupplyChanges<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SupplyChanges").finish_non_exhaustive()
-    }
+    lived: Removals<'w, 's, Dead>,
+    completed: Removals<'w, 's, Site>,
+    unowned: Removals<'w, 's, Owner>,
+    untyped: Removals<'w, 's, UnitType>,
+    unqueued: Removals<'w, 's, TrainQueue>,
 }
 
 impl SupplyChanges<'_, '_> {

@@ -1,9 +1,8 @@
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{Position, SimTick, Unpredicted};
+use campfire_sim::{Position, Removals, SimTick, Unpredicted};
 use campfire_units::{Body, Dead, Destination};
 
 use crate::body_index::BodyIndex;
@@ -51,8 +50,8 @@ impl Routing {
             Without<Dead>,
         >,
         (mut lived, mut predicted, mut returned): (
-            RemovedComponents<'_, '_, Dead>,
-            RemovedComponents<'_, '_, Unpredicted>,
+            Removals<'_, '_, Dead>,
+            Removals<'_, '_, Unpredicted>,
             Local<'_, Vec<Entity>>,
         ),
     ) {

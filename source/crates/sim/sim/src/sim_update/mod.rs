@@ -53,15 +53,21 @@ pub enum SimEdge {
     After(SimSet),
 }
 
+/// The close of a tick, after its last gap: the tick advances, its inputs clear, and the records
+/// a tick keeps for the next age.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct TickEnd;
+
 impl SimUpdate {
     /// The schedule with no game systems yet: the stages in order, each with its `SimEdge` after
     /// it, and `SimEdge::Start` before the first. The tick's random sequences start before
-    /// `SimEdge::Start`; after `SimEdge::After(SimSet::Vision)` the tick advances and its inputs
-    /// are cleared, so an edge's systems read the tick's random sequences and inputs. It is a
-    /// `StrictSchedule`, so an ambiguity or a redundant edge fails every test that builds it, not
-    /// only as a log line of a running match. It runs on one thread whatever features the build turns on: a tick's systems are too small
-    /// to share, and Bevy's parallel executor, which its `multi_threaded` feature turns on
-    /// wherever a workspace build enables it, made a 3v3 tick cost 2.5 times as much.
+    /// `SimEdge::Start`; after `SimEdge::After(SimSet::Vision)`, in `TickEnd`, the tick advances,
+    /// its inputs are cleared and its removal records age, so an edge's systems read the tick's
+    /// random sequences and inputs. It is a `StrictSchedule`, so an ambiguity or a redundant edge
+    /// fails every test that builds it, not only as a log line of a running match. It runs on one
+    /// thread whatever features the build turns on: a tick's systems are too small to share, and
+    /// Bevy's parallel executor, which its `multi_threaded` feature turns on wherever a workspace
+    /// build enables it, made a 3v3 tick cost 2.5 times as much.
     pub(crate) fn schedule() -> Schedule {
         let mut schedule = StrictSchedule::of(Self);
         schedule.set_executor(SingleThreadedExecutor::new());
@@ -72,11 +78,11 @@ impl SimUpdate {
                 SimEdge::After(stages[0]).after(stages[0]).before(stages[1]),
             ));
         }
-        schedule.configure_sets(SimEdge::After(SimSet::Vision).after(SimSet::Vision));
-        schedule.add_systems((
-            start_tick.before(SimEdge::Start),
-            end_tick.after(SimEdge::After(SimSet::Vision)),
+        schedule.configure_sets((
+            SimEdge::After(SimSet::Vision).after(SimSet::Vision),
+            TickEnd.after(SimEdge::After(SimSet::Vision)),
         ));
+        schedule.add_systems((start_tick.before(SimEdge::Start), end_tick.in_set(TickEnd)));
         schedule
     }
 

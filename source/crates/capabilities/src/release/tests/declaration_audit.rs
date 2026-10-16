@@ -23,12 +23,13 @@ use campfire_declare::{
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
-use campfire_production::PlayerSupply;
+use campfire_production::{Gatherer, PlayerSupply, Site, TrainQueue};
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
+use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource, Unpredicted};
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
-use campfire_units::{BodyUnit, DeliveryEntity, Player, UnitEntity};
-use campfire_values::{EngineTag, NameId, TagProperties};
+use campfire_stats::Modifiers;
+use campfire_units::{BodyUnit, Dead, DeliveryEntity, Owner, Player, UnitEntity};
+use campfire_values::{EngineTag, NameId, TagProperties, UnitType};
 use campfire_vision::{SeenBy, VisionColumn};
 use serde::{Deserialize, Serialize};
 
@@ -118,6 +119,8 @@ struct DeclarationAudit {
     engine_tags: Vec<EngineTag>,
     /// Each observer, by its system's name.
     observers: Vec<String>,
+    /// Each part whose removals a module reads, by its type.
+    removals: Vec<Named>,
     /// Each system run out of the schedule, by the resource that keeps its id.
     one_shots: Vec<Named>,
     /// Each part a server's match derives: its holder, and its type.
@@ -428,6 +431,10 @@ impl Declarations for DeclarationAudit {
         self.observers.push(system.name().shortname().to_string());
     }
 
+    fn removals<C: Component>(&mut self) {
+        self.removals.push(Named::of::<C>());
+    }
+
     fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {
         self.one_shots.push(Named::of::<R>());
     }
@@ -473,6 +480,25 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "StaticBodies::state_inserted",
             "StaticBodies::state_removed",
             "Flying::lose_teleported",
+        ]
+    );
+    // The parts whose removals a module reads, which reach it as the tick ages them.
+    let removals: Vec<&str> = audit.removals.iter().map(|ty| ty.name).collect();
+    assert_eq!(
+        removals,
+        [
+            type_name::<Unpredicted>(),
+            type_name::<Dead>(),
+            type_name::<Modifiers>(),
+            type_name::<Owner>(),
+            type_name::<Dead>(),
+            type_name::<Unpredicted>(),
+            type_name::<Dead>(),
+            type_name::<Gatherer>(),
+            type_name::<Owner>(),
+            type_name::<Site>(),
+            type_name::<TrainQueue>(),
+            type_name::<UnitType>(),
         ]
     );
     let runs: Vec<&str> = audit.one_shots.iter().map(|ty| ty.name).collect();
