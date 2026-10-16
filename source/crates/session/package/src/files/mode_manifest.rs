@@ -1,13 +1,12 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::Release;
+use campfire_capabilities::{CapabilityError, Release};
 use campfire_common::Version;
 use campfire_declare::CapabilitySet;
 use campfire_mode::TeamManifest;
 use campfire_script::{ApiVersion, ScriptLimits};
 use campfire_sim::Capability;
 use campfire_values::Speed;
-use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::files::dependency::Dependency;
@@ -16,12 +15,14 @@ use crate::files::package_name::PackageName;
 use crate::files::tick_range::TickRange;
 use crate::language::Language;
 
-/// A mode's manifest: its header's fields, then the rules its matches run by, in one table.
+/// A mode's manifest: its header's fields, then the rules its matches run by, in one table. Its
+/// capabilities read as the list the file names, `C` a `Vec`, which `checked` makes a set the
+/// release builds.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModeManifest {
+pub struct ModeManifest<C = CapabilitySet> {
     pub header: PackageHeader,
     /// The capabilities its matches use; the release installs only these.
-    pub capabilities: CapabilitySet,
+    pub capabilities: C,
     pub tick_hz: TickRange,
     /// The playing teams, in order; their slots in that order make the player slots.
     pub teams: Vec<TeamManifest>,
@@ -32,6 +33,22 @@ pub struct ModeManifest {
     pub dependencies: BTreeMap<PackageName, Dependency>,
 }
 
+impl ModeManifest<Vec<Capability>> {
+    /// The manifest with its capabilities as their set; an error when they make none, as
+    /// `Release::capability_set` says.
+    pub(crate) fn checked(self) -> Result<ModeManifest, CapabilityError> {
+        Ok(ModeManifest {
+            header: self.header,
+            capabilities: Release::capability_set(&self.capabilities)?,
+            tick_hz: self.tick_hz,
+            teams: self.teams,
+            max_move_speed: self.max_move_speed,
+            script_limits: self.script_limits,
+            dependencies: self.dependencies,
+        })
+    }
+}
+
 impl ModeManifest {
     /// How many player slots its teams have together.
     pub fn slots(&self) -> u64 {
@@ -40,7 +57,7 @@ impl ModeManifest {
 }
 
 /// The flat table of a mode's manifest, its header's fields among the others.
-impl<'de> Deserialize<'de> for ModeManifest {
+impl<'de> Deserialize<'de> for ModeManifest<Vec<Capability>> {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
@@ -65,8 +82,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
                 api: fields.api,
                 language: fields.language,
             },
-            capabilities: Release::capability_set(&fields.capabilities)
-                .map_err(D::Error::custom)?,
+            capabilities: fields.capabilities,
             tick_hz: fields.tick_hz,
             teams: fields.teams,
             max_move_speed: fields.max_move_speed,

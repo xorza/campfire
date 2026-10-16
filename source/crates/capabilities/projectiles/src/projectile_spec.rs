@@ -4,7 +4,7 @@ use campfire_declare::PerType;
 use campfire_geometry::Radius;
 use campfire_math::{Num, Rounding};
 use campfire_script::{Filter, UnknownName};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_units::UnitTypeBook;
 
 use crate::projectile_data::{ProjectileData, ProjectileHits};
@@ -52,6 +52,5 @@ impl ProjectileSpec {
 }
 
 impl PerType for ProjectileSpec {
-    const OWNER: Option<Capability> = Some(Capability::Projectiles);
     const SCRIPTS_ONLY: bool = false;
 }

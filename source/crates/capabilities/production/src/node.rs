@@ -4,7 +4,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
-use campfire_sim::{Capability, SimComponent, StableId};
+use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
@@ -65,6 +65,5 @@ impl Replication for Node {
 }
 
 impl PerType for Node {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }

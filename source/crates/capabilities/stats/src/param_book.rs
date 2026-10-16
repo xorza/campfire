@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{ParamProblem, View};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_values::{ActionId, DeclaredName, ModifierId, NameId, Names, Param, Rank, Stat};
 
 use crate::applier_param::ApplierParam;
@@ -224,7 +224,6 @@ impl ApplierPlaces {
 }
 
 impl Book for ParamBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     /// Shares nothing: the stats' part of the call frame takes the book from the match as each

@@ -2,7 +2,6 @@ use bevy_ecs::resource::Resource;
 use campfire_common::Ticks;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 
 use crate::combat_bindings::CombatBindings;
 
@@ -16,7 +15,6 @@ pub struct CombatBook {
 }
 
 impl Book for CombatBook {
-    const OWNER: Option<Capability> = Some(Capability::Combat);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

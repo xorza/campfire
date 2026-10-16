@@ -1,7 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::{Hook, HookSet, ScriptId, ScriptRole, View};
-use campfire_sim::Capability;
 
 /// The hooks each script of a match defines, by `ScriptId`, in the order the match compiles its
 /// scripts: what a book reads to know which hooks of a script its owner calls, with no script
@@ -34,7 +33,6 @@ impl ScriptBook {
 }
 
 impl Book for ScriptBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = true;
 
     fn share(&self, _: &View) {}

@@ -5,7 +5,6 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_players::ResourceAmount;
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{ActionId, ModifierId, NameId, Names, ResourceId};
 
 use crate::error::ItemError;
@@ -114,7 +113,6 @@ impl ItemSpec {
 }
 
 impl Book for ItemBook {
-    const OWNER: Option<Capability> = Some(Capability::Items);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

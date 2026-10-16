@@ -4,7 +4,6 @@ use std::sync::Arc;
 use campfire_declare::PerType;
 use campfire_math::{Num, Rounding};
 use campfire_script::{NameKind, UnknownName};
-use campfire_sim::Capability;
 use campfire_values::{DamageKind, DeclaredName, NameId, Names};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -56,7 +55,6 @@ impl ArmorShare {
 }
 
 impl PerType for Armor {
-    const OWNER: Option<Capability> = Some(Capability::Combat);
     const SCRIPTS_ONLY: bool = false;
 }
 

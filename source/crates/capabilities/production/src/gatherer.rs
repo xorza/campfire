@@ -5,7 +5,7 @@ use campfire_common::Tick;
 use campfire_declare::PerType;
 use campfire_math::Vec3;
 use campfire_players::PlayersWorld;
-use campfire_sim::{Capability, Position, SimComponent, StableId};
+use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{NameId, ResourceId};
@@ -115,6 +115,5 @@ impl Replication for Gatherer {
 }
 
 impl PerType for Gatherer {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }

@@ -1,7 +1,7 @@
 use campfire_common::Ticks;
 use campfire_declare::PerType;
 use campfire_script::{Hook, ScriptId, ScriptRole};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_units::ScriptBook;
 
 use crate::ai_data::AiData;
@@ -36,6 +36,5 @@ impl Ai {
 }
 
 impl PerType for Ai {
-    const OWNER: Option<Capability> = Some(Capability::Orders);
     const SCRIPTS_ONLY: bool = true;
 }

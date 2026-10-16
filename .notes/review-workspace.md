@@ -95,29 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 8. One list of modules
-
-`capabilities`: `release`, `books`, `order`; `declare`; `players`; `units`: `units.rs`; `actions`: `lib.rs`, `action_data_field`, `kind_data`; `mode`: `lib.rs`; `sim`: `state_registry`; `package`: `load_check`, `files/mode_manifest`.
-
-- [ ] capabilities/src/release/mod.rs:69-86, 158-162, 212, 236-255 — the mode is outside `Release::modules`. `declare` adds it by hand, it installs only through `install_mode`, and `MatchEnd::stop_stages` goes into the schedule by hand. `state_types` lists the mode's types for a match that never registers them; `called` counts a callback that never installs. → The mode's always-installed part (`MatchEnd`, the stage conditions as a declaration) is an entry of `modules`; `install_mode` adds the scripted part. `declare` and the install walk one list.
-- [ ] declare/src/declarations.rs:102-104; units/src/units.rs:266-280; capabilities/src/release/mod.rs:206-208, 224, resource_audit.rs:70-76 — `non_send` cannot be role-conditional, so `Units::open` inserts `View`, `ViewReader`, `Ctx`, `ScriptHost`, `ScriptFailures` and `ScriptBudgets` by hand, and the audit lists them by hand. → `non_send` returns `Option<R>`; units declares its runtime; the release's own items are one declared list.
-- [ ] capabilities/src/release/resource_audit.rs:49, 168-170 — `World::iter_resources` (bevy_ecs 0.19.1) does not walk non-sends, so an undeclared non-send passes the audit. → Audit non-sends.
-- [ ] declare/src/capability_set.rs:24-29, book.rs:16-28, per_type.rs:5-10 — `Book::OWNER` and `PerType::OWNER` restate the declaring module, and `runs(Some(Mode))` is false though every match has the mode, so a mode book would not be held. → Remove `OWNER`; the installer knows the module. `runs` is true for the mode.
-- [ ] capabilities/src/release/installing.rs:13-36, installer.rs:24-52 — `SimParts` is destructured and passed field by field; `Installing::new` and `Installer::new` take five parameters; role and set are passed beside `MatchFacts`. → `Installing::new(parts, &MatchFacts)`.
-- [ ] declare/src/role.rs:8, capabilities/src/release/match_spec.rs:34, mod.rs:238-240 — `Role::Server(Option<ScriptBudgets>)` models a test-only role, `MatchSpec::new` defaults to it, and `install_mode` rebuilds the role from a resource. → The role is a required argument, and the match keeps it.
-- [ ] capabilities/src/release/match_spec.rs:44, 57 — setters `capabilities` and `out_view` for fields `set` and `out`. → One name.
-- [ ] capabilities/src/books/book_input.rs:21, book_builder.rs:193 — `BookInput.progression: bool` copies one fact of `CapabilitySet`. → `BookInput` carries the set.
-- [ ] declare/src/error.rs:7; package/src/files/mode_manifest.rs:68-69 — `CapabilityError` has its one producer in the release, and the manifest flattens it to a string. → Move it to the release; the manifest keeps its cases.
-- [ ] capabilities/src/books/error.rs:72-82 — four wrapping variants with no `From`. → `#[from]`.
-- [ ] actions/src/lib.rs:225-240 — `hold_charges` and `want_passives` install only with `Combat`. A mode with abilities and no combat can never start a cast with charges, and gets no passives. → `hold_charges` always; `want_passives` on `Stats`.
-- [ ] actions/src/action_data_field.rs:68, kind_data.rs:72, package/src/mode_packages/load_check.rs:920-928 — the kinds the release runs, written three times; `KindData::of` panics on the others. → `ActionKind::runs()`, which the table and the load read; `of` returns a case, not a panic.
-- [ ] actions/src/action_data_field.rs:9-12, 392-399; load_check.rs:414-415, 948-976 — the table's doc says the load reads each field's capability and status from it. The load writes each capability again by hand, and the `Delivery` row lacks `Areas`. → The load derives each requirement from the table, with the delivery row split, or the doc stops claiming it.
-- [ ] players/src/players.rs:42, out_of_play.rs:31; mode/src/lib.rs:217 — `OutOfPlay::refresh` is a `pub` system of players that the mode installs, and `Avatars` is exported only for its signature. Design 14 D12 says out of play is the mode's. → The refresh moves into mode; the types stay on the player entity; `Avatars` becomes private.
-- [ ] players/src/players.rs:65-69 — a seated player gets `Seated` by a second insert. → In the spawn bundle.
-- [ ] players/src/players_call.rs:47-51, 68-72; sim/src/state_registry/mod.rs:196 — each call looks up each player's entity for a fact fixed at the start, as a declared component is not registered in the world. The `try_new` fallback is dead. → The installer registers each declared component; the query takes `Has<Seated>`.
-- [ ] players/src/players.rs:36-38 — repeats `PlayersWorld::declared_resources`. → Call it.
-- [ ] Dead code: `InstallCx::set()` (declare/src/install_cx.rs:36) has no caller; `Order::encode`/`payload` (capabilities/src/order/mod.rs:74, 91) and `Release::script_api` (release/mod.rs:146) serve tests only. → Remove `set()`; the rest behind `internals`.
-
 ### 9. Mode and production
 
 `mode`: `mode_effect`, `mode_call`, `mode_api`, `mode_spec`, `timers`, `loadout_setup`, `roster`, `mode_schema`, `mode_input`, `mode_hooks`, `mode_map`; `production`: `gather_loop`, `placement`, `production_orders`, `trains`, `player_supply`, `production_column`, `construction`, `gatherer`, `production_api`; `combat`: `dying`.

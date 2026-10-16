@@ -1,5 +1,4 @@
 use std::any::TypeId;
-use std::num::NonZeroU64;
 
 use bevy_ecs::world::World;
 use campfire_abilities::Abilities;
@@ -7,21 +6,20 @@ use campfire_actions::Actions;
 use campfire_areas::Areas;
 use campfire_combat::Combat;
 use campfire_declare::{
-    Book, CapabilityError, CapabilitySet, Declarations, KindVisitor, MatchFacts, ModuleVisitor,
-    Phase, Role,
+    Book, CapabilitySet, Declarations, KindVisitor, MatchFacts, ModuleVisitor, Phase, Role,
 };
 use campfire_deliveries::Deliveries;
 use campfire_interaction::Interaction;
 use campfire_items::Items;
-use campfire_mode::{MatchEnd, Mode, ModeLoad, ModeSetup};
+use campfire_mode::{Mode, ModeCore, ModeLoad, ModeSetup};
 use campfire_navigation::Navigation;
 use campfire_orders::Orders;
 use campfire_players::Players;
 use campfire_production::Production;
 use campfire_progression::Progression;
 use campfire_projectiles::Projectiles;
-use campfire_script::{ApiBuilder, ScriptApi, ScriptBudgets, ScriptHost};
-use campfire_sim::{Capability, SimParts, SimWorldBuilder, Unpredicted};
+use campfire_script::{ApiBuilder, ScriptApi, ScriptHost};
+use campfire_sim::{Capability, SimWorldBuilder, Unpredicted};
 use campfire_state_types::StateTypes;
 use campfire_stats::Stats;
 use campfire_units::{UnitTypeBook, Units};
@@ -31,9 +29,10 @@ use campfire_vision::Vision;
 use crate::release::api_binder::ApiBinder;
 use crate::release::called_registries::CalledRegistries;
 use crate::release::capability_rows::CapabilityRows;
-use crate::release::declaring::Declaring;
+use crate::release::declaring::{Declaring, Scripts};
 use crate::release::engine_tag_list::EngineTagList;
-use crate::release::installing::Installing;
+use crate::release::error::CapabilityError;
+use crate::release::installing::{Installing, Walk};
 use crate::release::kinds_only::KindsOnly;
 use crate::release::match_spec::MatchSpec;
 use crate::release::state_only::StateOnly;
@@ -45,6 +44,7 @@ mod capability_rows;
 mod client_holds;
 mod declaring;
 mod engine_tag_list;
+pub(crate) mod error;
 mod installer;
 mod installing;
 mod kinds_only;
@@ -54,20 +54,22 @@ pub(crate) mod match_spec;
 mod module_sets;
 #[cfg(feature = "internals")]
 mod resource_audit;
+mod stage_span;
 mod state_only;
 
-/// The engine's modules as the release runs them: the core, each capability in the order they
-/// install, and the mode, which installs itself once the others did.
+/// The engine's modules as the release runs them: the core, the mode's core, each capability in
+/// the order they install, and the mode's scripted part, which installs once the books are in.
 #[derive(Debug)]
 pub struct Release;
 
 impl Release {
-    /// Visits, with `v`, every module a match builds with, in the order they install: the core's,
-    /// then each capability after the ones it builds on. Each capability's orders apply in this
-    /// order too, the orders of `orders` last. The mode installs above them, once the books are
-    /// in.
+    /// Visits, with `v`, every module a match builds with, in the order they install: the core's
+    /// and the mode's core, then each capability after the ones it builds on. Each capability's
+    /// orders apply in this order too, the orders of `orders` last. The mode's scripted part
+    /// installs above them, once the books are in.
     fn modules<V: ModuleVisitor>(v: &mut V) {
         v.module::<Units>();
+        v.module::<ModeCore>();
         v.module::<Players>();
         v.module::<Actions>();
         v.module::<Deliveries>();
@@ -83,6 +85,7 @@ impl Release {
         v.module::<Items>();
         v.module::<Interaction>();
         v.module::<Orders>();
+        v.scripted::<Mode>();
     }
 
     /// The capabilities of the list, each with what it builds on.
@@ -141,12 +144,6 @@ impl Release {
         list.0
     }
 
-    /// The script API of the release, recorded as a match's engine binds it, with the names the
-    /// engine has before: every capability's, whether a mode declares it or not.
-    pub fn script_api() -> ScriptApi {
-        Self::bind_script_api(&mut ScriptHost::new(NonZeroU64::MIN))
-    }
-
     /// Binds the script API of the release into `host`, as `script_api` records it, so `host`
     /// compiles a script as a match's engine does: with the engine enums' modules.
     pub fn bind_script_api(host: &mut ScriptHost) -> ScriptApi {
@@ -154,17 +151,22 @@ impl Release {
     }
 
     /// Visits, with `d`, the declarations of a match of `set`: each module's of the list that the
-    /// match runs, in the order they install, then the mode's.
+    /// match runs, in the order they install, the mode's scripted part's among them.
     pub(crate) fn declare<D: Declarations>(set: CapabilitySet, d: &mut D) {
-        let mut declaring = Declaring::new(set, d);
-        Self::modules(&mut declaring);
-        declaring.declare::<Mode>();
+        Self::modules(&mut Declaring::new(set, Scripts::Visited, d));
     }
 
-    /// The registries of callbacks the modules of a match of `set` call or declare callbacks in.
-    fn called(set: CapabilitySet) -> Vec<TypeId> {
+    /// The registries of callbacks the modules of a match of `set` and `role` call or declare
+    /// callbacks in: the mode's scripted part's only in a match that runs scripts, which
+    /// installs it.
+    fn called(set: CapabilitySet, role: &Role) -> Vec<TypeId> {
         let mut called = CalledRegistries::default();
-        Self::declare(set, &mut called);
+        let scripts = if role.scripts() {
+            Scripts::Visited
+        } else {
+            Scripts::Skipped
+        };
+        Self::modules(&mut Declaring::new(set, scripts, &mut called));
         called.0
     }
 
@@ -184,10 +186,11 @@ impl Release {
         Self::declare(Self::capabilities(), &mut ApiBinder(builder));
     }
 
-    /// Builds the match of `spec` in the world, a new world: prepares it for the sim, and
-    /// installs each module of the list the match runs, in order, its declarations, then its
-    /// install. A match that ended runs no stage. The world then holds the match whole: its
-    /// schedule, its state registry, and its capabilities.
+    /// Builds the match of `spec` in the world, a new world: prepares it for the sim, keeps its
+    /// role, and installs each module of the list the match runs, in order, its declarations,
+    /// then its install, and binds the script API of the match's modules into the script host
+    /// the core's install puts in. A match that ended runs no stage. The world then holds the
+    /// match whole: its schedule, its state registry, and its capabilities.
     pub fn build(world: &mut World, spec: MatchSpec) {
         let role = spec.role;
         if matches!(role, Role::Client) {
@@ -199,31 +202,28 @@ impl Release {
             sim.without_sync_points();
         }
         let set = spec.set;
-        let SimParts {
-            world,
-            schedule,
-            registry,
-        } = sim.parts();
-        world.insert_resource(set);
-        world.insert_resource(spec.out);
-        Units::open(world, role.budgets().cloned());
+        let parts = sim.parts();
+        parts.world.insert_resource(set);
+        parts.world.insert_resource(spec.out);
+        parts.world.insert_resource(role.clone());
+        if let Some(budgets) = role.budgets() {
+            parts.world.insert_resource(budgets.clone());
+        }
+        for phase in Phase::ALL {
+            phase.configure(parts.schedule);
+        }
+        let facts = MatchFacts {
+            set,
+            role: &role,
+            called: Self::called(set, &role),
+        };
+        Self::modules(&mut Installing::new(parts, &facts, Walk::Build));
+        let world = sim.parts().world;
         if role.scripts() {
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), |builder| {
                 Self::declare(set, &mut ApiBinder(builder));
             });
         }
-        MatchEnd::stop_stages(schedule);
-        for phase in Phase::ALL {
-            phase.configure(schedule);
-        }
-        let facts = MatchFacts {
-            set,
-            role: &role,
-            called: Self::called(set),
-        };
-        Self::modules(&mut Installing::new(
-            world, schedule, registry, &role, &facts,
-        ));
         UnitTypeBook::new(Self::engine_tags()).load_into(world);
         #[cfg(feature = "internals")]
         if spec.unbuilt {
@@ -233,27 +233,24 @@ impl Release {
         sim.build();
     }
 
-    /// Installs the mode into the match the world holds, a server's that runs scripts, once the
-    /// books are in place: its declarations and systems, then the mode of `setup`, with what
-    /// `load` takes from the books.
+    /// Installs the mode's scripted part into the match the world holds, one that runs scripts,
+    /// once the books are in place: its declarations and systems, then the mode of `setup`, with
+    /// what `load` takes from the books.
     pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, load: ModeLoad) {
         let set = *world.resource::<CapabilitySet>();
-        let budgets = world.get_resource::<ScriptBudgets>();
-        let budgets = budgets.expect("the mode installs into a match that runs scripts");
-        let role = Role::Server(Some(budgets.clone()));
+        let role = world.resource::<Role>().clone();
+        assert!(
+            role.scripts(),
+            "the mode installs into a match that runs scripts"
+        );
         let mut sim = SimWorldBuilder::reopen(world);
-        let SimParts {
-            world,
-            schedule,
-            registry,
-        } = sim.parts();
         let facts = MatchFacts {
             set,
             role: &role,
-            called: Self::called(set),
+            called: Self::called(set, &role),
         };
-        Installing::new(world, schedule, registry, &role, &facts).install::<Mode>();
-        Mode::load(world, setup, load);
+        Self::modules(&mut Installing::new(sim.parts(), &facts, Walk::Scripted));
+        Mode::load(sim.parts().world, setup, load);
         sim.build();
     }
 }
@@ -276,6 +273,9 @@ pub(crate) mod internals {
     };
     use campfire_state_types::{Replication, StateTypes};
     use campfire_units::{EntityKinds, Units, UnitsWorld};
+    use std::num::NonZeroU64;
+
+    use campfire_script::{ScriptApi, ScriptHost};
 
     use crate::fixtures::units::UnitsFixtures;
     use crate::release::Release;
@@ -315,6 +315,12 @@ pub(crate) mod internals {
     }
 
     impl Release {
+        /// The script API of the release, recorded as a match's engine binds it, with the names
+        /// the engine has before: every capability's, whether a mode declares it or not.
+        pub fn script_api() -> ScriptApi {
+            Self::bind_script_api(&mut ScriptHost::new(NonZeroU64::MIN))
+        }
+
         /// Every system set the modules of `set` declare, in the order they declare them: the
         /// sets each game system of a match of `set` sits in.
         pub fn module_sets(set: CapabilitySet) -> Vec<InternedSystemSet> {

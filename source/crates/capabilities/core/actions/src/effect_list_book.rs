@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{CallError, Ctx, Frame, View};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_stats::StatsEffect;
 use campfire_units::SpawnAt;
 use campfire_values::{ActionId, NameId, Number};
@@ -326,7 +326,6 @@ fn position(len: usize) -> u32 {
 }
 
 impl Book for EffectListBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = true;
 
     fn share(&self, _: &View) {}

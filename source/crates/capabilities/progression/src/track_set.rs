@@ -1,5 +1,4 @@
 use campfire_declare::PerType;
-use campfire_sim::Capability;
 use campfire_values::{NameId, TrackId};
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.
@@ -41,7 +40,6 @@ impl TrackSet {
 }
 
 impl PerType for TrackSet {
-    const OWNER: Option<Capability> = Some(Capability::Progression);
     const SCRIPTS_ONLY: bool = false;
 }
 

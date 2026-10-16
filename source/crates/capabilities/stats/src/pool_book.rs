@@ -4,7 +4,6 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{DeclaredName, Names, Stat};
 
 use crate::pool_data::PoolData;
@@ -72,7 +71,6 @@ impl PoolBook {
 }
 
 impl Book for PoolBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {

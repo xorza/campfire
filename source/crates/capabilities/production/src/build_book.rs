@@ -5,7 +5,6 @@ use campfire_actions::BuildStart;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{Filter, View};
-use campfire_sim::Capability;
 use campfire_units::BodyForm;
 use campfire_values::{ActionId, Share};
 
@@ -158,7 +157,6 @@ impl BuildSpec<'_> {
 }
 
 impl Book for BuildBook {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

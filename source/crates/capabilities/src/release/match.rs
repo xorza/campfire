@@ -131,9 +131,8 @@ pub(crate) mod internals {
             budgets: Option<ScriptBudgets>,
         ) -> Self {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let spec = MatchSpec::new(SegmentSeed::ZERO, rate)
-                .capabilities(set)
-                .role(Role::Server(budgets));
+            let role = budgets.map_or(Role::Rules, Role::Server);
+            let spec = MatchSpec::new(SegmentSeed::ZERO, rate, role).set(set);
             Self::test_of(spec)
         }
 
@@ -170,9 +169,7 @@ pub(crate) mod internals {
         /// skips the units it holds as the server sent them, `Unpredicted`.
         pub fn predicting(declared: &[Capability]) -> Self {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let spec = MatchSpec::new(SegmentSeed::ZERO, Self::TEST_RATE)
-                .capabilities(set)
-                .role(Role::Client);
+            let spec = MatchSpec::new(SegmentSeed::ZERO, Self::TEST_RATE, Role::Client).set(set);
             let mut started = Self::test_of(spec);
             Mode::keep_no_spawner(&mut started);
             Players::start_without_mode(&mut started, [], 0);

@@ -373,6 +373,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `windup_ms` | core | since 1.0 |
 | `passive_modifier` | core | since 1.0 |
 | `passive_while_ready` | core | since 1.0 |
+| `delivery` | core | since 1.0 |
 | `params` | core | since 1.0 |
 | `on_resolve` | core | since 1.0 |
 | `on_hit` | core | since 1.0 |
@@ -383,7 +384,6 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `amount` | combat | since 1.0 |
 | `period_ms` | combat | since 1.0 |
 | `clip` | combat | since 1.0 |
-| `delivery` | projectiles | since 1.0 |
 | `script` | abilities | since 1.0 |
 | `cooldown_ms` | abilities | since 1.0 |
 | `clamp_to_range` | abilities | since 1.0 |

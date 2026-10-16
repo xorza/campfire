@@ -8,8 +8,8 @@ use campfire_declare::{
     ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, Phase, SetPlace,
 };
 use campfire_script::{
-    CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
-    ScriptList, StatePlace, StateSchema, View, ViewApi,
+    CoreApi, Ctx, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId, ScriptList,
+    StatePlace, StateSchema, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
@@ -91,6 +91,7 @@ impl Module for Units {
     const USES: &'static [Capability] = &[];
 
     fn declare<D: Declarations>(d: &mut D) {
+        Self::runtime(d);
         d.sets::<UnitsSet>();
         d.calls::<SpawnHooks>();
         d.engine_tags(&[Avatar::TAG, Dead::TAG]);
@@ -260,23 +261,26 @@ impl Units {
         world.non_send_mut::<ScriptHost>().compile(source)
     }
 
-    /// Opens a match for the modules' installs: the script view and its reader, and with
-    /// `budgets`, the script host the scripts run in within them, and the context of their calls.
-    /// A client runs no scripts.
-    pub fn open(world: &mut World, budgets: Option<ScriptBudgets>) {
-        let rate = *world.resource::<TickRate>();
-        let view = View::new(rate, ViewReader::read);
-        world.insert_non_send(ViewReader::default());
-        if let Some(budgets) = budgets {
-            let ctx = Ctx::new(view.clone());
+    /// The scripts' runtime, which the core's install puts in first, for the modules' installs:
+    /// the script view and its reader, and in a match that runs scripts, the context of their
+    /// calls, the script host they run in within the role's budgets, and their failures. A client
+    /// runs no scripts.
+    fn runtime<D: Declarations>(d: &mut D) {
+        d.non_send::<ViewReader>(|_, _| Some(ViewReader::default()));
+        d.non_send::<View>(|world, _| {
+            Some(View::new(*world.resource::<TickRate>(), ViewReader::read))
+        });
+        d.non_send::<Ctx>(|world, role| {
+            role.scripts()
+                .then(|| Ctx::new(world.non_send::<View>().clone()))
+        });
+        d.non_send::<ScriptHost>(|world, role| {
+            let budgets = role.budgets()?;
             let mut host = ScriptHost::new(budgets.limits().per_call);
-            ctx.tag(&mut host);
-            world.insert_non_send(ctx);
-            world.insert_non_send(host);
-            world.insert_non_send(ScriptFailures::default());
-            world.insert_resource(budgets);
-        }
-        world.insert_non_send(view);
+            world.non_send::<Ctx>().tag(&mut host);
+            Some(host)
+        });
+        d.non_send::<ScriptFailures>(|_, role| role.scripts().then(ScriptFailures::default));
     }
 }
 

@@ -1,7 +1,6 @@
 use campfire_declare::PerType;
 use campfire_geometry::BodyBox;
 use campfire_math::Num;
-use campfire_sim::Capability;
 
 use crate::body::Body;
 use crate::layer::Layer;
@@ -77,6 +76,5 @@ impl BodyForm {
 }
 
 impl PerType for BodyForm {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 }

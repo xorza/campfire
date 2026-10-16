@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
 use campfire_units::UnitEntity;
 use serde::de::Error;
@@ -53,6 +53,5 @@ impl<'de> Deserialize<'de> for Sight {
 }
 
 impl PerType for Sight {
-    const OWNER: Option<Capability> = Some(Capability::Vision);
     const SCRIPTS_ONLY: bool = false;
 }

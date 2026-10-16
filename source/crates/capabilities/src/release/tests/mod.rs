@@ -1,5 +1,6 @@
 use std::any::type_name;
 use std::fmt::Debug;
+use std::num::NonZeroU64;
 use std::path::Path;
 
 use Capability::{
@@ -15,7 +16,7 @@ use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::PlayerResources;
-use campfire_script::{ScriptLimits, View};
+use campfire_script::{ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::internals::SourceFiles;
@@ -302,15 +303,21 @@ fn each_capability_crate_is_listed_one_layer_above_its_highest_dependency() {
     assert_eq!(misplaced, Vec::<String>::new());
 }
 
-/// Each capability of the release's list, with what it needs and what it uses.
+/// Each capability of the release's list, with what it needs and what it uses: the mode's as
+/// its scripted part states them, which the mode's core, a part of its crate, builds on none of.
 #[derive(Debug, Default)]
 struct Edges(Vec<(Capability, &'static [Capability], &'static [Capability])>);
 
 impl ModuleVisitor for Edges {
     fn module<M: Module>(&mut self) {
-        if let Some(capability) = M::CAPABILITY {
+        if let Some(capability) = M::CAPABILITY.filter(|&capability| capability != Mode) {
             self.0.push((capability, M::NEEDS, M::USES));
         }
+    }
+
+    fn scripted<M: Module>(&mut self) {
+        let capability = M::CAPABILITY.expect("the scripted part is the mode's");
+        self.0.push((capability, M::NEEDS, M::USES));
     }
 }
 
@@ -776,9 +783,8 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
     let scheduled = |declared: &[Capability]| {
         let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
         let world = Match::new(
-            MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE)
-                .capabilities(Release::capability_set(declared).unwrap())
-                .role(Role::Server(Some(budgets))),
+            MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets))
+                .set(Release::capability_set(declared).unwrap()),
         );
         let schedules = world.resource::<Schedules>();
         let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();

@@ -18,13 +18,15 @@ use campfire_combat::{Weigh, Weighers};
 use campfire_common::PlayerSlot;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
-use campfire_players::{OutOfPlay, Players, PlayersWorld, Seating, SlotStart};
+use campfire_players::{Players, PlayersWorld, Seating, SlotStart};
 use campfire_script::{CallError, Ctx, Hook, Pool, ScriptText, View};
 use campfire_sim::{Breach, Capability, IdAllocator, SimTick};
 use campfire_units::{
     BodyForm, MatchEntity, Player, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone,
 };
 use campfire_values::Relations;
+
+use crate::out_of_play_marks::OutOfPlayMarks;
 
 mod calls;
 mod choice_data;
@@ -43,6 +45,7 @@ mod match_end;
 mod match_mode;
 mod mode_api;
 mod mode_call;
+mod mode_core;
 mod mode_data;
 mod mode_effect;
 mod mode_hooks;
@@ -58,6 +61,7 @@ mod mode_state;
 mod mode_units;
 mod mode_world;
 mod offer;
+mod out_of_play_marks;
 mod placed_unit;
 mod players_data;
 mod region_data;
@@ -88,6 +92,7 @@ pub use crate::match_end::{MatchEnd, MatchResult};
 pub use crate::match_mode::MatchMode;
 pub use crate::mode_api::ModeApi;
 pub use crate::mode_call::ModeCall;
+pub use crate::mode_core::ModeCore;
 pub use crate::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 pub use crate::mode_hooks::ModeHooks;
 pub use crate::mode_input::{InputValue, ModeInput};
@@ -113,8 +118,9 @@ pub use crate::timers::{Timer, Timers};
 pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
 pub use crate::unanswered_slot_events::UnansweredSlotEvents;
 
-/// The mode of a match: the core's rules above the capabilities. Every match installs it after
-/// its capabilities.
+/// The scripted part of the mode of a match: the core's rules above the capabilities, which a
+/// match that runs scripts installs after them, once its books are in; `ModeCore` is the part
+/// every match installs.
 #[derive(Debug)]
 pub struct Mode;
 
@@ -168,7 +174,6 @@ impl Module for Mode {
             },
         );
         d.sets::<ModeSet>();
-        d.component::<MatchEnd>();
         d.component::<ModeState<SyncNone>>();
         d.component::<ModeState<SyncAll>>();
         d.resource::<Choices>();
@@ -176,6 +181,8 @@ impl Module for Mode {
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
         d.report::<SaveAsked>();
+        d.non_send_loaded::<MatchMode>();
+        d.non_send_loaded::<Spawner>();
         d.check::<Player>(Self::players_spawned);
         d.part::<MatchEntity, Relations>(|at| {
             Some(at.world().non_send::<MatchMode>().relations.clone())
@@ -214,7 +221,7 @@ impl Module for Mode {
             )
                 .chain()
                 .in_set(ModeSet::Hooks),
-            OutOfPlay::refresh.in_set(ModeSet::OutOfPlay),
+            OutOfPlayMarks::refresh.in_set(ModeSet::OutOfPlay),
         ));
         if cx.has(Capability::Progression) {
             cx.systems(

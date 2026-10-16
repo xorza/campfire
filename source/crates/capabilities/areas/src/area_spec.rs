@@ -2,7 +2,7 @@ use campfire_common::Ticks;
 use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_script::{Filter, UnknownName};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_units::UnitTypeBook;
 use campfire_values::{DeclaredName, ModifierId, TimeTooLarge};
 
@@ -65,6 +65,5 @@ impl Inside {
 }
 
 impl PerType for AreaSpec {
-    const OWNER: Option<Capability> = Some(Capability::Areas);
     const SCRIPTS_ONLY: bool = false;
 }

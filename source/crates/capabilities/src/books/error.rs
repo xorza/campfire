@@ -70,16 +70,16 @@ pub enum BookError {
     },
     /// The mode's teams, relations or map name what the mode does not have.
     #[error(transparent)]
-    Mode(ModeError),
+    Mode(#[from] ModeError),
     /// A list of the mode's names does not load.
     #[error(transparent)]
-    Names(ModeNamesError),
+    Names(#[from] ModeNamesError),
     /// The mode's tracks do not load.
     #[error(transparent)]
-    Tracks(TrackError),
+    Tracks(#[from] TrackError),
     /// The match's unit types or tags do not load.
     #[error(transparent)]
-    Types(TypesError),
+    Types(#[from] TypesError),
     /// Data names a script at `path` that the package does not hold.
     #[error("no script {path}")]
     Script {

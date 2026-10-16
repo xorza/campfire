@@ -134,7 +134,9 @@ impl PackageFiles {
         let fail = |problem| LoadError::new(package.clone(), problem);
         let manifest = self.read_data(&Self::engine_path(Self::MANIFEST));
         match manifest.map_err(LoadProblem::Content).map_err(fail)? {
-            Manifest::Mode(manifest) => Ok(manifest),
+            Manifest::Mode(manifest) => manifest
+                .checked()
+                .map_err(|error| fail(LoadProblem::Capabilities(error))),
             _ => Err(fail(LoadProblem::WrongKind)),
         }
     }

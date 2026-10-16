@@ -8,7 +8,7 @@ use campfire_capabilities::{
 use campfire_common::{MapName, PackageFingerprint};
 use campfire_mode::{MapData, ModeData};
 use campfire_script::{ScriptHost, ScriptId, UnknownName};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_stats::{EdgeError, StatGraph, StatId};
 use campfire_units::ScriptBook;
 use campfire_values::{DeclaredName, EngineTag, PackageIndex, PackagePath};
@@ -208,7 +208,7 @@ impl ModePackages {
             map: &self.map,
             teams: &self.manifest.teams,
             max_move_speed: self.manifest.max_move_speed,
-            progression: self.manifest.capabilities.contains(Capability::Progression),
+            set: self.manifest.capabilities,
             tag_names: &self.tag_names,
             packages: self.book_packages(),
             scripts: &self.scripts,

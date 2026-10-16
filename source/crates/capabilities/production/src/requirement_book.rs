@@ -3,7 +3,6 @@ use std::ops::Range;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{ActionId, ModifierId, UnitType};
 
 /// What each train and build with a `requires` needs its player to hold, by action: unit types of
@@ -68,7 +67,6 @@ impl RequirementBook {
 }
 
 impl Book for RequirementBook {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

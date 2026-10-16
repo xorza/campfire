@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_sim::{Capability, SimComponent, TickRate};
+use campfire_sim::{SimComponent, TickRate};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
@@ -88,7 +88,6 @@ impl Replication for Life {
 }
 
 impl PerType for Life {
-    const OWNER: Option<Capability> = Some(Capability::Combat);
     const SCRIPTS_ONLY: bool = false;
 }
 

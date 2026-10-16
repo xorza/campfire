@@ -10,9 +10,9 @@ use campfire_actions::{
     ActionBook, ActionData, ActionDataField, ActionError, ActionField, ActionKind, ActionProblem,
     ActionRange, ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData, ChargesData,
     ClipData, CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectTo, FromData,
-    InProgress, KindData, LaunchFields, ModifierFields, MoveData, OrderPhase, PurgeFields,
-    RangeField, RestoreFields, SlotAim, SlotKind, SlotKindBook, SlotKindData, SlotKinds, SlotRanks,
-    SlotTimes, Started, Targeting, TimedSlots, Toggle, XpFields,
+    InProgress, KindData, KindError, LaunchFields, ModifierFields, MoveData, OrderPhase,
+    PurgeFields, RangeField, RestoreFields, SlotAim, SlotKind, SlotKindBook, SlotKindData,
+    SlotKinds, SlotRanks, SlotTimes, Started, Targeting, TimedSlots, Toggle, XpFields,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas};
 use campfire_capabilities::internals::*;
@@ -225,17 +225,26 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         amount: Some(five),
         ..attack.clone()
     };
-    assert_eq!(KindData::of(&both), Err(ActionDataField::Damage));
+    assert_eq!(
+        KindData::of(&both),
+        Err(KindError::Field(ActionDataField::Damage))
+    );
     let neither = ActionData {
         damage: None,
         ..attack.clone()
     };
-    assert_eq!(KindData::of(&neither), Err(ActionDataField::Damage));
+    assert_eq!(
+        KindData::of(&neither),
+        Err(KindError::Field(ActionDataField::Damage))
+    );
     let unrated = ActionData {
         rate: None,
         ..attack.clone()
     };
-    assert_eq!(KindData::of(&unrated), Err(ActionDataField::Rate));
+    assert_eq!(
+        KindData::of(&unrated),
+        Err(KindError::Field(ActionDataField::Rate))
+    );
     let clipped_cast = ActionData {
         kind: ActionKind::Cast,
         rate: None,
@@ -245,12 +254,18 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         clip: own.clip,
         ..attack
     };
-    assert_eq!(KindData::of(&clipped_cast), Err(ActionDataField::Clip));
+    assert_eq!(
+        KindData::of(&clipped_cast),
+        Err(KindError::Field(ActionDataField::Clip))
+    );
     let cast = ActionData {
         kind: ActionKind::Cast,
         ..action.clone()
     };
-    assert_eq!(KindData::of(&cast), Err(ActionDataField::Rate));
+    assert_eq!(
+        KindData::of(&cast),
+        Err(KindError::Field(ActionDataField::Rate))
+    );
     let ending = ActionData {
         on_end: action.on_hit.clone(),
         ..action.clone()
@@ -1184,10 +1199,17 @@ fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
 
 #[test]
 fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
+    // With combat and without, as a cast draws its charges in any match.
+    charges_come_back(&[Capability::Stats, Capability::Combat, Capability::Abilities]);
+    charges_come_back(&[Capability::Stats, Capability::Abilities]);
+}
+
+/// The charges of a match of `declared`, as the test says.
+fn charges_come_back(declared: &[Capability]) {
     // Step: 3 charges, one back each 1000 ms, 30 ticks at 30 a second, and a lockout of 100 ms,
     // 3 ticks, between two casts; 10 mana a cast. Refill gives Step a charge and takes 500 ms,
     // 15 ticks, off the time to its next; Dud has no charges to give.
-    let mut game = abilities_match();
+    let mut game = abilities_match_with(ScriptLimits::ROOMY, declared);
     Abilities::load_stats(&mut game);
     let plain = ActionData {
         script: Some(PackagePath::parse("cast.rhai").unwrap()),

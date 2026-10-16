@@ -5,7 +5,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotTimes, UseGroup};
 use campfire_declare::PerType;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::UnitEntity;
 use campfire_values::ResourceId;
@@ -305,6 +305,5 @@ impl Replication for Inventory {
 }
 
 impl PerType for Inventory {
-    const OWNER: Option<Capability> = Some(Capability::Items);
     const SCRIPTS_ONLY: bool = false;
 }

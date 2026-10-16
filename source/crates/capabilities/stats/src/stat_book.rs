@@ -6,7 +6,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_math::{Num, Rounding};
 use campfire_script::{NameKind, UnknownName, View};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_values::{EngineStat, NameId, Names, Stat, UnitType};
 
 use crate::stat_id::StatId;
@@ -215,7 +215,6 @@ impl StatBook {
 }
 
 impl Book for StatBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {

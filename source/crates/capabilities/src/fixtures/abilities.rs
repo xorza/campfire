@@ -5,10 +5,11 @@ use campfire_abilities::internals::{MANA, RAGE};
 use campfire_actions::{ActionData, ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_combat::OnDeath;
 use campfire_common::PlayerSlot;
+use campfire_declare::CapabilitySet;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_sim::{Capability, StableId};
 use campfire_stats::{Life, Pools};
 use campfire_units::{MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{ActionId, PackageIndex, Rank, Team, TypeScope, UnitType};
@@ -22,8 +23,8 @@ pub trait AbilitiesFixtures {
     /// caster`, a caster that walks a meter a tick.
     fn load_types(world: &mut World);
 
-    /// Gives `unit_type` a combatant's books: 500 health that stays when it dies, and no
-    /// slot.
+    /// Gives `unit_type` a combatant's books: no slot, and in a match with combat, 500 health
+    /// that stays when it dies.
     fn give_combatant(world: &mut World, unit_type: UnitType);
 
     /// Gives `unit_type` a combatant's books, and pools of `mana` and `rage`.
@@ -88,8 +89,13 @@ impl AbilitiesFixtures for Abilities {
     }
 
     fn give_combatant(world: &mut World, unit_type: UnitType) {
-        Units::give_type(world, unit_type, Life::full(Num::int(500)));
-        Units::give_type(world, unit_type, OnDeath::Stay);
+        if world
+            .resource::<CapabilitySet>()
+            .contains(Capability::Combat)
+        {
+            Units::give_type(world, unit_type, Life::full(Num::int(500)));
+            Units::give_type(world, unit_type, OnDeath::Stay);
+        }
         Units::give_type(world, unit_type, ActionSlots::new([]));
     }
 

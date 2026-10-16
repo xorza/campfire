@@ -1,6 +1,5 @@
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_sim::Capability;
 use campfire_units::{Body, BodyForm, Layer};
 
 /// A kind of unit that walks, as routes see it: the layer it moves on and its body's radius, 0
@@ -41,6 +40,5 @@ impl Walker {
 }
 
 impl PerType for Walker {
-    const OWNER: Option<Capability> = Some(Capability::Navigation);
     const SCRIPTS_ONLY: bool = false;
 }

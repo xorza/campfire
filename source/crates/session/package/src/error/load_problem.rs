@@ -1,4 +1,5 @@
 use campfire_actions::{ActionDataField, ActionField, ActionKind, ActionSlots, ListHook};
+use campfire_capabilities::CapabilityError;
 use campfire_capabilities::UnitStartError;
 use campfire_common::MapName;
 use campfire_mode::ModeError;
@@ -32,6 +33,9 @@ pub enum LoadProblem {
     /// A file does not read, or a data file does not match its schema.
     #[error(transparent)]
     Content(ContentError),
+    /// The capabilities a mode's manifest declares make no set the release builds.
+    #[error("the manifest's capabilities")]
+    Capabilities(#[source] CapabilityError),
     /// The package is not of the kind its place needs: a mode, or an avatar or loadout a mode
     /// depends on.
     #[error("not a package of the kind its place needs")]

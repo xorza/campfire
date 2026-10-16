@@ -57,7 +57,7 @@ impl ActionParts {
             Targeting::Unit(filter) => Aim::Unit(names.filter(filter)?),
         };
         let ranks = RankValues::all(data, ranks, rate, |name| names.cost_target(name))?;
-        let kind = match KindData::of(data).map_err(ActionProblem::KindField)? {
+        let kind = match KindData::of(data)? {
             KindData::Cast => KindSpec::Cast,
             KindData::Use => KindSpec::Use,
             KindData::Attack {

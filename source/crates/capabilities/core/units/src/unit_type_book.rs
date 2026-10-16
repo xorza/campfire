@@ -4,7 +4,6 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::{StateSchema, TagNames, View};
-use campfire_sim::Capability;
 use campfire_values::{
     DeclaredName, EngineTag, NameId, NameTable, Names, NamesError, PackageIndex, Scalar, Tag,
     TagProperties, TagSet, TypeScope, UnitType,
@@ -224,7 +223,6 @@ impl UnitTypeBook {
 }
 
 impl Book for UnitTypeBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {

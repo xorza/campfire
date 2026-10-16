@@ -5,7 +5,7 @@ use campfire_common::{Tick, Ticks};
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, UnknownName, View};
-use campfire_sim::{Capability, TickRate};
+use campfire_sim::TickRate;
 use campfire_units::{ScriptBook, StatusTags, UnitTypeBook};
 use campfire_values::{
     ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet,
@@ -327,7 +327,6 @@ impl ModifierBook {
 }
 
 impl Book for ModifierBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {

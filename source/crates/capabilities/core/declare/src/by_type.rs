@@ -1,6 +1,5 @@
 use bevy_ecs::resource::Resource;
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{NameId, UnitType};
 
 use crate::book::Book;
@@ -50,7 +49,6 @@ impl<T: Send + Sync + 'static> Default for ByType<T> {
 }
 
 impl<T: PerType> Book for ByType<T> {
-    const OWNER: Option<Capability> = T::OWNER;
     const SCRIPTS_ONLY: bool = T::SCRIPTS_ONLY;
 
     fn share(&self, _: &View) {}

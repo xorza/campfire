@@ -19,12 +19,12 @@ impl CapabilitySet {
         self.0 & Self::bit(capability) != 0
     }
 
-    /// Whether a match of the set runs the module of `capability`: the core's, `None`, in every
-    /// match.
+    /// Whether a match of the set runs the module of `capability`: the core's, `None`, and the
+    /// mode's, in every match.
     pub const fn runs(self, capability: Option<Capability>) -> bool {
         match capability {
+            Some(Capability::Mode) | None => true,
             Some(capability) => self.contains(capability),
-            None => true,
         }
     }
 

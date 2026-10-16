@@ -3,7 +3,6 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 
 use crate::slot_kinds::SlotKinds;
 
@@ -13,7 +12,6 @@ use crate::slot_kinds::SlotKinds;
 pub struct SlotKindBook(pub Arc<SlotKinds>);
 
 impl Book for SlotKindBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     /// Names the kinds to scripts; the actions column takes the book from the match at each read.

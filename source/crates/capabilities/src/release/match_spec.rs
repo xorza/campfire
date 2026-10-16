@@ -24,14 +24,16 @@ pub struct MatchSpec {
 }
 
 impl MatchSpec {
-    /// A match at `rate`, drawing from `seed`: a server's of no capability but the core, and
-    /// running no scripts, until the spec says otherwise.
-    pub const fn new(seed: SegmentSeed, rate: TickRate) -> Self {
+    /// A match at `rate`, drawing from `seed`, of `role`, of no capability but the core until the
+    /// spec says otherwise. A client's predicts: each of its sim's queries skips the units the
+    /// client holds as the server sent them, `Unpredicted`, unless it names them, as the marker's
+    /// filter is in place before any system's query is made.
+    pub const fn new(seed: SegmentSeed, rate: TickRate, role: Role) -> Self {
         Self {
             seed,
             rate,
             set: CapabilitySet::CORE,
-            role: Role::Server(None),
+            role,
             out: OutView::Team,
             #[cfg(feature = "internals")]
             without_sync_points: false,
@@ -41,20 +43,13 @@ impl MatchSpec {
     }
 
     /// The match's capabilities.
-    pub fn capabilities(self, set: CapabilitySet) -> Self {
+    pub fn set(self, set: CapabilitySet) -> Self {
         Self { set, ..self }
-    }
-
-    /// The match's role. A client's predicts: each of its sim's queries skips the units the
-    /// client holds as the server sent them, `Unpredicted`, unless it names them, as the marker's
-    /// filter is in place before any system's query is made.
-    pub fn role(self, role: Role) -> Self {
-        Self { role, ..self }
     }
 
     /// The match of a session whose players out of play see as `out` says, as its terms carry it;
     /// `OutView::Team` until the spec says otherwise.
-    pub fn out_view(self, out: OutView) -> Self {
+    pub fn out(self, out: OutView) -> Self {
         Self { out, ..self }
     }
 }

@@ -22,13 +22,17 @@ impl CapabilityRows {
     }
 }
 
+/// The mode is no row: every match has it, and a mode declares only the others.
 impl ModuleVisitor for CapabilityRows {
     fn module<M: Module>(&mut self) {
-        if let Some(capability) = M::CAPABILITY {
+        if let Some(capability) = M::CAPABILITY.filter(|&capability| capability != Capability::Mode)
+        {
             self.0.push(CapabilityRow {
                 capability,
                 needs: M::NEEDS,
             });
         }
     }
+
+    fn scripted<M: Module>(&mut self) {}
 }

@@ -70,13 +70,6 @@ impl Order {
         }
     }
 
-    /// The body of its command: its units, then its action as its capability reads it.
-    pub fn encode(&self) -> Vec<u8> {
-        let mut body = Vec::new();
-        self.encode_into(&mut body);
-        body
-    }
-
     fn encode_into(&self, body: &mut Vec<u8>) {
         let units = &self.units;
         match self.action {
@@ -85,20 +78,6 @@ impl Order {
             Action::Production(action) => Binary::encode_into(&(units, action), body),
             Action::Items(action) => Binary::encode_into(&(units, action), body),
         }
-    }
-
-    /// A payload of `orders` alone, one command each, to its action's capability.
-    pub fn payload(orders: &[Self]) -> Vec<u8> {
-        let bodies: Vec<Vec<u8>> = orders.iter().map(Self::encode).collect();
-        let commands: Vec<Command<'_>> = orders
-            .iter()
-            .zip(&bodies)
-            .map(|(order, body)| Command {
-                capability: order.action.capability(),
-                body,
-            })
-            .collect();
-        Command::encode(&commands)
     }
 
     /// Appends the payload of this order alone to `out`, its body encoded in `body`, a buffer the
@@ -111,6 +90,37 @@ impl Order {
             body,
         };
         Command::write(&[command], out);
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_sim::Command;
+
+    use crate::order::Order;
+
+    impl Order {
+        /// The body of its command: its units, then its action as its capability reads it.
+        pub fn encode(&self) -> Vec<u8> {
+            let mut body = Vec::new();
+            self.encode_into(&mut body);
+            body
+        }
+
+        /// A payload of `orders` alone, one command each, to its action's capability, as a test
+        /// or a check sends them.
+        pub fn payload(orders: &[Self]) -> Vec<u8> {
+            let bodies: Vec<Vec<u8>> = orders.iter().map(Self::encode).collect();
+            let commands: Vec<Command<'_>> = orders
+                .iter()
+                .zip(&bodies)
+                .map(|(order, body)| Command {
+                    capability: order.action.capability(),
+                    body,
+                })
+                .collect();
+            Command::encode(&commands)
+        }
     }
 }
 

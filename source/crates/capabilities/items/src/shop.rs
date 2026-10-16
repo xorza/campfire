@@ -1,7 +1,6 @@
 use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_script::Filter;
-use campfire_sim::Capability;
 use campfire_values::{Relation, ResourceId, Share, TagSet};
 
 use crate::item_id::ItemId;
@@ -81,6 +80,5 @@ impl Shop {
 }
 
 impl PerType for Shop {
-    const OWNER: Option<Capability> = Some(Capability::Items);
     const SCRIPTS_ONLY: bool = false;
 }

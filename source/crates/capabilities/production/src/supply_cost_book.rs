@@ -4,7 +4,6 @@ use bevy_ecs::resource::Resource;
 use campfire_actions::{ActionBook, KindSpec};
 use campfire_declare::{Book, ByType};
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_values::{ActionId, NameId, UnitType};
 
 use crate::supply_data::SupplyData;
@@ -96,7 +95,6 @@ impl SupplyCostBook {
 }
 
 impl Book for SupplyCostBook {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
     /// The production column takes it from the match at each read.

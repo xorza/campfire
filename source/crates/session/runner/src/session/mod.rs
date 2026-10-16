@@ -89,7 +89,7 @@ impl Session {
         }
         let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         let rate = TickRate::new(header.terms.tick_hz);
-        let spec = MatchBuild::spec(packages, seed, rate, players).out_view(visibility.out());
+        let spec = MatchBuild::spec(packages, seed, rate, players).out(visibility.out());
         Release::build(world, spec);
         MatchBuild::install_mode(world, packages, players);
         let saves = packages.data().saves;

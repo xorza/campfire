@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_math::Num;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -58,7 +58,6 @@ impl<'de> Deserialize<'de> for MoveStep {
 }
 
 impl PerType for MoveStep {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 }
 

@@ -2,7 +2,6 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Res;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 
 use crate::vision_grid::VisionGrid;
 
@@ -23,7 +22,6 @@ impl VisionBook {
 }
 
 impl Book for VisionBook {
-    const OWNER: Option<Capability> = Some(Capability::Vision);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}

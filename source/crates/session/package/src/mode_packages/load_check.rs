@@ -4,9 +4,9 @@ use std::slice;
 
 use campfire_actions::{
     ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, DamageFields, DeliveryData,
-    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, LaunchFields, ListHook,
-    MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields, SpawnFields,
-    Targeting, XpFields,
+    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, KindError, LaunchFields,
+    ListHook, MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields,
+    SpawnFields, Targeting, XpFields,
 };
 use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
 use campfire_geometry::Metric;
@@ -915,20 +915,16 @@ impl<'a> LoadCheck<'a> {
         units: &BTreeMap<DeclaredName, UnitTypeData>,
     ) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
-        let run = matches!(
-            action.kind,
-            ActionKind::Cast
-                | ActionKind::Attack
-                | ActionKind::Use
-                | ActionKind::Train
-                | ActionKind::Build
-                | ActionKind::Gather
-        );
-        let kind = run.then(|| KindData::of(action)).transpose();
-        let kind = kind.map_err(|field| LoadProblem::KindField {
-            action: id.to_owned(),
-            field,
-        })?;
+        let kind = match KindData::of(action) {
+            Ok(kind) => Some(kind),
+            Err(KindError::NotRun(_)) => None,
+            Err(KindError::Field(field)) => {
+                return Err(LoadProblem::KindField {
+                    action: id.to_owned(),
+                    field,
+                });
+            }
+        };
         if action.clamp_to_range && action.targeting != Targeting::Point {
             return Err(LoadProblem::ClampAims(id.to_owned()));
         }
@@ -1918,6 +1914,7 @@ fn action_problem(action: DeclaredName, problem: ActionProblem) -> LoadProblem {
         ActionProblem::SlottedRanks => LoadProblem::ActionRanks(action),
         ActionProblem::Field(field) => LoadProblem::ActionField { action, field },
         ActionProblem::KindField(field) => LoadProblem::KindField { action, field },
+        ActionProblem::NotRun(kind) => LoadProblem::KindNotRun { action, kind },
         ActionProblem::Bounce => LoadProblem::Gather(GatherProblem::Bounce(action)),
         ActionProblem::Global(MeteredKind::Gather) => {
             LoadProblem::Gather(GatherProblem::Global(action))

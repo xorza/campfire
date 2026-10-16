@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::PerType;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::UnitEntity;
 use campfire_values::Block;
@@ -62,6 +62,5 @@ impl Replication for UseGroup {
 }
 
 impl PerType for UseGroup {
-    const OWNER: Option<Capability> = Some(Capability::Items);
     const SCRIPTS_ONLY: bool = false;
 }

@@ -160,7 +160,7 @@ impl Module for Combat {
         d.scratch::<PassQueue>();
         d.resource::<NextDamage>();
         d.report::<Deaths>();
-        d.non_send::<CombatHooks>(CombatHooks::install);
+        d.non_send::<CombatHooks>(|world, role| Some(CombatHooks::install(world, role)));
         d.calls::<Weighers>();
         d.book::<CombatBook>();
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);

@@ -2,7 +2,6 @@ use std::num::NonZeroU8;
 
 use campfire_declare::PerType;
 use campfire_script::{DataSection, DataTable};
-use campfire_sim::Capability;
 use serde::Deserialize;
 
 use crate::frame_point::FramePoint;
@@ -19,7 +18,6 @@ pub struct ProductionData {
 }
 
 impl PerType for ProductionData {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 }
 

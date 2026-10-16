@@ -5,7 +5,6 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::View;
-use campfire_sim::Capability;
 use campfire_stats::Level;
 use campfire_values::{DeclaredName, NameId, Names, TrackId};
 
@@ -97,7 +96,6 @@ impl Default for TrackBook {
 }
 
 impl Book for TrackBook {
-    const OWNER: Option<Capability> = Some(Capability::Progression);
     const SCRIPTS_ONLY: bool = false;
 
     /// Names the tracks to scripts; the progression column takes the book from the match at each

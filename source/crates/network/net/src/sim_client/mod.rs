@@ -198,9 +198,7 @@ impl Plugin for SimClient {
         let set = packages.manifest().capabilities;
         Release::build(
             world,
-            MatchSpec::new(PREDICTION_SEED, rate)
-                .capabilities(set)
-                .role(Role::Client),
+            MatchSpec::new(PREDICTION_SEED, rate, Role::Client).set(set),
         );
         packages.books(rate).install_prediction(world);
         mark_unpredicted(world);

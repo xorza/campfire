@@ -1,12 +1,11 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, With};
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_script::View;
-use campfire_sim::{SimComponent, SimEdge, SimSet, Unpredicted};
+use campfire_sim::{SimComponent, Unpredicted};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::MatchEntity;
 use campfire_values::Team;
@@ -22,11 +21,6 @@ pub struct MatchEnd {
     tick: Tick,
     result: MatchResult,
 }
-
-/// A stage with its closing set, which the match end stops together: the closing set belongs to
-/// the stage before it, so it runs when its stage ran, the stage that ends the match included.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct StageSpan(SimSet);
 
 /// How a match ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,24 +42,10 @@ impl MatchEnd {
         self.result
     }
 
-    /// Stops every stage of `schedule` once a match ended, with its closing set, and
-    /// `SimEdge::Start`, from the next stage on: each checks for the end once, as it starts, so
-    /// the stage that ends the match is the last to run, its closing set with it. The tick still
-    /// counts on, so a log may hold ticks after the end, which change nothing.
-    pub fn stop_stages(schedule: &mut Schedule) {
-        schedule.configure_sets(SimEdge::Start.run_if(Self::running));
-        for stage in SimSet::ALL {
-            let span = StageSpan(stage);
-            schedule.configure_sets((
-                stage.in_set(span),
-                SimEdge::After(stage).in_set(span),
-                span.run_if(Self::running),
-            ));
-        }
-    }
-
-    /// Whether the match runs: a client holds its entity unpredicted, as the server sends it.
-    fn running(ended: Query<'_, '_, (), (With<Self>, Allow<Unpredicted>)>) -> bool {
+    /// Whether the match runs, the condition of every stage: a client holds its entity
+    /// unpredicted, as the server sends it. The tick still counts on once it ended, so a log may
+    /// hold ticks after the end, which change nothing.
+    pub(crate) fn running(ended: Query<'_, '_, (), (With<Self>, Allow<Unpredicted>)>) -> bool {
         ended.is_empty()
     }
 }

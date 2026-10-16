@@ -2,7 +2,6 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Res;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 
 use crate::mode_supply_data::ModeSupplyData;
 
@@ -18,7 +17,6 @@ impl SupplyBook {
 }
 
 impl Book for SupplyBook {
-    const OWNER: Option<Capability> = Some(Capability::Production);
     const SCRIPTS_ONLY: bool = false;
 
     /// The production column takes it from the match at each read.

@@ -2400,7 +2400,6 @@ dependencies = [
  "campfire-sim",
  "campfire-state-types",
  "campfire-values",
- "thiserror 2.0.21",
 ]
 
 [[package]]

@@ -10,6 +10,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::resource::Resource;
+use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
@@ -61,11 +62,10 @@ struct State {
     kinds: Option<Vec<TypeId>>,
 }
 
-/// A book as declared: its type, its owner, and the capability of the module that declares it.
+/// A book as declared: its type, and the capability of the module that declares it, its owner.
 #[derive(Debug)]
 struct DeclaredBook {
     ty: Named,
-    owner: Option<Capability>,
     declared_by: Option<Capability>,
 }
 
@@ -208,11 +208,6 @@ impl DeclarationAudit {
         for ty in &self.checks {
             if self.state_of(ty.id).is_none() {
                 problems.push(format!("a check of {}, not declared", ty.name));
-            }
-        }
-        for book in &self.books {
-            if book.owner != book.declared_by {
-                problems.push(format!("{} is declared by another module", book.ty.name));
             }
         }
         for (host, kinds, ty) in &self.parts {
@@ -361,7 +356,6 @@ impl Declarations for DeclarationAudit {
     fn book<B: Book>(&mut self) {
         self.books.push(DeclaredBook {
             ty: Named::of::<B>(),
-            owner: B::OWNER,
             declared_by: self.capability,
         });
     }
@@ -437,13 +431,17 @@ impl Declarations for DeclarationAudit {
         self.one_shots.push(Named::of::<R>());
     }
 
+    fn non_send_loaded<R: 'static>(&mut self) {}
+
+    fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
+
     fn server_part<H: Component, C: Component + Default>(&mut self) {
         self.server_parts.push((Named::of::<H>(), Named::of::<C>()));
     }
 
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 
-    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> R) {}
+    fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {}
 }
 
 #[test]
@@ -458,7 +456,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 33);
     assert_eq!(audit.books.len(), 47);
-    let core = audit.books.iter().filter(|book| book.owner.is_none());
+    let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 14);
     // The observers, the runs out of the schedule and the parts a server derives, which the
     // installer adds for their modules.
@@ -547,7 +545,6 @@ struct Undeclared;
 struct StrayBook;
 
 impl Book for StrayBook {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}
@@ -593,6 +590,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.require::<UnitEntity, Player>();
     audit.check::<Player>(|_| Ok(()));
     audit.book::<StrayBook>();
+    audit.book::<StrayBook>();
     audit.part::<Player, Stray>(|_| Some(Stray));
     audit.engine_tags(&STRAY_TAGS);
     // A column that reads a type no module declares.
@@ -614,11 +612,11 @@ fn each_rule_names_the_declaration_that_breaks_it() {
         audit.problems(),
         [
             format!("state {stray} is declared twice"),
+            format!("book {} is declared twice", type_name::<StrayBook>()),
             format!("{stray} sits on no declared kind"),
             format!("{stray} sits on no declared kind"),
             format!("{unit} needs {player}, not both declared"),
             format!("a check of {player}, not declared"),
-            format!("{} is declared by another module", type_name::<StrayBook>()),
             format!("{stray} is no state of {player}"),
             "the engine tag stray is not at its number".to_owned(),
             "the engine tag stray is declared twice".to_owned(),

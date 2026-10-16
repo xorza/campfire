@@ -111,7 +111,7 @@ pub use crate::effect_data::{
 pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
 pub use crate::effect_queues::{EffectQueues, QueueListed};
-pub use crate::error::{ActionError, ActionProblem, SlotKindsError};
+pub use crate::error::{ActionError, ActionProblem, KindError, SlotKindsError};
 pub use crate::fan::Fan;
 pub use crate::gather_spec::GatherSpec;
 pub use crate::in_progress::{InProgress, OrderPhase};
@@ -223,16 +223,16 @@ impl Module for Actions {
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
     }
 
-    /// Adds the actions to a match whose core is installed, with none loaded yet, and, in a match
-    /// with combat, the holds of every action: its charges as each tick starts, and its passives
-    /// then and as each stage that changes ranks or cooldowns ends. A match with no combat holds
-    /// none, as every action's unit target is one combat finds; the start of an action is the
-    /// abilities'.
+    /// Adds the actions to a match whose core is installed, with none loaded yet, and the holds
+    /// of every action: its charges as each tick starts, which a cast of any match draws; and,
+    /// in a match with stats, whose modifiers a passive is, its passives then and as each stage
+    /// that changes ranks or cooldowns ends. The start of an action is the abilities'.
     fn install(cx: &mut InstallCx<'_>) {
-        if cx.has(Capability::Combat) {
+        cx.systems(Holds::hold_charges.in_set(ActionsSet::HoldAtInputs));
+        if cx.has(Capability::Stats) {
             cx.systems((
-                (Holds::hold_charges, Holds::want_passives)
-                    .chain()
+                Holds::want_passives
+                    .after(Holds::hold_charges)
                     .in_set(ActionsSet::HoldAtInputs),
                 Holds::want_passives.in_set(ActionsSet::HoldAtStrike),
                 Holds::want_passives.in_set(ActionsSet::HoldAtResolve),

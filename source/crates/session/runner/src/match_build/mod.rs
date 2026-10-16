@@ -23,12 +23,8 @@ impl MatchBuild {
         players: u32,
     ) -> MatchSpec {
         let manifest = packages.manifest();
-        MatchSpec::new(seed, rate)
-            .capabilities(manifest.capabilities)
-            .role(Role::Server(Some(ScriptBudgets::new(
-                manifest.script_limits,
-                players,
-            ))))
+        let budgets = ScriptBudgets::new(manifest.script_limits, players);
+        MatchSpec::new(seed, rate, Role::Server(budgets)).set(manifest.capabilities)
     }
 
     /// Puts into `world`, a match of the spec of `packages`, every package's scripts, the books

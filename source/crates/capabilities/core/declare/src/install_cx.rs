@@ -32,11 +32,6 @@ impl<'a> InstallCx<'a> {
         InstallCx { schedule, facts }
     }
 
-    /// The capabilities the match declares.
-    pub const fn set(&self) -> CapabilitySet {
-        self.facts.set
-    }
-
     /// Whether the match declares `capability`.
     pub const fn has(&self, capability: Capability) -> bool {
         self.facts.set.contains(capability)
@@ -55,7 +50,7 @@ impl<'a> InstallCx<'a> {
     /// Adds `systems`, which compute the server's own state, to a server's match, in `ServerOnly`
     /// besides their own sets; a client's install leaves them out.
     pub fn server<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
-        if let Role::Server(_) = self.facts.role {
+        if self.facts.role.computes_state() {
             self.schedule.add_systems(systems.in_set(ServerOnly));
         }
     }
@@ -69,7 +64,7 @@ impl<'a> InstallCx<'a> {
     }
 
     /// Adds `systems`, which stand in for what scripts do, to a match that runs none: a client's,
-    /// or a server's of no budgets, as a test of the rules alone builds.
+    /// or one of the rules alone.
     pub fn unscripted<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
         if !self.facts.role.scripts() {
             self.schedule.add_systems(systems);
@@ -92,10 +87,11 @@ impl<'a> InstallCx<'a> {
         server: impl IntoScheduleConfigs<ScheduleSystem, M>,
         client: impl IntoScheduleConfigs<ScheduleSystem, N>,
     ) {
-        match self.facts.role {
-            Role::Server(_) => self.schedule.add_systems(server),
-            Role::Client => self.schedule.add_systems(client),
-        };
+        if self.facts.role.computes_state() {
+            self.schedule.add_systems(server);
+        } else {
+            self.schedule.add_systems(client);
+        }
     }
 }
 

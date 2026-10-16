@@ -3,7 +3,6 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::{ScriptId, ScriptRole, View};
-use campfire_sim::Capability;
 use campfire_units::ScriptBook;
 use campfire_values::{ActionId, NameId, Names, PackageIndex, Rank};
 
@@ -99,7 +98,6 @@ impl ActionBook {
 }
 
 impl Book for ActionBook {
-    const OWNER: Option<Capability> = None;
     const SCRIPTS_ONLY: bool = false;
 
     /// Names the actions to scripts; the actions column takes the book from the match at each

@@ -21,6 +21,7 @@ use campfire_production::{
 use campfire_progression::{TrackBook, TrackSet};
 use campfire_projectiles::{ProjectileSpec, Projectiles};
 use campfire_script::{Filter, NameKind, ScriptId, UnknownName};
+use campfire_sim::Capability;
 use campfire_stats::{
     ModifierBook, ModifierError, ModifierLoad, PackageModifier, ParamBook, ParamTable, PoolBook,
     PoolId, SpecError, StatBook, StatId, TypePassive,
@@ -139,11 +140,11 @@ impl<'a> BookBuilder<'a> {
         }
         let types = Books::unit_types(input.tag_names, &input.packages);
         let books = BookParts {
-            types: types.map_err(BookError::Types)?,
+            types: types?,
             supply: data.supply,
             ..BookParts::default()
         };
-        let names = ModeNames::of(data).map_err(BookError::Names)?;
+        let names = ModeNames::of(data)?;
         let life = data.combat.life_pool(&names.pools);
         let life =
             life.map_err(|name| BookError::unknown(PackageIndex::MODE, BookPlace::Combat, name))?;
@@ -186,8 +187,8 @@ impl<'a> BookBuilder<'a> {
 
     pub(crate) fn build(mut self) -> Result<Books, BookError> {
         let input = self.input;
-        if input.progression {
-            self.books.tracks = TrackBook::new(&input.data.tracks).map_err(BookError::Tracks)?;
+        if input.set.contains(Capability::Progression) {
+            self.books.tracks = TrackBook::new(&input.data.tracks)?;
         }
         for (index, package) in (0..).map(PackageIndex::new).zip(&input.packages) {
             self.modifiers(index, package)?;
@@ -342,7 +343,7 @@ impl<'a> BookBuilder<'a> {
             &self.names.layers,
             standing,
         )
-        .map_err(BookError::Mode)
+        .map_err(BookError::from)
     }
 
     /// The item book of the mode package `package`, at `index`, its actions `actions`; an error

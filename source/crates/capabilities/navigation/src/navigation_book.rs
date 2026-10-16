@@ -1,7 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_sim::Capability;
 
 use crate::paths::Paths;
 use crate::walls::Walls;
@@ -15,7 +14,6 @@ pub struct NavigationBook {
 }
 
 impl Book for NavigationBook {
-    const OWNER: Option<Capability> = Some(Capability::Navigation);
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, view: &View) {

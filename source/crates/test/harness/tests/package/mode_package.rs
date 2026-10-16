@@ -7,7 +7,7 @@ use campfire_actions::{
     ActionDataField, ActionField, ActionKind, DoesData, EffectData, EffectTo, HealFields,
     LaunchFields, ListHook, PlannedEffect, PurgeFields,
 };
-use campfire_capabilities::{Release, UnitStartError};
+use campfire_capabilities::{CapabilityError, Release, UnitStartError};
 use campfire_codec::internals::{TomlDocument, TomlNode};
 use campfire_common::MapName;
 use campfire_geometry::Metric;
@@ -449,19 +449,37 @@ static DATA_FLAWS: &[Flaw] = &[
         MANIFEST,
         Edit::Replace(r#"["combat","#, r#"["mode", "combat","#),
         MODE_DIR,
-        |problem| manifest_fails(problem, "declares mode, which every match has"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Capabilities(CapabilityError::DeclaresMode)
+            )
+        },
     ),
     flaw(
         MANIFEST,
         Edit::Replace(r#"["combat","#, r#"["combat", "combat","#),
         MODE_DIR,
-        |problem| manifest_fails(problem, "declares Combat twice"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Capabilities(CapabilityError::Repeated(Capability::Combat))
+            )
+        },
     ),
     flaw(
         MANIFEST,
         Edit::Replace(r#", "navigation""#, ""),
         MODE_DIR,
-        |problem| manifest_fails(problem, "declares Orders without Navigation"),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Capabilities(CapabilityError::Needs {
+                    capability: Capability::Orders,
+                    needs: Capability::Navigation,
+                })
+            )
+        },
     ),
     // A section of the mode's data or of its map is its capability's, declared or refused: the
     // map's vision grid without `vision`, its pathing grid without `navigation`, `[supply]`

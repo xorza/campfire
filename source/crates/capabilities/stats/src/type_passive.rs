@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::{ByType, PerType};
-use campfire_sim::{Capability, StableId};
+use campfire_sim::StableId;
 use campfire_values::{ModifierId, Rank, UnitType};
 
 use crate::Stats;
@@ -16,7 +16,6 @@ use crate::modifiers::Modifiers;
 pub struct TypePassive(pub ModifierId);
 
 impl PerType for TypePassive {
-    const OWNER: Option<Capability> = Some(Capability::Stats);
     const SCRIPTS_ONLY: bool = false;
 }
 
