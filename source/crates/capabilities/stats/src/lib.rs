@@ -13,7 +13,6 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_common::Ticks;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
@@ -21,11 +20,16 @@ use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, Tic
 use campfire_units::{BodyUnit, Dead, Player, SpawnHooks};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
+use crate::application::{Adding, ApplyAt};
+use crate::aura_carriers::AuraCarriers;
+use crate::modifier_adds::ModifierAdd;
+use crate::player_grants::PlayerGrants;
 use crate::stats_column::RowReads;
 
 mod application;
 mod applier;
 mod applier_param;
+mod aura_carriers;
 mod carried_mut;
 mod error;
 mod grant_pass;
@@ -40,6 +44,7 @@ mod lifetime;
 mod live_carriers;
 mod live_param;
 mod meter;
+mod modifier_adds;
 mod modifier_book;
 mod modifier_data;
 mod modifier_ends;
@@ -51,6 +56,7 @@ mod param_book;
 mod param_read;
 mod param_source;
 mod param_table;
+mod player_grants;
 mod player_modifiers;
 mod pool_book;
 mod pool_cost;
@@ -83,7 +89,7 @@ pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
 pub use crate::error::{EdgeError, ModifierError, ModifierProblem, SpecError, StatsRefusal};
 pub use crate::grant_pass::GrantPass;
-pub use crate::grants::{Grant, GrantChange, Grants, GrantsIter, UnitGrants};
+pub use crate::grants::{Grant, GrantChange, GrantFrom, Grants, GrantsIter, UnitGrants};
 pub use crate::held_modifiers::{Held, HeldModifiers};
 pub use crate::held_pass::HeldPass;
 pub use crate::instance::{Instance, StackEnd, StatShare};
@@ -223,6 +229,7 @@ impl Module for Stats {
         d.component::<Pools>();
         d.scratch::<HeldModifiers>();
         d.scratch::<Grants>();
+        d.cache::<AuraCarriers>();
         d.cache::<LiveCarriers>();
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
@@ -254,13 +261,19 @@ impl Module for Stats {
             Refresh::regenerate.in_set(StatsSet::Regenerate),
             GrantPass::run.in_set(StatsSet::GrantAtInputs),
             GrantPass::run.in_set(StatsSet::GrantAtStrike),
-            GrantPass::run.in_set(StatsSet::GrantAtResolve),
+            (PlayerGrants::want, GrantPass::run)
+                .chain()
+                .in_set(StatsSet::GrantAtResolve),
             GrantPass::run.in_set(StatsSet::GrantAtEnd),
             ModifierEnds::clear_dead_modifiers.in_set(StatsSet::ClearDead),
         ));
         cx.by_role(
-            HeldPass::run::<ServerForm>.in_set(StatsSet::Hold),
-            HeldPass::run::<ClientForm>.in_set(StatsSet::Hold),
+            (AuraCarriers::track, HeldPass::run::<ServerForm>)
+                .chain()
+                .in_set(StatsSet::Hold),
+            (AuraCarriers::track, HeldPass::run::<ClientForm>)
+                .chain()
+                .in_set(StatsSet::Hold),
         );
         for set in StatsSet::ALL {
             if let StatsSet::Refresh(_) = set {
@@ -284,31 +297,34 @@ impl Stats {
         }
     }
 
-    fn add_modifier(
-        world: &mut World,
-        target: StableId,
-        id: ModifierId,
-        applier: Applier,
-        duration: Option<Ticks>,
-    ) {
-        let Some(entity) = world.entity_of(target) else {
+    /// Adds `add` from a world alone, as `HeldModifierAdds::add` adds it, its shares and state
+    /// held first: for a spawn's hook and a test, which hold no call's frame.
+    fn add_modifier(world: &mut World, add: ModifierAdd) {
+        let Some(entity) = world.entity_of(add.target) else {
             return;
         };
         if world.entity(entity).contains::<Dead>() {
             return;
         }
-        let now = world.resource::<SimTick>().start();
-        let rate = *world.resource::<TickRate>();
-        let book = world.resource::<ModifierBook>();
-        let source = applier
+        let at = ApplyAt {
+            now: world.resource::<SimTick>().start(),
+            rate: *world.resource::<TickRate>(),
+            params: world.resource::<ParamBook>(),
+        };
+        let source = add
+            .applier
             .source
             .and_then(|source| ParamSource::of(world, source));
-        let params = world.resource::<ParamBook>();
-        let param = |place: ParamPlace| {
-            let (action, rank) = (applier.action, applier.rank);
-            params.modifier_param(id, action, rank, place, source.as_ref())
+        let adding = Adding {
+            id: add.id,
+            applier: add.applier,
+            source: source.as_ref(),
+            duration: add.duration,
         };
-        let application = book.application(id, applier, duration, now, rate, param);
+        let application = world
+            .resource::<ModifierBook>()
+            .application(at, adding)
+            .owned();
         if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.apply(application);
         }
@@ -418,7 +434,7 @@ pub mod internals {
                 id,
                 duration: None,
             };
-            add.apply_by(world, applier);
+            add.apply_from(world, applier);
         }
 
         /// The modifiers `id` carries, each with its source, in their order.

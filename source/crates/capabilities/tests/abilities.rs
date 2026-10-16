@@ -2457,7 +2457,8 @@ fn on_interval(ctx, m) { throw "interval"; }
             ("pulse", scripted(Some(100), &[])),
         ],
     );
-    game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(10));
+    game.resource_mut::<CombatBook>()
+        .set_assist_window(Some(Ticks::new(10)));
     let striker = striker(500).load(&mut game);
     let victim = Abilities::spawn_combatant(&mut game, (1, 0, 0), Team::new(1), ());
     let origin = Vec3::from((0, 0, 0));
@@ -2473,7 +2474,7 @@ fn on_interval(ctx, m) { throw "interval"; }
     let target = game.unit_entity(victim);
     game.resource_scope(|world, index: Mut<'_, EntityIndex>| {
         let mut attackers = world.get_mut::<RecentAttackers>(target).unwrap();
-        attackers.struck(assister, Tick::new(0), &index);
+        attackers.record(assister, Tick::new(0), &index);
     });
     game.step();
     assert_eq!(Stats::health(&game, victim), 0);

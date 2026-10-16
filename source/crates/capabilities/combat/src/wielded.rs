@@ -8,8 +8,8 @@ use campfire_values::{ActionId, Block, Rank, UnitTags, UnitType};
 pub(super) struct Wielded<'a> {
     pub(super) slot: u8,
     /// The weapon's action, which its damage names, and the rank of its slot.
-    pub action: ActionId,
-    pub rank: Rank,
+    pub(super) action: ActionId,
+    pub(super) rank: Rank,
     pub(super) weapon: Weapon,
     pub(super) values: RankValues,
     pub(super) resource_cost: &'a [ResourceAmount],

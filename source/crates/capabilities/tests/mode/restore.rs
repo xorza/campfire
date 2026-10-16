@@ -373,7 +373,7 @@ fn a_restore_keeps_each_time_within_the_limit() {
             "{at}"
         );
         let mut attackers = RecentAttackers::default();
-        attackers.struck(unit, at, game.resource::<EntityIndex>());
+        attackers.record(unit, at, game.resource::<EntityIndex>());
         assert_eq!(Match::decodes(&attackers), holds, "{at}");
         let mut route = game.get::<Route>(grunt).unwrap().clone();
         route.ask(game.get::<Position>(grunt).unwrap().get(), at, None);
@@ -439,10 +439,10 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
             stats: vec![one],
             lifetime: Lifetime::applied(Ends::At(ends)),
             stack_life: Some(life),
-            stack_ends: vec![StackEnd {
+            stack_end: Some(StackEnd {
                 until: stack_end,
                 count: 1,
-            }],
+            }),
             ..NewInstance::bare(modifier, None)
         },
         reapply: Reapply::Refresh,

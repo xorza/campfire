@@ -8,7 +8,7 @@ use campfire_math::{Num, Rounding};
 use campfire_script::LivingUnit;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_stats::PoolMetersMut;
+use campfire_stats::{PoolCost, PoolMetersMut};
 use campfire_units::UnitEntity;
 use campfire_values::{ActionId, Relation, Team};
 use serde::de::Error;
@@ -291,13 +291,14 @@ impl SlotTimes {
     }
 
     /// Pays the cost of each toggle of `slots` that is on and pays as each attack goes off, from
-    /// `pools`, as `book` gives it at the slot's rank; one that `pools` cannot pay turns off
-    /// instead.
+    /// `pools`, as `book` gives it at the slot's rank, in slot order; one that `pools` cannot pay
+    /// with `keep` left for the attack's own cost turns off instead, so the attack still strikes.
     pub fn pay_attack_toggles(
         &mut self,
         slots: &ActionSlots,
         book: &ActionBook,
         pools: &mut PoolMetersMut<'_>,
+        keep: &PoolCost,
     ) {
         for (held, time) in slots.iter().zip(&mut self.0) {
             if time.toggle.is_none() {
@@ -310,7 +311,8 @@ impl SlotTimes {
             if toggle.per != TogglePer::Attack {
                 continue;
             }
-            if pools.read().affords(&toggle.cost) {
+            let both = toggle.cost.checked_add(keep);
+            if both.is_some_and(|both| pools.read().affords(&both)) {
                 pools.pay(&toggle.cost);
             } else {
                 time.toggle = None;

@@ -11,6 +11,6 @@ use crate::stat_book::StatBook;
 pub(crate) struct StatBooks<'w> {
     pub(crate) stats: Res<'w, StatBook>,
     pub(crate) pools: Res<'w, PoolBook>,
-    pub modifiers: Res<'w, ModifierBook>,
-    pub tags: Res<'w, TagBook>,
+    pub(crate) modifiers: Res<'w, ModifierBook>,
+    pub(crate) tags: Res<'w, TagBook>,
 }

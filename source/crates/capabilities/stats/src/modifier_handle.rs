@@ -10,7 +10,6 @@ use campfire_sim::StableId;
 use campfire_values::{ModifierId, NameId};
 
 use crate::error::StatsRefusal;
-use crate::stats_effect::StatsEffect;
 
 /// A modifier as a script holds it, `Modifier` in scripts: its carrier and source, and its
 /// stacks and state, which a call may write and read back; the writes apply when the call ends.
@@ -105,17 +104,6 @@ impl ModifierHandle {
     pub(crate) fn is(&self, carrier: StableId, id: ModifierId, source: Option<StableId>) -> bool {
         let data = self.0.borrow();
         (data.carrier, data.id, data.source) == (carrier, id, source)
-    }
-
-    /// `ctx.remove(m)`: the effect that ends its instance, which the call now sees as gone.
-    pub fn remove(&self) -> StatsEffect {
-        let mut data = self.data();
-        data.removed = true;
-        StatsEffect::Remove {
-            carrier: data.carrier,
-            id: data.id,
-            source: data.source,
-        }
     }
 
     /// The `Modifier` handle's fields, and `m.state`.

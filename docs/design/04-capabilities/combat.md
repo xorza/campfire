@@ -77,7 +77,7 @@ A unit's modifiers hear its combat events, each by its script's hook, in the ord
 After one damage, its events run in the table's order, for every damage that reached a unit above zero life, absorbed or not; `d.amount` in a hook is after `calc_damage`, before shields. A hook's effects apply when it returns: a modifier and a restore at once, a heal next, damage at the end of the pass.
 
 - **A hook's `ctx`** is every script's ([One source](../08-script-api.md#one-source)). Its acting unit is the modifier's source; `ctx.p` reads the modifier's params, then its action's, at the instance's rank; its damage names the modifier's action. Writes to `m` apply when it returns.
-- **Intervals.** A modifier with `interval_ms` runs its `on_interval` effects and hook that many ticks after it was applied, rounded up and at least one, and each interval after; a refresh keeps the count.
+- **Intervals.** A modifier with `interval_ms` runs its `on_interval` hook that many ticks after it was applied, rounded up and at least one, and each interval after; a refresh keeps the count. An `on_interval` effect list, which runs beside the hook, is planned: the load refuses it until it runs.
 - **Depth.** Attacks, actions and the tick's other damage are at depth 0, `on_attack` and `on_interval` at 1, and a hook an event of depth `k` causes runs at `k + 1`, its damage at that depth. `ctx.attack_hit(target)` deals the acting unit's first weapon's damage as an attack, with `d.attack` and `d.extra` set, followed by `on_attack_hit` but not `on_attack`, so a hook can refuse to answer it, as Dota 2 marks reflected damage. A hook at depth 16 fails with a script error, so the pass ends within the tick. A unit with no weapon fails `ctx.attack_hit`.
 
 ## State and derived

@@ -19,14 +19,23 @@ pub struct Grants {
     runs: Vec<GrantRun>,
 }
 
-/// A modifier a source grants a unit from itself, held by `hold`, by `action` if one, at `rank`;
-/// `None` for one the source granted and grants no more, which the pass releases.
+/// A modifier a source grants a unit, from `from`, held by `hold`, by `action` if one, at
+/// `rank`; `None` for one the source granted and grants no more, which the pass releases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Grant {
     pub modifier: ModifierId,
+    pub from: GrantFrom,
     pub hold: Hold,
     pub action: Option<ActionId>,
     pub rank: Option<Rank>,
+}
+
+/// Whom a grant's instance is from: the unit itself, as its passives and items, or no source,
+/// as its player's modifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrantFrom {
+    Itself,
+    Nobody,
 }
 
 /// What a grant changes on its unit.
@@ -62,12 +71,20 @@ pub struct GrantsIter<'a> {
 }
 
 impl Grant {
+    /// The source of the grant's instance on the unit `unit`.
+    pub const fn source(self, unit: StableId) -> Option<StableId> {
+        match self.from {
+            GrantFrom::Itself => Some(unit),
+            GrantFrom::Nobody => None,
+        }
+    }
+
     /// What the grant changes on the unit `unit`, which carries `modifiers`: an apply at its rank
-    /// when the unit does not hold the modifier from itself at that rank by the grant's hold, a
-    /// release when it holds it and the grant has no rank, and nothing else.
+    /// when the unit does not hold the modifier from the grant's source at that rank by the
+    /// grant's hold, a release when it holds it and the grant has no rank, and nothing else.
     pub fn change(self, modifiers: &Modifiers, unit: StableId) -> Option<GrantChange> {
         let held = modifiers
-            .get(self.modifier, Some(unit))
+            .get(self.modifier, self.source(unit))
             .filter(|instance| instance.lifetime.held_by(self.hold))
             .map(|instance| instance.rank);
         match self.rank {

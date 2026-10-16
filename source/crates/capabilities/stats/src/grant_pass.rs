@@ -2,12 +2,12 @@ use bevy_ecs::query::QueryEntityError;
 use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_sim::TickClock;
 
+use crate::application::{Adding, ApplyAt};
 use crate::applier::Applier;
 use crate::carried_mut::CarriedMut;
 use crate::grants::{Grant, GrantChange, Grants};
 use crate::modifier_book::ModifierBook;
 use crate::modifier_params::ModifierParams;
-use crate::modifier_spec::ParamPlace;
 use crate::modifiers::Modifiers;
 use crate::modifiers::modifier_clocks::ModifierClocks;
 
@@ -28,7 +28,11 @@ impl GrantPass {
         mut grants: ResMut<'_, Grants>,
         mut units: Query<'_, '_, (&mut Modifiers, &mut ModifierClocks)>,
     ) {
-        let now = clock.start();
+        let at = ApplyAt {
+            now: clock.start(),
+            rate: clock.rate(),
+            params: params.book(),
+        };
         for unit in &*grants {
             let (modifiers, clocks) = match units.get_mut(unit.entity) {
                 Ok(carried) => carried,
@@ -50,25 +54,21 @@ impl GrantPass {
                 match grant.change(carried.modifiers(), unit.unit) {
                     Some(GrantChange::Apply(rank)) => {
                         let applier = Applier {
-                            source: Some(unit.unit),
+                            source: grant.source(unit.unit),
                             action,
                             rank,
                             hold: Some(hold),
                         };
-                        let param = |place: ParamPlace| {
-                            params.modifier_param(modifier, action, rank, place, source.as_ref())
-                        };
-                        carried.apply(book.application(
-                            modifier,
+                        let adding = Adding {
+                            id: modifier,
                             applier,
-                            None,
-                            now,
-                            clock.rate(),
-                            param,
-                        ));
+                            source: grant.source(unit.unit).and(source.as_ref()),
+                            duration: None,
+                        };
+                        carried.add(&book, at, adding);
                     }
                     Some(GrantChange::Release) => {
-                        carried.release(modifier, Some(unit.unit), hold);
+                        carried.release(modifier, grant.source(unit.unit), hold);
                     }
                     None => {}
                 }

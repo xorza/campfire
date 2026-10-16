@@ -29,7 +29,7 @@ pub(crate) struct RefreshScratch {
 /// A unit a refresh computes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Refreshing {
-    pub id: StableId,
+    pub(crate) id: StableId,
     pub(crate) entity: Entity,
     pub(crate) unit_type: UnitType,
     pub(crate) level: u32,

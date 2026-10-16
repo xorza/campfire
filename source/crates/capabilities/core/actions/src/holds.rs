@@ -3,7 +3,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_sim::{DueRun, SimTick, StableId, TickClock, Unpredicted};
-use campfire_stats::{Grant, Grants, Hold, ModifierBook, ModifierParams, Modifiers, StatBook};
+use campfire_stats::{
+    Grant, GrantFrom, Grants, Hold, ModifierBook, ModifierParams, Modifiers, StatBook,
+};
 
 use crate::action_book::ActionBook;
 use crate::action_slots::ActionSlots;
@@ -119,6 +121,7 @@ impl Holds {
                     waits |= slot.rank.is_some() && cooling;
                     grants.push(Grant {
                         modifier: passive.modifier,
+                        from: GrantFrom::Itself,
                         hold: Hold::Passive,
                         action: Some(action_id),
                         rank: slot.rank.filter(|_| !cooling),
@@ -128,6 +131,7 @@ impl Holds {
                     let runs = time.toggle.is_some() || slots.channeling() == Some(index);
                     grants.push(Grant {
                         modifier: hold,
+                        from: GrantFrom::Itself,
                         hold: Hold::Running,
                         action: Some(action_id),
                         rank: slot.rank.filter(|_| runs),

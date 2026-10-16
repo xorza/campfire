@@ -269,6 +269,7 @@ pub mod internals {
     use crate::fan::Fan;
     use crate::gather_spec::GatherSpec;
     use crate::kind_spec::KindSpec;
+    use crate::rank_fields::{RankToggle, TogglePer};
     use crate::rank_values::{ClipRule, RankValues};
     use crate::weapon::{Source, Weapon};
 
@@ -306,6 +307,42 @@ pub mod internals {
                         windup: time,
                         charges: None,
                         toggle: None,
+                        channel: None,
+                        charge: None,
+                        amount: None,
+                        period: None,
+                        clip: None,
+                    }],
+                    resource_costs: Box::default(),
+                    script: None,
+                    hooks: HookSet::default(),
+                    delivery: None,
+                },
+            )
+        }
+
+        /// Adds a toggle that pays `cost` as each attack of its caster goes off, at no other
+        /// cost, to the match's action book.
+        pub fn add_attack_toggle(world: &mut World, cost: PoolCost) -> ActionId {
+            Self::push(
+                world,
+                "toggle",
+                Action {
+                    package: PackageIndex::MODE,
+                    kind: KindSpec::Cast,
+                    passive: None,
+                    hold: None,
+                    aim: Aim::None,
+                    ranks: vec![RankValues {
+                        range: ActionRange::Meters(Num::ZERO),
+                        cooldown: Ticks::ZERO,
+                        cost: PoolCost::default(),
+                        windup: Ticks::ZERO,
+                        charges: None,
+                        toggle: Some(RankToggle {
+                            per: TogglePer::Attack,
+                            cost,
+                        }),
                         channel: None,
                         charge: None,
                         amount: None,

@@ -18,7 +18,6 @@ use campfire_codec::Binary;
 use campfire_combat::internals::{Armed, Attack};
 use campfire_combat::*;
 use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
-use campfire_declare::ServerForm;
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
@@ -121,13 +120,12 @@ fn an_attack_winds_up_and_strikes_each_period() {
     game.run_until(19);
     assert_eq!(Attack::of(&game, fighter).target(), None);
 
-    // A list keeps each attacker once, by stable id, and forgets one that despawned: the dummy.
+    // A list keeps each attacker once, by stable id.
     let index = game.resource::<EntityIndex>();
     let record = |recent: &mut RecentAttackers, source, tick| {
-        recent.struck(source, Tick::new(tick), index);
+        recent.record(source, Tick::new(tick), index);
     };
     let mut recent = RecentAttackers::default();
-    record(&mut recent, dummy, 3);
     record(&mut recent, fighter, 4);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 4)]);
     record(&mut recent, fighter, 6);
@@ -139,15 +137,10 @@ fn an_attack_winds_up_and_strikes_each_period() {
         Binary::decode::<RecentAttackers>(&bytes).unwrap()
     };
     let mut recent = held(&[attack(fighter, 4), attack(dummy, 3)]);
-    let mut gone = vec![dummy];
-    recent.gone(fighter, index, &mut gone);
-    assert_eq!(gone, []);
     record(&mut recent, fighter, 7);
     let attacks = recent.iter().collect::<Vec<_>>();
     assert_eq!(attacks, [attack(fighter, 7), attack(dummy, 3)]);
     let mut recent = held(&[attack(dummy, 3)]);
-    recent.gone(fighter, index, &mut gone);
-    assert_eq!(gone, [dummy]);
     record(&mut recent, fighter, 8);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 8)]);
 }
@@ -510,6 +503,52 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
 }
 
 #[test]
+fn a_toggle_an_attack_cannot_pay_with_its_own_cost_turns_off_and_the_attack_strikes() {
+    // A weapon of 2 m, a windup of 2 ticks, a period of 5 ticks and 10 damage, that costs 4
+    // mana, and a toggle, on, that costs 3 mana as each attack goes off; the unit has 12 mana.
+    // The attack going off in tick 2 pays both, 12 − 3 − 4 = 5, and strikes. The one going off
+    // in tick 7 cannot pay 3 + 4 of 5: the toggle turns off, and the attack pays its own 4 of
+    // the 5 and strikes, so the dummy's 100 goes to 90, then 80.
+    let mut game = fight_match();
+    let mana = PoolId::new(1).unwrap();
+    let weapon = TestWeapon {
+        cost: PoolCost::new([(mana, Num::int(4))]),
+        ..TestWeapon::new(
+            Filter::of_release_relations(RelationSet::Enemies),
+            ActionRange::Meters(Num::int(2)),
+            Ticks::new(2),
+        )
+    };
+    let weapon = Actions::add_weapon(&mut game, weapon);
+    let toggle = Actions::add_attack_toggle(&mut game, PoolCost::new([(mana, Num::int(3))]));
+    let slots = ActionSlots::new([
+        (weapon, SlotKind::new(0), Rank::new(1)),
+        (toggle, SlotKind::new(0), Rank::new(1)),
+    ]);
+    let paying = wielder(&mut game, slots, &[Num::int(6), Num::int(10)]);
+    let dummy = dummy().load(&mut game);
+    Units::give_type(
+        &mut game,
+        paying,
+        Pools::new([(mana, Num::int(12))]).unwrap(),
+    );
+    let id = Mode::spawn(&mut game, paying, (0, 0, 0), Team::new(0), ());
+    let dummy = Mode::spawn(&mut game, dummy, (1, 0, 0), Team::new(1), ());
+    game.part_mut::<SlotTimes>(id).toggle_on(1, Tick::ZERO);
+    Combat::attack(&mut game, id, dummy);
+    let state = |game: &Match| {
+        let pools = game.try_part::<Pools>(id).copied().unwrap();
+        let mana = pools.current(mana).unwrap().to_int().unwrap();
+        let on = game.part::<SlotTimes>(id).slot(1).unwrap().toggle.is_some();
+        (mana, on, Stats::health(game, dummy))
+    };
+    game.run_until(3);
+    assert_eq!(state(&game), (5, true, 90));
+    game.run_until(8);
+    assert_eq!(state(&game), (1, false, 80));
+}
+
+#[test]
 fn a_windup_on_a_target_that_dies_spends_nothing() {
     let mut game = fight_match();
     let armed = [
@@ -781,7 +820,8 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     for (window, assisted) in [(None, 0), (Some(4), 1), (Some(5), 2)] {
         let mut game = fight_match();
         if let Some(ticks) = window {
-            game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(ticks));
+            game.resource_mut::<CombatBook>()
+                .set_assist_window(Some(Ticks::new(ticks)));
         }
         let team = Team::new(0);
         let victim = combatant(130, 0, 0, 1, 0);
@@ -902,9 +942,10 @@ fn load_damage_stats(world: &mut World) {
     };
     let pools = Names::<PoolId>::from([health.as_str()]);
     let life = combat.life_pool(&pools).unwrap();
-    let bindings =
-        CombatBindings::new(&combat, |stat| book.named(stat).ok_or_else(|| stat.clone()));
-    world.resource_mut::<CombatBook>().bindings = bindings.unwrap();
+    let bound = CombatBook::new(&combat, Match::TEST_RATE, |stat| {
+        book.named(stat).ok_or_else(|| stat.clone())
+    });
+    world.insert_resource(bound.unwrap());
     Stats::load_book(world, book);
     world.resource_mut::<PoolBook>().set_life(life);
 }
@@ -928,7 +969,8 @@ const ATTACK: DamageCause = DamageCause::Attack {
 #[test]
 fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     let mut game = fight_match();
-    game.resource_mut::<CombatBook>().assist_window = Some(Ticks::new(10));
+    game.resource_mut::<CombatBook>()
+        .set_assist_window(Some(Ticks::new(10)));
     let [dummy, stays] = arm(&mut game, [dummy(), dummy().on_death(OnDeath::Stay)]);
     let a = Mode::spawn(&mut game, dummy, (0, 0, 0), Team::new(0), ());
     let b = Mode::spawn(&mut game, dummy, (1, 0, 0), Team::new(0), ());
@@ -1187,7 +1229,7 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
             slots.start_attack(0, Tick::new(0));
         }
         game.resource_mut::<PassQueue>().clear();
-        game.run_system_once(Attacks::strike::<ServerForm>).unwrap();
+        Combat::strike_now(game);
         let queue = game.resource::<PassQueue>();
         let mut rolls: Vec<_> = (0..attackers.len())
             .map(|at| {

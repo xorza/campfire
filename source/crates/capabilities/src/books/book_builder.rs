@@ -7,7 +7,7 @@ use campfire_actions::{
     CostTarget, EffectNames, PackageAction, PlacementData, PlacementRule, SlotKindBook, UseGroup,
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
-use campfire_combat::{Armor, CombatBindings, CombatBook, CombatData, OnDeath};
+use campfire_combat::{Armor, CombatBook, CombatData, OnDeath};
 use campfire_interaction::{UseData, UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
 use campfire_mode::{MapInput, ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
@@ -234,7 +234,7 @@ impl<'a> BookBuilder<'a> {
         let resolved = self.resolve_map(&self.books.types)?;
         let mut parts = self.books;
         let stats = &self.stats;
-        let bindings = CombatBindings::new(&data.combat, |stat| {
+        let combat = CombatBook::new(&data.combat, input.rate, |stat| {
             BookBuilder::stat_in(stats, PackageIndex::MODE, BookPlace::Combat, stat)
         })?;
         let standing = parts.units.unit_types.iter();
@@ -247,8 +247,6 @@ impl<'a> BookBuilder<'a> {
             navigation,
             vision,
         } = resolved;
-        // A window past what ticks can count covers the whole match.
-        let assist_window = data.combat.assist_window_ms.map(|ms| input.rate.window(ms));
         let mut built = BuiltBooks::default();
         built.add(parts.types.state_book());
         built.add(parts.types.origin_book());
@@ -263,10 +261,7 @@ impl<'a> BookBuilder<'a> {
         built.add(parts.actions);
         built.add(parts.effects);
         built.add(SlotKindBook(Arc::new(data.slots.clone())));
-        built.add(CombatBook {
-            bindings,
-            assist_window,
-        });
+        built.add(combat);
         built.add(parts.ais);
         built.add(parts.projectiles);
         built.add(parts.areas);

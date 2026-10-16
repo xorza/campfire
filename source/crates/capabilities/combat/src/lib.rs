@@ -25,7 +25,6 @@ mod armor;
 mod attacks;
 mod clip_shots;
 mod combat_api;
-mod combat_bindings;
 mod combat_book;
 mod combat_column;
 mod combat_data;
@@ -38,7 +37,6 @@ mod damage_pass;
 mod deaths;
 mod dying;
 mod error;
-mod going_off;
 mod heal;
 mod heal_handle;
 mod interval_due;
@@ -52,6 +50,7 @@ mod pass_queue;
 mod recent_attack;
 mod recent_attackers;
 mod respawn;
+mod volley;
 mod weighers;
 mod wielded;
 
@@ -59,12 +58,11 @@ pub use crate::armor::{Armor, ArmorShare};
 pub use crate::attacks::Attacks;
 pub use crate::clip_shots::ClipShots;
 pub use crate::combat_api::CombatApi;
-pub use crate::combat_bindings::CombatBindings;
 pub use crate::combat_book::CombatBook;
 pub use crate::combat_column::CombatColumn;
 pub use crate::combat_data::CombatData;
 pub use crate::combat_effect::CombatEffect;
-pub use crate::combat_event::{CombatEvent, CombatEvents};
+pub use crate::combat_event::CombatEvent;
 pub use crate::combat_hooks::CombatHooks;
 pub use crate::damage::{Damage, DamageCause};
 pub use crate::damage_handle::DamageHandle;
@@ -83,6 +81,7 @@ pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
 pub use crate::recent_attackers::RecentAttackers;
 pub use crate::respawn::Respawn;
+use crate::volley::Volley;
 pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
@@ -158,6 +157,7 @@ impl Module for Combat {
         d.component::<Respawn>();
         d.state::<BodyUnit, Respawn>();
         d.scratch::<PassQueue>();
+        d.scratch::<Volley>();
         d.resource::<NextDamage>();
         d.report::<Deaths>();
         d.non_send::<CombatHooks>(|world, role| Some(CombatHooks::install(world, role)));
@@ -195,16 +195,25 @@ impl Module for Combat {
             Dying::die.in_set(CombatSet::Die),
             Dying::respawn.in_set(CombatSet::Respawn),
         ));
+        cx.systems(Volley::collect.in_set(CombatSet::Pay));
         cx.by_role(
-            (Attacks::attack_events, Attacks::strike::<ServerForm>)
+            (
+                Attacks::attack_events.run_if(Volley::any),
+                Attacks::strike::<ServerForm>,
+            )
                 .chain()
                 .in_set(CombatSet::Strike),
-            (Attacks::attack_events, Attacks::strike::<ClientForm>)
+            (
+                Attacks::attack_events.run_if(Volley::any),
+                Attacks::strike::<ClientForm>,
+            )
                 .chain()
                 .in_set(CombatSet::Strike),
         );
         cx.server((
-            Attacks::pay_attack_toggles.in_set(CombatSet::Pay),
+            Attacks::pay_attack_toggles
+                .after(Volley::collect)
+                .in_set(CombatSet::Pay),
             Dying::forget_attackers
                 .before(Dying::respawn)
                 .in_set(CombatSet::Respawn),
@@ -217,12 +226,14 @@ impl Module for Combat {
 pub mod internals {
     use std::collections::BTreeMap;
 
+    use bevy_ecs::system::RunSystemOnce;
     use bevy_ecs::world::World;
     use campfire_actions::internals::TestWeapon;
     use campfire_actions::{
         ActionBook, ActionRange, ActionSlots, Actions, InProgress, SlotKind, SlotTimes,
     };
     use campfire_common::{Tick, Ticks};
+    use campfire_declare::ServerForm;
     use campfire_math::{Num, Rounding};
     use campfire_script::{Filter, View};
     use campfire_sim::internals::SimWorldInternals;
@@ -232,14 +243,24 @@ pub mod internals {
     use campfire_values::{DamageKind, Rank, RelationSet, Stat, UnitType};
 
     use crate::Combat;
-    use crate::combat_bindings::CombatBindings;
+    use crate::attacks::Attacks;
     use crate::combat_book::CombatBook;
     use crate::damage::{Damage, DamageCause};
     use crate::damage_pass::DamagePass;
     use crate::on_death::OnDeath;
     use crate::pass_queue::PassEntry;
+    use crate::volley::Volley;
 
     impl Combat {
+        /// Strikes with each attack whose windup ended, as the server's strike set does once the
+        /// tick's attacks paid: for a test that strikes outside a tick.
+        pub fn strike_now(world: &mut World) {
+            world.run_system_once(Volley::collect).unwrap();
+            world
+                .run_system_once(Attacks::strike::<ServerForm>)
+                .unwrap();
+        }
+
         /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
         /// pass, as an effect of no action deals it: for a test that deals what no input can.
         pub fn queue_damage(
@@ -435,10 +456,11 @@ pub mod internals {
             Stats::load_rules(world, &BTreeMap::from(rules));
         }
 
-        /// Binds `life` as the life pool, with no stat bound, as a test world with no mode needs.
+        /// Binds `life` as the life pool, with no stat bound and no assist window, as a test world
+        /// with no mode needs.
         pub fn bind_life(world: &mut World, life: PoolId) {
             world.resource_mut::<PoolBook>().set_life(Some(life));
-            world.resource_mut::<CombatBook>().bindings = CombatBindings::default();
+            world.insert_resource(CombatBook::default());
         }
 
         pub fn attack(world: &mut World, attacker: StableId, target: StableId) {

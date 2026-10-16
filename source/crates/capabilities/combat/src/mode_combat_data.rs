@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_script::{DataSection, DataTable, NameKind, UnknownName};
 use campfire_stats::PoolId;
-use campfire_values::{DamageKind, DeclaredName, NameId, Names, Stat};
+use campfire_values::{DeclaredName, Names, Stat};
 use serde::Deserialize;
 
 use crate::armor::ArmorShare;
@@ -37,9 +37,6 @@ pub struct LeechData {
 }
 
 impl ModeCombatData {
-    /// The most damage kinds it declares.
-    pub const DAMAGE_KIND_LIMIT: usize = DamageKind::LIMIT;
-
     /// The id among `pools` of the life pool it names; `None` when it names none, and an error
     /// for a pool `pools` does not hold.
     pub fn life_pool(&self, pools: &Names<PoolId>) -> Result<Option<PoolId>, UnknownName> {

@@ -109,7 +109,7 @@ impl StatsApi {
                 &[&["handle"]],
                 "ends the modifier, projectile or area at once",
             ),
-            |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(handle.remove()),
+            |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(StatsEffect::removing(&handle)),
         );
         api.hook(Hook::OnInterval, Status::Runs(ApiVersion::FIRST))
             .tag_property(TagProperty::Immune, Status::Runs(ApiVersion::FIRST));

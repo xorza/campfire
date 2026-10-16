@@ -1,5 +1,7 @@
+use std::fmt;
+
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::Local;
+use bevy_ecs::system::{Local, Query, Res, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionSlots, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf,
@@ -18,11 +20,12 @@ use campfire_values::{Block, NameId, UnitTags, UnitType};
 
 use crate::armor::Armor;
 use crate::combat_book::CombatBook;
-use crate::combat_event::{CombatEvent, CombatEvents};
+use crate::combat_event::CombatEvent;
 use crate::combat_hooks::CombatHooks;
 use crate::damage::Damage;
 use crate::deaths::{Deaths, Fallen};
 use crate::heal::{Heal, HealCause};
+use crate::modifier_hooks::ModifierHooks;
 use crate::next_damage::NextDamage;
 use crate::pass_queue::{PassEntry, PassQueue};
 use crate::recent_attack::RecentAttack;
@@ -67,12 +70,27 @@ impl<'w> PassRun<'_, 'w> {
     }
 }
 
-/// The buffers the pass keeps between its runs: the attackers a damage's target forgets as its
-/// source strikes it, and the assisters of a death, then of the kill whose events run.
-#[derive(Debug, Default)]
+/// What the pass keeps between its runs: the query that records a damage's source among its
+/// target's attackers, made as the first record needs it, and the assisters of a death, then of
+/// the kill whose events run.
+#[derive(Default)]
 pub(crate) struct PassScratch {
-    gone: Vec<StableId>,
+    records: Option<SystemState<AttackerRecords<'static, 'static>>>,
     assisters: Vec<StableId>,
+}
+
+/// What a record of an attacker reads and writes: the stable ids, and each unit's attackers.
+type AttackerRecords<'w, 's> = (
+    Res<'w, EntityIndex>,
+    Query<'w, 's, &'static mut RecentAttackers>,
+);
+
+impl fmt::Debug for PassScratch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("PassScratch")
+            .field("assisters", &self.assisters)
+            .finish_non_exhaustive()
+    }
 }
 
 impl DamagePass {
@@ -260,7 +278,7 @@ impl DamagePass {
     /// each assister, by stable id, whom `assisters` holds while their hooks run.
     fn answer(
         batch: &mut ScriptBatch<'_>,
-        events: &CombatEvents,
+        events: &ModifierHooks,
         damage: Damage,
         landed: Landed,
         assisters: &mut Vec<StableId>,
@@ -269,9 +287,9 @@ impl DamagePass {
             return;
         }
         if damage.cause.attack() {
-            events.call(batch, CombatEvent::AttackHit(damage));
+            events.hear(batch, CombatEvent::AttackHit(damage));
         }
-        events.call(batch, CombatEvent::DamageTaken(damage));
+        events.hear(batch, CombatEvent::DamageTaken(damage));
         let Landed::Killed { death } = landed else {
             return;
         };
@@ -281,7 +299,7 @@ impl DamagePass {
         assisters.extend_from_slice(kill.assisters);
         let (victim, depth) = (damage.target, damage.depth);
         if let Some(killer) = killer {
-            events.call(
+            events.hear(
                 batch,
                 CombatEvent::Kill {
                     killer,
@@ -291,7 +309,7 @@ impl DamagePass {
             );
         }
         for unit in killer.into_iter().chain(assisters.iter().copied()) {
-            events.call(
+            events.hear(
                 batch,
                 CombatEvent::Takedown {
                     unit,
@@ -347,13 +365,14 @@ impl DamagePass {
         };
         let killed = !living(world);
         if let Some(source) = source {
-            let index = world.resource::<EntityIndex>();
-            if let Some(attackers) = world.get::<RecentAttackers>(entity) {
-                attackers.gone(source, index, &mut scratch.gone);
-                world
-                    .get_mut::<RecentAttackers>(entity)
-                    .expect("a unit with attackers")
-                    .record(source, now, &scratch.gone);
+            let records = scratch
+                .records
+                .get_or_insert_with(|| SystemState::new(world));
+            let (index, mut attackers) = records
+                .get_mut(world)
+                .expect("the records of attackers are always valid");
+            if let Ok(mut attackers) = attackers.get_mut(entity) {
+                attackers.record(source, now, &index);
             }
         }
         let death = killed.then(|| {
@@ -381,7 +400,7 @@ impl DamagePass {
         if let Some((id, entity)) =
             source.and_then(|id| Self::living(world, id).map(|entity| (id, entity)))
         {
-            let bindings = world.resource::<CombatBook>().bindings;
+            let bindings = *world.resource::<CombatBook>();
             let stat = if damage.cause.attack() {
                 bindings.leech_attack
             } else {
@@ -407,7 +426,7 @@ impl DamagePass {
     /// Heals the life pool of `entity`, a living unit, by `amount` times one plus its
     /// `heal_scale` stat.
     pub(super) fn heal(world: &mut World, entity: Entity, amount: Num) {
-        let bindings = world.resource::<CombatBook>().bindings;
+        let bindings = *world.resource::<CombatBook>();
         let scale = Self::stat(world, entity, bindings.heal_scale);
         let received = Num::ONE.checked_add(scale).unwrap_or(Num::MAX);
         let amount = amount.saturating_mul(received, Rounding::NearestEven);

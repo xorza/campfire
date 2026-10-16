@@ -1,4 +1,3 @@
-use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
@@ -10,7 +9,7 @@ use campfire_common::Tick;
 use campfire_declare::RoleForm;
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
 use campfire_script::ScriptsWorld;
-use campfire_sim::{Keyed, Ordered, Position, SimRng, SimTick, StableId, TickClock};
+use campfire_sim::{Position, SimRng, SimTick, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
 use campfire_units::{Body, Dead, ForcedMove, Owner};
 use campfire_values::{Block, Team, UnitTags};
@@ -20,14 +19,13 @@ use crate::clip_shots::ClipShots;
 use crate::combat_event::CombatEvent;
 use crate::combat_hooks::CombatHooks;
 use crate::damage::{Damage, DamageCause};
-use crate::going_off::GoingOff;
 use crate::pass_queue::PassQueue;
+use crate::volley::{GoingOff, Volley};
 use crate::wielded::Wielded;
 
-/// What tells whether a unit's attack strikes: its id, its slots, its tags, and what it pays the
-/// cost from.
+/// What tells whether a unit's attack strikes: its slots, its tags, and what it pays the cost
+/// from.
 type Attacker<'a> = (
-    &'a StableId,
     &'a ActionSlots,
     Option<&'a UnitTags>,
     Has<ForcedMove>,
@@ -156,8 +154,8 @@ impl Attacks {
         }
     }
 
-    /// Runs `on_attack` for each attack whose windup ends this tick, by attacker's stable id,
-    /// before any of them strikes or fires; not for one that does not strike.
+    /// Runs `on_attack` for each attack of the tick's volley, by attacker's stable id, before any
+    /// of them strikes or fires; not for one that does not strike.
     pub(super) fn attack_events(
         world: &mut World,
         attackers: &mut QueryState<Attacker<'_>, Without<Dead>>,
@@ -166,35 +164,37 @@ impl Attacks {
         let Some(events) = world.non_send::<CombatHooks>().events.clone() else {
             return;
         };
-        let now = world.resource::<SimTick>().start();
         let book = world.resource::<ActionBook>();
         let life = world.life_pool();
         going.clear();
-        for (&attacker, slots, tags, forced, pools, owner) in attackers.iter(world) {
+        for off in world.resource::<Volley>().iter() {
+            let Ok((slots, tags, forced, pools, owner)) = attackers.get(world, off.entity) else {
+                continue;
+            };
             let lives = pools.lives();
             let purse = Purse::of(pools.of(life), world.owner_resources(owner));
-            if let Some(target) = Self::going_off(slots, now)
-                && lives
-                && Self::wielded(book, slots).strikes(tags, forced, purse)
-            {
-                going.push(GoingOff { attacker, target });
+            if lives && Self::wielded(book, slots).strikes(tags, forced, purse) {
+                going.push(off);
             }
         }
-        going.sort_unstable();
         if !going.is_empty() {
             world.script_batch(|batch| {
-                for &GoingOff { attacker, target } in &*going {
-                    events.call(batch, CombatEvent::Attack { attacker, target });
+                for &GoingOff {
+                    attacker, target, ..
+                } in &*going
+                {
+                    events.hear(batch, CombatEvent::Attack { attacker, target });
                 }
             });
         }
     }
 
-    /// Pays, for each attack going off this tick that strikes, as its events and its strike test
-    /// it, its attacker's toggles that cost an attack; one its pools cannot pay turns off, before
-    /// the attack's events. Only the server pays them, as a client's pools come from the server.
+    /// Pays, for each attack of the tick's volley that strikes, as its events and its strike
+    /// test it, its attacker's toggles that cost an attack; one its pools cannot pay and still
+    /// afford the attack's own cost turns off, before the attack's events, so the attack strikes.
+    /// Only the server pays them, as a client's pools come from the server.
     pub(super) fn pay_attack_toggles(
-        (tick, book, life): (Res<'_, SimTick>, Res<'_, ActionBook>, Res<'_, PoolBook>),
+        (book, life, volley): (Res<'_, ActionBook>, Res<'_, PoolBook>, Res<'_, Volley>),
         resources: PlayerRows<'_, '_, PlayerResources>,
         mut attackers: Query<
             '_,
@@ -210,16 +210,20 @@ impl Attacks {
             Without<Dead>,
         >,
     ) {
-        let now = tick.start();
         let life = life.life();
-        for (slots, mut times, tags, forced, pools, owner) in &mut attackers {
-            if Self::going_off(slots, now).is_none() || !pools.lives() {
+        for off in volley.iter() {
+            let Ok((slots, mut times, tags, forced, pools, owner)) = attackers.get_mut(off.entity)
+            else {
+                continue;
+            };
+            if !pools.lives() {
                 continue;
             }
             let mut pools = pools.of(life);
             let purse = Purse::of(pools.read(), resources.of(owner));
-            if Self::wielded(&book, slots).strikes(tags, forced, purse) {
-                times.pay_attack_toggles(slots, &book, &mut pools);
+            let wielded = Self::wielded(&book, slots);
+            if wielded.strikes(tags, forced, purse) {
+                times.pay_attack_toggles(slots, &book, &mut pools, &wielded.values.cost);
             }
         }
     }
@@ -236,24 +240,23 @@ impl Attacks {
     /// client that predicts the attack only makes the weapon ready again and counts its clip, as
     /// the damage, the launch and the cost come from the server. An attacker that lives no more
     /// strikes nothing, as one its tags keep from attacking.
-    pub fn strike<F: RoleForm>(
+    pub(super) fn strike<F: RoleForm>(
         (clock, rng, book, life): (
             TickClock<'_>,
             Res<'_, SimRng>,
             Res<'_, ActionBook>,
             Res<'_, PoolBook>,
         ),
-        (mut queue, mut fired, mut resources): (
+        (mut queue, mut fired, mut resources, mut volley): (
             ResMut<'_, PassQueue>,
             ResMut<'_, Shots>,
             PlayerRowsMut<'_, '_, PlayerResources>,
+            ResMut<'_, Volley>,
         ),
         mut attackers: Query<
             '_,
             '_,
             (
-                Entity,
-                &StableId,
                 &Position,
                 &mut ActionSlots,
                 &mut SlotTimes,
@@ -266,28 +269,22 @@ impl Attacks {
             ),
             Without<Dead>,
         >,
-        mut order: Local<'_, Ordered>,
+        mut going: Local<'_, Vec<GoingOff>>,
     ) {
         let now = clock.start();
         let life = life.life();
-        let going = attackers.iter().filter_map(|(entity, &id, _, slots, ..)| {
-            Self::going_off(slots, now).map(|_| Keyed { id, entity })
-        });
-        for &Keyed { entity, .. } in order.sort(going) {
-            let (
-                _,
-                &source,
-                &from,
-                mut slots,
-                mut times,
-                stats,
-                pools,
-                tags,
-                forced,
-                owner,
-                mut clips,
-            ) = attackers.get_mut(entity).expect("an attacker in the order");
-            let target = Self::going_off(&slots, now).expect("an attack going off");
+        volley.take(&mut going);
+        for &GoingOff {
+            attacker: source,
+            entity,
+            target,
+        } in &*going
+        {
+            let Ok((&from, mut slots, mut times, stats, pools, tags, forced, owner, mut clips)) =
+                attackers.get_mut(entity)
+            else {
+                continue;
+            };
             let lives = pools.lives();
             let pools = pools.of(life);
             let purse = Purse::of(pools.read(), resources.of(owner));
@@ -352,13 +349,6 @@ impl Attacks {
             let payer = Payer::of(pools, held.as_deref_mut());
             payer.pay(&values.cost, resource_cost);
         }
-    }
-
-    /// The target of the attack of a unit with `slots` whose windup ends by `now`, if one does.
-    fn going_off(slots: &ActionSlots, now: Tick) -> Option<StableId> {
-        let target = slots.attacking()?;
-        let resolves_at = slots.in_progress()?.resolves_at()?;
-        (resolves_at <= now).then_some(target)
     }
 
     /// The weapon of the attack under way of a unit with `slots`.

@@ -101,24 +101,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 - [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. **Skipped: see `review-workspace_QUESTIONS.md`, batch 9, item 5.**
 
-### 10. Combat and stats: one modifier application
-
-`stats`: `modifiers`, `grant_pass`, `held_pass`, `type_passive`, `modifier_book`, `application`, `modifier_params`, `refresh`; `combat`: `attacks`, `combat_hooks`, `combat_event`, `recent_attackers`, `damage_pass`, `combat_book`, `modifier_intervals`, `mode_combat_data`; `capabilities`: `book_builder`; `actions`: `slot_times`; `package`: `load_check`.
-
-- [ ] combat/src/attacks.rs:188-217, 272-277; actions/src/action_slots/slot_times.rs:313-336 — `pay_attack_toggles` pays the toggles before `strike` tests the weapon's own cost. When the rest is too little, the windup ends, and the toggle cost is paid again each windup. → Pay the toggles only for attacks that afford both together.
-- [ ] stats/src/modifiers/mod.rs:131-132, grant_pass.rs:208-227, held_pass.rs:156-162, type_passive.rs:44-59, modifier_book.rs:254, modifier_params.rs:44-54 — four near-copies apply a modifier. With `reapply = "ignore"`, `apply` returns before it joins the new hold, so a toggle's held modifier ends at its own duration and is applied again each pass; `HeldPass` calls `carried.hold` instead. Every caller passes the same param closure, and `TypePassive`'s `Release` arm is dead. → One operation on `CarriedMut` that grants or applies (id, applier, `&ParamBook`, source) and joins a hold on an existing instance whatever `reapply` says, used by `Stats::add_modifier`, `GrantPass`, `HeldPass` and `TypePassive`.
-- [ ] stats/src/held_pass.rs:105-207 — pushes every player modifier for every living unit each tick, sorts, and scans every instance for aura carriers. → Player modifiers as a grant source of changed units; an index of aura carriers.
-- [ ] combat/src/attacks.rs:155-336 — three systems each scan every living unit and compute `going_off`, `wielded` and `strikes`; `attack_events` is exclusive and runs each tick. → Collect the tick's going-off attackers once.
-- [ ] stats/src/application.rs:25-39, modifier_book.rs:247-359 — each application allocates up to three `Vec`s, once per hit. → Write straight into the carrier's buffers.
-- [ ] combat/src/combat_hooks.rs:11-25, combat_event.rs:41 — a boxed `dyn` closure with one implementation. → `Option<Rc<ModifierHooks>>`; `CombatEvents` goes.
-- [ ] combat/src/recent_attackers.rs:28-50, damage_pass.rs:326-335 — `gone` and `record` through a scratch `Vec`. → One `record(source, tick, &EntityIndex)`.
-- [ ] combat/src/combat_book.rs:13-16, capabilities/src/books/book_builder.rs:240-274 — the top crate builds `CombatBook` field by field and converts the assist window. → `CombatBook::new(&ModeCombatData, rate, stat)` in combat; `CombatBindings` folds in.
-- [ ] docs/design/04-capabilities/combat.md:80, stats.md:24 — both promise a modifier's `on_interval` effect list, which `ModifierData` (stats/src/modifier_data.rs:16-40) refuses and `run_intervals` (combat/src/modifier_intervals.rs:281-297) never runs. → Both docs mark the list planned; the hook stays.
-- [ ] package/src/mode_packages/load_check.rs:529-534 — the negative aura radius rule is in the load, the other `ModifierProblem` cases in `ModifierSpec::of`. → One home, in stats.
-- [ ] combat/src/mode_combat_data.rs:41 — `DAMAGE_KIND_LIMIT` is dead. → Remove.
-- [ ] Mixed field visibility: going_off.rs:5-7, interval_due.rs:6-9, wielded.rs:8-17, stats/src/stat_books.rs:11-15, refresh_scratch.rs:277-282. → One visibility per struct.
-- [ ] stats/src/refresh.rs:168, docs/design/04-capabilities/stats.md (Cost) — the doc says a live-change carrier refreshes each pass; the code refreshes it with its source, the better rule. → The doc and the comment change.
-
 ### 11. Actions: the slot table and its progress
 
 `actions`: `action_slots`, `holds`, `ready_waits`, `actions_effect`, `action_range`, `placement_data`, `action_parts`, `shots`, `shot_hits`, `fan`, `effect_list_book`, `unit_tags`; `sim`: `due_run`; `abilities`: `channels`, `toggles`, `casts`, `lib`; `combat`: `attacks`; `projectiles`: `flights`; `values`. Format, as the snapshot and the replicated types change; moves goldens.

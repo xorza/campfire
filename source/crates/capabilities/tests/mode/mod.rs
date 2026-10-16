@@ -14,8 +14,8 @@ use campfire_actions::{
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::{
-    CombatBindings, CombatBook, Damage, DamageCause, DamagePass, Heal, HealCause, ModeCombatData,
-    OnDeath, PassEntry, RecentAttackers, Respawn,
+    CombatBook, Damage, DamageCause, DamagePass, Heal, HealCause, ModeCombatData, OnDeath,
+    PassEntry, RecentAttackers, Respawn,
 };
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_declare::{Book, ByType};
@@ -728,7 +728,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     let life = life.or_else(|| game.resource::<PoolBook>().life());
     let pools = Arc::clone(&mode_names.pools);
     let pools = PoolBook::new(&data.pools, pools, life, |_, held| stat(held)).unwrap();
-    let bindings = CombatBindings::new(&data.combat, stat).unwrap();
+    let combat = CombatBook::new(&data.combat, RATE, stat).unwrap();
     let tags = {
         let mut unit_types = game.resource_mut::<UnitTypeBook>();
         let bodies = types.iter().map(|unit| (unit.unit_type, unit.body));
@@ -740,12 +740,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     tags.load_into(game);
     TestType::load(game, types);
     SlotKindBook(Arc::new(data.slots.clone())).load_into(game);
-    let assist_window = data.combat.assist_window_ms.map(|ms| RATE.window(ms));
-    (CombatBook {
-        bindings,
-        assist_window,
-    })
-    .load_into(game);
+    combat.load_into(game);
     let ResolvedMap {
         map,
         ground,

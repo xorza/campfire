@@ -8,6 +8,7 @@ use campfire_sim::TickRate;
 use campfire_values::{DeclaredName, FilterData, Number, PackagePath, Param, Stat};
 use serde::Deserialize;
 
+use crate::error::ModifierProblem;
 use crate::stat_change::StatChange;
 
 /// A modifier as its data file declares it, in milliseconds.
@@ -41,6 +42,35 @@ pub struct ModifierData {
 }
 
 impl ModifierData {
+    /// Its aura radius's and its shield's signs: `Negative` for one below zero, as a value, or
+    /// at a rank of its own param, or, for a param it does not declare, of that param of one of
+    /// `appliers`, the params of the actions that apply it.
+    pub fn check_signs<'a>(
+        &self,
+        appliers: impl IntoIterator<Item = &'a BTreeMap<DeclaredName, Param>> + Clone,
+    ) -> Result<(), ModifierProblem> {
+        let negative = |value: Option<Num>| value.is_some_and(|value| value < Num::ZERO);
+        let numbers = [
+            self.aura.as_ref().map(|aura| &aura.radius),
+            self.shield.as_ref(),
+        ];
+        let below = numbers.into_iter().flatten().any(|number| match number {
+            Number::Value(value) => negative(value.to_num()),
+            Number::Param(reference) => match self.params.get(&reference.param) {
+                Some(param) => param.numbers().any(negative),
+                None => appliers
+                    .clone()
+                    .into_iter()
+                    .filter_map(|params| params.get(&reference.param))
+                    .any(|param| param.numbers().any(negative)),
+            },
+        });
+        if below {
+            return Err(ModifierProblem::Negative);
+        }
+        Ok(())
+    }
+
     /// `ms` milliseconds of one of its times, up to the next whole one, in ticks at `rate`;
     /// `None` for a negative time or one too large to count.
     pub fn ticks(ms: Num, rate: TickRate) -> Option<Ticks> {

@@ -21,10 +21,10 @@ use campfire_script::{
     UnknownName,
 };
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::{ModifierData, ModifierProblem, StatId};
+use campfire_stats::{ModifierData, StatId};
 use campfire_units::TypesError;
 use campfire_values::{
-    DeclaredName, EngineTag, FilterData, MessageId, Number, PackageIndex, PackagePath, Param, Stat,
+    DeclaredName, EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat,
 };
 
 use crate::dependent::{Dependent, DependentKind};
@@ -527,12 +527,13 @@ impl<'a> LoadCheck<'a> {
                 .chain(by.iter().flat_map(|action| action.params.keys()))
                 .map(DeclaredName::as_str)
                 .collect();
-            if negative_radius_or_shield(modifier, &by) {
-                return Err(LoadProblem::Modifier {
+            let appliers = by.iter().map(|action| &action.params);
+            modifier
+                .check_signs(appliers)
+                .map_err(|problem| LoadProblem::Modifier {
                     modifier: id.clone(),
-                    problem: ModifierProblem::Negative,
-                });
-            }
+                    problem,
+                })?;
             if let Some(script) = &modifier.script {
                 names.serve(script, ScriptRole::Modifier, readable.iter().copied());
             }
@@ -1993,27 +1994,6 @@ impl<'a> PackageNames<'a> {
         used.roles.insert(role);
         used.params.extend(params);
     }
-}
-
-/// Whether the aura radius or the shield of `modifier` is negative: as a value, or at a rank of
-/// its own param, or, for a param it does not declare, of the param of an action `by` that
-/// applies it.
-fn negative_radius_or_shield(modifier: &ModifierData, by: &[&ActionData]) -> bool {
-    let negative = |value: Option<Num>| value.is_some_and(|value| value < Num::ZERO);
-    let numbers = [
-        modifier.aura.as_ref().map(|aura| &aura.radius),
-        modifier.shield.as_ref(),
-    ];
-    numbers.into_iter().flatten().any(|number| match number {
-        Number::Value(value) => negative(value.to_num()),
-        Number::Param(reference) => match modifier.params.get(&reference.param) {
-            Some(param) => param.numbers().any(negative),
-            None => by
-                .iter()
-                .filter_map(|action| action.params.get(&reference.param))
-                .any(|param| param.numbers().any(negative)),
-        },
-    })
 }
 
 /// The passive of each of `actions`, by its place.

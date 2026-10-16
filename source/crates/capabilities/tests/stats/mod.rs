@@ -703,6 +703,15 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     assert!(holds(&game, far));
     assert_eq!(game.get::<Modifiers>(held), Some(&as_sent));
     game.entity_mut(held).remove::<Unpredicted>();
+    // The carrier's aura ends, and the far ally holds it no more; applied again, it holds it.
+    let mut presence_carrier = CarriedMut::of(&mut game, held).unwrap();
+    presence_carrier.remove(presence, Some(carrier));
+    game.step();
+    assert!(!holds(&game, far));
+    let mut presence_carrier = CarriedMut::of(&mut game, held).unwrap();
+    presence_carrier.apply(aura(presence, carrier, Num::int(2)));
+    game.step();
+    assert!(holds(&game, far));
     // The carrier dies: its aura goes, with its own modifiers.
     let dead = entity(&game, carrier);
     game.entity_mut(dead).insert(Dead);
@@ -779,6 +788,7 @@ fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let second = Rank::new(2).unwrap();
     let grant = |rank| Grant {
         modifier: inspired,
+        from: GrantFrom::Itself,
         hold: Hold::Passive,
         action: None,
         rank,

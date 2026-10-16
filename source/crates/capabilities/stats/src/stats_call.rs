@@ -6,6 +6,7 @@ use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, NameId, Scalar};
 
 use crate::Stats;
+use crate::modifier_adds::HeldModifierAdds;
 use crate::modifier_handle::ModifierHandle;
 use crate::param_book::ParamBook;
 use crate::param_source::ParamSource;
@@ -25,6 +26,8 @@ pub struct StatsCall {
     handles: Vec<ModifierHandle>,
     /// The handles of earlier calls that no script holds, for new handles to fill again.
     spare: Vec<ModifierHandle>,
+    /// What the calls' effects add modifiers by.
+    adds: HeldModifierAdds,
 }
 
 impl CallPart for StatsCall {
@@ -132,6 +135,11 @@ impl StatsCall {
         frame
             .part_mut()
             .expect("a match whose calls take modifier handles has stats")
+    }
+
+    /// What the calls' effects add modifiers by.
+    pub(crate) const fn adds(&mut self) -> &mut HeldModifierAdds {
+        &mut self.adds
     }
 
     /// The running call's ability's param at `at`, at its rank.

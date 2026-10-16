@@ -22,29 +22,17 @@ impl RecentAttackers {
         self.0.iter().copied()
     }
 
-    /// The attackers a record of `source` forgets, into `gone`, by stable id: when `source` is new
-    /// to the list, each attacker `index` no longer holds, so only a growing list pays for the
-    /// search; none when it is in the list.
-    pub fn gone(&self, source: StableId, index: &EntityIndex, gone: &mut Vec<StableId>) {
-        gone.clear();
-        if self.at(source).is_ok() {
-            return;
-        }
-        let attackers = self.0.iter().map(|attack| attack.source);
-        gone.extend(attackers.filter(|&attacker| index.get(attacker).is_none()));
-    }
-
-    /// Records that `source`, which exists, struck in `tick`. A new attacker first makes it forget
-    /// `gone`, which `gone` gave for it. A projectile can strike after its source is gone, so the
-    /// caller records only a source that exists.
-    pub fn record(&mut self, source: StableId, tick: Tick, gone: &[StableId]) {
-        debug_assert!(gone.is_sorted(), "the gone attackers come by stable id");
+    /// Records that `source`, which `index` holds, struck in `tick`. A new attacker first makes
+    /// it forget each attacker `index` no longer holds, so only a growing list pays for the
+    /// search. A projectile can strike after its source is gone, so the caller records only a
+    /// source that exists.
+    pub fn record(&mut self, source: StableId, tick: Tick, index: &EntityIndex) {
+        debug_assert!(index.get(source).is_some(), "a source that exists");
         if let Ok(at) = self.at(source) {
             self.0[at].tick = tick;
             return;
         }
-        self.0
-            .retain(|attack| gone.binary_search(&attack.source).is_err());
+        self.0.retain(|attack| index.get(attack.source).is_some());
         let at = self.0.partition_point(|attack| attack.source < source);
         self.0.insert(at, RecentAttack { source, tick });
     }
@@ -86,27 +74,6 @@ impl SimComponent for RecentAttackers {
 impl Replication for RecentAttackers {
     const KIND: DataKind = DataKind::Server;
     type Sending = NotSent;
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use campfire_common::Tick;
-    use campfire_sim::{EntityIndex, StableId};
-
-    use crate::recent_attackers::RecentAttackers;
-
-    impl RecentAttackers {
-        /// Records that `source` struck in `tick` as the damage pass does: only a source that
-        /// `index` holds, forgetting first the attackers it no longer holds.
-        pub fn struck(&mut self, source: StableId, tick: Tick, index: &EntityIndex) {
-            if index.get(source).is_none() {
-                return;
-            }
-            let mut gone = Vec::new();
-            self.gone(source, index, &mut gone);
-            self.record(source, tick, &gone);
-        }
-    }
 }
 
 #[cfg(test)]
