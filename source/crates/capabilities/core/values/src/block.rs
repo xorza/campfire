@@ -1,5 +1,4 @@
-use campfire_common::NamedEnum;
-use campfire_derive::{EnumAll, NamedEnum};
+use campfire_common::{EnumAll, NamedEnum};
 use serde::{Deserialize, Deserializer};
 
 /// What a tag can stop its unit doing, or being: moving, the actions of a group, being chosen

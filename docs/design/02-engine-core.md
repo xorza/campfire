@@ -7,7 +7,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | Module | Status | Does |
 | --- | --- | --- |
 | `common` | built | The plain values crates that do not depend on each other share |
-| `derive` | built | The workspace's derives: an enum's array of its members, and their names |
+| `common-derive` | built | `common`'s derives, which `common` alone names and re-exports: an enum's members, their identifiers and their names |
 | `codec` | built | The one gateway of serialization, a proxy crate ([Serialization](#serialization)) |
 | `schedule` | built | The sim schedules' build settings, a proxy crate |
 | `math` | built | Fixed-point numbers and vectors, trig, roots, RNG ([Determinism core](09-determinism-core.md)) |
@@ -90,7 +90,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 | A rule of a package's data has one home, the function that tests it, and untrusted data never reaches an `expect`. | The load's flaw tests |
 | The load refuses everything a match can refuse: a start fails only on its terms and on `on_match_start`'s runtime failure. | `StartError` has no case of a package's data |
 | A layer calls a higher one only through a hook the higher one registers. | Cargo; the layer test |
-| No crate re-exports another crate, whole or in part. | `no_crate_re_exports_another_crate` |
+| No crate re-exports another crate, whole or in part, but one: `common` re-exports the derives of its own traits from `common-derive`, which no other crate names, as `serde` re-exports `serde_derive`, since a proc-macro crate can export nothing else. | `no_crate_re_exports_another_crate`, `only_common_names_the_crate_of_its_derives` |
 | Every order that matters is by stable id: a system that spends something shared, takes ids or runs scripts walks its units through `Ordered`. | The archetype-shuffle test |
 | Each tick's work has a fixed limit or a cost in proportion to the units that take part. | The work record; the benches |
 | Restored state is checked like package data: every flaw is an error, never a panic; times and counts stay within 2⁶², every period at least a tick. | The `Tick` decode; each state type's check; the snapshot, structured and mutation fuzz |

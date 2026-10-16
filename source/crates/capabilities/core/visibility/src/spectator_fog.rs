@@ -1,4 +1,4 @@
-use campfire_derive::{EnumAll, NamedEnum};
+use campfire_common::{EnumAll, NamedEnum};
 
 /// What a session's spectators see (14-replication-audiences.md, The host admits spectators,
 /// and their fog is a setting), by the name a host's setting gives it. A member's place is its

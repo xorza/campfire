@@ -1,5 +1,5 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use campfire_sim::SimSet;
 
 /// The steps of the tick's stages that the modules' sets run in: the one list of the tick's

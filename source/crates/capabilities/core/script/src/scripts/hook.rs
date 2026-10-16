@@ -1,4 +1,4 @@
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use serde::Deserialize;
 
 use crate::scripts::script_role::ScriptRole;

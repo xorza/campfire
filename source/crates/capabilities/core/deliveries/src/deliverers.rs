@@ -1,8 +1,8 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionTarget, DeliveryShape};
+use campfire_common::EnumAll;
 use campfire_declare::{CallbackTable, Callbacks};
-use campfire_derive::EnumAll;
 use campfire_math::Vec3;
 use campfire_sim::Capability;
 

@@ -16,12 +16,12 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
 use campfire_combat::ClipShots;
+use campfire_common::EnumAll;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
     ModuleSet, OneShot, Phase, Report, Role, Scratch, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
-use campfire_derive::EnumAll;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_production::PlayerSupply;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};

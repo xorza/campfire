@@ -1,4 +1,4 @@
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use serde::{Deserialize, Serialize};
 
 /// The engine's capabilities: what a mode's manifest declares, and the owner a command names.

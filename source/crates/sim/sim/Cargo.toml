@@ -17,7 +17,6 @@ internals = [
 [dependencies]
 campfire-codec.workspace = true
 campfire-common.workspace = true
-campfire-derive.workspace = true
 campfire-math.workspace = true
 campfire-schedule.workspace = true
 

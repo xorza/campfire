@@ -3,8 +3,7 @@ use bevy_ecs::schedule::{
 };
 use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_common::SegmentSeed;
-use campfire_derive::EnumAll;
+use campfire_common::{EnumAll, SegmentSeed};
 use campfire_schedule::StrictSchedule;
 
 use crate::id_allocator::IdAllocator;

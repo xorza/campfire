@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use campfire_math::Num;
 use campfire_values::DeclaredName;
 use serde::Serialize;

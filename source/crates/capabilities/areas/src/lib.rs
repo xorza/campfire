@@ -11,9 +11,9 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionTarget, EffectQueues};
+use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
-use campfire_derive::EnumAll;
 use campfire_math::Vec3;
 use campfire_sim::{Capability, StableId};
 use campfire_units::DeliveryEntity;

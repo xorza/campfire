@@ -10,10 +10,10 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::{ActionSlots, EffectQueues};
+use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
-use campfire_derive::EnumAll;
 use campfire_math::RngStream;
 use campfire_sim::Capability;
 use campfire_stats::Life;

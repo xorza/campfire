@@ -1,4 +1,4 @@
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 
 use crate::scripts::error::ApiError;
 use crate::scripts::name_kind::NameKind;

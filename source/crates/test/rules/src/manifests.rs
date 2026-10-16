@@ -11,13 +11,20 @@ use crate::workspace::{
 
 #[test]
 fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
-    // `common` holds plain values, so it needs serde and its derives, the two hashes that make
-    // its 32-byte values, SHA-256 and BLAKE3, and `backtrace` for the allocation audit, which
-    // only a test build turns on; a proxy reaches only its own group's crates, so its exemption
-    // covers no call of another group.
+    // `common` holds plain values, so it needs serde and its derives, its own derives' crate,
+    // the two hashes that make its 32-byte values, SHA-256 and BLAKE3, and `backtrace` for the
+    // allocation audit, which only a test build turns on; a proxy reaches only its own group's
+    // crates, so its exemption covers no call of another group.
     assert_eq!(
         crate_dependencies("base/common"),
-        ["backtrace", "blake3", "derive_more", "serde", "sha2"]
+        [
+            "backtrace",
+            "blake3",
+            "campfire-common-derive",
+            "derive_more",
+            "serde",
+            "sha2"
+        ]
     );
     let manifest = read(
         source()
@@ -39,6 +46,35 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
             proxy.dir
         );
     }
+}
+
+/// The crate of `common`'s derives, which `common` alone names and re-exports, so a caller takes
+/// a trait and its derive from one path, as serde re-exports `serde_derive`.
+pub(crate) const COMMON_DERIVE: &str = "campfire-common-derive";
+
+#[test]
+fn only_common_names_the_crate_of_its_derives() {
+    let dependents: Vec<String> = crates()
+        .into_iter()
+        .filter(|krate| {
+            let named = |line: &str| line.trim_start().starts_with(COMMON_DERIVE);
+            krate.name != COMMON_DERIVE && krate.manifest.lines().any(named)
+        })
+        .map(|krate| krate.name)
+        .collect();
+    assert_eq!(dependents, ["campfire-common"]);
+    let path = COMMON_DERIVE.replace('-', "_");
+    let naming: Vec<String> = sources()
+        .into_iter()
+        // `common` re-exports them, and the rules hold the one place it may.
+        .filter(|file| {
+            let allowed = ["crates/base/common/", "crates/test/rules/"];
+            let allowed = allowed.iter().any(|dir| file.path.starts_with(dir));
+            !allowed && file.text.contains(&path)
+        })
+        .map(|file| file.path)
+        .collect();
+    assert_eq!(naming, Vec::<String>::new());
 }
 
 #[test]

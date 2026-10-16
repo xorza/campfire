@@ -1,3 +1,4 @@
+use crate::manifests::COMMON_DERIVE;
 use crate::workspace::sources;
 
 /// The lines of `text` that re-export another crate, whole or in part: a `pub use`, of any
@@ -31,13 +32,23 @@ fn foreign_re_exports(text: &str) -> Vec<usize> {
         .collect()
 }
 
+/// Whether `line` of the file at `path` is the one re-export of another crate the rule allows:
+/// `common`'s of the derives of its own traits, from the proc-macro crate that alone may hold
+/// them, which no other crate names (02-engine-core.md, Structural rules).
+fn derives_of_common(path: &str, line: &str) -> bool {
+    let from = format!("pub use {}::", COMMON_DERIVE.replace('-', "_"));
+    path == "crates/base/common/src/lib.rs" && line.trim_start().starts_with(&from)
+}
+
 #[test]
 fn no_crate_re_exports_another_crate() {
     let found: Vec<String> = sources()
         .iter()
         .flat_map(|file| {
+            let lines: Vec<&str> = file.text.lines().collect();
             foreign_re_exports(&file.text)
                 .into_iter()
+                .filter(move |&line| !derives_of_common(&file.path, lines[line - 1]))
                 .map(move |line| format!("{}:{line}", file.path))
         })
         .collect();

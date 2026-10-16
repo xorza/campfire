@@ -1,5 +1,5 @@
 [package]
-name = "campfire-derive"
+name = "campfire-common-derive"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

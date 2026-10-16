@@ -4,10 +4,10 @@ use bevy_ecs::observer::On;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
+use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, Phase, SetPlace,
 };
-use campfire_derive::EnumAll;
 use campfire_script::{
     CoreApi, Ctx, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId, ScriptList,
     StatePlace, StateSchema, View, ViewApi,

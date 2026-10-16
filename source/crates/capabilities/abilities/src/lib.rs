@@ -10,10 +10,9 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::{ActionTarget, CastSpends};
-use campfire_common::Ticks;
+use campfire_common::{EnumAll, Ticks};
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::Deliverers;
-use campfire_derive::EnumAll;
 use campfire_script::{ScriptValue, View};
 use campfire_sim::{Capability, TickRate};
 

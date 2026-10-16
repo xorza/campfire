@@ -1,8 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::NamedEnum;
-use campfire_derive::{EnumAll, EnumIdents, NamedEnum};
+use campfire_common::{EnumAll, EnumIdents, NamedEnum};
 use campfire_math::Vec3;
 use campfire_script::enum_script_arg;
 use campfire_sim::{SimComponent, StableId};

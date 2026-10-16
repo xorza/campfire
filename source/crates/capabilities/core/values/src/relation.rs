@@ -1,5 +1,4 @@
-use campfire_common::NamedEnum;
-use campfire_derive::{EnumAll, EnumIdents, NamedEnum};
+use campfire_common::{EnumAll, EnumIdents, NamedEnum};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::engine_enum::EngineEnum;

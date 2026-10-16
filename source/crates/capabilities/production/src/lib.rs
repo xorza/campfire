@@ -10,10 +10,10 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
+use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
-use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::{BodyUnit, Player};
 use campfire_values::{Block, EngineTag, TagProperties};

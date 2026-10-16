@@ -1,4 +1,4 @@
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use campfire_script::{CapabilityRefusal, ParamProblem, UnknownName};
 use campfire_sim::Capability;
 use campfire_values::DeclaredName;

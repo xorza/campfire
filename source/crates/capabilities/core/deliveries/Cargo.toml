@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-common/internals",
     "campfire-actions/internals",
     "campfire-declare/internals",
     "campfire-math/internals",
@@ -17,8 +18,8 @@ internals = [
 
 [dependencies]
 campfire-actions.workspace = true
+campfire-common.workspace = true
 campfire-declare.workspace = true
-campfire-derive.workspace = true
 campfire-math.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true

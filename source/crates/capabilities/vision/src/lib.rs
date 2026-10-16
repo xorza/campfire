@@ -9,8 +9,8 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::UnitEntity;
 

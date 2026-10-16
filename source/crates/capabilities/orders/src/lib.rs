@@ -10,8 +10,8 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
+use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 use campfire_vision::{ByHolding, ByVision, TeamSight};

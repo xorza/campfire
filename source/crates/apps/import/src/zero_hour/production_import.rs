@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroU8;
 
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use campfire_math::{Num, Rounding};
 use campfire_values::DeclaredName;
 use serde::Serialize;

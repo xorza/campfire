@@ -4,8 +4,7 @@ use std::fmt;
 
 use bevy_ecs::world::World;
 use campfire_codec::Binary;
-use campfire_common::{StateHash, Tick};
-use campfire_derive::EnumAll;
+use campfire_common::{EnumAll, StateHash, Tick};
 use campfire_math::internals::SplitMix64;
 use serde::de::{
     self, DeserializeOwned, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess,

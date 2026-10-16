@@ -1,5 +1,4 @@
-use campfire_common::{SegmentSeed, Tick};
-use campfire_derive::EnumAll;
+use campfire_common::{EnumAll, SegmentSeed, Tick};
 use campfire_math::{Num, Rng, RngStream, Vec3};
 
 use crate::body_box::BodyBox;

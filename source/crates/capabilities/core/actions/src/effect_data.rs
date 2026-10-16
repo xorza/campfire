@@ -1,4 +1,4 @@
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{DeclaredName, Number};
 use serde::de::{Error, IgnoredAny};

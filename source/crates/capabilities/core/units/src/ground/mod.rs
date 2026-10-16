@@ -1,7 +1,6 @@
 use std::ops::RangeInclusive;
 
-use campfire_common::NamedEnum;
-use campfire_derive::{EnumAll, NamedEnum};
+use campfire_common::{EnumAll, NamedEnum};
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::Position;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};

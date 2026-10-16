@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use campfire_math::Num;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;

@@ -34,7 +34,7 @@ pub trait CapabilityRefusal: Copy + PartialEq + fmt::Debug + 'static {
 
 #[cfg(test)]
 mod tests {
-    use campfire_derive::EnumAll;
+    use campfire_common::EnumAll;
 
     use super::*;
 

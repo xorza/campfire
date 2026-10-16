@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_derive::{EnumAll, NamedEnum};
+use campfire_common::{EnumAll, NamedEnum};
 
 /// What a player out of play sees of the other teams (14-replication-audiences.md, A player out
 /// of play sees what its team sees, or what a spectator sees). A match holds its session's as a

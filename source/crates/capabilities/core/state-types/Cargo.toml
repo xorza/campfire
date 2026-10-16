@@ -6,11 +6,12 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-common/internals",
     "campfire-sim/internals",
 ]
 
 [dependencies]
-campfire-derive.workspace = true
+campfire-common.workspace = true
 campfire-sim.workspace = true
 
 bevy_ecs.workspace = true

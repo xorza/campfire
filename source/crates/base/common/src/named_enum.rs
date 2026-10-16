@@ -4,9 +4,9 @@ use std::marker::PhantomData;
 use serde::de::{self, DeserializeSeed, EnumAccess, Error, VariantAccess, Visitor};
 use serde::{Deserializer, Serializer};
 
-/// An enum of a fixed set whose every member has one name, as data writes it: `campfire-derive`'s
-/// `NamedEnum` implements it from the name `#[name = "…"]` gives each member, so a name never
-/// leaves its member.
+/// An enum of a fixed set whose every member has one name, as data writes it: the derive
+/// `NamedEnum` implements it, naming each member by its identifier in snake case or by its
+/// `#[name = "…"]`, so a name never leaves its member.
 pub trait NamedEnum: Copy + Eq + 'static {
     /// The enum's name, as serde names the type of its unit variants.
     const TYPE: &'static str;
@@ -116,7 +116,7 @@ impl<'de, T: NamedEnum> DeserializeSeed<'de> for Members<T> {
 #[cfg(test)]
 mod tests {
     use campfire_codec::{Binary, Json, Toml};
-    use campfire_derive::{EnumAll, EnumIdents, NamedEnum};
+    use campfire_common_derive::{EnumAll, EnumIdents, NamedEnum};
     use serde::de::value::{Error as ValueError, StrDeserializer};
     use serde::{Deserialize, Serialize};
 

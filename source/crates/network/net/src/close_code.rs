@@ -1,4 +1,4 @@
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use campfire_quic::AppCode;
 use serde::{Deserialize, Serialize};
 

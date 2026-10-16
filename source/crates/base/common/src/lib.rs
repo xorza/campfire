@@ -5,11 +5,11 @@
 //!
 //! A type enters only when two crates that do not depend on each other both name it, and only as a
 //! plain value: construction, parsing, display and serde, no other logic. The exceptions are
-//! `NamedEnum`, which names an enum's members from one table, as `campfire-derive` implements
-//! it; the hashers, SHA-256 and domain-tagged BLAKE3, which construct the 32-byte
+//! `NamedEnum`, which names an enum's members from one table, with the derives
+//! `campfire-common-derive` holds for it; the hashers, SHA-256 and domain-tagged BLAKE3, which construct the 32-byte
 //! values (05-protocol-spec.md, Hashes, ids and keys); and, behind `internals`, the allocation
 //! audit every crate's `tests/alloc` suite runs on. The crate depends on nothing but `serde`,
-//! `derive_more`, `sha2` and `blake3`, and, for the audit, `backtrace`.
+//! `derive_more`, `sha2`, `blake3` and its derives, and, for the audit, `backtrace`.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
@@ -57,6 +57,11 @@ pub use crate::tls_key::{TlsKey, TlsKeyMeaning};
 pub use crate::value32::{ContentMeaning, Meaning, Value32};
 pub use crate::version::Version;
 pub use crate::version::error::NotVersion;
+/// The derives of the crate's traits, an enum's `ALL` and `IDENTS`, and `NamedEnum`: the one
+/// re-export of another crate the workspace allows (02-engine-core.md, Structural rules), as a
+/// proc-macro crate can export nothing else, so a caller takes a trait and its derive from one
+/// path, as from `serde`. No other crate names `campfire-common-derive`.
+pub use campfire_common_derive::{EnumAll, EnumIdents, NamedEnum};
 
 #[cfg(feature = "internals")]
 pub mod internals {

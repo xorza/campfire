@@ -33,7 +33,7 @@ default-members = [
     "crates/apps/server",
     "crates/base/codec",
     "crates/base/common",
-    "crates/base/derive",
+    "crates/base/common-derive",
     "crates/base/log",
     "crates/base/schedule",
     "crates/base/store",
@@ -109,7 +109,7 @@ campfire-visibility = { path = "crates/capabilities/core/visibility" }
 campfire-vision = { path = "crates/capabilities/vision" }
 campfire-codec = { path = "crates/base/codec" }
 campfire-common = { path = "crates/base/common" }
-campfire-derive = { path = "crates/base/derive" }
+campfire-common-derive = { path = "crates/base/common-derive" }
 campfire-import = { path = "crates/apps/import" }
 campfire-log = { path = "crates/base/log" }
 campfire-math = { path = "crates/sim/math" }

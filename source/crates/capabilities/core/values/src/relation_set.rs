@@ -1,5 +1,4 @@
-use campfire_common::NamedEnum;
-use campfire_derive::{EnumAll, NamedEnum};
+use campfire_common::{EnumAll, NamedEnum};
 use serde::{Deserialize, Deserializer};
 
 use crate::relation::Relation;

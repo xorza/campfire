@@ -23,7 +23,6 @@ internals = [
 campfire-actions.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
-campfire-derive.workspace = true
 campfire-math.workspace = true
 campfire-players.workspace = true
 campfire-script.workspace = true

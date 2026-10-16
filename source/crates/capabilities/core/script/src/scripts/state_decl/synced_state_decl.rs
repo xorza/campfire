@@ -1,4 +1,4 @@
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 use serde::{Deserialize, Deserializer};
 
 use crate::scripts::state_decl::{StateDecl, StateDefault};

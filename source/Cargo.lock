@@ -2192,7 +2192,6 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-deliveries",
- "campfire-derive",
  "campfire-math",
  "campfire-players",
  "campfire-script",
@@ -2211,7 +2210,6 @@ dependencies = [
  "campfire-codec",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-players",
@@ -2235,7 +2233,6 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-deliveries",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-script",
@@ -2285,7 +2282,6 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-deliveries",
- "campfire-derive",
  "campfire-geometry",
  "campfire-interaction",
  "campfire-items",
@@ -2390,7 +2386,6 @@ dependencies = [
  "campfire-combat",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-math",
  "campfire-players",
  "campfire-script",
@@ -2410,7 +2405,7 @@ dependencies = [
  "blake3",
  "campfire-codec",
  "campfire-common",
- "campfire-derive",
+ "campfire-common-derive",
  "campfire-store",
  "derive_more",
  "serde",
@@ -2418,12 +2413,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-common-derive"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "campfire-declare"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-math",
  "campfire-script",
  "campfire-sim",
@@ -2437,9 +2441,9 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
+ "campfire-common",
  "campfire-declare",
  "campfire-deliveries",
- "campfire-derive",
  "campfire-math",
  "campfire-script",
  "campfire-sim",
@@ -2449,21 +2453,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "campfire-derive"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "campfire-geometry"
 version = "0.1.0"
 dependencies = [
  "campfire-codec",
  "campfire-common",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-sim",
@@ -2529,7 +2523,6 @@ dependencies = [
  "campfire-client-files",
  "campfire-codec",
  "campfire-common",
- "campfire-derive",
  "campfire-geometry",
  "campfire-import",
  "campfire-log",
@@ -2570,8 +2563,8 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
+ "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-geometry",
  "campfire-items",
  "campfire-math",
@@ -2643,7 +2636,6 @@ dependencies = [
  "campfire-combat",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-mode",
@@ -2673,7 +2665,6 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-deliveries",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-navigation",
@@ -2702,7 +2693,6 @@ dependencies = [
  "campfire-combat",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-log",
  "campfire-math",
  "campfire-mode",
@@ -2738,7 +2728,6 @@ dependencies = [
  "campfire-actions",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-geometry",
  "campfire-interaction",
  "campfire-math",
@@ -2829,7 +2818,6 @@ dependencies = [
  "campfire-codec",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-navigation",
@@ -2851,8 +2839,8 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
+ "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-math",
  "campfire-players",
  "campfire-progression",
@@ -2875,7 +2863,6 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-deliveries",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-projectiles",
@@ -2985,7 +2972,6 @@ dependencies = [
  "bevy_ecs",
  "campfire-codec",
  "campfire-common",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-script",
@@ -3034,7 +3020,6 @@ dependencies = [
  "blake3",
  "campfire-codec",
  "campfire-common",
- "campfire-derive",
  "campfire-log",
  "campfire-math",
  "campfire-schedule",
@@ -3049,7 +3034,7 @@ name = "campfire-state-types"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
- "campfire-derive",
+ "campfire-common",
  "campfire-sim",
  "campfire-state-types",
 ]
@@ -3062,7 +3047,6 @@ dependencies = [
  "campfire-codec",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-players",
@@ -3109,7 +3093,6 @@ dependencies = [
  "campfire-codec",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-script",
@@ -3128,7 +3111,6 @@ dependencies = [
  "bevy_ecs",
  "campfire-codec",
  "campfire-common",
- "campfire-derive",
  "campfire-math",
  "campfire-sim",
  "campfire-state-types",
@@ -3164,7 +3146,6 @@ dependencies = [
  "bevy_ecs",
  "campfire-codec",
  "campfire-common",
- "campfire-derive",
  "campfire-state-types",
  "campfire-visibility",
  "serde",
@@ -3178,7 +3159,6 @@ dependencies = [
  "bevy_ecs",
  "campfire-common",
  "campfire-declare",
- "campfire-derive",
  "campfire-geometry",
  "campfire-math",
  "campfire-players",

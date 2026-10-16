@@ -1,4 +1,4 @@
-use campfire_derive::EnumAll;
+use campfire_common::EnumAll;
 
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::Duration;

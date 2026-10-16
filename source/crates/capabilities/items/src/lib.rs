@@ -8,8 +8,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots, CastSpends, SlotTimes, SlotsMut, UseGroup};
+use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 

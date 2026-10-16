@@ -34,7 +34,6 @@ campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
-campfire-derive.workspace = true
 campfire-log.workspace = true
 campfire-mode.workspace = true
 campfire-package.workspace = true
