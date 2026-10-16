@@ -129,6 +129,14 @@ fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     assert_eq!(game.part::<Destination>(past).get(), None);
     // A unit that does not walk is not moved: the map's check keeps it within the bounds.
     assert_eq!(game.part::<Position>(id).get(), Vec3::from((9, 0, 9)));
+    // Bounds that shrink take in each unit that walks, though none moved: the inside one, at
+    // (1, 0, 1), to (0.5, 0, 0.5), and the one at the edge to (0.5, 0, 0).
+    let half = Num::HALF;
+    game.resource_mut::<MapBook>().bounds = Bounds::new([-half, -half], [half, half]).unwrap();
+    game.step();
+    let to = |x, z| Vec3::new(x, Num::ZERO, z);
+    assert_eq!(game.part::<Position>(inside).get(), to(half, half));
+    assert_eq!(game.part::<Position>(past).get(), to(half, Num::ZERO));
 }
 
 #[test]
@@ -716,6 +724,23 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     game.step();
     assert_ne!(game.part::<Route>(walker).ahead(), [goal]);
     assert!(game.part::<Route>(walker).reached());
+
+    // Pressed against that tower, 0.7 m from its center, closer than the two radii, on a route
+    // straight through it, as no change of the static bodies asks again: a match restored there
+    // plays as the match does. Its new index's first fill puts no body in, so no route is asked
+    // again for the towers that stood there before.
+    let pressed = Vec3::new(Num::int(48) / 10, Num::ZERO, Num::int(1) + half);
+    let through = Route::planned(goal, pressed, &[goal]);
+    game.insert_parts(walker, (Position::from(pressed), through));
+    let mut restored = walk_match();
+    Navigation::load_open_pathing(&mut restored, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
+    Release::restore_into(&game, &mut restored);
+    for _ in 0..3 {
+        game.step();
+        restored.step();
+        assert_eq!(restored.part::<Route>(walker), game.part::<Route>(walker));
+        assert_eq!(restored.state_hash(), game.state_hash());
+    }
 }
 
 #[test]
@@ -845,11 +870,12 @@ fn check_walkable(
     let name = |unit_type: UnitType| TYPES[unit_type.index()];
     let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
     let body = |unit_type| body_of(name(unit_type));
+    let kinds: WalkerKinds = walkers.iter().copied().collect();
     let check = WalkCheck {
         ground: &ground,
         navigation: &navigation,
         cells: map.pathing,
-        walkers,
+        walkers: &kinds,
         placed: &map.placed_bodies(body),
         spawns: &map.spawn_points(&rules.spawn_tags),
     };

@@ -26,7 +26,9 @@ use campfire_mode::{
     InputValue, MapPoint, MarkerData, MatchResult, ModeError, ModeInput, Offer, TeamManifest,
     UnansweredSlotEvents, *,
 };
-use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker};
+use campfire_navigation::{
+    ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker, WalkerKinds,
+};
 use campfire_players::{OutOfPlay, PlayerResources, PlayersWorld};
 use campfire_production::{ProductionData, Queued, TrainQueue};
 use campfire_progression::{Experience, Points, Progression, Thresholds, TrackData, TrackSet};
@@ -753,10 +755,8 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         names.set_table(mode_names.damage_kinds);
         names.set_table(mode_names.resources);
     }
-    let mut kinds: Vec<Walker> = walkers.values().copied().collect();
-    kinds.sort_unstable();
-    kinds.dedup();
-    assert_eq!(kinds, [Walker::of_form(None).unwrap()]);
+    let kinds: WalkerKinds = walkers.values().copied().collect();
+    assert_eq!(kinds, WalkerKinds::from([Walker::of_form(None).unwrap()]));
     ModeLoad {
         map,
         walkers: kinds,

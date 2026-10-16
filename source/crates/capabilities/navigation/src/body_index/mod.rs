@@ -43,6 +43,9 @@ pub struct BodyIndex {
     /// The new bodies' entries, and the entries they merge into, kept between updates.
     fresh: Vec<Entry>,
     merged: Vec<Entry>,
+    /// Whether an update filled it: a new index's first is no change of the bodies, which stood
+    /// there before it, as after a restore.
+    filled: bool,
 }
 
 /// A unit's body as an index of bodies that stand sees it.
@@ -198,6 +201,7 @@ impl BodyIndex {
             added: Vec::new(),
             fresh: Vec::new(),
             merged: Vec::new(),
+            filled: false,
         }
     }
 
@@ -205,6 +209,7 @@ impl BodyIndex {
     /// bodies the change took away and put in stay for `removed` and `added`.
     pub fn update(&mut self, bodies: &[IndexedBody]) -> bool {
         debug_assert!(bodies.is_sorted_by_key(|body| body.id));
+        self.filled = true;
         self.removed.clear();
         self.added.clear();
         if self.bodies == bodies {
@@ -293,6 +298,11 @@ impl BodyIndex {
         true
     }
 
+    /// Whether an update filled it.
+    pub(crate) const fn filled(&self) -> bool {
+        self.filled
+    }
+
     pub(crate) const fn removed(&self) -> &[IndexedBody] {
         self.removed.as_slice()
     }
@@ -352,6 +362,27 @@ impl BodyIndex {
     /// Whether a body of `walker`'s layer comes closer to `segment` than the walker's radius,
     /// exactly: whether the walker along it would overlap one.
     pub fn blocks(&self, segment: Segment, walker: Walker) -> bool {
+        self.blocks_by(segment, walker, |_| true)
+    }
+
+    /// Whether a body the last update put in blocks `walker` along `segment`, as `blocks` says.
+    pub(crate) fn added_blocks(&self, segment: Segment, walker: Walker) -> bool {
+        let added = &self.added;
+        self.blocks_by(segment, walker, |body| {
+            added
+                .binary_search_by_key(&body.id, |added| added.id)
+                .is_ok()
+        })
+    }
+
+    /// Whether a body of `walker`'s layer that `counts` comes closer to `segment` than the
+    /// walker's radius.
+    fn blocks_by(
+        &self,
+        segment: Segment,
+        walker: Walker,
+        counts: impl Fn(&IndexedBody) -> bool,
+    ) -> bool {
         let radius = walker.radius;
         let (from, to) = (segment.start(), segment.end());
         let span = |a: Num, b: Num| [(a.min(b) - radius).to_bits(), (a.max(b) + radius).to_bits()];
@@ -361,7 +392,7 @@ impl BodyIndex {
             high: [high_x, high_z],
         };
         let met = self.meeting(walker.layer, square, |body| {
-            if body.comes_closer(segment, radius) {
+            if counts(body) && body.comes_closer(segment, radius) {
                 ControlFlow::Break(())
             } else {
                 ControlFlow::Continue(())

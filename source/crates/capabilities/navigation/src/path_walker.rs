@@ -1,11 +1,14 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_math::Vec3;
 use campfire_script::enum_script_arg;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::{EngineEnum, ScriptEnum};
+
+use crate::party::{Party, PartyKey};
 use serde::{Deserialize, Serialize};
 
 /// A unit walking the path its `OnPath` names, such as a creep: it walks to the path's waypoints
@@ -60,8 +63,15 @@ impl PathWalker {
         self.from
     }
 
-    pub(crate) const fn group(self) -> StableId {
-        self.group
+    /// The party it asks a route to `goal` as: its spawn group's, unless it left its path.
+    pub(crate) const fn party(self, goal: Vec3) -> Option<Party> {
+        if self.left {
+            return None;
+        }
+        Some(Party {
+            key: PartyKey::Spawn(self.group),
+            goal,
+        })
     }
 
     pub const fn next(self) -> u32 {

@@ -994,11 +994,7 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
         layer: Layer::FIRST,
         radius: Num::ZERO,
     };
-    Navigation::load_pathing(
-        &mut game,
-        Grid::new(Num::ONE, bounds).unwrap(),
-        vec![ground],
-    );
+    Navigation::load_pathing(&mut game, Grid::new(Num::ONE, bounds).unwrap(), [ground]);
     let tower = Units::load_next_type(&mut game, &UnitTypeCore::default());
     Units::give_type(&mut game, tower, BodyForm::circle(half).unwrap());
     let walker_type = armed(&mut game, combatant(100, 1, 1, 5, 0), Some(meter()));

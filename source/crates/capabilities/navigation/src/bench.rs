@@ -17,10 +17,11 @@ use crate::broadphase::internals::{scene, static_bodies, statics};
 use crate::collider::Collider;
 use crate::party::{Party, PartyKey};
 use crate::pathing_grid::PathingGrid;
-use crate::route_asks::{Member, RouteAsks};
+use crate::route_asks::{Ask, Member, RouteAsks};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::terrain::Terrain;
 use crate::walker::Walker;
+use crate::walker_kinds::WalkerKinds;
 use crate::wall::Wall;
 
 /// Runs each bench of the crate whose id criterion's filter takes.
@@ -89,7 +90,7 @@ fn pathing_grid(c: &mut Criterion) {
     let mut statics = scene_statics(span);
     let with = statics.clone();
     statics.pop().expect("a scene with static bodies");
-    let walkers: Vec<Walker> = WALKER_RADII
+    let walkers: WalkerKinds = WALKER_RADII
         .iter()
         .map(|&cm| Walker {
             layer: Layer::FIRST,
@@ -142,7 +143,8 @@ fn route_planner(c: &mut Criterion) {
         layer: Layer::FIRST,
         radius: KernelScene::centimeters(HERO_RADIUS),
     };
-    let mut grid = PathingGrid::new(cells, [walker], &Terrain::new(&cells, &walls));
+    let walkers = WalkerKinds::from([walker]);
+    let mut grid = PathingGrid::new(cells, walkers, &Terrain::new(&cells, &walls));
     let mut index = BodyIndex::new(walker.radius);
     index.update(&scene_statics(span));
     grid.update(&index);
@@ -224,14 +226,18 @@ impl GroupScene<'_> {
             goal,
         };
         let mut ids = IdAllocator::default();
-        let members: Vec<Member> = starts
+        let members: Vec<Ask> = starts
             .iter()
-            .map(|&at| Member {
-                id: ids.allocate(),
-                entity: Entity::PLACEHOLDER,
-                pos: at,
-                walker: self.walker,
-                goal,
+            .map(|&at| Ask {
+                tick: Tick::new(0),
+                party: Some(party),
+                member: Member {
+                    id: ids.allocate(),
+                    entity: Entity::PLACEHOLDER,
+                    pos: at,
+                    walker: self.walker,
+                    goal,
+                },
             })
             .collect();
         let walkable = Walkable::of(self.grid.clearance(self.walker), self.statics);
@@ -241,28 +247,14 @@ impl GroupScene<'_> {
         group.bench_function("group", |bench| {
             bench.iter(|| {
                 let mut left = members.as_slice();
-                while let [first, rest @ ..] = left {
-                    planner.begin_tick();
-                    if rest.is_empty() {
-                        planner.plan(walkable, first.pos, first.goal, &mut waypoints);
-                        black_box(&waypoints);
-                        break;
-                    }
+                while !left.is_empty() {
                     let mut answered = 0;
-                    let mut answer = |_: Entity, route: &[Vec3], _: bool| {
+                    let mut answer = |_: Entity, _: Vec3, route: &[Vec3], _: bool| {
                         black_box(route);
                         answered += 1;
                     };
-                    let members = left.iter().copied();
-                    let planning = asks.plan_group(
-                        self.grid,
-                        self.statics,
-                        planner,
-                        party,
-                        members,
-                        &mut answer,
-                    );
-                    black_box(planning);
+                    asks.read(left.iter().copied());
+                    asks.plan((Some(self.grid), self.statics), Some(planner), &mut answer);
                     left = &left[answered..];
                 }
             });

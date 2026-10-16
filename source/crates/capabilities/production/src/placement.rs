@@ -4,7 +4,7 @@ use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_geometry::{Placed, Shape};
 use campfire_math::Vec3;
-use campfire_navigation::{BodyIndex, IndexedBody, NavigationBook, Walls};
+use campfire_navigation::{BodyIndex, IndexedBody, NavigationBook};
 use campfire_players::OnMatch;
 use campfire_sim::{Position, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, MoveStep};
@@ -48,8 +48,11 @@ impl<S: TeamSight> Placement<'_, '_, S> {
             panic!("a building's body is a box");
         };
         let layer = body.layer();
-        let walls = self.navigation.as_deref().map(|book| &book.walls);
-        if !Walls::room_for(walls, self.map.bounds, pos, &boxed, layer) {
+        let walled = self
+            .navigation
+            .as_deref()
+            .is_some_and(|book| book.walls.overlaps_box(pos, &boxed, layer));
+        if !self.map.bounds.holds_box(pos, &boxed) || walled {
             return false;
         }
         let overlaps = |other: &IndexedBody| other.overlaps_box(pos, &boxed);

@@ -17,7 +17,7 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, SimEdge, SimSet};
-use campfire_units::{Body, BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
+use campfire_units::{BodyUnit, Destination, MoveStep, SpawnHooks, UnitTracker};
 
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
@@ -51,12 +51,12 @@ mod route_planner;
 mod routing;
 mod segment;
 mod static_bodies;
-mod static_changes;
 mod static_tracking;
 mod steering;
 mod terrain;
 mod walk_check;
 mod walker;
+mod walker_kinds;
 mod walking;
 mod wall;
 mod walls;
@@ -82,10 +82,10 @@ pub use crate::route_planner::RoutePlanner;
 pub use crate::routing::Routing;
 pub use crate::segment::Segment;
 pub use crate::static_bodies::StaticBodies;
-pub use crate::static_changes::StaticChanges;
 pub use crate::static_tracking::{StaticTracking, StaticTrackingRun};
 pub use crate::walk_check::{MarkerPoint, PlacedBody, WalkCheck};
 pub use crate::walker::Walker;
+pub use crate::walker_kinds::WalkerKinds;
 pub use crate::walking::Walking;
 pub use crate::wall::Wall;
 pub use crate::walls::Walls;
@@ -101,6 +101,9 @@ pub(crate) enum NavigationSet {
     Collide,
     /// The units out of the map's bounds come back in.
     Bounds,
+    /// The static bodies are taken once the tick's last stage is done, so the index holds them
+    /// as they stand at the boundary.
+    TrackEnd,
     /// Each walker's `ArrivedShort` follows its route, in a gap, so a capability that reads it
     /// in a stage reads the route as the stage began.
     Report(SimEdge),
@@ -108,7 +111,13 @@ pub(crate) enum NavigationSet {
 
 impl NavigationSet {
     /// The steps in the stages and after Collide.
-    const STEPS: [Self; 4] = [Self::TrackStatics, Self::Move, Self::Collide, Self::Bounds];
+    const STEPS: [Self; 5] = [
+        Self::TrackStatics,
+        Self::Move,
+        Self::Collide,
+        Self::Bounds,
+        Self::TrackEnd,
+    ];
 
     /// The steps, then a report in each gap, `SimEdge::Start` first.
     const ALL: [Self; Self::STEPS.len() + 1 + SimSet::ALL.len()] = {
@@ -138,6 +147,7 @@ impl ModuleSet for NavigationSet {
             Self::Move => SetPlace::Phase(Phase::Move),
             Self::Collide => SetPlace::Phase(Phase::Collide),
             Self::Bounds => SetPlace::Gap(SimEdge::After(SimSet::Collide)),
+            Self::TrackEnd => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
             Self::Report(edge) => SetPlace::Gap(edge),
         }
     }
@@ -160,7 +170,6 @@ impl Module for Navigation {
         d.component::<OnPath>();
         d.component::<Route>();
         d.component::<Progress>();
-        d.scratch::<StaticChanges>();
         d.cache::<UnitTracker<StaticBodies>>();
         d.cache::<BodyIndex>();
         d.cache::<PathingGrid>();
@@ -203,6 +212,9 @@ impl Module for Navigation {
                 .chain()
                 .in_set(NavigationSet::Collide),
             Walking::keep_in_bounds.in_set(NavigationSet::Bounds),
+            StaticTracking::track_static_bodies
+                .in_set(NavigationSet::TrackEnd)
+                .before(NavigationSet::Report(SimEdge::After(SimSet::Vision))),
         ));
         for set in NavigationSet::ALL {
             if let NavigationSet::Report(_) = set {
@@ -225,10 +237,10 @@ impl Navigation {
     /// navigation book block, for the kinds of `walkers`, a static index for the widest of them,
     /// and a planner of routes on the grid; the static bodies fill the grid and the index from
     /// the first tick on.
-    pub fn load_pathing(world: &mut World, grid: Grid, walkers: impl IntoIterator<Item = Walker>) {
-        let walkers: Vec<Walker> = walkers.into_iter().collect();
+    pub fn load_pathing(world: &mut World, grid: Grid, walkers: impl Into<WalkerKinds>) {
+        let walkers = walkers.into();
         debug_assert!(
-            world.contains_resource::<StaticChanges>(),
+            world.contains_resource::<BodyIndex>(),
             "a map's pathing grid is navigation's, which the load checked the mode declares"
         );
         let terrain = Terrain::new(&grid, world.resource::<NavigationBook>().walls.walls());
@@ -246,12 +258,6 @@ impl Navigation {
     /// is clear of every static body, and no push of collision can hold the walker between two.
     /// With no pathing grid, the box pushes it out as collision would.
     fn make_room(world: &mut World, entity: Entity) {
-        let boxed = world
-            .get::<Body>(entity)
-            .is_some_and(|body| body.half_edges().is_some());
-        if !boxed {
-            return;
-        }
         let run = world.resource::<RoomMakingRun>().0;
         world
             .run_system_with(run, entity)
@@ -288,6 +294,7 @@ pub mod internals {
     use crate::progress::Progress;
     use crate::route::Route;
     use crate::walker::Walker;
+    use crate::walker_kinds::WalkerKinds;
     use crate::wall::Wall;
     use crate::walls::Walls;
 
@@ -332,7 +339,7 @@ pub mod internals {
             let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
             let grid = Grid::new(cell, bounds).unwrap();
             Self::load_walls(world, walls);
-            Self::load_pathing(world, grid, walkers);
+            Self::load_pathing(world, grid, walkers.into_iter().collect::<WalkerKinds>());
         }
 
         /// Gives the match the walls `walls`, which a pathing grid loaded after blocks.

@@ -1,14 +1,22 @@
+use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::query::Without;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Local, ResMut, SystemId};
+use bevy_ecs::system::{Local, Query, Res, ResMut, SystemId};
+use campfire_common::Tick;
 use campfire_declare::OneShot;
-use campfire_units::Tracking;
+use campfire_sim::SimTick;
+use campfire_units::{Body, Dead, Destination, Tracking};
 
 use crate::body_index::{BodyIndex, IndexedBody};
+use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
+use crate::progress::Progress;
+use crate::route::Route;
 use crate::static_bodies::StaticBodies;
-use crate::static_changes::StaticChanges;
+use crate::walker::Walker;
 
-/// The static bodies the static index and the pathing grid hold, and their changes.
+/// The static bodies the static index and the pathing grid hold, and the walkers' routes they
+/// change.
 #[derive(Debug)]
 pub struct StaticTracking;
 
@@ -25,19 +33,36 @@ impl OneShot for StaticTrackingRun {
     }
 }
 
+/// The parts of a living walker whose route a change of the static bodies may ask again.
+type RoutedWalkers<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut Destination,
+        &'static mut Route,
+        &'static mut Progress,
+        Option<&'static Body>,
+        Option<&'static PathWalker>,
+    ),
+    Without<Dead>,
+>;
+
 impl StaticTracking {
     /// Gives the static index and the pathing grid the static bodies: the living units that cannot
-    /// walk, those the client only holds among them. It runs as each tick starts, so a structure
-    /// that died or spawned in the tick before counts from this one, again as Collide starts, so
-    /// collision parts walkers from the static bodies as they stand then, and as a box spawns, so
-    /// the walkers it moves out land clear of it. Each change goes to `changes` for the walkers'
-    /// routes. A run whose tracker finds the static bodies as the last run took them ends there;
-    /// every other run reads them into `taken`, a buffer it keeps.
+    /// walk, those the client only holds among them. It runs as each tick starts, so a new or a
+    /// restored match fills them; again as Collide starts, so collision parts walkers from the
+    /// static bodies as they stand then; as a box spawns, so the walkers it moves out land clear
+    /// of it; and once the tick's last stage is done, so the index holds the bodies as they stand
+    /// at each boundary. A run whose tracker finds the static bodies as the last run took them
+    /// ends there; every other run reads them into `taken`, a buffer it keeps, and applies their
+    /// change to the walkers' routes, as `follow_statics` says. A new index's first fill changes
+    /// no route: its bodies stood there before it, as after a restore or a late join.
     pub(super) fn track_static_bodies(
+        tick: Res<'_, SimTick>,
         mut index: ResMut<'_, BodyIndex>,
-        mut changes: ResMut<'_, StaticChanges>,
         grid: Option<ResMut<'_, PathingGrid>>,
         mut statics: Tracking<'_, '_, StaticBodies>,
+        mut walkers: RoutedWalkers<'_, '_>,
         mut taken: Local<'_, Vec<IndexedBody>>,
     ) {
         if !statics.stale() {
@@ -50,12 +75,49 @@ impl StaticTracking {
         }));
         statics.took(taken.len());
         taken.sort_unstable_by_key(|body| body.id);
+        let filled = index.filled();
         if !index.update(&taken) {
             return;
         }
-        changes.note(&index);
-        if let Some(mut grid) = grid {
-            grid.update(&index);
+        let Some(mut grid) = grid else {
+            return;
+        };
+        grid.update(&index);
+        if filled {
+            Self::follow_statics(tick.start(), &index, &mut walkers);
+        }
+    }
+
+    /// Follows the last update of `statics`, on a pathing grid, in `now`: a walker whose route a
+    /// static body it put in blocks, one of its layer that comes closer to a leg of the route
+    /// than the walker's radius, asks for its route again; after it took a body away, so does
+    /// one whose route ends short of its goal, and one that arrived short of it walks there
+    /// again. A route reads its own legs, from where the leg to its next waypoint began, so the
+    /// outcome holds wherever its walker stands. One with an ask waiting keeps it. A walker that
+    /// asks forgets its progress; one on its path asks as one of its spawn group's party.
+    fn follow_statics(now: Tick, statics: &BodyIndex, walkers: &mut RoutedWalkers<'_, '_>) {
+        let opened = !statics.removed().is_empty();
+        let added = !statics.added().is_empty();
+        for (mut destination, mut route, mut progress, body, path) in walkers.iter_mut() {
+            let party = |goal| path?.party(goal);
+            match destination.get() {
+                None if opened && route.arrived_short() => {
+                    let goal = route.goal().expect("a route that arrived short has a goal");
+                    destination.set_if_neq(Destination::to(Some(goal)));
+                    route.ask(goal, now, party(goal));
+                    progress.restart();
+                }
+                Some(goal) if route.goal() == Some(goal) && route.asked().is_none() => {
+                    let walker = Walker::walking(body);
+                    let blocked =
+                        added && route.legs().any(|leg| statics.added_blocks(leg, walker));
+                    if blocked || (opened && !route.reached()) {
+                        route.ask(goal, now, party(goal));
+                        progress.restart();
+                    }
+                }
+                _ => {}
+            }
         }
     }
 }

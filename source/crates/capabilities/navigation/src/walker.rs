@@ -33,18 +33,10 @@ impl Walker {
         Self::of(body).expect("a unit that walks has a circle for a body, or none")
     }
 
-    /// The walker of a unit type of `form`, a circle or none; `None` for a box.
+    /// The walker of a unit type of `form`, a circle or none, as its units' bodies make them;
+    /// `None` for a box. A circle's spawn angle turns nothing.
     pub fn of_form(form: Option<BodyForm>) -> Option<Self> {
-        let Some(form) = form else {
-            return Some(Self {
-                layer: Layer::FIRST,
-                radius: Num::ZERO,
-            });
-        };
-        Some(Self {
-            layer: form.layer(),
-            radius: form.circle_radius()?,
-        })
+        Self::of(form.map(|form| form.at(Num::ZERO)).as_ref())
     }
 }
 

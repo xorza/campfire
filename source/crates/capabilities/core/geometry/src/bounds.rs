@@ -1,5 +1,7 @@
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
+
+use crate::body_box::BodyBox;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -49,6 +51,21 @@ impl Bounds {
             && self.min[1].to_bits() <= pos.z.to_bits()
             && pos.z.to_bits() <= self.max[1].to_bits()
             && pos.y.to_bits().unsigned_abs() <= Position::BOUND.to_bits().unsigned_abs()
+    }
+
+    /// Whether the box `body` at `pos` lies within the bounds on the ground plane, its edges on
+    /// theirs among them.
+    pub fn holds_box(self, pos: Vec3, body: &BodyBox) -> bool {
+        let extent = body.extent();
+        let ground = [pos.x, pos.z];
+        (0..2).all(|axis| {
+            ground[axis]
+                .checked_sub(extent[axis])
+                .is_some_and(|low| low >= self.min[axis])
+                && ground[axis]
+                    .checked_add(extent[axis])
+                    .is_some_and(|high| high <= self.max[axis])
+        })
     }
 
     /// How far a straight path from `from` along the unit vector `direction` stays within the
@@ -161,6 +178,21 @@ mod tests {
             assert_eq!(Bounds::new(min, max), None, "{min:?} {max:?}");
         }
         assert!(Bounds::WORLD.contains(Vec3::from((-Position::BOUND, 0, Position::BOUND))));
+        // A box of 2 × 1 m, half extents of 1 and 0.5, lies within them from x = −1 to 3 and
+        // z = −0.5 to 2.5, its edges on theirs; a bit past either end is out.
+        let boxed = BodyBox::new([Num::int(2), Num::ONE], Num::ZERO).unwrap();
+        let half = Num::HALF;
+        for (x, z, held) in [
+            (Num::int(-1), -half, true),
+            (Num::int(3), Num::int(3) - half, true),
+            (Num::int(3) + e, Num::ZERO, false),
+            (Num::int(-1) - e, Num::ZERO, false),
+            (Num::ZERO, Num::int(3) - half + e, false),
+            (Num::ZERO, -half - e, false),
+        ] {
+            let pos = Vec3::new(x, Num::ZERO, z);
+            assert_eq!(bounds.holds_box(pos, &boxed), held, "{x:?} {z:?}");
+        }
         for height in [Position::BOUND, -Position::BOUND] {
             assert!(bounds.contains(Vec3::new(Num::ZERO, height, Num::ZERO)));
         }

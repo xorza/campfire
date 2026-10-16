@@ -11,7 +11,7 @@ use campfire_combat::{Armor, CombatBindings, CombatBook, CombatData, OnDeath};
 use campfire_interaction::{UseData, UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
-use campfire_navigation::Walker;
+use campfire_navigation::{Walker, WalkerKinds};
 use campfire_orders::Ai;
 use campfire_players::ResourceAmount;
 use campfire_production::{
@@ -239,9 +239,7 @@ impl<'a> BookBuilder<'a> {
         let standing = parts.units.unit_types.iter();
         let bodies = standing.map(|&unit_type| (unit_type, parts.bodies.get(unit_type).copied()));
         parts.types.tag_layers(&self.names.layers, bodies);
-        let mut kinds: Vec<Walker> = parts.walkers.values().copied().collect();
-        kinds.sort_unstable();
-        kinds.dedup();
+        let kinds: WalkerKinds = parts.walkers.values().copied().collect();
         let ResolvedMap {
             map,
             ground,

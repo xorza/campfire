@@ -35,8 +35,8 @@ impl OneShot for RoomMakingRun {
 }
 
 impl RoomMaking {
-    /// Makes room for the box of `entity` as `Navigation::make_room` says, with `walkers`, the
-    /// query of every living walker, and `inside`, a buffer it keeps.
+    /// Makes room for the body of `entity` as `Navigation::make_room` says, when a box, with
+    /// `walkers`, the query of every living walker, and `inside`, a buffer it keeps.
     pub(super) fn make_room(
         In(entity): In<Entity>,
         world: &mut World,
@@ -46,16 +46,18 @@ impl RoomMaking {
         >,
         mut inside: Local<'_, Vec<Keyed>>,
     ) {
+        let unit = world.entity(entity);
+        let Some(&body) = unit.get::<Body>() else {
+            return;
+        };
+        let Shape::Box(boxed) = body.shape() else {
+            return;
+        };
+        let pos = *unit.get::<Position>().expect("a unit has a place");
         let run = world.resource::<StaticTrackingRun>().0;
         world
             .run_system(run)
             .expect("the static bodies' tracking runs on any world");
-        let unit = world.entity(entity);
-        let pos = *unit.get::<Position>().expect("a unit has a place");
-        let body = *unit.get::<Body>().expect("a box makes room");
-        let Shape::Box(boxed) = body.shape() else {
-            return;
-        };
         let now = world.resource::<SimTick>().start();
         inside.clear();
         inside.extend(

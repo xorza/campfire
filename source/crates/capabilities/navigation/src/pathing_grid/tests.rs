@@ -45,12 +45,12 @@ fn grid() -> PathingGrid {
     let bounds = Bounds::new([Num::int(-3), Num::int(-3)], [Num::int(3), Num::int(3)]).unwrap();
     PathingGrid::new(
         Grid::new(Num::int(1), bounds).unwrap(),
-        vec![
+        WalkerKinds::from([
             air(),
             ground(Num::ONE),
             ground(Num::HALF),
             ground(Num::HALF),
-        ],
+        ]),
         &Terrain::default(),
     )
 }
@@ -160,12 +160,12 @@ fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_
         area: area.unwrap(),
     };
     let terrain = Terrain::new(&cells, &[wall]);
-    let walkers = vec![
+    let walkers = WalkerKinds::from([
         air(),
         ground(Num::ZERO),
         ground(Num::HALF),
         ground(Num::ONE),
-    ];
+    ]);
     let mut grid = PathingGrid::new(cells, walkers, &terrain);
     // A neighbor's center lies half a meter from a blocked cell's square, and a diagonal one
     // √0.5 ≈ 0.71 m: a walker of no body and one of 0.5 m come closer to neither, and stand
@@ -233,7 +233,7 @@ fn the_walls_test_visits_and_finds_what_a_walk_cell_by_cell_does() {
         })
         .collect();
     let terrain = Terrain::new(&cells, &walls);
-    let walkers = vec![ground(Num::ZERO), ground(Num::HALF), ground(Num::ONE)];
+    let walkers = WalkerKinds::from([ground(Num::ZERO), ground(Num::HALF), ground(Num::ONE)]);
     let grid = PathingGrid::new(cells, walkers.clone(), &terrain);
     let mut state = 0x3A11_u64;
     let mut next = move |span: u64| {
@@ -243,7 +243,7 @@ fn the_walls_test_visits_and_finds_what_a_walk_cell_by_cell_does() {
         (state >> 33) % span
     };
     for case in 0..4000 {
-        let walker = walkers[case % walkers.len()];
+        let walker = *walkers.iter().nth(case % walkers.len()).unwrap();
         let clearance = grid.clearance(walker);
         let mut point = || {
             let x = next(47).cast_signed() - 24;

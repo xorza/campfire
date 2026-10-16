@@ -209,13 +209,12 @@ fn knock_back_end(pos: Vec3, from: Vec3, distance: Num) -> Vec3 {
 /// its route again from there, and every delivery that homes on it loses it.
 fn teleport(world: &mut World, entity: Entity, id: StableId, to: Vec3, now: Tick) {
     let mut pos = world.resource::<MapBook>().bounds.clamp(to);
-    if let Some(grid) = world.get_resource::<PathingGrid>()
-        && PathingGrid::serves(world, entity)
-    {
-        let walkable = Walkable::of(
-            grid.clearance(Walker::walking(world.get::<Body>(entity))),
-            world.resource::<BodyIndex>(),
-        );
+    let clearance = world.get_resource::<PathingGrid>().and_then(|grid| {
+        let walker = Walker::of(world.get::<Body>(entity))?;
+        grid.serving(walker)
+    });
+    if let Some(clearance) = clearance {
+        let walkable = Walkable::of(clearance, world.resource::<BodyIndex>());
         let Some(open) = world.resource::<RoutePlanner>().stand_at(walkable, pos) else {
             return;
         };

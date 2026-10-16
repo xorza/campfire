@@ -109,7 +109,7 @@ impl ForcedMoves {
                 .bounds
                 .ground_point([advanced.point.x, advanced.point.z], at.get());
             let past = to != advanced.point;
-            let clearance = grid.as_deref().and_then(|grid| grid.serving(walker));
+            let clearance = grid.as_deref().map(|grid| grid.clearance(walker));
             let step = Segment::new(at.get(), to);
             let knocked = matches!(forced, ForcedMove::KnockBack { .. });
             let walled =

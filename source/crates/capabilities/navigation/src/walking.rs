@@ -1,8 +1,7 @@
-use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut, Mut};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
-use bevy_ecs::system::{Commands, If, Local, Query, Res, ResMut};
-use campfire_geometry::{Indexed, Placed};
+use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
 use campfire_units::{
     ArrivedShort, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
@@ -16,7 +15,7 @@ use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::Route;
 use crate::route_planner::RoutePlanner;
-use crate::steering::{Steered, Steering};
+use crate::steering::{Steered, Steering, TickBody};
 use crate::walker::Walker;
 
 /// The walkers' moves: steered round each other, a step a tick along their routes, parted where
@@ -73,23 +72,14 @@ impl Walking {
         >,
         (mut steering, mut order): (Local<'_, Steering>, Local<'_, Ordered>),
     ) {
-        let still = bodies
+        let read = bodies
             .iter()
-            .filter(|(.., destination, tags)| !Self::walks(*destination, *tags, false))
-            .map(|(&id, &at, body, ..)| IndexedBody::of(id, at.get(), body));
-        let walking = bodies
-            .iter()
-            .filter(|(.., destination, tags)| Self::walks(*destination, *tags, false))
-            .map(|(&id, &at, body, ..)| Indexed {
-                id,
-                key: body.layer(),
-                body: Placed::new(at.get(), body.shape()),
+            .map(|(&id, &at, body, destination, tags)| TickBody {
+                body: IndexedBody::of(id, at.get(), body),
+                walks: Self::walks(destination, tags, false),
+                gathers: UnitTags::passes(tags),
             });
-        let gatherers = bodies
-            .iter()
-            .filter(|&(.., tags)| UnitTags::passes(tags))
-            .map(|(&id, ..)| id);
-        steering.read(&statics, still, walking, gatherers);
+        steering.read(&statics, read);
         let stuck_ticks = rate
             .ticks(Steering::STUCK_MS)
             .expect("a fixed time fits")
@@ -312,13 +302,27 @@ impl Walking {
             && !UnitTags::blocks(tags, forced, Block::Move)
     }
 
-    /// Clamps each unit that walks into the bounds; a unit already within them does not change.
+    /// Clamps each unit that walks into the bounds: those whose place changed since the last run,
+    /// as a place comes with each unit, and every one when the bounds changed; a unit already
+    /// within them does not change.
     pub(super) fn keep_in_bounds(
         map: Res<'_, MapBook>,
-        mut units: Query<'_, '_, &mut Position, With<MoveStep>>,
+        mut units: ParamSet<
+            '_,
+            '_,
+            (
+                Query<'_, '_, &mut Position, (With<MoveStep>, Changed<Position>)>,
+                Query<'_, '_, &mut Position, With<MoveStep>>,
+            ),
+        >,
     ) {
-        for mut position in &mut units {
+        let clamp = |mut position: Mut<'_, Position>| {
             position.set_if_neq(Position::from(map.bounds.clamp(position.get())));
+        };
+        if map.is_changed() {
+            units.p1().iter_mut().for_each(clamp);
+        } else {
+            units.p0().iter_mut().for_each(clamp);
         }
     }
 }

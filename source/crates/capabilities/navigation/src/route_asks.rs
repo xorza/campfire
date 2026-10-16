@@ -32,7 +32,8 @@ pub(crate) type AskingUnits<'w, 's> = Query<'w, 's, Asking, Without<Dead>>;
 /// The asks of one tick's routes and the buffers that plan them, kept between ticks.
 #[derive(Debug, Default)]
 pub(crate) struct RouteAsks {
-    /// The walkers whose routes wait, by the tick they asked in, then by stable id.
+    /// The asks that wait, by the tick they were asked in, then by stable id, and whether the
+    /// tick's plan answered each.
     waiting: Vec<Waiting>,
     /// The places in `waiting` of the asks of parties, by party and goal, then stable id.
     parties: Vec<u32>,
@@ -45,16 +46,23 @@ pub(crate) struct RouteAsks {
     waypoints: Vec<Vec3>,
 }
 
-/// A walker whose route waits for the planner.
+/// A walker's ask for a route, as its unit stood when the plan read it: the tick it was first
+/// asked in, the party whose route search it shares, if any, and the walker.
 #[derive(Debug, Clone, Copy)]
-struct Waiting {
-    tick: Tick,
-    id: StableId,
-    entity: Entity,
-    party: Option<Party>,
+pub(crate) struct Ask {
+    pub(crate) tick: Tick,
+    pub(crate) party: Option<Party>,
+    pub(crate) member: Member,
 }
 
-/// A member of a party as its plan starts: where it stands, its kind of walker and its own goal.
+/// An ask that waits, and whether the tick's plan answered it.
+#[derive(Debug, Clone, Copy)]
+struct Waiting {
+    ask: Ask,
+    answered: bool,
+}
+
+/// A walker a plan answers: its unit, where it stands, its kind of walker and its own goal.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Member {
     pub id: StableId,
@@ -80,74 +88,69 @@ pub(crate) enum Planning {
 }
 
 impl RouteAsks {
-    /// Plans the asked routes of `units`, by the tick they were asked in, then by stable id, as
-    /// the tick's work begins, until `planner` did all the work a tick may: the route that meets
+    /// Plans the routes of the asks `read` took, by the tick they were asked in, then by stable
+    /// id, as the tick's work begins, until `planner` did all the work a tick may: the route that meets
     /// that limit finishes, and the rest wait for the next tick. A party's members plan together
     /// as the turn of the first of them comes. With no pathing grid each route is the straight
-    /// line to its goal.
+    /// line to its goal. Each route goes to `answer`, with its unit, the place it starts from,
+    /// and whether it reaches the unit's goal.
     pub(crate) fn plan(
         &mut self,
-        grid: Option<&PathingGrid>,
-        statics: &BodyIndex,
+        (grid, statics): (Option<&PathingGrid>, &BodyIndex),
         planner: Option<&mut RoutePlanner>,
-        units: &mut AskingUnits<'_, '_>,
+        answer: &mut impl FnMut(Entity, Vec3, &[Vec3], bool),
     ) {
-        self.read(units);
         let (Some(grid), Some(planner)) = (grid, planner) else {
-            for next in &self.waiting {
-                let (_, _, &at, mut route, _) =
-                    units.get_mut(next.entity).expect("a unit read this tick");
-                let goal = route.goal().expect("a unit that asked a route has a goal");
-                route.answer(at.get(), &[goal], true);
+            for waiting in &self.waiting {
+                let member = waiting.ask.member;
+                answer(member.entity, member.pos, &[member.goal], true);
             }
             return;
         };
         planner.begin_tick();
         for index in 0..self.waiting.len() {
             let next = self.waiting[index];
-            let (.., route, _) = units.get(next.entity).expect("a unit read this tick");
-            if route.asked().is_none() {
+            if next.answered {
                 continue;
             }
             if planner.spent() {
                 break;
             }
-            let run = next.party.map_or(0..0, |party| self.party_run(party));
+            let run = next.ask.party.map_or(0..0, |party| self.party_run(party));
             if run.len() < 2 {
-                self.plan_alone(grid, statics, planner, units, next.entity);
+                let member = next.ask.member;
+                let walkable = Walkable::of(grid.clearance(member.walker), statics);
+                let outcome = planner.plan(walkable, member.pos, member.goal, &mut self.waypoints);
+                answer(member.entity, member.pos, &self.waypoints, outcome.reached);
+                self.waiting[index].answered = true;
                 continue;
             }
-            if self.plan_party(grid, statics, planner, units, run) == Planning::Spent {
+            if self.plan_party(grid, statics, planner, run, answer) == Planning::Spent {
                 break;
             }
         }
     }
 
-    /// Reads the waiting asks of `units`, and the places of the parties' among them.
-    fn read(&mut self, units: &AskingUnits<'_, '_>) {
+    /// Reads `asks`, those of one tick's plan, and the places of the parties' among them.
+    pub(crate) fn read(&mut self, asks: impl IntoIterator<Item = Ask>) {
         self.waiting.clear();
+        self.waiting.extend(asks.into_iter().map(|ask| Waiting {
+            ask,
+            answered: false,
+        }));
         self.waiting
-            .extend(units.iter().filter_map(|(entity, &id, _, route, _)| {
-                Some(Waiting {
-                    tick: route.asked()?,
-                    id,
-                    entity,
-                    party: route.party(),
-                })
-            }));
-        self.waiting
-            .sort_unstable_by_key(|waiting| (waiting.tick, waiting.id));
+            .sort_unstable_by_key(|waiting| (waiting.ask.tick, waiting.ask.member.id));
         self.parties.clear();
         let place = |index: usize| u32::try_from(index).expect("asks fit a u32");
         self.parties.extend(
             (0..self.waiting.len())
-                .filter(|&index| self.waiting[index].party.is_some())
+                .filter(|&index| self.waiting[index].ask.party.is_some())
                 .map(place),
         );
         let waiting = &self.waiting;
         self.parties.sort_unstable_by_key(|&index| {
-            let ask = waiting[index as usize];
-            (ask.party.expect("an ask of a party").order(), ask.id)
+            let ask = waiting[index as usize].ask;
+            (ask.party.expect("an ask of a party").order(), ask.member.id)
         });
     }
 
@@ -155,7 +158,7 @@ impl RouteAsks {
     fn party_run(&self, party: Party) -> Range<usize> {
         let key = party.order();
         let of = |&index: &u32| {
-            let ask = self.waiting[index as usize];
+            let ask = self.waiting[index as usize].ask;
             ask.party.expect("an ask of a party").order()
         };
         let start = self.parties.partition_point(|index| of(index) < key);
@@ -163,58 +166,39 @@ impl RouteAsks {
         start..end
     }
 
-    /// Plans the route of the unit of `entity` by itself.
-    fn plan_alone(
-        &mut self,
-        grid: &PathingGrid,
-        statics: &BodyIndex,
-        planner: &mut RoutePlanner,
-        units: &mut AskingUnits<'_, '_>,
-        entity: Entity,
-    ) {
-        let (_, _, &at, mut route, body) = units.get_mut(entity).expect("a unit read this tick");
-        let goal = route.goal().expect("a unit that asked a route has a goal");
-        let walkable = Walkable::of(grid.clearance(Walker::walking(body)), statics);
-        let outcome = planner.plan(walkable, at.get(), goal, &mut self.waypoints);
-        route.answer(at.get(), &self.waypoints, outcome.reached);
-    }
-
     /// Plans the routes of the party whose asks are `run` of `parties`, two at least, by stable
-    /// id.
+    /// id, and marks each it answers.
     fn plan_party(
         &mut self,
         grid: &PathingGrid,
         statics: &BodyIndex,
         planner: &mut RoutePlanner,
-        units: &mut AskingUnits<'_, '_>,
         run: Range<usize>,
+        answer: &mut impl FnMut(Entity, Vec3, &[Vec3], bool),
     ) -> Planning {
         let party = self.waiting[self.parties[run.start] as usize]
+            .ask
             .party
             .expect("an ask of a party");
         self.members.clear();
-        for &index in &self.parties[run] {
-            let entity = self.waiting[index as usize].entity;
-            let (_, &id, &at, route, body) = units.get(entity).expect("a unit read this tick");
-            self.members.push(Member {
-                id,
-                entity,
-                pos: at.get(),
-                walker: Walker::walking(body),
-                goal: route.goal().expect("a unit that asked a route has a goal"),
-            });
+        for &index in &self.parties[run.clone()] {
+            self.members.push(self.waiting[index as usize].ask.member);
         }
-        self.plan_members(
+        let mut answered = 0;
+        let planning = self.plan_members(
             grid,
             statics,
             planner,
             party,
-            &mut |entity, waypoints, reached| {
-                let (_, _, &at, mut route, _) =
-                    units.get_mut(entity).expect("a unit read this tick");
-                route.answer(at.get(), waypoints, reached);
+            &mut |member, waypoints, reached| {
+                answered += 1;
+                answer(member.entity, member.pos, waypoints, reached);
             },
-        )
+        );
+        for &index in &self.parties[run.start..run.start + answered] {
+            self.waiting[index as usize].answered = true;
+        }
+        planning
     }
 
     /// Plans the routes of the party's members, which `members` holds: one search for each layer
@@ -227,7 +211,7 @@ impl RouteAsks {
         statics: &BodyIndex,
         planner: &mut RoutePlanner,
         party: Party,
-        answer: &mut impl FnMut(Entity, &[Vec3], bool),
+        answer: &mut impl FnMut(Member, &[Vec3], bool),
     ) -> Planning {
         debug_assert!(self.members.len() >= 2);
         debug_assert!(self.members.is_sorted_by_key(|member| member.id));
@@ -301,7 +285,7 @@ impl RouteAsks {
         planner: &mut RoutePlanner,
         member: Member,
         party: Party,
-        answer: &mut impl FnMut(Entity, &[Vec3], bool),
+        answer: &mut impl FnMut(Member, &[Vec3], bool),
     ) {
         let shared = self
             .layers
@@ -316,7 +300,7 @@ impl RouteAsks {
             .find(|&at| planner.sees(walkable, Segment::new(member.pos, route[at])));
         let Some(first) = seen else {
             let outcome = planner.plan(walkable, member.pos, member.goal, &mut self.waypoints);
-            answer(member.entity, &self.waypoints, outcome.reached);
+            answer(member, &self.waypoints, outcome.reached);
             return;
         };
         self.waypoints.clear();
@@ -332,37 +316,6 @@ impl RouteAsks {
                 reached = true;
             }
         }
-        answer(member.entity, &self.waypoints, reached);
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use bevy_ecs::entity::Entity;
-    use campfire_math::Vec3;
-
-    use crate::body_index::BodyIndex;
-    use crate::party::Party;
-    use crate::pathing_grid::PathingGrid;
-    use crate::route_asks::{Member, Planning, RouteAsks};
-    use crate::route_planner::RoutePlanner;
-
-    impl RouteAsks {
-        /// Plans the routes of `members` of `party`, two at least, by stable id, as a party's
-        /// members plan, and gives each to `answer`, with its entity and whether it reaches the
-        /// member's goal.
-        pub(crate) fn plan_group(
-            &mut self,
-            grid: &PathingGrid,
-            statics: &BodyIndex,
-            planner: &mut RoutePlanner,
-            party: Party,
-            members: impl IntoIterator<Item = Member>,
-            answer: &mut impl FnMut(Entity, &[Vec3], bool),
-        ) -> Planning {
-            self.members.clear();
-            self.members.extend(members);
-            self.plan_members(grid, statics, planner, party, answer)
-        }
+        answer(member, &self.waypoints, reached);
     }
 }

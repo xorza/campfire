@@ -5,13 +5,15 @@ use campfire_common::Tick;
 use campfire_math::Vec3;
 use campfire_sim::{Position, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_units::{ArrivedShort, Facing, UnitEntity};
+use campfire_units::{ArrivedShort, Body, Facing, UnitEntity};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::party::Party;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
+use crate::segment::Segment;
+use crate::walker::Walker;
 
 /// A walker's long route to its destination: the goal it serves, with its ask while it waits for
 /// the planner, the waypoints of the route planned last, the next one first among those left,
@@ -134,6 +136,15 @@ impl Route {
         &self.waypoints[self.next as usize..]
     }
 
+    /// The legs of the route the walker has yet to walk, from where the leg to the next waypoint
+    /// began: the route's own, whatever the place the walker stands at on the way.
+    pub(crate) fn legs(&self) -> impl Iterator<Item = Segment> + '_ {
+        let starts = self.from.into_iter().chain(self.ahead().iter().copied());
+        starts
+            .zip(self.ahead())
+            .map(|(from, &to)| Segment::new(from, to))
+    }
+
     /// Goes by `short` in place of the next `skipped` waypoints, from the walker's place `from`.
     /// When it replaces the last, the route ends on the goal only if `reached`: if `short` ends
     /// on it.
@@ -176,8 +187,9 @@ impl SimComponent for Route {
     type Host = UnitEntity;
 
     // Its decode keeps the next waypoint within the route; a route is planned over the cells of
-    // its unit's kind of walker, which must be one the mode has; each of its places lies within
-    // the world's bound, as every place does.
+    // its unit's kind of walker, which must be one the mode has, as every pass that reads a
+    // walking unit's cells takes it to be; each of its places lies within the world's bound, as
+    // every place does.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let within = |point: Vec3| Position::from(point).within_bound();
         let goal = |goal: Goal| {
@@ -187,7 +199,11 @@ impl SimComponent for Route {
         let places = self.goal.is_none_or(goal)
             && self.from.is_none_or(within)
             && self.waypoints.iter().copied().all(within);
-        PathingGrid::serves(world, entity) && places
+        let served = world.get_resource::<PathingGrid>().is_none_or(|grid| {
+            Walker::of(world.get::<Body>(entity))
+                .is_some_and(|walker| grid.serving(walker).is_some())
+        });
+        served && places
     }
 }
 
@@ -231,6 +247,25 @@ impl<'de> Deserialize<'de> for Route {
     }
 }
 
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_common::Tick;
+    use campfire_math::Vec3;
+
+    use crate::route::Route;
+
+    impl Route {
+        /// The route to `goal` that the planner gave from `from` by `waypoints`, the last the
+        /// goal: for a test that holds a route no plan of its match would give.
+        pub fn planned(goal: Vec3, from: Vec3, waypoints: &[Vec3]) -> Self {
+            let mut route = Self::default();
+            route.ask(goal, Tick::new(0), None);
+            route.answer(from, waypoints, waypoints.last() == Some(&goal));
+            route
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use campfire_codec::Binary;
@@ -242,18 +277,30 @@ mod tests {
     fn a_route_faces_each_legs_way_from_where_the_leg_began() {
         let at = |x: i16, z: i16| Vec3::from((x, 0, z));
         let degrees = |route: &Route| route.way().map(Facing::degrees);
+        let legs = |route: &Route| route.legs().collect::<Vec<_>>();
         let mut route = Route::default();
         assert_eq!(degrees(&route), None);
+        assert_eq!(legs(&route), []);
         // From (0, 0), to (0, 0) again, then (4, 0), then (4, −3): the leg of no length is passed
-        // over, so the way is along `x`, 0°.
+        // over, so the way is along `x`, 0°. Its legs are its own three.
         route.ask(at(4, -3), Tick::new(0), None);
         route.answer(at(0, 0), &[at(0, 0), at(4, 0), at(4, -3)], true);
         assert_eq!(degrees(&route), Some(Num::ZERO));
+        let leg = |from, to| Segment::new(from, to);
+        assert_eq!(
+            legs(&route),
+            [
+                leg(at(0, 0), at(0, 0)),
+                leg(at(0, 0), at(4, 0)),
+                leg(at(4, 0), at(4, -3))
+            ]
+        );
         // Past (0, 0) and (4, 0), the leg from (4, 0) to (4, −3) is along `−z`, 90°, wherever
-        // the walker stands on it.
+        // the walker stands on it, and the one leg left.
         route.advance();
         route.advance();
         assert_eq!(degrees(&route), Some(Num::int(90)));
+        assert_eq!(legs(&route), [leg(at(4, 0), at(4, -3))]);
         // A detour from (5, −1) to (4, −1), along `−x`, 180°, in place of the next waypoint.
         route.splice(at(5, -1), &[at(4, -1)], 0, false);
         assert_eq!(degrees(&route), Some(Num::int(180)));

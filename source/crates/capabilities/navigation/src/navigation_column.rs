@@ -78,7 +78,8 @@ impl NavigationColumn {
             .all(|other| !other.overlaps_box(pos, &boxed));
         let room = view.column(|column: &Self| {
             let rows = column.rows.now();
-            let mut clear = Walls::room_for(Some(&column.walls), view.bounds(), pos, &boxed, layer);
+            let mut clear = view.bounds().holds_box(pos, &boxed)
+                && !column.walls.overlaps_box(pos, &boxed, layer);
             view.each_row(|place, row| {
                 let stands = !rows[place].walks && rows[place].layer == layer;
                 if clear && stands && row.alive && row.shape != Shape::POINT {
@@ -93,7 +94,7 @@ impl NavigationColumn {
             });
             clear
         });
-        let room = room.unwrap_or_else(|| Walls::room_for(None, view.bounds(), pos, &boxed, layer));
+        let room = room.unwrap_or_else(|| view.bounds().holds_box(pos, &boxed));
         room && clear_of_spawning
     }
 

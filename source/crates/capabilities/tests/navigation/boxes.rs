@@ -221,7 +221,7 @@ fn a_placed_box_lies_within_the_bounds_and_may_overlap_the_walls_and_the_bodies_
         check_walkable(&map, &[ground(Num::HALF)], &rules, body_of)
     };
     let blocked = |unit| {
-        Err(MapProblem::BoxBlocked {
+        Err(MapProblem::BoxOutside {
             unit,
             unit_type: DeclaredName::new("crate").unwrap(),
         })

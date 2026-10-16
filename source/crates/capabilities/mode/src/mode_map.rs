@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_geometry::Grid;
 use campfire_navigation::{
-    MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, Walker, Walls,
+    MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, WalkerKinds, Walls,
 };
 use campfire_units::{BodyForm, Layer, MapBook};
 use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType};
@@ -159,7 +159,7 @@ impl ModeMap {
 
     /// Gives `world` the map's pathing grid, when it has one, for the kinds of `walkers`, among the
     /// walls of its navigation book.
-    pub fn install_pathing(&self, world: &mut World, walkers: Vec<Walker>) {
+    pub fn install_pathing(&self, world: &mut World, walkers: WalkerKinds) {
         if let Some(grid) = self.pathing {
             Navigation::load_pathing(world, grid, walkers);
         }

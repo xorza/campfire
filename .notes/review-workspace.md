@@ -95,22 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 4. Navigation: route checks a restore reproduces
-
-`navigation`: `static_changes`, `routing`, `static_tracking`, `room_making`, `walls`, `walking`, `pathing_grid`, `walk_check`, `route_asks`, `walker`, `error`; `units`: `unit_tracker`; `geometry`: `bounds`; `production`: `placement`; `capabilities`: `book_builder`. Moves goldens.
-
-- [ ] navigation/src/static_changes/mod.rs:11, 359-366; routing.rs:37-38, 70-71, 104; static_tracking.rs:53-56; lib.rs:242 — a restore builds an empty `BodyIndex`, so its first fill reports every static as added, and every route is checked against every static, by a linear scan per leg. `blocks_route` tests from the walker's current place, so a walker against a tower re-asks its route in the restored match only. A client that joins mid-match does the same. routing.rs:37-38's claim is false. → Each tracking run applies its diff to the routes in the same run, and `StaticChanges` goes. A fresh index's first fill is no change. The test reads the route's own legs, through an index.
-- [ ] navigation/src/room_making.rs:49-52, static_tracking.rs:56 — a box spawned in Mode notes into `StaticChanges`, which only next tick's `route_units` clears; the audit refuses it, and a snapshot drops it. Removed by the item above; its test stays.
-- [ ] units/src/unit_tracker.rs:140-156 — `Tracking::changed` walks every tracked unit's change ticks, twice a tick in navigation. → Visit only changed units.
-- [ ] navigation/src/walls.rs:31, walk_check.rs:72, error.rs:31-40; production/src/placement.rs:51-57 — `Walls::room_for(Option<&Walls>, bounds, …)` holds the box-in-bounds test, and `WalkCheck` calls it with `None`. `MapProblem::BoxBlocked` names walls and overlaps that the check never tests. → `Bounds::holds_box` in geometry, `Walls::overlaps_box(&self, …)`, and the error names the bounds only.
-- [ ] navigation/src/walk_check.rs:84, pathing_grid/mod.rs:55-57, capabilities/src/books/book_builder.rs:246-248 — walker kinds must be sorted and deduped, held by a `debug_assert!` and sorted three times. → A `WalkerKinds` type, built once.
-- [ ] navigation/src/pathing_grid/mod.rs:159-240 — one invariant, three shapes: `clearance` panics, `serving` returns `Option`, `serves` returns `bool`. Teleport guards with `serves`; the rest do not. → `clearance` for each walking unit; `serving` only for a type that may not walk.
-- [ ] navigation/src/walking.rs:316-323 — `keep_in_bounds` visits every walker each tick. → `Changed<Position>`.
-- [ ] navigation/src/walking.rs:76-91 — `steer` iterates `bodies` three times. → One pass that fills the three buffers.
-- [ ] navigation/src/route_asks.rs:96-104, 167-180 — two paths write answers through the query, one through a callback that a test-only `plan_group` exists to reach. → Read the asks into plain values, and answer through the one callback.
-- [ ] navigation/src/walker.rs:16-48 — `Walker::of` and `of_form` write one rule twice. → One builds on the other.
-- [ ] navigation/src/lib.rs:254-265, room_making.rs:56 — the box test runs in the spawn hook and again in the one-shot. → Once, in the one-shot.
-
 ### 5. Precision: round once
 
 `math`: `vec3`, `num`, `num/trig`, `direction`, `rng`, `simd`; `geometry`: `body_box`, `bounds`, `approach`; `units`: `units_api`; `vision`: `fog`; `projectiles`: `flights`; `import`: the `f32` callers in `zero_hour`. Moves goldens.
