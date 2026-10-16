@@ -2,6 +2,5 @@ script api autogen doc
 timesource
 custom cargo build in checks
 rhai dependency
-dedupe imported files
 audit dependencies and dev-dependecies
-campfire_common::enum_all! - strum?
+enum_all! - to attribute?
