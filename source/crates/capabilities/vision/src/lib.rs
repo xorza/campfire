@@ -142,8 +142,10 @@ pub mod internals {
             (VisionBook(Some(VisionGrid { grid, brush, teams }))).load_into(world);
         }
 
-        /// Takes the map's vision grid out of a match that holds one, so every unit sees all
-        /// until a test loads a grid.
+        /// Takes the map's vision grid out of a match that holds one, so no Vision stage runs
+        /// until a test loads a grid: a unit keeps the teams the last stage found, and one no
+        /// stage spoke of is seen by its own vision group alone, or by every team when it has
+        /// none.
         pub fn clear_grid(world: &mut World) {
             if world.contains_resource::<VisionBook>() {
                 VisionBook::default().load_into(world);

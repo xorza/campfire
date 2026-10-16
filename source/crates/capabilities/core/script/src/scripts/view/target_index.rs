@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use campfire_geometry::{BodyGrid, Indexed, Placed, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_values::Team;
@@ -105,6 +107,7 @@ impl TargetIndex {
             {
                 visit(entry);
             }
+            ControlFlow::Continue(())
         });
     }
 }

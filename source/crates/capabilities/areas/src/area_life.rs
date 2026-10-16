@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::Targets;
@@ -75,7 +77,7 @@ impl AreaLife {
                 let grid = grid.expect("a trigger finds the units near");
                 grid.visit_near(pos.get(), spec.radius, |body| {
                     let Some(unit) = targets.living_at(body.key) else {
-                        return;
+                        return ControlFlow::Continue(());
                     };
                     let relation = targets.relation(team, unit.team);
                     if spec.affects.selects(relation, unit.tags)
@@ -83,6 +85,7 @@ impl AreaLife {
                     {
                         reached.push(unit.id);
                     }
+                    ControlFlow::Continue(())
                 });
                 reached.sort_unstable();
                 for &unit in &reached {

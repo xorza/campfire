@@ -1,4 +1,5 @@
 use std::hint::black_box;
+use std::ops::ControlFlow;
 
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
@@ -46,7 +47,10 @@ pub(crate) fn body_grid(c: &mut Criterion) {
         bench.iter(|| {
             let mut visited = 0;
             for &(at, reach) in &near {
-                grid.visit_near(black_box(at), reach, |_| visited += 1);
+                grid.visit_near(black_box(at), reach, |_| {
+                    visited += 1;
+                    ControlFlow::Continue(())
+                });
             }
             black_box(visited);
         });

@@ -17,7 +17,8 @@ pub struct UnitRow {
     pub unit_type: UnitType,
     /// The player who controls it.
     pub owner: Option<PlayerSlot>,
-    /// Whether it is not dead; `combat` fills it, and the next.
+    /// Whether it lives by `stats`' living test: it is not dead, and its life, if it has one, is
+    /// above 0; `combat` fills it, and the next.
     pub alive: bool,
     /// Whether it may be a target: a living unit with the life pool whose tags let it be one, by
     /// the rule `Targets` holds; combat fills it.

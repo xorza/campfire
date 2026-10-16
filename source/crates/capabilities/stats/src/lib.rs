@@ -95,7 +95,7 @@ pub use crate::held_pass::HeldPass;
 pub use crate::instance::{Instance, StackEnd, StatShare};
 pub use crate::interval::Interval;
 pub use crate::level::Level;
-pub use crate::life::Life;
+pub use crate::life::{Life, lives};
 pub use crate::lifetime::{Ends, Hold, Lifetime};
 pub use crate::live_carriers::LiveCarriers;
 pub use crate::live_param::{LiveParam, ParamOwner};

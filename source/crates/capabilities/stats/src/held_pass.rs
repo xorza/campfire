@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
 use campfire_declare::RoleForm;
@@ -127,7 +129,7 @@ impl HeldPass {
                 let (filter, modifier) = (aura.affects, aura.modifier);
                 near.current().visit_near(at, radius, |entry| {
                     let Ok((&target, _, &other, tags, ..)) = units.get(entry.key) else {
-                        return;
+                        return ControlFlow::Continue(());
                     };
                     let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
                     let relation = relations.between(team, other);
@@ -141,6 +143,7 @@ impl HeldPass {
                             rank: instance.rank,
                         });
                     }
+                    ControlFlow::Continue(())
                 });
             }
         }

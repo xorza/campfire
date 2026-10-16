@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 
@@ -135,8 +137,14 @@ impl<K: Copy> BodyGrid<K> {
     }
 
     /// Calls `visit` with each body whose bound's disc may reach into the box of the ground plane
-    /// from `low` to `high`, `[x, z]` each, each body once, in no order a caller may rely on.
-    pub fn visit(&self, low: [Num; 2], high: [Num; 2], mut visit: impl FnMut(&Indexed<K>)) {
+    /// from `low` to `high`, `[x, z]` each, each body once, in no order a caller may rely on, until
+    /// it breaks.
+    pub fn visit(
+        &self,
+        low: [Num; 2],
+        high: [Num; 2],
+        mut visit: impl FnMut(&Indexed<K>) -> ControlFlow<()>,
+    ) {
         for (rows, &LevelWidest { level, widest }) in self.rows.layers().zip(&self.widest) {
             debug_assert_eq!(rows.layer(), level);
             let grow = widest.to_bits();
@@ -153,11 +161,14 @@ impl<K: Copy> BodyGrid<K> {
                 let inside = |cell: CellKey| {
                     covered.contains(&cell.row()) && columns.contains(&cell.column())
                 };
-                self.entries[run.clone()]
+                let stopped = self.entries[run.clone()]
                     .iter()
                     .zip(&self.cells[run])
                     .filter(|&(_, &cell)| inside(cell))
-                    .for_each(|(body, _)| visit(body));
+                    .try_for_each(|(body, _)| visit(body));
+                if stopped.is_break() {
+                    return;
+                }
                 continue;
             }
             for row in *covered.start().max(&rows.first())..=*covered.end().min(&rows.last()) {
@@ -172,16 +183,24 @@ impl<K: Copy> BodyGrid<K> {
                 );
                 let start = cells.partition_point(|&cell| cell < first);
                 let end = start + cells[start..].partition_point(|&cell| cell <= last);
-                self.entries[run.start + start..run.start + end]
+                let stopped = self.entries[run.start + start..run.start + end]
                     .iter()
-                    .for_each(&mut visit);
+                    .try_for_each(&mut visit);
+                if stopped.is_break() {
+                    return;
+                }
             }
         }
     }
 
     /// Calls `visit` with each body whose bound's disc may come within `reach` of `pos` on the
     /// ground plane, as `visit` does.
-    pub fn visit_near(&self, pos: Vec3, reach: Num, visit: impl FnMut(&Indexed<K>)) {
+    pub fn visit_near(
+        &self,
+        pos: Vec3,
+        reach: Num,
+        visit: impl FnMut(&Indexed<K>) -> ControlFlow<()>,
+    ) {
         let low = [pos.x, pos.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
         let high = [pos.x, pos.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));
         self.visit(low, high, visit);

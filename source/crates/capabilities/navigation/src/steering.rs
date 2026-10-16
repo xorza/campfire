@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use campfire_geometry::{BodyGrid, Indexed, Placed};
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
@@ -184,7 +186,7 @@ impl Steering {
                 let touching = other.body.pos.within_ground(at, reach + step);
                 let passes = gathering && gatherers.binary_search(&other.id).is_ok();
                 if other.id == id || !touching || other.key != walker.layer || passes {
-                    return;
+                    return ControlFlow::Continue(());
                 }
                 let shift = left * (reach / 2);
                 self.blockers.push(IndexedBody {
@@ -193,6 +195,7 @@ impl Steering {
                     shape: other.body.shape,
                     layer: other.key,
                 });
+                ControlFlow::Continue(())
             });
         }
         let walkable = Walkable {

@@ -24,7 +24,10 @@ fn placed(ids: &mut IdAllocator, [x, z]: [i64; 2], radius: i64) -> Indexed<()> {
 /// The ids `grid` visits for the box from `low` to `high`, in tenths, sorted, each once.
 fn visited(grid: &BodyGrid<()>, low: [i64; 2], high: [i64; 2]) -> Vec<StableId> {
     let mut ids = Vec::new();
-    grid.visit(low.map(m), high.map(m), |body| ids.push(body.id));
+    grid.visit(low.map(m), high.map(m), |body| {
+        ids.push(body.id);
+        ControlFlow::Continue(())
+    });
     let count = ids.len();
     ids.sort_unstable();
     ids.dedup();
@@ -48,6 +51,29 @@ fn a_box_visits_the_bodies_of_the_cells_it_covers_grown_by_the_widest() {
     // z -10 to 10 m covers 22 rows, more than the 5 bodies, so one pass over them all finds
     // the same cells: e, at column 0 row 4, too.
     assert_eq!(visited(&grid, [10, -100], [30, 100]), [a, b, e]);
+    // A visit that breaks reads no body after: the box of a and b, by rows, read to its first
+    // body, its second and past both; the box of three, by one pass, to its first, second and
+    // past all three.
+    let reads = |low: [i64; 2], high: [i64; 2], stop: usize| {
+        let mut read = 0;
+        grid.visit(low.map(m), high.map(m), |_| {
+            read += 1;
+            if read == stop {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
+            }
+        });
+        read
+    };
+    assert_eq!(
+        [1, 2, 3].map(|stop| reads([10, -10], [30, 10], stop)),
+        [1, 2, 2]
+    );
+    assert_eq!(
+        [1, 2, 4].map(|stop| reads([10, -100], [30, 100], stop)),
+        [1, 2, 3]
+    );
     // Cells below 0 round down: -3.2 to -2.8 m, grown to -3.7 to -2.3, columns -4 to -3.
     assert_eq!(visited(&grid, [-32, -2], [-28, 2]), [d]);
     // Points alone take cells of a meter: -0.4 to 0.4 m is columns and rows -1 to 0.
@@ -163,6 +189,7 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
         let mut got = Vec::new();
         grid.visit([Num::MIN, m(-3)], [Num::MAX, m(3)], |body| {
             got.push(body.id);
+            ControlFlow::Continue(())
         });
         got.sort_unstable();
         let in_band = |entry: &&Indexed<()>| {

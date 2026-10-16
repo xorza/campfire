@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_geometry::{Placed, Shape};
@@ -126,11 +128,8 @@ impl<S: TeamSight> SeenNear<'_, '_, '_, S> {
         let (units, team) = (self.units, self.team);
         let mut any = false;
         self.near.current().visit_near(pos, reach, |indexed| {
-            if any {
-                return;
-            }
             let Ok((at, body, &of_team, tags, walks, seen)) = units.get(indexed.key) else {
-                return;
+                return ControlFlow::Continue(());
             };
             if S::sees(seen, team).unwrap_or(true) {
                 any = found(NearUnit {
@@ -140,6 +139,11 @@ impl<S: TeamSight> SeenNear<'_, '_, '_, S> {
                     tags: tags.map_or_default(|tags| tags.tags),
                     walks,
                 });
+            }
+            if any {
+                ControlFlow::Break(())
+            } else {
+                ControlFlow::Continue(())
             }
         });
         any

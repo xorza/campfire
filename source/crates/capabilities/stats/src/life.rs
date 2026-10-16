@@ -63,7 +63,7 @@ impl Life {
 /// the unit lives no more, though not yet dead: nothing but its respawn lifts its life, and it
 /// takes no damage or heal and starts or strikes no attack or cast. Every pass that asks whether a
 /// unit lives asks this.
-pub(crate) fn lives(dead: bool, life: Option<&Life>) -> bool {
+pub fn lives(dead: bool, life: Option<&Life>) -> bool {
     !dead && life.is_none_or(|life| !life.is_empty())
 }
 

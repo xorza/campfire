@@ -139,9 +139,8 @@ impl CombatColumn {
     /// in combat's column.
     pub(super) fn fill_row(parts: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
         let (dead, life, tags, on_death, recent) = parts;
-        let alive = !dead;
-        fill.row.alive = alive;
-        fill.row.targetable = alive && Targets::targetable(life, tags);
+        fill.row.alive = campfire_stats::lives(dead, life);
+        fill.row.targetable = Targets::targetable(dead, life, tags);
         let stays = on_death == Some(&OnDeath::Stay);
         fill.column
             .push(stays, recent.into_iter().flat_map(RecentAttackers::iter));

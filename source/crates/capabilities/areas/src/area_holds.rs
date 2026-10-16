@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_actions::Targets;
 use campfire_declare::ByType;
@@ -43,10 +45,10 @@ impl AreaHolds {
             };
             grid.visit_near(pos.get(), spec.radius, |body| {
                 let Some(unit) = targets.living_at(body.key) else {
-                    return;
+                    return ControlFlow::Continue(());
                 };
                 if !targets.reaches(Placed::point(pos.get()), spec.radius, &unit) {
-                    return;
+                    return ControlFlow::Continue(());
                 }
                 let by = area.by();
                 let modifier = match targets.relation(team, unit.team) {
@@ -63,6 +65,7 @@ impl AreaHolds {
                         rank: by.rank,
                     });
                 }
+                ControlFlow::Continue(())
             });
         }
     }

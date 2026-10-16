@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use bevy_ecs::entity::Entity;
 use campfire_actions::{ShotHit, ShotHits, Targets};
 use campfire_deliveries::{Delivered, Deliveries, Delivering, Reached};
@@ -187,17 +189,18 @@ impl Flights<'_> {
             let grid = self.grid.expect("a line finds the units near");
             grid.visit(low, high, |body| {
                 let Some(unit) = targets.target_at(body.key) else {
-                    return;
+                    return ControlFlow::Continue(());
                 };
                 let selects = hits.selects(targets.relation(team, unit.team), unit.tags);
                 if !selects || struck.contains(Struck { by, id: unit.id }) {
-                    return;
+                    return ControlFlow::Continue(());
                 }
                 if let Some(place) =
                     metric.meets(from.get(), to, Placed::new(unit.pos, unit.shape), half)
                 {
                     met.push((place, unit.id));
                 }
+                ControlFlow::Continue(())
             });
         }
         // The places along the step order where it meets each unit, to the nearest bit, then the

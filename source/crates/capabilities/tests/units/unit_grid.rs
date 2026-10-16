@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use bevy_ecs::change_detection::Tick;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_capabilities::Match;
@@ -15,6 +17,7 @@ fn near_origin(game: &mut Match) -> (Vec<(StableId, Num)>, Tick) {
         let mut found = Vec::new();
         near.current().visit_near(Vec3::ZERO, Num::int(2), |entry| {
             found.push((entry.id, entry.body.shape.bound()));
+            ControlFlow::Continue(())
         });
         found.sort_unstable_by_key(|&(id, _)| id);
         (found, near.built_at().unwrap())

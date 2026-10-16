@@ -10,10 +10,10 @@ use campfire_stats::Life;
 use campfire_units::{Body, Dead, MapBook};
 use campfire_values::{Block, Relation, Relations, TagSet, Team, UnitTags};
 
-/// The units an attack may target: living units with a life whose tags let them be
-/// targets, those a client holds and does not predict among them, where the server last had
-/// them. Every capability that chooses or checks a target goes through it, so all agree on what a
-/// valid target is.
+/// The units an attack may target: units with a life that live by `stats`' living test, whose
+/// tags let them be targets, those a client holds and does not predict among them, where the
+/// server last had them. Every capability that chooses or checks a target goes through it, so all
+/// agree on what a valid target is.
 #[derive(SystemParam, Debug)]
 pub struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
@@ -83,24 +83,29 @@ impl Targets<'_, '_> {
         self.target_at(self.index.get(target)?)
     }
 
-    /// Whether a unit that has not died, with `life` and `tags`, may be a target: it has a life,
-    /// and its tags let it be one. This is the one rule of a target, which the script view reads
-    /// too.
-    pub fn targetable(life: Option<&Life>, tags: Option<&UnitTags>) -> bool {
-        life.is_some() && !tags.is_some_and(|tags| tags.properties.blocks(Block::Target))
+    /// Whether a unit, `dead` or not, with `life` and `tags`, may be a target: it has a life, it
+    /// lives by `stats`' living test, so a life at 0 that has not died yet is none, and its tags
+    /// let it be one. This is the one rule of a target, which the script view reads too.
+    pub fn targetable(dead: bool, life: Option<&Life>, tags: Option<&UnitTags>) -> bool {
+        life.is_some()
+            && campfire_stats::lives(dead, life)
+            && !tags.is_some_and(|tags| tags.properties.blocks(Block::Target))
     }
 
     /// The unit of `entity`, when a living unit with the life pool, whose tags may block it as a
     /// target: one an area reaches.
     pub fn living_at(&self, entity: Entity) -> Option<LivingUnit> {
-        self.units.get(entity).ok().map(Targets::body)
+        let row = self.units.get(entity).ok()?;
+        let (_, _, _, life, _, _) = row;
+        campfire_stats::lives(false, Some(life)).then(|| Targets::body(row))
     }
 
     /// The unit of `entity`, when a living unit that may be a target.
     pub fn target_at(&self, entity: Entity) -> Option<LivingUnit> {
         let row = self.units.get(entity).ok()?;
         let (_, _, _, life, _, tags) = row;
-        Targets::targetable(Some(life), tags).then(|| Targets::body(row))
+        // The query holds no unit that died.
+        Targets::targetable(false, Some(life), tags).then(|| Targets::body(row))
     }
 
     /// The unit of `row`.

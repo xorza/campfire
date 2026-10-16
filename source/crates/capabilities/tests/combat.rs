@@ -691,6 +691,27 @@ fn targets_are_living_enemies() {
     let entity = game.unit_entity(high);
     game.despawn(entity);
     assert_eq!(enemy_at(&mut game, Team::new(1), high), None);
+
+    // A life at 0 that has not died yet, as `ctx.kill` leaves it until the next deaths, lives no
+    // more: no target, of an area's reach neither, and not alive to a script; full again, it is
+    // all three.
+    let spent = Mode::spawn(&mut game, stays, (0, 0, 7), Team::new(0), ());
+    let full = *game.part::<Life>(spent);
+    let read = |game: &mut Match| {
+        let entity = game.unit_entity(spent);
+        let reached = game
+            .run_system_once(move |targets: Targets<'_, '_>| targets.living_at(entity).is_some())
+            .unwrap();
+        let alive = Units::read(game, "of.alive", spent).unwrap();
+        let enemy = enemy_at(game, Team::new(1), spent).is_some();
+        [enemy, reached, alive.as_bool().unwrap()]
+    };
+    assert_eq!(read(&mut game), [true; 3]);
+    game.insert_parts(spent, full.spent(full.current()));
+    assert_eq!(read(&mut game), [false; 3]);
+    assert!(game.try_part::<Dead>(spent).is_none());
+    game.insert_parts(spent, full);
+    assert_eq!(read(&mut game), [true; 3]);
 }
 
 #[test]

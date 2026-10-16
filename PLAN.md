@@ -4,19 +4,11 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 ## Zero Hour projectiles
 
-The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): the player trains a tank, and its shells destroy the bot's command center. The systems it changes: `actions`, `stats`, `vision`, `geometry`, `units`, `client-files`, `package`, `projectiles`, `combat`, `import`, `client`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
-
-### 1. Living targets and two small fixes
-
-`actions`: `src/targets.rs`; `vision`: `src/lib.rs`; `geometry`: `src/body_grid/mod.rs`. Independent of the others. Builds: what can be forgotten is a type.
-
-- [ ] crates/capabilities/core/actions/src/targets.rs — a unit at zero life that has not died yet is a living target, where `stats`' one living test says it lives no more (D10). → Target choice reads that test, for attacks and casts; a test kills a unit by `ctx.kill` and finds it no target in the same tick. Takes the issue log's **Combat** item of Decide.
-- [ ] crates/capabilities/vision/src/lib.rs — `Vision::clear_grid`'s doc says every unit then sees all, where a match with no grid runs no Vision stage and a unit with no `SeenBy` is seen by its own group alone. → The doc states what the code does. Takes the issue log's **Vision** item.
-- [ ] crates/capabilities/core/geometry/src/body_grid/mod.rs — `BodyGrid::visit` and `visit_near` have no early stop, so `SeenNear::any` visits every body after its first hit. → Each takes a visitor that returns `ControlFlow`, and stops at `Break`; a test counts the bodies a stopped visit reads. Takes the issue log's **Geometry** item; D5's query uses it.
+The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): the player trains a tank, and its shells destroy the bot's command center. The systems it changes: `geometry`, `units`, `client-files`, `package`, `projectiles`, `combat`, `import`, `client`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
 ### 2. The ground in the sim
 
-`geometry`: a new `ground/`; `client-files`: `height_grid.rs` goes; `units`: `map_book.rs`; `package`: the map's load; `client`: `view/ground_heights.rs`, `view/client_data/`; `import`: `zero_hour/map_import.rs`. After batch 1. Builds: a name is resolved once; each crate depends only on lower layers.
+`geometry`: a new `ground/`; `client-files`: `height_grid.rs` goes; `units`: `map_book.rs`; `package`: the map's load; `client`: `view/ground_heights.rs`, `view/client_data/`; `import`: `zero_hour/map_import.rs`. Builds: a name is resolved once; each crate depends only on lower layers.
 
 - [ ] crates/session/client-files/src/height_grid.rs; crates/apps/client/src/view/ground_heights.rs — the height grid is the client's alone, and its cells' splits live in the terrain file, so the sim measures no height (D1). → `geometry::Ground` holds the grid, each cell's split and the coarse grid of highest samples by `high_cell`; `Ground::height(x, z)` gives a triangle's height in one step, rounded once, and the nearest point's past the edge; `Ground::highest_along(a, b)` walks the coarse cells by Bresenham. `MapBook` holds the map's `Ground`, which the map's load reads from `map/<name>/heights.bin` and `[ground] high_cell`; the client's ground heights read it in place of their own and the terrain file's splits. The import writes the splits into `heights.bin` and `high_cell = "40"`. Design 16's D1 and 17's D8 name the new home.
 
