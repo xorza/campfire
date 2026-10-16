@@ -1,6 +1,7 @@
 use campfire_values::{ActionId, NameId, Names};
 
 use crate::choice_data::Offers;
+use crate::loadout::Loadout;
 use crate::loadout_setup::LoadoutSetup;
 use crate::offer::Offer;
 
@@ -9,20 +10,19 @@ use crate::offer::Offer;
 pub(crate) struct Roster {
     /// In the order of the mode's dependencies.
     avatars: Names<Offer>,
-    /// Sorted by id.
-    loadout: LoadoutSetup,
+    loadout: Loadout,
 }
 
 impl Roster {
     pub(crate) fn new(avatars: Names<Offer>, loadout: &LoadoutSetup) -> Self {
         Self {
             avatars,
-            loadout: loadout.sorted(),
+            loadout: Loadout::sorted(loadout),
         }
     }
 
     /// The value `id` among `offers`.
-    pub(crate) fn offer(&self, offers: Offers, id: &str) -> Option<Offer> {
+    pub(crate) fn offer_named(&self, offers: Offers, id: &str) -> Option<Offer> {
         match offers {
             Offers::Avatars => self.avatars.named(id),
             Offers::Loadout => self.loadout.ids().named(id),
@@ -56,8 +56,8 @@ impl Roster {
     }
 
     /// The ability of the loadout entry `id`.
-    pub(crate) fn loadout_ability(&self, id: &str) -> Option<ActionId> {
-        let offer = self.offer(Offers::Loadout, id)?;
+    pub(crate) fn loadout_ability_named(&self, id: &str) -> Option<ActionId> {
+        let offer = self.offer_named(Offers::Loadout, id)?;
         Some(self.loadout.ability(offer))
     }
 }

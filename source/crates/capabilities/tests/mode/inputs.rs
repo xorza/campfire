@@ -1,6 +1,11 @@
+use bevy_ecs::lifecycle::Add;
+use bevy_ecs::observer::On;
+use bevy_ecs::resource::Resource;
+use bevy_ecs::system::{Query, ResMut};
 use campfire_combat::Deaths;
 use campfire_players::Seating;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_units::BodyUnit;
 
 use super::*;
 use campfire_script::CapabilityRefusal;
@@ -295,6 +300,10 @@ fn on_input(ctx, player, name, value) {
     );
 }
 
+/// The slot count of each unit as its kind was added.
+#[derive(Resource, Debug, Default)]
+struct SpawnedSlots(Vec<usize>);
+
 #[test]
 fn a_grant_to_a_fresh_unit_counts_its_inventory_slots() {
     // Hero Y carries 255 inventory slots of the spell kind and no action. Granted two spells as it
@@ -324,8 +333,19 @@ fn on_input(ctx, player, name, value) {
         [FailureKind::Api(ModeRefusal::TooManySlots.refused())]
     );
     assert!(owned(&mut game).is_empty());
+    // The grant rides the spawn: the unit holds its 256 slots as its kind is added.
+    game.init_resource::<SpawnedSlots>();
+    game.add_observer(
+        |added: On<'_, '_, Add, BodyUnit>,
+         slots: Query<'_, '_, &ActionSlots>,
+         mut spawned: ResMut<'_, SpawnedSlots>| {
+            let held = slots.get(added.entity).map_or(0, ActionSlots::len);
+            spawned.0.push(held);
+        },
+    );
     Mode::tick_inputs(&mut game, &[(0, input("probe", "one"))]);
     assert_eq!(Mode::failures(&game), []);
+    assert_eq!(game.resource::<SpawnedSlots>().0, [ActionSlots::LIMIT]);
     let [slots] = owned(&mut game).try_into().unwrap();
     assert_eq!(slots.len(), ActionSlots::LIMIT);
     let last = slots.slot(255).unwrap();

@@ -35,6 +35,7 @@ mod choice_specs;
 mod choices;
 mod error;
 mod game_map;
+mod loadout;
 mod loadout_setup;
 mod map_data;
 mod map_point;
@@ -98,10 +99,10 @@ pub use crate::mode_hooks::ModeHooks;
 pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
 pub use crate::mode_load::ModeLoad;
-pub use crate::mode_map::{ModeMap, ResolvedMap};
+pub use crate::mode_map::{MapInput, ModeMap, ResolvedMap};
 pub use crate::mode_names::ModeNames;
 pub use crate::mode_setup::ModeSetup;
-pub use crate::mode_spec::{MapStart, ModeSpec};
+pub use crate::mode_spec::{MapStart, ModeSpec, SpecLoad};
 pub use crate::mode_state::{ModeState, ModeSync};
 pub use crate::mode_units::ModeUnits;
 pub use crate::mode_world::ModeWorld;
@@ -114,7 +115,7 @@ pub use crate::save_asked::SaveAsked;
 pub use crate::saves_data::{SaveBy, SavesData};
 pub use crate::team_data::TeamData;
 pub use crate::team_manifest::TeamManifest;
-pub use crate::timers::{Timer, Timers};
+pub use crate::timers::{Timer, TimerStart, Timers};
 pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
 pub use crate::unanswered_slot_events::UnansweredSlotEvents;
 
@@ -272,17 +273,17 @@ impl Mode {
         };
         view.names_mut().set_table(Arc::clone(start.map.tags()));
         Self::load_units(world, &setup.units);
-        let book = ModeSpec::new(
-            setup,
-            world.resource::<ScriptBook>(),
+        let load = SpecLoad {
             start,
             loadout_ranks,
-            world.resource::<ByType<BodyForm>>(),
-            world.resource::<ByType<ActionSlots>>(),
-        );
+            scripts: world.resource::<ScriptBook>(),
+            bodies: world.resource::<ByType<BodyForm>>(),
+            slots: world.resource::<ByType<ActionSlots>>(),
+        };
+        let book = ModeSpec::new(setup, load);
         view.names_mut().set_teams(Rc::clone(&book.teams));
         view.names_mut().set_table(Arc::clone(book.choices.names()));
-        let players = book.teams.players() as usize;
+        let players = usize::try_from(book.teams.players()).expect("a player count fits usize");
         world.insert_resource(Choices::empty(&book.choices, players));
         let ctx = world.non_send::<Ctx>().clone();
         let book = Rc::new(book);
@@ -359,7 +360,12 @@ impl Mode {
         Calls::scope(world, now, |call| {
             call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
         })
-        .map_err(CallError::from_script)
+        .map_err(CallError::from_script)?;
+        // A save the start asked for is at the boundary before the first tick, its own time.
+        if world.contains_resource::<SaveAsked>() {
+            world.insert_resource(SaveAsked::new(now));
+        }
+        Ok(())
     }
 }
 

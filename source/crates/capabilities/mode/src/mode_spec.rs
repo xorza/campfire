@@ -23,22 +23,19 @@ pub struct ModeSpec {
     pub(crate) choices: ChoiceSpecs,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
-    /// What the mode keeps of each of its unit types.
-    types: ByType<ModeType>,
+    /// The unit types the mode spawns for a script's spawn.
+    spawned: ByType<()>,
+    /// The bodies of the unit types, which a box's spawn tests its room by.
+    bodies: ByType<BodyForm>,
+    /// The slots each unit type spawns with, which a grant to a new unit counts from.
+    slots: ByType<ActionSlots>,
     /// The units the map places from the start.
     pub(crate) placed: Vec<PlacedUnit>,
-    /// How the teams regard each other as the match starts, and the mode's state, each class.
+    /// How the teams regard each other as the match starts, and which friendly pairs share
+    /// vision.
     pub relations: Relations,
     /// `ctx.map`, as scripts read it, and where avatars spawn.
     map: GameMap,
-}
-
-/// What the mode keeps of a unit type it spawns for a script's spawn, which checks them before
-/// the unit is: its body and how many slots it spawns with. The books hold its parts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ModeType {
-    body: Option<BodyForm>,
-    slots: usize,
 }
 
 /// What the mode's map gives its book: the teams' names, the units it places, how the teams
@@ -49,6 +46,18 @@ pub struct MapStart {
     pub(crate) placed: Vec<PlacedUnit>,
     pub relations: Relations,
     pub(crate) map: GameMap,
+}
+
+/// What the mode's book takes of the load beside its setup: what its map gives, the ranks of
+/// every loadout entry, the scripts whose hooks its script defines, and the books of its types'
+/// bodies and slots, which it shares.
+#[derive(Debug)]
+pub struct SpecLoad<'a> {
+    pub start: MapStart,
+    pub loadout_ranks: u8,
+    pub scripts: &'a ScriptBook,
+    pub bodies: &'a ByType<BodyForm>,
+    pub slots: &'a ByType<ActionSlots>,
 }
 
 impl ModeSpec {
@@ -68,33 +77,27 @@ impl ModeSpec {
         Self::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())
     }
 
-    /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
-    /// seat, with what its map gives, `start`, `loadout_ranks`, the ranks of every loadout entry,
-    /// and the `bodies` and the `spawn_slots` of its types.
-    pub fn new(
-        setup: ModeSetup<'_>,
-        scripts: &ScriptBook,
-        start: MapStart,
-        loadout_ranks: u8,
-        bodies: &ByType<BodyForm>,
-        spawn_slots: &ByType<ActionSlots>,
-    ) -> Self {
+    /// The book of `setup`, for players the teams seat, with what `load` gives.
+    pub fn new(setup: ModeSetup<'_>, load: SpecLoad<'_>) -> Self {
+        let SpecLoad {
+            start,
+            loadout_ranks,
+            scripts,
+            bodies,
+            slots,
+        } = load;
         let MapStart {
             teams,
             placed,
             relations,
             map,
         } = start;
-        let slots = setup.teams.iter().map(|team| team.slots);
-        let teams = Teams::new(teams, slots, setup.players)
+        let seats = setup.teams.iter().map(|team| team.slots);
+        let teams = Teams::new(teams, seats, setup.players)
             .expect("the session checked its players against the teams' slots");
-        let mut types = ByType::default();
+        let mut spawned = ByType::default();
         for &unit_type in &setup.units.unit_types {
-            let held = ModeType {
-                body: bodies.get(unit_type).copied(),
-                slots: spawn_slots.get(unit_type).map_or(0, ActionSlots::len),
-            };
-            types.set(unit_type, held);
+            spawned.set(unit_type, ());
         }
         Self {
             schema: ModeSchema::new(setup.script, scripts, setup.data),
@@ -102,7 +105,9 @@ impl ModeSpec {
             teams: Rc::new(teams),
             choices: ChoiceSpecs::new(&setup.data.choices),
             loadout_ranks,
-            types,
+            spawned,
+            bodies: bodies.clone(),
+            slots: slots.clone(),
             placed,
             relations,
             map,
@@ -111,18 +116,18 @@ impl ModeSpec {
 
     /// How many slots a unit of `unit_type` spawns with.
     pub(crate) fn spawn_slots(&self, unit_type: UnitType) -> usize {
-        self.types.get(unit_type).map_or(0, |held| held.slots)
+        self.slots.get(unit_type).map_or(0, ActionSlots::len)
     }
 
-    /// The body of a unit of `unit_type`, when the mode spawns the type and it has one.
+    /// The body of a unit of `unit_type`, when it has one.
     pub(crate) fn body(&self, unit_type: UnitType) -> Option<BodyForm> {
-        self.types.get(unit_type)?.body
+        self.bodies.get(unit_type).copied()
     }
 
     /// Whether the mode spawns units of `unit_type`: a projectile or an area type it does not, as
     /// only actions deliver its units.
     pub(crate) fn spawns(&self, unit_type: UnitType) -> bool {
-        self.types.get(unit_type).is_some()
+        self.spawned.get(unit_type).is_some()
     }
 
     pub(crate) fn map(&self) -> GameMap {

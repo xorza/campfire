@@ -1,11 +1,11 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Without};
-use bevy_ecs::system::{Query, Res, SystemParam};
+use bevy_ecs::system::{Query, Res, ResMut, SystemParam};
 use campfire_actions::{
     ActionBook, ActionCheck, ActionSlots, ActionTarget, BuildStart, KindSpec, Purse, SlotAim,
     SlotTimes,
 };
-use campfire_geometry::Shape;
+use campfire_geometry::{Metric, Placed, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
@@ -17,17 +17,16 @@ use campfire_vision::TeamSight;
 use crate::build_book::{BuildBook, BuildSpec, Style};
 use crate::build_target::BuildTarget;
 use crate::builder::{BuildOrder, Builder};
-use crate::construction::Construction;
 use crate::construction::step::{Start, Step};
-use crate::held::Held;
 use crate::holdings::Holdings;
 use crate::placement::Placement;
 use crate::requirement_book::RequirementBook;
 use crate::site::Site;
+use crate::supply::Counted;
 
 /// What a build order reads of the match: the books, the players' resources and modifiers, the
-/// life pool, the placement, the builders, the sites, and the living, complete units the players
-/// own.
+/// life pool, the placement, the builders, the sites, and the units the players own, which the
+/// holdings read.
 #[derive(SystemParam, Debug)]
 pub(crate) struct BuildView<'w, 's, S: TeamSight> {
     pub(super) tick: Res<'w, SimTick>,
@@ -72,8 +71,8 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
         ),
         Without<Dead>,
     >,
-    pub(super) owned:
-        Query<'w, 's, (&'static UnitType, &'static Owner), (Without<Dead>, Without<Site>)>,
+    owned: Query<'w, 's, Counted>,
+    pub(super) holdings: ResMut<'w, Holdings>,
     pub(super) changed: Query<'w, 's, Entity, (Changed<Builder>, Without<Dead>)>,
 }
 
@@ -85,6 +84,13 @@ pub(super) struct Building<'a> {
     pub(super) range: Num,
 }
 
+/// A builder as its build's place reads it: where it stands, and its player.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct BuilderAt<'a> {
+    from: Vec3,
+    owner: Option<&'a Owner>,
+}
+
 /// Where a build's building stands: at the order's point, at the builder's height, its box
 /// turned by the order's angle, or the site's.
 #[derive(Debug, Clone, Copy)]
@@ -93,27 +99,34 @@ pub(super) struct BuildPlace {
     pub(super) body: Body,
 }
 
+impl BuildPlace {
+    /// Whether `builder`, with a build's `range`, reaches the building's box, in `metric`: from
+    /// the edge of the one body to the edge of the other.
+    pub(super) fn reached_by(self, metric: Metric, builder: Placed, range: Num) -> bool {
+        metric.reaches(builder, range, Placed::new(self.pos, self.body.shape()))
+    }
+}
+
 impl<S: TeamSight> BuildView<'_, '_, S> {
-    /// Fills `held` with the living, complete units the players own, by type.
-    pub(super) fn held(&self, held: &mut Vec<Held>) {
-        let units = self.owned.iter().map(|(&unit_type, owner)| Held {
-            owner: owner.slot(),
-            unit_type,
-        });
-        Held::collect(held, units);
+    /// Reads the holdings, unless they are read, for the requirements the builds meet.
+    pub(super) fn read_holdings(&mut self) {
+        self.holdings.read(self.owned.iter());
     }
 
-    /// The build in `slot` of `slots`; `None` for a slot that holds no build.
-    fn building(&self, slots: &ActionSlots, slot: u8) -> Option<Building<'_>> {
+    /// The build in `slot` of `slots`, as `book` and `builds` hold it; `None` for a slot that
+    /// holds no build. It borrows the two books alone, so a placement's test may run beside it.
+    fn building<'b>(
+        book: &ActionBook,
+        builds: &'b BuildBook,
+        slots: &ActionSlots,
+        slot: u8,
+    ) -> Option<Building<'b>> {
         let action = slots.slot(slot)?.action?;
-        let KindSpec::Build(unit_type) = self.book.get(action)?.kind else {
+        let KindSpec::Build(unit_type) = book.get(action)?.kind else {
             return None;
         };
-        let range = slots.meters_in(&self.book, slot);
-        let spec = self
-            .builds
-            .of(action)
-            .expect("a build's spec is in the book");
+        let range = slots.meters_in(book, slot);
+        let spec = builds.of(action).expect("a build's spec is in the book");
         Some(Building {
             unit_type,
             spec,
@@ -121,18 +134,17 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         })
     }
 
-    /// Where the build at `target` places its building, by a builder at `from` of `owner`: the
-    /// point's box, or a living site of the same building and player.
+    /// Where the build at `target` places its building, by the builder `by`: the point's box,
+    /// or a living site of the same building and player.
     pub(super) fn placed(
         &self,
         building: Building<'_>,
-        from: Vec3,
-        owner: Option<&Owner>,
+        by: BuilderAt<'_>,
         target: BuildTarget,
     ) -> Option<BuildPlace> {
         match target {
             BuildTarget::Point { x, z, angle } => {
-                let at = Vec3::new(x, from.y, z);
+                let at = Vec3::new(x, by.from.y, z);
                 Some(BuildPlace {
                     pos: at,
                     body: building.spec.form.at(angle),
@@ -141,7 +153,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             BuildTarget::Site(site) => {
                 let (&at, &body, &unit_type, site_owner, _) =
                     self.sites.get(self.index.get(site)?).ok()?;
-                let same = unit_type == building.unit_type && site_owner == owner;
+                let same = unit_type == building.unit_type && site_owner == by.owner;
                 same.then_some(BuildPlace {
                     pos: at.get(),
                     body,
@@ -151,15 +163,19 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     }
 
     /// The start of the build at a point of the builder of `entity`'s `order`, when it passes
-    /// its action's checks, its requirements, by `held`, and its placement.
-    pub(super) fn start(&self, entity: Entity, order: BuildOrder, held: &[Held]) -> Option<Start> {
+    /// its action's checks, its requirements, by the holdings, and its placement.
+    pub(super) fn start(&mut self, entity: Entity, order: BuildOrder) -> Option<Start> {
         let (_, _, &from, _, &team, owner, slots, times, pools, ..) =
             self.builders.get(entity).ok()?;
         let BuildTarget::Point { angle, .. } = order.target else {
             return None;
         };
-        let building = self.building(slots, order.slot)?;
-        let placed = self.placed(building, from.get(), owner, order.target)?;
+        let building = Self::building(&self.book, &self.builds, slots, order.slot)?;
+        let by = BuilderAt {
+            from: from.get(),
+            owner,
+        };
+        let placed = self.placed(building, by, order.target)?;
         let life = self.life.as_deref().and_then(PoolBook::life);
         let purse = Purse::of(pools.of(life), self.resources.of(owner));
         let modifiers = self.modifiers.of(owner);
@@ -178,8 +194,9 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             relation: no_target,
             living: |_| None,
         })?;
-        let holdings = Holdings { units: held };
-        let met = holdings.meet(owner, modifiers, self.requirements.of(checked.id));
+        let met = self
+            .holdings
+            .meet(owner, modifiers, self.requirements.of(checked.id));
         let room = self
             .placement
             .passes(team, placed.pos, placed.body, building.spec);
@@ -194,8 +211,8 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     }
 
     /// Whether the order of the builder of `entity` passes as it applies: a point's build its
-    /// checks, by `held`, a site's the site.
-    pub(super) fn applies(&self, entity: Entity, held: &[Held]) -> bool {
+    /// checks, by the holdings, a site's the site.
+    pub(super) fn applies(&mut self, entity: Entity) -> bool {
         let Ok((_, _, &from, _, _, owner, slots, _, _, builder, ..)) = self.builders.get(entity)
         else {
             return false;
@@ -204,24 +221,17 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             return true;
         };
         match order.target {
-            BuildTarget::Point { .. } => self.start(entity, order, held).is_some(),
-            BuildTarget::Site(_) => self
-                .building(slots, order.slot)
-                .and_then(|building| self.placed(building, from.get(), owner, order.target))
-                .is_some(),
+            BuildTarget::Point { .. } => self.start(entity, order).is_some(),
+            BuildTarget::Site(_) => {
+                let by = BuilderAt {
+                    from: from.get(),
+                    owner,
+                };
+                Self::building(&self.book, &self.builds, slots, order.slot)
+                    .and_then(|building| self.placed(building, by, order.target))
+                    .is_some()
+            }
         }
-    }
-
-    /// Whether the builder at `from` with a body of `body` and a build of `building` builds the
-    /// building `placed`: it comes within its range.
-    pub(super) fn in_range(
-        &self,
-        from: Vec3,
-        body: Option<&Body>,
-        building: Building<'_>,
-        placed: BuildPlace,
-    ) -> bool {
-        Construction::in_range(self.map.metric, from, body, building.range, placed)
     }
 
     /// Whether the builder `holder` holds the site `site`: it lives, and its order is to build
@@ -239,12 +249,12 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     }
 
     /// What the builder of `entity` does with its order this tick: a point's build that starts
-    /// as it is ordered starts, wherever its builder stands, when it passes its checks, by
-    /// `held`, and ends else; out of range of its target's box, the builder walks to the box's
+    /// as it is ordered starts, wherever its builder stands, when it passes its checks, by the
+    /// holdings, and ends else; out of range of its target's box, the builder walks to the box's
     /// point nearest it, unless it arrived short of that point, which ends the order; in range,
     /// a point's build starts when it passes its checks, and ends else; a builder of a site
     /// builds when the site takes it.
-    pub(crate) fn step(&self, entity: Entity, held: &[Held]) -> Step {
+    pub(crate) fn step(&mut self, entity: Entity) -> Step {
         let Ok((_, &id, &from, body, _, owner, slots, _, _, builder, destination, arrived, _)) =
             self.builders.get(entity)
         else {
@@ -253,21 +263,24 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         let Some(order) = builder.order() else {
             return Step::End;
         };
-        let Some(building) = self.building(slots, order.slot) else {
+        let Some(building) = Self::building(&self.book, &self.builds, slots, order.slot) else {
             return Step::End;
         };
         // An order build starts as its order applies, wherever its builder stands, and its
         // builder then walks to the site.
         if let (BuildTarget::Point { .. }, BuildStart::Order) = (order.target, building.spec.start)
         {
-            return self
-                .start(entity, order, held)
-                .map_or(Step::End, Step::Start);
+            return self.start(entity, order).map_or(Step::End, Step::Start);
         }
-        let Some(placed) = self.placed(building, from.get(), owner, order.target) else {
+        let by = BuilderAt {
+            from: from.get(),
+            owner,
+        };
+        let Some(placed) = self.placed(building, by, order.target) else {
             return Step::End;
         };
-        if !self.in_range(from.get(), body, building, placed) {
+        let builder = Placed::new(from.get(), Body::shape_of(body));
+        if !placed.reached_by(self.map.metric, builder, building.range) {
             let Shape::Box(boxed) = placed.body.shape() else {
                 panic!("a building's body is a box");
             };
@@ -279,13 +292,11 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             };
         }
         match order.target {
-            BuildTarget::Point { .. } => self
-                .start(entity, order, held)
-                .map_or(Step::End, Step::Start),
+            BuildTarget::Point { .. } => self.start(entity, order).map_or(Step::End, Step::Start),
             BuildTarget::Site(site) => {
                 let site_entity = self.index.get(site).expect("a placed site stands");
-                let (.., held) = self.sites.get(site_entity).expect("a placed site stands");
-                match (building.spec.style, held.holder()) {
+                let (.., site_part) = self.sites.get(site_entity).expect("a placed site stands");
+                match (building.spec.style, site_part.holder()) {
                     (Style::Alone, _) => Step::End,
                     (Style::Builders(_), _) => Step::Build,
                     (Style::Builder, Some(holder)) if holder == id => Step::Build,

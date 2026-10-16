@@ -18,6 +18,7 @@ use campfire_units::{BodyUnit, Player};
 use campfire_values::{Block, EngineTag, TagProperties};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
+use crate::holdings::Holdings;
 use crate::production_column::RowReads;
 
 mod build_book;
@@ -29,7 +30,6 @@ mod error;
 mod frame_point;
 mod gather_loop;
 mod gatherer;
-mod held;
 mod holdings;
 mod mode_supply_data;
 mod node;
@@ -144,6 +144,7 @@ impl Module for Production {
             Self::GATHERING,
         ]);
         d.component::<TrainQueue>();
+        d.scratch::<Holdings>();
         d.derived_sent::<PlayerSupply>();
         d.server_part::<Player, PlayerSupply>();
         d.component::<Rally>();
@@ -166,14 +167,14 @@ impl Module for Production {
             at.of_type::<ProductionData>()
                 .map(|_| TrainQueue::default())
         });
+        d.part::<BodyUnit, Rally>(|at| at.of_type::<ProductionData>().map(|_| Rally::default()));
         d.part::<BodyUnit, Builder>(|at| at.of_type::<Builder>().copied());
         d.part::<BodyUnit, Node>(|at| at.of_type::<Node>().copied());
         d.part::<BodyUnit, Gatherer>(|at| at.of_type::<Gatherer>().copied());
     }
 
-    /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and set
-    /// rally points, at the units the server's vision sees, or, on a predicting client, the units it
-    /// holds; in Act, after the other orders start, ordered trains pass their
+    /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and, on
+    /// the server, set rally points to points or the units its vision sees; in Act, after the other orders start, ordered trains pass their
     /// checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains
     /// whose time ended spawn. With navigation, which tests a box for room and walks a worker,
     /// construction and gathering too: in Inputs, the build and gather orders that changed are
@@ -186,9 +187,10 @@ impl Module for Production {
     /// with its supply, which the refresh writes in place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_>) {
         cx.by_role(
-            ProductionOrders::apply_production_orders::<ByVision>.in_set(ProductionSet::Commands),
-            ProductionOrders::apply_production_orders::<ByHolding>.in_set(ProductionSet::Commands),
+            ProductionOrders::apply_cancels::<ByVision>.in_set(ProductionSet::Commands),
+            ProductionOrders::apply_cancels::<ByHolding>.in_set(ProductionSet::Commands),
         );
+        cx.server(ProductionOrders::set_rallies.in_set(ProductionSet::Commands));
         cx.server(
             PlayerSupply::refresh
                 .run_if(SupplyBook::counts)
@@ -197,8 +199,12 @@ impl Module for Production {
         // A build places a box, which only navigation tests for room, and a worker walks.
         if !cx.has(Capability::Navigation) {
             cx.by_role(
-                Trains::start_trains::<ServerForm>.in_set(ProductionSet::Start),
-                Trains::start_trains::<ClientForm>.in_set(ProductionSet::Start),
+                (Trains::start_trains::<ServerForm>, Holdings::forget_read)
+                    .chain()
+                    .in_set(ProductionSet::Start),
+                (Trains::start_trains::<ClientForm>, Holdings::forget_read)
+                    .chain()
+                    .in_set(ProductionSet::Start),
             );
             cx.server(Trains::finish_trains.in_set(ProductionSet::Finish));
             return;
@@ -244,8 +250,10 @@ impl Production {
                 Trains::start_trains::<S>,
                 Construction::forget_dead_builds,
                 Construction::start_builds::<S>,
+                GatherLoop::forget_dead_gathers,
                 GatherLoop::run::<S>,
                 GatherLoop::tag_gatherers,
+                Holdings::forget_read,
             )
                 .chain()
                 .in_set(ProductionSet::Start),

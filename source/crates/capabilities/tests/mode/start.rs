@@ -186,7 +186,16 @@ fn a_map_with_vision_holds_at_most_64_teams() {
             .collect()
     };
     let layers = Names::default();
-    let resolve = |count| ModeMap::resolve(&files.map, &teams(count), &[], &layers, |_| None).err();
+    let resolve = |count| {
+        let teams = teams(count);
+        let input = MapInput {
+            map: &files.map,
+            teams: &teams,
+            relations: &[],
+            layers: &layers,
+        };
+        ModeMap::resolve(input, |_| None).err()
+    };
     assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
     assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
 }
@@ -268,6 +277,17 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(
         Mode::failures(&game).last(),
         Some(&FailureKind::Api(ApiError::PastBound))
+    );
+    // Two calls of one batch, two players' inputs of one tick, each place a crate at c4: the
+    // first takes the room, which the second finds taken, though the batch's view, read before
+    // the first, holds no crate there.
+    let both = [(0, input("phase", "c4")), (1, input("phase", "c4"))];
+    Mode::tick_inputs(&mut game, &both);
+    let placed = [ground(0, 2), ground(0, 5), ground(2, 2), ground(4, 2)];
+    assert_eq!(crates(&game), placed);
+    assert_eq!(
+        Mode::failures(&game),
+        [FailureKind::Api(ModeRefusal::NoRoom.refused())]
     );
 }
 

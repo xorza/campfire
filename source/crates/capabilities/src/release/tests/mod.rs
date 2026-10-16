@@ -450,7 +450,7 @@ fn no_module_names_another_modules_sets() {
 /// most. Each runs in a script call, which resolves the names it is given once, as its arguments'
 /// types take them, or in the load, which resolves the packages' names once. The test fails when a
 /// lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 38] = [
+const LOOKUPS: [(&str, &str); 43] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
@@ -480,8 +480,13 @@ const LOOKUPS: [(&str, &str); 38] = [
     ("actions/slot_kind.rs", "named"),
     ("mode/choice_id.rs", "named"),
     ("mode/marker_tag.rs", "named"),
+    ("mode/mode_api.rs", "loadout_ability_named"),
+    ("mode/mode_api.rs", "offer_named"),
+    ("mode/mode_call.rs", "param_named"),
+    ("mode/mode_hooks.rs", "input_type_named"),
     ("mode/mode_schema.rs", "named"),
     ("mode/roster.rs", "named"),
+    ("mode/roster.rs", "offer_named"),
     ("script/scripts/id_args.rs", "named"),
     ("script/scripts/script_api/api_builder.rs", "named"),
     ("script/scripts/script_arg.rs", "named"),
@@ -791,7 +796,7 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
         let names: Vec<String> = systems
             .map(|(_, system)| system.name().to_string())
             .collect();
-        ["learn_ranks", "apply_production_orders", "trade_items"]
+        ["learn_ranks", "apply_cancels", "trade_items"]
             .map(|wanted| names.iter().any(|name| name.contains(wanted)))
     };
     let with = |extra: &[Capability]| [&[Stats][..], extra].concat();

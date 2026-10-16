@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bevy_ecs::resource::Resource;
 use campfire_script::View;
 use campfire_values::{NameId, UnitType};
@@ -6,10 +8,15 @@ use crate::book::Book;
 use crate::per_type::PerType;
 
 /// A value for some of the match's unit types, by type: a capability's package data about each
-/// type that has it, such as its AI or a part its units spawn with.
-#[derive(Resource, Debug, Clone, PartialEq, Eq)]
+/// type that has it, such as its AI or a part its units spawn with. A clone shares the values,
+/// so a reader keeps the book itself, not a copy of what it holds.
+#[derive(Resource, Debug, PartialEq, Eq)]
 pub struct ByType<T: Send + Sync + 'static> {
-    entries: Vec<Option<T>>,
+    #[expect(
+        clippy::rc_buffer,
+        reason = "the book grows in place as it is built, and its clones share it after"
+    )]
+    entries: Arc<Vec<Option<T>>>,
 }
 
 impl<T: Send + Sync + 'static> ByType<T> {
@@ -29,21 +36,31 @@ impl<T: Send + Sync + 'static> ByType<T> {
         }
     }
 
-    /// Gives `unit_type` its `value`, which it has none of yet.
+    /// Gives `unit_type` its `value`, which it has none of yet, as the book is built: no clone
+    /// shares it yet.
     pub fn set(&mut self, unit_type: UnitType, value: T) {
         let index = unit_type.index();
-        if self.entries.len() <= index {
-            self.entries.resize_with(index + 1, || None);
+        let entries = Arc::get_mut(&mut self.entries).expect("a book is built before it is shared");
+        if entries.len() <= index {
+            entries.resize_with(index + 1, || None);
         }
-        assert!(self.entries[index].is_none(), "a unit type has one value");
-        self.entries[index] = Some(value);
+        assert!(entries[index].is_none(), "a unit type has one value");
+        entries[index] = Some(value);
+    }
+}
+
+impl<T: Send + Sync + 'static> Clone for ByType<T> {
+    fn clone(&self) -> Self {
+        Self {
+            entries: Arc::clone(&self.entries),
+        }
     }
 }
 
 impl<T: Send + Sync + 'static> Default for ByType<T> {
     fn default() -> Self {
         Self {
-            entries: Vec::new(),
+            entries: Arc::default(),
         }
     }
 }
@@ -71,5 +88,11 @@ mod tests {
         assert_eq!(table.values().collect::<Vec<_>>(), [&'a', &'c']);
         table.set_some(UnitType::new(1), Some('b'));
         assert_eq!(table.values().collect::<Vec<_>>(), [&'a', &'b', &'c']);
+        // A clone reads the same values from the same storage.
+        let kept = table.clone();
+        assert!(std::ptr::eq(
+            kept.get(UnitType::new(1)).unwrap(),
+            table.get(UnitType::new(1)).unwrap()
+        ));
     }
 }

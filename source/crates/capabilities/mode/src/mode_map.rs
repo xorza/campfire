@@ -38,6 +38,16 @@ pub struct ResolvedMap {
     pub vision: VisionBook,
 }
 
+/// What a mode's map resolves from: the map, the mode's teams and their relations, and the
+/// names of the layers its walls stand on.
+#[derive(Debug, Clone, Copy)]
+pub struct MapInput<'a> {
+    pub map: &'a MapData,
+    pub teams: &'a [TeamManifest],
+    pub relations: &'a [RelationData],
+    pub layers: &'a Names<Layer>,
+}
+
 impl ModeMap {
     /// The names of `teams`; an error for two of one name, or more than a team index counts.
     pub fn team_names(teams: &[TeamManifest]) -> Result<Names<Team>, ModeError> {
@@ -54,8 +64,8 @@ impl ModeMap {
         Ok(names)
     }
 
-    /// The map `map` of a mode with `teams` and `relations`, its placed units' types resolved by
-    /// `unit_type`, which knows the mode's types that stand. An error for what it names that the
+    /// The map of `input`, its placed units' types resolved by `unit_type`, which knows the
+    /// mode's types that stand. An error for what it names that the
     /// mode does not have: teams that share a name or more than `Team::LIMIT`, or more than
     /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
     /// mode lacks, or of a pair named before; and in the map, grids that make no grid of its
@@ -65,12 +75,15 @@ impl ModeMap {
     /// team it lacks, or with a point and a region or a region outside the bounds, and any point
     /// that does not fit its metric or its bounds.
     pub fn resolve(
-        map: &MapData,
-        teams: &[TeamManifest],
-        relations: &[RelationData],
-        layers: &Names<Layer>,
+        input: MapInput<'_>,
         unit_type: impl Fn(&str) -> Option<UnitType>,
     ) -> Result<ResolvedMap, ModeError> {
+        let MapInput {
+            map,
+            teams,
+            relations,
+            layers,
+        } = input;
         let team_names = Self::team_names(teams)?;
         let team = |name: &DeclaredName| {
             let team = team_names.named(name.as_str());

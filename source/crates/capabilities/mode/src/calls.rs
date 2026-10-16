@@ -11,6 +11,7 @@ use campfire_script::{
 use campfire_sim::{SimTick, StableId};
 
 use crate::error::ModeRefusal;
+use crate::mode_call::ModeCall;
 use crate::mode_spec::ModeSpec;
 
 /// The mode calls of one batch, at one time.
@@ -31,7 +32,14 @@ impl Calls<'_, '_> {
     ) -> T {
         world.script_batch(|batch| {
             let ctx = batch.ctx().clone();
-            calls(&mut Calls { batch, ctx, now })
+            ModeCall::of(&ctx.frame()).debug_assert_no_batch();
+            let given = calls(&mut Calls {
+                batch,
+                ctx: ctx.clone(),
+                now,
+            });
+            ModeCall::of_mut(&mut ctx.frame()).end_batch();
+            given
         })
     }
 

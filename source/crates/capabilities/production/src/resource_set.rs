@@ -20,7 +20,7 @@ impl<const N: usize> From<[ResourceId; N]> for ResourceSet {
 }
 
 impl ResourceSet {
-    pub const fn contains(self, resource: ResourceId) -> bool {
-        self.0.contains(resource.get() as usize)
+    pub fn contains(self, resource: ResourceId) -> bool {
+        self.0.contains(resource.index())
     }
 }

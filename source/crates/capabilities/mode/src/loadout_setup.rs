@@ -1,8 +1,9 @@
-use campfire_values::{ActionId, NameId, Names};
+use campfire_values::{ActionId, Names};
 
 use crate::offer::Offer;
 
-/// The entries of the mode's loadout packages, loaded: each one's id and ability, by offer.
+/// The entries of the mode's loadout packages, loaded: each one's id and ability, in the order
+/// the load adds them. The roster's `Loadout` sorts them by id.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct LoadoutSetup {
     ids: Names<Offer>,
@@ -17,29 +18,9 @@ impl LoadoutSetup {
         self.abilities.push(action);
     }
 
-    /// The same entries, sorted by id: each entry's offer is its place in that order.
-    #[must_use]
-    pub fn sorted(&self) -> Self {
-        let mut order: Vec<Offer> = self.ids.iter().map(|(offer, _)| offer).collect();
-        order.sort_by(|&a, &b| self.id(a).cmp(self.id(b)));
-        let mut sorted = Self::default();
-        for offer in order {
-            sorted.push(self.id(offer), self.ability(offer));
-        }
-        sorted
-    }
-
-    /// The entries' ids.
-    pub(crate) const fn ids(&self) -> &Names<Offer> {
-        &self.ids
-    }
-
-    pub(crate) fn id(&self, offer: Offer) -> &str {
-        self.ids.name(offer).expect("an entry of the loadout")
-    }
-
-    pub(crate) fn ability(&self, offer: Offer) -> ActionId {
-        self.abilities[offer.index()]
+    /// Each entry's id and ability, in the order added.
+    pub(crate) fn entries(&self) -> impl ExactSizeIterator<Item = (&str, ActionId)> {
+        self.ids.texts().zip(self.abilities.iter().copied())
     }
 
     pub const fn len(&self) -> usize {
@@ -48,29 +29,5 @@ impl LoadoutSetup {
 
     pub const fn is_empty(&self) -> bool {
         self.len() == 0
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_sorted_loadout_keeps_each_id_with_its_ability() {
-        let [arc, blink, haste] = [0, 1, 2].map(ActionId::new);
-        let mut loadout = LoadoutSetup::default();
-        loadout.push("haste", haste);
-        loadout.push("arc", arc);
-        loadout.push("blink", blink);
-        let sorted = loadout.sorted();
-        let entries: Vec<_> = (0..sorted.len())
-            .map(|at| (sorted.id(Offer::new(at)), sorted.ability(Offer::new(at))))
-            .collect();
-        assert_eq!(entries, [("arc", arc), ("blink", blink), ("haste", haste)]);
-        let offer = |at| Some(Offer::new(at));
-        assert_eq!(
-            ["arc", "blink", "haste", "bolt"].map(|id| sorted.ids().named(id)),
-            [offer(0), offer(1), offer(2), None]
-        );
     }
 }

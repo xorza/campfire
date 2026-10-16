@@ -10,7 +10,7 @@ use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{Armor, CombatBindings, CombatBook, CombatData, OnDeath};
 use campfire_interaction::{UseData, UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
-use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
+use campfire_mode::{MapInput, ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
 use campfire_navigation::{Walker, WalkerKinds};
 use campfire_orders::Ai;
 use campfire_players::ResourceAmount;
@@ -336,14 +336,13 @@ impl<'a> BookBuilder<'a> {
                     .expect(DECLARED)
             })
         };
-        ModeMap::resolve(
-            input.map,
-            input.teams,
-            &data.relations,
-            &self.names.layers,
-            standing,
-        )
-        .map_err(BookError::from)
+        let map = MapInput {
+            map: input.map,
+            teams: input.teams,
+            relations: &data.relations,
+            layers: &self.names.layers,
+        };
+        ModeMap::resolve(map, standing).map_err(BookError::from)
     }
 
     /// The item book of the mode package `package`, at `index`, its actions `actions`; an error

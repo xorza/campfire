@@ -33,7 +33,7 @@ fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
         node,
         step: GatherStep::ToNode,
     };
-    let checks = |order, load, last| Gatherer { order, load, last }.check(&world, entity);
+    let checks = |order, load, last| Gatherer::of_parts(order, load, last).check(&world, entity);
     assert!(checks(None, None, None));
     assert!(checks(None, Some(load(gold)), Some(first)));
     assert!(checks(Some(order(first)), None, Some(first)));

@@ -3,7 +3,7 @@ use campfire_common::Tick;
 use campfire_declare::Report;
 
 /// The boundary the mode last asked for a save at, by `ctx.save()`: the end of the tick it asked
-/// in. Not state: a checkpoint, which the log records, is what a save leaves.
+/// in, or the match's start, for a save `on_match_start` asked for. Not state: a checkpoint, which the log records, is what a save leaves.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SaveAsked {
     at: Tick,

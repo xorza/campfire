@@ -20,13 +20,14 @@ use crate::marker::Marker;
 use crate::marker_tag::MarkerTag;
 use crate::match_end::MatchResult;
 use crate::mode_call::ModeCall;
-use crate::mode_effect::ModeEffect;
+use crate::mode_effect::{ModeEffect, SlotGrant};
 use crate::mode_spec::ModeSpec;
 use crate::players_data::PlayersData;
 use crate::relation_data::RelationData;
 use crate::saves_data::SavesData;
 use crate::spawn_group::{GroupUnit, SpawnGroup};
 use crate::team_data::TeamData;
+use crate::timers::TimerStart;
 
 /// The script API of the mode, which every match has: the teams, the map, the avatars and the
 /// mode's state, which every role reads, and what only the mode's calls do: the players'
@@ -479,7 +480,7 @@ impl ModeApi {
             let offer = value
                 .clone()
                 .into_text()
-                .and_then(|id| book.roster.offer(choice.offers, id.as_str()))
+                .and_then(|id| book.roster.offer_named(choice.offers, id.as_str()))
                 .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
             if offers.contains(&offer) {
                 return Err(ModeRefusal::RepeatedChoiceValue.fail().into());
@@ -532,7 +533,7 @@ impl ModeApi {
         let choice = book.choices.get(choice);
         let offer = book
             .roster
-            .offer(choice.offers, value)
+            .offer_named(choice.offers, value)
             .ok_or_else(|| ModeRefusal::UnknownChoiceValue.fail())?;
         let taken = ModeCall::of(&ctx.frame())
             .choices
@@ -591,12 +592,16 @@ impl ModeApi {
             owner,
             angle: Num::ZERO,
         };
-        ctx.queue(ModeEffect::SpawnUnit(spawn))?;
+        ctx.queue(ModeEffect::SpawnUnit {
+            at: spawn,
+            grants: Vec::new(),
+        })?;
         Ok(NewUnit { id, unit_type })
     }
 
     /// Queues the actions `ids` into the slot kind `kind` of `id`, which has `slots` slots
-    /// before the grants this call queued.
+    /// before the grants this call queued: with the spawn of a unit the call spawns, so it
+    /// spawns with them, or on its own for a unit that stands.
     fn grant(
         ctx: &Ctx,
         id: StableId,
@@ -614,31 +619,39 @@ impl ModeApi {
             .iter()
             .map(|name| {
                 let name = name.clone().into_text();
-                name.and_then(|name| book.roster.loadout_ability(name.as_str()))
+                name.and_then(|name| book.roster.loadout_ability_named(name.as_str()))
                     .ok_or_else(|| ApiError::Unknown(NameKind::Ability).fail().into())
             })
             .collect::<Checked<Vec<_>>>()?;
         let mut frame = ctx.write()?;
         let queued: usize = frame
             .queued::<ModeEffect>()
-            .filter_map(|effect| match effect {
-                ModeEffect::Grant {
-                    id: granted,
-                    abilities,
-                    ..
-                } if *granted == id => Some(abilities.len()),
-                _ => None,
+            .map(|effect| match effect {
+                ModeEffect::Grant { id: granted, grant } if *granted == id => grant.abilities.len(),
+                ModeEffect::SpawnUnit { at, grants } if at.id == id => {
+                    grants.iter().map(|grant| grant.abilities.len()).sum()
+                }
+                _ => 0,
             })
             .sum();
         if slots + queued + abilities.len() > ActionSlots::LIMIT {
             return Err(ModeRefusal::TooManySlots.fail().into());
         }
-        frame.queue(ModeEffect::Grant {
-            id,
+        let grant = SlotGrant {
             kind,
             rank,
             abilities,
-        });
+        };
+        let spawn = frame
+            .queued_mut::<ModeEffect>()
+            .find_map(|effect| match effect {
+                ModeEffect::SpawnUnit { at, grants } if at.id == id => Some(grants),
+                _ => None,
+            });
+        match spawn {
+            Some(grants) => grants.push(grant),
+            None => frame.queue(ModeEffect::Grant { id, grant }),
+        }
         Ok(())
     }
 
@@ -681,12 +694,12 @@ impl ModeApi {
     fn timer(ctx: &Ctx, name: &str, ms: i64, repeat: bool, data: &ScriptValue) -> Checked<()> {
         let ticks = ctx.view().ticks(ms).map_err(ApiError::fail)?;
         let data = Self::timer_data(data).map_err(ApiError::fail)?;
-        ctx.queue(ModeEffect::Timer {
+        ctx.queue(ModeEffect::Timer(TimerStart {
             name: name.to_owned(),
-            ticks,
-            repeat,
+            after: ticks,
+            every: repeat.then_some(ticks),
             data,
-        })
+        }))
     }
 
     /// Brings back `unit`, which is dead and stays when dead, `ms` after this call, in ticks
@@ -731,7 +744,6 @@ impl ModeApi {
         ctx.queue(ModeEffect::SetRelation { a, b, relation })
     }
 
-    /// Queues `player` held out of play, or no more.
     /// Whether a player or a bot held the slot of `player`, a slot of the session, as the match
     /// started.
     fn held(ctx: &Ctx, player: i64) -> Checked<bool> {
@@ -753,6 +765,7 @@ impl ModeApi {
             .units_where(|row| row.alive && row.owner == Some(slot)))
     }
 
+    /// Queues `player` held out of play, or no more.
     fn set_out(ctx: &Ctx, player: i64, out: bool) -> Checked<()> {
         let book = ModeSpec::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;

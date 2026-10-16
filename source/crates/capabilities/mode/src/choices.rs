@@ -94,7 +94,7 @@ impl SimResource for Choices {
     // A row or a value past the mode's choices would be read past their places.
     fn check(&self, world: &World) -> bool {
         let book = world.non_send::<MatchMode>();
-        let players = book.teams.players() as usize;
+        let players = usize::try_from(book.teams.players()).expect("a player count fits usize");
         self.fits(&book.choices, players, &book.roster)
     }
 }

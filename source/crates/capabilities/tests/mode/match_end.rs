@@ -200,3 +200,31 @@ fn on_mode_input(ctx, player, name, value) {
     let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
     assert_eq!(game.match_end(), Some(draw));
 }
+
+#[test]
+fn a_save_asks_for_the_boundary_that_ends_its_tick() {
+    // The start asks for a save at boundary 0, before the first tick, and sets a timer of 1 ms,
+    // which fires at the end of tick 0 and asks for boundary 1; an input in tick 1, whose call
+    // counts its time from the tick's start, asks for the boundary that ends its tick, 2.
+    let script = r#"
+fn on_match_start(ctx) {
+    ctx.save();
+    ctx.timer("later", 1, false, ());
+}
+
+fn on_timer(ctx, name, data) {
+    ctx.save();
+}
+
+fn on_mode_input(ctx, player, name, value) {
+    ctx.save();
+}
+"#;
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    assert_eq!(game.save_asked(), Some(Tick::new(0)));
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(game.save_asked(), Some(Tick::new(1)));
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "a"))]);
+    assert_eq!(Mode::failures(&game), []);
+    assert_eq!(game.save_asked(), Some(Tick::new(2)));
+}

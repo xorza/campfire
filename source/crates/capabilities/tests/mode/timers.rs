@@ -9,7 +9,13 @@ fn a_restore_check_needs_the_timers_in_order_and_numbered_below_the_next() {
     // Two timers set in tick 0, due in ticks 2 and 1: kept by due time, then by number.
     let mut timers = Timers::default();
     for ticks in [2, 1] {
-        timers.set(Tick::new(0), "t".to_owned(), Ticks::new(ticks), false, None);
+        let start = TimerStart {
+            name: "t".to_owned(),
+            after: Ticks::new(ticks),
+            every: None,
+            data: None,
+        };
+        timers.set(Tick::new(0), start);
     }
     let world = World::new();
     assert!(timers.check(&world));
@@ -24,7 +30,13 @@ fn a_restore_check_needs_the_timers_in_order_and_numbered_below_the_next() {
     // the limit: it fires, and sets itself 2⁶² ticks on, within a `u64`. A period or a count
     // past the limit, or a period of no ticks, fails: a time to decode, the rest the check.
     let mut last = Timers::default();
-    last.set(Tick::ZERO, "t".to_owned(), Ticks::LIMIT, true, None);
+    let start = TimerStart {
+        name: "t".to_owned(),
+        after: Ticks::LIMIT,
+        every: Some(Ticks::LIMIT),
+        data: None,
+    };
+    last.set(Tick::ZERO, start);
     *last.next_seq_mut() = Tick::LIMIT.get();
     assert!(last.check(&world));
     let mut fired = last.clone();

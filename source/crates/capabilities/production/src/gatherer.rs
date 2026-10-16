@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 /// which it goes back to after a return of its load.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Gatherer {
-    pub order: Option<GatherOrder>,
-    pub load: Option<Load>,
-    pub last: Option<NodeAt>,
+    order: Option<GatherOrder>,
+    load: Option<Load>,
+    last: Option<NodeAt>,
 }
 
 /// A gather loop: the gather in `slot`, its node, and its step.
@@ -116,4 +116,21 @@ impl Replication for Gatherer {
 
 impl PerType for Gatherer {
     const SCRIPTS_ONLY: bool = false;
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::gatherer::{GatherOrder, Gatherer, Load, NodeAt};
+
+    impl Gatherer {
+        /// A gatherer of `order`, `load` and `last` as given, whether they keep the rules `set`
+        /// keeps or not, as a restore may read one.
+        pub const fn of_parts(
+            order: Option<GatherOrder>,
+            load: Option<Load>,
+            last: Option<NodeAt>,
+        ) -> Self {
+            Self { order, load, last }
+        }
+    }
 }

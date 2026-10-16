@@ -219,7 +219,7 @@ impl BuildPreview {
         index: Res<'_, EntityIndex>,
         builders: Query<'_, '_, &Team, Allow<Unpredicted>>,
         builds: Res<'_, BuildBook>,
-        placement: Placement<'_, '_, ByHolding>,
+        mut placement: Placement<'_, '_, ByHolding>,
         mut ghost: Single<'_, '_, &mut Ghost>,
     ) {
         let placing = ghost.placing;

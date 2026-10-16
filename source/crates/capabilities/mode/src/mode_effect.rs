@@ -1,9 +1,12 @@
+use std::slice;
+
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotKind, SlotTimes, TimedSlots};
 use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Ticks};
+use campfire_declare::ByType;
 use campfire_players::{HeldOut, PlayersWorld};
-use campfire_script::{Effect, Frame, StateValue};
+use campfire_script::{Effect, Frame};
 use campfire_sim::{SimTick, SimWorld, StableId};
 use campfire_units::{SpawnAt, Spawner, UnitsWorld};
 use campfire_values::{ActionId, Rank, Relation, Team};
@@ -11,27 +14,24 @@ use campfire_values::{ActionId, Rank, Relation, Team};
 use crate::match_end::{MatchEnd, MatchResult};
 use crate::save_asked::SaveAsked;
 use crate::spawn_group::SpawnGroup;
-use crate::timers::Timers;
+use crate::timers::{TimerStart, Timers};
 
 /// A change to the match that a mode call queued.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ModeEffect {
-    Timer {
-        name: String,
-        ticks: Ticks,
-        repeat: bool,
-        data: Option<StateValue>,
-    },
+    Timer(TimerStart),
     End(MatchResult),
-    /// A unit the call spawns, owned by the player it names, if it names one.
-    SpawnUnit(SpawnAt),
+    /// A unit the call spawns, owned by the player it names, if it names one, with the grants
+    /// the call gave it, which its slots spawn with.
+    SpawnUnit {
+        at: SpawnAt,
+        grants: Vec<SlotGrant>,
+    },
     SpawnGroup(SpawnGroup),
+    /// A grant to a unit that stands.
     Grant {
         id: StableId,
-        kind: SlotKind,
-        /// The kind's first rank, which the actions take.
-        rank: Option<Rank>,
-        abilities: Vec<ActionId>,
+        grant: SlotGrant,
     },
     Respawn {
         id: StableId,
@@ -55,21 +55,39 @@ pub(crate) enum ModeEffect {
     Save,
 }
 
+/// Actions a grant puts in one slot kind of a unit, after the slots of that kind it has.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SlotGrant {
+    pub(crate) kind: SlotKind,
+    /// The kind's first rank, which the actions take.
+    pub(crate) rank: Option<Rank>,
+    pub(crate) abilities: Vec<ActionId>,
+}
+
+impl SlotGrant {
+    fn apply(&self, slots: &mut ActionSlots, times: &mut SlotTimes) {
+        slots.grant(times, self.kind, &self.abilities, self.rank);
+    }
+
+    /// `slots` with each of `grants`, in order, every slot ready.
+    fn granted(mut slots: ActionSlots, grants: &[Self]) -> TimedSlots {
+        let mut times = SlotTimes::ready(&slots);
+        for grant in grants {
+            grant.apply(&mut slots, &mut times);
+        }
+        TimedSlots::new(slots)
+    }
+}
+
 impl Effect for ModeEffect {
     /// Applies the effect, which a call of the mode's script queued, in the call's tick; a grant
     /// puts its abilities in its kind of a unit, after the slots of that kind it has, at the
-    /// kind's first rank, and nothing for a unit that is gone.
+    /// kind's first rank, and nothing for a unit that is gone. A spawned unit's grants make its
+    /// slots before it spawns, so it spawns whole.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
         match self {
-            Self::Timer {
-                name,
-                ticks,
-                repeat,
-                data,
-            } => world
-                .resource_mut::<Timers>()
-                .set(now, name, ticks, repeat, data),
+            Self::Timer(start) => world.resource_mut::<Timers>().set(now, start),
             Self::End(result) => {
                 let tick = world.resource::<SimTick>().start();
                 let entity = world
@@ -77,17 +95,21 @@ impl Effect for ModeEffect {
                     .expect("a match that runs has its entity");
                 world.entity_mut(entity).insert(MatchEnd::new(tick, result));
             }
-            Self::SpawnUnit(at) => {
+            Self::SpawnUnit { at, grants } => {
                 let spawner = world.non_send::<Spawner>().clone();
-                spawner.spawn(world, at, ());
+                if grants.is_empty() {
+                    spawner.spawn(world, at, ());
+                } else {
+                    let book = world.get_resource::<ByType<ActionSlots>>();
+                    let slots = book
+                        .and_then(|book| book.get(at.unit_type))
+                        .cloned()
+                        .unwrap_or_else(|| ActionSlots::new([]));
+                    spawner.spawn(world, at, SlotGrant::granted(slots, &grants));
+                }
             }
             Self::SpawnGroup(group) => group.spawn(world),
-            Self::Grant {
-                id,
-                kind,
-                rank,
-                abilities,
-            } => {
+            Self::Grant { id, grant } => {
                 let Some(entity) = world.entity_of(id) else {
                     return;
                 };
@@ -95,10 +117,10 @@ impl Effect for ModeEffect {
                 if let Ok((mut slots, mut times)) =
                     unit.get_components_mut::<(&mut ActionSlots, &mut SlotTimes)>()
                 {
-                    slots.grant(&mut times, kind, &abilities, rank);
+                    grant.apply(&mut slots, &mut times);
                 } else {
-                    let slots = abilities.iter().map(|&action| (action, kind, rank));
-                    unit.insert(TimedSlots::new(ActionSlots::new(slots)));
+                    let granted = SlotGrant::granted(ActionSlots::new([]), slice::from_ref(&grant));
+                    unit.insert(granted);
                 }
             }
             Self::Respawn { id, ticks } => {
@@ -125,8 +147,12 @@ impl Effect for ModeEffect {
                     player.remove::<HeldOut>();
                 }
             }
-            // A call's `now` is the end of its tick.
-            Self::Save => world.insert_resource(SaveAsked::new(now)),
+            // The boundary that ends the call's tick, whatever the call counts its time from, as an
+            // input's call counts from the tick's start; the match's start asks for its own.
+            Self::Save => {
+                let at = world.resource::<SimTick>().end();
+                world.insert_resource(SaveAsked::new(at));
+            }
         }
     }
 }

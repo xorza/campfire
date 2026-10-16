@@ -5,8 +5,8 @@ use campfire_common::Tick;
 use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
-    MapData, MapNavigationData, MapPoint, MarkerData, ModeError, ModeMap, PathData, PlacedUnitData,
-    ResolvedMap, TeamManifest, WallData,
+    MapData, MapInput, MapNavigationData, MapPoint, MarkerData, ModeError, ModeMap, PathData,
+    PlacedUnitData, ResolvedMap, TeamManifest, WallData,
 };
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
@@ -860,7 +860,14 @@ fn check_walkable(
         name: DeclaredName::new("west").unwrap(),
         slots: 0,
     }];
-    let resolved = ModeMap::resolve(map, &teams, &[], &layer_table(rules), unit_type).unwrap();
+    let layers = layer_table(rules);
+    let input = MapInput {
+        map,
+        teams: &teams,
+        relations: &[],
+        layers: &layers,
+    };
+    let resolved = ModeMap::resolve(input, unit_type).unwrap();
     let ResolvedMap {
         map,
         ground,

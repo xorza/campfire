@@ -18,6 +18,13 @@ use crate::supply_data::SupplyData;
 #[derive(Debug)]
 pub struct ProductionApi;
 
+/// A count of a player's supply: what its units and trains use, or its cap.
+#[derive(Debug, Clone, Copy)]
+enum SupplyCount {
+    Used,
+    Cap,
+}
+
 impl ProductionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         api.action_fields(ActionDataField::of(Some(Capability::Production)))
@@ -43,7 +50,7 @@ impl ProductionApi {
                     &[&["player"]],
                     "what `player`'s living units and queued trains use of its supply",
                 ),
-                |ctx: &mut Ctx, player: i64| Self::supply(ctx, player, false),
+                |ctx: &mut Ctx, player: i64| Self::supply(ctx, player, SupplyCount::Used),
             )
             .call(
                 MemberSpec::call(
@@ -51,17 +58,20 @@ impl ProductionApi {
                     &[&["player"]],
                     "what `player`'s living, complete units give of supply, at most the mode's `max`",
                 ),
-                |ctx: &mut Ctx, player: i64| Self::supply(ctx, player, true),
+                |ctx: &mut Ctx, player: i64| Self::supply(ctx, player, SupplyCount::Cap),
             );
     }
 
-    /// `player`'s supply as the view read the match: its cap when `cap`, else what it uses.
-    fn supply(ctx: &Ctx, player: i64, cap: bool) -> Checked<i64> {
+    /// `player`'s supply as the view read the match: the count `count` names.
+    fn supply(ctx: &Ctx, player: i64, count: SupplyCount) -> Checked<i64> {
         let view = ctx.view();
         let slot = view.names().player(player)?;
         let supply = ProductionColumn::supply(view, slot)
             .ok_or_else(|| ProductionRefusal::NoSupply.fail())?;
-        let count = if cap { supply.cap } else { supply.used };
+        let count = match count {
+            SupplyCount::Used => supply.used,
+            SupplyCount::Cap => supply.cap,
+        };
         Ok(i64::try_from(count).expect("a supply count fits an integer"))
     }
 }

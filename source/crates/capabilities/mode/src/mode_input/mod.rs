@@ -53,19 +53,6 @@ impl<'a> ModeInput<'a> {
         rest.is_empty().then_some(ModeInput { name, value })
     }
 
-    /// A payload of `inputs`, one command each.
-    pub fn payload(inputs: &[ModeInput<'_>]) -> Vec<u8> {
-        let bodies: Vec<Vec<u8>> = inputs
-            .iter()
-            .map(|input| {
-                let mut body = Vec::new();
-                input.encode_into(&mut body);
-                body
-            })
-            .collect();
-        Command::payload(ModeInput::CAPABILITY, &bodies)
-    }
-
     /// Appends the payload of this input alone to `out`, its body written in `body`, which it
     /// clears first, as a sender keeps both so no input allocates.
     pub fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
@@ -76,6 +63,28 @@ impl<'a> ModeInput<'a> {
             body,
         };
         Command::write(&[command], out);
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_sim::Command;
+
+    use crate::mode_input::ModeInput;
+
+    impl ModeInput<'_> {
+        /// A payload of `inputs`, one command each.
+        pub fn payload(inputs: &[ModeInput<'_>]) -> Vec<u8> {
+            let bodies: Vec<Vec<u8>> = inputs
+                .iter()
+                .map(|input| {
+                    let mut body = Vec::new();
+                    input.encode_into(&mut body);
+                    body
+                })
+                .collect();
+            Command::payload(ModeInput::CAPABILITY, &bodies)
+        }
     }
 }
 

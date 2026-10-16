@@ -155,6 +155,11 @@ impl Frame {
         self.effects.queued()
     }
 
+    /// The effects of type `E` the call queued, in order, to change.
+    pub fn queued_mut<E: Effect>(&mut self) -> impl Iterator<Item = &mut E> {
+        self.effects.queued_mut()
+    }
+
     /// Commits what the call that ran wrote and applies the effects it queued: the ids it took,
     /// so a unit it creates spawns with the id it took; the parts that commit before the
     /// effects; the effects, in order, each itself, from the call's acting unit and its action

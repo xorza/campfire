@@ -165,6 +165,8 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         let destination = game.get::<Destination>(entity).unwrap().get();
         assert_eq!(destination, walks, "{target:?}");
     }
+    // The clear keeps the producer's part, with no target, as each rally writes it in place.
+    assert_eq!(*game.part::<Rally>(producer), Rally::new(None));
     // A unit that died rallies nothing: the grunt spawns at its producer, and stands.
     game.insert_parts(flag, Dead);
     Production::tick_ordering(&mut game, 0, producer, rally(RallyTarget::Unit(flag)));

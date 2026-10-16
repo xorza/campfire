@@ -1,7 +1,15 @@
+use std::any::TypeId;
+
+use bevy_ecs::query::{Has, QueryData};
 use campfire_common::PlayerSlot;
+use campfire_script::RowReads;
+use campfire_units::{Dead, Owner};
+use campfire_values::UnitType;
 
 use crate::mode_supply_data::ModeSupplyData;
+use crate::site::Site;
 use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
+use crate::train_queue::TrainQueue;
 
 /// Each player's supply, by slot, counted from the units and the queues: what its living units
 /// and its queued trains use, and what its living, complete units give, at most the mode's `max`.
@@ -19,27 +27,71 @@ pub(crate) struct SupplySums {
     given: u64,
 }
 
-/// A unit as supply counts it: its player, and the unit as its supply counts.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CountedUnit<'a> {
-    pub owner: PlayerSlot,
-    pub(crate) unit: SupplyUnit<'a>,
+/// The parts of a unit its supply counts, dead or not: its type, whether it is dead, its train
+/// queue, and whether it is a site. A unit of no type counts for nothing.
+#[derive(QueryData, Debug)]
+#[query_data(derive(Debug))]
+pub(crate) struct SupplyParts {
+    unit_type: Option<&'static UnitType>,
+    dead: Has<Dead>,
+    queue: Option<&'static TrainQueue>,
+    site: Has<Site>,
+}
+
+/// The parts of a unit a player owns that supply counts, and that a requirement finds.
+pub(crate) type Counted = (&'static Owner, SupplyParts);
+
+impl SupplyPartsItem<'_, '_> {
+    /// The unit as its supply counts; none of no type.
+    pub(crate) fn unit(&self) -> Option<SupplyUnit<'_>> {
+        Some(SupplyUnit {
+            unit_type: *self.unit_type?,
+            dead: self.dead,
+            complete: !self.site,
+            queue: self.queue,
+        })
+    }
+
+    /// The unit's type, when it is living and complete, as a requirement finds it.
+    pub(crate) fn held(&self) -> Option<UnitType> {
+        self.unit_type.copied().filter(|_| !self.dead && !self.site)
+    }
+}
+
+impl RowReads for SupplyParts {
+    type Changed = <(
+        Option<&'static UnitType>,
+        Has<Dead>,
+        Option<&'static TrainQueue>,
+        Has<Site>,
+    ) as RowReads>::Changed;
+
+    fn components(into: &mut Vec<(TypeId, &'static str)>) {
+        <(
+            Option<&'static UnitType>,
+            Has<Dead>,
+            Option<&'static TrainQueue>,
+            Has<Site>,
+        ) as RowReads>::components(into);
+    }
 }
 
 impl Supply {
     /// Counts each player's supply from `units` anew, each as `costs` reads it, the cap at most
     /// `rules`' `max`.
-    pub(crate) fn count<'a>(
+    pub(crate) fn count<'w, 's>(
         &mut self,
         costs: &SupplyCostBook,
         rules: ModeSupplyData,
-        units: impl IntoIterator<Item = CountedUnit<'a>>,
+        units: impl IntoIterator<Item = (&'w Owner, SupplyPartsItem<'w, 's>)>,
     ) {
         self.players.clear();
         self.max = u64::from(rules.max);
-        for unit in units {
-            let counted = costs.unit(unit.unit);
-            self.entry_mut(unit.owner).add(counted);
+        for (owner, parts) in units {
+            if let Some(unit) = parts.unit() {
+                let counted = costs.unit(unit);
+                self.entry_mut(owner.slot()).add(counted);
+            }
         }
     }
 

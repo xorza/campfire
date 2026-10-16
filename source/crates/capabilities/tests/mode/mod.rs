@@ -713,7 +713,13 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         let relations = &data.relations;
         let unit_type = |name: &str| view.names().named((TypeScope::Mode, name));
         let layers = &mode_names.layers;
-        ModeMap::resolve(&files.map, &files.teams, relations, layers, unit_type).unwrap()
+        let input = MapInput {
+            map: &files.map,
+            teams: &files.teams,
+            relations,
+            layers,
+        };
+        ModeMap::resolve(input, unit_type).unwrap()
     };
     let stats = StatBook::new(&data.stats, Num::int(10));
     let stat = |stat: &Stat| stats.named(stat).ok_or_else(|| stat.clone());

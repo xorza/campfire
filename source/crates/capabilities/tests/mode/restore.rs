@@ -582,13 +582,11 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
         let mut slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
         slots.order(0, ActionTarget::Point(point));
         assert_eq!(slots.check(&game, grunt), holds, "{point:?}");
-        let gatherer = Gatherer {
-            last: Some(NodeAt {
-                node: id,
-                pos: point,
-            }),
-            ..Gatherer::default()
+        let last = NodeAt {
+            node: id,
+            pos: point,
         };
+        let gatherer = Gatherer::of_parts(None, None, Some(last));
         assert_eq!(gatherer.check(&game, grunt), holds, "{point:?}");
     }
 }
