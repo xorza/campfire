@@ -26,9 +26,9 @@ use campfire_common::{ExitStatus, TlsKey};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
-    JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, PendingRestore,
-    ProcessExit, Publisher, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionTimes,
-    SimServerPlugins, SimServerWorld,
+    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, PendingRestore,
+    Publisher, RestoredSession, ServerBots, ServerDir, ServerSetup, SessionTimes, SimServerPlugins,
+    SimServerWorld, StopRequest, exit_code,
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
@@ -132,6 +132,13 @@ fn run() -> Result<ExitCode, ExitCode> {
             error!(mode = %mode.display(), error = %ErrorReport::of(&error), "the mode does not load");
             ExitCode::from(ExitStatus::Failure)
         })?;
+    bots.check(&packages.unit_types()).map_err(|error| {
+        refused(
+            ExitStatus::Usage,
+            &error,
+            "a bot's orders name a unit type the mode does not have",
+        )
+    })?;
     let capabilities = packages.manifest().capabilities;
     let opening = open(&data, waiting, packages, key, times, bots, host)?;
     let local = socket.local_address();
@@ -146,7 +153,7 @@ fn run() -> Result<ExitCode, ExitCode> {
     // request's 10 s, which no client waits for (design 15, D12).
     drop(app);
     drop(port_map);
-    Ok(ProcessExit::code(exit))
+    Ok(exit_code(exit))
 }
 
 /// Logs `error` under `message`, one of the start's refusals, and gives `status`'s exit code.
@@ -217,6 +224,7 @@ fn server_app(
         SimServerPlugins {
             tick_hz: opening.terms().tick_hz,
             capabilities: set,
+            hosting: Hosting::Remote,
         },
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
@@ -276,7 +284,7 @@ fn announce(opening: &Opening, mode: &Path, address: SocketAddr, tls_key: TlsKey
 
 /// Exits as `SimServerWorld::exit_due` says: the server stops only once its session ended.
 fn exit_when_due(world: &mut World) {
-    if let Some(exit) = world.exit_due(false) {
+    if let Some(exit) = world.exit_due(StopRequest::NotAsked) {
         world.write_message(exit);
     }
 }

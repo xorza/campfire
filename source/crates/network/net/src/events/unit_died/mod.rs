@@ -6,8 +6,8 @@ use campfire_values::{NameId, Team};
 use serde::Deserialize;
 use tracing::{debug, info};
 
-/// A unit of `team` died, dealt its last damage by `killer` if any; an avatar names the player
-/// whose it was. `tick` is the sim tick of the end that logs it: on the server the tick the unit
+/// A unit of `team`, owned by `owner` if any, died, dealt its last damage by `killer` if any;
+/// `avatar` says it was its owner's avatar. `tick` is the sim tick of the end that logs it: on the server the tick the unit
 /// died in, and on a client its own, which runs ahead of the server's, once it runs one. Each
 /// end logs an avatar's death at `info`, any other at `debug`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -21,6 +21,8 @@ pub(crate) struct UnitDied {
     pub owner: Option<PlayerSlot>,
     #[serde(default)]
     pub killer: Option<StableId>,
+    #[serde(default)]
+    pub avatar: bool,
 }
 
 impl UnitDied {
@@ -32,6 +34,7 @@ impl UnitDied {
             team: death.fallen.team,
             owner: death.fallen.owner,
             killer: death.killer,
+            avatar: death.fallen.avatar,
         }
     }
 
@@ -44,6 +47,7 @@ impl UnitDied {
             team: fallen.team,
             owner: fallen.owner,
             killer: None,
+            avatar: fallen.avatar,
         }
     }
 }
@@ -55,11 +59,20 @@ impl LogEvent for UnitDied {
         let (tick, unit) = (self.tick.map(Tick::get), self.unit.get());
         let team = self.team.map(Team::index);
         let killer = self.killer.map(StableId::get);
-        if let Some(owner) = self.owner {
-            let owner = owner.get();
-            info!(tick, unit, team, owner, killer, "{}", Self::MESSAGE);
+        let owner = self.owner.map(PlayerSlot::get);
+        if self.avatar {
+            info!(
+                tick,
+                unit,
+                team,
+                owner,
+                killer,
+                avatar = true,
+                "{}",
+                Self::MESSAGE
+            );
         } else {
-            debug!(tick, unit, team, killer, "{}", Self::MESSAGE);
+            debug!(tick, unit, team, owner, killer, "{}", Self::MESSAGE);
         }
     }
 }

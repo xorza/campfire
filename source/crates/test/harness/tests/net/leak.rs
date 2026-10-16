@@ -242,7 +242,7 @@ impl LeakCheck {
         assert!(hashes.is_some());
         local.open_match();
         for (client, pick) in PICKS[..PLAYERS].iter().enumerate() {
-            local.play(client, OrderScript::parse(pick).unwrap());
+            local.play(client, &OrderScript::parse(pick).unwrap());
         }
         local.await_avatars(JOIN_FRAMES);
         let host = HostVisibility {
@@ -261,7 +261,7 @@ impl LeakCheck {
             let spectator = local.add_spectator();
             let watching = |local: &InProcessMatch| {
                 let state = local.client(spectator).world().resource::<JoinState>();
-                state.watching().is_some()
+                state.watching_clock().is_some()
             };
             for _ in 0..JOIN_FRAMES {
                 if watching(&local) {
@@ -471,7 +471,7 @@ impl LeakCheck {
         for client in 0..2 {
             let script = format!("[[order]]\ntick = {tick}\nattack = {target}\n");
             self.local
-                .play(client, OrderScript::parse(&script).unwrap());
+                .play(client, &OrderScript::parse(&script).unwrap());
         }
     }
 

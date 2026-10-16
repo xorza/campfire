@@ -24,7 +24,7 @@ use campfire_protocol::{SignedReceipt, Signer, Verifier};
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
-use campfire_units::{Dead, Owner, PlayerUnits, UnitTypeBook, UnitsWorld};
+use campfire_units::{Avatar, Dead, Owner, PlayerUnits, UnitsWorld};
 use campfire_values::{Team, TeamSet};
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
@@ -37,9 +37,8 @@ use lightyear::prelude::{
 use secp256k1::Keypair;
 use tracing::info;
 
-use crate::bot_script::BotScript;
+use crate::bot_script::{BotOrder, BotScript, BotUnits};
 use crate::close_code::CloseCode;
-use crate::dismissed::Dismissed;
 use crate::events::bot_units_missing::BotUnitsMissing;
 use crate::events::client_frame::ClientFrame;
 use crate::events::input_dropped::InputDropped;
@@ -54,24 +53,25 @@ use crate::events::session_refused::SessionRefused;
 use crate::events::unit_died::UnitDied;
 use crate::faults::Faults;
 use crate::hosting::Hosting;
-use crate::input_ack::InputAck;
-use crate::input_message::InputMessage;
-use crate::join::{Join, JoinRole};
-use crate::leave_match::LeaveMatch;
-use crate::match_start::MatchStart;
+use crate::net_protocol::dismissed::Dismissed;
+use crate::net_protocol::input_ack::InputAck;
+use crate::net_protocol::input_message::InputMessage;
+use crate::net_protocol::join::{Join, JoinRole};
+use crate::net_protocol::leave_match::LeaveMatch;
+use crate::net_protocol::match_start::MatchStart;
+use crate::net_protocol::offer::Offer;
+use crate::net_protocol::save_command::SaveCommand;
+use crate::net_protocol::watch_start::WatchStart;
+use crate::net_protocol::watch_teams::WatchTeams;
 use crate::net_protocol::{InputChannel, JoinChannel, NetProtocol};
-use crate::offer::Offer;
-use crate::order_script::{ScriptedInput, ScriptedOrder, ScriptedUnits};
+use crate::order_script::ScriptedInput;
 use crate::os::Os;
-use crate::save_command::SaveCommand;
 use crate::sim_client::client_dir::ClientDir;
 use crate::sim_client::join_state::{JoinState, Joining, LinkLoss, Retry, Started};
 use crate::sim_client::player_signer::PlayerSigner;
 use crate::sim_client::receipt_writer::ReceiptWriter;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
-use crate::watch_start::WatchStart;
-use crate::watch_teams::WatchTeams;
 
 pub(crate) mod chain_history;
 pub(crate) mod client_dir;
@@ -203,14 +203,13 @@ impl Plugin for SimClient {
         packages.books(rate).install_prediction(world);
         mark_unpredicted(world);
         world.insert_resource(PlayerSigner(Signer::new(self.session_key, self.os.entropy)));
+        world.insert_resource(self.hosting);
         world.insert_resource(self.os.clone());
         world.insert_resource(JoinState::new(Joining {
             main_key: self.main_key,
             server: self.server,
             role: self.role,
-            hosting: self.hosting,
             rules: SessionRules::of(packages),
-            clock: self.os.clock.clone(),
         }));
         world.init_resource::<SentInputs>();
         if let Some(data) = &self.data {
@@ -281,6 +280,7 @@ fn answer_offer(
     mut receivers: Query<'_, '_, &mut MessageReceiver<Offer>, With<Client>>,
     mut sender: Single<'_, '_, Answering, With<Client>>,
     mut signer: ResMut<'_, PlayerSigner>,
+    os: Res<'_, Os>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
@@ -290,7 +290,7 @@ fn answer_offer(
             let session = offer.terms.session_id();
             let LinkBinding(binding) =
                 binding.expect("a client that receives an offer holds its link's binding");
-            match state.answer(&offer, binding, &mut signer.0) {
+            match state.answer(&offer, binding, &mut signer.0, os.clock.unix_now()) {
                 None => {}
                 Some(Ok(join)) => {
                     let visibility = state
@@ -320,12 +320,13 @@ fn answer_offer(
 /// `JoinState::start`. A client whose chain the server rewrote ends its link.
 fn receive_match_start(
     mut receivers: Query<'_, '_, (Entity, &mut MessageReceiver<MatchStart>), With<Client>>,
+    hosting: Res<'_, Hosting>,
     mut state: ResMut<'_, JoinState>,
     mut commands: Commands<'_, '_>,
 ) {
     for (client, mut receiver) in &mut receivers {
         for start in receiver.receive() {
-            match state.start(start) {
+            match state.start(start, *hosting) {
                 Started::No => {}
                 Started::Playing { discarded } => {
                     MatchStarted {
@@ -437,7 +438,7 @@ fn send_watch_request(
     state: Res<'_, JoinState>,
     request: Res<'_, WatchRequest>,
 ) {
-    if state.watching().is_some() {
+    if state.watching_clock().is_some() {
         sender.send::<JoinChannel>(WatchTeams(request.0));
     }
 }
@@ -477,7 +478,7 @@ fn send_saves(
     state: Res<'_, JoinState>,
     mut pending: ResMut<'_, PendingSaves>,
 ) {
-    if state.clock().is_none() {
+    if state.playing_clock().is_none() {
         return;
     }
     for command in pending.0.drain(..) {
@@ -559,7 +560,8 @@ fn report_end(ended: Query<'_, '_, &MatchEnd, (Added<MatchEnd>, Allow<Unpredicte
     }
 }
 
-/// The units whose death the server's state just brought, with their team and owner.
+/// The units whose death the server's state just brought, with their team, their owner, and
+/// whether each is its owner's avatar.
 type Died<'w, 's> = Query<
     'w,
     's,
@@ -567,6 +569,7 @@ type Died<'w, 's> = Query<
         &'static StableId,
         Option<&'static Team>,
         Option<&'static Owner>,
+        Has<Avatar>,
     ),
     (Added<Dead>, Allow<Unpredicted>),
 >;
@@ -579,8 +582,14 @@ fn report_deaths(
     died: Died<'_, '_>,
 ) {
     let tick = state.sim_tick(timeline.as_ref());
-    for (&id, team, owner) in &died {
-        UnitDied::learned(tick, Fallen::of(id, team, owner)).log();
+    for (&id, team, owner, avatar) in &died {
+        let fallen = Fallen {
+            id,
+            team: team.copied(),
+            owner: owner.map(|owner| owner.slot()),
+            avatar,
+        };
+        UnitDied::learned(tick, fallen).log();
     }
 }
 
@@ -603,7 +612,6 @@ fn send_orders(
     timeline_config: Res<'_, InputTimelineConfig>,
     bot: Option<ResMut<'_, BotScript>>,
     players: PlayerUnits<'_, '_>,
-    types: Option<Res<'_, UnitTypeBook>>,
     mut scratch: Local<'_, Vec<StableId>>,
     signer: Res<'_, PlayerSigner>,
     mut pending: ResMut<'_, PendingOrders>,
@@ -640,24 +648,25 @@ fn send_orders(
         }
         let slot = playing.chain.slot();
         let avatar = players.avatar(slot).is_some();
-        let ready = |order: &ScriptedOrder| avatar || order.units != ScriptedUnits::Avatar;
-        if let Some(types) = &types {
-            for scripted in bot.due_orders_while(stamp, ready) {
-                match scripted.order(slot, &players, types.types(), &mut scratch) {
-                    Ok(order) => pending.push(order),
-                    Err(cause) => BotUnitsMissing {
-                        slot,
-                        cause,
-                        action: scripted.action,
-                    }
-                    .log(),
+        let ready = |order: &BotOrder| avatar || order.units != BotUnits::Avatar;
+        for scripted in bot.due_orders_while(stamp, ready) {
+            match scripted.order(slot, &players, &mut scratch) {
+                Ok(order) => pending.push(order),
+                Err(cause) => BotUnitsMissing {
+                    slot,
+                    cause,
+                    action: scripted.action,
                 }
+                .log(),
             }
         }
     }
     let session = playing.member.session;
     let first = sent.len();
-    let stamped = pending.0.len().min(session.inputs.max_per_tick as usize);
+    let stamped = pending
+        .0
+        .len()
+        .min(usize::try_from(session.inputs.max_per_tick).expect("a u32 fits usize"));
     for pending in pending.0.drain(..stamped) {
         let seq =
             playing.chain.next_seq() + u64::try_from(sent.len() - first).expect("a count fits");

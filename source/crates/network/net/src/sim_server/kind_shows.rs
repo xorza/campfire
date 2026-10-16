@@ -5,7 +5,7 @@ use bevy_ecs::lifecycle::{Add, RemovedComponents};
 use bevy_ecs::observer::On;
 use bevy_ecs::query::{Changed, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use bevy_ecs::system::{Commands, Query, Res, SystemParam};
+use bevy_ecs::system::{Commands, If, Query, Res, SystemParam};
 use campfire_capabilities::Release;
 use campfire_declare::{EntityKind, KindAudience, KindVisitor};
 use campfire_sim::StableId;
@@ -14,6 +14,7 @@ use campfire_vision::SeenBy;
 use lightyear::prelude::{NetworkTarget, PredictionTarget, Replicate};
 use tracing::debug;
 
+use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::team_rooms::TeamRooms;
 
@@ -84,6 +85,7 @@ impl KindShows<'_> {
     /// keeps from every other link ([`DataFilters`](crate::sim_server::data_filter::DataFilters)).
     fn show<K: EntityKind>(
         rooms: Res<'_, TeamRooms>,
+        If(visibility): If<Res<'_, MatchVisibility>>,
         links: Query<'_, '_, (Entity, &PlayerLink)>,
         new: NewOfKind<'_, '_, K>,
         changed: SeersChanged<'_, '_, K>,
@@ -98,7 +100,7 @@ impl KindShows<'_> {
             let mut replicated = commands.entity(entity);
             replicated.insert((
                 Replicate::to_clients(NetworkTarget::All),
-                rooms.seeing(seen),
+                rooms.seeing(seen, &visibility.0),
             ));
             let link = owner
                 .filter(|_| K::OWNER_PREDICTS)
@@ -110,7 +112,9 @@ impl KindShows<'_> {
         if K::AUDIENCE == KindAudience::Seers {
             for (entity, &id, seen) in &changed {
                 debug!(entity = id.get(), "the teams that see an entity changed");
-                commands.entity(entity).insert(rooms.seeing(Some(seen)));
+                commands
+                    .entity(entity)
+                    .insert(rooms.seeing(Some(seen), &visibility.0));
             }
         }
         if K::OWNER_PREDICTS {

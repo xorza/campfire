@@ -101,26 +101,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 - [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. **Skipped: see `review-workspace_QUESTIONS.md`, batch 9, item 5.**
 
-### 13. Net: one match run
-
-`net`: `sim_server` (`mod`, `pending_restore`, `door`, `lobby`, `team_rooms`, `session_dir`, `local_session`, `checkpoints`, `bot_driver`, `viewer`, `offering`, `seats`, `receipts`, `sim_server_world`, `spectators`), `sim_client` (`mod`, `join_state`), `events`, `order_script`, the root modules; `capabilities`: `release/tests`; `docs/design/10-sessions.md`. After batch 7 (the writers' `close`).
-
-- [ ] net/src/sim_server/mod.rs:304-312 — after a `LoadLatest`, `take_save_commands` goes on. Two presses in one frame load twice: two `Loaded` records, the log cut back twice. → Stop taking commands once a load is taken.
-- [ ] net/src/order_script/mod.rs:108, sim_server/bot_driver.rs:130-133, sim_client/mod.rs:640-642; capabilities/src/release/tests/mod.rs:442 — bot orders look up their type by name each time an order is due, so a misspelled type shows only mid-match as `BotUnitsMissing`. The server panics with no `UnitTypeBook`, and the client skips each order silently. The name-lookup test does not scan `net`. → `BotDriver::new` and `SimClient::build` resolve each name to a `UnitType` once and refuse an unknown name at the start; the test scans `net`. Design 10 (Server bots) keeps the drop and the log only for "no living unit of it".
-- [ ] net/src/sim_server/bot_driver.rs:70, 100 — each bot walks the whole `log.changes()` on each call. → Keep a cursor.
-- [ ] net/src/sim_server/mod.rs:366-380, 429-434, 461-482; pending_restore.rs:32-41; door.rs:179-211; spectators/spectators_world.rs:158-167; session_dir/mod.rs:272-273 — start and restore build the match with parameter bags: seating twice, the start message three times, and the journal attached in two places, so `MatchRun.journal` is an `Option`. → Both paths produce one `MatchRun`, and one `run_match` attaches the journal and the seats.
-- [ ] net/src/sim_server/lobby/mod.rs:50, mod.rs:408-412, team_rooms.rs:288-291 — visibility held in three copies and decoded twice. → Insert `MatchVisibility` once, when the terms are fixed.
-- [ ] net/src/hosting.rs:4, sim_server/local_session.rs:5 — "local server" is two types. → One `Hosting`, a resource on both ends.
-- [ ] net/src/sim_client/join_state/mod.rs:218, 226; sim_client/mod.rs:205-213 — `clock()` and `watching()` name one type two ways, and the client holds the clock twice. → Paired names; one clock.
-- [ ] net/src/events/join_refused/error.rs:7, receipt_refused/error.rs, save_refused/error.rs, bot_units_missing.rs:20 — domain errors live in log-event modules, so `order_script` imports `events`. → Each error beside its operation.
-- [ ] net/src/lib.rs:8-31 — 26 flat root modules; eleven form the wire vocabulary of net_protocol.rs:84-105. `Hosting` is client-only, `KeyFile` serves both ends from `sim_server/`, `ProcessExit` is a namespace struct, and four event folders exist only for a test file. → `net_protocol/` parents the messages and the codec; each type sits on its side.
-- [ ] net/src/events/unit_died/mod.rs — logs `info` for any owned unit, where the doc says avatars only, so every Zero Hour death logs at info. → Key on avatar.
-- [ ] net/src/events/input_never_applied.rs — `Unapplied` derives only `Deserialize` and repeats `Applied` by hand (sim_server/mod.rs:578-579). → The siblings' encoding, and one mapping.
-- [ ] net/src/sim_server/lobby/mod.rs:57-87 — `LobbyOpening` and `LobbySetup` repeat five fields. → `LobbySetup` embeds `LobbyOpening`.
-- [ ] net/src/sim_server/mod.rs:536-558 — the refuse-link block twice. → One helper.
-- [ ] net/src/sim_client/join_state/mod.rs:599-601 — dead guards on a bounded product. → Compute the bound.
-- [ ] Style: `exit_due(stop: bool)` (sim_server_world/mod.rs:40); wide `Viewer::view_again` (viewer.rs:156, six), `Offering::offer` (offering.rs:222), `Viewer::player` (viewer.rs:54); `as` casts (seats.rs:237, 251, receipts.rs:32, input_message.rs, sim_client/mod.rs:656); `impl Iterator` returns (`Seats::gone`, `Spectators::count`).
-
 ### 14. Session log: one type for each job
 
 `protocol`: `session_log`, `checkpoint`, `session_result`, `server_input`, `receipt`, `input_chain`, `connect`, `server_seeds`, `delegation`, `nsec`, `random_key`, `journal`; `runner`; `verifier`. After batch 1.

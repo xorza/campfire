@@ -1,8 +1,10 @@
 use campfire_capabilities::Action;
 use campfire_common::PlayerSlot;
 use campfire_log::{JsonText, LogEvent, LogLine};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use tracing::warn;
+
+use crate::bot_script::error::UnitsMissing;
 
 /// A bot's order found none of the units of `slot` it names, and was dropped, with why and its
 /// action.
@@ -13,17 +15,6 @@ pub struct BotUnitsMissing {
     pub cause: UnitsMissing,
     #[serde(deserialize_with = "LogLine::json")]
     pub action: Action,
-}
-
-/// Why a bot's order commands no unit.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum UnitsMissing {
-    /// It is for the avatar, and the slot has none.
-    NoAvatar,
-    /// It names a unit type the match does not hold.
-    UnknownType,
-    /// The slot owns no living unit of the type it names.
-    NoUnit,
 }
 
 impl LogEvent for BotUnitsMissing {

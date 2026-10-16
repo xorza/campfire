@@ -35,8 +35,8 @@ use bevy::window::{Window, WindowPlugin};
 use campfire_common::ExitStatus;
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
-    Hosting, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, ProcessExit, SimClient,
-    WatchRequest,
+    BotScript, Hosting, JoinRole, KeyFile, NetProtocol, OrderScript, Os, Pace, SimClient,
+    WatchRequest, exit_code,
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
@@ -120,6 +120,17 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
+    let types = packages.unit_types();
+    let script = match script
+        .map(|script| BotScript::new(&script, &types))
+        .transpose()
+    {
+        Ok(script) => script,
+        Err(error) => {
+            error!(error = %ErrorReport::of(&error), "the orders name a unit type the mode does not have");
+            return ExitCode::from(ExitStatus::Usage);
+        }
+    };
     let main_key = match main_key(&args) {
         Ok(key) => key,
         Err(code) => return code,
@@ -176,7 +187,7 @@ fn main() -> ExitCode {
     let exit = app.run();
     // Dropped, a local server ends the session and publishes its log.
     drop(connection);
-    ProcessExit::code(exit)
+    exit_code(exit)
 }
 
 /// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD, the
@@ -185,7 +196,7 @@ fn main() -> ExitCode {
 /// action names of `packages`.
 fn add_ends(
     app: &mut App,
-    script: Option<OrderScript>,
+    script: Option<BotScript>,
     pace: Option<&Arc<Pace>>,
     packages: &Arc<ModePackages>,
 ) {

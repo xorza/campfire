@@ -135,7 +135,7 @@ fn a_receipt_not_written_is_logged_and_the_client_plays_on() {
     // The client keeps its receipt and plays on.
     let state = local.client(0).world().resource::<JoinState>();
     assert!(state.receipt().is_some());
-    assert!(state.clock().is_some());
+    assert!(state.playing_clock().is_some());
     assert_eq!(scratch.kind(&place), Some(EntryKind::File));
 }
 

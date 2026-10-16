@@ -53,6 +53,6 @@ fn a_paused_match_runs_no_tick_and_at_speed_2_runs_two_ticks_a_frame() {
     }
     for client in 0..2 {
         let state = local.client(client).world().resource::<JoinState>();
-        assert!(state.clock().is_some(), "client {client} plays on");
+        assert!(state.playing_clock().is_some(), "client {client} plays on");
     }
 }

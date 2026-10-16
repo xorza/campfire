@@ -38,7 +38,14 @@ pub trait SimServerWorld {
     /// mode ended the match or aborted, and closes its journal, whose last sync's failure ends it
     /// as one in a frame does; it then publishes the log in its `ServerDir`, and exits, with an
     /// error when the log is not written, as the session it holds is lost.
-    fn exit_due(&mut self, stop: bool) -> Option<AppExit>;
+    fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit>;
+}
+
+/// Whether the server's owner asked it to stop, as a local server's client does as it ends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StopRequest {
+    Asked,
+    NotAsked,
 }
 
 /// What the sim server module gives a world, for its own crate.
@@ -70,17 +77,17 @@ impl SimServerWorld for World {
         self.contains_resource::<Reload>()
     }
 
-    fn exit_due(&mut self, stop: bool) -> Option<AppExit> {
+    fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit> {
         JournalWatch::report_failure(self);
         if let Some(exit) = Faults::apply(self) {
             return Some(exit);
         }
         if !self.contains_resource::<MatchClock>() {
-            return stop.then_some(AppExit::Success);
+            return (stop == StopRequest::Asked).then_some(AppExit::Success);
         }
         if self.resource::<Session>().log().result().is_none() {
             // Every slot a player controlled left, and no player holds a link.
-            if !stop && !Door::empty(self) {
+            if stop == StopRequest::NotAsked && !Door::empty(self) {
                 return None;
             }
             if let Err(error) = self.end_session() {
@@ -132,22 +139,20 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_common::{PlayerSlot, Tick};
     use campfire_runner::SessionWorld;
+    use campfire_units::UnitTypeBook;
 
+    use crate::bot_script::BotScript;
     use crate::faults::Faults;
     use crate::faults::fault::Fault;
+    use crate::order_script::OrderScript;
     use crate::sim_server::bot_driver::BotDriver;
     use crate::sim_server::checkpoints::Checkpoints;
-    use crate::sim_server::local_session::LocalSession;
     use crate::sim_server::player_link::PlayerLink;
     use crate::sim_server::receipts::Receipts;
     use crate::sim_server::server_bots::SlotBot;
 
     /// What a server's world gives the tests and benches of any crate.
     pub trait SimServerWorldInternals {
-        /// Makes the server a local one, which runs on a thread of its one player's client, as
-        /// the client's local server makes it.
-        fn host_locally(&mut self);
-
         /// Makes the server give its receipts in its next update, as if their second passed.
         fn give_receipts(&mut self);
 
@@ -177,10 +182,6 @@ pub(crate) mod internals {
     }
 
     impl SimServerWorldInternals for World {
-        fn host_locally(&mut self) {
-            self.insert_resource(LocalSession);
-        }
-
         fn give_receipts(&mut self) {
             self.resource_mut::<Receipts>().due_now();
         }
@@ -190,7 +191,9 @@ pub(crate) mod internals {
         }
 
         fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot> {
-            let planned = BotDriver::planned(slots, self.session().log(), next);
+            let types = self.resource::<UnitTypeBook>().types();
+            let script = |script: &OrderScript| BotScript::new(script, types).unwrap();
+            let planned = BotDriver::planned(slots, self.session().log(), next, script);
             planned.iter().map(|driven| driven.slot).collect()
         }
 

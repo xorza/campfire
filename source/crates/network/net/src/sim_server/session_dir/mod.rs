@@ -18,7 +18,7 @@ use campfire_store::{
 use crate::events::session_aborted::SessionAborted;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::error::RestoreMatchError;
-use crate::sim_server::journal_watch::JournalWatch;
+use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::session_dir::error::{
     AbortError, FindError, PublishError, RestoreError, SessionCreateError, WaitingError,
@@ -272,10 +272,7 @@ impl RestoredSession {
             };
             Session::start(world, source).map_err(RestoreMatchError::Start)?;
         }
-        world.insert_resource(JournalWatch(journal.watch()));
-        world
-            .session_mut()
-            .resume_journal(Box::new(journal), journal_len);
+        JournalWatch::keep(world, journal, JournalFrom::End { len: journal_len });
         let resumed = world.session().log().next_tick();
         world.replay_to(ticks, |world| {
             if world.session().log().next_tick() > resumed {

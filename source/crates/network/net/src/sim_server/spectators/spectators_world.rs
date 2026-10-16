@@ -5,13 +5,13 @@ use campfire_visibility::Visibility;
 use lightyear::prelude::MessageSender;
 use tracing::info;
 
-use crate::events::join_refused::error::JoinError;
+use crate::error::JoinError;
 use crate::match_clock::MatchClock;
 use crate::net_protocol::MatchChannel;
+use crate::net_protocol::watch_start::WatchStart;
 use crate::sim_server::offering::Joined;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::viewer::Viewer;
-use crate::watch_start::WatchStart;
 
 /// What the spectators module gives a world, for its own crate.
 pub(crate) trait SpectatorsWorldCrate {

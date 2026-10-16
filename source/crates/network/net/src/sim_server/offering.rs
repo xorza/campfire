@@ -20,12 +20,12 @@ use lightyear::prelude::{
 use tracing::debug;
 
 use crate::close_code::CloseCode;
-use crate::dismissed::Dismissed;
+use crate::error::JoinError;
 use crate::events::join_refused::JoinRefused;
-use crate::events::join_refused::error::JoinError;
-use crate::join::{Join, JoinRole};
 use crate::net_protocol::MatchChannel;
-use crate::offer::Offer;
+use crate::net_protocol::dismissed::Dismissed;
+use crate::net_protocol::join::{Join, JoinRole};
+use crate::net_protocol::offer::Offer;
 use crate::os::Clock;
 use crate::session_times::SessionTimes;
 use crate::sim_server::player_link::PlayerLink;
@@ -203,6 +203,13 @@ pub(crate) struct CheckedJoins {
     pub(crate) refused: Vec<(Entity, JoinError)>,
 }
 
+/// When an offer goes out: the server's tick, and its real time.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct OfferTime {
+    pub(crate) tick: NetTick,
+    pub(crate) real: Duration,
+}
+
 impl Offering {
     /// The offering of a session of `terms` on the server of `server`.
     pub(crate) fn new(terms: SessionTerms, server: &ServerSetup) -> Self {
@@ -216,16 +223,15 @@ impl Offering {
     }
 
     /// Offers the terms and a fresh challenge to each connected link that has none, and the same
-    /// offer again every `RESEND_TICKS` until it answers: a client may not yet receive messages
-    /// when the link connects, and then the first offer is lost. `now` is the tick, `real` the
-    /// server's real time.
+    /// offer again every `RESEND_TICKS` until it answers, at `at`: a client may not yet receive
+    /// messages when the link connects, and then the first offer is lost.
     pub(crate) fn offer(
         &self,
-        now: NetTick,
-        real: Duration,
+        at: OfferTime,
         links: &mut OfferLinks<'_, '_>,
         commands: &mut Commands<'_, '_>,
     ) {
+        let OfferTime { tick: now, real } = at;
         for (link, offered, binding, mut sender) in links {
             let challenge = match offered {
                 Some(offered) if now.0.wrapping_sub(offered.sent.0) < RESEND_TICKS => continue,
@@ -267,7 +273,11 @@ impl Offering {
         mut links: OfferLinks<'_, '_>,
         mut commands: Commands<'_, '_>,
     ) {
-        H::as_ref(&holder).offer(timeline.tick(), time.elapsed(), &mut links, &mut commands);
+        let at = OfferTime {
+            tick: timeline.tick(),
+            real: time.elapsed(),
+        };
+        H::as_ref(&holder).offer(at, &mut links, &mut commands);
     }
 
     /// The join an offered link sent, with the link and its offer; none when it sent none.

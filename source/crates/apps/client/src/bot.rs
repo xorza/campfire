@@ -4,7 +4,7 @@ use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Commands, Res, ResMut, Single};
 use campfire_common::Tick;
-use campfire_net::{BotScript, JoinState, LeaveRequest, OrderScript};
+use campfire_net::{BotScript, JoinState, LeaveRequest};
 use lightyear::prelude::{Client, Disconnected, SyncedLocalTimeline};
 use tracing::info;
 
@@ -12,7 +12,7 @@ use tracing::info;
 /// one.
 #[derive(Debug)]
 pub(crate) struct Bot {
-    pub(crate) script: OrderScript,
+    pub(crate) script: BotScript,
 }
 
 /// The tick after which the bot leaves, and whether it asked to disconnect yet.
@@ -24,7 +24,7 @@ struct Leave {
 
 impl Plugin for Bot {
     fn build(&self, app: &mut App) {
-        app.insert_resource(BotScript::new(self.script.clone()));
+        app.insert_resource(self.script.clone());
         if let Some(after) = self.script.end() {
             app.insert_resource(Leave {
                 after,

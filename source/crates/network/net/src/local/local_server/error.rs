@@ -1,7 +1,7 @@
 use campfire_store::DataDirError;
 use thiserror::Error;
 
-use crate::sim_server::key_file::error::KeyFileError;
+use crate::key_file::error::KeyFileError;
 use crate::sim_server::lobby::error::LobbyOpenError;
 use crate::sim_server::session_dir::error::{AbortError, WaitingError};
 

@@ -2,9 +2,7 @@ use campfire_log::{JsonText, LogEvent, LogLine};
 use serde::Deserialize;
 use tracing::warn;
 
-use crate::events::receipt_refused::error::ReceiptRefusal;
-
-pub(crate) mod error;
+use crate::error::ReceiptRefusal;
 
 /// The client refused a receipt the server sent, for `refusal`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

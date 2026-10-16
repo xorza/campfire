@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 use std::{fmt, iter};
 
 use campfire_actions::ActionData;
@@ -11,7 +12,7 @@ use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::TickRate;
 use campfire_stats::{EdgeError, StatGraph, StatId};
 use campfire_units::ScriptBook;
-use campfire_values::{DeclaredName, EngineTag, PackageIndex, PackagePath};
+use campfire_values::{DeclaredName, EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::limit::Limit;
@@ -149,6 +150,12 @@ impl ModePackages {
         );
         Books::build(&self.book_input(rate, &self.stat_order))
             .expect("the load built the books at the fastest rate")
+    }
+
+    /// The names of its unit types, each in its scope, as a match's books number them.
+    pub fn unit_types(&self) -> Arc<Names<UnitType>> {
+        let types = Books::unit_types(self.tag_names(), &self.book_packages());
+        Arc::clone(types.expect("the load declared every type").types())
     }
 
     /// Compiles every script of its packages by `compile`, in the order a match compiles them,

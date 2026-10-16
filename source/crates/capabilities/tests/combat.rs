@@ -868,18 +868,20 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         game.run_until(7);
         assert_eq!(Stats::health(&game, hero), 40, "{window:?}");
         game.run_until(8);
-        // Each death holds its tick, 7, and the unit as it was: its team, and its owner, a
-        // record that outlives the creep.
+        // Each death holds its tick, 7, and the unit as it was: its team, its owner, and whether
+        // it was its owner's avatar, a record that outlives the creep.
         let deaths = game.resource::<Deaths>();
         assert_eq!(deaths.tick(), Tick::new(7));
         let seen: Vec<_> = deaths
             .iter()
             .map(|death| (death.fallen, death.killer, death.assisters.to_vec()))
             .collect();
+        // The hero is owned, and no avatar: its type has no avatar tag.
         let fallen = |id, owner| Fallen {
             id,
             team: Some(Team::new(1)),
             owner,
+            avatar: false,
         };
         assert_eq!(
             seen,

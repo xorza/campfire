@@ -445,12 +445,13 @@ fn no_module_names_another_modules_sets() {
     assert_eq!(named, Vec::<String>::new());
 }
 
-/// Every lookup by name that the production code calls, by file: a method or function whose
-/// name ends in `named`, as each lookup of an id by its name is spelled, a table's `named` the
-/// most. Each runs in a script call, which resolves the names it is given once, as its arguments'
-/// types take them, or in the load, which resolves the packages' names once. The test fails when a
+/// Every lookup by name that the production code of the capabilities and the network calls, by
+/// file: a method or function whose name ends in `named`, as each lookup of an id by its name is
+/// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it
+/// is given once, as its arguments' types take them, in the load, which resolves the packages'
+/// names once, or as a bot starts. The test fails when a
 /// lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 44] = [
+const LOOKUPS: [(&str, &str); 45] = [
     // The load.
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
@@ -473,6 +474,8 @@ const LOOKUPS: [(&str, &str); 44] = [
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
     ("visibility/setting/mod.rs", "named"),
+    // A bot's script, each unit type it names resolved once as its bot starts.
+    ("net/bot_script/mod.rs", "named"),
     // The load, and a filter a script names.
     ("script/scripts/view/filter.rs", "named"),
     ("values/filter_data.rs", "named"),
@@ -730,7 +733,7 @@ fn a_book_and_a_data_table_take_their_suffix() {
 #[test]
 fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
     let mut found = Vec::new();
-    capability_sources(&mut |path, code| {
+    let mut visit = |path: &str, code: &str| {
         let file = path.to_owned();
         for line in code.lines() {
             if line.trim_start().starts_with("//") {
@@ -746,7 +749,11 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
                 }
             }
         }
-    });
+    };
+    capability_sources(&mut visit);
+    // The network's crate, whose bots name unit types.
+    let net = Path::new(env!("CARGO_MANIFEST_DIR")).join("../network/net/src");
+    production(&net, &mut |path, code| visit(&format!("net/{path}"), code));
     found.sort();
     found.dedup();
     let mut known: Vec<(String, String)> = LOOKUPS

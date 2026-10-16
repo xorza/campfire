@@ -17,19 +17,20 @@ use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_mode::{MatchEnd, ModeWorld};
+use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
 use campfire_protocol::{
     Applied, Controller, InputError, ServerInput, ServerSeeds, SessionLog, SessionTerms, Signer,
 };
 use campfire_quic::{CloseLink, QuicPlugin};
-use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError, TermsError};
+use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError};
 use campfire_sim::{SimTick, SimWorld, TickRate};
+use campfire_visibility::Visibility;
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
-    RoomAllocator, RoomPlugin, Tick as NetTick,
+    RoomAllocator, RoomPlugin,
 };
 use tracing::{trace, trace_span};
 
@@ -47,19 +48,19 @@ use crate::events::time_dropped::TimeDropped;
 use crate::events::unit_died::UnitDied;
 use crate::faults::Faults;
 use crate::faults::fault::Fault;
-use crate::input_ack::InputAck;
-use crate::input_message::InputMessage;
+use crate::hosting::Hosting;
 use crate::match_clock::MatchClock;
-use crate::match_start::{MatchStart, SeatChain};
+use crate::net_protocol::input_ack::InputAck;
+use crate::net_protocol::input_message::InputMessage;
+use crate::net_protocol::save_command::SaveCommand;
 use crate::net_protocol::{MatchChannel, NetProtocol};
 use crate::pace::PaceSpeed;
-use crate::save_command::SaveCommand;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::data_filter::DataFilters;
 use crate::sim_server::door::Door;
 use crate::sim_server::error::RestoreMatchError;
-use crate::sim_server::journal_watch::JournalWatch;
+use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
 use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
 use crate::sim_server::match_visibility::MatchVisibility;
@@ -70,8 +71,7 @@ use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::{RestoredSession, SessionFiles};
-use crate::sim_server::session_journal::SessionJournal;
+use crate::sim_server::session_dir::SessionFiles;
 use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
 use crate::sim_server::snapshot_dir::SnapshotDir;
 use crate::sim_server::spectators::Spectators;
@@ -86,10 +86,8 @@ pub(crate) mod data_filter;
 pub(crate) mod door;
 pub(crate) mod error;
 pub(crate) mod journal_watch;
-pub(crate) mod key_file;
 pub(crate) mod kind_shows;
 pub(crate) mod lobby;
-pub(crate) mod local_session;
 pub(crate) mod match_visibility;
 pub(crate) mod offering;
 pub(crate) mod pending_restore;
@@ -121,6 +119,7 @@ pub(crate) struct SimServer {
     pub(crate) tick: Duration,
     /// The mode's declared capabilities, whose components alone replicate.
     pub(crate) capabilities: CapabilitySet,
+    pub(crate) hosting: Hosting,
 }
 
 impl Plugin for SimServer {
@@ -139,6 +138,7 @@ impl Plugin for SimServer {
         KindShows::register(app);
         let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
         app.insert_resource(rooms);
+        app.insert_resource(self.hosting);
         app.add_observer(
             |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
                 commands.entity(added.entity).insert(ReplicationSender);
@@ -261,15 +261,16 @@ pub(crate) struct SessionStart<'a> {
     pub(crate) bots: ServerBots,
     /// The lobby's offering, which the door offers from then on.
     pub(crate) offering: Offering,
+    /// The visibility the terms carry, as the lobby made it.
+    pub(crate) visibility: Visibility,
 }
 
-/// What a match runs with from the next fixed tick, as it starts or restores: the offering its
-/// door offers, the journal and the snapshots' directory when the server keeps them, its seats,
-/// and the server's bots.
+/// What a match runs with from the next fixed tick, as it starts or restores, its journal kept
+/// already: the offering its door offers, the snapshots' directory when the server keeps them,
+/// its seats, and the server's bots.
 #[derive(Debug)]
 struct MatchRun {
     offering: Offering,
-    journal: Option<SessionJournal>,
     snapshots: Option<SnapshotDir>,
     seats: Seats,
     bots: ServerBots,
@@ -306,7 +307,8 @@ impl SimServer {
     }
 
     /// Takes the save commands of the seated players, as `Checkpoints::take` does, and loads the
-    /// save a load names; each refused one is logged.
+    /// save a load names; each refused one is logged. A load ends the run the commands after it
+    /// were given in, so the frame takes none of them.
     fn take_save_commands(
         world: &mut World,
         (mut links, mut taken): (Local<'_, SaveLinks>, Local<'_, Vec<SaveCommand>>),
@@ -319,9 +321,12 @@ impl SimServer {
         for command in taken.drain(..) {
             match Checkpoints::take(world, command) {
                 Ok(None) => {}
-                Ok(Some(segment)) => world
-                    .load_session_save(segment)
-                    .expect("no checkpoint is on the thread"),
+                Ok(Some(segment)) => {
+                    world
+                        .load_session_save(segment)
+                        .expect("no checkpoint is on the thread");
+                    break;
+                }
                 Err(refusal) => SaveRefused { refusal }.log(),
             }
         }
@@ -350,6 +355,7 @@ impl SimServer {
             server,
             bots,
             offering,
+            visibility,
         } = start;
         assert_eq!(
             clients.len(),
@@ -357,7 +363,7 @@ impl SimServer {
             "one client per player"
         );
         let terms = log.header().terms.clone();
-        Self::take_terms(world, &terms, packages).map_err(StartError::Terms)?;
+        Self::take_terms(world, &terms, visibility);
         let slots = log.slot_count();
         Session::start(
             world,
@@ -368,31 +374,19 @@ impl SimServer {
                 signer: Some(Signer::new(server.key, server.os.entropy)),
             },
         )?;
-        let (journal, snapshots) = files.map(|files| (files.journal, files.snapshots)).unzip();
+        let snapshots = files.map(|SessionFiles { journal, snapshots }| {
+            JournalWatch::keep(world, journal, JournalFrom::Start);
+            snapshots
+        });
         let run = MatchRun {
             offering,
-            journal,
             snapshots,
-            seats: Seats::new(slots, clients),
+            seats: Seats::empty(slots),
             bots,
         };
-        let start = Self::run_match(world, run);
-        let next = world.resource::<Session>().log().next_tick();
+        Self::run_match(world, run);
         for &(slot, client) in clients {
-            let team = world.team_of(slot).expect("every player has a team");
-            world.entity_mut(client).insert(PlayerLink::new(slot, team));
-            let chain = SeatChain::new_of(world.resource::<Session>().log(), slot);
-            world
-                .get_mut::<MessageSender<MatchStart>>(client)
-                .expect("a client link sends the match start")
-                .send::<MatchChannel>(MatchStart {
-                    start_tick: start.0,
-                    first: next,
-                    slot,
-                    team,
-                    chain,
-                    loaded: false,
-                });
+            Door::seat_new(world, client, slot);
         }
         Ok(())
     }
@@ -400,14 +394,9 @@ impl SimServer {
     /// Takes the session's `terms` before its match starts or restores: bounds the server's
     /// frames, so a frame advances its clock by the ticks of the max input delay less one at
     /// most, a tick at least, each as long as the clock's tick now, which a local match's pace may
-    /// have set; and keeps their visibility, which each data filter takes its audience from as
-    /// the match's entities spawn. An error for terms the rules of `packages` do not admit, which
-    /// the session's start refuses as well, after the match's entities spawned.
-    fn take_terms(
-        world: &mut World,
-        terms: &SessionTerms,
-        packages: &ModePackages,
-    ) -> Result<(), TermsError> {
+    /// have set; and keeps their `visibility`, the one copy of it, which each data filter takes
+    /// its audience from as the match's entities spawn.
+    fn take_terms(world: &mut World, terms: &SessionTerms, visibility: Visibility) {
         let session = TickRate::new(terms.tick_hz).length();
         let tick = world.resource::<TickDuration>().0;
         assert!(
@@ -421,33 +410,19 @@ impl SimServer {
         world
             .resource_mut::<Time<Virtual>>()
             .set_max_delta(tick * burst);
-        let visibility = SessionRules::of(packages).check(terms)?;
-        world
-            .resource_mut::<TeamRooms>()
-            .set_spectators(&visibility);
         world.insert_resource(MatchVisibility(visibility));
-        Ok(())
     }
 
     /// Runs the match of the world's session from the next fixed tick, as it starts or restores:
-    /// the door offers `run.offering`, the log goes into the journal, which `JournalWatch`
-    /// watches, and the checkpoints into the snapshots' directory when the server keeps them, and
-    /// the server's bots play their slots. Gives the Lightyear tick the session's next tick runs
-    /// in.
-    fn run_match(world: &mut World, run: MatchRun) -> NetTick {
+    /// the door offers `run.offering`, the checkpoints go into the snapshots' directory when the
+    /// server keeps them, the players sit in `run.seats`, and the server's bots play their slots.
+    fn run_match(world: &mut World, run: MatchRun) {
         let MatchRun {
             offering,
-            journal,
             snapshots,
             seats,
             bots,
         } = run;
-        if let Some(journal) = journal {
-            world.insert_resource(JournalWatch(journal.watch()));
-            world
-                .resource_mut::<Session>()
-                .keep_journal(Box::new(journal));
-        }
         world.insert_resource(Door::new(offering));
         if let Some(snapshots) = snapshots {
             Checkpoints::start(world, snapshots);
@@ -461,11 +436,10 @@ impl SimServer {
         world.insert_resource(FrameStart(next));
         let driver = BotDriver::new(bots, next, world);
         world.insert_resource(driver);
-        start
     }
 
-    /// Restores the match of `restored`, a session a crash or a failed journal ended, of the mode
-    /// `packages` holds, on the server of `server`: builds it from the snapshot of the latest
+    /// Restores the match of `restore`, a session a crash or a failed journal ended, of the mode
+    /// its packages hold, on its server: builds it from the snapshot of the latest
     /// checkpoint whose record the log holds, or from tick 0 with none, and replays its log from
     /// there to the tick the server stopped before, keeping each tick's state hash while the
     /// world holds `TickHashes`; a checkpoint begun with no record is taken again as the replay
@@ -476,14 +450,21 @@ impl SimServer {
     /// `JournalWatch` watches it. No client is linked: the players come back through the door.
     pub(crate) fn restore_match(
         world: &mut World,
-        restored: RestoredSession,
-        packages: &ModePackages,
-        server: &ServerSetup,
-        bots: ServerBots,
+        restore: PendingRestore,
     ) -> Result<(), RestoreMatchError> {
+        let PendingRestore {
+            session: restored,
+            packages,
+            server,
+            bots,
+        } = restore;
+        let packages = &*packages;
         let terms = restored.log.header().terms.clone();
-        Self::take_terms(world, &terms, packages)
+        // The rules of the packages the server runs now may not admit the terms it ran under.
+        let visibility = SessionRules::of(packages)
+            .check(&terms)
             .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?;
+        Self::take_terms(world, &terms, visibility);
         let slots = restored.log.slot_count();
         let signer = Signer::new(server.key, server.os.entropy);
         let snapshots = restored.replay(world, packages, signer, |world| {
@@ -494,8 +475,7 @@ impl SimServer {
         let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
         let now = world.resource::<Time<Real>>().elapsed();
         let run = MatchRun {
-            offering: Offering::new(terms, server),
-            journal: None,
+            offering: Offering::new(terms, &server),
             snapshots: Some(snapshots),
             seats: Seats::gone(slots, players.iter().copied(), now),
             bots,
@@ -550,12 +530,7 @@ fn record_inputs(
             let slot = link.slot();
             let Some(inputs) = message.inputs() else {
                 InputMessageUnfit { slot }.log();
-                link = link.into_refused();
-                commands.entity(entity).insert(link);
-                commands.trigger(CloseLink {
-                    entity,
-                    code: CloseCode::InputRefused.app(),
-                });
+                link = refuse_link(&mut commands, entity, link);
                 continue;
             };
             if let Err(error) =
@@ -571,12 +546,7 @@ fn record_inputs(
                 if error == InputError::LogFull {
                     continue;
                 }
-                link = link.into_refused();
-                commands.entity(entity).insert(link);
-                commands.trigger(CloseLink {
-                    entity,
-                    code: CloseCode::InputRefused.app(),
-                });
+                link = refuse_link(&mut commands, entity, link);
                 continue;
             }
             let Some(Controller::Player { chain, .. }) = session.log().controller(link.slot())
@@ -586,30 +556,37 @@ fn record_inputs(
             let first_seq = chain.next_seq() - u64::try_from(applied.len()).expect("a count fits");
             acks.send::<MatchChannel>(InputAck::of(first_seq, &applied));
             for (((stamp, _), &outcome), seq) in inputs.zip(applied.iter()).zip(first_seq..) {
-                let outcome = match outcome {
-                    Applied::At(tick) => {
-                        InputLogged {
-                            slot: link.slot(),
-                            seq,
-                            stamp,
-                            tick,
-                        }
-                        .log();
-                        continue;
+                match Unapplied::try_from(outcome) {
+                    Err(tick) => InputLogged {
+                        slot: link.slot(),
+                        seq,
+                        stamp,
+                        tick,
                     }
-                    Applied::Late => Unapplied::Late,
-                    Applied::Early => Unapplied::Early,
-                };
-                InputNeverApplied {
-                    slot: link.slot(),
-                    stamp,
-                    next_tick,
-                    outcome,
+                    .log(),
+                    Ok(outcome) => InputNeverApplied {
+                        slot: link.slot(),
+                        stamp,
+                        next_tick,
+                        outcome,
+                    }
+                    .log(),
                 }
-                .log();
             }
         }
     }
+}
+
+/// Refuses `link`, the player link of `entity`, whose packet broke the rules: it carries no more
+/// of its slot's inputs, and its connection closes. The link as refused.
+fn refuse_link(commands: &mut Commands<'_, '_>, entity: Entity, link: PlayerLink) -> PlayerLink {
+    let refused = link.into_refused();
+    commands.entity(entity).insert(refused);
+    commands.trigger(CloseLink {
+        entity,
+        code: CloseCode::InputRefused.app(),
+    });
+    refused
 }
 
 /// The next tick as the frame's fixed ticks start, which `record_inputs` keeps for

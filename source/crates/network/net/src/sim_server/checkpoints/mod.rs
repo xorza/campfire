@@ -7,15 +7,15 @@ use campfire_protocol::{Checkpoint, CheckpointBegun, CheckpointError};
 use campfire_runner::{CheckpointBeginError, Session, SessionWorld};
 use campfire_sim::{SimWorld, StateDelta, StateRegistry};
 
+use crate::error::SaveRefusal;
 use crate::events::checkpoint_taken::CheckpointTaken;
-use crate::events::save_refused::error::SaveRefusal;
 use crate::events::seeds_ran_out::SeedsRanOut;
 use crate::faults::Faults;
 use crate::faults::error::SnapshotWriteError;
 use crate::faults::fault::Fault;
-use crate::save_command::SaveCommand;
+use crate::hosting::Hosting;
+use crate::net_protocol::save_command::SaveCommand;
 use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned};
-use crate::sim_server::local_session::LocalSession;
 use crate::sim_server::snapshot_dir::SnapshotDir;
 
 /// A session's checkpoints on its server: the boundaries it checkpoints at, and the thread that
@@ -126,7 +126,7 @@ impl Checkpoints {
         world: &mut World,
         command: SaveCommand,
     ) -> Result<Option<u32>, SaveRefusal> {
-        if !world.contains_resource::<LocalSession>() {
+        if *world.resource::<Hosting>() != Hosting::Local {
             return Err(SaveRefusal::NotLocal);
         }
         if !world.contains_resource::<Self>() {

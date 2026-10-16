@@ -29,16 +29,11 @@ impl PendingRestore {
     /// Restores the session in `world`'s server, its log's bytes from the first frame on, and
     /// logs `SessionRestored`; see `SimServer::restore_match`. An error, logged, ends the app.
     pub fn run(world: &mut World) {
-        let Self {
-            session,
-            packages,
-            server,
-            bots,
-        } = world
+        let restore = world
             .remove_resource::<Self>()
             .expect("a restore runs while one waits");
-        let id = session.log.session_id();
-        match SimServer::restore_match(world, session, &packages, &server, bots) {
+        let id = restore.session.log.session_id();
+        match SimServer::restore_match(world, restore) {
             Ok(()) => {
                 let tick = world.resource::<Session>().log().next_tick();
                 SessionRestored { session: id, tick }.log();

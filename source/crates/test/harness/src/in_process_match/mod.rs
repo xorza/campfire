@@ -18,10 +18,10 @@ use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
-    BotScript, ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbySetup, LocalPace,
-    MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir,
-    ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld,
-    SlotBot, TickHashes,
+    BotScript, ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup,
+    LocalPace, MatchClock, OrderScript, Os, Pace, PendingOrders, PendingRestore, ServerBots,
+    ServerDir, ServerPin, ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins,
+    SimServerWorld, SlotBot, TickHashes,
 };
 use campfire_package::ModePackages;
 use campfire_package_disk::internals::{Edit, PackageTree, TestMode};
@@ -31,7 +31,7 @@ use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::internals::UnitsWorldInternals;
-use campfire_units::{Body, MoveStep, Owner};
+use campfire_units::{Body, MoveStep, Owner, UnitTypeBook};
 use campfire_values::{NameId, Team};
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
@@ -300,8 +300,8 @@ impl InProcessMatch {
         server.add_plugins(SimServerPlugins {
             tick_hz,
             capabilities: packages.manifest().capabilities,
+            hosting: Hosting::Local,
         });
-        server.world_mut().host_locally();
         server.add_plugins(LocalPace {
             pace: Arc::clone(pace),
             tick,
@@ -527,12 +527,8 @@ impl InProcessMatch {
     /// match; see `Lobby`. The players take the slots in player order, as `LinkLayout` says.
     pub fn open_match(&mut self) {
         let packages = Arc::clone(&self.packages);
-        let mut lobby = Lobby::new(LobbySetup {
-            tick_hz: packages.manifest().tick_hz.default(),
-            packages,
-            seed_chain: self.setup.seed_chain,
-            inputs: InputRules::LAN,
-            slots: self.setup.players + self.setup.bots.len(),
+        let opening = LobbyOpening {
+            packages: Arc::clone(&packages),
             bots: self.server_bots(),
             open: Vec::new(),
             host: HostVisibility {
@@ -545,6 +541,13 @@ impl InProcessMatch {
                 max_spectators: self.setup.max_spectators,
             },
             server: self.server_setup(),
+        };
+        let mut lobby = Lobby::new(LobbySetup {
+            opening,
+            tick_hz: packages.manifest().tick_hz.default(),
+            seed_chain: self.setup.seed_chain,
+            inputs: InputRules::LAN,
+            slots: self.setup.players + self.setup.bots.len(),
         })
         .expect("the lane mode runs at its default rate");
         if let Some(data) = self.server.world().get_resource::<ServerDir>() {
@@ -552,7 +555,13 @@ impl InProcessMatch {
         }
         self.server.world_mut().insert_resource(lobby);
         for _ in 0..CONNECT_FRAMES {
-            let playing = |client: &App| client.world().resource::<JoinState>().clock().is_some();
+            let playing = |client: &App| {
+                client
+                    .world()
+                    .resource::<JoinState>()
+                    .playing_clock()
+                    .is_some()
+            };
             if self.server.world().contains_resource::<MatchClock>()
                 && self.clients.iter().all(playing)
             {
@@ -685,10 +694,11 @@ impl InProcessMatch {
     }
 
     /// Makes `client` play `script`, as a bot does.
-    pub fn play(&mut self, client: usize, script: OrderScript) {
-        self.clients[client]
-            .world_mut()
-            .insert_resource(BotScript::new(script));
+    pub fn play(&mut self, client: usize, script: &OrderScript) {
+        let world = self.clients[client].world_mut();
+        let types = world.resource::<UnitTypeBook>().types();
+        let bot = BotScript::new(script, types).expect("a test's bot names its mode's types");
+        world.insert_resource(bot);
     }
 
     /// `client`'s player's avatar, as the server holds it.
@@ -717,7 +727,7 @@ impl InProcessMatch {
         );
         for (client, team) in teams.into_iter().enumerate() {
             let script = OrderScript::parse(scripts[team]).expect("a scenario's script reads");
-            self.play(client, script);
+            self.play(client, &script);
         }
         teams
     }
@@ -1021,7 +1031,7 @@ pub(crate) mod bench {
             let mut local = Self::of_mode(setup, packages);
             local.open_match();
             for (client, pick) in PICKS_3V3[..players].iter().enumerate() {
-                local.play(client, OrderScript::parse(pick).expect("a pick reads"));
+                local.play(client, &OrderScript::parse(pick).expect("a pick reads"));
             }
             while local.next_tick(End::Server) < FIRST_WAVE_3V3 {
                 local.step();

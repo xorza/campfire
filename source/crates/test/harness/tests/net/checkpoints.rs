@@ -13,7 +13,7 @@ use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::{
     AbortError, CheckpointFailed, LogFilled, Publisher, RestoreMatchError, SeedsRanOut, ServerDir,
-    SessionDir, SimServerWorld, TickHashes,
+    SessionDir, SimServerWorld, StopRequest, TickHashes,
 };
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, JournalFrames, Outcome, SeedChain, SessionLog, Signer};
@@ -281,8 +281,11 @@ fn a_snapshot_not_written_ends_the_server_with_its_exit_code() {
     let world = local.server_mut().world_mut();
     world.settle_checkpoint();
     let code = NonZeroU8::new(ExitStatus::Storage.code()).unwrap();
-    assert_eq!(world.exit_due(false), Some(AppExit::Error(code)));
-    assert_eq!(world.exit_due(false), None);
+    assert_eq!(
+        world.exit_due(StopRequest::NotAsked),
+        Some(AppExit::Error(code))
+    );
+    assert_eq!(world.exit_due(StopRequest::NotAsked), None);
     assert_eq!(log(&local).checkpoint_at(Tick::new(30)), None);
     assert_eq!(local.log().take::<CheckpointFailed>().len(), 1);
     assert_eq!(scratch.kind(&place), Some(EntryKind::File));

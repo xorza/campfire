@@ -187,7 +187,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
     let second = local.add_client(0);
     let playing = |local: &InProcessMatch| {
         let state = local.client(second).world().resource::<JoinState>();
-        state.clock().is_some()
+        state.playing_clock().is_some()
     };
     for _ in 0..300 {
         if playing(&local) {
@@ -221,7 +221,7 @@ fn a_link_holds_only_what_its_seated_team_sees_and_learns_the_relations_as_it_si
             .client(stranger)
             .world()
             .resource::<JoinState>()
-            .clock()
+            .playing_clock()
             .is_none()
     );
     assert_eq!(held(&mut local, stranger), []);

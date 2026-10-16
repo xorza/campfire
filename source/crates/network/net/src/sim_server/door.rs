@@ -14,12 +14,12 @@ use lightyear::prelude::{Connected, MessageReceiver, MessageSender};
 use tracing::info;
 
 use crate::close_code::CloseCode;
-use crate::events::join_refused::error::JoinError;
-use crate::join::Join;
-use crate::leave_match::LeaveMatch;
+use crate::error::JoinError;
 use crate::match_clock::MatchClock;
-use crate::match_start::{ChainHead, MatchStart, SeatChain};
 use crate::net_protocol::MatchChannel;
+use crate::net_protocol::join::Join;
+use crate::net_protocol::leave_match::LeaveMatch;
+use crate::net_protocol::match_start::{ChainHead, MatchStart, SeatChain};
 use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{
     CheckedJoins, Dismissing, JoinLink, Joined, Offered, Offering, ToAnswer,
@@ -170,6 +170,13 @@ impl Door {
             }
         }
         Err(JoinError::NoSlot)
+    }
+
+    /// Seats `link` in `slot`, which the log just gave its player: in its new chain, as `seat`
+    /// does, as the match starts.
+    pub(super) fn seat_new(world: &mut World, link: Entity, slot: PlayerSlot) {
+        let seat = Self::joined(world, slot);
+        Self::seat(world, link, seat);
     }
 
     /// Where the player whose join of `slot` the log just took sits: in its new chain.

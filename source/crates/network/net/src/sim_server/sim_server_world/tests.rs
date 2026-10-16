@@ -36,14 +36,17 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
     let mut world = World::new();
     world.init_resource::<Faults>();
     world.insert_resource(JournalWatch(journal.watch()));
-    assert_eq!(world.exit_due(false), None);
+    assert_eq!(world.exit_due(StopRequest::NotAsked), None);
     log.keep_journal(Box::new(journal));
     // Closed, as a session that ends closes it, the log's journal waits for its writer, which
     // stopped at the failed sync, so the failure is there for the exit.
     log.close_journal();
     let code = NonZeroU8::new(ExitStatus::Storage.code()).unwrap();
-    assert_eq!(world.exit_due(false), Some(AppExit::Error(code)));
+    assert_eq!(
+        world.exit_due(StopRequest::NotAsked),
+        Some(AppExit::Error(code))
+    );
     // The failure is given once; before the match, only a stop exits.
-    assert_eq!(world.exit_due(false), None);
-    assert_eq!(world.exit_due(true), Some(AppExit::Success));
+    assert_eq!(world.exit_due(StopRequest::NotAsked), None);
+    assert_eq!(world.exit_due(StopRequest::Asked), Some(AppExit::Success));
 }

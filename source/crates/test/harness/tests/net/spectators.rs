@@ -59,7 +59,9 @@ fn replicated(app: &mut App) -> BTreeSet<StableId> {
 /// A spectator that joins `local` and steps until it watches; its index.
 fn watching(local: &mut InProcessMatch) -> usize {
     let spectator = local.add_spectator();
-    step_until(local, |local| state(local, spectator).watching().is_some());
+    step_until(local, |local| {
+        state(local, spectator).watching_clock().is_some()
+    });
     for _ in 0..5 {
         local.step();
     }
@@ -139,7 +141,7 @@ fn a_spectator_of_the_teams_views_watches_the_teams_it_chooses() {
     step_until(&mut local, |local| state(local, spectator).rejoining());
     local.mend_link(spectator);
     step_until(&mut local, |local| {
-        state(local, spectator).watching().is_some()
+        state(local, spectator).watching_clock().is_some()
     });
     for _ in 0..5 {
         local.step();

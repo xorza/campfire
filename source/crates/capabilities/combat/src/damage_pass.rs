@@ -15,8 +15,8 @@ use campfire_stats::{
     CarriedMut, Life, ModifierBook, ModifierClocks, PoolId, StatId, StatsWorld, UnitPools,
     UnitStats,
 };
-use campfire_units::TagEffect;
-use campfire_values::{Block, NameId, UnitTags, UnitType};
+use campfire_units::{Avatar, Owner, TagEffect};
+use campfire_values::{Block, NameId, Team, UnitTags, UnitType};
 
 use crate::armor::Armor;
 use crate::combat_book::CombatBook;
@@ -393,7 +393,12 @@ impl DamagePass {
                 .map(|attack| attack.source);
             scratch.assisters.clear();
             scratch.assisters.extend(assisters);
-            let fallen = Fallen::of(damage.target, world.get(entity), world.get(entity));
+            let fallen = Fallen {
+                id: damage.target,
+                team: world.get::<Team>(entity).copied(),
+                owner: world.get::<Owner>(entity).map(|owner| owner.slot()),
+                avatar: world.entity(entity).contains::<Avatar>(),
+            };
             let mut deaths = world.resource_mut::<Deaths>();
             deaths.push(fallen, source, scratch.assisters.iter().copied())
         });

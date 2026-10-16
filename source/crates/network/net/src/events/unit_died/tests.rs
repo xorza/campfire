@@ -13,14 +13,21 @@ fn the_event_reads_back_what_it_logs() {
         team: Some(Team::new(1)),
         owner: Some(PlayerSlot::new(0)),
         killer: Some(killer),
+        avatar: true,
     };
     round_trip(&avatar);
+    // An owned unit that is no avatar logs at debug, its owner named.
+    round_trip(&UnitDied {
+        avatar: false,
+        ..avatar
+    });
     // A unit with no tick, team, owner or killer leaves those fields out.
     round_trip(&UnitDied {
         tick: None,
         team: None,
         owner: None,
         killer: None,
+        avatar: false,
         ..avatar
     });
 }
@@ -33,6 +40,7 @@ fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
         id,
         team: Some(Team::new(1)),
         owner: Some(PlayerSlot::new(0)),
+        avatar: true,
     };
     let death = DeathView {
         fallen,
@@ -47,6 +55,7 @@ fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
             team: Some(Team::new(1)),
             owner: Some(PlayerSlot::new(0)),
             killer: Some(killer),
+            avatar: true,
         }
     );
     // A client learns the same death at its own tick, or at none, with no killer.

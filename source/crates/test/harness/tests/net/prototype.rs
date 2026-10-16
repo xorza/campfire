@@ -321,7 +321,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_its_client_and_a_spectator() {
             .client(spectator)
             .world()
             .resource::<JoinState>()
-            .watching()
+            .watching_clock()
             .is_some()
         {
             break;

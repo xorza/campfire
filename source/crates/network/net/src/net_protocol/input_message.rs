@@ -48,14 +48,14 @@ impl InputMessage {
     /// the payload bytes, which only a broken client sends.
     pub fn inputs(&self) -> Option<impl Iterator<Item = (Tick, &[u8])> + Clone> {
         let total = self.frames.iter().try_fold(0_usize, |total, frame| {
-            total.checked_add(frame.payload_len as usize)
+            total.checked_add(usize::try_from(frame.payload_len).expect("a u32 fits usize"))
         })?;
         if total != self.payloads.len() {
             return None;
         }
         let mut start = 0;
         Some(self.frames.iter().map(move |frame| {
-            let end = start + frame.payload_len as usize;
+            let end = start + usize::try_from(frame.payload_len).expect("a u32 fits usize");
             let payload = &self.payloads[start..end];
             start = end;
             (frame.stamp, payload)

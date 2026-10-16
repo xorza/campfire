@@ -23,7 +23,9 @@ use crate::sim_server::server_bots::{ServerBots, SlotBot};
 #[derive(Resource, Debug)]
 pub(crate) struct BotDriver {
     bots: Vec<DrivenBot>,
-    takeover: Option<OrderScript>,
+    takeover: Option<BotScript>,
+    /// How many of the log's slot changes the driver followed: the log only adds them in a run.
+    followed: usize,
     /// The payload being logged, and the body of the command in it, kept so no order allocates.
     payload: Vec<u8>,
     body: Vec<u8>,
@@ -43,13 +45,21 @@ pub(super) struct DrivenBot {
 
 impl BotDriver {
     /// The driver of `bots` in the match of `world`, from tick `next` on: what their scripts had
-    /// for earlier ticks was logged already, by the run a restore follows.
+    /// for earlier ticks was logged already, by the run a restore follows. Each unit type a
+    /// script names is one of the match's, as the server's start checked.
     pub(crate) fn new(bots: ServerBots, next: Tick, world: &mut World) -> Self {
         let ServerBots { slots, takeover } = bots;
-        let bots = Self::planned(slots, world.resource::<Session>().log(), next);
+        let types = world.resource::<UnitTypeBook>().types();
+        let script = |script: &OrderScript| {
+            BotScript::new(script, types).expect("the server's start checked its bots' unit types")
+        };
+        let takeover = takeover.as_ref().map(script);
+        let log = world.resource::<Session>().log();
+        let bots = Self::planned(slots, log, next, script);
         Self {
             bots,
             takeover,
+            followed: 0,
             payload: Vec::new(),
             body: Vec::new(),
             players: HeldPlayerUnits::new(world),
@@ -64,11 +74,12 @@ impl BotDriver {
         slots: impl IntoIterator<Item = SlotBot>,
         log: &SessionLog,
         next: Tick,
+        script: impl Fn(&OrderScript) -> BotScript,
     ) -> Vec<DrivenBot> {
         slots
             .into_iter()
             .filter(|bot| log.changes().iter().all(|change| change.slot != bot.slot))
-            .map(|bot| DrivenBot::new(bot.slot, bot.script, Tick::new(0), next))
+            .map(|bot| DrivenBot::new(bot.slot, script(&bot.script), Tick::new(0), next))
             .collect()
     }
 
@@ -89,17 +100,18 @@ impl BotDriver {
         let log = session.log();
         let bot = |slot| log.controller(slot) == Some(Controller::Bot);
         self.bots.retain(|driven| bot(driven.slot));
+        let changes = &log.changes()[self.followed..];
+        self.followed = log.changes().len();
         let Some(takeover) = &self.takeover else {
             return;
         };
-        for slot in (0..log.slot_count()).map(PlayerSlot::new) {
+        // The last change of a slot that is a bot's made it one: from the last, the first met of
+        // each slot. A bot's slot with no change is the plan's, which has no script.
+        for left in changes.iter().rev() {
+            let slot = left.slot;
             if !bot(slot) || self.bots.iter().any(|driven| driven.slot == slot) {
                 continue;
             }
-            // A bot's slot with no change is the plan's, which has no script.
-            let Some(left) = log.changes().iter().rfind(|change| change.slot == slot) else {
-                continue;
-            };
             let script = takeover.clone();
             self.bots
                 .push(DrivenBot::new(slot, script, left.tick, tick));
@@ -127,10 +139,9 @@ impl BotDriver {
                 input.write_payload(body, payload);
                 Self::log(session, driven.slot, payload);
             }
-            let types = world.resource::<UnitTypeBook>().types();
             let units = players.get(world);
             for scripted in driven.script.due_orders(script_tick) {
-                let order = match scripted.order(driven.slot, &units, types, scratch) {
+                let order = match scripted.order(driven.slot, &units, scratch) {
                     Ok(order) => order,
                     Err(cause) => {
                         BotUnitsMissing {
@@ -172,8 +183,7 @@ impl BotDriver {
 impl DrivenBot {
     /// The bot of `slot` that plays `script` from tick `since`, from tick `next` on: what the
     /// script had for earlier ticks was logged already, by the run a restore follows.
-    fn new(slot: PlayerSlot, script: OrderScript, since: Tick, next: Tick) -> Self {
-        let mut script = BotScript::new(script);
+    fn new(slot: PlayerSlot, mut script: BotScript, since: Tick, next: Tick) -> Self {
         let played = next.since(since).expect("a bot plays from its start on");
         if let Some(before) = played.get().checked_sub(1) {
             script.due_inputs(Tick::new(before));
@@ -189,6 +199,8 @@ impl DrivenBot {
 
 #[cfg(test)]
 mod tests {
+    use campfire_values::Names;
+
     use super::*;
 
     #[test]
@@ -201,12 +213,9 @@ mod tests {
         )
         .unwrap();
         let ticks = |next: u64| {
-            let mut bot = DrivenBot::new(
-                PlayerSlot::new(1),
-                script.clone(),
-                Tick::new(10),
-                Tick::new(next),
-            );
+            let script = BotScript::new(&script, &Names::default()).unwrap();
+            let mut bot =
+                DrivenBot::new(PlayerSlot::new(1), script, Tick::new(10), Tick::new(next));
             (next..20)
                 .filter(|&tick| {
                     let since = Tick::new(tick).since(bot.since).unwrap();

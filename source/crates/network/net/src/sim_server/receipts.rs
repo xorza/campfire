@@ -29,7 +29,7 @@ pub(crate) struct Receipts {
 impl Receipts {
     pub(crate) fn new(slots: u32) -> Self {
         Self {
-            given: vec![None; slots as usize],
+            given: vec![None; usize::try_from(slots).expect("slots fit usize")],
             next: Duration::ZERO,
         }
     }

@@ -3,7 +3,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{HookContext, Insert, Remove};
 use bevy_ecs::observer::On;
-use bevy_ecs::system::{Commands, Query, Res};
+use bevy_ecs::system::{Commands, Query, Res, SystemParam};
 use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::PlayerSlot;
 use campfire_players::{OutOfPlay, PlayersWorld};
@@ -48,27 +48,52 @@ pub(crate) enum PlayStatus {
     Out,
 }
 
+/// What viewing a player's link again reads: the players, the links, and the session's
+/// visibility once the match started.
+#[derive(SystemParam)]
+pub(crate) struct PlayerViews<'w, 's> {
+    players: Query<'w, 's, &'static Player>,
+    links: Query<'w, 's, (Entity, &'static PlayerLink)>,
+    visibility: Option<Res<'w, MatchVisibility>>,
+    commands: Commands<'w, 's>,
+}
+
+impl PlayerViews<'_, '_> {
+    /// Views again the link of the player whose entity is `player`, of `status`.
+    fn view_again(&mut self, player: Entity, status: PlayStatus) {
+        let Ok(player) = self.players.get(player) else {
+            return;
+        };
+        let visibility = self.visibility.as_deref().map(|visibility| &visibility.0);
+        for (link, &seat) in &self.links {
+            if seat.slot() == player.slot() {
+                let viewer = Viewer::player(seat, status, visibility);
+                self.commands.entity(link).insert(viewer);
+            }
+        }
+    }
+}
+
 impl Viewer {
-    /// The view of the player of `slot`, of `team`, of `status`, in a session of `visibility`,
-    /// none before the match starts: out as the session's `out` says.
+    /// The view of the player of `link`, of `status`, in a session of `visibility`, none
+    /// before the match starts: out as the session's `out` says.
     pub(crate) fn player(
-        slot: PlayerSlot,
-        team: Team,
+        link: PlayerLink,
         status: PlayStatus,
         visibility: Option<&Visibility>,
     ) -> Self {
         let sees_as_spectator =
             visibility.is_some_and(|visibility| visibility.out() == OutView::Spectators);
         Self::Player {
-            slot,
-            team,
+            slot: link.slot(),
+            team: link.team(),
             out: status == PlayStatus::Out && sees_as_spectator,
         }
     }
 
-    /// The view of the player of `slot`, of `team`, in `world`, as its entity stands.
-    pub(crate) fn of_player(world: &World, slot: PlayerSlot, team: Team) -> Self {
-        let entity = world.player_entity(slot);
+    /// The view of the player of `link` in `world`, as its entity stands.
+    pub(crate) fn of_player(world: &World, link: PlayerLink) -> Self {
+        let entity = world.player_entity(link.slot());
         let out = entity.is_some_and(|entity| world.entity(entity).contains::<OutOfPlay>());
         let status = if out {
             PlayStatus::Out
@@ -76,12 +101,7 @@ impl Viewer {
             PlayStatus::Playing
         };
         let visibility = world.get_resource::<MatchVisibility>();
-        Self::player(
-            slot,
-            team,
-            status,
-            visibility.map(|visibility| &visibility.0),
-        )
+        Self::player(link, status, visibility.map(|visibility| &visibility.0))
     }
 
     /// The recipient it is of an entity `owner` owns, of `team`: none for the owner, who receives
@@ -107,7 +127,7 @@ impl Viewer {
                 let link = *world
                     .get::<PlayerLink>(linked.entity)
                     .expect("an insert's own component");
-                let viewer = Self::of_player(&world, link.slot(), link.team());
+                let viewer = Self::of_player(&world, link);
                 world.commands().entity(linked.entity).insert(viewer);
             },
         );
@@ -123,53 +143,15 @@ impl Viewer {
     /// the other teams' entities leaves it as a unit that leaves vision does.
     pub(crate) fn follow_out_of_play(app: &mut App) {
         app.add_observer(
-            |out: On<'_, '_, Insert, OutOfPlay>,
-             players: Query<'_, '_, &Player>,
-             links: Query<'_, '_, (Entity, &PlayerLink)>,
-             visibility: Option<Res<'_, MatchVisibility>>,
-             commands: Commands<'_, '_>| {
-                let visibility = visibility.as_deref().map(|visibility| &visibility.0);
-                Self::view_again(
-                    out.entity,
-                    PlayStatus::Out,
-                    &players,
-                    &links,
-                    visibility,
-                    commands,
-                );
+            |out: On<'_, '_, Insert, OutOfPlay>, mut views: PlayerViews<'_, '_>| {
+                views.view_again(out.entity, PlayStatus::Out);
             },
         );
         app.add_observer(
-            |back: On<'_, '_, Remove, OutOfPlay>,
-             players: Query<'_, '_, &Player>,
-             links: Query<'_, '_, (Entity, &PlayerLink)>,
-             visibility: Option<Res<'_, MatchVisibility>>,
-             commands: Commands<'_, '_>| {
-                let visibility = visibility.as_deref().map(|visibility| &visibility.0);
-                let status = PlayStatus::Playing;
-                Self::view_again(back.entity, status, &players, &links, visibility, commands);
+            |back: On<'_, '_, Remove, OutOfPlay>, mut views: PlayerViews<'_, '_>| {
+                views.view_again(back.entity, PlayStatus::Playing);
             },
         );
-    }
-
-    /// Views again the link of the player whose entity is `player`, of `status`.
-    fn view_again(
-        player: Entity,
-        status: PlayStatus,
-        players: &Query<'_, '_, &Player>,
-        links: &Query<'_, '_, (Entity, &PlayerLink)>,
-        visibility: Option<&Visibility>,
-        mut commands: Commands<'_, '_>,
-    ) {
-        let Ok(player) = players.get(player) else {
-            return;
-        };
-        for (link, seat) in links {
-            if seat.slot() == player.slot() {
-                let viewer = Self::player(seat.slot(), seat.team(), status, visibility);
-                commands.entity(link).insert(viewer);
-            }
-        }
     }
 
     fn enter_rooms(mut world: DeferredWorld<'_>, context: HookContext) {
@@ -177,13 +159,17 @@ impl Viewer {
             .get::<Self>(context.entity)
             .expect("on_insert runs on an entity with a Viewer");
         let rooms = world.resource::<TeamRooms>();
+        let visibility = world.get_resource::<MatchVisibility>();
         let rooms = match viewer {
             Self::Player {
                 team, out: false, ..
             } => rooms.of(team),
             Self::Player {
                 team, out: true, ..
-            } => rooms.out_of_play(team),
+            } => {
+                let visibility = visibility.expect("a player is out of play in a running match");
+                rooms.out_of_play(team, &visibility.0)
+            }
             Self::Spectator(Watching::Everything) => rooms.everything(),
             Self::Spectator(Watching::Teams(teams)) => rooms.watching(teams),
         };
@@ -207,7 +193,8 @@ mod tests {
     #[test]
     fn a_viewer_is_the_owner_an_ally_an_enemy_or_a_spectator() {
         let (slot, team) = (PlayerSlot::new, Team::new);
-        let player = Viewer::player(slot(1), team(0), PlayStatus::Playing, None);
+        let seat = PlayerLink::new(slot(1), team(0));
+        let player = Viewer::player(seat, PlayStatus::Playing, None);
         // Of a unit of slot 1's: none, as the owner; of slot 2's of its team, an ally; of the
         // other team's, an enemy; of the match's, of no team or owner, an ally.
         assert_eq!(
@@ -240,7 +227,7 @@ mod tests {
             ModeVisibility::default().session(&host).unwrap()
         };
         let (spectators, own_team) = (session("spectators"), session("team"));
-        let out = Viewer::player(slot(1), team(0), PlayStatus::Out, Some(&spectators));
+        let out = Viewer::player(seat, PlayStatus::Out, Some(&spectators));
         assert_eq!(out.recipient(None, Some(team(1))), Recipients::SPECTATORS);
         assert_eq!(
             out.recipient(Some(slot(1)), Some(team(0))),
@@ -255,7 +242,7 @@ mod tests {
             (PlayStatus::Out, None),
             (PlayStatus::Playing, Some(&spectators)),
         ] {
-            let viewer = Viewer::player(slot(1), team(0), status, visibility);
+            let viewer = Viewer::player(seat, status, visibility);
             assert_eq!(viewer, player, "{status:?} {visibility:?}");
         }
     }

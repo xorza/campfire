@@ -13,17 +13,29 @@ use lightyear::prelude::{
     PredictionBuilderExt, ReliableSettings,
 };
 
-use crate::dismissed::Dismissed;
-use crate::input_ack::InputAck;
-use crate::input_message::InputMessage;
-use crate::join::Join;
-use crate::leave_match::LeaveMatch;
-use crate::match_start::MatchStart;
-use crate::offer::Offer;
-use crate::save_command::SaveCommand;
-use crate::watch_start::WatchStart;
-use crate::watch_teams::WatchTeams;
-use crate::wire_codec::WireCodec;
+use crate::net_protocol::dismissed::Dismissed;
+use crate::net_protocol::input_ack::InputAck;
+use crate::net_protocol::input_message::InputMessage;
+use crate::net_protocol::join::Join;
+use crate::net_protocol::leave_match::LeaveMatch;
+use crate::net_protocol::match_start::MatchStart;
+use crate::net_protocol::offer::Offer;
+use crate::net_protocol::save_command::SaveCommand;
+use crate::net_protocol::watch_start::WatchStart;
+use crate::net_protocol::watch_teams::WatchTeams;
+use crate::net_protocol::wire_codec::WireCodec;
+
+pub(crate) mod dismissed;
+pub(crate) mod input_ack;
+pub(crate) mod input_message;
+pub(crate) mod join;
+pub(crate) mod leave_match;
+pub(crate) mod match_start;
+pub(crate) mod offer;
+pub(crate) mod save_command;
+pub(crate) mod watch_start;
+pub(crate) mod watch_teams;
+pub(crate) mod wire_codec;
 
 /// Carries player inputs to the server. Reliable and ordered: the log refuses an input that does
 /// not link to the one before it.

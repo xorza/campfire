@@ -22,6 +22,8 @@ use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{LinkOf, Linked, PeerAddr};
 use tracing::error;
 
+use crate::hosting::Hosting;
+use crate::key_file::KeyFile;
 use crate::local::local_link::LocalLink;
 use crate::local::local_pace::LocalPace;
 use crate::local::local_server::error::LocalServerError;
@@ -30,16 +32,14 @@ use crate::os::Os;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
-use crate::sim_server::key_file::KeyFile;
 use crate::sim_server::lobby::{Lobby, LobbyOpening};
-use crate::sim_server::local_session::LocalSession;
 use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{Publisher, SessionDir};
 use crate::sim_server::sim_server_plugins::SimServerPlugins;
-use crate::sim_server::sim_server_world::SimServerWorld;
+use crate::sim_server::sim_server_world::{SimServerWorld, StopRequest};
 
 pub(crate) mod error;
 
@@ -219,7 +219,11 @@ impl LocalServer {
             world.write_message(AppExit::Success);
             return;
         }
-        let stop = world.resource::<Stop>().0.load(Ordering::Relaxed);
+        let stop = if world.resource::<Stop>().0.load(Ordering::Relaxed) {
+            StopRequest::Asked
+        } else {
+            StopRequest::NotAsked
+        };
         if let Some(exit) = world.exit_due(stop) {
             world.write_message(exit);
         }
@@ -289,6 +293,7 @@ impl Runs {
             SimServerPlugins {
                 tick_hz: self.tick_hz,
                 capabilities: self.packages.manifest().capabilities,
+                hosting: Hosting::Local,
             },
             ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
             LocalPace {
@@ -296,7 +301,6 @@ impl Runs {
                 tick: TickRate::new(self.tick_hz).length(),
             },
         ));
-        app.insert_resource(LocalSession);
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
         app.insert_resource(Restart(Arc::clone(&self.restart)));

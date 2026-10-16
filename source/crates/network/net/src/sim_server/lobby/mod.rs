@@ -17,7 +17,7 @@ use campfire_visibility::{HostVisibility, Visibility};
 use lightyear::prelude::Connected;
 use tracing::info;
 
-use crate::events::join_refused::error::JoinError;
+use crate::error::JoinError;
 use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
 use crate::sim_server::server_bots::ServerBots;
@@ -66,24 +66,17 @@ pub struct LobbyOpening {
     pub server: ServerSetup,
 }
 
-/// What a server opens a session with.
+/// What a server opens a session with: its opening, and the session's rules a new session of
+/// its own takes from the mode and the server's entropy.
 #[derive(Debug)]
 pub struct LobbySetup {
-    pub packages: Arc<ModePackages>,
+    pub opening: LobbyOpening,
     pub seed_chain: SeedChain,
     /// Ticks a second, which the mode's range must hold.
     pub tick_hz: NonZeroU32,
     pub inputs: InputRules,
     /// How many slots the session plays.
     pub slots: usize,
-    /// The bots the server plays: their slots are the bots'.
-    pub bots: ServerBots,
-    /// The slots no one takes at the start, which a late join may take; the rest but the bots'
-    /// are the players'.
-    pub open: Vec<PlayerSlot>,
-    /// What the host sets of the session's visibility, within what the mode leaves it.
-    pub host: HostVisibility,
-    pub server: ServerSetup,
 }
 
 impl AsRef<Offering> for Lobby {
@@ -100,27 +93,16 @@ impl Lobby {
     /// the mode has, its seed chain fresh from the server's entropy, at the mode's default rate,
     /// its inputs within `InputRules::LAN`. An error when it does not open or keeps no files.
     pub fn open(opening: LobbyOpening, data: &ServerDir) -> Result<Self, LobbyOpenError> {
-        let LobbyOpening {
-            packages,
-            bots,
-            open,
-            host,
-            server,
-        } = opening;
-        let root = server.os.entropy.random();
-        let manifest = packages.manifest();
+        let root = opening.server.os.entropy.random();
+        let manifest = opening.packages.manifest();
         let slots = usize::try_from(manifest.slots()).expect("slots fit usize");
         let tick_hz = manifest.tick_hz.default();
         let mut lobby = Self::new(LobbySetup {
-            packages,
+            opening,
             seed_chain: SeedChain::new(root, Self::SEGMENTS),
             tick_hz,
             inputs: InputRules::LAN,
             slots,
-            bots,
-            open,
-            host,
-            server,
         })?;
         lobby.keep_files(data)?;
         Ok(lobby)
@@ -132,15 +114,18 @@ impl Lobby {
     /// player, and when the host sets a visibility the mode does not leave it.
     pub fn new(setup: LobbySetup) -> Result<Self, LobbyError> {
         let LobbySetup {
-            packages,
+            opening:
+                LobbyOpening {
+                    packages,
+                    bots,
+                    open,
+                    host,
+                    server,
+                },
             seed_chain,
             tick_hz,
             inputs,
             slots,
-            bots,
-            open,
-            host,
-            server,
         } = setup;
         let mut plan = vec![SlotPlan::Player; slots];
         let named = (bots.slots.iter().map(|bot| (bot.slot, SlotPlan::Bot)))
@@ -300,6 +285,7 @@ impl Lobby {
             server: &lobby.server,
             bots: lobby.bots,
             offering: lobby.offering,
+            visibility: lobby.visibility,
         };
         SimServer::start_match(world, start, &links)
             .expect("the lobby's terms come from its own packages");
