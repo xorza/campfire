@@ -66,14 +66,13 @@ The issue log is `.notes/ISSUES.md`, every open problem of the project.
 
 ## Checks
 
-Every check, test, doc build and bench runs through `source/drive.py` ([The driver](docs/design/02-engine-core.md#the-driver)), never `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own. No command takes `-p` or a crate list, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
+Every check, test and bench runs through `source/drive.py` ([The driver](docs/design/02-engine-core.md#the-driver)), never `cargo clippy`, `cargo test`, `cargo nextest`, `cargo doc` or `cargo bench` by hand: each shape of a cargo command keeps a cache of its own. No command takes `-p` or a crate list, and none runs with its own `CARGO_TARGET_DIR`, `RUSTFLAGS` or `CARGO_PROFILE_*` but the profiling build of [Benches](docs/design/02-engine-core.md#benches).
 
 | Command | Runs |
 | --- | --- |
 | `./drive.py check` | `cargo fmt`, the lint of every target, the lint of the build that ships, each package's index, and the tests of the crates the change reaches: a step's check |
 | `./drive.py index` | each workspace package's `package.index`, after a change to a package |
 | `./drive.py test [--bless] [nextest arguments]` | the suite or a part of it; `--bless` writes the pinned files again |
-| `./drive.py doc` | rustdoc with `-D warnings` |
 | `./drive.py bench [cargo bench arguments]` | the benches, only when the task asks for them |
 | `./drive.py lan`, `./drive.py zero-hour [out]` | the LAN check and the Zero Hour check, on request |
 | `./drive.py gate` | every step CI runs, and the Windows lint on Linux |

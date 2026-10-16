@@ -219,7 +219,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 
 ## The driver
 
-- **One owner of every cargo invocation.** `source/drive.py` runs every check, test, doc build and bench, as each shape of a cargo command keeps a cache of its own and a `-p` shape rebuilds tens of units for no speed.
+- **One owner of every cargo invocation.** `source/drive.py` runs every check, test and bench, as each shape of a cargo command keeps a cache of its own and a `-p` shape rebuilds tens of units for no speed.
 - **A lane is one cache shape.** Each lane covers the workspace and runs `--locked`; no command takes a crate list.
 - **The ship lint leaves out what unifies `internals`.** A member whose normal dependency turns `internals` on is left out of the shipped build's lint, which `lint` covers.
 - **A check runs again only what a change reaches.** A step that passed keeps the tree of files it passed on, and runs again only when a file it reads changed; a test step runs only the crates a change reaches and their dependents.

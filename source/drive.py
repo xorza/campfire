@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Campfire's driver: the one way to check, test, document and bench the workspace.
+"""Campfire's driver: the one way to check, test and bench the workspace.
 
 Cargo keeps a cache for each shape of a command, its features, profile, mode and flags, so the
 driver owns every invocation (docs/design/02-engine-core.md, The driver). `./drive.py help` lists
@@ -310,14 +310,6 @@ def tests_step(
 ) -> Step:
     argv = cargo(*TESTS, *nextest_output(), *extra)
     return Step("tests", Kind.TESTS, argv, env or {}, always_runs=always_runs)
-
-
-def rustdoc_step() -> Step:
-    return Step(
-        "rustdoc", Kind.CHECK,
-        cargo("doc", "--workspace", "--no-deps", "--all-features", "--locked", JSON),
-        {"RUSTDOCFLAGS": "-D warnings"},
-    )
 
 
 def cross_step(target: str) -> Step:
@@ -790,11 +782,6 @@ def index(args: list[str]) -> int:
     return run_steps("index", [index_step()], reuse=True)
 
 
-def doc(args: list[str]) -> int:
-    refuse_arguments("doc", args)
-    return run_steps("doc", [rustdoc_step()], reuse=True)
-
-
 def bench(args: list[str]) -> int:
     return run_steps("bench", [bench_step(args)])
 
@@ -835,7 +822,6 @@ COMMANDS: dict[str, tuple[Callable[[list[str]], int], str, str]] = {
     "check": (check, "", "fmt, lint, ship, index, tests: the check after a change"),
     "test": (test, "[--bless] [nextest args]", "the tests, all or filtered, each time"),
     "index": (index, "", "writes each workspace package's package.index from its files"),
-    "doc": (doc, "", "rustdoc with -D warnings"),
     "bench": (bench, "[cargo bench args]", "the benches of every crate that has one"),
     "lan": (lan, "", "the LAN check"),
     "zero-hour": (
