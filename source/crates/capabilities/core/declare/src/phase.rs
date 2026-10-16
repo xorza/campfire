@@ -1,85 +1,83 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use campfire_derive::EnumAll;
 use campfire_sim::SimSet;
 
-campfire_common::enum_all! {
-    /// The steps of the tick's stages that the modules' sets run in: the one list of the tick's
-    /// order. The phases of a stage run in the order listed; the sets of one phase, of any module,
-    /// in the order the schedule picks, so two that conflict sit in two phases, as the ambiguity
-    /// check holds. A set that needs a step between two others gets a phase of its own here.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum Phase {
-        /// The tick begins: modifiers that hold no longer end, pools regenerate, the statics
-        /// moved are tracked and the dead due respawn.
-        Begin,
-        /// The mode reads its players' inputs.
-        ModeInputs,
-        /// Toggled abilities pay for the tick.
-        Toggles,
-        /// The tick's commands learn ranks.
-        Learn,
-        /// The tick's commands order production.
-        Produce,
-        /// The tick's commands buy, sell and swap items.
-        Trade,
-        /// The tick's commands order units.
-        Order,
-        /// Carried items push their grants.
-        HoldItems,
-        /// The sources hold their grants, then the grants apply.
-        HoldAtInputs,
-        GrantAtInputs,
-        /// The build orders are checked against what the tick's commands changed.
-        CheckBuilds,
-        /// AI of the units due this tick issues orders.
-        Think,
-        /// Units chase their targets, attacks wind up, actions start, then builds.
-        Chase,
-        Attack,
-        Start,
-        StartBuilds,
-        /// Units move.
-        Move,
-        /// The mode's collision backend resolves overlaps.
-        Collide,
-        /// Projectiles fly, attacks hit, deliveries trigger and deliver.
-        Fly,
-        Hits,
-        Trigger,
-        Deliver,
-        /// Attacks pay, the sources hold their grants, the grants apply, then attacks strike.
-        Pay,
-        HoldAtStrike,
-        GrantAtStrike,
-        Strike,
-        /// Actions fire, casts resolve, deliveries launch and land, and intervals tick.
-        Fire,
-        CastResolve,
-        Launch,
-        Land,
-        Interval,
-        /// Damage is dealt and actions resolve.
-        Damage,
-        Resolve,
-        /// The sources hold their grants, the grants apply, units die and the dead's modifiers
-        /// end.
-        HoldAtResolve,
-        GrantAtResolve,
-        Die,
-        ClearDead,
-        /// Areas, then auras, players and held modifiers, hold their modifiers.
-        HoldInside,
-        HoldModifiers,
-        /// Production finishes, then the mode's hooks run.
-        Finish,
-        ModeHooks,
-        /// The sources hold their grants and the grants apply.
-        HoldAtEnd,
-        GrantAtEnd,
-        /// The tick ends: units leave play, despawn and end their lifespans, supply is counted
-        /// and the mode's vision backend marks what each team may see.
-        End,
-    }
-    pub const ALL;
+/// The steps of the tick's stages that the modules' sets run in: the one list of the tick's
+/// order. The phases of a stage run in the order listed; the sets of one phase, of any module,
+/// in the order the schedule picks, so two that conflict sit in two phases, as the ambiguity
+/// check holds. A set that needs a step between two others gets a phase of its own here.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub enum Phase {
+    /// The tick begins: modifiers that hold no longer end, pools regenerate, the statics
+    /// moved are tracked and the dead due respawn.
+    Begin,
+    /// The mode reads its players' inputs.
+    ModeInputs,
+    /// Toggled abilities pay for the tick.
+    Toggles,
+    /// The tick's commands learn ranks.
+    Learn,
+    /// The tick's commands order production.
+    Produce,
+    /// The tick's commands buy, sell and swap items.
+    Trade,
+    /// The tick's commands order units.
+    Order,
+    /// Carried items push their grants.
+    HoldItems,
+    /// The sources hold their grants, then the grants apply.
+    HoldAtInputs,
+    GrantAtInputs,
+    /// The build orders are checked against what the tick's commands changed.
+    CheckBuilds,
+    /// AI of the units due this tick issues orders.
+    Think,
+    /// Units chase their targets, attacks wind up, actions start, then builds.
+    Chase,
+    Attack,
+    Start,
+    StartBuilds,
+    /// Units move.
+    Move,
+    /// The mode's collision backend resolves overlaps.
+    Collide,
+    /// Projectiles fly, attacks hit, deliveries trigger and deliver.
+    Fly,
+    Hits,
+    Trigger,
+    Deliver,
+    /// Attacks pay, the sources hold their grants, the grants apply, then attacks strike.
+    Pay,
+    HoldAtStrike,
+    GrantAtStrike,
+    Strike,
+    /// Actions fire, casts resolve, deliveries launch and land, and intervals tick.
+    Fire,
+    CastResolve,
+    Launch,
+    Land,
+    Interval,
+    /// Damage is dealt and actions resolve.
+    Damage,
+    Resolve,
+    /// The sources hold their grants, the grants apply, units die and the dead's modifiers
+    /// end.
+    HoldAtResolve,
+    GrantAtResolve,
+    Die,
+    ClearDead,
+    /// Areas, then auras, players and held modifiers, hold their modifiers.
+    HoldInside,
+    HoldModifiers,
+    /// Production finishes, then the mode's hooks run.
+    Finish,
+    ModeHooks,
+    /// The sources hold their grants and the grants apply.
+    HoldAtEnd,
+    GrantAtEnd,
+    /// The tick ends: units leave play, despawn and end their lifespans, supply is counted
+    /// and the mode's vision backend marks what each team may see.
+    End,
 }
 
 impl Phase {

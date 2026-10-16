@@ -1,3 +1,4 @@
+use campfire_derive::EnumAll;
 use serde::{Deserialize, Deserializer};
 
 use crate::scripts::state_decl::{StateDecl, StateDefault};
@@ -11,19 +12,15 @@ pub struct SyncedStateDecl {
     pub sync: SyncTo,
 }
 
-campfire_common::enum_all! {
-    /// Which clients a field of script state is sent to: none unless the field says so.
-    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-    #[serde(rename_all = "snake_case")]
-    pub enum SyncTo {
-        #[default]
-        None,
-        Owner,
-        Team,
-        All,
-    }
-    /// Every class, in the order of their places.
-    pub const ALL;
+/// Which clients a field of script state is sent to: none unless the field says so.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, EnumAll)]
+#[serde(rename_all = "snake_case")]
+pub enum SyncTo {
+    #[default]
+    None,
+    Owner,
+    Team,
+    All,
 }
 
 impl SyncTo {

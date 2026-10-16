@@ -4,6 +4,7 @@ use bevy_ecs::schedule::{
 use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
+use campfire_derive::EnumAll;
 use campfire_schedule::StrictSchedule;
 
 use crate::id_allocator::IdAllocator;
@@ -18,32 +19,28 @@ use crate::tick_rate::TickRate;
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SimUpdate;
 
-campfire_common::enum_all! {
-    /// The stages of a tick, in this order. Each capability puts its systems into them, and orders
-    /// them within a stage against the capabilities it builds on.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub enum SimSet {
-        /// The tick's commands reach the capabilities that own them.
-        Inputs,
-        /// AI of the units due this tick issues orders.
-        Think,
-        /// Current orders run: attack windups, cast starts, path requests.
-        Act,
-        /// Units move.
-        Move,
-        /// The mode's collision backend resolves overlaps.
-        Collide,
-        /// Strikes, hits, projectiles and areas.
-        Hit,
-        /// Damage and modifiers apply, and units die.
-        Resolve,
-        /// Due timers, the capabilities' events, spawns.
-        Mode,
-        /// The mode's vision backend marks what each team may see.
-        Vision,
-    }
-    /// Every stage, in the order a tick runs them.
-    pub const ALL;
+/// The stages of a tick, in this order. Each capability puts its systems into them, and orders
+/// them within a stage against the capabilities it builds on.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub enum SimSet {
+    /// The tick's commands reach the capabilities that own them.
+    Inputs,
+    /// AI of the units due this tick issues orders.
+    Think,
+    /// Current orders run: attack windups, cast starts, path requests.
+    Act,
+    /// Units move.
+    Move,
+    /// The mode's collision backend resolves overlaps.
+    Collide,
+    /// Strikes, hits, projectiles and areas.
+    Hit,
+    /// Damage and modifiers apply, and units die.
+    Resolve,
+    /// Due timers, the capabilities' events, spawns.
+    Mode,
+    /// The mode's vision backend marks what each team may see.
+    Vision,
 }
 
 /// The gaps of a tick around its stages, for a pass over what came before, such as values derived

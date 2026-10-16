@@ -1,16 +1,15 @@
+use campfire_derive::EnumAll;
+
 use crate::scripts::error::ApiError;
 use crate::scripts::name_kind::NameKind;
 
-campfire_common::enum_all! {
-    /// What a script serves, as the data that names it says: each role has its own hooks.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub enum ScriptRole {
-        Action,
-        Modifier,
-        Mode,
-        Ai,
-    }
-    pub const ALL;
+/// What a script serves, as the data that names it says: each role has its own hooks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
+pub enum ScriptRole {
+    Action,
+    Modifier,
+    Mode,
+    Ai,
 }
 
 impl ScriptRole {
@@ -24,15 +23,12 @@ impl ScriptRole {
     }
 }
 
-campfire_common::enum_all! {
-    /// Whose params a call reads as `ctx.p`, by its role: an ability's and its modifier's, or the
-    /// mode's.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ParamScope {
-        Action,
-        Mode,
-    }
-    pub const ALL;
+/// Whose params a call reads as `ctx.p`, by its role: an ability's and its modifier's, or the
+/// mode's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum ParamScope {
+    Action,
+    Mode,
 }
 
 impl ScriptRole {

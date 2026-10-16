@@ -24,6 +24,7 @@ internals = [
 campfire-client-files.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
+campfire-derive.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true
 campfire-geometry.workspace = true

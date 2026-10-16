@@ -2,6 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::NamedEnum;
+use campfire_derive::{EnumAll, EnumIdents, NamedEnum};
 use campfire_math::Vec3;
 use campfire_script::enum_script_arg;
 use campfire_sim::{SimComponent, StableId};
@@ -26,21 +27,17 @@ pub struct PathWalker {
     group: StableId,
 }
 
-campfire_common::enum_all! {
-    /// The end of a path a unit walks it from, as a placed unit's or a spawn group's `from`
-    /// names it: a MOBA's two sides walk each path from their own end, and a third team either
-    /// way.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum PathEnd {
-        Start => "start",
-        End => "end",
-    }
-    const ALL;
-    const IDENTS;
+/// The end of a path a unit walks it from, as a placed unit's or a spawn group's `from`
+/// names it: a MOBA's two sides walk each path from their own end, and a third team either
+/// way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, EnumIdents, NamedEnum)]
+pub enum PathEnd {
+    Start,
+    End,
 }
 
 /// Written and read as serde's derive does a unit variant: a binary format, as a snapshot, by its
-/// place, and a text format, as data, by the name beside it.
+/// place, and a text format, as data, by its name.
 impl Serialize for PathEnd {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.serialize_member(serializer)

@@ -1,3 +1,4 @@
+use campfire_derive::EnumAll;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use thiserror::Error;
@@ -13,16 +14,13 @@ pub enum AiError {
     NoThink,
 }
 
-campfire_common::enum_all! {
-    /// Why the orders capability refused a script call: a script gave it a value it does not take.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum OrdersRefusal {
-        /// An attack order on a unit that is not a living enemy.
-        NotAnEnemy,
-        /// An AI order for another unit than the one that thinks.
-        OtherUnit,
-    }
-    const ALL;
+/// Why the orders capability refused a script call: a script gave it a value it does not take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum OrdersRefusal {
+    /// An attack order on a unit that is not a living enemy.
+    NotAnEnemy,
+    /// An AI order for another unit than the one that thinks.
+    OtherUnit,
 }
 
 impl CapabilityRefusal for OrdersRefusal {

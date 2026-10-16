@@ -1,3 +1,4 @@
+use campfire_derive::EnumAll;
 use campfire_script::{CapabilityRefusal, ParamProblem, UnknownName};
 use campfire_sim::Capability;
 use campfire_values::DeclaredName;
@@ -44,30 +45,27 @@ pub struct ModifierError {
     pub error: SpecError,
 }
 
-campfire_common::enum_all! {
-    /// Why the stats capability refused a script call: a script gave it a value it does not take.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum StatsRefusal {
-        /// A modifier's param that the way it applies gives none of: an action that does not
-        /// declare it, or no action at all.
-        ParamMissing,
-        /// A modifier's per-rank param with no value at the rank the way applies it at.
-        ParamShort,
-        /// A modifier's param whose value, at a rank, is past what a number holds.
-        ParamOverflow,
-        /// A modifier's time that reads a scaling param, whose value only its source knows as it
-        /// applies.
-        ParamScalingTime,
-        /// A modifier's time that is, at a rank, negative or too large to count in ticks.
-        ParamTime,
-        /// A negative count of a modifier's stacks.
-        NegativeStacks,
-        /// A pool the unit does not have.
-        NoPool,
-        /// A stat or level field of a unit that has no stats.
-        NoStats,
-    }
-    const ALL;
+/// Why the stats capability refused a script call: a script gave it a value it does not take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum StatsRefusal {
+    /// A modifier's param that the way it applies gives none of: an action that does not
+    /// declare it, or no action at all.
+    ParamMissing,
+    /// A modifier's per-rank param with no value at the rank the way applies it at.
+    ParamShort,
+    /// A modifier's param whose value, at a rank, is past what a number holds.
+    ParamOverflow,
+    /// A modifier's time that reads a scaling param, whose value only its source knows as it
+    /// applies.
+    ParamScalingTime,
+    /// A modifier's time that is, at a rank, negative or too large to count in ticks.
+    ParamTime,
+    /// A negative count of a modifier's stacks.
+    NegativeStacks,
+    /// A pool the unit does not have.
+    NoPool,
+    /// A stat or level field of a unit that has no stats.
+    NoStats,
 }
 
 impl CapabilityRefusal for StatsRefusal {

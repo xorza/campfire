@@ -34,15 +34,14 @@ pub trait CapabilityRefusal: Copy + PartialEq + fmt::Debug + 'static {
 
 #[cfg(test)]
 mod tests {
+    use campfire_derive::EnumAll;
+
     use super::*;
 
-    campfire_common::enum_all! {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        enum Sample {
-            First,
-            Second,
-        }
-        const ALL;
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+    enum Sample {
+        First,
+        Second,
     }
 
     impl CapabilityRefusal for Sample {

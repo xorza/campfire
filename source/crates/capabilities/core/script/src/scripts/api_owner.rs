@@ -1,20 +1,20 @@
-campfire_common::enum_all! {
-    /// What a script holds a name on.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub enum ApiOwner {
-        Ctx,
-        Unit,
-        NewUnit,
-        Modifier,
-        Hit,
-        Damage,
-        Heal,
-        Vector,
-        GameMap,
-        Marker,
-    }
-    pub const ALL;
+use campfire_derive::EnumAll;
+
+/// What a script holds a name on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
+pub enum ApiOwner {
+    Ctx,
+    Unit,
+    NewUnit,
+    Modifier,
+    Hit,
+    Damage,
+    Heal,
+    Vector,
+    GameMap,
+    Marker,
 }
+
 impl ApiOwner {
     /// The owner as the reference titles it.
     pub const fn title(self) -> &'static str {

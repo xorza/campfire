@@ -13,6 +13,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionTarget, EffectQueues};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
+use campfire_derive::EnumAll;
 use campfire_math::Vec3;
 use campfire_sim::{Capability, StableId};
 use campfire_units::DeliveryEntity;
@@ -47,22 +48,18 @@ pub use crate::error::AreaError;
 #[derive(Debug)]
 pub struct Areas;
 
-campfire_common::enum_all! {
-    /// The steps of `areas`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum AreasSet {
-        /// Areas trigger and end.
-        Trigger,
-        /// The areas the tick's actions deliver land.
-        Land,
-        /// The areas the tick's resolving actions deliver land.
-        LandAtResolve,
-        /// After the dead units' modifiers end and before stats hold: each area lists those it
-        /// holds on the units inside.
-        HoldInside,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `areas`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum AreasSet {
+    /// Areas trigger and end.
+    Trigger,
+    /// The areas the tick's actions deliver land.
+    Land,
+    /// The areas the tick's resolving actions deliver land.
+    LandAtResolve,
+    /// After the dead units' modifiers end and before stats hold: each area lists those it
+    /// holds on the units inside.
+    HoldInside,
 }
 
 impl ModuleSet for AreasSet {

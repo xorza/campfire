@@ -1,6 +1,7 @@
 use std::ops::RangeInclusive;
 
 use campfire_common::NamedEnum;
+use campfire_derive::{EnumAll, NamedEnum};
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_sim::Position;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -8,21 +9,20 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::error::GroundError;
 use crate::height_grid::HeightGrid;
 
-campfire_common::enum_all! {
-    /// The diagonal every cell of a map's ground splits on, between its corners 0 to 3 at the
-    /// samples `(u, v)`, `(u + 1, v)`, `(u + 1, v + 1)` and `(u, v + 1)`.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-    pub enum CellSplit {
-        /// From corner 0 to 2.
-        #[default]
-        ZeroTwo => "0_2",
-        /// From corner 1 to 3.
-        OneThree => "1_3",
-    }
-    const ALL;
+/// The diagonal every cell of a map's ground splits on, between its corners 0 to 3 at the
+/// samples `(u, v)`, `(u + 1, v)`, `(u + 1, v + 1)` and `(u, v + 1)`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumAll, NamedEnum)]
+pub enum CellSplit {
+    /// From corner 0 to 2.
+    #[default]
+    #[name = "0_2"]
+    ZeroTwo,
+    /// From corner 1 to 3.
+    #[name = "1_3"]
+    OneThree,
 }
 
-/// Written and read as serde's derive does a unit variant, by the name beside it in data.
+/// Written and read as serde's derive does a unit variant, by its name in data.
 impl Serialize for CellSplit {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.serialize_member(serializer)

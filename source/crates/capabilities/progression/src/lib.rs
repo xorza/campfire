@@ -7,6 +7,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::EffectQueues;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 
@@ -45,15 +46,11 @@ pub use crate::track_set::TrackSet;
 #[derive(Debug)]
 pub struct Progression;
 
-campfire_common::enum_all! {
-    /// The steps of `progression`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum ProgressionSet {
-        /// The tick's learn orders learn their ranks.
-        Commands,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `progression`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum ProgressionSet {
+    /// The tick's learn orders learn their ranks.
+    Commands,
 }
 
 impl ModuleSet for ProgressionSet {

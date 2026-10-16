@@ -9,6 +9,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlots, CastSpends, SlotTimes, SlotsMut, UseGroup};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 
@@ -45,19 +46,15 @@ pub use crate::trade_orders::TradeOrders;
 #[derive(Debug)]
 pub struct Items;
 
-campfire_common::enum_all! {
-    /// The steps of `items`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum ItemsSet {
-        /// The tick's orders buy, sell and swap items.
-        Commands,
-        /// Once the tick's trades are in: carried items push their grants.
-        HoldAtInputs,
-        /// The units list the items they want.
-        Want,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `items`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum ItemsSet {
+    /// The tick's orders buy, sell and swap items.
+    Commands,
+    /// Once the tick's trades are in: carried items push their grants.
+    HoldAtInputs,
+    /// The units list the items they want.
+    Want,
 }
 
 impl ModuleSet for ItemsSet {

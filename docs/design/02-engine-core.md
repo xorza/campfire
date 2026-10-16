@@ -7,6 +7,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | Module | Status | Does |
 | --- | --- | --- |
 | `common` | built | The plain values crates that do not depend on each other share |
+| `derive` | built | The workspace's derives: an enum's array of its members, and their names |
 | `codec` | built | The one gateway of serialization, a proxy crate ([Serialization](#serialization)) |
 | `schedule` | built | The sim schedules' build settings, a proxy crate |
 | `math` | built | Fixed-point numbers and vectors, trig, roots, RNG ([Determinism core](09-determinism-core.md)) |
@@ -65,7 +66,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 - **Layers.** Each crate depends only on lower layers, and no two crates of one layer depend on each other; `LAYERS` lists each capability crate's layer, and a test refuses a layer that is not one above its highest dependency.
 - **A pure sim.** `sim` takes state and inputs and gives the next state: no files, packages or signatures. No crate of the deterministic core depends on `store`, and `store` depends on no engine crate.
 - **`common` holds only shared plain values.** A type enters `common` only when two crates that do not depend on each other both name it, with construction, parsing, display and serde alone.
-- **A name stays beside its member.** `enum_all!` states an enum with each member's data name beside it, and data reads the enum by those names alone.
+- **A name stays beside its member.** An enum derives `NamedEnum`, each member named by its identifier in snake case, as serde's `rename_all` names it, or by its own `#[name = "…"]`, and data and serde read it by those names alone. Not strum, whose names and serde's are two attributes that can drift; not a declarative macro, whose body rustfmt and the IDE read as opaque.
 - **Needs and uses.** A capability's dependency on another is a need, without which it does not run, or a use, which it reads when the match has it, as `Module::NEEDS` and `Module::USES` declare; a test holds the crates' dependencies equal to them.
 - **The senders' `Order` lives at the top.** `Order` and its `Action`, a sum of each owner's action, are the top crate's, so `orders` depends on no capability whose action it carries.
 - **Contracts through `units`.** A capability asks another for work through a part of `units` both read, never by writing the other's state, as 0 A.D.'s components ask `UnitMotion` for a walk: `Dead`, `ForcedMove`, `Destination` with `ArrivedShort`. A change the asker decides and the owner applies is an event of `units` the owner observes, as `LevelRaised`.

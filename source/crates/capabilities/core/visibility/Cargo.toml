@@ -12,6 +12,7 @@ internals = [
 
 [dependencies]
 campfire-common.workspace = true
+campfire-derive.workspace = true
 campfire-state-types.workspace = true
 
 bevy_ecs.workspace = true

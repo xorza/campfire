@@ -4,8 +4,9 @@ use std::marker::PhantomData;
 use serde::de::{self, DeserializeSeed, EnumAccess, Error, VariantAccess, Visitor};
 use serde::{Deserializer, Serializer};
 
-/// An enum of a fixed set whose every member has one name, as data writes it: `enum_all!`
-/// implements it from the name it writes beside each member, so a name never leaves its member.
+/// An enum of a fixed set whose every member has one name, as data writes it: `campfire-derive`'s
+/// `NamedEnum` implements it from the name `#[name = "…"]` gives each member, so a name never
+/// leaves its member.
 pub trait NamedEnum: Copy + Eq + 'static {
     /// The enum's name, as serde names the type of its unit variants.
     const TYPE: &'static str;
@@ -115,19 +116,53 @@ impl<'de, T: NamedEnum> DeserializeSeed<'de> for Members<T> {
 #[cfg(test)]
 mod tests {
     use campfire_codec::{Binary, Json, Toml};
+    use campfire_derive::{EnumAll, EnumIdents, NamedEnum};
     use serde::de::value::{Error as ValueError, StrDeserializer};
     use serde::{Deserialize, Serialize};
 
     use crate::named_enum::NamedEnum;
 
-    crate::enum_all! {
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        enum Side {
-            North => "north",
-            South => "south",
-            East => "east",
-        }
-        const ALL;
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, NamedEnum)]
+    enum Side {
+        North,
+        South,
+        East,
+    }
+
+    /// Named by snake case, but the variant that names itself.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]
+    enum Edge {
+        NearSide,
+        #[name = "far"]
+        FarSide,
+        TopEdgeOfIt,
+    }
+
+    /// Named each on its own.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]
+    enum Split {
+        #[name = "0_2"]
+        ZeroTwo,
+        #[name = "1_3"]
+        OneThree,
+    }
+
+    /// Of discriminants of its own, and with each variant's identifier.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, EnumIdents)]
+    enum Turn {
+        Left,
+        /// A variant's attributes stay with it.
+        Right = 4,
+        Back,
+    }
+
+    #[test]
+    fn all_holds_every_variant_in_the_order_declared() {
+        assert_eq!(Side::ALL, [Side::North, Side::South, Side::East]);
+        assert_eq!(<Side as NamedEnum>::ALL, Side::ALL);
+        assert_eq!(Turn::ALL, [Turn::Left, Turn::Right, Turn::Back]);
+        assert_eq!(Turn::ALL.map(|turn| turn as u8), [0, 4, 5]);
+        assert_eq!(Turn::IDENTS, ["Left", "Right", "Back"]);
     }
 
     impl Serialize for Side {
@@ -149,6 +184,16 @@ mod tests {
         North,
         South,
         East,
+    }
+
+    #[test]
+    fn a_member_is_named_in_snake_case_or_by_its_own_name() {
+        // Snake case puts an underscore before each capital past the first, as serde's
+        // `rename_all` does; a member's own name takes its place.
+        assert_eq!(Edge::NAMES, ["near_side", "far", "top_edge_of_it"]);
+        assert_eq!(Split::NAMES, ["0_2", "1_3"]);
+        assert_eq!(Edge::named("far"), Some(Edge::FarSide));
+        assert_eq!(Edge::named("far_side"), None);
     }
 
     #[test]

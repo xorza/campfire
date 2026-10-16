@@ -2,6 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionTarget, DeliveryShape};
 use campfire_declare::{CallbackTable, Callbacks};
+use campfire_derive::EnumAll;
 use campfire_math::Vec3;
 use campfire_sim::Capability;
 
@@ -11,14 +12,11 @@ use crate::delivering::Launcher;
 /// point.
 pub(crate) type Deliver = fn(&mut World, Launcher, Vec3, ActionTarget);
 
-campfire_common::enum_all! {
-    /// A kind of delivery that sets out: a key of `Deliverers`.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum DeliveryKind {
-        Projectile,
-        Area,
-    }
-    pub const ALL;
+/// A kind of delivery that sets out: a key of `Deliverers`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum DeliveryKind {
+    Projectile,
+    Area,
 }
 
 /// How each kind of delivery sets out, which the capability of the kind declares, so a cast that

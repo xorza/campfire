@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
+use campfire_derive::EnumAll;
 use campfire_math::Num;
 use campfire_values::DeclaredName;
 use serde::Serialize;
@@ -71,10 +72,9 @@ pub struct DroppedWeapon {
     pub cause: WeaponDrop,
 }
 
-campfire_common::enum_all! {
 /// Why the import drops a weapon (12-zero-hour.md, A weapon converts when it hits one target at
 /// once).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
 pub enum WeaponDrop {
     /// No file defines it.
     NoWeapon,
@@ -109,9 +109,6 @@ pub enum WeaponDrop {
     Healing,
     /// A number of it is below 0, not finite, or past what the engine holds.
     BadNumber,
-}
-/// Every cause, in order.
-pub const ALL;
 }
 
 /// The game's logic frames a millisecond, `LOGICFRAMES_PER_MSEC_REAL`, in the game's `f32`.

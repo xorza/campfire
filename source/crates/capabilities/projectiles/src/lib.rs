@@ -15,6 +15,7 @@ use campfire_actions::{
 };
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
+use campfire_derive::EnumAll;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, SimWorld, StableId};
@@ -53,19 +54,15 @@ pub use crate::struck_units::{Struck, StruckUnits};
 #[derive(Debug)]
 pub struct Projectiles;
 
-campfire_common::enum_all! {
-    /// The steps of `projectiles`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum ProjectilesSet {
-        /// Projectiles fly a step, and their hits and ends run their actions' hooks.
-        Fly,
-        /// The ranged attacks and the actions that fire take their shots.
-        TakeShots,
-        /// The tick's shots launch.
-        Launch,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `projectiles`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum ProjectilesSet {
+    /// Projectiles fly a step, and their hits and ends run their actions' hooks.
+    Fly,
+    /// The ranged attacks and the actions that fire take their shots.
+    TakeShots,
+    /// The tick's shots launch.
+    Launch,
 }
 
 impl ModuleSet for ProjectilesSet {

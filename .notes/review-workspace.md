@@ -161,7 +161,7 @@ Every capability crate's `lib.rs`; `net`. Last of the code batches, as the batch
 
 The designs that no batch above changes. Each names where code and design disagree, and which one changes.
 
-- [ ] docs/design/02-engine-core.md, Dependencies and the `common` row — `common` depends on `blake3` and `sha2`, and holds the hashers, `Version`, `MapName`, `AfterLeave`, `Secret` and `enum_all!`. → The design changes.
+- [ ] docs/design/02-engine-core.md, Dependencies and the `common` row — `common` depends on `blake3` and `sha2`, and holds the hashers, `Version`, `MapName`, `AfterLeave`, `Secret` and the `NamedEnum` trait. → The design changes.
 - [ ] docs/design/02-engine-core.md:263 — lists the package index under Postcard; it is a text manifest. → The design changes.
 - [ ] docs/design/02-engine-core.md:154 — lists `items` in `campfire-mode`'s Uses; `Mode::USES` has none. → The design changes.
 - [ ] docs/design/04-capabilities/production.md — Cost lists supply passes only in a train's tick or a view read; Network requires a derivation each tick. → One rule, after batch 9.

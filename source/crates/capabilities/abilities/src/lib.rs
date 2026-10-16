@@ -13,6 +13,7 @@ use campfire_actions::{ActionTarget, CastSpends};
 use campfire_common::Ticks;
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_deliveries::Deliverers;
+use campfire_derive::EnumAll;
 use campfire_script::{ScriptValue, View};
 use campfire_sim::{Capability, TickRate};
 
@@ -34,19 +35,15 @@ pub use crate::toggles::Toggles;
 #[derive(Debug)]
 pub struct Abilities;
 
-campfire_common::enum_all! {
-    /// The steps of `abilities`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum AbilitiesSet {
-        /// Before the holds follow: toggles pay their seconds or turn off.
-        Toggles,
-        /// The due casts start.
-        StartCasts,
-        /// After attacks strike and before the tick's projectiles launch: due casts resolve.
-        Resolve,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `abilities`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum AbilitiesSet {
+    /// Before the holds follow: toggles pay their seconds or turn off.
+    Toggles,
+    /// The due casts start.
+    StartCasts,
+    /// After attacks strike and before the tick's projectiles launch: due casts resolve.
+    Resolve,
 }
 
 impl ModuleSet for AbilitiesSet {

@@ -11,6 +11,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
@@ -40,19 +41,15 @@ pub use crate::resetting::Resetting;
 pub use crate::thinking::Thinking;
 pub use crate::unit_order::{OrderedUnit, UnitOrder};
 
-campfire_common::enum_all! {
-    /// The steps of `orders`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum OrdersSet {
-        /// The tick's orders become each unit's current order.
-        Orders,
-        /// Units follow their paths and chase their targets, before attacks start.
-        Chase,
-        /// AI of the units due this tick issues orders.
-        Think,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `orders`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum OrdersSet {
+    /// The tick's orders become each unit's current order.
+    Orders,
+    /// Units follow their paths and chase their targets, before attacks start.
+    Chase,
+    /// AI of the units due this tick issues orders.
+    Think,
 }
 
 impl ModuleSet for OrdersSet {

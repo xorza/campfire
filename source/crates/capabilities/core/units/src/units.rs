@@ -7,6 +7,7 @@ use bevy_ecs::world::World;
 use campfire_declare::{
     ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, Phase, SetPlace,
 };
+use campfire_derive::EnumAll;
 use campfire_script::{
     CoreApi, Ctx, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId, ScriptList,
     StatePlace, StateSchema, View, ViewApi,
@@ -51,19 +52,15 @@ use crate::units_call::UnitsCall;
 use crate::units_column::{StateRowReads, UnitsColumn};
 use crate::view_reader::ViewReader;
 
-campfire_common::enum_all! {
-    /// The core's steps.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum UnitsSet {
-        /// Every pool starts full.
-        BeginTick,
-        /// The units whose lifespan ended despawn.
-        EndLifespans,
-        /// The script states of units that never spawned are dropped.
-        DropUnspawned,
-    }
-    /// Every step.
-    pub const ALL;
+/// The core's steps.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum UnitsSet {
+    /// Every pool starts full.
+    BeginTick,
+    /// The units whose lifespan ended despawn.
+    EndLifespans,
+    /// The script states of units that never spawned are dropped.
+    DropUnspawned,
 }
 
 impl ModuleSet for UnitsSet {

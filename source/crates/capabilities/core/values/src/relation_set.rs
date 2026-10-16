@@ -1,21 +1,19 @@
 use campfire_common::NamedEnum;
+use campfire_derive::{EnumAll, NamedEnum};
 use serde::{Deserialize, Deserializer};
 
 use crate::relation::Relation;
 
-campfire_common::enum_all! {
-    /// Which units a filter selects, by how a unit's team regards theirs: its enemies, which it may
-    /// attack, hostile and neutral; only the hostile; only the neutral; its allies, the friendly,
-    /// which include itself; or all. Each member's name is as a filter writes it.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum RelationSet {
-        Enemies => "enemies",
-        Hostiles => "hostiles",
-        Neutrals => "neutrals",
-        Allies => "allies",
-        All => "all",
-    }
-    const ALL;
+/// Which units a filter selects, by how a unit's team regards theirs: its enemies, which it may
+/// attack, hostile and neutral; only the hostile; only the neutral; its allies, the friendly,
+/// which include itself; or all. Each member's name is as a filter writes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, NamedEnum)]
+pub enum RelationSet {
+    Enemies,
+    Hostiles,
+    Neutrals,
+    Allies,
+    All,
 }
 
 impl RelationSet {
@@ -31,7 +29,7 @@ impl RelationSet {
     }
 }
 
-/// Read as serde's derive reads a unit variant, by the name beside it, as data writes a splash's
+/// Read as serde's derive reads a unit variant, by its name, as data writes a splash's
 /// `affects`.
 impl<'de> Deserialize<'de> for RelationSet {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {

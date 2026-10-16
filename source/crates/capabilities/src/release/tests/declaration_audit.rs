@@ -21,6 +21,7 @@ use campfire_declare::{
     ModuleSet, OneShot, Phase, Report, Role, Scratch, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
+use campfire_derive::EnumAll;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_production::PlayerSupply;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
@@ -550,14 +551,11 @@ impl Book for StrayBook {
     fn share(&self, _: &View) {}
 }
 
-campfire_common::enum_all! {
-    /// Sets the stats own.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    enum StraySet {
-        Early,
-        Late,
-    }
-    const ALL;
+/// Sets the stats own.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+enum StraySet {
+    Early,
+    Late,
 }
 
 impl ModuleSet for StraySet {

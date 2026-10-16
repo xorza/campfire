@@ -1,9 +1,9 @@
+use campfire_derive::EnumAll;
 use campfire_values::DeclaredName;
 
-campfire_common::enum_all! {
 /// Zero Hour's damage types, in the order of `DamageTypeFlags`' names: Generals' `FLESHY_SNIPER`
 /// is not among them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
 pub(crate) enum DamageType {
     Explosion,
     Crush,
@@ -43,9 +43,6 @@ pub(crate) enum DamageType {
     Microwave,
     KillGarrisoned,
     Status,
-}
-/// Every type, in order.
-pub(crate) const ALL;
 }
 
 impl DamageType {

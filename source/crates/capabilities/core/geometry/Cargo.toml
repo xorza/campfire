@@ -9,11 +9,13 @@ internals = [
     "campfire-common/internals",
     "campfire-math/internals",
     "campfire-sim/internals",
+    "dep:campfire-derive",
     "dep:criterion",
 ]
 
 [dependencies]
 campfire-common = { workspace = true, optional = true }
+campfire-derive = { workspace = true, optional = true }
 campfire-math.workspace = true
 campfire-sim.workspace = true
 

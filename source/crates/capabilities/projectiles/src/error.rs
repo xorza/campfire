@@ -1,16 +1,14 @@
+use campfire_derive::EnumAll;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 
-campfire_common::enum_all! {
-    /// Why the projectiles capability refused a script call: a script gave it a value it does not
-    /// take.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ProjectilesRefusal {
-        /// A projectile launched in the other form than its type flies: a homing or a curve type at
-        /// a unit, a line type along a direction.
-        OtherFlight,
-    }
-    const ALL;
+/// Why the projectiles capability refused a script call: a script gave it a value it does not
+/// take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum ProjectilesRefusal {
+    /// A projectile launched in the other form than its type flies: a homing or a curve type at
+    /// a unit, a line type along a direction.
+    OtherFlight,
 }
 
 impl CapabilityRefusal for ProjectilesRefusal {

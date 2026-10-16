@@ -1,19 +1,17 @@
 use std::error::Error;
 use std::fmt;
 
+use campfire_derive::EnumAll;
 use campfire_math::Num;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 
-campfire_common::enum_all! {
-    /// Why the production capability refused a script call: a script gave it a value it does not
-    /// take.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ProductionRefusal {
-        /// A count of supply in a mode that counts none.
-        NoSupply,
-    }
-    const ALL;
+/// Why the production capability refused a script call: a script gave it a value it does not
+/// take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum ProductionRefusal {
+    /// A count of supply in a mode that counts none.
+    NoSupply,
 }
 
 impl CapabilityRefusal for ProductionRefusal {

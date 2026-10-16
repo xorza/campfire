@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroU8;
 
+use campfire_derive::EnumAll;
 use campfire_math::{Num, Rounding};
 use campfire_values::DeclaredName;
 use serde::Serialize;
@@ -83,9 +84,8 @@ pub struct DroppedButton {
     pub cause: DropCause,
 }
 
-campfire_common::enum_all! {
 /// Why the import drops a button.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
 pub enum DropCause {
     /// No file defines the button, or its object, or an object its prerequisites name.
     NoObject,
@@ -103,9 +103,6 @@ pub enum DropCause {
     NoType,
     /// Its object's build time is below 0, or not finite.
     BadTime,
-}
-/// Every cause, in order.
-pub const ALL;
 }
 
 /// A button's kind, of those the import converts.

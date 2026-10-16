@@ -17,6 +17,7 @@ sha2.workspace = true
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }
 campfire-common = { workspace = true, features = ["internals"] }
+campfire-derive.workspace = true
 campfire-store = { workspace = true, features = ["internals"] }
 
 [[test]]

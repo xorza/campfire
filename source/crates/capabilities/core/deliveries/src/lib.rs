@@ -6,6 +6,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, Reached};
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, Scratch, SetPlace};
+use campfire_derive::EnumAll;
 use campfire_math::Vec3;
 use campfire_sim::{Breach, Capability, StableId};
 use campfire_units::ForcedMove;
@@ -47,16 +48,12 @@ pub struct DashEnd {
     pub direction: Option<Vec3>,
 }
 
-campfire_common::enum_all! {
-    /// The steps of `deliveries`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum DeliverySet {
-        /// What the deliveries reached runs their actions' hooks, and the deliveries that ended
-        /// run theirs.
-        Deliver,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `deliveries`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum DeliverySet {
+    /// What the deliveries reached runs their actions' hooks, and the deliveries that ended
+    /// run theirs.
+    Deliver,
 }
 
 impl ModuleSet for DeliverySet {

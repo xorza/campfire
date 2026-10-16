@@ -1,15 +1,13 @@
+use campfire_derive::EnumAll;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 
-campfire_common::enum_all! {
-    /// Why the combat capability refused a script call: a script gave it a value it does not take.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum CombatRefusal {
-        NegativeDamage,
-        /// A heal or restore of a negative amount.
-        NegativeHeal,
-    }
-    const ALL;
+/// Why the combat capability refused a script call: a script gave it a value it does not take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum CombatRefusal {
+    NegativeDamage,
+    /// A heal or restore of a negative amount.
+    NegativeHeal,
 }
 
 impl CapabilityRefusal for CombatRefusal {

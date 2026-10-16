@@ -5,6 +5,7 @@ use std::fmt;
 use bevy_ecs::world::World;
 use campfire_codec::Binary;
 use campfire_common::{StateHash, Tick};
+use campfire_derive::EnumAll;
 use campfire_math::internals::SplitMix64;
 use serde::de::{
     self, DeserializeOwned, DeserializeSeed, Deserializer, EnumAccess, IntoDeserializer, MapAccess,
@@ -405,21 +406,18 @@ impl Draws {
     }
 }
 
-campfire_common::enum_all! {
-    /// A change of where a state type's value sits, which a snapshot could hold.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum Mutation {
-        /// One holder loses its value.
-        Remove,
-        /// One holder's value moves to an entity that holds none.
-        Move,
-        /// One holder's value is copied to an entity that holds none.
-        Copy,
-        /// One holder's value, or a resource, with one of its `Some`s, drawn, as `None`: a value of
-        /// its type that a draw rarely makes, as every other part stays as it was.
-        DropOption,
-    }
-    pub const ALL;
+/// A change of where a state type's value sits, which a snapshot could hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum Mutation {
+    /// One holder loses its value.
+    Remove,
+    /// One holder's value moves to an entity that holds none.
+    Move,
+    /// One holder's value is copied to an entity that holds none.
+    Copy,
+    /// One holder's value, or a resource, with one of its `Some`s, drawn, as `None`: a value of
+    /// its type that a draw rarely makes, as every other part stays as it was.
+    DropOption,
 }
 
 /// Why a draw does not make a value: a type the state does not hold, or a refusal of its decode.

@@ -1,4 +1,5 @@
 use campfire_common::{SegmentSeed, Tick};
+use campfire_derive::EnumAll;
 use campfire_math::{Num, Rng, RngStream, Vec3};
 
 use crate::body_box::BodyBox;
@@ -23,16 +24,12 @@ pub struct SceneBody {
     pub walking: bool,
 }
 
-campfire_common::enum_all! {
-    /// How close a kernel case's units stand: crowded into 40 m square, or spread over 120 m
-    /// square.
-    #[derive(Debug, Clone, Copy)]
-    pub enum Density {
-        Crowded,
-        Spread,
-    }
-    /// Both, for a kernel whose cost grows with how close its units stand.
-    pub const ALL;
+/// How close a kernel case's units stand: crowded into 40 m square, or spread over 120 m
+/// square; `ALL` holds both, for a kernel whose cost grows with how close its units stand.
+#[derive(Debug, Clone, Copy, EnumAll)]
+pub enum Density {
+    Crowded,
+    Spread,
 }
 
 impl Density {

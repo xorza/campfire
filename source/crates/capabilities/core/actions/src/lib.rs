@@ -10,6 +10,7 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_stats::ParamBook;
 use campfire_units::BodyUnit;
@@ -152,38 +153,34 @@ pub use crate::weapon::{Pitch, Scatter, Source, Weapon};
 #[derive(Debug)]
 pub struct Actions;
 
-campfire_common::enum_all! {
-    /// The steps of the action pipeline. Each capability that acts puts its own steps in the
-    /// phases between them.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum ActionsSet {
-        /// After attacks start: what each unit was ordered starts, each kind's orders by the
-        /// capability that runs the kind.
-        Start,
-        /// Once the deliveries flew and triggered: their hits and ends run their actions' hooks.
-        Deliver,
-        /// Once the attacks going off struck: the tick's shots become launches.
-        Fire,
-        /// Once the due casts resolved: the tick's launches take off.
-        Launch,
-        /// The tick's areas land.
-        Land,
-        /// Once the tick's damage is dealt and before units die: what the damage launched lands,
-        /// and the sources push what the tick spent.
-        Resolve,
-        /// Once the tick's orders and expiries are in: passives and holds push their grants.
-        HoldAtInputs,
-        /// Once the attacks going off paid their toggles and before they strike: holds push the
-        /// grants of the toggles an unpaid cost turned off.
-        HoldAtStrike,
-        /// Once the tick's damage is dealt and before units die: passives and holds push their
-        /// grants.
-        HoldAtResolve,
-        /// Passives and holds push the grants of what the tick changed.
-        HoldAtEnd,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of the action pipeline. Each capability that acts puts its own steps in the
+/// phases between them.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum ActionsSet {
+    /// After attacks start: what each unit was ordered starts, each kind's orders by the
+    /// capability that runs the kind.
+    Start,
+    /// Once the deliveries flew and triggered: their hits and ends run their actions' hooks.
+    Deliver,
+    /// Once the attacks going off struck: the tick's shots become launches.
+    Fire,
+    /// Once the due casts resolved: the tick's launches take off.
+    Launch,
+    /// The tick's areas land.
+    Land,
+    /// Once the tick's damage is dealt and before units die: what the damage launched lands,
+    /// and the sources push what the tick spent.
+    Resolve,
+    /// Once the tick's orders and expiries are in: passives and holds push their grants.
+    HoldAtInputs,
+    /// Once the attacks going off paid their toggles and before they strike: holds push the
+    /// grants of the toggles an unpaid cost turned off.
+    HoldAtStrike,
+    /// Once the tick's damage is dealt and before units die: passives and holds push their
+    /// grants.
+    HoldAtResolve,
+    /// Passives and holds push the grants of what the tick changed.
+    HoldAtEnd,
 }
 
 impl ModuleSet for ActionsSet {

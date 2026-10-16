@@ -1,3 +1,4 @@
+use campfire_derive::EnumAll;
 use campfire_script::{ApiVersion, Status};
 use campfire_sim::Capability;
 use campfire_sim::Capability::{Abilities, Combat, Production};
@@ -6,57 +7,53 @@ use crate::action_data::ActionData;
 use crate::action_data_field::FieldUse::{Needs, OneOf, Refuses, Takes};
 use crate::action_kind::ActionKind;
 
-campfire_common::enum_all! {
-    /// A field of an action's data, `[actions.<id>]`: the one table of which kinds of action take
-    /// each field, which need it, which capability runs it, and whether the release runs it yet.
-    /// The load check reads which kinds take and need each field; the script API reference reads
-    /// each field's capability and status. A kind's own capability, and a delivery's, which each
-    /// of its forms names, the load requires as it checks the kind and the delivery.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ActionDataField {
-        Name,
-        Kind,
-        Script,
-        Targeting,
-        Range,
-        CooldownMs,
-        Cost,
-        WindupMs,
-        ClampToRange,
-        Toggle,
-        Channel,
-        Hold,
-        Charges,
-        Charge,
-        PassiveModifier,
-        PassiveWhileReady,
-        Delivery,
-        Rate,
-        Damage,
-        DamageKind,
-        Amount,
-        PeriodMs,
-        Clip,
-        Splash,
-        Scatter,
-        PitchDeg,
-        UnitType,
-        Requires,
-        Construct,
-        Start,
-        StartLife,
-        CancelRefund,
-        Placement,
-        Resource,
-        Take,
-        Bounce,
-        Params,
-        OnResolve,
-        OnHit,
-        OnEnd,
-    }
-    /// Every field, in the order of the table's rows.
-    pub const ALL;
+/// A field of an action's data, `[actions.<id>]`: the one table of which kinds of action take
+/// each field, which need it, which capability runs it, and whether the release runs it yet.
+/// The load check reads which kinds take and need each field; the script API reference reads
+/// each field's capability and status. A kind's own capability, and a delivery's, which each
+/// of its forms names, the load requires as it checks the kind and the delivery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum ActionDataField {
+    Name,
+    Kind,
+    Script,
+    Targeting,
+    Range,
+    CooldownMs,
+    Cost,
+    WindupMs,
+    ClampToRange,
+    Toggle,
+    Channel,
+    Hold,
+    Charges,
+    Charge,
+    PassiveModifier,
+    PassiveWhileReady,
+    Delivery,
+    Rate,
+    Damage,
+    DamageKind,
+    Amount,
+    PeriodMs,
+    Clip,
+    Splash,
+    Scatter,
+    PitchDeg,
+    UnitType,
+    Requires,
+    Construct,
+    Start,
+    StartLife,
+    CancelRefund,
+    Placement,
+    Resource,
+    Take,
+    Bounce,
+    Params,
+    OnResolve,
+    OnHit,
+    OnEnd,
 }
 
 /// What a kind of action does with a field: takes it or not, needs it, refuses it, or needs it

@@ -1,4 +1,5 @@
 use campfire_common::NamedEnum;
+use campfire_derive::{EnumAll, NamedEnum};
 use derive_more::Display;
 use serde::{Deserialize, Deserializer};
 
@@ -19,14 +20,11 @@ pub enum Stat {
 #[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct DeclaredStat(DeclaredName);
 
-campfire_common::enum_all! {
-    /// A stat a capability reads, whatever the mode, by the name data and scripts give it.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub enum EngineStat {
-        MoveSpeed => "move_speed",
-        TurnRate => "turn_rate",
-    }
-    pub const ALL;
+/// A stat a capability reads, whatever the mode, by the name data and scripts give it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, NamedEnum)]
+pub enum EngineStat {
+    MoveSpeed,
+    TurnRate,
 }
 
 impl Stat {

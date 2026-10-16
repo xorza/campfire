@@ -1,3 +1,5 @@
+use campfire_derive::EnumAll;
+
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::time::Duration;
 
@@ -10,18 +12,14 @@ pub struct Pace {
     speed: AtomicU8,
 }
 
-campfire_common::enum_all! {
-    /// A local match's game speed: the tick length is the session's over the speed.
-    #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-    pub enum PaceSpeed {
-        Half,
-        #[default]
-        Normal,
-        Double,
-        Quadruple,
-    }
-    /// Every speed, slowest first.
-    pub const ALL;
+/// A local match's game speed: the tick length is the session's over the speed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, EnumAll)]
+pub enum PaceSpeed {
+    Half,
+    #[default]
+    Normal,
+    Double,
+    Quadruple,
 }
 
 impl Default for Pace {

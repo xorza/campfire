@@ -10,6 +10,7 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::UnitEntity;
 
@@ -55,15 +56,11 @@ pub use crate::vision_grid::VisionGrid;
 #[derive(Debug)]
 pub struct Vision;
 
-campfire_common::enum_all! {
-    /// The steps of `vision`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum VisionSet {
-        /// Each team marks what it may see.
-        See,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `vision`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum VisionSet {
+    /// Each team marks what it may see.
+    See,
 }
 
 impl ModuleSet for VisionSet {

@@ -1,3 +1,4 @@
+use campfire_derive::EnumAll;
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{DeclaredName, Number};
 use serde::de::{Error, IgnoredAny};
@@ -54,14 +55,11 @@ pub enum MoveData {
     },
 }
 
-campfire_common::enum_all! {
-    /// The effects the design names that the release does not run yet.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum PlannedEffect {
-        Loot,
-        Noise,
-    }
-    pub const ALL;
+/// The effects the design names that the release does not run yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum PlannedEffect {
+    Loot,
+    Noise,
 }
 
 /// Whom an effect applies to.

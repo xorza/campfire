@@ -5,13 +5,17 @@
 //!
 //! A type enters only when two crates that do not depend on each other both name it, and only as a
 //! plain value: construction, parsing, display and serde, no other logic. The exceptions are
-//! `enum_all!`, which states an enum with the list of its variants, and `NamedEnum`, which names
-//! them from one table; the hashers, SHA-256 and domain-tagged BLAKE3, which construct the 32-byte
+//! `NamedEnum`, which names an enum's members from one table, as `campfire-derive` implements
+//! it; the hashers, SHA-256 and domain-tagged BLAKE3, which construct the 32-byte
 //! values (05-protocol-spec.md, Hashes, ids and keys); and, behind `internals`, the allocation
 //! audit every crate's `tests/alloc` suite runs on. The crate depends on nothing but `serde`,
 //! `derive_more`, `sha2` and `blake3`, and, for the audit, `backtrace`.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+
+// The derives name the trait by its crate, as every caller does.
+#[cfg(test)]
+extern crate self as campfire_common;
 
 mod after_leave;
 #[cfg(feature = "internals")]
@@ -20,7 +24,6 @@ mod bytes32;
 mod channel_binding;
 mod content_hash;
 mod domain_hasher;
-mod enum_all;
 mod exit_status;
 mod map_name;
 mod named_enum;

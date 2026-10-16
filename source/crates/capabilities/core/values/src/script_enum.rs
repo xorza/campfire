@@ -6,7 +6,7 @@ use crate::engine_enum::EngineEnum;
 /// as `NamedEnum` names it.
 pub trait ScriptEnum: NamedEnum {
     const ENUM: EngineEnum;
-    /// Each member's name in scripts, in the order of `ALL`: `enum_all!`'s `IDENTS`.
+    /// Each member's name in scripts, in the order of `ALL`: the `IDENTS` `EnumAll` gives.
     const SCRIPT_NAMES: &'static [&'static str];
 
     /// Each member by its name in scripts, in order.

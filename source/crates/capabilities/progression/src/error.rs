@@ -1,3 +1,4 @@
+use campfire_derive::EnumAll;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use campfire_values::{NameId, TrackId};
@@ -14,17 +15,14 @@ pub enum TrackError {
     LevelTracks,
 }
 
-campfire_common::enum_all! {
-    /// Why the progression capability refused a script call: a script gave it a value it does not
-    /// take.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum ProgressionRefusal {
-        /// A negative amount of experience.
-        NegativeXp,
-        /// Experience on a track the unit does not have.
-        NoTrack,
-    }
-    const ALL;
+/// Why the progression capability refused a script call: a script gave it a value it does not
+/// take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum ProgressionRefusal {
+    /// A negative amount of experience.
+    NegativeXp,
+    /// Experience on a track the unit does not have.
+    NoTrack,
 }
 
 impl CapabilityRefusal for ProgressionRefusal {

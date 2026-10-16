@@ -1,46 +1,46 @@
-campfire_common::enum_all! {
-    /// A table of the data files.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-    pub enum DataTable {
-        Mode,
-        UnitType,
-        ModeCombat,
-        ModeNavigation,
-        SlotKind,
-        Choice,
-        Leech,
-        Relation,
-        Team,
-        Players,
-        Saves,
-        Action,
-        Effect,
-        Delivery,
-        Projectile,
-        Area,
-        AreaInside,
-        Track,
-        Modifier,
-        Aura,
-        Combat,
-        Production,
-        Supply,
-        ModeSupply,
-        Requires,
-        Node,
-        DropOff,
-        Vision,
-        Collision,
-        Ai,
-        Tag,
-        Item,
-        Inventory,
-        Shop,
-        Use,
-        Uses,
-    }
-    pub const ALL;
+use campfire_derive::EnumAll;
+
+/// A table of the data files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
+pub enum DataTable {
+    Mode,
+    UnitType,
+    ModeCombat,
+    ModeNavigation,
+    SlotKind,
+    Choice,
+    Leech,
+    Relation,
+    Team,
+    Players,
+    Saves,
+    Action,
+    Effect,
+    Delivery,
+    Projectile,
+    Area,
+    AreaInside,
+    Track,
+    Modifier,
+    Aura,
+    Combat,
+    Production,
+    Supply,
+    ModeSupply,
+    Requires,
+    Node,
+    DropOff,
+    Vision,
+    Collision,
+    Ai,
+    Tag,
+    Item,
+    Inventory,
+    Shop,
+    Use,
+    Uses,
 }
+
 impl DataTable {
     /// The table as the reference titles it.
     pub const fn title(self) -> &'static str {

@@ -13,6 +13,7 @@ use campfire_actions::{ActionSlots, EffectQueues};
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
+use campfire_derive::EnumAll;
 use campfire_math::RngStream;
 use campfire_sim::Capability;
 use campfire_stats::Life;
@@ -95,33 +96,29 @@ pub const SCATTER_STREAM: RngStream = RngStream::new("combat.scatter");
 #[derive(Debug)]
 pub struct Combat;
 
-campfire_common::enum_all! {
-    /// Combat's steps.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum CombatSet {
-        /// Dead units whose respawn is due come back, before any input of the tick can reach
-        /// them.
-        Respawn,
-        /// Attacks start, and targets that are gone are dropped.
-        Attack,
-        /// After the projectiles fly and before areas trigger: the hits of the attacks'
-        /// projectiles queue their damage.
-        Hits,
-        /// The attacks going off pay the toggles that cost an attack.
-        Pay,
-        /// Windups that end strike, or fire, each with its roll drawn.
-        Strike,
-        /// Modifiers' intervals come.
-        Interval,
-        /// The tick's damage is dealt.
-        Damage,
-        /// Units at zero life die.
-        Die,
-        /// The dead whose type despawns go, after the Mode stage saw them.
-        Despawn,
-    }
-    /// Every step.
-    pub const ALL;
+/// Combat's steps.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum CombatSet {
+    /// Dead units whose respawn is due come back, before any input of the tick can reach
+    /// them.
+    Respawn,
+    /// Attacks start, and targets that are gone are dropped.
+    Attack,
+    /// After the projectiles fly and before areas trigger: the hits of the attacks'
+    /// projectiles queue their damage.
+    Hits,
+    /// The attacks going off pay the toggles that cost an attack.
+    Pay,
+    /// Windups that end strike, or fire, each with its roll drawn.
+    Strike,
+    /// Modifiers' intervals come.
+    Interval,
+    /// The tick's damage is dealt.
+    Damage,
+    /// Units at zero life die.
+    Die,
+    /// The dead whose type despawns go, after the Mode stage saw them.
+    Despawn,
 }
 
 impl ModuleSet for CombatSet {

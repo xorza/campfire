@@ -13,6 +13,7 @@ use bevy_ecs::system::ScheduleSystem;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
+use campfire_derive::EnumAll;
 use campfire_sim::Capability;
 use campfire_units::{BodyUnit, Player};
 use campfire_values::{Block, EngineTag, TagProperties};
@@ -92,23 +93,19 @@ pub use crate::trains::Trains;
 #[derive(Debug)]
 pub struct Production;
 
-campfire_common::enum_all! {
-    /// The steps of `production`.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum ProductionSet {
-        /// The tick's orders cancel trains and builds, and set rally points.
-        Commands,
-        /// The build orders that changed are checked, after the orders apply.
-        CheckBuilds,
-        /// After the actions start: trains start, builds start and workers gather.
-        Start,
-        /// Sites progress, and the trains whose time ended spawn.
-        Finish,
-        /// Each player's supply is counted again, and the emptied nodes go.
-        Supply,
-    }
-    /// Every step.
-    pub const ALL;
+/// The steps of `production`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum ProductionSet {
+    /// The tick's orders cancel trains and builds, and set rally points.
+    Commands,
+    /// The build orders that changed are checked, after the orders apply.
+    CheckBuilds,
+    /// After the actions start: trains start, builds start and workers gather.
+    Start,
+    /// Sites progress, and the trains whose time ended spawn.
+    Finish,
+    /// Each player's supply is counted again, and the emptied nodes go.
+    Supply,
 }
 
 impl ModuleSet for ProductionSet {

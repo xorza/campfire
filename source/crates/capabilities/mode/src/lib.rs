@@ -17,6 +17,7 @@ use campfire_actions::ActionSlots;
 use campfire_combat::{Weigh, Weighers};
 use campfire_common::PlayerSlot;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_derive::EnumAll;
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
 use campfire_players::{Players, PlayersWorld, Seating, SlotStart};
 use campfire_script::{CallError, Ctx, Hook, Pool, ScriptText, View};
@@ -127,20 +128,16 @@ pub use crate::unanswered_slot_events::UnansweredSlotEvents;
 #[derive(Debug)]
 pub struct Mode;
 
-campfire_common::enum_all! {
-    /// The mode's steps.
-    #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-    pub(crate) enum ModeSet {
-        /// The tick's mode inputs run its script, once the tick started and before any order.
-        Inputs,
-        /// Once the trains spawned: the slots' events, the due timers, the deaths and the level
-        /// ups run the mode's hooks.
-        Hooks,
-        /// The players out of play are counted again.
-        OutOfPlay,
-    }
-    /// Every step.
-    pub const ALL;
+/// The mode's steps.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
+pub(crate) enum ModeSet {
+    /// The tick's mode inputs run its script, once the tick started and before any order.
+    Inputs,
+    /// Once the trains spawned: the slots' events, the due timers, the deaths and the level
+    /// ups run the mode's hooks.
+    Hooks,
+    /// The players out of play are counted again.
+    OutOfPlay,
 }
 
 impl ModuleSet for ModeSet {

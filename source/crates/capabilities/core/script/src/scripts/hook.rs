@@ -1,39 +1,37 @@
+use campfire_derive::EnumAll;
 use serde::Deserialize;
 
 use crate::scripts::script_role::ScriptRole;
 
-campfire_common::enum_all! {
-    /// A hook the engine calls in a script, by name: every hook of the script API, whether the
-    /// release calls it yet or not, so the package load checks know them all. It reads back from
-    /// its `Debug` name, as a log writes it.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-    pub enum Hook {
-        OnResolve,
-        OnHit,
-        OnEnd,
-        OnChannelTick,
-        OnInterrupt,
-        OnInterval,
-        OnAttack,
-        OnAttackHit,
-        OnDamageTaken,
-        OnKill,
-        OnTakedown,
-        OnMatchStart,
-        OnModeInput,
-        OnTimer,
-        OnPlayerJoin,
-        OnPlayerLeave,
-        OnUnitDied,
-        CalcDamage,
-        CalcHeal,
-        OnThink,
-        OnLevelUp,
-        OnGenerate,
-        OnSystem,
-        OnStageDone,
-    }
-    pub const ALL;
+/// A hook the engine calls in a script, by name: every hook of the script API, whether the
+/// release calls it yet or not, so the package load checks know them all. It reads back from
+/// its `Debug` name, as a log writes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, EnumAll)]
+pub enum Hook {
+    OnResolve,
+    OnHit,
+    OnEnd,
+    OnChannelTick,
+    OnInterrupt,
+    OnInterval,
+    OnAttack,
+    OnAttackHit,
+    OnDamageTaken,
+    OnKill,
+    OnTakedown,
+    OnMatchStart,
+    OnModeInput,
+    OnTimer,
+    OnPlayerJoin,
+    OnPlayerLeave,
+    OnUnitDied,
+    CalcDamage,
+    CalcHeal,
+    OnThink,
+    OnLevelUp,
+    OnGenerate,
+    OnSystem,
+    OnStageDone,
 }
 
 impl Hook {

@@ -1,3 +1,4 @@
+use campfire_derive::EnumAll;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use campfire_values::DeclaredName;
@@ -36,19 +37,16 @@ pub enum MapProblem {
     },
 }
 
-campfire_common::enum_all! {
-    /// Why the navigation capability refused a script call: a script gave it a value it does not
-    /// take.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum NavigationRefusal {
-        /// A distance that is not more than 0, or beyond the world's bound.
-        NotADistance,
-        /// A speed of no step a tick: 0, negative, or too small to move a bit.
-        NotASpeed,
-        /// A forced move of a unit that does not walk.
-        NoWalker,
-    }
-    const ALL;
+/// Why the navigation capability refused a script call: a script gave it a value it does not
+/// take.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
+pub enum NavigationRefusal {
+    /// A distance that is not more than 0, or beyond the world's bound.
+    NotADistance,
+    /// A speed of no step a tick: 0, negative, or too small to move a bit.
+    NotASpeed,
+    /// A forced move of a unit that does not walk.
+    NoWalker,
 }
 
 impl CapabilityRefusal for NavigationRefusal {

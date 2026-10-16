@@ -1,21 +1,18 @@
 use campfire_common::NamedEnum;
+use campfire_derive::{EnumAll, EnumIdents, NamedEnum};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::engine_enum::EngineEnum;
 use crate::script_enum::ScriptEnum;
 
-campfire_common::enum_all! {
-    /// How one team regards another, as the mode's `[[relations]]` declare it and
-    /// `ctx.set_relation` changes it: Unreal's team attitudes. A neutral unit may be attacked,
-    /// but does not seek a fight.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum Relation {
-        Hostile => "hostile",
-        Neutral => "neutral",
-        Friendly => "friendly",
-    }
-    const ALL;
-    const IDENTS;
+/// How one team regards another, as the mode's `[[relations]]` declare it and
+/// `ctx.set_relation` changes it: Unreal's team attitudes. A neutral unit may be attacked,
+/// but does not seek a fight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, EnumIdents, NamedEnum)]
+pub enum Relation {
+    Hostile,
+    Neutral,
+    Friendly,
 }
 
 impl Relation {
@@ -26,7 +23,7 @@ impl Relation {
 }
 
 /// Written and read as serde's derive does a unit variant: a binary format, as a snapshot, by its
-/// place, and a text format, as data, by the name beside it.
+/// place, and a text format, as data, by its name.
 impl Serialize for Relation {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         self.serialize_member(serializer)
