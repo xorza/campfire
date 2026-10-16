@@ -8,6 +8,7 @@ use bevy_ecs::system::{Commands, Query};
 use lightyear::link::server::ServerLinkPlugin;
 use lightyear::link::{
     Link, LinkReceiveSystems, LinkStart, LinkSystems, Linked, Linking, Unlink, UnlinkReason,
+    Unlinked,
 };
 use lightyear::prelude::PeerAddr;
 
@@ -65,6 +66,16 @@ impl QuicPlugin {
         commands.entity(linked.entity).try_remove::<LinkEnd>();
     }
 
+    /// Empties a link's queues as it unlinks. What they hold is its connection's, and Lightyear
+    /// reads them again only once the link links again, on another connection, whose transport
+    /// would take a packet of the last one as its own: a pong of a ping it never sent.
+    fn empty_queues(unlinked: On<'_, '_, Add, Unlinked>, mut links: Query<'_, '_, &mut Link>) {
+        if let Ok(mut link) = links.get_mut(unlinked.entity) {
+            let _ = link.recv.drain();
+            let _ = link.send.drain();
+        }
+    }
+
     fn unlink(
         unlink: On<'_, '_, Unlink>,
         links: Query<'_, '_, (), With<QuicLink>>,
@@ -111,6 +122,7 @@ impl Plugin for QuicPlugin {
         app.add_observer(Self::unlink);
         app.add_observer(Self::close);
         app.add_observer(Self::relink);
+        app.add_observer(Self::empty_queues);
         app.add_systems(
             PreUpdate,
             Self::receive.in_set(LinkReceiveSystems::BufferToLink),

@@ -760,7 +760,14 @@ fn a_server_started_again_on_its_reset_key_resets_its_old_connections() {
     let mut client = loopback.client(LinkTimes::CAMPFIRE);
     let link = loopback.join(&mut client);
     // The server stops with no close, as a crash stops it, and starts again on its port and its
-    // reset key: the client's next packet meets a reset, not the idle timeout (D8).
+    // reset key: the client's next packet meets a reset, not the idle timeout (D8). What the old
+    // connection left in the client's queue goes with it, so no packet of it reaches the next.
+    client
+        .link()
+        .recv
+        .push_raw(RecvPayload::Frozen(Bytes::from_static(
+            b"of the old connection",
+        )));
     loopback.quic().state().forget(link);
     let address = loopback.address;
     drop(loopback);
@@ -774,6 +781,7 @@ fn a_server_started_again_on_its_reset_key_resets_its_old_connections() {
         client.app.world().get::<LinkEnd>(client.entity),
         Some(&LinkEnd::Reset)
     );
+    assert_eq!([client.link().recv.len(), client.link().send.len()], [0, 0]);
 }
 
 #[test]
