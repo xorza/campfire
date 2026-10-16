@@ -1152,6 +1152,15 @@ static SCRIPT_FLAWS: &[Flaw] = &[
     ),
     flaw(
         CREEP_AI,
+        Edit::Replace(
+            "if target == () {\n        ctx.order_follow_path",
+            "if supply_cap(ctx, 0) > 0 {\n        ctx.order_follow_path",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Script(path) } if path.as_str() == "scripts/creep_ai.rhai"),
+    ),
+    flaw(
+        CREEP_AI,
         Edit::Replace("fn on_think(ctx, unit)", "fn on_think(ctx, unit, more)"),
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_think"),
@@ -1500,6 +1509,20 @@ static ACTION_FLAWS: &[Flaw] = &[
         Edit::Replace("ctx.find(", "ctx.finds("),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "finds"),
+    ),
+    // A call with `ctx` first is a call of `ctx`, as Rhai calls it, and a string literal index a
+    // name of data, as a property is.
+    flaw(
+        LASH_OUT,
+        Edit::Replace("ctx.find(", "finds(ctx, "),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "finds"),
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace("ctx.p.radius", r#"ctx.p["radiuss"]"#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, name, .. } if name == "radiuss"),
     ),
     // An AI's order in the mode's script.
     flaw(

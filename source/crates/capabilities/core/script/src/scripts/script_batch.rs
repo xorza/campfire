@@ -29,14 +29,20 @@ impl ScriptBatch<'_> {
         &self.ctx
     }
 
-    /// Calls `hook` of `script` with `args`, from the budget of `pool`.
-    pub fn call(
+    /// Calls `hook` of `script` with `args`, from the budget of `pool`: one argument for each
+    /// of the hook's parameters.
+    pub fn call<A: ScriptArgs>(
         &mut self,
         pool: Pool,
         script: ScriptId,
         hook: Hook,
-        args: impl ScriptArgs,
+        args: A,
     ) -> Result<ScriptValue, ScriptError> {
+        debug_assert_eq!(
+            A::LEN,
+            hook.params(),
+            "{hook:?} takes one argument a parameter"
+        );
         let budgets = self.world.resource_mut::<ScriptBudgets>().into_inner();
         self.host
             .call(

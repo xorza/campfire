@@ -178,7 +178,8 @@ impl Release {
         Self::declare(Self::capabilities(), &mut KindsOnly(v));
     }
 
-    /// Binds into `builder` the script API of every module the release runs.
+    /// Binds into `builder` the script API of every module the release runs, as the load check
+    /// reads it.
     fn bind_api(builder: &mut ApiBuilder<'_>) {
         Self::declare(Self::capabilities(), &mut ApiBinder(builder));
     }
@@ -207,7 +208,9 @@ impl Release {
         world.insert_resource(spec.out);
         Units::open(world, role.budgets().cloned());
         if role.scripts() {
-            ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), Self::bind_api);
+            ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), |builder| {
+                Self::declare(set, &mut ApiBinder(builder));
+            });
         }
         MatchEnd::stop_stages(schedule);
         for phase in Phase::ALL {

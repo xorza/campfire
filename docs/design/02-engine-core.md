@@ -295,8 +295,8 @@ One promise on every OS. Code that differs by OS lives only in `store`'s `platfo
   | The player's, one per slot | The calls the player causes: its units' actions, their deliveries and modifiers, its quests and dialogue |
   | `think` | AI `on_think` and `on_heard`; an action's or modifier's hooks whose source no player controls, or is gone |
   | `mode` | The mode's hooks: timers, inputs, deaths, region events, `on_level_up`, `on_wake`; a modifier with no source |
-  | `systems` | `on_system` |
-  | None, the limit per call only | `calc_damage` and `calc_heal`, pure, once for each damage and heal, so a crowded fight cannot change how they weigh ([Combat](04-capabilities/combat.md#damage-and-heals)); `on_generate`, under its own larger limit |
+  | `systems`, planned | `on_system`, planned |
+  | None, the limit per call only | `calc_damage` and `calc_heal`, pure, once for each damage and heal, so a crowded fight cannot change how they weigh ([Combat](04-capabilities/combat.md#damage-and-heals)); `on_generate`, planned, under its own larger limit, also planned |
 
   A call that finds its pool spent waits and runs first in the next tick; a pure hook has no pool.
 - **Other limits** (call depth, sizes) are engine constants, as Rhai's defaults differ between debug and release.

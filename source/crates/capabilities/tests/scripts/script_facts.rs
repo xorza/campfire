@@ -137,6 +137,81 @@ fn on_x(ctx, unit) {
 }
 
 #[test]
+fn a_call_with_its_receiver_first_reads_as_the_method_and_a_literal_index_as_data() {
+    // Rhai calls `f(x, …)` as `x.f(…)`: with `ctx` first, a call of `ctx`, its names and enums
+    // read from the arguments after it; with a handle first, its method; the script's own
+    // `helper` neither. A string literal index names data as a property does; a variable cannot
+    // be read at load.
+    let source = r#"
+fn on_resolve(ctx, caster, target) {
+    damage(ctx, target, 5, "fire");
+    spawn_group(ctx, "a", "mid", "start", []);
+    let speed = stat(caster, "speed");
+    let width = ctx.p["width"];
+    ctx.state["round"] = 1;
+    target.state["marks"] += 1;
+    let name = "hidden";
+    let hidden = ctx.p[name];
+    helper(ctx, caster);
+}
+
+fn helper(ctx, unit) {}
+"#;
+    let mut host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
+    let api = Release::bind_script_api(&mut host);
+    let facts = ScriptFacts::read(&host, source, &api).unwrap();
+    assert_eq!(facts.ctx_misuse, None);
+    let names: Vec<_> = facts
+        .ctx_names
+        .iter()
+        .map(|used| (used.name.as_str(), used.kind))
+        .collect();
+    let (call, value) = (MemberKind::Call, MemberKind::Value);
+    assert_eq!(
+        names,
+        [
+            ("damage", call),
+            ("spawn_group", call),
+            ("p", value),
+            ("state", value),
+            ("p", value)
+        ]
+    );
+    let members: Vec<_> = facts
+        .members
+        .iter()
+        .map(|used| (used.name.as_str(), used.kind))
+        .collect();
+    assert_eq!(
+        members,
+        [("stat", MemberKind::Method), ("state", MemberKind::Field)]
+    );
+    let given: Vec<_> = facts
+        .names
+        .iter()
+        .map(|named| (named.kind, named.name.as_str()))
+        .collect();
+    assert_eq!(
+        given,
+        [
+            (NameKind::DamageKind, "fire"),
+            (NameKind::Team, "a"),
+            (NameKind::Path, "mid"),
+            (NameKind::Stat, "speed"),
+        ]
+    );
+    let string = EnumString {
+        call: "spawn_group".to_owned(),
+        engine_enum: EngineEnum::PathEnd,
+    };
+    assert_eq!(facts.enum_strings, [string]);
+    assert_eq!(facts.params, ["width"]);
+    let mut state_fields = facts.state_fields.clone();
+    state_fields.sort_unstable();
+    assert_eq!(state_fields, ["marks", "round"]);
+}
+
+#[test]
 fn a_closure_an_anonymous_function_and_fn_make_a_function_pointer() {
     let host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
     let api = Release::script_api();
@@ -176,6 +251,10 @@ fn every_use_of_ctx_but_a_name_on_it_or_a_call_argument_breaks_the_convention() 
         ("fn on_x(ctx) { ctx == 1 }", Some(CtxMisuse::Stray)),
         ("fn on_x(ctx) { h(1, ctx); } fn h(a, c) {}", renamed("h")),
         ("fn on_x(ctx) { 1.h(ctx); } fn h(c) {}", renamed("h")),
+        // `ctx` past the first argument of the engine's call, or given a method of the engine's,
+        // is no call of `ctx`.
+        ("fn on_x(ctx) { api(1, ctx); }", Some(CtxMisuse::Stray)),
+        ("fn on_x(ctx) { 1.api(ctx); }", Some(CtxMisuse::Stray)),
         ("fn on_x(ctx) { h(ctx); } fn h(ctx) { ctx.find(1); }", None),
         ("fn on_x(ctx) { let ctx = 1; }", Some(CtxMisuse::Bound)),
         ("fn on_x(ctx) { const ctx = 1; }", Some(CtxMisuse::Bound)),

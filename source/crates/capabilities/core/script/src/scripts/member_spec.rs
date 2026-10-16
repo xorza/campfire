@@ -130,4 +130,20 @@ impl MemberSpec {
         self.enums = args.enums;
         self
     }
+
+    /// What its arguments name and take, the receiver aside.
+    pub const fn args(&self) -> ArgKinds {
+        ArgKinds {
+            names: self.names,
+            enums: self.enums,
+        }
+    }
+
+    /// Whether a form of it takes `arity` arguments: a value takes none.
+    pub(crate) fn has_form_of(&self, arity: usize) -> bool {
+        match self.kind {
+            MemberKind::Value => arity == 0,
+            _ => self.forms.iter().any(|form| form.len() == arity),
+        }
+    }
 }

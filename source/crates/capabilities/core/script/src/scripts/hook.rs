@@ -30,6 +30,7 @@ campfire_common::enum_all! {
         OnThink,
         OnLevelUp,
         OnGenerate,
+        OnSystem,
     }
     pub const ALL;
 }
@@ -69,6 +70,7 @@ impl Hook {
             Self::OnThink => "on_think",
             Self::OnLevelUp => "on_level_up",
             Self::OnGenerate => "on_generate",
+            Self::OnSystem => "on_system",
         }
     }
 
@@ -80,6 +82,7 @@ impl Hook {
             Self::OnInterval => &["ctx", "m"],
             Self::OnPlayerJoin | Self::OnPlayerLeave => &["ctx", "player"],
             Self::OnGenerate => &["ctx", "region"],
+            Self::OnSystem => &["ctx", "units"],
             Self::CalcDamage => &["ctx", "d"],
             Self::CalcHeal => &["ctx", "h"],
             Self::OnResolve | Self::OnChannelTick | Self::OnInterrupt => &["ctx", "unit", "target"],
@@ -122,7 +125,8 @@ impl Hook {
             | Self::CalcDamage
             | Self::CalcHeal
             | Self::OnLevelUp
-            | Self::OnGenerate => ScriptRole::Mode,
+            | Self::OnGenerate
+            | Self::OnSystem => ScriptRole::Mode,
             Self::OnThink => ScriptRole::Ai,
         }
     }

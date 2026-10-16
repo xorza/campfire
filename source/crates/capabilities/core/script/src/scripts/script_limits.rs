@@ -4,19 +4,20 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 /// How many operations scripts may run: in one call, and in each pool's calls of one tick
-/// together. Each player, AI and the mode draw from pools of their own, so no call can spend
-/// what another's needs, and the sum of the pools is the most one tick's scripts run. The mode's
-/// manifest sets them, and each pool holds a whole call.
+/// together, as `Pool` gives the pools. Each player, AI and the mode draw from pools of their
+/// own, so no call can spend what another's needs, and the sum of the pools is the most one
+/// tick's scripts run. The mode's manifest sets them, and each pool holds a whole call. Design
+/// 08's `systems` limit, of the planned `systems` pool, and `generate`, the larger limit of a
+/// call of `on_generate`, are planned.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScriptLimits {
     /// At least one: Rhai reads a limit of 0 operations as no limit.
     pub per_call: NonZeroU64,
-    /// For the calls each player causes: their casts and mode inputs. Each player slot has a
-    /// pool of this size.
+    /// For the calls each player causes. Each player slot has a pool of this size.
     pub player: u64,
-    /// For AI `on_think` calls.
+    /// For AI `on_think` calls, and the hooks of sources no player controls.
     pub think: u64,
-    /// For the mode's own calls: the match start and timers.
+    /// For the mode's own hooks.
     pub mode: u64,
 }
 

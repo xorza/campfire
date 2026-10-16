@@ -1,15 +1,18 @@
+use std::any::TypeId;
 use std::fmt::Write;
 
 use crate::scripts::member_spec::MemberSpec;
 use crate::scripts::status::Status;
 
 /// A name of the script API: its spec, as every binding of it gives it, whether a script may
-/// write it, as `m.stacks`, and whether it runs.
+/// write it, as `m.stacks`, whether it runs, and the type of the value its forms give; none for
+/// a planned name and a setter alone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ApiMember {
     pub spec: MemberSpec,
     pub writable: bool,
     pub status: Status,
+    pub output: Option<TypeId>,
 }
 
 impl ApiMember {

@@ -5,6 +5,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 ## Decide
 
 - **Combat.** A unit at zero life that is not yet dead, as `ctx.kill` in a mode's hook leaves it until the next tick's deaths, is a living target (`actions/src/targets.rs`; design combat.md, A target), where the one living test of `stats` says it lives no more, so the pass deals it nothing: an attack or a cast may still choose it. The options: targets read the living test, or a target keeps its own rule and the design says why.
+- **Mode.** Design 02's table of pools puts the mode's inputs in the `mode` pool, and its player's row the calls a player causes; `mode/src/mode_hooks.rs` draws `on_mode_input` from the player's pool, as `Pool::Player`'s doc says. Options: the `mode` pool, as the table's row says, or the player's, as the code does.
 
 ## Research
 
@@ -24,3 +25,4 @@ The issue log: every open problem of the project, under the step it waits for. T
 - **Combat.** An attack lands its damage in the tick it fires, where Zero Hour deals a weapon of no projectile `distance / WeaponSpeed` frames after the shot, rounded up, when that is a frame or more (`WeaponStore::setDelayedDamage`): the import drops each non-laser weapon whose `WeaponSpeed` is below the default, 7 of the install's starting weapons, `HumveeGun` and `SentryDroneGun` among them (design 19, D6).
 - **Driver.** No packaging step moves a release build's debug info out of its binary: `profile.release` keeps `debug = "full"` with `split-debuginfo = "off"`, so a shipped binary carries all of it, where the release packaging is to keep it beside the binary, by `objcopy --only-keep-debug` and `objcopy --strip-debug --add-gnu-debuglink` on Linux and a `CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO=packed` build with `strip -S` on macOS.
 - **Verifier.** No log or replay starts from a checkpoint's `LogCarry` (`protocol/src/checkpoint/log_carry.rs`): the log builds, writes and compares the carry, and a verifier replays every log from tick 0, so a host that prunes its logs past a checkpoint leaves a segment nothing verifies, where designs 02 (Session log) and 05 (Checkpoints and results) plan a segment's verification from its checkpoint alone.
+- **Vision.** `Vision::clear_grid`'s doc (`vision/src/lib.rs`) says that every unit then sees all, where a match with vision and no grid runs no Vision stage, and a unit with no `SeenBy` is seen by its own vision group alone (`vision_column.rs`, `seen_by`), as the module's doc says a match sees nothing until its mode gives the grid.

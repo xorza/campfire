@@ -37,6 +37,9 @@ use campfire_vision::{SeenBy, Vision};
 const ONE: i64 = 1 << 24;
 /// The MOBA 3v3's creep and tower AI as they were when these tests were written: the
 /// engine's tests keep their own copies, so a change to the MOBA's mode changes none of them.
+/// Their matches declare no vision, where every team sees every unit, and bind none of its API:
+/// `nearest` takes the place of `ctx.nearest_visible`, the nearest of the units `ctx.find`
+/// finds, and no test asks `can_see`.
 const CREEP_AI: &str = r#"
 fn on_think(ctx, unit) {
     let target = defend_hero(ctx, unit);
@@ -44,13 +47,13 @@ fn on_think(ctx, unit) {
         target = keep_target(unit);
     }
     if target == () {
-        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:creep");
+        target = nearest(ctx, unit, unit.params.aggro_range, "enemies:creep");
     }
     if target == () {
-        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
+        target = nearest(ctx, unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
-        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:structure");
+        target = nearest(ctx, unit, unit.params.aggro_range, "enemies:structure");
     }
     if target == () {
         ctx.order_follow_path(unit);
@@ -80,7 +83,7 @@ fn keep_target(unit) {
 }
 
 fn in_reach(unit, other) {
-    unit.can_see(other) && unit.pos.within(other.pos, unit.params.aggro_range)
+    unit.pos.within(other.pos, unit.params.aggro_range)
 }
 "#;
 const TOWER_AI: &str = r#"
@@ -94,10 +97,10 @@ fn on_think(ctx, tower) {
         }
     }
     if target == () {
-        target = ctx.nearest_visible(tower, range, "enemies:creep");
+        target = nearest(ctx, tower, range, "enemies:creep");
     }
     if target == () {
-        target = ctx.nearest_visible(tower, range, "enemies:avatar");
+        target = nearest(ctx, tower, range, "enemies:avatar");
     }
     if target != () && target != tower.target {
         ctx.order_attack(tower, target);
@@ -116,6 +119,25 @@ fn defend_hero(ctx, tower, range) {
 }
 "#;
 
+/// `nearest` of `CREEP_AI` and `TOWER_AI`: the unit `ctx.find` finds within `range` of `unit`
+/// that `filter` selects, nearest it, the first by stable id of those as near.
+const NEAREST: &str = "
+fn nearest(ctx, unit, range, filter) {
+    let nearest = ();
+    for other in ctx.find(unit, unit.pos, range, filter) {
+        if nearest == () || unit.pos.distance_to(other.pos) < unit.pos.distance_to(nearest.pos) {
+            nearest = other;
+        }
+    }
+    nearest
+}
+";
+
+/// The script of `source`, an AI that calls `nearest`, with it.
+fn ai(source: &str) -> String {
+    format!("{source}{NEAREST}")
+}
+
 const CAMP_AI: &str = "
 fn on_think(ctx, unit) {
     let away = unit.pos.distance_to(unit.spawn_pos);
@@ -124,14 +146,12 @@ fn on_think(ctx, unit) {
         return;
     }
     let target = unit.target;
-    if target != () && target.alive && unit.can_see(target) {
+    if target != () && target.alive {
         return;
     }
     for attacker in unit.recent_attackers(unit.params.aggro_window_ms) {
-        if unit.can_see(attacker) {
-            ctx.order_attack(unit, attacker);
-            return;
-        }
+        ctx.order_attack(unit, attacker);
+        return;
     }
     if away > unit.params.home_slack {
         ctx.order_move(unit, unit.spawn_pos);
@@ -625,7 +645,7 @@ fn a_tower_prefers_creeps_and_defends_its_heroes() {
         &mut game,
         &["structure", "tower"],
         &[window],
-        Some(TOWER_AI),
+        Some(&ai(TOWER_AI)),
     );
     // The tower strikes 10 within 5 m, a tick into an attack every 3 ticks. The enemy hero
     // strikes the ally hero, 2 m away, a tick into its attack.
@@ -673,7 +693,7 @@ fn a_creep_takes_an_enemy_structure_last_and_keeps_it() {
     ];
     Orders::ai_type(&mut game, &["avatar"], &[], None);
     let structure = Orders::ai_type(&mut game, &["structure"], &[], None);
-    let creep = Orders::ai_type(&mut game, &["creep"], &params, Some(CREEP_AI));
+    let creep = Orders::ai_type(&mut game, &["creep"], &params, Some(&ai(CREEP_AI)));
     let still_creep = Orders::ai_type(&mut game, &["creep"], &[], None);
     for unit_type in [structure, creep, still_creep] {
         arm(&mut game, unit_type, standing());
@@ -717,7 +737,7 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
         ("help_range", meters(5)),
         ("help_window_ms", Scalar::Int(2000)),
     ];
-    let creep = Orders::ai_type(&mut game, &["creep"], &params, Some(CREEP_AI));
+    let creep = Orders::ai_type(&mut game, &["creep"], &params, Some(&ai(CREEP_AI)));
     for unit_type in [still_creep, creep] {
         arm(&mut game, unit_type, standing());
     }

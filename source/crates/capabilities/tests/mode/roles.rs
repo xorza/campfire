@@ -70,14 +70,12 @@ fn probe(ctx, unit) {
         ("ctx.timer(\"late\", 100, false, ())", ScriptRole::Action),
         ("ctx.end(())", ScriptRole::Ai),
         ("ctx.state.phase", ScriptRole::Modifier),
-        ("ctx.order_follow_path(unit)", ScriptRole::Mode),
         ("ctx.save()", ScriptRole::Action),
         ("ctx.players", ScriptRole::Ai),
         ("ctx.team_of(0)", ScriptRole::Modifier),
         ("ctx.reveal(unit.pos, 1, 100)", ScriptRole::Mode),
         ("ctx.attack_hit(unit)", ScriptRole::Mode),
         ("ctx.origin", ScriptRole::Modifier),
-        ("ctx.area(unit.pos)", ScriptRole::Ai),
     ];
     for (call, role) in refused {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
@@ -85,6 +83,21 @@ fn probe(ctx, unit) {
         assert_eq!(
             failed.kind(),
             FailureKind::Api(ApiError::NotForRole),
+            "{call} in {role:?}: {failed}"
+        );
+    }
+    // A call of a capability the match does not declare, `orders` or `areas`, is not bound,
+    // even in a role it serves: the match binds the API of its declared capabilities alone.
+    let unbound = [
+        ("ctx.order_follow_path(unit)", ScriptRole::Ai),
+        ("ctx.area(unit.pos)", ScriptRole::Action),
+    ];
+    for (call, role) in unbound {
+        let source = format!("fn probe(ctx, unit) {{ {call} }}");
+        let failed = Mode::probe_as(&mut game, &source, role, actor, actor).unwrap_err();
+        assert_eq!(
+            failed.kind(),
+            FailureKind::Runtime,
             "{call} in {role:?}: {failed}"
         );
     }

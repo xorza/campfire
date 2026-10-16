@@ -215,6 +215,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_think(ctx, unit)` | AI | orders | since 1.0 |
 | `on_level_up(ctx, unit, track, level)` | mode | progression | since 1.0 |
 | `on_generate(ctx, region)` | mode | core | planned |
+| `on_system(ctx, units)` | mode | core | planned |
 
 ## Tag properties
 

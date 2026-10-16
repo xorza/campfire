@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::rc::Rc;
 
 use campfire_values::EngineEnum;
@@ -17,8 +18,14 @@ use crate::scripts::script_value::{ScriptType, ScriptValue};
 /// integer form, with an integer for each `Num`; a call in a role it does not serve fails before
 /// it runs.
 pub trait CtxFn<Args, R> {
+    /// How many arguments it takes, `ctx` aside.
+    const ARITY: usize;
+
     /// What each argument names, and the engine enum each takes, by place.
     fn args() -> ArgKinds;
+
+    /// The type of the value it gives.
+    fn output() -> TypeId;
 
     fn register(self, engine: &mut Engine, name: &str, roles: RoleSet);
 }
@@ -27,8 +34,14 @@ pub trait CtxFn<Args, R> {
 /// arguments, each a `ScriptArg` as the handle is, and the call's `ctx` before both when its marker
 /// `M` is `WithCtx`. Rhai calls it as `CtxFn` says, the handle a number too in the integer form.
 pub trait MethodFn<M, H, Args, R> {
+    /// How many arguments it takes, the handle and `ctx` aside.
+    const ARITY: usize;
+
     /// What each argument names, and the engine enum each takes, by place.
     fn args() -> ArgKinds;
+
+    /// The type of the value it gives.
+    fn output() -> TypeId;
 
     fn register(self, engine: &mut Engine, name: &str);
 }
@@ -37,12 +50,18 @@ pub trait MethodFn<M, H, Args, R> {
 /// call's `ctx` before it when its marker `M` is `WithCtx`. It gives its value `O`: a value, or
 /// one that fails the call when its marker `K` is `Fallible`.
 pub trait GetFn<M, H, O, K> {
+    /// The type of the value it gives.
+    fn output() -> TypeId;
+
     fn register(self, engine: &mut Engine, name: &str);
 }
 
 /// What a form gives: its value, or with the marker `Fallible`, its value or the error that
 /// fails the call.
 pub(crate) trait ScriptReturn<K> {
+    /// The type of the value.
+    type Value: 'static;
+
     /// The value in the engine's form, or the error.
     fn checked(self) -> Checked<Dynamic>;
 }
@@ -56,12 +75,16 @@ pub struct Plain;
 pub struct Fallible;
 
 impl<R: ScriptType> ScriptReturn<Plain> for R {
+    type Value = R;
+
     fn checked(self) -> Checked<Dynamic> {
         Ok(ScriptValue::engine(self))
     }
 }
 
 impl<R: ScriptType> ScriptReturn<Fallible> for Checked<R> {
+    type Value = R;
+
     fn checked(self) -> Checked<Dynamic> {
         self.map(ScriptValue::engine)
     }
@@ -73,6 +96,10 @@ where
     H: ScriptType,
     O: ScriptReturn<K>,
 {
+    fn output() -> TypeId {
+        TypeId::of::<O::Value>()
+    }
+
     fn register(self, engine: &mut Engine, name: &str) {
         engine.register_fn(name, move |handle: &mut H| self(handle).checked());
     }
@@ -84,6 +111,10 @@ where
     H: ScriptType,
     O: ScriptReturn<K>,
 {
+    fn output() -> TypeId {
+        TypeId::of::<O::Value>()
+    }
+
     fn register(self, engine: &mut Engine, name: &str) {
         engine.register_fn(name, move |call: NativeCallContext<'_>, handle: &mut H| {
             self(&Ctx::of_call(&call), handle).checked()
@@ -129,8 +160,17 @@ macro_rules! script_fn {
             R: ScriptType,
             $($arg: ScriptArg,)*
         {
+            const ARITY: usize = {
+                let args: &[&str] = &[$(stringify!($arg)),*];
+                args.len()
+            };
+
             fn args() -> ArgKinds {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+            }
+
+            fn output() -> TypeId {
+                TypeId::of::<R>()
             }
 
             #[expect(
@@ -173,8 +213,17 @@ macro_rules! script_fn {
             H: ScriptArg,
             $($arg: ScriptArg,)*
         {
+            const ARITY: usize = {
+                let args: &[&str] = &[$(stringify!($arg)),*];
+                args.len()
+            };
+
             fn args() -> ArgKinds {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+            }
+
+            fn output() -> TypeId {
+                TypeId::of::<R>()
             }
 
             #[expect(
@@ -218,8 +267,17 @@ macro_rules! script_fn {
             H: ScriptArg,
             $($arg: ScriptArg,)*
         {
+            const ARITY: usize = {
+                let args: &[&str] = &[$(stringify!($arg)),*];
+                args.len()
+            };
+
             fn args() -> ArgKinds {
                 args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+            }
+
+            fn output() -> TypeId {
+                TypeId::of::<R>()
             }
 
             #[expect(

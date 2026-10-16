@@ -771,16 +771,11 @@ impl<'a> LoadCheck<'a> {
         name: &str,
         kind: MemberKind,
     ) -> Result<Option<Capability>, ScriptProblem> {
-        let own = match kind {
-            MemberKind::Field => {
-                self.api.builtin(&format!("get${name}"))
-                    || facts.map_keys.iter().any(|key| key == name)
-            }
-            _ => {
-                self.api.builtin(name)
-                    || facts.functions.iter().any(|function| function.name == name)
-            }
-        };
+        let own = self.api.builtin(name, kind)
+            || match kind {
+                MemberKind::Field => facts.map_keys.iter().any(|key| key == name),
+                _ => facts.functions.iter().any(|function| function.name == name),
+            };
         if own {
             return Ok(None);
         }

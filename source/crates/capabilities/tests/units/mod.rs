@@ -28,16 +28,19 @@ use campfire_sim::{
 use campfire_stats::{Level, Life, StatRule, Stats, StatsRefusal};
 use campfire_units::*;
 use campfire_values::{
-    Block, PackageIndex, PathId, Scalar, Stat, Team, TypeScope, UnitTags, UnitType,
+    Block, PackageIndex, PathId, Scalar, Stat, Team, TeamSet, TypeScope, UnitTags, UnitType,
 };
+use campfire_vision::SeenBy;
 
-/// A match of stats and combat, with the stat book a weapon reads, and its types: `melee`, of
-/// 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and `bare`, of
-/// 1 life and no slot.
+/// A match of stats, combat and vision, with no grid, so the teams that see each unit are the
+/// `SeenBy` a test sets, its own team's else; with the stat book a weapon reads, and its types:
+/// `melee`, of 10 life that stays when it dies, with a weapon of 2 m; `unit`, of no section; and
+/// `bare`, of 1 life and no slot.
 fn units_match() -> Match {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = Match::server(&[Capability::Stats, Capability::Combat], scripts);
+    let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
+    let mut game = Match::server(&declared, scripts);
     Units::name_kinds(&game, &[], &["health", "mana"], &[]);
     Combat::load_weapon_stats(&mut game);
     let core = UnitTypeCore::default();
@@ -83,6 +86,10 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     Units::set_blocks(&mut game, hidden, &[Block::Target]);
     let guarded = melee(&mut game, (-2, 0, 0), Team::new(0), ());
     Units::set_blocks(&mut game, guarded, &[Block::Target, Block::Damage]);
+    // Every team sees every enemy, for the queries of what `of`'s team sees.
+    for unit in [high, east, west, edge, far, dead, hidden, guarded] {
+        game.insert_parts(unit, SeenBy::new(TeamSet::ALL));
+    }
 
     let find = |game: &mut Match, filter: &str| {
         let source = format!(r#"fn probe(ctx, of) {{ ctx.find(of, of.pos, 5, "{filter}") }}"#);
@@ -368,7 +375,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let range = ("aggro_range", Scalar::Decimal(Num::int(7)));
     let hero = Units::tagged_type(&mut game, &["avatar"], &[window, range]);
     arm(&mut game, hero);
-    // On a path, but the scene has no `navigation` to fill `unit.path`.
+    // On a path, but the scene has no `navigation`, which binds `unit.path`.
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
@@ -405,8 +412,9 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert!(value(&mut game, "of.is_avatar").as_bool().unwrap());
     assert!(value(&mut game, "of.alive").as_bool().unwrap());
     assert_eq!(value(&mut game, "of.owner").as_int(), Some(2));
-    assert!(value(&mut game, "of.path").is_unit());
-    // With no `vision`, every team sees every unit.
+    // A match with no `navigation` binds no `unit.path`.
+    assert!(read(&mut game, "of.path").is_err());
+    // A unit's own team sees it.
     assert!(value(&mut game, "of.can_see(of)").as_bool().unwrap());
     // Its body's radius, 0.75 m; a unit with no body has none.
     let radius = |game: &mut Match, unit| {

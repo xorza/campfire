@@ -185,24 +185,50 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     for (table, field, owner) in owners {
         assert_eq!(api.data_owner(table, field), owner, "{table:?}.{field}");
     }
-    assert!(api.builtin("len") && api.builtin("max") && !api.builtin("pos"));
+    let method = MemberKind::Method;
+    assert!(api.builtin("len", method) && api.builtin("max", method));
+    assert!(!api.builtin("pos", method) && !api.builtin("pos", MemberKind::Field));
 }
 
 /// A misuse of the registry, and the panic it ends in.
 type Misuse = (fn(&mut ScriptApi), &'static str);
 
+/// A binding of `spec`, not written, of `status`, of no output.
+const fn binding(spec: MemberSpec, status: Status) -> ApiMember {
+    ApiMember {
+        spec,
+        writable: false,
+        status,
+        output: None,
+    }
+}
+
 #[test]
 fn a_binding_records_its_spec_once_and_whole() {
     let mut api = Release::script_api();
     let stacks = api.member(ApiOwner::Modifier, "stacks").unwrap().clone();
-    let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
-    // Another binding of the same spec adds only its writing.
-    api.record(damage, true, Status::Runs(ApiVersion::FIRST));
+    let damage = api.member(ApiOwner::Ctx, "damage").unwrap().clone();
+    // Another binding of the same spec adds only its writing; one of no output keeps the
+    // output held.
+    api.record_binding(ApiMember {
+        writable: true,
+        output: None,
+        ..damage
+    });
     let held = api.member(ApiOwner::Ctx, "damage").unwrap();
-    assert_eq!((held.spec, held.writable), (damage, true));
-    api.record(stacks.spec, false, stacks.status);
+    assert_eq!(
+        held,
+        &ApiMember {
+            writable: true,
+            ..damage
+        }
+    );
+    api.record_binding(ApiMember {
+        writable: false,
+        ..stacks
+    });
     assert!(api.member(ApiOwner::Modifier, "stacks").unwrap().writable);
-    let misuses: [Misuse; 4] = [
+    let misuses: [Misuse; 5] = [
         (
             |api| {
                 let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
@@ -210,14 +236,14 @@ fn a_binding_records_its_spec_once_and_whole() {
                     description: "another",
                     ..damage
                 };
-                api.record(spec, false, Status::Runs(ApiVersion::FIRST));
+                api.record_binding(binding(spec, Status::Runs(ApiVersion::FIRST)));
             },
             "the bindings of Ctx.damage agree",
         ),
         (
             |api| {
                 let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
-                api.record(damage, false, Status::Planned);
+                api.record_binding(binding(damage, Status::Planned));
             },
             "the bindings of Ctx.damage agree",
         ),
@@ -231,14 +257,24 @@ fn a_binding_records_its_spec_once_and_whole() {
                     enums: damage.enums,
                 };
                 let status = Status::Runs(ApiVersion::FIRST);
-                api.record(damage.with_args(args), false, status);
+                api.record_binding(binding(damage.with_args(args), status));
             },
             "the forms of Ctx.damage say alike what an argument is",
         ),
         (
             |api| {
+                let damage = api.member(ApiOwner::Ctx, "damage").unwrap().clone();
+                api.record_binding(ApiMember {
+                    output: Some(TypeId::of::<u8>()),
+                    ..damage
+                });
+            },
+            "the forms of Ctx.damage give one type",
+        ),
+        (
+            |api| {
                 let field = api.data()[0];
-                api.record_field(field.table, field.name, field.status, field.capability);
+                api.record_data_field(field);
             },
             "is recorded once",
         ),
@@ -256,7 +292,7 @@ fn a_binding_records_its_spec_once_and_whole() {
             api.module(Some(Capability::Combat));
             let spec = MemberSpec::value("strength", "a test's").capability(Capability::Combat);
             api.bind(spec, |_: &mut Ctx| 1_i64);
-        })
+        });
     }));
     let said = redundant
         .unwrap_err()
@@ -359,8 +395,8 @@ fn the_reference_is_what_the_registry_writes() {
     });
     for member in methods {
         assert_eq!(
-            api.method_names(member.spec.name),
-            Some(member.spec.names),
+            api.method_args(member.spec.name),
+            Some(member.spec.args()),
             "{}",
             member.spec.name
         );

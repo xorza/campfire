@@ -95,19 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 6. Script: the load checks every call
-
-`script`: `script_facts`, `script_api`, `api_builder`, `script_args`, `script_batch`, `hook`, `pool`, `script_limits`; `capabilities`: `release`; `package`: `load_check`.
-
-- [ ] script/src/scripts/script_facts/mod.rs:164-175, 314-337; capabilities/src/release/mod.rs:182, 210 — `ScriptFacts` records a plain `FnCall` only with a namespace, and `ctx_use` accepts `ctx` as an argument of any call. `damage(ctx, …)` in function style skips the capability, name, enum and member checks. The release binds every capability's API into every match, so a mode with no `combat` runs it. → The facts record each unqualified call that is not the script's own: a `ctx` call when its first argument is `ctx`, else a method. The match binds only its declared capabilities.
-- [ ] script/src/scripts/script_facts/mod.rs:214-219 — `ctx.p["name"]` and `ctx.state["name"]` record nothing, so a misspelled literal passes. → Read a string-constant index as a data name.
-- [ ] script/src/scripts/script_facts/mod.rs:151-155, 211-212 — methods get no enum check. → `ScriptApi::method_args(name) -> ArgKinds`, read for methods as for calls.
-- [ ] script/src/scripts/script_facts/mod.rs:102 — `DATA_ACCESSORS` is a hand list. → `ApiBuilder::index` records the members that lead to data.
-- [ ] script/src/scripts/script_api/mod.rs:104-108; package/src/mode_packages/load_check.rs:776 — callers spell Rhai's `get$`. → `builtin(name, MemberKind)`.
-- [ ] script/src/scripts/script_api/mod.rs:67, 175, 235 — `record`, `record_field` and `bind` are `pub`; `bind` returns an API with no builtins. → `pub(crate)` recorders; the match's binding returns nothing.
-- [ ] script/src/scripts/script_args.rs:4-11, script_batch.rs:33 — nothing ties a hook's argument tuple to `Hook::params()`, or a member's forms to its closure. → `ScriptArgs::LEN` with a `debug_assert_eq!` in `call`; `ApiBuilder` asserts the arity.
-- [ ] script/src/scripts/hook.rs:10, pool.rs:5-12, script_limits.rs:38-44 — designs 02 (the pool table) and 08 (the manifest's `script_limits`) name `on_system`, `on_generate`, the `systems` pool and the `systems`/`generate` limits. `Hook`, whose doc says it holds every hook "whether the release calls it yet or not", has neither hook, so a script that defines `on_system` fails as a misspelled hook. → `Hook` gains `OnSystem` and `OnGenerate` as `Status::Planned`; designs 02 and 08 mark the pool and the two limits planned. The pool and limit docs in pool.rs:6-11 and script_limits.rs:41-49 follow design 02's table.
-
 ### 7. Store, codec, log: one contract for each family
 
 `store`: `append_writer`, `latest_writer`, `stream_writer`, `worker`, `durable_file`, `durable_dir`, `output_file`, `data_dir`, `run_dir`, `platform`; `codec`; `log`; `common`; `source/clippy.toml`; `package`: `files`; `net`: `sim_server/journal_watch`, the dirs, `sim_client/receipt_writer`.

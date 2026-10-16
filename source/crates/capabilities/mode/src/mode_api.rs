@@ -53,6 +53,7 @@ impl ModeApi {
             .hook(Hook::OnPlayerJoin, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnPlayerLeave, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnGenerate, Status::Planned)
+            .hook(Hook::OnSystem, Status::Planned)
             .call(
                 MemberSpec::mode_call("save", &[&[]], "asks for a save at the end of the tick"),
                 |ctx: &mut Ctx| ctx.queue(ModeEffect::Save),
