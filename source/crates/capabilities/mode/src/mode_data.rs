@@ -15,6 +15,7 @@ use campfire_visibility::ModeVisibility;
 use serde::{Deserialize, Serialize};
 
 use crate::choice_data::ChoiceData;
+use crate::option_data::OptionData;
 use crate::players_data::PlayersData;
 use crate::relation_data::RelationData;
 use crate::saves_data::SavesData;
@@ -22,7 +23,7 @@ use crate::team_data::TeamData;
 
 /// The mode's `data/mode.toml`, but its script, which its package's load resolves, and its
 /// actions, modifiers and item types, which its package's content holds: its name, its teams'
-/// names, its player inputs, its state and its params.
+/// names, its player inputs, its state, its params and its options.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
@@ -47,6 +48,9 @@ pub struct ModeData {
     pub state: BTreeMap<DeclaredName, SyncedStateDecl>,
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, ModeParam>,
+    /// The params whose values a session's host picks, by name.
+    #[serde(default)]
+    pub options: BTreeMap<DeclaredName, OptionData>,
     /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]
     pub stats: BTreeMap<Stat, StatRule>,
@@ -82,6 +86,11 @@ pub struct ModeData {
 }
 
 impl ModeData {
+    /// The names `ctx.p` reads of the mode: its params', then its options'.
+    pub fn param_names(&self) -> impl Iterator<Item = &DeclaredName> {
+        self.params.keys().chain(self.options.keys())
+    }
+
     /// The ranks of every loadout entry: those of the slot kind a choice of loadout entries
     /// fills, which the load checked they all share, or 1 with none.
     pub fn loadout_ranks(&self) -> u8 {

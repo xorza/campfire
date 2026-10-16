@@ -69,6 +69,10 @@ pub enum LoadProblem {
     /// Data or a script at `at` uses a capability the mode does not declare.
     #[error("{at} uses {capability:?}, which the mode does not declare")]
     Undeclared { capability: Capability, at: Place },
+    /// The mode declares an option and a param of one name, which `ctx.p` reads as one
+    /// (21-match-options.md, A mode declares its options).
+    #[error("the mode declares the option {0} and a param of its name")]
+    OptionParam(DeclaredName),
     /// The mode declares `combat`, and no damage kinds for its damage.
     #[error("the mode declares combat, and no damage kinds")]
     NoDamageKinds,

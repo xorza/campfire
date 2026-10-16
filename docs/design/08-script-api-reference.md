@@ -259,6 +259,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `inputs` | core | since 1.0 |
 | `state` | core | since 1.0 |
 | `params` | core | since 1.0 |
+| `options` | core | since 1.0 |
 | `modifiers` | core | since 1.0 |
 | `actions` | core | since 1.0 |
 | `pools` | core | since 1.0 |
@@ -334,6 +335,13 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `unique` | core | since 1.0 |
 | `count` | core | since 1.0 |
 | `slot` | core | since 1.0 |
+
+### An option, `[options.<name>]`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `values` | core | since 1.0 |
+| `default` | core | since 1.0 |
 
 ### The mode's `[combat] leech`
 

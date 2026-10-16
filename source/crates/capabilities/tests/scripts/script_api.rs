@@ -14,7 +14,9 @@ use campfire_combat::{CombatData, LeechData, ModeCombatData, TurretData};
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
 use campfire_math::Num;
-use campfire_mode::{ChoiceData, ModeData, PlayersData, RelationData, SavesData, TeamData};
+use campfire_mode::{
+    ChoiceData, ModeData, OptionData, PlayersData, RelationData, SavesData, TeamData,
+};
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
 use campfire_production::{DropOffData, ModeSupplyData, NodeData, ProductionData, SupplyData};
@@ -423,6 +425,7 @@ fn the_data_fields_are_the_schemas() {
         table::<ModeNavigationData>(),
         table::<SlotKindData>(),
         table::<ChoiceData>(),
+        table::<OptionData>(),
         table::<LeechData>(),
         table::<RelationData>(),
         table::<TeamData>(),

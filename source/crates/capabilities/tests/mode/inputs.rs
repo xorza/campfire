@@ -136,16 +136,16 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
             (0, input("probe", "")),
         ],
     );
-    // Gold, the first of the mode's resources, and gems, the second; a resource the mode does
-    // not declare fails, as a sum past what an integer holds does, and a marker tag no marker
-    // holds.
+    // Gold, the first of the mode's resources, its param's 8 and its option's default 40, and
+    // gems, the second; a resource the mode does not declare fails, as a sum past what an
+    // integer holds does, and a marker tag no marker holds.
     let amount = |slot, name| {
         let resources = game.player_resources(PlayerSlot::new(slot));
         resources.unwrap().amount(resource(name).unwrap())
     };
     assert_eq!(
         [amount(1, "gold"), amount(1, "gems"), amount(0, "gold")],
-        [16, i64::MAX, 0]
+        [8 + 40, i64::MAX, 0]
     );
     assert_eq!(resource("gems").map(ResourceId::index), Some(1));
     assert_eq!(

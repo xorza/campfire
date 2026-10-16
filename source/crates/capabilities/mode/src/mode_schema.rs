@@ -9,8 +9,8 @@ use crate::mode_data::{InputType, ModeData};
 /// The one run of each of the schema's tables.
 const RUN: usize = 0;
 
-/// The mode's script and what its data declares: the hooks the script defines, the params, the
-/// state fields and the input types. Package data, not state.
+/// The mode's script and what its data declares: the hooks the script defines, the params, each
+/// option's default among them, the state fields and the input types. Package data, not state.
 #[derive(Debug)]
 pub(crate) struct ModeSchema {
     pub(crate) script: ScriptId,
@@ -37,10 +37,21 @@ impl ModeSchema {
             ),
             inputs: NameTable::default(),
         };
-        let params = data.params.iter();
-        schema
+        let params = data
             .params
-            .push(params.map(|(name, param)| (name.as_str(), param.to_value())));
+            .iter()
+            .map(|(name, param)| (name, param.to_value()));
+        let options = data.options.iter().map(|(name, option)| {
+            let default = option
+                .value(option.default_place())
+                .expect("an option holds its default");
+            (name, ScriptValue::from(default))
+        });
+        schema.params.push(
+            params
+                .chain(options)
+                .map(|(name, value)| (name.as_str(), value)),
+        );
         let inputs = data.inputs.iter();
         schema
             .inputs

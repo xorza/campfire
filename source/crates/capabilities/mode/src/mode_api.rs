@@ -24,6 +24,7 @@ use crate::mode_call::ModeCall;
 use crate::mode_ctx::ModeCtx;
 use crate::mode_effect::{ModeEffect, SlotGrant};
 use crate::mode_spec::ModeSpec;
+use crate::option_data::OptionData;
 use crate::players_data::PlayersData;
 use crate::relation_data::RelationData;
 use crate::saves_data::SavesData;
@@ -100,6 +101,7 @@ impl ModeApi {
                     "inputs",
                     "state",
                     "params",
+                    "options",
                     "modifiers",
                     "actions",
                     "pools",
@@ -116,7 +118,8 @@ impl ModeApi {
             .data::<TeamData>(&["name"], &[])
             .data::<RelationData>(&["teams", "relation", "vision"], &[])
             .data::<PlayersData>(&["late_join", "bot_takeover", "leaver"], &[])
-            .data::<SavesData>(&["by", "autosave_ms"], &[]);
+            .data::<SavesData>(&["by", "autosave_ms"], &[])
+            .data::<OptionData>(&["values", "default"], &[]);
     }
 
     /// What every role reads of the mode: the teams, the map, the avatars, the units of a tag,

@@ -183,6 +183,13 @@ impl<'a> LoadCheck<'a> {
         if let Some((name, _)) = owned {
             return Err(LoadProblem::ModeStateSync(name.clone()));
         }
+        if let Some(name) = data
+            .options
+            .keys()
+            .find(|name| data.params.contains_key(*name))
+        {
+            return Err(LoadProblem::OptionParam(name.clone()));
+        }
         self.sections_owned()?;
         self.names()?;
         self.damage_kinds()?;
@@ -213,7 +220,7 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::NoPathingGrid);
         }
         let mut names = PackageNames::new(&packages.mode, &content.modifiers, &content.actions);
-        let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
+        let mode_params: BTreeSet<&str> = data.param_names().map(DeclaredName::as_str).collect();
         if let ModeScript::Own(path) = &packages.script {
             names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
         }
@@ -347,7 +354,7 @@ impl<'a> LoadCheck<'a> {
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
         let mut names = PackageNames::new(package, modifiers, actions);
         let data = &self.packages.data;
-        let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
+        let mode_params: BTreeSet<&str> = data.param_names().map(DeclaredName::as_str).collect();
         if let ModeScript::Rules {
             package: name,
             path,

@@ -1695,6 +1695,26 @@ static ACTION_FLAWS: &[Flaw] = &[
         MODE,
         |problem| matches!(problem, LoadProblem::BotTakeoverWithoutLateJoin),
     ),
+    // An option whose default is none of its values; one of a param's name, which `ctx.p` would
+    // read as one.
+    flaw(
+        MODE_DATA,
+        Edit::Set("options.income_gold", "{ values = [8, 16], default = 4 }"),
+        MODE,
+        |problem| {
+            read_fails(
+                problem,
+                "data/mode.toml",
+                "an option's default is one of its values",
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Set("options.income_gold", "{ values = [8, 16], default = 8 }"),
+        MODE,
+        |problem| matches!(problem, LoadProblem::OptionParam(name) if name.as_str() == "income_gold"),
+    ),
     // `[visibility]`: a name no setting has; a recipient life's audience holds whatever the
     // mode says.
     flaw(

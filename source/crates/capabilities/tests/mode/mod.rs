@@ -13,6 +13,7 @@ use campfire_actions::{
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
+use campfire_codec::Toml;
 use campfire_combat::{
     CombatBook, Damage, DamageCause, DamagePass, Heal, HealCause, ModeCombatData, OnDeath,
     PassEntry, RecentAttackers, Respawn,
@@ -113,7 +114,7 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.add_resource(player, value, 9223372036854775807);
     } else if name == "gold" {
         ctx.add_resource(player, value, ctx.p.gold);
-        ctx.add_resource(player, value, ctx.p.gold);
+        ctx.add_resource(player, value, ctx.p.bounty);
     } else if name == "fail" {
         ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
         throw value;
@@ -583,6 +584,11 @@ fn mode_files() -> ModeFiles {
                 ("respawn_per_level_ms", ModeParam::Value(Scalar::Int(500))),
             ]
             .map(|(name, param)| (DeclaredName::new(name).unwrap(), param))
+            .into(),
+            options: [(
+                DeclaredName::new("bounty").unwrap(),
+                Toml::parse("values = [3, 40]\ndefault = 40").unwrap(),
+            )]
             .into(),
             stats: STATS_3V3
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))

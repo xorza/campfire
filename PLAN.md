@@ -17,27 +17,21 @@ The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): t
 
 The slice of [Match options](docs/design/21-match-options.md): the player starts a Zero Hour skirmish with 50,000 money for every player against a bot that builds a base and never attacks. The systems it changes: `package`, `mode`, `protocol`, `runner`, `verifier`, `harness`, `net`, `server`, `client`, `import`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 1. A mode declares its options
-
-`package`: `mode_packages/` (the mode's data, the load check); `mode`: `mode_schema.rs`. It stands first, as every later batch reads the declarations. Builds: a name is resolved once, at the load.
-
-- [ ] crates/session/package/src/mode_packages/load_check.rs:216 — a mode declares no option (A mode declares its options). → `[options.<name>]` reads with its choices and default, and the load refuses each case the decision names; `ctx.p.<name>` of an option gives its default. A test for each refusal.
-
 ### 2. The terms record the picks
 
 `protocol`: `session_terms.rs`; `runner`: `session_rules/`, `match_build/`, `session/`, `replay/`; `verifier`; `harness`: `fixed_session/`; the design `05-protocol-spec.md`. It stands second, as the command lines give picks the terms must hold. Builds: what can be forgotten is a type, the picks a checked value of the rules.
 
-- [ ] crates/session/protocol/src/session_terms.rs:30 — terms hold no pick of an option (The host picks, and the terms record the pick). → `SessionTerms` holds each option's choice index in the session id after the visibility, of the domain `campfire/session-id/v4`; `SessionRules::check` gives the checked picks beside the visibility; `HostChoices` takes the picks; a match and a restore target install the mode with them (A script reads the pick as the param). The goldens of the session ids move.
+- [ ] crates/session/protocol/src/session_terms.rs:30 — terms hold no pick of an option (The host picks, and the terms record the pick). → `SessionTerms` holds the index of each option's picked value in the session id after the visibility, of the domain `campfire/session-id/v4`; `SessionRules::check` gives the checked picks beside the visibility; `HostChoices` takes the picks; a match and a restore target install the mode with them (A script reads the pick as the param). The goldens of the session ids move.
 
 ### 3. The host names its picks
 
 `net`: `sim_server/lobby/`; `server`: `args/`; `client`: `args/`, the local server. Builds: a name is resolved once, at the command line.
 
-- [ ] crates/apps/server/src/args/mod.rs:104 — no command line names an option (A pick is given by its value). → `--option <name>=<value>` on the server and on the local client, refused for a name the mode lacks and a value of no choice.
+- [ ] crates/apps/server/src/args/mod.rs:104 — no command line names an option (A pick is given by its value). → `--option <name>=<value>` on the server and on the local client, refused for a name the mode lacks and a value the option lacks.
 
 ### 4. Zero Hour's money and the builder bot
 
 `import`: `zero_hour/rules_package.rs`; `zero-hour-check`: its bot's order script, its play and `pins.rs`. It stands last, as it plays every batch before it.
 
-- [ ] crates/apps/import/src/zero_hour/rules_package.rs:66 — `start_money` is a param of one value (The import writes Zero Hour's money as an option). → The option of `Multiplayer.ini`'s choices, with a fixture's test.
+- [ ] crates/apps/import/src/zero_hour/rules_package.rs:66 — `start_money` is a param of one value (The import writes Zero Hour's money as an option). → The option of the values of `Multiplayer.ini`'s choices, with a fixture's test.
 - [ ] checks/zero-hour-check/ — the check's bot is idle (A bot that builds and does not fight). → The builder bot's order script; the check plays a skirmish of 50,000 with it as its bot, and pins what it built and trained, and that no unit of it stood farther from its start than its farthest site. Its fingerprints are pinned from a run on Linux and a run on macOS.
