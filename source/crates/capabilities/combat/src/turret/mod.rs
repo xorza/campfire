@@ -12,7 +12,7 @@ pub(crate) mod aiming;
 pub(crate) mod turret_angle;
 pub(crate) mod turret_data;
 
-/// A unit type's turret as a match runs it (20-zero-hour-projectiles.md, A unit type may have a
+/// A unit type's turret as a match runs it (04-capabilities/combat.md, A unit type may have a
 /// turret): how far it turns a tick toward its target, and back toward its rest at half that,
 /// how near its target's bearing it lets an attack start, and the kind of slot whose attacks it
 /// carries.

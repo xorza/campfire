@@ -22,7 +22,7 @@ pub struct Weapon {
 }
 
 /// How far from its target's ground point a weapon's projectile may aim
-/// (20-zero-hour-projectiles.md, An attack may scatter): `radius`, and for a target of a tag of
+/// (04-capabilities/combat.md, An attack may scatter): `radius`, and for a target of a tag of
 /// `tags`, the largest of their radii more.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scatter {
@@ -37,7 +37,7 @@ pub(crate) struct ScatterTag {
     pub(crate) radius: Num,
 }
 
-/// The pitches a weapon's target lies within (20-zero-hour-projectiles.md, An attack may bound its
+/// The pitches a weapon's target lies within (04-capabilities/combat.md, An attack may bound its
 /// pitch): the sines and cosines of its least and its most, fixed at the load.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pitch {
@@ -134,7 +134,7 @@ impl Weapon {
     }
 
     /// The ticks its hit lands after its shot at a target `distance` meters away, at `hz` ticks a
-    /// second (20-zero-hour-projectiles.md, A slow weapon delays its damage): ⌈`d` ÷ `s`⌉, for `s`
+    /// second (04-capabilities/combat.md, A slow weapon delays its damage): ⌈`d` ÷ `s`⌉, for `s`
     /// its speed a tick, and none when `d` ÷ `s` is below 1, as Zero Hour's `fireWeaponTemplate`
     /// deals such a hit at once; none for a weapon of no speed. Exact: `d` ÷ `s` is `d · hz` over
     /// its speed a second, in bits.

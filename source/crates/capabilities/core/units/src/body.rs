@@ -14,8 +14,9 @@ use crate::unit_entity::UnitEntity;
 
 /// A unit's body on the ground plane, on its layer: a circle of a radius, or a box, which a unit
 /// that does not walk on a planar map may have, and its height, which makes it a volume
-/// (20-zero-hour-projectiles.md, A body has a height). Living bodies of one layer do not overlap,
-/// and every range counts from a body's edge; a unit with no body is a point, on the first layer.
+/// (04-capabilities/00-overview.md, A body has a height). Living bodies of one layer do not
+/// overlap, and every range counts from a body's edge; a unit with no body is a point, on the first
+/// layer.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[component(immutable)]
 pub struct Body {

@@ -87,7 +87,7 @@ pub struct ActionData {
     /// The pitches a weapon's target lies within, an `attack`'s alone.
     pub pitch_deg: Option<PitchData>,
     /// How fast a weapon of no projectile reaches its target, which delays its hit, an
-    /// `attack`'s alone (20-zero-hour-projectiles.md, A slow weapon delays its damage).
+    /// `attack`'s alone (04-capabilities/combat.md, A slow weapon delays its damage).
     pub speed: Option<Speed>,
     /// The unit type of its package a `train` makes, a train's alone.
     pub unit_type: Option<DeclaredName>,
@@ -161,7 +161,7 @@ pub struct ClipData {
     pub reload_ms: Ranked<Number>,
 }
 
-/// A weapon's `splash` (20-zero-hour-projectiles.md, An attack may splash): where its projectile
+/// A weapon's `splash` (04-capabilities/combat.md, An attack may splash): where its projectile
 /// ends, its damage to each living unit of the relations `affects` names whose volume lies
 /// within `radius` meters, and to its source unless `spares_source`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -171,7 +171,7 @@ pub struct SplashData {
     pub spares_source: bool,
 }
 
-/// A weapon's `scatter` (20-zero-hour-projectiles.md, An attack may scatter): the most meters
+/// A weapon's `scatter` (04-capabilities/combat.md, An attack may scatter): the most meters
 /// from its target's ground point its projectile aims at, `radius` and, for a target of a tag
 /// `tags` names, the largest of their radii more.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -180,7 +180,7 @@ pub struct ScatterData {
     pub tags: BTreeMap<DeclaredName, Num>,
 }
 
-/// A weapon's `pitch_deg` (20-zero-hour-projectiles.md, An attack may bound its pitch): the
+/// A weapon's `pitch_deg` (04-capabilities/combat.md, An attack may bound its pitch): the
 /// least and the most angle, in degrees above the ground plane, at which its target's center
 /// lies from its attacker's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -276,14 +276,14 @@ impl Flights<'_> {
         true
     }
 
-    /// Flies `aloft` to its curve's next point (20-zero-hour-projectiles.md, A projectile may fly a
-    /// curve; 20-zero-hour-projectiles.md, A curve meets units by its point). It ends where it is in the tick after its last
-    /// point, and as its life passes. Before its step, when it aimed at a unit that lives and
-    /// whose center lies more than √0.1 m from its end, its end moves toward that center by at
-    /// most its type's `follow`, with its count of points kept. At its point, its sphere of half
-    /// its width meets the volumes of the living units its type's `hits` selects, and of the unit
-    /// it aimed at, never its source's: the one of the lowest stable id is its hit, and it ends
-    /// there.
+    /// Flies `aloft` to its curve's next point (04-capabilities/actions.md, A projectile may fly a
+    /// curve; 04-capabilities/actions.md, A curve meets units by its point). It ends where it is in
+    /// the tick after its last point, and as its life passes. Before its step, when it aimed at a
+    /// unit that lives and whose center lies more than √0.1 m from its end, its end moves toward
+    /// that center by at most its type's `follow`, with its count of points kept. At its point, its
+    /// sphere of half its width meets the volumes of the living units its type's `hits` selects,
+    /// and of the unit it aimed at, never its source's: the one of the lowest stable id is its hit,
+    /// and it ends there.
     fn curve(
         &mut self,
         targets: &Targets<'_, '_>,

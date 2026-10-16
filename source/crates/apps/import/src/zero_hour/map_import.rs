@@ -109,8 +109,8 @@ const SURFACE: TerrainSurface = TerrainSurface {
 const CELL: i64 = 10;
 
 /// A cell of the partition, 40 units wide (`GameData.ini`'s `PartitionCellSize`), whose highest
-/// samples a shell's curve rises over (20-zero-hour-projectiles.md, The sim's ground is the map's
-/// height grid).
+/// samples a shell's curve rises over (04-capabilities/00-overview.md, The sim's ground is the
+/// map's height grid).
 const PARTITION_CELL: i64 = 40;
 
 /// A cell of the pathfinder, 10 units wide (`PATHFIND_CELL_SIZE`), which the navigation's cells
@@ -353,9 +353,9 @@ impl MapImport {
         Vec3::new(x, z, -y)
     }
 
-    /// The ground as the original's logic reads it (20-zero-hour-projectiles.md, The sim's ground
-    /// is the map's height grid): each cell split on its own corners 0 to 2, the file's 1 to 3
-    /// (`BaseHeightMapRenderObjClass::getHeightMapHeight`), and the partition's cells from its
+    /// The ground as the original's logic reads it (04-capabilities/00-overview.md, The sim's
+    /// ground is the map's height grid): each cell split on its own corners 0 to 2, the file's 1 to
+    /// 3 (`BaseHeightMapRenderObjClass::getHeightMapHeight`), and the partition's cells from its
     /// world's corner over its first boundary, the playable area, an extent below 1 unit taking 1
     /// (`PartitionManager::init`), its `y` the engine's `−z`.
     fn ground(heights: &MapHeights) -> GroundData {

@@ -18,13 +18,13 @@ use crate::zero_hour::weapon_drop::{self, WeaponDrop};
 /// last building that counts): the speed and the turn rate of its first normal locomotor that
 /// drives on the ground; its body: a circle of its bounding radius, at most `MAX_WALKER`, when it
 /// drives, or, when it is a structure that is not small, a box of twice its radii for a box
-/// geometry, else a circle of its radius, of its geometry's height (20-zero-hour-projectiles.md,
+/// geometry, else a circle of its radius, of its geometry's height (04-capabilities/00-overview.md,
 /// A body has a height); the life of an active or a structure body, with its
 /// `combat` section, which despawns it as it dies, and the armor of its starting armor set; the
 /// tags of its kinds, of victory for a structure that counts for one, and of a structure, a wall
 /// and infantry, which a shell's hits and a scatter name; and the turret of its AI module, which
 /// turns its weapons. Every other object has none of these. A shell's type is a projectile alone
-/// (20-zero-hour-projectiles.md, The import converts shells, splash, scatter, pitch, turrets and
+/// (12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
 /// slow weapons).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedType {

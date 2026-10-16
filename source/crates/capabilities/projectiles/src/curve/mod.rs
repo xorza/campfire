@@ -11,7 +11,7 @@ pub(crate) const MAX_POINTS: u32 = (1 << 26) + 1;
 /// needs as many.
 const MAX_SPLITS: u32 = 32;
 
-/// A cubic Bézier curve in space by its four control points (20-zero-hour-projectiles.md, A
+/// A cubic Bézier curve in space by its four control points (04-capabilities/actions.md, A
 /// projectile may fly a curve).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Curve {

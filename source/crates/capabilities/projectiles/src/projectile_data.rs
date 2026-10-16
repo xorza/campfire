@@ -26,7 +26,7 @@ pub struct ProjectileData {
 }
 
 /// A projectile's `curve`, a cubic Bézier curve from its launch to its target
-/// (20-zero-hour-projectiles.md, A projectile may fly a curve): its inner points at `first`'s and
+/// (04-capabilities/actions.md, A projectile may fly a curve): its inner points at `first`'s and
 /// `second`'s fractions of the way, `[fraction, height]` each, their heights above the highest
 /// of its ends and the ground between them; its end following its target by `follow` meters a
 /// second; and its life, `life_ms`, none for a life that lasts its curve.
@@ -39,7 +39,7 @@ pub struct CurveData {
 }
 
 /// What a projectile hits. In data: `none`, a filter of the units it hits, or a list of filters,
-/// any one of which selects a unit it hits (20-zero-hour-projectiles.md, A projectile hits by any
+/// any one of which selects a unit it hits (04-capabilities/actions.md, A projectile hits by any
 /// of its filters).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectileHits {

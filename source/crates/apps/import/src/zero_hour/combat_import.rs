@@ -29,7 +29,7 @@ pub(crate) struct CombatSources<'a> {
 
 /// Zero Hour's combat (04-capabilities/combat.md, Armor by damage kind; 12-zero-hour.md, Life is
 /// the original's; 12-zero-hour.md, A weapon converts when it hits one target at once;
-/// 20-zero-hour-projectiles.md, The import converts shells, splash, scatter, pitch, turrets and
+/// 12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
 /// slow weapons): the weapons of each unit type's starting weapon set that convert, as attack
 /// actions, once for the whole import, each in its type's slot kind `weapon`; every armor, the
 /// share of each damage kind it does not take whole; the weapons dropped, each once for each

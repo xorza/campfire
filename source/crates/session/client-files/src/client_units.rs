@@ -30,7 +30,7 @@ pub struct ClientUnit {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placement_angle: Option<Num>,
     /// The name of the node its models turn by the unit's turret angle
-    /// (20-zero-hour-projectiles.md, A unit type may have a turret).
+    /// (04-capabilities/combat.md, A unit type may have a turret).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub turret: Option<String>,
 }

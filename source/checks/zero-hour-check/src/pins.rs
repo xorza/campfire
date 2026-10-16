@@ -107,7 +107,7 @@ pub(crate) const BOT_TYPES: [&str; 10] = [
 /// and the factory's two crusaders and humvee, of each `BOT_TYPES`' count, the last whole in tick
 /// 3,850 of the play; and the farthest any of its units stood from its center, in whole meters,
 /// 310, which the check pins as it measured it: its farthest site, the war factory's, √(150² +
-/// 230²) = 274.6 m away, and the factory's rally beyond it (21-match-options.md, A bot that
+/// 230²) = 274.6 m away, and the factory's rally beyond it (12-zero-hour.md, A bot that
 /// builds and does not fight).
 pub(crate) const BOT: BotBase = BotBase {
     built: [1, 2, 1, 1, 1, 1, 2, 1, 2, 1],
@@ -122,7 +122,7 @@ pub(crate) const BOT: BotBase = BotBase {
 /// number 2; its armors, `Armor.ini`'s 53, and damage kinds, the game's 38; and the unit types'
 /// objects of no life, 38, and of a wounded start (12-zero-hour.md, Life is the original's;
 /// 12-zero-hour.md, A weapon converts when it hits one target at once;
-/// 20-zero-hour-projectiles.md, The import converts shells, splash, scatter, pitch, turrets and
+/// 12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
 /// slow weapons).
 pub(crate) const FOUGHT: FoughtCounts = FoughtCounts {
     weapons: 29,

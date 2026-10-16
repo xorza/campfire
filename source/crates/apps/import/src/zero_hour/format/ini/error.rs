@@ -79,7 +79,7 @@ pub enum IniError {
 }
 
 /// Why the multiplayer settings' choices of starting money make no option of the mode
-/// (21-match-options.md, The import writes Zero Hour's money as an option).
+/// (12-zero-hour.md, The import writes Zero Hour's money as an option).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum MoneyError {
     /// No choice is marked `Default`, or several are, which the game asserts against.

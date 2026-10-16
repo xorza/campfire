@@ -22,6 +22,8 @@ How a game is content: its package, its scripts, its state and its numbers.
 ## Match rules
 
 - **One mode script owns the rules.** The engine knows only waiting, running and ended; phases such as a pick, rounds and overtime are script state.
+- **A mode declares its options.** `[options.<name>] = { values, default }` is a param whose value a session's host picks among its numbers, as OpenRA's `PlayerResources` offers `startingcash` of its `SelectableCash` and Zero Hour's `Multiplayer.ini` its starting money; a free value is refused, as a list lets the load check what a session may set, and an option of text is planned. The load refuses an option of no value, of more than 256, of one value twice, of a default none of them, or of a param's name.
+- **A script reads the pick as the param.** `ctx.p.<name>` gives the host's pick, else the default, so a script is the same whether a param is an option; the mode installs with the session's picks before `on_match_start`, and a restore target takes them from its terms, so a replay, a verifier and a loaded save play with the session's own.
 - **Timers never fire early,** so a mode behaves the same at any tick rate to within one tick.
 - **The result is state.** `ctx.end` names the winner, once; the result is sim state, so the final state hash proves it.
 

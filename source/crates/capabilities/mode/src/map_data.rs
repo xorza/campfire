@@ -43,9 +43,9 @@ pub struct MapData {
     pub markers: Vec<MarkerData>,
 }
 
-/// A map's `[ground]` (20-zero-hour-projectiles.md, The sim's ground is the map's height grid): the
-/// diagonal each cell of its height grid splits on, and its coarse cells, the grid's own when it
-/// names none.
+/// A map's `[ground]` (04-capabilities/00-overview.md, The sim's ground is the map's height grid):
+/// the diagonal each cell of its height grid splits on, and its coarse cells, the grid's own when
+/// it names none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GroundData {

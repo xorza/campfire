@@ -2070,8 +2070,8 @@ fn modifier_exists(
 
 /// The splash, the scatter and the speed of `action`, whose id is `id`: a splash goes off where a
 /// projectile of its delivery ends, a scatter aims its delivery's curve at a point, and a speed
-/// delays the hit of a weapon of no delivery (20-zero-hour-projectiles.md, An attack may splash;
-/// 20-zero-hour-projectiles.md, An attack may scatter; 20-zero-hour-projectiles.md, A slow weapon
+/// delays the hit of a weapon of no delivery (04-capabilities/combat.md, An attack may splash;
+/// 04-capabilities/combat.md, An attack may scatter; 04-capabilities/combat.md, A slow weapon
 /// delays its damage).
 fn weapon_fields_hold(
     id: &DeclaredName,

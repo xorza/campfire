@@ -33,6 +33,24 @@ The design holds up against what others learned. Its largest hidden risk: an ope
 - **Creators before players.** DotA and Dota Auto Chess started as community mods; Auto Chess became [Valve's Dota Underlords](https://en.wikipedia.org/wiki/Dota_Underlords). The editor, bots and LAN ship early.
 - **Earlier Lightning games.** Lightnite paid sats per hit, and Bitcoin Bounty Hunt was [discontinued in 2021](https://www.spark.money/tools/bitcoin-gaming-platform-comparison); ZBD and THNDR show Lightning payouts work at scale for simpler games.
 
+## Projectiles and weapons
+
+What established engines do, read on 16 October 2026:
+
+- **Hits by any of a list.** 0 A.D.'s `MatchesClassList` reads a class list's spaces as or, its `+` as and and its `!` as not, and selects by any entry; OpenRA's `Warhead.IsValidTarget` is `ValidTargets.Overlaps(targetTypes) && !InvalidTargets.Overlaps(targetTypes)`; Zero Hour's `ProjectileCollidesWith` is a mask of which one bit selects.
+- **Ground in the simulation.** Spring and its fork Recoil test each projectile against the ground in their synced code, `CGround::GetHeightReal` and `CGround::LineGroundCol` in `ProjectileHandler::CheckGroundCollisions`; OpenRA's `Bullet` ends below the terrain by `Map.DistanceAboveTerrain`; Zero Hour's logic reads the terrain for a shell's curve. Each keeps the heights in the simulation.
+- **A flight in closed form.** OpenRA computes a bullet's point each tick from its two ends and its time, `WPos.LerpQuadratic(source, target, angle, ticks, length)`, so no rounding gathers; 0 A.D. computes a projectile's flight as it launches and keeps its graphics apart from the simulation.
+- **The projectile and its effect apart.** An OpenRA weapon holds a projectile and its warheads, which apply at its impact point: `SpreadDamageWarhead` with `Spread`, `Falloff`, `ValidRelationships`, allies included by default, and `AffectsParent`; a 0 A.D. attack holds a `Splash` of its `Shape`, `Range` and `FriendlyFire`.
+- **Contact along the way.** OpenRA sweeps a bullet's segment of each tick by its `Width` against blocking actors, and Recoil sweeps a ray against each unit's volume; Zero Hour tests its sphere at its point alone.
+- **A turret that aims first.** OpenRA's `AttackTurreted.CanAttack` attacks only when a turret faces its target; Zero Hour's `TurretAIAimTurretState` fires within 0.035 radians.
+
+## Match options
+
+What established games do, read on 16 October 2026:
+
+- **OpenRA.** `PlayerResourcesInfo` holds `SelectableCash` and `DefaultCash`; its `LobbyOptions` yields the option `startingcash` of those values, the default always among them; the host sets it in the lobby, the session's global settings hold it, and `PlayerResources` reads it by `OptionOrDefault("startingcash", ...)` as the match starts.
+- **Zero Hour.** `Multiplayer.ini` lists 5,000, 10,000, 20,000 and 50,000, the second `Default = Yes`; the host picks one, `GameInfo` holds it, `GameInfoToAsciiString` writes it as `SC=` into the options string every player receives, and the recorder writes that string into the replay's header.
+
 ## Sources
 
 - [Determinism in League of Legends: Introduction](https://technology.riotgames.com/news/determinism-league-legends-introduction), [Implementation](https://www.riotgames.com/en/news/determinism-league-legends-implementation) and [Fixing Divergences](https://technology.riotgames.com/news/determinism-league-legends-fixing-divergences) — Riot Games

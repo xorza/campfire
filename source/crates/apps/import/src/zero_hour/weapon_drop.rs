@@ -1,7 +1,7 @@
 use campfire_common::EnumAll;
 
 /// Why the import drops a weapon (12-zero-hour.md, A weapon converts when it hits one target at
-/// once; 20-zero-hour-projectiles.md, The import converts shells, splash, scatter, pitch, turrets
+/// once; 12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets
 /// and slow weapons).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
 pub enum WeaponDrop {

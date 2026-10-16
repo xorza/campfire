@@ -27,7 +27,7 @@ pub enum ModeNamesError {
     Repeated { list: ModeList, name: DeclaredName },
 }
 
-/// Why the picks a session's terms carry are none of the mode's options (21-match-options.md, The
+/// Why the picks a session's terms carry are none of the mode's options (10-sessions.md, The
 /// host picks, and the terms record the pick). Terms come from a server or a published log, so
 /// each is an expected failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

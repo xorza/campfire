@@ -4,7 +4,7 @@ use campfire_values::DeclaredName;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-/// A unit type's `turret` section (20-zero-hour-projectiles.md, A unit type may have a turret):
+/// A unit type's `turret` section (04-capabilities/combat.md, A unit type may have a turret):
 /// its attacks of the slot kind `slot` turn with a turret, `turn_rate` degrees a second, and
 /// start within `tolerance_deg` of their target's bearing.
 #[derive(Debug, Clone, PartialEq, Eq)]

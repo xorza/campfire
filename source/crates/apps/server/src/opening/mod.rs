@@ -136,7 +136,7 @@ impl Opening {
 
     /// An error when the host `asked` picks of the mode's options of `rules`, and they are not
     /// `journal`'s, the picks a waiting session's terms hold, which it restores with, as its map
-    /// is checked (21-match-options.md, A pick is given by its value).
+    /// is checked (10-sessions.md, A pick is given by its value).
     fn picks(
         rules: &SessionRules,
         journal: &[u8],

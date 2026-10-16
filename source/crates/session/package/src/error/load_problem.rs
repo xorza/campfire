@@ -70,7 +70,7 @@ pub enum LoadProblem {
     #[error("{at} uses {capability:?}, which the mode does not declare")]
     Undeclared { capability: Capability, at: Place },
     /// The mode declares an option and a param of one name, which `ctx.p` reads as one
-    /// (21-match-options.md, A mode declares its options).
+    /// (03-game-scripting.md, A mode declares its options).
     #[error("the mode declares the option {0} and a param of its name")]
     OptionParam(DeclaredName),
     /// The mode declares `combat`, and no damage kinds for its damage.

@@ -44,7 +44,7 @@ pub struct CoarseSpan {
     pub to: [Num; 2],
 }
 
-/// The ground of a map, as the sim measures it (20-zero-hour-projectiles.md, The sim's ground is
+/// The ground of a map, as the sim measures it (04-capabilities/00-overview.md, The sim's ground is
 /// the map's height grid): flat at height 0, or its height grid, each cell split on the map's one
 /// diagonal, with the highest sample of each coarse cell. Package data, not state.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

@@ -27,7 +27,7 @@ impl Default for MapBook {
 
 impl MapBook {
     /// The point in space of the position `pos`: on a planar map, its ground's height at it
-    /// raised by the position's height above the ground (20-zero-hour-projectiles.md, The sim's
+    /// raised by the position's height above the ground (04-capabilities/00-overview.md, The sim's
     /// ground is the map's height grid); on a spatial map, the position itself.
     pub fn point(&self, pos: Vec3) -> Vec3 {
         match self.metric {

@@ -28,7 +28,7 @@ struct LookModels {
 impl LookWriter<'_, '_, '_> {
     /// The looks of `client/units.toml` of `ini`'s objects: each object's look, its models, each at
     /// its object's asset scale, with the nodes its default look hides and the node its turret
-    /// turns (20-zero-hour-projectiles.md, The client draws a projectile with its look), a look of
+    /// turns (02-engine-core.md, The client draws a projectile with its look), a look of
     /// no models for an object whose draw modules name none, as it draws nothing, and no look for
     /// one whose models the package lacks, which the client shows as the engine's shape; and the
     /// look of each

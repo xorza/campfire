@@ -73,7 +73,7 @@ pub(crate) struct ModeImport<'a> {
 /// victory, of a structure, a wall and infantry, the markers its players start at, the state
 /// `ended` by which its script ends the match once, its params of what each starts with, `start`
 /// (12-zero-hour.md, A skirmish starts with the faction's start objects), and the option of the
-/// money it starts with, of `start_money`'s values (21-match-options.md, The import writes Zero
+/// money it starts with, of `start_money`'s values (12-zero-hour.md, The import writes Zero
 /// Hour's money as an option); the slot kinds `weapon` and `command`, the weapons of `combat`
 /// (12-zero-hour.md) and the trains and builds of `production` (04-capabilities/production.md).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {

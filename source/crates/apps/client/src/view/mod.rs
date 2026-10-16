@@ -142,7 +142,7 @@ enum Fit {
 struct Turns;
 
 /// On the root of a projectile's model drawing, which turns along its flight: the point its sim
-/// place was drawn at last, where its next step starts (20-zero-hour-projectiles.md, The client
+/// place was drawn at last, where its next step starts (02-engine-core.md, The client
 /// draws a projectile with its look).
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
 struct Heading {

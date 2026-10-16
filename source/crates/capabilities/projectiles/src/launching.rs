@@ -19,7 +19,7 @@ impl Launching {
     /// Makes each of the tick's shots a launch: homing on its target from where its attacker
     /// stood, or for a type that flies a curve, on a curve from its attacker's center to its
     /// target's, none when its target no longer lives, or to the point it scattered to
-    /// (20-zero-hour-projectiles.md, A projectile may fly a curve).
+    /// (04-capabilities/actions.md, A projectile may fly a curve).
     pub(super) fn take_shots(
         (mut shots, mut launches): (ResMut<'_, Shots>, ResMut<'_, Launches>),
         specs: Res<'_, ByType<ProjectileSpec>>,

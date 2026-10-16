@@ -5,8 +5,8 @@ use campfire_math::{Num, RoundedRoot, Vec3};
 use crate::placed::Placed;
 use crate::shape::Shape;
 
-/// A body's volume: its shape on the ground plane around its base, from the base's height up by
-/// its height, a circle's a cylinder and a box's a box (20-zero-hour-projectiles.md, A body has a
+/// A body's volume: its shape on the ground plane around its base, from the base's height up by its
+/// height, a circle's a cylinder and a box's a box (04-capabilities/00-overview.md, A body has a
 /// height).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Volume {

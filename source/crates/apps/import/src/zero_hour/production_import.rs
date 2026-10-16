@@ -32,9 +32,8 @@ pub(crate) struct CommandSources<'a> {
 }
 
 /// Zero Hour's trains and builds (12-zero-hour.md, Every command set's trains and builds are
-/// imported; 12-zero-hour.md, The default money): each `UNIT_BUILD` and `DOZER_CONSTRUCT` button of
-/// the command set of each unit type, and of each type a converted button makes, once for the whole
-/// import; the names of their actions, as the string table gives their labels; the buttons dropped,
+/// imported): each `UNIT_BUILD` and `DOZER_CONSTRUCT` button of the command set of each unit type,
+/// and of each type a converted button makes, once for the whole import; the names of their actions, as the string table gives their labels; the buttons dropped,
 /// each once for each cause, in the order the sets are read; and what it gives each producer, its
 /// actions of the slot kind `command` and its `production` section.
 #[derive(Debug, Default)]

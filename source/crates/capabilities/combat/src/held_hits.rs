@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::damage::Damage;
 
 /// The hits of slow weapons on their way, each with the tick it lands in, in the order shot
-/// (20-zero-hour-projectiles.md, A slow weapon delays its damage). State, as a snapshot between
+/// (04-capabilities/combat.md, A slow weapon delays its damage). State, as a snapshot between
 /// a shot and its hit holds them.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct HeldHits(Vec<HeldHit>);

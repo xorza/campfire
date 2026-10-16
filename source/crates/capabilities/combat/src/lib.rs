@@ -96,7 +96,7 @@ pub use crate::weighers::{Weigh, Weighers};
 pub const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
 
 /// The random stream an attack's scatter draws from, for its attacker in its tick
-/// (20-zero-hour-projectiles.md, An attack may scatter).
+/// (04-capabilities/combat.md, An attack may scatter).
 pub const SCATTER_STREAM: RngStream = RngStream::new("combat.scatter");
 
 /// The `combat` capability: teams, the life pool, attacks, damage and deaths.
@@ -281,8 +281,9 @@ pub mod internals {
                 .unwrap();
         }
 
-        /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
-        /// pass, as an effect of no action deals it: for a test that deals what no input can.
+        /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's
+        /// damage pass, as an effect of no action deals it: for a test that deals what no input
+        /// can.
         pub fn queue_damage(
             world: &mut World,
             source: Option<StableId>,

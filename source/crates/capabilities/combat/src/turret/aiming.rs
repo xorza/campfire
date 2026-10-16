@@ -17,7 +17,7 @@ pub(crate) struct Aiming;
 impl Aiming {
     /// Turns each living unit's turret, in place, toward the bearing of its attack target, when
     /// that target lives, by at most its turn a tick, and with none back toward its rest at half
-    /// that (20-zero-hour-projectiles.md, A unit type may have a turret). Its owner's client turns
+    /// that (04-capabilities/combat.md, A unit type may have a turret). Its owner's client turns
     /// its own units' turrets as the server does.
     pub(crate) fn aim(
         turrets: Res<'_, ByType<Turret>>,

@@ -51,7 +51,7 @@ pub struct SessionTerms {
     pub visibility: Vec<u8>,
     /// The place of the value the host picked of each of the mode's options, among the option's
     /// values, in the order of their names: bytes the protocol carries and does not read
-    /// (21-match-options.md, The host picks, and the terms record the pick).
+    /// (10-sessions.md, The host picks, and the terms record the pick).
     pub options: Vec<u8>,
 }
 

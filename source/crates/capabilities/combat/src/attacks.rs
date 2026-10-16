@@ -46,7 +46,7 @@ pub struct Attacks;
 impl Attacks {
     /// Queues the damage of each slow weapon's hit that lands this tick, in the order shot, on
     /// its target when it still lives, whatever its tags let it be as a target by then
-    /// (20-zero-hour-projectiles.md, A slow weapon delays its damage).
+    /// (04-capabilities/combat.md, A slow weapon delays its damage).
     pub(super) fn land_held(
         (tick, targets): (Res<'_, SimTick>, Targets<'_, '_>),
         (mut held, mut queue): (ResMut<'_, HeldHits>, ResMut<'_, PassQueue>),
@@ -70,7 +70,7 @@ impl Attacks {
     /// a weapon of no splash; and where a projectile of a weapon of a splash ends, to each living
     /// unit of the relations its splash affects, to its source when it spares none, whose volume
     /// lies nearer the end's point in space than its radius, by stable id
-    /// (20-zero-hour-projectiles.md, An attack may splash).
+    /// (04-capabilities/combat.md, An attack may splash).
     pub(super) fn take_hits(
         (tick, book): (Res<'_, SimTick>, Res<'_, ActionBook>),
         (mut hits, mut queue): (ResMut<'_, ShotHits>, ResMut<'_, PassQueue>),
@@ -138,7 +138,7 @@ impl Attacks {
     /// Starts each unit's attack on its attack target, in Act, when it has nothing under way: with
     /// the first weapon whose filter selects the target, once that weapon passes its checks, the
     /// target is within its reach, and, for a weapon of its turret's slot kind, the turret lies
-    /// within its tolerance of the target's bearing (20-zero-hour-projectiles.md, A unit type may
+    /// within its tolerance of the target's bearing (04-capabilities/combat.md, A unit type may
     /// have a turret). An attack in its windup stops when the unit's tags keep it from
     /// attacking, or it lives no more, and such a unit starts none. An attack target that is no
     /// living enemy any more is dropped, with the attack on it.

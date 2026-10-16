@@ -80,7 +80,7 @@ impl FixedSession {
     }
 
     /// The session, of the values at `places` among its mode's options' values picked, as its
-    /// host picks them (21-match-options.md, The host picks, and the terms record the pick).
+    /// host picks them (10-sessions.md, The host picks, and the terms record the pick).
     #[must_use]
     pub fn picked(mut self, places: &[u8]) -> Self {
         let rules = SessionRules::of(&self.packages);

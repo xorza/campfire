@@ -7,7 +7,7 @@ use crate::option_data::OptionData;
 use crate::option_value::OptionValue;
 
 /// The value a session's host picked of each of the mode's options, by its place among the
-/// option's values, in the order of the options' names (21-match-options.md, The host picks, and
+/// option's values, in the order of the options' names (10-sessions.md, The host picks, and
 /// the terms record the pick). Only its constructors make one, so each place is one of its
 /// option's.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::turret::Turret;
 
 /// The angle a unit's turret lies at against its body's facing, in degrees from `x` towards
-/// `−z`, as a facing turns, taken modulo 360 (20-zero-hour-projectiles.md, A unit type may have
+/// `−z`, as a facing turns, taken modulo 360 (04-capabilities/combat.md, A unit type may have
 /// a turret). Combat writes it in place each tick; its owner's client predicts it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]

@@ -3,7 +3,7 @@ use campfire_values::Scalar;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-/// An option of the mode's `[options]` (21-match-options.md, A mode declares its options): a
+/// An option of the mode's `[options]` (03-game-scripting.md, A mode declares its options): a
 /// param whose value a session's host picks among `values`, in their order, and the place among
 /// them of the one a session of no pick takes.
 #[derive(Debug, Clone, PartialEq, Eq)]
