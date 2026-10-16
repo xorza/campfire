@@ -99,32 +99,19 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 
 `mode`: `mode_effect`, `mode_call`, `mode_api`, `mode_spec`, `timers`, `loadout_setup`, `roster`, `mode_schema`, `mode_input`, `mode_hooks`, `mode_map`; `production`: `gather_loop`, `placement`, `production_orders`, `trains`, `player_supply`, `production_column`, `construction`, `gatherer`, `production_api`; `combat`: `dying`.
 
-- [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. **Skipped: see `review-workspace_QUESTIONS.md`, batch 9, item 5.**
-
-### 17. Zero Hour import: bugs and boundaries
-
-`import`: `zero_hour` (`game_version`, `install`, `archive_path`, `model_writer`, `model_import`, `production_import`, `terrain`, `terrain_cells`, `game_data_ini`, `map_file`, `hlod`, `mod.rs`), `texture`, `lib`. After batch 16 (typed paths). Moves the Zero Hour fingerprints where an item changes written bytes.
-
-- [ ] import/src/zero_hour/mod.rs:100-118 — `dropped_waypoints`, `missing_textures`, `unliving` and `wounded` hold names as strings. → Typed names. **Skipped: see `review-workspace_QUESTIONS.md`, batch 17, item 8.**
+- [ ] production/src/placement.rs:51-57, 263-306; docs/design/11-rts-foundations.md D8, docs/design/04-capabilities/production.md:49 — a static body blocks a placement whether the builder's team sees it or not, so a build into fog reveals a hidden enemy building. Zero Hour (TheSuperHackers' `BuildAssistant::isLocationLegalToBuild`) refuses a build point the player does not see, and reports a fogged blocker as shroud, "so that players cannot use this info to determine whether they exist". → A placement passes only where the builder's team sees every cell under its box; a hidden body is then never a refusal's cause. D8 and production.md change; the client's preview refuses unseen ground, from the same test. The server's fog of the Vision stage becomes a cache both roles build: the client builds its own team's, from the sights of the units it holds, the map's brush and the reveals it receives, and the allied sights and reveals reach it as the server holds them.
 
 ### 18. Zero Hour import: structure
 
-`import`: `zero_hour` (the readers, the conversions, `error`, `import_names`, `imported_type`, `rules_package`, the INI readers, `model_import`), `texture`; `mode`: `mode_data`; `capabilities`: `books/unit_type_data`. After batch 17. No fingerprint moves.
+`import`: `zero_hour` (the readers, the conversions, `error`, `import_names`, `imported_type`, `rules_package`, the INI readers, `model_import`), `texture`; `mode`: `mode_data`; `capabilities`: `books/unit_type_data`. After batch 17. Moves the Zero Hour fingerprint, which a run on Linux and one on macOS pin.
 
-- [ ] import/src/zero_hour/imported_type.rs:18-68, import_names.rs:39-81, rules_package.rs:38-166; mode/src/mode_data.rs:26, capabilities/src/books/unit_type_data.rs:20 — `units.toml`, `mode.toml` and the manifest are written by hand-mirrored structs and `format!` templates, as the engine types derive `Deserialize` only. → The engine types derive `Serialize`; the importer builds them, as it builds `MapData`. **Skipped: see `review-workspace_QUESTIONS.md`, batch 18, item 2.**
-
-### 19. Script calls and arguments
-
-`script`: `script_batch`, `frame`, `ctx`, `view`, `view_api`, `script_arg`, `id_args`, `state_value`, `num_api`, `ctx_fn`, `error`, small files; `mode`: `calls`, `lib`, `mode_spec`, `mode_api`, `mode_hooks`, `choice_id`, `marker_tag`; `orders`: `thinking`; `abilities`, `stats`, `vision`, `navigation`, `combat` (their `*_api.rs`, `combat_column`, `modifier_handle`). After batches 6 and 9.
-
-- [ ] mode/src/match_mode.rs, lib.rs:185-198 — the mode keeps `ModeSpec` twice: in `MatchMode`, for the world's readers, and in its `ModeCall` part, for its calls. → `MatchMode` goes. **Skipped: see `review-workspace_QUESTIONS.md`, batch 19, item 5.**
-- [ ] script/src/scripts/state_value.rs:39, 74 — each read of a text state field allocates a new `ImmutableString`, and each write an `Arc<str>`. → One shared text type for state and scripts. **Skipped: see `review-workspace_QUESTIONS.md`, batch 19, item 6.**
+- [ ] import/src/zero_hour/imported_type.rs:18-68, import_names.rs:39-81, rules_package.rs:38-166; mode/src/mode_data.rs:26, capabilities/src/books/unit_type_data.rs:20 — `units.toml`, `mode.toml` and the manifest are written by hand-mirrored structs and `format!` templates, as the engine types derive `Deserialize` only. → The engine types derive `Serialize`; the importer builds them, as it builds `MapData`. This item moves the Zero Hour fingerprint, as the engine's field order is not the mirrors': `FINGERPRINTS` takes the new value of a run on Linux and one on macOS (design 12, D4).
 
 ### 20. Small capabilities: one shape for siblings
 
 `orders`, `areas`, `projectiles`, `progression`, `interaction`, `items`, `production`: `production_orders`; `players`: `tick_commands`; `navigation`: `route`; `actions`: `targets`; `capabilities`: `book_builder`. After batches 11 and 19.
 
-- [ ] orders/src/unit_order.rs:171-246 — the orders effect writes navigation's `Route`, `Progress`, `PathWalker` and production's `Builder`, `Gatherer`. → Asks through contract parts of `units`. **Skipped: see `review-workspace_QUESTIONS.md`, batch 20, item 2.**
+- [ ] orders/src/unit_order.rs:171-246 — the orders effect writes navigation's `Route`, `Progress`, `PathWalker` and production's `Builder`, `Gatherer`. → Navigation's work through contract parts of `units`: a path order (leave or rejoin) and a group's ask on `Destination`, which navigation pursues before its first read, so no golden moves; production's build and gather orders stay, as design 02's Contracts says.
 - [ ] orders, items, progression, production — `OrderInputs`/`PlayerOrders` against `<X>Orders`; `OrdersSet::Orders` against `<X>Set::Commands`. → One naming.
 - [ ] orders/src/error.rs:10, ai.rs:30 — `AiError::TimeTooLarge` is its own case. → `Time(#[from] TimeTooLarge)`.
 - [ ] items/src/trade_orders.rs:53-61, progression/src/learn_orders.rs:30-39, orders/src/order_inputs.rs:317-324, production/src/production_orders.rs:73 — each resolves id → entity → query → `controls(owner)`. → A `TickCommand` method in `players` that yields the controlled entities.
