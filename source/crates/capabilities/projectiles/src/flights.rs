@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
-use campfire_actions::{ShotHit, ShotHits, Targets};
-use campfire_deliveries::{Delivered, Deliveries, Delivering, Reached};
+use campfire_actions::{Reached, ShotHit, ShotHits, Targets};
+use campfire_deliveries::{Delivered, Deliveries, Delivering};
 use campfire_geometry::{BodyGrid, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_script::Filter;
@@ -48,6 +48,13 @@ struct Sphere {
     source: StableId,
     aimed: Option<StableId>,
     hits: Option<Filter>,
+}
+
+/// A projectile as it reaches a unit or its end: itself, and its team.
+#[derive(Debug, Clone, Copy)]
+struct Fired<'a> {
+    projectile: &'a Projectile,
+    team: Team,
 }
 
 /// A line a projectile flies: its origin, its unit direction and its range.
@@ -128,12 +135,13 @@ impl Flights<'_> {
     fn homing(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>, target: StableId) -> bool {
         let Aloft {
             id,
+            team,
             spec,
             position,
             projectile,
             state,
-            ..
         } = aloft;
+        let fired = Fired { projectile, team };
         let (flown, lost) = (state.flown(), state.lost());
         let from = *position;
         let Some(unit) = targets.living(target).filter(|_| !lost) else {
@@ -144,7 +152,7 @@ impl Flights<'_> {
                 distance: flown,
                 direction: None,
             };
-            self.end(projectile, hit);
+            self.reach(fired, Reached::End, hit);
             return true;
         };
         let metric = targets.metric();
@@ -167,8 +175,8 @@ impl Flights<'_> {
             distance: flown,
             direction: offset.normalized(),
         };
-        self.strike(projectile, target, hit);
-        self.end(projectile, hit);
+        self.reach(fired, Reached::Hit(target), hit);
+        self.reach(fired, Reached::End, hit);
         true
     }
 
@@ -195,6 +203,7 @@ impl Flights<'_> {
             projectile,
             state,
         } = aloft;
+        let fired = Fired { projectile, team };
         let flown = state.flown();
         let from = *position;
         let step = spec.speed.min(range - flown);
@@ -211,7 +220,7 @@ impl Flights<'_> {
         };
         let to = along(flown + step);
         let Some(to) = to.filter(|&to| Position::from(to).within_bound()) else {
-            self.end(projectile, line(from.get(), flown));
+            self.reach(fired, Reached::End, line(from.get(), flown));
             return true;
         };
         let metric = targets.metric();
@@ -251,9 +260,9 @@ impl Flights<'_> {
             let pos = along(flown + travelled).expect("a point of a step within the bound");
             let hit = line(pos, flown + travelled);
             self.struck.insert(Struck { by, id: struck });
-            self.strike(projectile, struck, hit);
+            self.reach(fired, Reached::Hit(struck), hit);
             if spec.stop_on_hit {
-                self.end(projectile, hit);
+                self.reach(fired, Reached::End, hit);
                 return true;
             }
         }
@@ -262,7 +271,7 @@ impl Flights<'_> {
         if flown + step < range {
             return false;
         }
-        self.end(projectile, line(to, range));
+        self.reach(fired, Reached::End, line(to, range));
         true
     }
 
@@ -292,6 +301,7 @@ impl Flights<'_> {
             projectile,
             state,
         } = aloft;
+        let fired = Fired { projectile, team };
         let FlightState::Curve {
             flown,
             steps,
@@ -312,7 +322,7 @@ impl Flights<'_> {
         // Its life counts from its launch, the tick before its first point.
         let lived = u64::from(steps) + 1;
         if steps >= points || shape.life.is_some_and(|life| lived >= life.get()) {
-            self.end(projectile, hit(position.get(), flown, None));
+            self.reach(fired, Reached::End, hit(position.get(), flown, None));
             return true;
         }
         let aimed_center = aimed
@@ -330,7 +340,7 @@ impl Flights<'_> {
         let here = map.point(position.get());
         let moved = map.position(point);
         if !Position::from(moved).within_bound() {
-            self.end(projectile, hit(position.get(), flown, None));
+            self.reach(fired, Reached::End, hit(position.get(), flown, None));
             return true;
         }
         let step = point - here;
@@ -353,8 +363,8 @@ impl Flights<'_> {
             return false;
         };
         let hit = hit(moved, flown, step.normalized());
-        self.strike(projectile, met, hit);
-        self.end(projectile, hit);
+        self.reach(fired, Reached::Hit(met), hit);
+        self.reach(fired, Reached::End, hit);
         true
     }
 
@@ -390,13 +400,16 @@ impl Flights<'_> {
         met
     }
 
-    /// What a hit of `target` delivers: an attack's shot hit, with its damage and its roll, or its
-    /// action's `on_hit`.
-    fn strike(&mut self, projectile: &Projectile, target: StableId, hit: Hit) {
+    /// What `fired` delivers as it reaches what `reach` says, as `hit` says: an attack's shot hit
+    /// or end, with its damage and its roll, or its action's `on_hit` or `on_end`.
+    fn reach(&mut self, fired: Fired<'_>, reach: Reached, hit: Hit) {
+        let Fired { projectile, team } = fired;
+        let source = projectile.source();
         match projectile.payload() {
             Payload::Attack(damage) => self.hits.0.push(ShotHit {
-                source: projectile.source(),
-                target,
+                source,
+                team,
+                reach,
                 damage,
                 hit,
             }),
@@ -407,39 +420,15 @@ impl Flights<'_> {
                 ..
             } => self.deliveries.deliver(Delivered {
                 by: Delivering {
-                    source: projectile.source(),
+                    source,
                     action,
                     rank,
                     start,
                     launch: None,
                 },
-                reach: Reached::Hit(target),
+                reach,
                 hit,
             }),
-        }
-    }
-
-    /// An action's projectile ends as `hit` says: its `on_end` runs. An attack's ends with
-    /// nothing more.
-    fn end(&mut self, projectile: &Projectile, hit: Hit) {
-        if let Payload::Action {
-            action,
-            rank,
-            start,
-            ..
-        } = projectile.payload()
-        {
-            self.deliveries.deliver(Delivered {
-                by: Delivering {
-                    source: projectile.source(),
-                    action,
-                    rank,
-                    start,
-                    launch: None,
-                },
-                reach: Reached::End,
-                hit,
-            });
         }
     }
 }

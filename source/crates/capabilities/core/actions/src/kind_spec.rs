@@ -8,7 +8,7 @@ use crate::weapon::Weapon;
 /// attack, with what its weapon deals; a use of an object; a train, with the unit type it makes;
 /// or a build, with the unit type of the building it places; or a gather, with what it gathers.
 /// The load runs no other kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum KindSpec {
     Cast,
     Attack(Weapon),
@@ -20,7 +20,7 @@ pub enum KindSpec {
 
 impl KindSpec {
     /// The kind as data names it.
-    pub const fn kind(self) -> ActionKind {
+    pub const fn kind(&self) -> ActionKind {
         match self {
             Self::Cast => ActionKind::Cast,
             Self::Attack(_) => ActionKind::Attack,
@@ -32,7 +32,7 @@ impl KindSpec {
     }
 
     /// What it deals, for an attack.
-    pub const fn weapon(self) -> Option<Weapon> {
+    pub const fn weapon(&self) -> Option<&Weapon> {
         match self {
             Self::Attack(weapon) => Some(weapon),
             Self::Cast | Self::Use | Self::Train(_) | Self::Build(_) | Self::Gather(_) => None,

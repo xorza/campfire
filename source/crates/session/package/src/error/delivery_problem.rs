@@ -44,6 +44,12 @@ pub enum DeliveryProblem {
          direction"
     )]
     AreaDirection(DeclaredName),
+    /// A weapon's splash has no projectile to go off where it ends.
+    #[error("weapon \"{0}\": a splash goes off where its delivery's projectile ends")]
+    Splash(DeclaredName),
+    /// A weapon's scatter has no curve to aim at a point.
+    #[error("weapon \"{0}\": a scatter aims its delivery's curve at a point")]
+    Scatter(DeclaredName),
     /// A weapon's delivery is neither a homing projectile nor a curve.
     #[error("weapon \"{0}\": its delivery is a homing projectile or a curve")]
     Weapon(DeclaredName),

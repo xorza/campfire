@@ -1,5 +1,6 @@
 use campfire_geometry::{Placed, Shape};
 use campfire_math::{Num, Vec3};
+use campfire_units::Body;
 use campfire_values::{ActionId, Rank};
 
 use crate::action::{Action, Aim};
@@ -100,21 +101,29 @@ impl CheckedAction<'_> {
         }
     }
 
-    /// Whether its target is within its range of a unit at `from` with a body of `shape`,
-    /// as `targets` measure reach: a unit's body, or a point it aims at; an action of global
-    /// reach, one that aims at a direction, or one with no target always is. The range counts
-    /// only when an action starts.
-    pub fn in_range(&self, from: Vec3, shape: Shape, targets: &Targets<'_, '_>) -> bool {
+    /// Whether its target is within its reach of a unit at `from` with `body`, as `targets`
+    /// measure reach: within its range of a unit's body, or of a point it aims at, an action of
+    /// global reach, one that aims at a direction, or one with no target always; and a weapon's
+    /// unit target within its bound of pitch, if it has one. The reach counts only when an
+    /// action starts.
+    pub fn in_range(&self, from: Vec3, body: Option<&Body>, targets: &Targets<'_, '_>) -> bool {
+        let pitch = self.action.kind.weapon().and_then(|weapon| weapon.pitch);
+        if let (Some(pitch), ActionTarget::Unit(target)) = (pitch, self.target) {
+            let center = Body::center(body, from, targets.map());
+            let aimed = targets.volume_of(target);
+            if !aimed.is_some_and(|aimed| pitch.holds(center, aimed.center())) {
+                return false;
+            }
+        }
         let ActionRange::Meters(range) = self.values.range else {
             return true;
         };
+        let from = Placed::new(from, Body::shape_of(body));
         match (self.action.aim, self.target) {
             (Aim::Unit(_), ActionTarget::Unit(target)) => targets
                 .living(target)
-                .is_some_and(|unit| targets.reaches(Placed::new(from, shape), range, &unit)),
-            (Aim::Point { .. }, ActionTarget::Point(at)) => {
-                targets.reaches_point(Placed::new(from, shape), range, at)
-            }
+                .is_some_and(|unit| targets.reaches(from, range, &unit)),
+            (Aim::Point { .. }, ActionTarget::Point(at)) => targets.reaches_point(from, range, at),
             _ => true,
         }
     }

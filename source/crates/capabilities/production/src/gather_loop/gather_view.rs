@@ -105,7 +105,7 @@ impl GatherView<'_, '_> {
     pub(crate) fn gather(&self, slots: &ActionSlots, slot: u8) -> Option<Gather> {
         let action_slot = slots.slot(slot)?;
         let action = self.book.get(action_slot.action?)?;
-        let (KindSpec::Gather(spec), Aim::Unit(filter)) = (action.kind, action.aim) else {
+        let (&KindSpec::Gather(spec), Aim::Unit(filter)) = (&action.kind, action.aim) else {
             return None;
         };
         let rank = action_slot.rank?;

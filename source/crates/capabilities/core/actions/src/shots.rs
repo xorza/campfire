@@ -4,6 +4,7 @@ use campfire_math::Vec3;
 use campfire_sim::StableId;
 use campfire_values::UnitType;
 
+use crate::action_target::ActionTarget;
 use crate::shot_damage::ShotDamage;
 
 /// The projectiles the tick's ranged attacks fire, delivery requests that `projectiles` launches
@@ -11,13 +12,13 @@ use crate::shot_damage::ShotDamage;
 #[derive(Resource, Debug, Default)]
 pub struct Shots(pub Vec<Shot>);
 
-/// The projectile of a ranged attack: of `unit_type`, from `source` at `from`, homing on
-/// `target`, with its `damage`.
+/// The projectile of a ranged attack: of `unit_type`, from `source` at `from`, at `target`, a
+/// unit or, for a shot that scatters, a point of the ground, with its `damage`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Shot {
     pub source: StableId,
     pub from: Vec3,
-    pub target: StableId,
+    pub target: ActionTarget,
     pub unit_type: UnitType,
     pub damage: ShotDamage,
 }

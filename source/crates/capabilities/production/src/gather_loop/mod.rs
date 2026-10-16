@@ -346,7 +346,7 @@ impl GatherLoop {
         let slots = world.get::<ActionSlots>(entity).expect("a worker's slots");
         let action_id = slots.slot(order.slot).and_then(|slot| slot.action);
         let action = action_id.and_then(|action| world.resource::<ActionBook>().get(action));
-        let Some(KindSpec::Gather(spec)) = action.map(|action| action.kind) else {
+        let Some(&KindSpec::Gather(spec)) = action.map(|action| &action.kind) else {
             panic!("a worker's loop is of its gather");
         };
         let taken = match Self::node_mut(world, node) {

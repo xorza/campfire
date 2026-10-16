@@ -1148,6 +1148,11 @@ impl ActionNames for BuildNames<'_> {
         Filter::resolve(filter, self.types.tags())
     }
 
+    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
+        let tag = self.types.tags().named(name.as_str());
+        tag.ok_or_else(|| UnknownName::new(NameKind::Tag, name))
+    }
+
     fn modifier(
         &self,
         package: PackageIndex,

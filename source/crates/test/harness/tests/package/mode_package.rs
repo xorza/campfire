@@ -188,6 +188,75 @@ fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_and_one_along_a_di
 }
 
 #[test]
+fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_and_its_pitch_a_bound() {
+    let splash = (
+        "actions.tower_attack.splash",
+        r#"{ radius = "2", affects = "enemies", spares_source = false }"#,
+    );
+    let scatter = (
+        "actions.tower_attack.scatter",
+        r#"{ radius = "3", tags = { creep = "2" } }"#,
+    );
+    let pitch = ("actions.tower_attack.pitch_deg", r#"["-10", "45"]"#);
+    let curve = (
+        "units.tower_bolt.projectile",
+        r#"{ speed = "20", curve = { first = ["0.3", "4"], second = ["0.7", "4"] } }"#,
+    );
+    let set = |edits: &[(&'static str, &'static str)]| {
+        let mut files: Vec<(&str, Edit<'static>)> = Vec::new();
+        for &(path, value) in edits {
+            let file = if path.starts_with("units.") {
+                UNITS
+            } else {
+                MODE_DATA
+            };
+            files.push((file, Edit::Set(path, value)));
+        }
+        load(&edited(files))
+    };
+    // A homing bolt splashes and bounds its pitch; a curve scatters too.
+    assert!(set(&[splash, pitch]).is_ok());
+    assert!(set(&[splash, scatter, pitch, curve]).is_ok());
+    // A homing bolt does not scatter, and a weapon of no projectile does not splash.
+    let error = set(&[scatter]).unwrap_err();
+    let scatters = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Scatter(action)) if action == "tower_attack");
+    assert!(scatters(&error.problem), "{error:?}");
+    let melee = [("actions.wolf_attack.splash", splash.1)];
+    let error = set(&melee).unwrap_err();
+    let splashes = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Splash(action)) if action == "wolf_attack");
+    assert!(splashes(&error.problem), "{error:?}");
+    // Each reads only within its bounds.
+    let file = "data/mode.toml";
+    for (edit, message) in [
+        (
+            (
+                "actions.tower_attack.splash",
+                r#"{ radius = "0", affects = "enemies" }"#,
+            ),
+            "a splash's radius",
+        ),
+        (
+            ("actions.tower_attack.scatter", r#"{ radius = "-1" }"#),
+            "a scatter's radius",
+        ),
+        (
+            ("actions.tower_attack.pitch_deg", r#"["45", "-10"]"#),
+            "a pitch's bound",
+        ),
+        (
+            ("actions.tower_attack.pitch_deg", r#"["90", "90"]"#),
+            "a pitch's bound",
+        ),
+    ] {
+        let error = set(&[edit]).unwrap_err();
+        assert!(
+            read_fails(&error.problem, file, message),
+            "{edit:?}: {error:?}"
+        );
+    }
+}
+
+#[test]
 fn a_mode_state_field_is_sent_to_no_client_unless_it_says() {
     // The 3v3's `phase` is sent to all; without `sync`, or with `sync = "none"`, to none.
     let phase = |edit: Edit<'_>| {

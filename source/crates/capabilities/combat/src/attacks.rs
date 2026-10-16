@@ -1,20 +1,21 @@
+use std::ops::ControlFlow;
+
 use bevy_ecs::query::{Has, QueryState, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCheck, ActionProgress, ActionSlots, ActionTarget, Caster, InProgress, Payer,
-    Purse, Shot, ShotDamage, ShotHits, Shots, SlotAim, SlotTimes, Targets,
+    Purse, Reached, Shot, ShotDamage, ShotHit, ShotHits, Shots, SlotAim, SlotTimes, Targets,
 };
 use campfire_common::Tick;
 use campfire_declare::RoleForm;
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
 use campfire_script::ScriptsWorld;
-use campfire_sim::{Position, SimRng, SimTick, TickClock};
+use campfire_sim::{EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
-use campfire_units::{Body, Dead, ForcedMove, Owner};
-use campfire_values::{Block, Motion, Team, UnitTags};
+use campfire_units::{Body, Dead, ForcedMove, Owner, UnitsNear};
+use campfire_values::{Block, Motion, TagSet, Team, UnitTags};
 
-use crate::ROLL_STREAM;
 use crate::clip_shots::ClipShots;
 use crate::combat_event::CombatEvent;
 use crate::combat_hooks::CombatHooks;
@@ -22,6 +23,7 @@ use crate::damage::{Damage, DamageCause};
 use crate::pass_queue::PassQueue;
 use crate::volley::{GoingOff, Volley};
 use crate::wielded::Wielded;
+use crate::{ROLL_STREAM, SCATTER_STREAM};
 
 /// What tells whether a unit's attack strikes: its slots and what it has under way, its tags,
 /// and what it pays the cost from.
@@ -39,19 +41,31 @@ type Attacker<'a> = (
 pub struct Attacks;
 
 impl Attacks {
-    /// Queues the damage of each hit of an attack's projectile this tick, in the order they
-    /// struck: its weapon's damage, with the roll it drew.
+    /// Queues the damage of each hit and each end of an attack's projectile this tick, in the
+    /// order they came, its weapon's damage with the roll it drew: to the unit a hit struck, for
+    /// a weapon of no splash; and where a projectile of a weapon of a splash ends, to each living
+    /// unit of the relations its splash affects, to its source when it spares none, whose volume
+    /// lies nearer the end's point in space than its radius, by stable id
+    /// (20-zero-hour-projectiles.md, An attack may splash).
     pub(super) fn take_hits(
-        tick: Res<'_, SimTick>,
-        mut hits: ResMut<'_, ShotHits>,
-        mut queue: ResMut<'_, PassQueue>,
+        (tick, book): (Res<'_, SimTick>, Res<'_, ActionBook>),
+        (mut hits, mut queue): (ResMut<'_, ShotHits>, ResMut<'_, PassQueue>),
+        targets: Targets<'_, '_>,
+        mut near: UnitsNear<'_, '_>,
+        mut splashed: Local<'_, Vec<StableId>>,
     ) {
         let now = tick.start();
-        for hit in hits.0.drain(..) {
-            let shot = hit.damage;
-            let damage = Damage {
-                source: Some(hit.source),
-                target: hit.target,
+        for ShotHit {
+            source,
+            team,
+            reach,
+            damage: shot,
+            hit,
+        } in hits.0.drain(..)
+        {
+            let damage = |target| Damage {
+                source: Some(source),
+                target,
                 amount: shot.amount,
                 kind: shot.kind,
                 cause: DamageCause::Attack {
@@ -60,9 +74,40 @@ impl Attacks {
                 },
                 action: Some(shot.action),
                 depth: 0,
-                hit: Some(hit.hit),
+                hit: Some(hit),
             };
-            queue.push_damage(damage, now);
+            let weapon = book
+                .get(shot.action)
+                .and_then(|action| action.kind.weapon());
+            match (reach, weapon.and_then(|weapon| weapon.splash)) {
+                (Reached::Hit(target), None) => queue.push_damage(damage(target), now),
+                (Reached::End, Some(splash)) => {
+                    let point = targets.map().point(hit.pos);
+                    splashed.clear();
+                    near.current().visit_near(point, splash.radius, |body| {
+                        let Some(unit) = targets.living_at(body.key) else {
+                            return ControlFlow::Continue(());
+                        };
+                        let affects = if unit.id == source {
+                            !splash.spares_source
+                        } else {
+                            splash.affects.selects(targets.relation(team, unit.team))
+                        };
+                        let within = targets
+                            .volume_at(body.key)
+                            .is_some_and(|volume| volume.nearest(point, splash.radius).is_lt());
+                        if affects && within {
+                            splashed.push(unit.id);
+                        }
+                        ControlFlow::Continue(())
+                    });
+                    splashed.sort_unstable();
+                    for &target in &*splashed {
+                        queue.push_damage(damage(target), now);
+                    }
+                }
+                (Reached::Hit(_), Some(_)) | (Reached::End, None) => {}
+            }
         }
     }
 
@@ -137,7 +182,6 @@ impl Attacks {
                     };
                     let purse = Purse::of(pools.of(life), resources.of(owner));
                     let relation = |other| targets.relation(team, other);
-                    let shape = Body::shape_of(body);
                     let started = times
                         .checked_action(ActionCheck {
                             book: &book,
@@ -148,7 +192,7 @@ impl Attacks {
                             relation,
                             living: |id| targets.living(id),
                         })
-                        .filter(|checked| checked.in_range(position.get(), shape, &targets))
+                        .filter(|checked| checked.in_range(position.get(), body, &targets))
                         .map(|checked| now.after(checked.values.windup));
                     if let Some(resolves_at) = started {
                         progress.start_attack(slot, resolves_at);
@@ -240,7 +284,8 @@ impl Attacks {
     /// Delivers each attack whose windup ends this tick, in the order of its attacker's stable id:
     /// it queues the damage of its weapon, its damage stat or its own amount, of its kind, or a
     /// shot when the weapon fires a projectile, which `projectiles` launches, as the load gives
-    /// such a weapon only to a match with projectiles. Each draws its roll now, at least 0 and
+    /// such a weapon only to a match with projectiles: at its target, or at the point of the
+    /// ground its scatter draws, for a living target. Each draws its roll now, at least 0 and
     /// less than 1, which `calc_damage` reads. The weapon's cost is paid, in pools and its
     /// player's resources, and it is ready again a period from the attack's start, its own or the
     /// tick rate over its rate stat; a shot that empties its clip makes it ready its reload from
@@ -278,6 +323,10 @@ impl Attacks {
             ),
             Without<Dead>,
         >,
+        (index, aims): (
+            Res<'_, EntityIndex>,
+            Query<'_, '_, (&Position, Option<&UnitTags>), Without<Dead>>,
+        ),
         mut going: Local<'_, Vec<GoingOff>>,
     ) {
         let now = clock.start();
@@ -339,10 +388,23 @@ impl Attacks {
             let amount = weapon.damage(stats, &values);
             let roll = rng.open(ROLL_STREAM, source).fraction();
             if let Some(unit_type) = wielded.projectile {
+                let aimed = index.get(target).and_then(|target| aims.get(target).ok());
+                let scattered = weapon
+                    .scatter
+                    .as_ref()
+                    .zip(aimed)
+                    .and_then(|(scatter, aimed)| {
+                        let (pos, tags) = aimed;
+                        let tags = tags.map_or_else(TagSet::default, |tags| tags.tags);
+                        scatter.point(pos.get(), tags, || {
+                            let mut draws = rng.open(SCATTER_STREAM, source);
+                            [draws.fraction(), draws.fraction()]
+                        })
+                    });
                 fired.0.push(Shot {
                     source,
                     from: from.get(),
-                    target,
+                    target: scattered.map_or(ActionTarget::Unit(target), ActionTarget::Point),
                     unit_type,
                     damage: ShotDamage {
                         action,

@@ -64,6 +64,7 @@ mod purse;
 mod range_field;
 mod rank_fields;
 mod rank_values;
+mod reached;
 mod requires_data;
 mod shot_damage;
 mod shot_hits;
@@ -83,7 +84,8 @@ pub use crate::action_book::{ActionBook, PackageAction};
 pub use crate::action_call::{ActionCall, ResolvedCast, Started};
 pub use crate::action_data::error::{ActionField, EffectRule};
 pub use crate::action_data::{
-    ActionData, ChannelData, ChargeUpData, ChargesData, ClipData, Toggle,
+    ActionData, ChannelData, ChargeUpData, ChargesData, ClipData, PitchData, ScatterData,
+    SplashData, Toggle,
 };
 pub use crate::action_data_field::ActionDataField;
 pub use crate::action_kind::{ActionKind, MeteredKind};
@@ -131,6 +133,7 @@ pub use crate::rank_fields::{
     RankChannel, RankCharges, RankClip, RankFields, RankToggle, TogglePer,
 };
 pub use crate::rank_values::{ChannelRule, ChargeRule, ClipRule, LoadedRanks, RankValues};
+pub use crate::reached::Reached;
 pub use crate::requires_data::RequiresData;
 pub use crate::shot_damage::ShotDamage;
 pub use crate::shot_hits::{ShotHit, ShotHits};
@@ -143,7 +146,7 @@ pub use crate::slot_kinds::SlotKinds;
 pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
 pub use crate::use_group::UseGroup;
-pub use crate::weapon::{Source, Weapon};
+pub use crate::weapon::{Pitch, Scatter, Source, Weapon};
 
 /// The core's actions: every action a match loads, and the slots units hold them in.
 #[derive(Debug)]
@@ -271,7 +274,7 @@ pub mod internals {
     use crate::Actions;
     use crate::action::{Action, Aim};
     use crate::action_book::ActionBook;
-    use crate::action_data::ActionData;
+    use crate::action_data::{ActionData, SplashData};
     use crate::action_range::ActionRange;
     use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
     use crate::effect_list_book::EffectListBook;
@@ -281,7 +284,7 @@ pub mod internals {
     use crate::kind_spec::KindSpec;
     use crate::rank_fields::{RankToggle, TogglePer};
     use crate::rank_values::{ClipRule, RankValues};
-    use crate::weapon::{Source, Weapon};
+    use crate::weapon::{Pitch, Scatter, Source, Weapon};
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
@@ -379,7 +382,8 @@ pub mod internals {
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
     /// homing projectile it fires, if it fires one, where its rate and its damage come from, its
-    /// own period, amount and clip, and its cost in pools and in a player resource.
+    /// own period, amount and clip, its cost in pools and in a player resource, and its splash,
+    /// its scatter's radius and its bound of pitch.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct TestWeapon {
         pub aim: Filter,
@@ -393,6 +397,9 @@ pub mod internals {
         pub clip: Option<ClipRule>,
         pub cost: PoolCost,
         pub resource_cost: Option<ResourceAmount>,
+        pub splash: Option<SplashData>,
+        pub scatter: Option<Num>,
+        pub pitch: Option<Pitch>,
     }
 
     /// The names of an action's effect lists as a match's world resolves them: its view, its param
@@ -421,6 +428,9 @@ pub mod internals {
                 clip: None,
                 cost: PoolCost::default(),
                 resource_cost: None,
+                splash: None,
+                scatter: None,
+                pitch: None,
             }
         }
     }
@@ -447,6 +457,12 @@ pub mod internals {
                         rate: weapon.rate,
                         damage: weapon.damage,
                         kind: DamageKind::new(0),
+                        splash: weapon.splash,
+                        scatter: weapon.scatter.map(|radius| Scatter {
+                            radius,
+                            tags: Box::new([]),
+                        }),
+                        pitch: weapon.pitch,
                     }),
                     passive: None,
                     hold: None,

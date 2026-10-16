@@ -95,7 +95,7 @@ impl Action {
     /// The filter of the units it may attack, for a weapon, which the load lets aim only at a
     /// unit; `None` for another kind.
     pub(crate) const fn weapon_filter(&self) -> Option<Filter> {
-        match (self.kind, self.aim) {
+        match (&self.kind, self.aim) {
             (KindSpec::Attack(_), Aim::Unit(filter)) => Some(filter),
             _ => None,
         }

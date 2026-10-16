@@ -87,6 +87,10 @@ pub use crate::weighers::{Weigh, Weighers};
 /// The random stream an attack's roll draws from, for its attacker in its tick.
 pub const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
 
+/// The random stream an attack's scatter draws from, for its attacker in its tick
+/// (20-zero-hour-projectiles.md, An attack may scatter).
+pub const SCATTER_STREAM: RngStream = RngStream::new("combat.scatter");
+
 /// The `combat` capability: teams, the life pool, attacks, damage and deaths.
 #[derive(Debug)]
 pub struct Combat;
@@ -230,8 +234,8 @@ pub mod internals {
     use bevy_ecs::world::World;
     use campfire_actions::internals::TestWeapon;
     use campfire_actions::{
-        ActionBook, ActionProgress, ActionRange, ActionSlots, Actions, InProgress, SlotKind,
-        SlotTimes,
+        ActionBook, ActionProgress, ActionRange, ActionSlots, Actions, InProgress, Pitch, SlotKind,
+        SlotTimes, SplashData,
     };
     use campfire_common::{Tick, Ticks};
     use campfire_declare::ServerForm;
@@ -293,8 +297,8 @@ pub mod internals {
     }
 
     /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
-    /// again `period` after an attack's start, deals `damage`, and fires a projectile of the
-    /// homing type `projectile` when given.
+    /// again `period` after an attack's start, deals `damage`, fires a projectile of the type
+    /// `projectile` when given, and splashes, scatters and bounds its pitch as given.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Arms {
         range: Num,
@@ -302,6 +306,9 @@ pub mod internals {
         period: Ticks,
         damage: Num,
         projectile: Option<UnitType>,
+        splash: Option<SplashData>,
+        scatter: Option<Num>,
+        pitch: Option<[Num; 2]>,
     }
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
@@ -331,6 +338,9 @@ pub mod internals {
                 period: Ticks::new(period),
                 damage,
                 projectile: None,
+                splash: None,
+                scatter: None,
+                pitch: None,
             }
         }
 
@@ -350,6 +360,9 @@ pub mod internals {
             let hz = world.resource::<TickRate>().hz().get();
             let weapon = TestWeapon {
                 projectile: self.projectile,
+                splash: self.splash,
+                scatter: self.scatter,
+                pitch: self.pitch.map(|[low, high]| Pitch::of(low, high)),
                 ..TestWeapon::new(
                     Filter::of_match_relations(world, RelationSet::Enemies),
                     ActionRange::Meters(self.range),
@@ -417,6 +430,45 @@ pub mod internals {
                 .ranged(projectile);
             Self {
                 arms: Some(arms),
+                ..self
+            }
+        }
+
+        /// The same unit, its weapon's projectile splashing as `splash` says.
+        #[must_use]
+        pub const fn splashing(self, splash: SplashData) -> Self {
+            let arms = self.arms.expect("a splashing unit is armed");
+            Self {
+                arms: Some(Arms {
+                    splash: Some(splash),
+                    ..arms
+                }),
+                ..self
+            }
+        }
+
+        /// The same unit, its weapon's projectile scattering within `radius` of its target.
+        #[must_use]
+        pub const fn scattering(self, radius: Num) -> Self {
+            let arms = self.arms.expect("a scattering unit is armed");
+            Self {
+                arms: Some(Arms {
+                    scatter: Some(radius),
+                    ..arms
+                }),
+                ..self
+            }
+        }
+
+        /// The same unit, its weapon's targets lying from `low` to `high` degrees of pitch.
+        #[must_use]
+        pub const fn pitched(self, low: Num, high: Num) -> Self {
+            let arms = self.arms.expect("a pitched unit is armed");
+            Self {
+                arms: Some(Arms {
+                    pitch: Some([low, high]),
+                    ..arms
+                }),
                 ..self
             }
         }

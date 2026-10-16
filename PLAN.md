@@ -6,15 +6,9 @@ The open steps, in the order they are done, and the foundations. The rules are i
 
 The slice of [Zero Hour projectiles](docs/design/20-zero-hour-projectiles.md): the player trains a tank, and its shells destroy the bot's command center. The systems it changes: `geometry`, `units`, `client-files`, `mode`, `package`, `capabilities`, `projectiles`, `combat`, `import`, `client`, `zero-hour-check`. Each batch ends with `./drive.py check` passing; a golden that moves names its batch.
 
-### 5. Splash, scatter and pitch
-
-`combat`: `attacks.rs`, the attack's data, the damage queue; `projectiles`: the end of an attack's projectile. Builds: what a module adds is declared once.
-
-- [ ] crates/capabilities/combat/src/attacks.rs:341-353 — an attack's projectile damages the one unit it hits, at its target always, and a shot reaches any pitch (An attack may splash, scatter and bound its pitch). → `splash`, `scatter` and `pitch_deg` in the attack's data, the first two refused without a projectile `delivery`; a projectile's end of an attack with a splash queues a damage for each living unit of its relations within its radius, in stable id order, and its hit none of its own; a scatter's two draws on their own stream give the ground point its projectile flies to, with no target to follow; a target out of the pitch bound is out of reach. The tests of [Checks](docs/design/20-zero-hour-projectiles.md#checks) for combat.
-
 ### 6. Turrets
 
-`combat`: a new `turret/`, the attack's start; `client`: `view/unit_models.rs`. After batch 5. Builds: a kind is a marker; a part a system derives each tick is one it writes in place.
+`combat`: a new `turret/`, the attack's start; `client`: `view/unit_models.rs`. Builds: a kind is a marker; a part a system derives each tick is one it writes in place.
 
 - [ ] crates/capabilities/combat/src/attacks.rs — an attack starts as soon as its target is in reach, and no part of a unit turns but its body (A unit type may have a turret). → A unit type's `turret`, a `TurretAngle` part on the types that have one, written in place each tick toward the target of the attack under way at its rate, back to 0 at half of it with none; an attack of the turret's slot kind starts its windup only within its tolerance; its owner's client predicts it. The client turns the look's `turret` node by it.
 

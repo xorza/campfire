@@ -111,14 +111,16 @@ impl Targets<'_, '_> {
     /// The volume of `target`, when it is a living unit that may be a target, as `Body::volume`
     /// gives it.
     pub fn volume_of(&self, target: StableId) -> Option<Volume> {
-        self.volume_at(self.index.get(target)?)
+        let entity = self.index.get(target)?;
+        self.target_at(entity)?;
+        self.volume_at(entity)
     }
 
-    /// The volume of the unit of `entity`, when a living unit that may be a target.
+    /// The volume of the unit of `entity`, of any unit it holds, whatever its life: what a caller
+    /// found by `target_at` or `living_at`.
     pub fn volume_at(&self, entity: Entity) -> Option<Volume> {
-        let (_, pos, _, life, body, tags) = self.units.get(entity).ok()?;
-        Targets::targetable(false, Some(life), tags)
-            .then(|| Body::volume(body, pos.get(), &self.map))
+        let (_, pos, _, _, body, _) = self.units.get(entity).ok()?;
+        Some(Body::volume(body, pos.get(), &self.map))
     }
 
     /// The map the units stand on.

@@ -9,7 +9,7 @@ fn weapon() -> Weapon {
     Weapon {
         rate: Source::Stat(StatId::new(0)),
         damage: Source::Stat(StatId::new(1)),
-        kind: DamageKind::new(0),
+        ..OWN
     }
 }
 
@@ -18,6 +18,9 @@ const OWN: Weapon = Weapon {
     rate: Source::Own,
     damage: Source::Own,
     kind: DamageKind::new(0),
+    splash: None,
+    scatter: None,
+    pitch: None,
 };
 
 /// A rank's values of `windup` ticks, its own period `period` and amount `amount`.
@@ -93,5 +96,64 @@ fn a_weapon_of_its_own_period_and_amount_reads_them_at_its_rank_and_no_stat() {
     assert_eq!(
         OWN.damage(&[], &values(0, None, Some(Num::ZERO))),
         Num::ZERO
+    );
+}
+
+#[test]
+fn a_scatter_widens_at_its_targets_tags_and_aims_by_its_two_draws() {
+    // 2 m, and 3 m more at the tag 0 and 1 m more at the tag 1: a target of both takes the
+    // larger, 5 m; of none, 2 m.
+    let tag = |index: u8, radius: i64| ScatterTag {
+        tag: Tag::new(index),
+        radius: Num::int(radius),
+    };
+    let scatter = Scatter {
+        radius: Num::int(2),
+        tags: Box::new([tag(0, 3), tag(1, 1)]),
+    };
+    let both = TagSet::default().with(Tag::new(0)).with(Tag::new(1));
+    assert_eq!(scatter.radius(both), Num::int(5));
+    assert_eq!(
+        scatter.radius(TagSet::default().with(Tag::new(1))),
+        Num::int(3)
+    );
+    assert_eq!(scatter.radius(TagSet::default()), Num::int(2));
+    // From (10, 0, 4), its draws ½ and ¼, a quarter turn from x toward −z: 1 m, to (10, 0, 3);
+    // and ¾ and ½, half a turn: 1.5 m, to (8.5, 0, 4).
+    let at = Vec3::from((10, 7, 4));
+    let half = Num::HALF;
+    let drawn = |draws| scatter.point(at, TagSet::default(), || draws);
+    assert_eq!(drawn([half, Num::QUARTER]), Some(Vec3::from((10, 0, 3))));
+    let three = Num::QUARTER * 3;
+    assert_eq!(
+        drawn([three, half]),
+        Some(Vec3::new(Num::int(8) + half, Num::ZERO, Num::int(4)))
+    );
+    // A radius of 0 aims at the target and draws nothing.
+    let none = Scatter {
+        radius: Num::ZERO,
+        tags: Box::new([]),
+    };
+    assert_eq!(
+        none.point(at, TagSet::default(), || panic!("no draw")),
+        None
+    );
+}
+
+#[test]
+fn a_pitch_bound_holds_targets_from_its_least_to_its_most_angle_above_the_ground() {
+    // From −10° to 45°: 3 m up and 4 m along is 36.9°, within; 4 m up and 3 m along, 53.1°, past
+    // it; 45° exactly holds; 1 m down and 4 m along, −14°, below it; level holds.
+    let pitch = Pitch::of(Num::int(-10), Num::int(45));
+    let from = Vec3::from((1, 2, 3));
+    let to = |along: i32, up: i32| from + Vec3::from((along, up, 0));
+    let held = [to(4, 3), to(3, 4), to(5, 5), to(4, -1), to(4, 0)].map(|to| pitch.holds(from, to));
+    assert_eq!(held, [true, false, true, false, true]);
+    // From −90° to 90°, any.
+    let any = Pitch::of(Num::int(-90), Num::int(90));
+    assert!(
+        [to(0, -5), to(0, 5), to(5, 0)]
+            .iter()
+            .all(|&to| any.holds(from, to))
     );
 }

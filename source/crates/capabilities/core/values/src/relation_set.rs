@@ -1,3 +1,6 @@
+use campfire_common::NamedEnum;
+use serde::{Deserialize, Deserializer};
+
 use crate::relation::Relation;
 
 campfire_common::enum_all! {
@@ -25,5 +28,13 @@ impl RelationSet {
             Self::Allies => matches!(relation, Relation::Friendly),
             Self::All => true,
         }
+    }
+}
+
+/// Read as serde's derive reads a unit variant, by the name beside it, as data writes a splash's
+/// `affects`.
+impl<'de> Deserialize<'de> for RelationSet {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Self::deserialize_member(deserializer)
     }
 }

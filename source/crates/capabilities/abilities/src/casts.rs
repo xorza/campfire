@@ -166,7 +166,7 @@ impl Casts {
                 Self::drop_cast(&mut progress, destination.as_mut(), arrived, approached);
                 continue;
             };
-            if !checked.in_range(position.get(), shape, &targets) {
+            if !checked.in_range(position.get(), body, &targets) {
                 match (destination.is_some(), checked.aimed_at(&targets)) {
                     (true, Some(to)) => {
                         Self::walk(destination.as_mut(), arrived, Some(to));

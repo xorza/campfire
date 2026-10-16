@@ -1,4 +1,6 @@
-use campfire_actions::ShotDamage;
+use campfire_actions::{ShotDamage, SplashData};
+use campfire_combat::SCATTER_STREAM;
+use campfire_math::SinCos;
 use campfire_units::{CellSplit, Ground, HeightGrid};
 use campfire_values::{ActionId, DamageKind, Rank, RelationSet};
 
@@ -20,10 +22,11 @@ fn shell(speed: i64, width: Num, follow: i64, life_ms: Option<u32>) -> Projectil
     }
 }
 
-/// The unit types of a shelling: a shooter of shells of `data`, and targets of a body of 1 m,
-/// of no height, of `height` and 4 m tall.
+/// The unit types of a shelling: shells of `data`, a shooter of them, and targets of a body of
+/// 1 m, of no height, of `height` and 4 m tall.
 #[derive(Debug, Clone, Copy)]
 struct Shelling {
+    shell: UnitType,
     shooter: UnitType,
     flat: UnitType,
     tall: UnitType,
@@ -41,6 +44,7 @@ impl Shelling {
         Units::give_type(game, tall, round.raised(height).unwrap());
         Units::give_type(game, tower, round.raised(Num::int(4)).unwrap());
         Self {
+            shell,
             shooter,
             flat,
             tall,
@@ -338,4 +342,134 @@ fn a_restored_curve_holds_its_points_and_its_state_within_them() {
         end: to,
     };
     assert!(Binary::decode::<FlightState>(&Binary::encode(&negative)).is_err());
+}
+
+/// A match of a shelling, a shooter of the weapon `arm` makes at the origin of team 0 attacking a
+/// target of a body of 1 m at (8, 0, 0) of team 1: the match, the shooter and the target.
+#[derive(Debug)]
+struct Shot {
+    game: Match,
+    shooter: StableId,
+    target: StableId,
+}
+
+impl Shot {
+    fn new(arm: impl FnOnce(Armed) -> Armed, place: impl FnOnce(&mut Match, Shelling)) -> Self {
+        let mut game = volley_match();
+        let mut volley = Shelling::place(&mut game, &shell(120, Num::ZERO, 0, None), Num::ZERO);
+        volley.shooter = arm(shooter(volley.shell)).load(&mut game);
+        let shooter = Mode::spawn(&mut game, volley.shooter, (0, 0, 0), Team::new(0), ());
+        let target = Mode::spawn(&mut game, volley.flat, (8, 0, 0), Team::new(1), ());
+        place(&mut game, volley);
+        Combat::attack(&mut game, shooter, target);
+        Self {
+            game,
+            shooter,
+            target,
+        }
+    }
+
+    /// Steps its match from its start through tick `tick`.
+    fn through(&mut self, tick: u64) {
+        for _ in 0..=tick {
+            self.game.step();
+        }
+    }
+}
+
+#[test]
+fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_each() {
+    // A splash of 2 m at the enemies: the shell ends on the target's center, (8, 0, 0), in tick
+    // 5. An enemy whose body's edge lies 1.5 m from it takes the damage, one 2 m away does not,
+    // nor an ally within it; the target takes it once, its hit dealing nothing of its own.
+    let splash = SplashData {
+        radius: Num::int(2),
+        affects: RelationSet::Enemies,
+        spares_source: true,
+    };
+    let mut near = Vec::new();
+    let mut shot = Shot::new(
+        |armed| armed.splashing(splash),
+        |game, volley| {
+            let half = Num::HALF;
+            let at = |x: Num, z: Num| Vec3::new(x, Num::ZERO, z);
+            for (pos, team) in [
+                (at(Num::int(10) + half, Num::ZERO), 1),
+                (at(Num::int(11), Num::ZERO), 1),
+                (at(Num::int(8), -Num::int(2) - half), 0),
+            ] {
+                near.push(Mode::spawn(game, volley.flat, pos, Team::new(team), ()));
+            }
+        },
+    );
+    shot.through(5);
+    let [inside, at_edge, ally] = near[..] else {
+        panic!("three units near");
+    };
+    let healths = [shot.target, inside, at_edge, ally].map(|id| Stats::health(&shot.game, id));
+    assert_eq!(healths, [70, 70, 100, 100]);
+
+    // At the allies, 9 m wide, sparing no source: the shooter, a point 8 m away, takes it, and
+    // the target, an enemy, does not; sparing its source, the shooter takes nothing.
+    let run = |spares_source| {
+        let splash = SplashData {
+            radius: Num::int(9),
+            affects: RelationSet::Allies,
+            spares_source,
+        };
+        let mut shot = Shot::new(|armed| armed.splashing(splash), |_, _| {});
+        shot.through(5);
+        [shot.shooter, shot.target].map(|id| Stats::health(&shot.game, id))
+    };
+    assert_eq!(run(false), [70, 100]);
+    assert_eq!(run(true), [100, 100]);
+}
+
+#[test]
+fn a_shell_scatters_to_the_point_its_two_draws_give_and_follows_no_unit() {
+    // A scatter of 3 m: in tick 2 its attack draws twice on its own stream, a distance of 3 m
+    // times the first and a turn times the second, from the target's ground point, (8, 0, 0).
+    let mut shot = Shot::new(|armed| armed.scattering(Num::int(3)), |_, _| {});
+    shot.through(3);
+    let mut draws = Rng::new(
+        &SegmentSeed::ZERO,
+        SCATTER_STREAM,
+        shot.shooter.get(),
+        Tick::new(2),
+    );
+    let [distance, turn] = [draws.fraction(), draws.fraction()];
+    let distance = Num::int(3) * distance;
+    let SinCos { sin, cos } = SinCos::of_degrees(Num::int(360) * turn);
+    let to = Vec3::new(Num::int(8) + distance * cos, Num::ZERO, -(distance * sin));
+    let Flight::Curve {
+        to: aimed_at,
+        aimed,
+        ..
+    } = flight(&mut shot.game)
+    else {
+        panic!("a curve");
+    };
+    assert_eq!((aimed_at, aimed), (to, None));
+    assert_ne!(to, Vec3::from((8, 0, 0)));
+    // A scatter of 0 aims at the target itself.
+    let mut shot = Shot::new(|armed| armed.scattering(Num::ZERO), |_, _| {});
+    shot.through(3);
+    let Flight::Curve { aimed, .. } = flight(&mut shot.game) else {
+        panic!("a curve");
+    };
+    assert_eq!(aimed, Some(shot.target));
+}
+
+#[test]
+fn a_target_past_a_weapons_pitch_bound_is_out_of_its_reach() {
+    // From −10° to 30°: the target, its center 6 m up and 8 m along, at 36.9°, is past it, and
+    // the shooter never attacks; 2 m down, −14°, below it; 4 m up, 26.6°, within it.
+    let run = |up: i32| {
+        let pitched = |armed: Armed| armed.pitched(Num::int(-10), Num::int(30));
+        let mut shot = Shot::new(pitched, |_, _| {});
+        put(&mut shot.game, shot.target, Vec3::from((8, up, 0)));
+        shot.through(8);
+        Stats::health(&shot.game, shot.target)
+    };
+    assert_eq!([run(6), run(-2), run(4)], [100, 100, 70]);
 }

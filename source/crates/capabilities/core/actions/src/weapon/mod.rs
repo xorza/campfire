@@ -1,17 +1,101 @@
 use campfire_common::Ticks;
-use campfire_math::{Num, Rounding};
+use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_stats::StatId;
-use campfire_values::{DamageKind, NameId};
+use campfire_values::{DamageKind, NameId, Tag, TagSet};
 
+use crate::action_data::SplashData;
 use crate::rank_values::RankValues;
 
-/// What makes an action of kind `attack` a weapon: where its rate and its damage come from, and
-/// the kind of damage it deals.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What makes an action of kind `attack` a weapon: where its rate and its damage come from, the
+/// kind of damage it deals, and its projectile's splash and scatter and its bound of pitch, if
+/// it has them.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Weapon {
     pub(crate) rate: Source,
     pub(crate) damage: Source,
     pub kind: DamageKind,
+    pub splash: Option<SplashData>,
+    pub scatter: Option<Scatter>,
+    pub pitch: Option<Pitch>,
+}
+
+/// How far from its target's ground point a weapon's projectile may aim
+/// (20-zero-hour-projectiles.md, An attack may scatter): `radius`, and for a target of a tag of
+/// `tags`, the largest of their radii more.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Scatter {
+    pub(crate) radius: Num,
+    pub(crate) tags: Box<[ScatterTag]>,
+}
+
+/// A tag a scatter widens at, and its radius.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ScatterTag {
+    pub(crate) tag: Tag,
+    pub(crate) radius: Num,
+}
+
+/// The pitches a weapon's target lies within (20-zero-hour-projectiles.md, An attack may bound its
+/// pitch): the sines and cosines of its least and its most, fixed at the load.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Pitch {
+    pub(crate) low: SinCos,
+    pub(crate) high: SinCos,
+}
+
+impl Scatter {
+    /// Its radius at a target of `tags`.
+    pub fn radius(&self, tags: TagSet) -> Num {
+        let widest = self.tags.iter().filter(|tag| tags.contains(tag.tag));
+        self.radius + widest.map(|tag| tag.radius).max().unwrap_or(Num::ZERO)
+    }
+
+    /// The point of the ground a shot at a unit at `pos` of `tags` aims at, when its radius there
+    /// is above 0: at a distance from the unit's ground point of the radius times the first of
+    /// `draw`'s fractions, at an angle of a turn times the second, from `x` toward `−z` as a
+    /// facing turns, each product rounded once, as Zero Hour's `fireWeaponTemplate` scatters a
+    /// shot. None at a radius of 0, which draws nothing.
+    pub fn point(&self, pos: Vec3, tags: TagSet, draw: impl FnOnce() -> [Num; 2]) -> Option<Vec3> {
+        let radius = self.radius(tags);
+        if radius <= Num::ZERO {
+            return None;
+        }
+        let [distance, turn] = draw();
+        debug_assert!(
+            [distance, turn]
+                .iter()
+                .all(|draw| (Num::ZERO..Num::ONE).contains(draw)),
+            "a draw is a fraction"
+        );
+        let distance = radius * distance;
+        let SinCos { sin, cos } = SinCos::of_degrees(Num::int(360) * turn);
+        let x = pos.x + distance * cos;
+        let z = pos.z - distance * sin;
+        Some(Vec3::new(x, Num::ZERO, z))
+    }
+}
+
+impl Pitch {
+    /// The bound of `low` and `high` degrees, as the load reads them.
+    pub fn of(low: Num, high: Num) -> Self {
+        Self {
+            low: SinCos::of_degrees(low),
+            high: SinCos::of_degrees(high),
+        }
+    }
+
+    /// Whether the point `to` lies within its pitches from the point `from`, against the ground
+    /// plane: the pitch `φ` of the way from one to the other, its rise `y` over its run on the
+    /// ground `r`, is at least `θ` exactly when `sin(φ − θ) ≥ 0`, so `y cos θ ≥ r sin θ`, its run
+    /// to the nearest bit and each product exact.
+    pub fn holds(&self, from: Vec3, to: Vec3) -> bool {
+        let rise = i128::from(to.y.to_bits()) - i128::from(from.y.to_bits());
+        let run = i128::from(from.ground_offset(to).length().to_bits());
+        let side = |bound: SinCos| {
+            rise * i128::from(bound.cos.to_bits()) - run * i128::from(bound.sin.to_bits())
+        };
+        side(self.low) >= 0 && side(self.high) <= 0
+    }
 }
 
 /// Where a weapon's value comes from: a place among its unit's stats, its rate in attacks a
@@ -27,7 +111,7 @@ impl Weapon {
     /// for a unit of stats `stats` and the weapon's values at its rank `values`: its own period,
     /// or the tick rate over its rate exactly, rounded up, at least one bit of a second; either
     /// longer than its windup.
-    pub fn period(self, stats: &[Num], values: &RankValues, hz: u32) -> Ticks {
+    pub fn period(&self, stats: &[Num], values: &RankValues, hz: u32) -> Ticks {
         let period = match self.rate {
             Source::Own => values
                 .period
@@ -45,7 +129,7 @@ impl Weapon {
 
     /// The damage it deals for a unit of stats `stats` with the weapon's values at its rank
     /// `values`: its own amount, or its stat, not negative.
-    pub fn damage(self, stats: &[Num], values: &RankValues) -> Num {
+    pub fn damage(&self, stats: &[Num], values: &RankValues) -> Num {
         match self.damage {
             Source::Own => values
                 .amount

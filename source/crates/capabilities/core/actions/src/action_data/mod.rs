@@ -2,15 +2,17 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU16, NonZeroU32};
 use std::slice;
 
+use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_script::{DataSection, DataTable};
 use campfire_stats::PoolCost;
 use campfire_values::{
     DeclaredName, Distance, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked,
-    Scalar, Share, Stat,
+    RelationSet, Scalar, Share, Stat,
 };
-use serde::Deserialize;
+use serde::de::Error;
+use serde::{Deserialize, Deserializer};
 
 use crate::action_data::error::{ActionField, EffectRule};
 use crate::action_kind::ActionKind;
@@ -78,6 +80,12 @@ pub struct ActionData {
     pub period_ms: Option<Ranked<Number>>,
     /// A weapon's clip, an `attack`'s alone.
     pub clip: Option<ClipData>,
+    /// The damage a weapon's projectile deals where it ends, an `attack`'s alone.
+    pub splash: Option<SplashData>,
+    /// How far from its target a weapon's projectile may aim, an `attack`'s alone.
+    pub scatter: Option<ScatterData>,
+    /// The pitches a weapon's target lies within, an `attack`'s alone.
+    pub pitch_deg: Option<PitchData>,
     /// The unit type of its package a `train` makes, a train's alone.
     pub unit_type: Option<DeclaredName>,
     /// What its player must hold for a `train` to join a queue, or a `build` to start.
@@ -148,6 +156,99 @@ pub struct ChargesData {
 pub struct ClipData {
     pub shots: Ranked<Number>,
     pub reload_ms: Ranked<Number>,
+}
+
+/// A weapon's `splash` (20-zero-hour-projectiles.md, An attack may splash): where its projectile
+/// ends, its damage to each living unit of the relations `affects` names whose volume lies
+/// within `radius` meters, and to its source unless `spares_source`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SplashData {
+    pub radius: Num,
+    pub affects: RelationSet,
+    pub spares_source: bool,
+}
+
+/// A weapon's `scatter` (20-zero-hour-projectiles.md, An attack may scatter): the most meters
+/// from its target's ground point its projectile aims at, `radius` and, for a target of a tag
+/// `tags` names, the largest of their radii more.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ScatterData {
+    pub radius: Num,
+    pub tags: BTreeMap<DeclaredName, Num>,
+}
+
+/// A weapon's `pitch_deg` (20-zero-hour-projectiles.md, An attack may bound its pitch): the
+/// least and the most angle, in degrees above the ground plane, at which its target's center
+/// lies from its attacker's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PitchData {
+    pub low: Num,
+    pub high: Num,
+}
+
+/// Data is untrusted, so a radius that is not positive or past `MAX_BOUND` fails to read.
+impl<'de> Deserialize<'de> for SplashData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            radius: Num,
+            affects: RelationSet,
+            spares_source: Option<bool>,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        if fields.radius <= Num::ZERO || fields.radius > MAX_BOUND {
+            return Err(D::Error::custom(
+                "a splash's radius is positive, up to 2,048 m",
+            ));
+        }
+        Ok(Self {
+            radius: fields.radius,
+            affects: fields.affects,
+            spares_source: fields.spares_source.unwrap_or(true),
+        })
+    }
+}
+
+/// Data is untrusted, so a radius below 0 or past `MAX_BOUND` fails to read.
+impl<'de> Deserialize<'de> for ScatterData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        #[derive(Debug, Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            #[serde(default)]
+            radius: Num,
+            #[serde(default)]
+            tags: BTreeMap<DeclaredName, Num>,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        let holds = |radius: &Num| (Num::ZERO..=MAX_BOUND).contains(radius);
+        if !holds(&fields.radius) || !fields.tags.values().all(holds) {
+            return Err(D::Error::custom("a scatter's radius is from 0 to 2,048 m"));
+        }
+        Ok(Self {
+            radius: fields.radius,
+            tags: fields.tags,
+        })
+    }
+}
+
+/// Data is untrusted, so a pitch below −90° or above 90°, or a least one past the most, fails to
+/// read.
+impl<'de> Deserialize<'de> for PitchData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let [low, high] = <[Num; 2]>::deserialize(deserializer)?;
+        // A least of 90° or a most of −90° would hold one pitch, which the test of a bound,
+        // by the sine of the pitch past it, cannot tell from the opposite one.
+        let quarter = Num::int(90);
+        if low < -quarter || high > quarter || low > high || low == quarter || high == -quarter {
+            return Err(D::Error::custom(
+                "a pitch's bound is two angles from -90 to 90 degrees, the least first and \
+                 below 90, the most above -90",
+            ));
+        }
+        Ok(Self { low, high })
+    }
 }
 
 /// An action's `charge`: a cast that charges from its start, in place of its windup, and
@@ -564,6 +665,9 @@ pub(crate) mod internals {
                 amount: None,
                 period_ms: None,
                 clip: None,
+                splash: None,
+                scatter: None,
+                pitch_deg: None,
                 unit_type: None,
                 requires: None,
                 construct: None,

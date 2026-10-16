@@ -10,7 +10,7 @@ pub(super) struct Wielded<'a> {
     /// The weapon's action, which its damage names, and the rank of its slot.
     pub(super) action: ActionId,
     pub(super) rank: Rank,
-    pub(super) weapon: Weapon,
+    pub(super) weapon: &'a Weapon,
     pub(super) values: RankValues,
     pub(super) resource_cost: &'a [ResourceAmount],
     /// The type of the homing projectile it fires, if it fires one.

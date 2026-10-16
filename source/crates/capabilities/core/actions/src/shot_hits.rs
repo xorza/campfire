@@ -1,22 +1,24 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Scratch;
 use campfire_sim::StableId;
-use campfire_values::Hit;
+use campfire_values::{Hit, Team};
 
+use crate::reached::Reached;
 use crate::shot_damage::ShotDamage;
 
-/// The hits of the tick's attack projectiles, in the order they struck, which the capability that
-/// deals an attack's damage takes as the projectiles end their flight. Not state: it empties
-/// within the tick.
+/// The hits and the ends of the tick's attack projectiles, in the order they came, which the
+/// capability that deals an attack's damage takes as the projectiles end their flight. Not
+/// state: it empties within the tick.
 #[derive(Resource, Debug, Default)]
 pub struct ShotHits(pub Vec<ShotHit>);
 
-/// The hit of a ranged attack's projectile: `source`'s shot struck `target` as `hit` says, with
-/// its `damage`.
+/// A hit or the end of a ranged attack's projectile: `source`'s shot, of `team` as it fired,
+/// reached what `reach` says, as `hit` says, with its `damage`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ShotHit {
     pub source: StableId,
-    pub target: StableId,
+    pub team: Team,
+    pub reach: Reached,
     pub damage: ShotDamage,
     pub hit: Hit,
 }

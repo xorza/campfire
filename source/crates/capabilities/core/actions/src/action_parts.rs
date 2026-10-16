@@ -16,7 +16,7 @@ use crate::kind_data::{FromData, KindData};
 use crate::kind_spec::KindSpec;
 use crate::rank_values::{LoadedRanks, RankValues};
 use crate::targeting::Targeting;
-use crate::weapon::{Source, Weapon};
+use crate::weapon::{Pitch, Scatter, ScatterTag, Source, Weapon};
 
 /// What an action's data gives, resolved against the match: its kind with what the kind needs,
 /// its passive and its hold, its aim, its fields at each rank, and how it delivers.
@@ -69,10 +69,25 @@ impl ActionParts {
                     FromData::Stat(stat) => Ok::<_, UnknownName>(Source::Stat(names.stat(stat)?)),
                     FromData::Own => Ok(Source::Own),
                 };
+                let scatter = data.scatter.as_ref().map(|scatter| {
+                    let tags = scatter.tags.iter().map(|(tag, &radius)| {
+                        Ok::<_, UnknownName>(ScatterTag {
+                            tag: names.tag(tag)?,
+                            radius,
+                        })
+                    });
+                    Ok::<_, UnknownName>(Scatter {
+                        radius: scatter.radius,
+                        tags: tags.collect::<Result<_, _>>()?,
+                    })
+                });
                 KindSpec::Attack(Weapon {
                     rate: source(rate)?,
                     damage: source(damage)?,
                     kind: names.damage_kind(damage_kind)?,
+                    splash: data.splash,
+                    scatter: scatter.transpose()?,
+                    pitch: data.pitch_deg.map(|pitch| Pitch::of(pitch.low, pitch.high)),
                 })
             }
             KindData::Train { unit_type } => KindSpec::Train(names.unit_type(package, unit_type)?),

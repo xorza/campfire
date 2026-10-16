@@ -1,7 +1,8 @@
 use bevy_ecs::system::{Query, Res, ResMut};
-use campfire_actions::{ProjectileFlight, Shots, Targets};
+use campfire_actions::{ActionTarget, ProjectileFlight, Shots, Targets};
 use campfire_declare::ByType;
 use campfire_deliveries::{DeliverySpawner, NewDelivery};
+use campfire_math::Vec3;
 use campfire_sim::{EntityIndex, StableId};
 use campfire_units::Body;
 
@@ -17,8 +18,8 @@ pub struct Launching;
 impl Launching {
     /// Makes each of the tick's shots a launch: homing on its target from where its attacker
     /// stood, or for a type that flies a curve, on a curve from its attacker's center to its
-    /// target's (20-zero-hour-projectiles.md, A projectile may fly a curve), none when its target
-    /// no longer lives.
+    /// target's, none when its target no longer lives, or to the point it scattered to
+    /// (20-zero-hour-projectiles.md, A projectile may fly a curve).
     pub(super) fn take_shots(
         (mut shots, mut launches): (ResMut<'_, Shots>, ResMut<'_, Launches>),
         specs: Res<'_, ByType<ProjectileSpec>>,
@@ -30,25 +31,31 @@ impl Launching {
             let spec = specs
                 .get(shot.unit_type)
                 .expect("a shot's projectile type has a spec");
-            let (from, flight) = match spec.flight() {
-                ProjectileFlight::Curve => {
-                    let Some(target) = targets.volume_of(shot.target) else {
+            let map = targets.map();
+            let curve = |to: Vec3, aimed: Option<StableId>| {
+                let body = index
+                    .get(shot.source)
+                    .and_then(|source| bodies.get(source).ok());
+                let from = Body::center(body, shot.from, map);
+                Flight::curve(CurveAim { from, to, aimed }, spec, map)
+            };
+            let flight = match (spec.flight(), shot.target) {
+                (ProjectileFlight::Curve, ActionTarget::Unit(target)) => {
+                    let Some(volume) = targets.volume_of(target) else {
                         continue;
                     };
-                    let body = index
-                        .get(shot.source)
-                        .and_then(|source| bodies.get(source).ok());
-                    let map = targets.map();
-                    let aim = CurveAim {
-                        from: Body::center(body, shot.from, map),
-                        to: target.center(),
-                        aimed: Some(shot.target),
-                    };
-                    (map.position(aim.from), Flight::curve(aim, spec, map))
+                    curve(volume.center(), Some(target))
                 }
-                ProjectileFlight::Homing | ProjectileFlight::Line => {
-                    (shot.from, Flight::homing(shot.target))
+                (ProjectileFlight::Curve, ActionTarget::Point(at)) => curve(map.point(at), None),
+                (ProjectileFlight::Homing | ProjectileFlight::Line, ActionTarget::Unit(target)) => {
+                    Flight::homing(target)
                 }
+                _ => panic!("a curve's shot aims at a unit or a point, a homing one at a unit"),
+            };
+            // A curve launches from its first point, its attacker's center.
+            let from = match flight {
+                Flight::Curve { from, .. } => map.position(from),
+                Flight::Homing { .. } | Flight::Line { .. } => shot.from,
             };
             launches.push(Launch {
                 id: None,

@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::ActionBook;
+use campfire_actions::{ActionBook, Reached};
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, Scratch, SetPlace};
 use campfire_math::Vec3;
 use campfire_sim::{Breach, Capability, StableId};
@@ -22,7 +22,7 @@ mod delivery_hooks;
 mod delivery_spawner;
 mod teleported;
 
-pub use crate::delivered::{Delivered, Reached};
+pub use crate::delivered::Delivered;
 pub use crate::deliverers::{Deliverers, DeliveryKind};
 pub use crate::delivering::{Delivering, Launcher};
 pub use crate::delivery_spawner::{DeliverySpawner, NewDelivery};

@@ -11,7 +11,7 @@ use campfire_sim::TickRate;
 use campfire_stats::{ModifierBook, StatId, Stats};
 use campfire_units::ScriptBook;
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, PackageIndex, Param, Stat,
+    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, PackageIndex, Param, Stat, Tag,
     TypeScope, UnitType,
 };
 
@@ -56,6 +56,11 @@ impl ActionNames for MatchNames<'_> {
 
     fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
         self.view.resolve_filter(filter)
+    }
+
+    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
+        let tag = self.view.names().tags().named(name.as_str());
+        tag.ok_or_else(|| UnknownName::new(NameKind::Tag, name))
     }
 
     fn modifier(

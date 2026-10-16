@@ -198,7 +198,7 @@ impl Trains {
                 .and_then(|queue| queue.done(now))
             {
                 let action = world.resource::<ActionBook>().get(head.action);
-                let Some(KindSpec::Train(unit_type)) = action.map(|action| action.kind) else {
+                let Some(&KindSpec::Train(unit_type)) = action.map(|action| &action.kind) else {
                     panic!("a train queues only trains");
                 };
                 let producer = world.entity(entity);

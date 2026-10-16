@@ -1,7 +1,7 @@
 use campfire_script::{Filter, UnknownName};
 use campfire_stats::StatId;
 use campfire_values::{
-    DamageKind, DeclaredName, FilterData, ModifierId, PackageIndex, Stat, UnitType,
+    DamageKind, DeclaredName, FilterData, ModifierId, PackageIndex, Stat, Tag, UnitType,
 };
 
 use crate::cost_target::CostTarget;
@@ -16,6 +16,8 @@ pub trait ActionNames {
     /// What a cost named `name` takes from; none for a name of neither.
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget>;
     fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName>;
+    /// The tag `name` among the match's.
+    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName>;
     /// The modifier `name` of `package`.
     fn modifier(
         &self,
