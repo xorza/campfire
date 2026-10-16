@@ -536,14 +536,21 @@ mod tests {
             );
         }
         // Two archives of one path to the game, its case aside, as a changed `INIZH.BIG` beside
-        // the genuine `INIZH.big`: the game reads one, so the import reads neither.
+        // the genuine `INIZH.big`: the game reads one, so the import reads neither. A file
+        // system that folds case, as Windows' and macOS's do, holds one file of the two names,
+        // which is no clash.
         let scratch = Scratch::new();
         scratch.write("zh/INIZH.big", &full);
         scratch.write("zh/INIZH.BIG", big(&[("a.ini", b"xyz")]));
-        assert!(matches!(
-            Install::open(&scratch.path("zh")),
-            Err(ZeroHourError::ArchiveClash { first, second })
-                if first == "INIZH.BIG" && second == "INIZH.big"
-        ));
+        let opened = Install::open(&scratch.path("zh"));
+        if scratch.names("zh").len() == 2 {
+            assert!(matches!(
+                opened,
+                Err(ZeroHourError::ArchiveClash { first, second })
+                    if first == "INIZH.BIG" && second == "INIZH.big"
+            ));
+        } else {
+            assert!(opened.is_ok());
+        }
     }
 }
