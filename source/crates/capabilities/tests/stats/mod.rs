@@ -248,6 +248,22 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         *game.get_mut::<Level>(unit).unwrap() = Level::default();
         game.step();
         assert_eq!(pools(&game)[0], full(380), "{bound}");
+
+        if bound {
+            // Its life spent, as a kill leaves it until its death: neither the rise of its maximum
+            // at level 18 nor a second of regen lifts it from 0, where its mana, spent too and no
+            // life, rises as its maximum does, by 45 × 17 = 765.
+            game.get_mut::<Life>(unit).unwrap().take(Num::int(380));
+            game.get_mut::<Pools>(unit)
+                .unwrap()
+                .take(MANA, Num::int(250));
+            *game.get_mut::<Level>(unit).unwrap() = Level::new(18).unwrap();
+            for _ in 0..30 {
+                game.step();
+            }
+            let spent = [(Num::ZERO, Num::int(1672)), (Num::int(765), Num::int(1015))];
+            assert_eq!(pools(&game), spent);
+        }
     }
 }
 

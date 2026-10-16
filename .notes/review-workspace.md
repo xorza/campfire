@@ -95,15 +95,6 @@ Each batch is one commit and ends with `./drive.py check` passing. Whoever addre
 - **Goldens and formats.** A batch marked "moves goldens" blesses them and says why each moved. A batch marked "format" raises the version tag of each format it changes. Any other batch moves no golden.
 - **Order.** By impact: what lets a wrong log verify, then what makes a match diverge or panic, then what breaks a rule of the Direction, then the cleanups. A batch that needs another names it.
 
-### 2. Life and death
-
-`stats`: `refresh`, `meter`; `combat`: `damage_pass`, `combat_effect`, `pass_queue`, `dying`, `attacks`. Format: the snapshot gains the next tick's damage. May move goldens.
-
-- [ ] stats/src/refresh.rs:216-219, meter.rs:47-56; combat/src/damage_pass.rs:172-175 — `hold_effects` calls `set_max` on dead units too, and a rise lifts a meter at 0. `DamagePass::living` reads the meter only. A dead hero buys a health item, and an area kills the corpse again: a second `Deaths` row, `on_kill`, and `on_unit_died`. → One living test, not `Dead` and life above 0, which the pass reads. A rise of max life does not lift a life at 0.
-- [ ] stats/src/refresh.rs:225-244; combat/src/combat_effect.rs:108-114 — `ctx.kill` sets life to 0 in the Mode stage, and the unit "dies as the next tick's deaths find it". That tick's `regenerate` runs first, so a unit with life regen lives. Until Die, the unit can also start attacks and casts. → Regen does not lift a life at 0, and the attacks and casts read the one living test.
-- [ ] combat/src/pass_queue.rs:45-56, combat_effect.rs:91-104 — `ctx.damage` and `ctx.heal` from a mode hook run after the pass, and their entries stay in the `Scratch` `PassQueue` until the next tick: a checkpoint drops them, and the resource audit refuses them. → The entries queued after the pass go to a declared state, "next tick's damage", which the next Resolve takes first, ahead of that tick's own entries; `PassQueue` refuses a push outside its window. combat.md's "One pass a tick" says so.
-- [ ] combat/src/dying.rs:44-47 — `die` scans every living unit each tick. → `Changed<Life>`.
-
 ### 3. Restore checks hold every relation the systems take
 
 `units`: `body`; `progression`: `points`; `interaction`; `values`: `action_start`; `actions`: `action_slots`; `combat`: `clip_shots`, `attacks`; `sim`: `state_registry`.

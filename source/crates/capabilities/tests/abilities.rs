@@ -19,7 +19,8 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order, Release};
 use campfire_combat::internals::Armed;
 use campfire_combat::{
-    Combat, CombatBook, CombatRefusal, Damage, DamageCause, OnDeath, PassQueue, RecentAttackers,
+    Combat, CombatBook, CombatRefusal, Damage, DamageCause, DamagePass, OnDeath, PassEntry,
+    RecentAttackers,
 };
 use campfire_common::{PlayerSlot, StateHash, Tick, Ticks};
 use campfire_declare::Book;
@@ -2489,16 +2490,19 @@ fn on_damage_taken(ctx, m, d) {
     let echoer = Abilities::spawn_combatant(&mut game, (9, 0, 0), Team::new(1), ());
     Abilities::give(&mut game, attacker, "double");
     Abilities::give(&mut game, echoer, "echo");
-    game.resource_mut::<PassQueue>().push_damage(Damage {
-        source: None,
-        target: echoer,
-        amount: Num::int(10),
-        kind: DamageKind::new(2),
-        cause: DamageCause::Effect,
-        action: None,
-        depth: 0,
-        hit: None,
-    });
+    DamagePass::queue(
+        &mut game,
+        PassEntry::Damage(Damage {
+            source: None,
+            target: echoer,
+            amount: Num::int(10),
+            kind: DamageKind::new(2),
+            cause: DamageCause::Effect,
+            action: None,
+            depth: 0,
+            hit: None,
+        }),
+    );
     game.step();
     // The attack's 30, then the extra attack's 30, which adds none: 500 − 60. The echoer's 10,
     // then an echo of 1 from each hook at depths 1 to 15; the one at 16 fails: 500 − 10 − 15.
@@ -2528,16 +2532,19 @@ fn on_damage_taken(ctx, m, d) {
     let carrier = Abilities::spawn_combatant(&mut game, (0, 0, 0), Team::new(1), ());
     Abilities::give(&mut game, carrier, "mend");
     for (amount, kind) in [(450, 2), (100, 0)] {
-        game.resource_mut::<PassQueue>().push_damage(Damage {
-            source: None,
-            target: carrier,
-            amount: Num::int(amount),
-            kind: DamageKind::new(kind),
-            cause: DamageCause::Effect,
-            action: None,
-            depth: 0,
-            hit: None,
-        });
+        DamagePass::queue(
+            &mut game,
+            PassEntry::Damage(Damage {
+                source: None,
+                target: carrier,
+                amount: Num::int(amount),
+                kind: DamageKind::new(kind),
+                cause: DamageCause::Effect,
+                action: None,
+                depth: 0,
+                hit: None,
+            }),
+        );
     }
     game.step();
     // 500 − 450, then the hook's two heals of 30 before the 100 queued after the 450:
@@ -2985,7 +2992,6 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
         depth,
         hit: None,
     };
-    let mut queue = game.resource_mut::<PassQueue>();
     for (target, depth) in [
         (living, 0),
         (blocked, 0),
@@ -2994,7 +3000,7 @@ fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_targe
         (deepest, 15),
         (warded, 0),
     ] {
-        queue.push_damage(attack(target, depth));
+        DamagePass::queue(&mut game, PassEntry::Damage(attack(target, depth)));
     }
     game.step();
     let shields =

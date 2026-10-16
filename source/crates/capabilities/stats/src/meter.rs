@@ -42,6 +42,12 @@ impl Meter {
         self.settle();
     }
 
+    /// Empties it, its maximum kept.
+    pub(crate) const fn drain(&mut self) {
+        self.current = Num::ZERO;
+        self.settle();
+    }
+
     /// Sets the maximum to `max`, which is positive: a rise raises the current amount as much, a
     /// fall keeps it but at most the new maximum.
     pub(crate) fn set_max(&mut self, max: Num) {

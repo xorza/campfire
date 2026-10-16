@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{With, Without};
+use bevy_ecs::query::{Changed, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::ActionSlots;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
@@ -36,7 +36,7 @@ impl Dying {
                 Option<&Team>,
                 Option<&Owner>,
             ),
-            (With<OnDeath>, Without<Dead>),
+            (With<OnDeath>, Without<Dead>, Changed<Life>),
         >,
         mut order: Local<'_, Ordered>,
     ) {

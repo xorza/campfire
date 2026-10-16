@@ -47,7 +47,7 @@ impl Casts {
     /// within range, starts, or for a charged action starts to charge; one whose target is beyond
     /// range, of a unit that walks, walks in range first, its walk in place of any other, and stops
     /// there to start; any other is dropped, and stops the walk it took. A unit its tags or a
-    /// forced move keep from casting keeps its order, and stands: a cast it started or walked in
+    /// forced move keep from casting, or that lives no more, keeps its order, and stands: a cast it started or walked in
     /// range for goes back to it, and a charge ends, spending nothing. A charge its order released,
     /// or that is full, resolves.
     pub(super) fn start_casts(
@@ -96,7 +96,8 @@ impl Casts {
                 continue;
             };
             let underway_slot = slots.slot(underway.slot()).expect("a slot the unit has");
-            let blocked = Abilities::blocked(tags, forced, used, Some(underway_slot), &book);
+            let blocked = Abilities::blocked(tags, forced, used, Some(underway_slot), &book)
+                || !pools.lives();
             if let InProgress::Charge { .. } = underway {
                 if blocked {
                     slots.interrupt();
@@ -206,7 +207,7 @@ impl Casts {
     /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls
     /// share one snapshot of the living units, read as the batch begins, so no call sees what an
     /// earlier one changed, at once or in Resolve. A due cast whose caster's tags keep it from
-    /// casting goes back to its order instead.
+    /// casting, or that lives no more, goes back to its order instead.
     pub(super) fn resolve_casts(
         world: &mut World,
         casters: &mut QueryState<(Entity, &StableId, &ActionSlots), Without<Dead>>,
@@ -232,8 +233,8 @@ impl Casts {
             let slot = slots.slot(due.slot()).expect("a cast's slot");
             let used = unit.get::<UseGroup>();
             let book = world.resource::<ActionBook>();
-            let can_cast =
-                !Abilities::blocked(unit.get::<UnitTags>(), forced, used, Some(slot), book);
+            let can_cast = world.lives(entity)
+                && !Abilities::blocked(unit.get::<UnitTags>(), forced, used, Some(slot), book);
             if !can_cast {
                 world
                     .get_mut::<ActionSlots>(entity)
@@ -254,7 +255,7 @@ impl Casts {
 
     /// Resolves each due cast of a unit a client predicts as the server does when the cast's script
     /// runs: one that passes its checks again cools down, and every due cast stops; one whose
-    /// caster's tags keep it from casting goes back to its order. Its cost and its effects come
+    /// caster's tags keep it from casting, or that lives no more, goes back to its order. Its cost and its effects come
     /// from the server.
     pub(super) fn predict_casts(
         clock: TickClock<'_>,
@@ -291,7 +292,7 @@ impl Casts {
                 continue;
             };
             let slot = slots.slot(casting.slot).expect("a cast's slot");
-            if Abilities::blocked(tags, forced, used, Some(slot), &book) {
+            if Abilities::blocked(tags, forced, used, Some(slot), &book) || !pools.lives() {
                 slots.interrupt();
                 continue;
             }

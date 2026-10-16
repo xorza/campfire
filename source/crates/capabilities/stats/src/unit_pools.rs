@@ -1,10 +1,11 @@
 use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::QueryData;
+use bevy_ecs::query::{Has, QueryData};
 use bevy_ecs::world::World;
 use campfire_math::Num;
+use campfire_units::Dead;
 
-use crate::life::Life;
+use crate::life::{self, Life};
 use crate::meter::Meter;
 use crate::pool_book::PoolBook;
 use crate::pool_cost::PoolCost;
@@ -12,13 +13,14 @@ use crate::pool_id::PoolId;
 use crate::pools::Pools;
 
 /// A unit's pools by pool id, its life among them: `Life` and `Pools` as one, for a rule that
-/// names a pool by its id, as a cost, a regen or a restore does. The life pool's id, which no
-/// component holds, comes with each view.
+/// names a pool by its id, as a cost, a regen or a restore does, and whether the unit lives. The
+/// life pool's id, which no component holds, comes with each view.
 #[derive(QueryData, Debug)]
 #[query_data(mutable, derive(Debug))]
 pub struct UnitPools {
     life: Option<&'static mut Life>,
     pools: Option<&'static mut Pools>,
+    dead: Has<Dead>,
 }
 
 /// A unit's pools to read by pool id: `life` the meter of the mode's life pool, `life_pool`, and
@@ -40,6 +42,11 @@ pub struct PoolMetersMut<'a> {
 }
 
 impl<'w> UnitPoolsItem<'w, '_> {
+    /// Whether the unit lives, as `life::lives` says.
+    pub fn lives(&self) -> bool {
+        life::lives(self.dead, self.life.as_deref())
+    }
+
     /// Its pools, the life pool `life_pool`.
     pub const fn of(self, life_pool: Option<PoolId>) -> PoolMetersMut<'w> {
         PoolMetersMut {
@@ -61,6 +68,11 @@ impl<'w> UnitPoolsItem<'w, '_> {
 }
 
 impl<'w> UnitPoolsReadOnlyItem<'w, '_> {
+    /// Whether the unit lives, as `life::lives` says.
+    pub fn lives(&self) -> bool {
+        life::lives(self.dead, self.life)
+    }
+
     /// Its pools, the life pool `life_pool`.
     pub const fn of(self, life_pool: Option<PoolId>) -> PoolMeters<'w> {
         PoolMeters::new(life_pool, self.life, self.pools)
@@ -112,9 +124,11 @@ impl PoolMetersMut<'_> {
         PoolMeters::new(self.life_pool, self.life.as_deref(), self.pools.as_deref())
     }
 
-    /// Changes the meter of `pool` by `change`, when the unit has the pool.
+    /// Changes the meter of `pool` by `change`, when the unit has the pool. A life at 0 stays at
+    /// 0, whatever `change` adds or its maximum: only its respawn fills it.
     fn change(&mut self, pool: PoolId, change: impl FnOnce(&mut Meter)) {
-        let meter = if Some(pool) == self.life_pool {
+        let life = Some(pool) == self.life_pool;
+        let meter = if life {
             let life = self.life.as_mut().map(Mut::reborrow);
             life.map(|life| life.map_unchanged(Life::meter_mut))
         } else {
@@ -124,6 +138,9 @@ impl PoolMetersMut<'_> {
         if let Some(mut meter) = meter {
             let mut changed = *meter;
             change(&mut changed);
+            if life && meter.is_empty() {
+                changed.drain();
+            }
             meter.set_if_neq(changed);
         }
     }

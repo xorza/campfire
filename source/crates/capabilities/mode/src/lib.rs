@@ -362,7 +362,7 @@ pub mod internals {
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
     use campfire_actions::Actions;
-    use campfire_combat::{Damage, DamageCause, PassQueue};
+    use campfire_combat::{Damage, DamageCause, DamagePass, PassEntry};
     use campfire_common::PlayerSlot;
     use campfire_math::{Num, Vec3};
     use campfire_navigation::{PathEnd, PathWalker};
@@ -658,16 +658,19 @@ pub mod internals {
                 .names()
                 .named(kind)
                 .expect("the mode names the damage kind");
-            world.resource_mut::<PassQueue>().push_damage(Damage {
-                source,
-                target,
-                amount: Num::int(amount),
-                kind,
-                cause,
-                action: None,
-                depth: 0,
-                hit: None,
-            });
+            DamagePass::queue(
+                world,
+                PassEntry::Damage(Damage {
+                    source,
+                    target,
+                    amount: Num::int(amount),
+                    kind,
+                    cause,
+                    action: None,
+                    depth: 0,
+                    hit: None,
+                }),
+            );
         }
 
         /// Runs `probe(ctx, unit)` of `source` as a call of `role`, acting as `actor` but in the

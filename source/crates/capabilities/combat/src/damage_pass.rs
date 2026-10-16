@@ -23,6 +23,7 @@ use crate::combat_hooks::CombatHooks;
 use crate::damage::Damage;
 use crate::deaths::{Deaths, Fallen};
 use crate::heal::{Heal, HealCause};
+use crate::next_damage::NextDamage;
 use crate::pass_queue::{PassEntry, PassQueue};
 use crate::recent_attack::RecentAttack;
 use crate::recent_attackers::RecentAttackers;
@@ -79,12 +80,18 @@ impl DamagePass {
     /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
     /// `on_hit` list, then its combat events, whose damage joins the end of the queue, and whose
     /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has one.
-    /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal
-    /// of a unit at zero life.
+    /// Damage to a unit that does not live, or to an invulnerable one, does nothing, and so does a
+    /// heal of a unit that does not live.
     pub(crate) fn run(world: &mut World, mut scratch: Local<'_, PassScratch>) {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
-        world.resource_mut::<PassQueue>().begin();
+        // Only a tick that carries entries writes the next tick's damage, which is state.
+        let carried = if world.resource::<NextDamage>().is_empty() {
+            Vec::new()
+        } else {
+            world.resource_mut::<NextDamage>().take()
+        };
+        world.resource_mut::<PassQueue>().begin(carried);
         let hooks = world.non_send::<CombatHooks>().clone();
         let weigh = world.resource::<Weighers>().get();
         if weigh.is_none() && hooks.events.is_none() {
@@ -95,7 +102,22 @@ impl DamagePass {
                 Self::drain(run, &hooks, weigh, &mut scratch);
             });
         }
-        world.resource_mut::<PassQueue>().end();
+        world.resource_mut::<PassQueue>().end(now);
+    }
+
+    /// Queues `entry` for the tick's pass, or, once that ran, as a mode's hook deals one after
+    /// it, for the next tick's, which deals it first.
+    pub fn queue(world: &mut World, entry: PassEntry) {
+        let now = world.resource::<SimTick>().start();
+        let mut queue = world.resource_mut::<PassQueue>();
+        if !queue.open_at(now) {
+            world.resource_mut::<NextDamage>().push(entry);
+            return;
+        }
+        match entry {
+            PassEntry::Damage(damage) => queue.push_damage(damage, now),
+            PassEntry::Heal(heal) => queue.push_heal(heal, now),
+        }
     }
 
     /// Deals the queue's entries in order, with the pass's `hooks` and the mode's `weigh` when
@@ -166,12 +188,13 @@ impl DamagePass {
         }
     }
 
-    /// The entity of `id`, when it exists, the sim simulates it, and its life pool is above
-    /// zero: one that damage, heals and restores reach, and write. A predicting client writes
-    /// none of a unit it holds as the server sent it, which `Unpredicted` hides.
+    /// The entity of `id`, when it exists, the sim simulates it, it has a life and it lives, as
+    /// `StatsWorld::lives` says: one that damage, heals and restores reach, and write. A
+    /// predicting client writes none of a unit it holds as the server sent it, which
+    /// `Unpredicted` hides.
     pub(super) fn living(world: &World, id: StableId) -> Option<Entity> {
         let entity = world.queried_entity_of(id)?;
-        (!world.get::<Life>(entity)?.is_empty()).then_some(entity)
+        (world.get::<Life>(entity).is_some() && world.lives(entity)).then_some(entity)
     }
 
     /// What `damage` deals to `target` through the armor of its type, before the mode weighs it:
@@ -366,14 +389,15 @@ impl DamagePass {
             };
             let amount = scaled(taken, Self::stat(world, entity, stat));
             if amount > Num::ZERO {
-                world.resource_mut::<PassQueue>().push_heal(Heal {
+                let heal = Heal {
                     source: Some(id),
                     target: id,
                     amount,
                     cause: HealCause::Leech,
                     action: damage.action,
                     depth: damage.depth,
-                });
+                };
+                world.resource_mut::<PassQueue>().push_heal(heal, now);
             }
         }
         death.map_or(Landed::Taken, |death| Landed::Killed { death })

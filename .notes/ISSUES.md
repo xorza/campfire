@@ -4,6 +4,7 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 ## Decide
 
+- **Combat.** A unit at zero life that is not yet dead, as `ctx.kill` in a mode's hook leaves it until the next tick's deaths, is a living target (`actions/src/targets.rs`; design combat.md, A target), where the one living test of `stats` says it lives no more, so the pass deals it nothing: an attack or a cast may still choose it. The options: targets read the living test, or a target keeps its own rule and the design says why.
 
 ## Research
 

@@ -9,7 +9,7 @@ use campfire_values::DamageKind;
 use crate::damage::{Damage, DamageCause};
 use crate::damage_pass::DamagePass;
 use crate::heal::{Heal, HealCause};
-use crate::pass_queue::PassQueue;
+use crate::pass_queue::PassEntry;
 
 /// A change to units' pools that a call queued, from its acting unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,17 +90,18 @@ impl Effect for CombatEffect {
         match self {
             Self::Damage { unit, amount, kind } => {
                 let damage = damage(unit, amount, kind, DamageCause::Effect);
-                world.resource_mut::<PassQueue>().push_damage(damage);
+                DamagePass::queue(world, PassEntry::Damage(damage));
             }
             Self::Heal { unit, amount } => {
-                world.resource_mut::<PassQueue>().push_heal(Heal {
+                let heal = Heal {
                     source,
                     target: unit,
                     amount,
                     cause: HealCause::Effect,
                     action,
                     depth,
-                });
+                };
+                DamagePass::queue(world, PassEntry::Heal(heal));
             }
             Self::Restore { unit, pool, amount } => {
                 DamagePass::restore(world, unit, pool, amount);
@@ -138,7 +139,7 @@ impl Effect for CombatEffect {
                         DamageCause::ExtraAttack { rank },
                     )
                 };
-                world.resource_mut::<PassQueue>().push_damage(hit);
+                DamagePass::queue(world, PassEntry::Damage(hit));
             }
         }
     }

@@ -43,9 +43,14 @@ pub struct Attacks;
 impl Attacks {
     /// Queues the damage of each hit of an attack's projectile this tick, in the order they
     /// struck: its weapon's damage, with the roll it drew.
-    pub(super) fn take_hits(mut hits: ResMut<'_, ShotHits>, mut queue: ResMut<'_, PassQueue>) {
+    pub(super) fn take_hits(
+        tick: Res<'_, SimTick>,
+        mut hits: ResMut<'_, ShotHits>,
+        mut queue: ResMut<'_, PassQueue>,
+    ) {
+        let now = tick.start();
         for hit in hits.0.drain(..) {
-            queue.push_damage(Damage {
+            let damage = Damage {
                 source: Some(hit.source),
                 target: hit.target,
                 amount: hit.amount,
@@ -57,15 +62,16 @@ impl Attacks {
                 action: Some(hit.action),
                 depth: 0,
                 hit: Some(hit.hit),
-            });
+            };
+            queue.push_damage(damage, now);
         }
     }
 
     /// Starts each unit's attack on its attack target, in Act, when it has nothing under way: with
     /// the first weapon whose filter selects the target, once that weapon passes its checks and the
     /// target is within its range. An attack in its windup stops when the unit's tags keep it from
-    /// attacking. An attack target that is no living enemy any more is dropped, with the attack on
-    /// it.
+    /// attacking, or it lives no more, and such a unit starts none. An attack target that is no
+    /// living enemy any more is dropped, with the attack on it.
     pub(super) fn start_attacks(
         tick: Res<'_, SimTick>,
         book: Res<'_, ActionBook>,
@@ -91,7 +97,7 @@ impl Attacks {
         let now = tick.start();
         let life = life.life();
         for (&position, &team, mut slots, times, pools, owner, body, tags, forced) in &mut units {
-            let blocked = UnitTags::blocks(tags, forced, Block::Attack);
+            let blocked = UnitTags::blocks(tags, forced, Block::Attack) || !pools.lives();
             match slots.in_progress() {
                 Some(
                     InProgress::Order { .. }
@@ -165,8 +171,10 @@ impl Attacks {
         let life = world.life_pool();
         going.clear();
         for (&attacker, slots, tags, forced, pools, owner) in attackers.iter(world) {
+            let lives = pools.lives();
             let purse = Purse::of(pools.of(life), world.owner_resources(owner));
             if let Some(target) = Self::going_off(slots, now)
+                && lives
                 && Self::wielded(book, slots).strikes(tags, forced, purse)
             {
                 going.push(GoingOff { attacker, target });
@@ -205,7 +213,7 @@ impl Attacks {
         let now = tick.start();
         let life = life.life();
         for (slots, mut times, tags, forced, pools, owner) in &mut attackers {
-            if Self::going_off(slots, now).is_none() {
+            if Self::going_off(slots, now).is_none() || !pools.lives() {
                 continue;
             }
             let mut pools = pools.of(life);
@@ -226,7 +234,8 @@ impl Attacks {
     /// the attack's start instead, its clip full again. A windup whose attacker's tags keep it
     /// from attacking, or that no longer affords its cost, stops instead, and spends nothing. A
     /// client that predicts the attack only makes the weapon ready again and counts its clip, as
-    /// the damage, the launch and the cost come from the server.
+    /// the damage, the launch and the cost come from the server. An attacker that lives no more
+    /// strikes nothing, as one its tags keep from attacking.
     pub fn strike<F: RoleForm>(
         (clock, rng, book, life): (
             TickClock<'_>,
@@ -268,10 +277,11 @@ impl Attacks {
             let (_, &source, &from, mut slots, mut times, stats, pools, tags, forced, owner, clips) =
                 attackers.get_mut(entity).expect("an attacker in the order");
             let target = Self::going_off(&slots, now).expect("an attack going off");
+            let lives = pools.lives();
             let pools = pools.of(life);
             let purse = Purse::of(pools.read(), resources.of(owner));
             let wielded = Self::wielded(&book, &slots);
-            if !wielded.strikes(tags, forced, purse) {
+            if !lives || !wielded.strikes(tags, forced, purse) {
                 slots.interrupt();
                 continue;
             }
@@ -306,8 +316,8 @@ impl Attacks {
             }
             let amount = weapon.damage(stats, &values);
             let roll = rng.open(ROLL_STREAM, source).fraction();
-            match wielded.projectile {
-                Some(unit_type) => fired.0.push(Shot {
+            if let Some(unit_type) = wielded.projectile {
+                fired.0.push(Shot {
                     source,
                     from: from.get(),
                     target,
@@ -317,8 +327,9 @@ impl Attacks {
                     amount,
                     kind: weapon.kind,
                     roll,
-                }),
-                None => queue.push_damage(Damage {
+                });
+            } else {
+                let damage = Damage {
                     source: Some(source),
                     target,
                     amount,
@@ -327,7 +338,8 @@ impl Attacks {
                     action: Some(action),
                     depth: 0,
                     hit: None,
-                }),
+                };
+                queue.push_damage(damage, now);
             }
             let mut held = resources.of_mut(owner);
             let payer = Payer::of(pools, held.as_deref_mut());

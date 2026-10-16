@@ -26,8 +26,8 @@ use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimUpdate, SimWorld,
-    StableId, Unpredicted,
+    Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimTick, SimUpdate,
+    SimWorld, StableId, Unpredicted,
 };
 use campfire_stats::{
     Application, Ends, Life, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance,
@@ -35,8 +35,8 @@ use campfire_stats::{
 };
 use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{
-    ActionId, Block, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex, Rank,
-    Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
+    ActionId, Block, DamageKind, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex,
+    Rank, Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
 };
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
@@ -997,6 +997,68 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
         .map(|death| (death.fallen.id, death.killer))
         .collect();
     assert_eq!(died, [(first, None), (second, None)]);
+}
+
+#[test]
+fn damage_after_the_pass_waits_for_the_next_and_a_life_at_zero_acts_no_more() {
+    // A pass after the Mode stage stands for a mode's hook in tick 1, after the tick's pass: it
+    // queues 30 damage from none to the target, and takes the attacker's life to 0, as
+    // `ctx.kill` does. The attacker's windup, from tick 0, ends in tick 2.
+    let mut game = fight_match();
+    let armed = [
+        fighter().on_death(OnDeath::Stay),
+        dummy().on_death(OnDeath::Stay),
+    ];
+    let [fighter, stays] = arm(&mut game, armed);
+    let attacker = Mode::spawn(&mut game, fighter, (0, 0, 0), Team::new(0), ());
+    let target = Mode::spawn(&mut game, stays, (1, 0, 0), Team::new(1), ());
+    Combat::attack(&mut game, attacker, target);
+    let hook = move |world: &mut World| {
+        if world.resource::<SimTick>().start() != Tick::new(1) {
+            return;
+        }
+        let damage = Damage {
+            source: None,
+            target,
+            amount: Num::int(30),
+            kind: DamageKind::new(0),
+            cause: DamageCause::Effect,
+            action: None,
+            depth: 0,
+            hit: None,
+        };
+        DamagePass::queue(world, PassEntry::Damage(damage));
+        let entity = world.entity_of(attacker).unwrap();
+        let mut life = world.get_mut::<Life>(entity).unwrap();
+        let all = life.current();
+        life.take(all);
+    };
+    let hook = hook
+        .in_set(SimEdge::After(SimSet::Mode))
+        .after(StatsSet::Refresh(SimEdge::After(SimSet::Mode)));
+    game.resource_mut::<Schedules>()
+        .add_systems(SimUpdate, hook);
+    game.run_until(2);
+    assert_eq!(Stats::health(&game, target), 100);
+    assert!(game.try_part::<Dead>(attacker).is_none());
+
+    // In tick 2 the pass deals the 30 first, to 70; the attacker, at 0, strikes nothing, where
+    // its 30 would leave 40, and dies with no killer. A match restored at the boundary between
+    // the ticks holds the damage still to come, and plays tick 2 alike.
+    let mut restored = fight_match();
+    arm(&mut restored, armed);
+    Release::restore_into(&game, &mut restored);
+    for game in [&mut game, &mut restored] {
+        game.run_until(3);
+        assert_eq!(Stats::health(game, target), 70);
+        assert!(game.try_part::<Dead>(attacker).is_some());
+        let died: Vec<_> = game
+            .resource::<Deaths>()
+            .iter()
+            .map(|death| (death.fallen.id, death.killer))
+            .collect();
+        assert_eq!(died, [(attacker, None)]);
+    }
 }
 
 #[test]

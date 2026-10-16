@@ -1,12 +1,13 @@
 use campfire_math::Num;
 use campfire_sim::StableId;
 use campfire_values::{ActionId, DamageKind, Hit, Rank};
+use serde::{Deserialize, Serialize};
 
 /// A damage the pass deals: from its source, none from a modifier the mode applied, to its
 /// target, its amount before `calc_damage`, its kind, what dealt it, the ability whose cast,
 /// projectile, area or modifier dealt it, the depth of the chain of events that dealt it, and how
 /// its delivery reached the target, none for damage no projectile or area delivered.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Damage {
     pub source: Option<StableId>,
     pub target: StableId,
@@ -21,7 +22,7 @@ pub struct Damage {
 /// What dealt a damage: an attack, with the roll it drew as its windup ended; an extra attack,
 /// from `ctx.attack_hit`, which draws none; or an ability's or modifier's effect. An attack names
 /// the rank of its weapon's slot, at which the weapon's `on_hit` list reads its params.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DamageCause {
     Attack { roll: Num, rank: Rank },
     ExtraAttack { rank: Rank },

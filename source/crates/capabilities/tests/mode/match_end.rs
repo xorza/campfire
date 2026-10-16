@@ -50,16 +50,19 @@ fn on_mode_input(ctx, player, name, value) {
         let mut attackers = world.get_mut::<RecentAttackers>(victim).unwrap();
         attackers.struck(two, Tick::new(0), &index);
     });
-    game.resource_mut::<PassQueue>().push_damage(Damage {
-        source: Some(four),
-        target: one,
-        amount: Num::int(10),
-        kind: DamageKind::new(0),
-        cause: DamageCause::Effect,
-        action: None,
-        depth: 0,
-        hit: None,
-    });
+    DamagePass::queue(
+        &mut game,
+        PassEntry::Damage(Damage {
+            source: Some(four),
+            target: one,
+            amount: Num::int(10),
+            kind: DamageKind::new(0),
+            cause: DamageCause::Effect,
+            action: None,
+            depth: 0,
+            hit: None,
+        }),
+    );
     Mode::tick_inputs(&mut game, &[]);
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
     // end of tick 0, 1, plus 3 ticks: the start of tick 4.

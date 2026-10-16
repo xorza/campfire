@@ -14,8 +14,8 @@ use campfire_actions::{
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::{
-    CombatBindings, CombatBook, Damage, DamageCause, Heal, HealCause, ModeCombatData, OnDeath,
-    PassQueue, RecentAttackers, Respawn,
+    CombatBindings, CombatBook, Damage, DamageCause, DamagePass, Heal, HealCause, ModeCombatData,
+    OnDeath, PassEntry, RecentAttackers, Respawn,
 };
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_declare::{Book, ByType};

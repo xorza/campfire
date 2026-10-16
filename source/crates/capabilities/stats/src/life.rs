@@ -13,7 +13,7 @@ use crate::pool_book::PoolBook;
 
 /// A unit's life: its meter of the mode's life pool, which every client that sees the unit
 /// receives, where its other pools are `Pools`, of another kind. A unit holds it exactly when it
-/// has combat, and lives while it is above 0.
+/// has combat; `lives` says when the unit lives.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Life(Meter);
@@ -56,6 +56,15 @@ impl Life {
     pub const fn fill(&mut self) {
         self.0.fill();
     }
+}
+
+/// Whether a unit lives: it is not `dead`, and its `life`, when it has one, is above 0. A life
+/// reaches 0 in a tick before the unit's death, at the next deaths, marks it `Dead`; from then on
+/// the unit lives no more, though not yet dead: nothing but its respawn lifts its life, and it
+/// takes no damage or heal and starts or strikes no attack or cast. Every pass that asks whether a
+/// unit lives asks this.
+pub(crate) fn lives(dead: bool, life: Option<&Life>) -> bool {
+    !dead && life.is_none_or(|life| !life.is_empty())
 }
 
 impl SimComponent for Life {

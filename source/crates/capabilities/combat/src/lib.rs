@@ -19,6 +19,7 @@ use campfire_stats::Life;
 use campfire_units::{BodyUnit, Dead, SpawnPoint};
 
 use crate::combat_column::RowReads;
+use crate::next_damage::NextDamage;
 
 mod armor;
 mod attacks;
@@ -45,6 +46,7 @@ mod kept;
 mod mode_combat_data;
 mod modifier_hooks;
 mod modifier_intervals;
+mod next_damage;
 mod on_death;
 mod pass_queue;
 mod recent_attack;
@@ -153,6 +155,7 @@ impl Module for Combat {
         d.component::<Respawn>();
         d.state::<BodyUnit, Respawn>();
         d.scratch::<PassQueue>();
+        d.resource::<NextDamage>();
         d.report::<Deaths>();
         d.non_send::<CombatHooks>(CombatHooks::install);
         d.calls::<Weighers>();
@@ -236,7 +239,7 @@ pub mod internals {
     use crate::damage::{Damage, DamageCause};
     use crate::damage_pass::DamagePass;
     use crate::on_death::OnDeath;
-    use crate::pass_queue::PassQueue;
+    use crate::pass_queue::PassEntry;
 
     impl Combat {
         /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
@@ -253,16 +256,19 @@ pub mod internals {
                 .names()
                 .named(kind)
                 .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
-            world.resource_mut::<PassQueue>().push_damage(Damage {
-                source,
-                target,
-                amount,
-                kind,
-                cause: DamageCause::Effect,
-                action: None,
-                depth: 0,
-                hit: None,
-            });
+            DamagePass::queue(
+                world,
+                PassEntry::Damage(Damage {
+                    source,
+                    target,
+                    amount,
+                    kind,
+                    cause: DamageCause::Effect,
+                    action: None,
+                    depth: 0,
+                    hit: None,
+                }),
+            );
         }
     }
 
@@ -453,16 +459,19 @@ pub mod internals {
             amount: i64,
             cause: DamageCause,
         ) {
-            world.resource_mut::<PassQueue>().push_damage(Damage {
-                source,
-                target,
-                amount: Num::int(amount),
-                kind: DamageKind::new(0),
-                cause,
-                action: None,
-                depth: 0,
-                hit: None,
-            });
+            DamagePass::queue(
+                world,
+                PassEntry::Damage(Damage {
+                    source,
+                    target,
+                    amount: Num::int(amount),
+                    kind: DamageKind::new(0),
+                    cause,
+                    action: None,
+                    depth: 0,
+                    hit: None,
+                }),
+            );
         }
     }
 
