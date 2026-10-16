@@ -702,7 +702,7 @@ Each change folds into its document when its batch lands. Each line names the de
 **3.4 Tests that can fail.** Touches `rules`, `log`, `common` (allocation audit), the release tests and the harness.
 - `LogCheck` and the allocation audit become global for each process (B-2).
 - The layers come from `cargo metadata`, with one manifest reader. Tests hold that no crate of the sim's closure has `store`, `tracing` or `log`, and that `protocol` has no `store` (B-3, B-4).
-- A test holds the float ban in every crate of the sim's closure. The attribute becomes `warn`, the re-levelled `iter_over_hash_type` goes, and CLAUDE.md sanctions determinism bans (B-5, D48).
+- A test holds the float ban in every crate of the sim's closure. The attribute becomes `warn` with a comment that says why, and the re-levelled `iter_over_hash_type` goes (B-5, D48).
 - The ambiguity check without sync points runs for every role of every workspace mode (E-16).
 
 ### Phase 4: declarations own what a module adds
@@ -943,7 +943,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - `bots` derives its TOML from `Action` (R-29).
 
 **12.3 Configuration and surfaces.** Touches the workspace manifest, every capability's `lib.rs`, `net`, the docs, ISSUES.md.
-- `overflow-checks` stays in release, the redundant `dev` line goes, and CLAUDE.md's profile rule gets the exception (B-6, D45).
+- `overflow-checks` stays in release with its comment, and the redundant `dev` line goes (B-6, D45).
 - The toolchain step in PLAN.md (B-7).
 - ISSUES.md sections moved, and two Foundations entries added ([Open issues](#11-open-issues)).
 - RW 22: the published surfaces narrow.
@@ -1005,10 +1005,10 @@ The user approved every row below on 17 October 2026: D1 to D5, D10, D13, D17, D
 | D42 | Health bars | Screen space | Approved |
 | D43 | Client modules | A module list in `campfire-client` | Approved |
 | D44 | The Zero Hour check's pins | A golden file that `--bless` writes | Approved |
-| D45 | `overflow-checks` in release | Keep them as a project decision, and add the exception to CLAUDE.md's profile rule. The redundant `dev` line goes. | Approved |
+| D45 | `overflow-checks` in release | Keep them as a project decision, with the existing comment that says why. CLAUDE.md's profile block is a recommendation. The redundant `dev` line goes. | Approved |
 | D46 | The layer test | Derive the layers and test the rules that can break | Approved |
 | D47 | Where the plan lives | PLAN.md | Approved |
-| D48 | The float ban and the `clippy.toml` bans against CLAUDE.md's exact lint list | CLAUDE.md sanctions determinism bans: a crate-root `#![warn(clippy::float_arithmetic)]` in the sim's crates, and `disallowed-types` for hash types. The re-levelled `iter_over_hash_type` goes. A `rules` test holds the attribute. | Approved |
+| D48 | The float ban and the `clippy.toml` bans against CLAUDE.md's lint list | Keep the determinism bans, each with a comment that says why, since CLAUDE.md's lint list is a recommendation: a crate-root `#![warn(clippy::float_arithmetic)]` in the sim's crates, and `disallowed-types` for hash types. The re-levelled `iter_over_hash_type` goes. A `rules` test holds the attribute. | Approved |
 | D49 | Where load checks live | In each module's declaration | Approved |
 | D50 | The x86-64-v3 baseline for shipped binaries | Keep v3, and record the CPU requirement as a decision. The September 2026 Steam survey shows AVX2 on 95.95% of systems, and RHEL 10 requires v3. | Approved |
 
