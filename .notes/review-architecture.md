@@ -663,7 +663,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - **Goldens:** they may move where the four loops differed. Each move is explained.
 
 **5.5 Contracts in `units`.** Touches `units`, `players`, `orders`, `navigation`, `production`, `interaction`, `items`, `net`, `visibility`, `vision`, `combat`.
-- `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20).
+- `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20). Waits for Q9 in `review-architecture_QUESTIONS.md`.
 - The standing-room query is a contract, and `production` drops `navigation` (R-31). Waits for Q8 in `review-architecture_QUESTIONS.md`.
 
 ### Phase 6: `Send` data and the server frame

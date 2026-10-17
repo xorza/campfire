@@ -81,3 +81,12 @@ Decisions that the plan in `review-architecture.md` cannot take alone. Each name
   2. **A trait of `units` that navigation implements, read as a resource of boxed functions.** The placement takes the resource beside its queries, and the train takes it from the world. Cost: a call through a box for each placement test, and a contract of two shapes.
   3. **Keep the dependency.** `production` keeps `navigation` for the two reads. Cost: R-31 stays in part.
 - **Blocked:** the rest of R-31.
+
+## Q9. Batch 5.5, `UnitOrdered`: what carries a build, a gather and a use
+
+- **Item:** 5.5, R-20, "`UnitOrdered` is an entity event, and `orders` drops `production` and `interaction`". `orders` names production's `BuildTarget`, `Builder` and `Gatherer`, as `OrdersAction::Build` and a slot's gather set production's loops in `UnitOrder::give` (`orders/src/unit_order.rs`), and interaction's `UnitUse` and `Using`, as the check of a use reads interaction's books before the order is given (`orders/src/unit_orders.rs`).
+- **Why it waits:** an event that tells production and interaction to clear their loops does not set them. The build, the gather and the use either stay orders' commands, described by a type below all three, or become their capabilities' own commands, and the two change different things.
+- **Options:**
+  1. **The commands stay, the event describes them (recommended).** `units` gets `UnitOrdered { entity, order }` with an order kind of its own, and `BuildTarget` moves to `units`; orders triggers it for each order it gives, production sets or clears its build and gather loops in its observer, and interaction fills or checks the use slot in its. The command protocol stays. Cost: a use whose target fails interaction's check is dropped in interaction's observer, after orders gave it, so orders' other effects of that order need the same observer order, and the goldens may move where an observer's deferred write lands later in the tick.
+  2. **The commands move.** `Build` and a gather become `ProductionAction`'s, `Use` an `InteractionAction`'s, and each capability gives its own and triggers `UnitOrdered` for the rest to clear theirs. Cost: the command protocol changes for the client, the bots and the Zero Hour check, and production's commands run in `ActionsSet::Queue`, before orders', so two orders to one unit in one tick resolve in another order.
+- **Blocked:** R-20.
