@@ -651,7 +651,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 **7.3 Navigation and gathering passes.** Touches `navigation` and `production`.
 - `RouteMut`, so the report passes go, and `RouteAsks` (R-6).
-- Colliders hold walkers only (R-7).
 - Room making and static following query the change's bounds (R-30).
 - Gathering searches use the grid, and each node keeps its queue (R-5).
 
@@ -978,7 +977,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | R-4 | Exclusive production and AI systems run in each tick and scan their whole population | `trains.rs:94-192`, `construction/mod.rs:82-352`, `gather_loop/mod.rs:144-150`, `destinations.rs:19-111` | Confirmed | 7.1 |
 | R-5 | Gathering scans every node and worker, and its loop sees its own writes as changes | `gather_view.rs:148-200`, `gather_loop/mod.rs:137-243` | Confirmed scans. The trigger is plausible. | 7.3 |
 | R-6 | `ArrivedShort` is derived again in ten gaps for each tick, and two passes scan every walker | `navigation/src/lib.rs:219-223`, `routing.rs:35-145` | Confirmed | 7.3 |
-| R-7 | Collide reads every static body into its collider list in each tick | `walking.rs:251-277`, `broadphase.rs:129-136` | Confirmed | 7.3 |
 | R-8 | One clearance and region set for each distinct radius | `walker_kinds.rs:37-42`, `pathing_grid/mod.rs:48-136` | Plausible count | Backlog (D18) |
 | R-9 | The route work limit is the map's cell count | `route_planner/mod.rs:24, 173` | Plausible | Backlog |
 | R-10 | The heavy navigation and vision passes have deterministic parallel forms | `broadphase.rs:96-128`, `collider/mod.rs:46-53`, `seeing.rs:56-75` | Plausible | 11.1 |

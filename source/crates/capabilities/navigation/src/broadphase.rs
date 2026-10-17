@@ -2,7 +2,7 @@ use campfire_geometry::{CellKey, CellLevels};
 
 use crate::body_index::BodyIndex;
 use crate::collider::Collider;
-use crate::collider::contact::Contact;
+use crate::collider::contact::{Contact, ContactBodies};
 
 /// Finds the pairs of bodies of one layer that overlap. Two walkers come from a sort of the walkers
 /// by layer, level and cell, in levels by size from a base cell twice the narrowest walker's
@@ -15,8 +15,8 @@ use crate::collider::contact::Contact;
 /// a wide walker so costs its own level's few cells, not every walker's. A sort, not a grid over
 /// the map, as a map may be wide and its bodies few; each walker's cell is one `CellKey` above its
 /// index, so the sort and every search compare one number, as `BodyGrid`'s do. A walker and a
-/// static body come from the static index, so a wide structure does not make the cells wide, and
-/// two static bodies never part. The buffers stay between ticks, so a tick allocates nothing once
+/// static body come from the static index, so a wide structure does not make the cells wide, two
+/// static bodies never part, and the colliders hold the walkers alone. The buffers stay between ticks, so a tick allocates nothing once
 /// they have grown, and costs `n log n` and the pairs of bodies in cells side by side.
 #[derive(Debug, Default)]
 pub(crate) struct Broadphase {
@@ -56,20 +56,18 @@ impl Entry {
 }
 
 impl Broadphase {
-    /// The pairs of `colliders`, sorted by stable id, that overlap as they stand now, in the order
-    /// of their indices, first then second: the pairs a check of every pair finds, in its order.
-    /// `statics` holds the colliders that may not be pushed.
+    /// The pairs of the walkers `colliders`, sorted by stable id, and of a walker and a static body
+    /// of `statics`, that overlap as they stand now, by the stable ids of the two, the lower
+    /// first: the pairs a check of every pair finds, in its order.
     pub(crate) fn contacts(&mut self, colliders: &[Collider], statics: &BodyIndex) -> &[Contact] {
+        debug_assert!(colliders.iter().all(|collider| collider.movable));
         self.entries.clear();
         self.cells.clear();
         self.contacts.clear();
         let Some(levels) = Self::levels(colliders) else {
             return &self.contacts;
         };
-        let walkers = colliders
-            .iter()
-            .enumerate()
-            .filter(|(_, collider)| collider.movable);
+        let walkers = colliders.iter().enumerate();
         self.entries
             .extend(walkers.clone().map(|(index, collider)| {
                 let level = levels.level(collider.radius());
@@ -126,27 +124,31 @@ impl Broadphase {
             let coarser = &self.cells[level_end..];
             Self::across(colliders, coarser, &self.entries, cell, &mut self.contacts);
         }
-        for (index, collider) in walkers {
-            statics.near(collider.layer, collider.point, collider.radius(), |body| {
-                let other = colliders
-                    .binary_search_by_key(&body.id, |collider| collider.id)
-                    .expect("a static body of the index is among the colliders");
-                debug_assert!(!colliders[other].movable);
-                Self::check(colliders, index, other, &mut self.contacts);
+        for (walker, collider) in walkers {
+            statics.near(collider.layer, collider.point, collider.radius(), |&body| {
+                if collider.overlaps(&Collider::fixed(&body)) {
+                    let (first, second) = if collider.id < body.id {
+                        (collider.id, body.id)
+                    } else {
+                        (body.id, collider.id)
+                    };
+                    self.contacts.push(Contact {
+                        first,
+                        second,
+                        bodies: ContactBodies::Static { walker, body },
+                    });
+                }
             });
         }
-        self.contacts.sort_unstable();
+        self.contacts
+            .sort_unstable_by_key(|contact| (contact.first, contact.second));
         &self.contacts
     }
 
-    /// The levels of the cells: from a base twice the narrowest radius of the colliders that may
-    /// be pushed; `None` with none, as no two others part.
+    /// The levels of the cells: from a base twice the narrowest radius of the walkers; `None` with
+    /// none, as no two static bodies part.
     fn levels(colliders: &[Collider]) -> Option<CellLevels> {
-        let narrowest = colliders
-            .iter()
-            .filter(|collider| collider.movable)
-            .map(Collider::radius)
-            .min()?;
+        let narrowest = colliders.iter().map(Collider::radius).min()?;
         Some(CellLevels::new(narrowest + narrowest))
     }
 
@@ -194,12 +196,14 @@ impl Broadphase {
         }
     }
 
-    /// Records the contact of colliders `a` and `b` when they overlap.
+    /// Records the contact of the walkers `a` and `b` when they overlap.
     fn check(colliders: &[Collider], a: usize, b: usize, contacts: &mut Vec<Contact>) {
         if colliders[a].overlaps(&colliders[b]) {
+            let (first, second) = (a.min(b), a.max(b));
             contacts.push(Contact {
-                first: a.min(b),
-                second: a.max(b),
+                first: colliders[first].id,
+                second: colliders[second].id,
+                bodies: ContactBodies::Walkers { first, second },
             });
         }
     }
@@ -270,22 +274,36 @@ pub(crate) mod internals {
 mod tests {
     use campfire_geometry::{Radius, Shape};
     use campfire_math::{Num, Vec3};
+    use campfire_sim::StableId;
     use campfire_units::Layer;
 
     use super::internals::{scene, statics};
     use super::*;
 
-    /// The pairs a check of every pair finds, in its order.
-    fn every_pair(colliders: &[Collider]) -> Vec<Contact> {
+    /// The pairs of `bodies`, sorted by stable id, a check of every pair finds, in its order, by
+    /// the stable ids of the two.
+    fn every_pair(bodies: &[Collider]) -> Vec<[StableId; 2]> {
         let mut contacts = Vec::new();
-        for first in 0..colliders.len() {
-            for second in first + 1..colliders.len() {
-                if colliders[first].overlaps(&colliders[second]) {
-                    contacts.push(Contact { first, second });
+        for first in 0..bodies.len() {
+            for second in first + 1..bodies.len() {
+                if bodies[first].overlaps(&bodies[second]) {
+                    contacts.push([bodies[first].id, bodies[second].id]);
                 }
             }
         }
         contacts
+    }
+
+    /// The contacts the broadphase finds among `bodies`, its walkers among the colliders and the
+    /// others in the static index, by the stable ids of the two.
+    fn found(broadphase: &mut Broadphase, bodies: &[Collider]) -> Vec<[StableId; 2]> {
+        let walkers: Vec<Collider> = bodies.iter().filter(|body| body.movable).copied().collect();
+        let index = statics(bodies);
+        let contacts = broadphase.contacts(&walkers, &index);
+        contacts
+            .iter()
+            .map(|contact| [contact.first, contact.second])
+            .collect()
     }
 
     #[test]
@@ -315,19 +333,14 @@ mod tests {
             }
             let across = every_pair(&flat).len() - expected.len();
             assert_eq!(across > 0, layers > 1, "{across} contacts across layers");
-            let index = statics(&colliders);
-            assert_eq!(
-                broadphase.contacts(&colliders, &index),
-                expected,
-                "seed {seed}"
-            );
+            assert_eq!(found(&mut broadphase, &colliders), expected, "seed {seed}");
             crowded = crowded.max(expected.len());
         }
         assert!(
             crowded > 100,
             "{crowded} contacts in the most crowded scene"
         );
-        assert_eq!(broadphase.contacts(&[], &statics(&[])), []);
+        assert_eq!(found(&mut broadphase, &[]), Vec::<[StableId; 2]>::new());
 
         // Walkers of 0.35 m to 2,048 m mixed, over two layers, from a base of 0.7 m: each size
         // takes its own level, twice its radius over the base rounded up to a power of two, 0.8 m
@@ -348,13 +361,13 @@ mod tests {
                 };
                 collider.shape = Shape::Circle(Radius::new(sizes[size]).unwrap());
             }
-            let index = statics(&colliders);
             assert_eq!(
-                broadphase.contacts(&colliders, &index),
+                found(&mut broadphase, &colliders),
                 every_pair(&colliders),
                 "seed {seed}"
             );
-            let levels = Broadphase::levels(&colliders).unwrap();
+            let walkers: Vec<Collider> = colliders.iter().filter(|c| c.movable).copied().collect();
+            let levels = Broadphase::levels(&walkers).unwrap();
             assert_eq!(levels, CellLevels::new(sizes[0] + sizes[0]));
             assert_eq!(sizes.map(|size| levels.level(size)), [0, 2, 4, 6, 9, 13]);
             let mut held: Vec<u8> = broadphase
@@ -380,16 +393,15 @@ mod tests {
             colliders[0].movable = false;
             colliders[0].walking = false;
             let expected = every_pair(&colliders);
-            let wide = expected.iter().filter(|contact| contact.first == 0).count();
+            let wide = expected
+                .iter()
+                .filter(|contact| contact[0] == colliders[0].id)
+                .count();
             assert!(wide > 100, "{wide} walkers overlap the wide body");
-            let index = statics(&colliders);
+            assert_eq!(found(&mut broadphase, &colliders), expected, "seed {seed}");
+            let walkers: Vec<Collider> = colliders.iter().filter(|c| c.movable).copied().collect();
             assert_eq!(
-                broadphase.contacts(&colliders, &index),
-                expected,
-                "seed {seed}"
-            );
-            assert_eq!(
-                Broadphase::levels(&colliders),
+                Broadphase::levels(&walkers),
                 Some(CellLevels::new(walker + walker))
             );
         }

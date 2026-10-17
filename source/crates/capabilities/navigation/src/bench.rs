@@ -65,11 +65,12 @@ fn collision(c: &mut Criterion) {
             bodies[0].walking = false;
         }
         let index = statics(&bodies);
+        let walkers: Vec<Collider> = bodies.iter().filter(|body| body.movable).copied().collect();
         let mut broadphase = Broadphase::default();
-        let mut colliders = bodies.clone();
+        let mut colliders = walkers.clone();
         group.bench_function(name, |bench| {
             bench.iter(|| {
-                colliders.clone_from(&bodies);
+                colliders.clone_from(&walkers);
                 let contacts = broadphase.contacts(black_box(&colliders), &index);
                 Collider::resolve(&mut colliders, contacts);
                 black_box(&colliders);

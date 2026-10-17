@@ -12,12 +12,21 @@ use campfire_values::{Block, Motion, UnitTags};
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::broadphase::Broadphase;
 use crate::collider::Collider;
+use crate::collider::contact::Contact;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
 use crate::route::Route;
 use crate::route_planner::RoutePlanner;
 use crate::steering::{Steered, Steering, TickBody};
 use crate::walker::Walker;
+
+/// The living units that cannot walk, those a client only holds among them: the static bodies.
+type StaticUnits = (
+    With<Body>,
+    Without<MoveStep>,
+    Without<Dead>,
+    Allow<Unpredicted>,
+);
 
 /// The walkers' moves: steered round each other, a step a tick along their routes, parted where
 /// their bodies overlap, and kept in the bounds.
@@ -236,15 +245,15 @@ impl Walking {
                 &StableId,
                 &Body,
                 &mut Position,
-                Has<MoveStep>,
                 Option<&Destination>,
                 Option<&UnitTags>,
                 Has<Unpredicted>,
                 Has<ForcedMove>,
             ),
-            (Without<Dead>, Allow<Unpredicted>),
+            (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
         >,
         statics: Res<'_, BodyIndex>,
+        standing: Query<'_, '_, Has<ForcedMove>, StaticUnits>,
         (mut colliders, mut broadphase, mut pushed): (
             Local<'_, Vec<Collider>>,
             Local<'_, Broadphase>,
@@ -255,15 +264,15 @@ impl Walking {
         colliders.extend(
             units
                 .iter()
-                .filter(|&(.., movable, _, _, held, forced)| !(forced || held && movable))
+                .filter(|&(.., held, forced)| !(forced || held))
                 .map(
-                    |(entity, &id, body, position, movable, destination, tags, ..)| Collider {
+                    |(entity, &id, body, position, destination, tags, ..)| Collider {
                         id,
                         entity,
                         point: position.get(),
                         shape: body.shape(),
                         layer: body.layer(),
-                        movable,
+                        movable: true,
                         walking: Self::walks(destination, tags, Motion::Own),
                         gathering: tags.is_some_and(|tags| tags.passes()),
                     },
@@ -271,22 +280,14 @@ impl Walking {
         );
         colliders.sort_unstable_by_key(|collider| collider.id);
         debug_assert_eq!(
-            colliders
-                .iter()
-                .filter(|collider| !collider.movable)
-                .count(),
+            standing.iter().filter(|&forced| !forced).count(),
             statics.len(),
             "the static index holds the static bodies as the stage starts"
         );
         let contacts = broadphase.contacts(&colliders, &statics);
         Collider::resolve(&mut colliders, contacts);
         pushed.clear();
-        pushed.extend(
-            contacts
-                .iter()
-                .flat_map(|contact| [contact.first, contact.second])
-                .filter(|&index| colliders[index].movable),
-        );
+        pushed.extend(contacts.iter().flat_map(Contact::walkers));
         pushed.sort_unstable();
         pushed.dedup();
         for &index in &*pushed {

@@ -26,11 +26,17 @@ fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
         .collect()
 }
 
-/// Parts the bodies of `colliders` that overlap, as the Collide stage does.
+/// Parts the bodies of `colliders` that overlap, as the Collide stage does: the walkers among
+/// the colliders, the others in the static index.
 fn resolve(colliders: &mut [Collider]) {
     let index = statics(colliders);
-    let contacts = Broadphase::default().contacts(colliders, &index).to_vec();
-    Collider::resolve(colliders, &contacts);
+    let mut walkers: Vec<Collider> = colliders.iter().filter(|c| c.movable).copied().collect();
+    let contacts = Broadphase::default().contacts(&walkers, &index).to_vec();
+    Collider::resolve(&mut walkers, &contacts);
+    let mut parted = walkers.into_iter();
+    for collider in colliders.iter_mut().filter(|c| c.movable) {
+        *collider = parted.next().unwrap();
+    }
 }
 
 fn places(colliders: &[Collider]) -> Vec<(Num, Num)> {

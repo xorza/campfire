@@ -41,6 +41,7 @@
 
 ## Collision
 
+- **Collision reads the walkers alone.** The Collide stage reads only the units that can walk into its colliders, and a contact of a walker with a static body keeps that body as the static index holds it, as the static bodies never move, so the stage costs the walkers, not every body. Refused: every body read into the colliders each tick, and a search of them for the body each static contact names.
 - **Pairs part by exact steps.** Each overlapping pair on one layer parts along the line between them, pair by pair in stable-id order, each coordinate rounded away from zero.
 - **A standing body blocks.** A walker that runs into a unit that stands takes the whole overlap, so a standing unit's body blocks; a unit that cannot walk leaves all of it to the other.
 - **Gatherers in their loop do not collide** ([Production](production.md#gathering)).
