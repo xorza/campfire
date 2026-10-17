@@ -5,7 +5,7 @@ mod bot_script;
 mod order_script;
 
 pub use crate::bot_script::error::UnitsMissing;
-pub use crate::bot_script::{BotOrder, BotScript, BotUnits};
+pub use crate::bot_script::{BotBuffers, BotOrder, BotScript, BotSink, BotUnits};
 pub use crate::order_script::error::{OrderScriptError, OrderScriptReadError, UnknownUnitType};
 pub use crate::order_script::{
     OrderScript, ScriptedInput, ScriptedOrder, ScriptedUnits, ScriptedValue,

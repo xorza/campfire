@@ -35,6 +35,26 @@ pub struct BotOrder {
     pub action: Action,
 }
 
+/// Where a bot's step sends what its script has due: each payload, a mode input's or an order's,
+/// as its player's client writes it, and each order that commands no unit.
+pub trait BotSink {
+    /// Takes `payload`, an input of the bot of `slot`.
+    fn send(&mut self, slot: PlayerSlot, payload: &[u8]);
+
+    /// Hears that the order of `action` of the bot of `slot` commands no unit, as `cause` says,
+    /// and goes unsent.
+    fn unordered(&mut self, slot: PlayerSlot, action: Action, cause: UnitsMissing);
+}
+
+/// The buffers of a bot's step, kept so that no input allocates: the payload, the body of the
+/// command in it, and an order's units.
+#[derive(Debug, Default)]
+pub struct BotBuffers {
+    payload: Vec<u8>,
+    body: Vec<u8>,
+    units: Vec<StableId>,
+}
+
 /// The units of its player a bot's order commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BotUnits {
@@ -78,6 +98,40 @@ impl BotScript {
         let first = self.next_input;
         self.next_input += self.inputs[first..].partition_point(|input| input.tick <= tick);
         &self.inputs[first..self.next_input]
+    }
+
+    /// Sends `sink` what the script has due by `tick` for the bot of `slot`: its mode inputs,
+    /// then its orders, each for the slot's units as `players` holds them now; an order of no
+    /// such unit `sink` hears of, unsent. The one step of a bot, which the server's driver and
+    /// every check take.
+    pub fn step(
+        &mut self,
+        tick: Tick,
+        slot: PlayerSlot,
+        players: &PlayerUnits<'_, '_>,
+        buffers: &mut BotBuffers,
+        sink: &mut impl BotSink,
+    ) {
+        let BotBuffers {
+            payload,
+            body,
+            units,
+        } = buffers;
+        for input in self.due_inputs(tick) {
+            payload.clear();
+            input.write_payload(body, payload);
+            sink.send(slot, payload);
+        }
+        for scripted in self.due_orders(tick) {
+            match scripted.order(slot, players, units) {
+                Ok(order) => {
+                    payload.clear();
+                    order.write_payload(body, payload);
+                    sink.send(slot, payload);
+                }
+                Err(cause) => sink.unordered(slot, scripted.action, cause),
+            }
+        }
     }
 
     /// Takes the orders due by `tick`, each once, as `due_inputs` takes the mode inputs.

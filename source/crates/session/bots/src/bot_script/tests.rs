@@ -87,4 +87,45 @@ fn an_order_commands_the_avatar_or_the_living_units_of_its_type_or_none() {
     world.entity_mut(spawned[4].1).insert(Avatar);
     let avatar = order("", &world, &mut state).unwrap();
     assert_eq!(avatar.units.get(), [spawned[4].0]);
+
+    // A step sends the bot's mode inputs, then its orders, each a payload as a client writes it,
+    // and tells of an order of no living unit, which goes unsent: the dozer is dead.
+    let text = "[[input]]\ntick = 0\nname = \"hero\"\nvalue = \"hero-x\"\n\
+                [[order]]\ntick = 0\nunits = \"ranger\"\nmove = [1, 1]\n\
+                [[order]]\ntick = 0\nunits = \"dozer\"\nmove = [1, 1]\n";
+    let mut bot = BotScript::new(&OrderScript::parse(text).unwrap(), &types).unwrap();
+    let mut apart = bot.clone();
+    let players = state.get(&world).unwrap();
+    let mut heard = Heard::default();
+    let slot = PlayerSlot::new(1);
+    bot.step(
+        Tick::new(0),
+        slot,
+        &players,
+        &mut BotBuffers::default(),
+        &mut heard,
+    );
+    let (mut body, mut input, mut ordered) = (Vec::new(), Vec::new(), Vec::new());
+    apart.due_inputs(Tick::new(0))[0].write_payload(&mut body, &mut input);
+    let rangers = apart.due_orders(Tick::new(0))[0].order(slot, &players, &mut Vec::new());
+    rangers.unwrap().write_payload(&mut body, &mut ordered);
+    assert_eq!(heard.sent, [input, ordered]);
+    assert_eq!(heard.unordered, [(slot, UnitsMissing::NoUnit)]);
+}
+
+/// What a step gave: each payload sent, and each order of no unit.
+#[derive(Debug, Default)]
+struct Heard {
+    sent: Vec<Vec<u8>>,
+    unordered: Vec<(PlayerSlot, UnitsMissing)>,
+}
+
+impl BotSink for Heard {
+    fn send(&mut self, _: PlayerSlot, payload: &[u8]) {
+        self.sent.push(payload.to_vec());
+    }
+
+    fn unordered(&mut self, slot: PlayerSlot, _: Action, cause: UnitsMissing) {
+        self.unordered.push((slot, cause));
+    }
 }

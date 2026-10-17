@@ -638,11 +638,6 @@ Each change folds into its document when its batch lands. Each line names the de
   3. A link carries only the join channel, with a window of one, until it joins (N-2).
 - **Format:** the network protocol's version rises.
 
-### Phase 2: confirmed bugs
-
-**2.6 One bot step.** Touches `bots`, `net` and `zero-hour-check`.
-- `BotScript::serve(tick, slot, units, scratch, sink)` yields inputs, then orders, and reports missing units. The server's driver and the check both implement the sink (A-21).
-
 ### Phase 3: boundaries
 
 **3.1 Restore relations and bounds.** Touches `progression`, `orders`, `production`, `units`, `package`.
@@ -1214,7 +1209,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | A-18 | The importer repeats load checks by hand and never loads what it wrote | `imported_type.rs:181-192, 375-384`, `zero_hour/mod.rs:163-325` | Confirmed | 9.2 |
 | A-19 | The import's stages share one mutable name table and bags of sources, so their order is a hidden contract | `zero_hour/mod.rs:163-325`, `map_import.rs:85-96` | Confirmed | 9.2 |
 | A-20 | The import report is nine lists of different shapes, with paths as strings | `zero_hour/mod.rs:81-111`, `import/src/main.rs:43-127` | Confirmed | 9.2 |
-| A-21 | The check drives its bot with its own loop, which sends no mode inputs and panics on a refused payload | `match_play.rs:111-139`, `bot_driver.rs:122-163` | Confirmed | 2.6 |
 | A-22 | The check computes walls, start markers and the resource table again | `start_drive.rs:130-185`, `skirmish_play.rs:120-129` | Confirmed | 9.5 |
 | A-23 | Measured pins with no bless path | `pins.rs:15-115` | Confirmed | 9.5 |
 | A-24 | The LAN check shares the server's paths. Its one open item is the ping flake in ISSUES.md. | `lan-check/src/main.rs:57-82` | Confirmed | No change |

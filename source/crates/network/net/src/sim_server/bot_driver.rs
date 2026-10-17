@@ -1,11 +1,11 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
-use campfire_bots::{BotScript, OrderScript};
+use campfire_bots::{BotBuffers, BotScript, BotSink, OrderScript, UnitsMissing};
+use campfire_capabilities::Action;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog, Signer};
 use campfire_runner::{ServerInputRefused, Session};
-use campfire_sim::StableId;
 use campfire_units::{HeldPlayerUnits, UnitTypeBook};
 
 use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
@@ -26,13 +26,10 @@ pub(crate) struct BotDriver {
     takeover: Option<BotScript>,
     /// How many of the log's slot changes the driver followed: the log only adds them in a run.
     followed: usize,
-    /// The payload being logged, and the body of the command in it, kept so no order allocates.
-    payload: Vec<u8>,
-    body: Vec<u8>,
+    /// The buffers of the bots' steps, kept so no input allocates.
+    buffers: BotBuffers,
     /// Who each slot commands, kept so no tick builds its query again.
     players: HeldPlayerUnits,
-    /// The units of an order of a unit type, kept so no order allocates their list.
-    scratch: Vec<StableId>,
 }
 
 /// A bot the driver plays: its slot, its script, and the tick the script's ticks count from.
@@ -60,10 +57,8 @@ impl BotDriver {
             bots,
             takeover,
             followed: 0,
-            payload: Vec::new(),
-            body: Vec::new(),
+            buffers: BotBuffers::default(),
             players: HeldPlayerUnits::new(world),
-            scratch: Vec::new(),
         }
     }
 
@@ -118,49 +113,28 @@ impl BotDriver {
         }
     }
 
-    /// Logs what each bot's script has due by `tick` into `session`: its mode inputs, then its
-    /// orders, each for the slot's units it names.
+    /// Logs what each bot's script has due by `tick` into `session`, as the bots' one step gives
+    /// it: its mode inputs, then its orders, each for the slot's units it names.
     fn log_due(&mut self, world: &World, session: &mut Session, tick: Tick) {
         let Self {
             bots,
-            payload,
-            body,
+            buffers,
             players,
-            scratch,
             ..
         } = self;
         let mut served = BotServer {
             session,
             signer: &world.resource::<ServerSigner>().0,
         };
+        let units = players.get(world);
         for driven in bots {
             let since = tick
                 .since(driven.since)
                 .expect("a bot plays from its start on");
             let script_tick = Tick::new(since.get());
-            for input in driven.script.due_inputs(script_tick) {
-                payload.clear();
-                input.write_payload(body, payload);
-                served.log(driven.slot, payload);
-            }
-            let units = players.get(world);
-            for scripted in driven.script.due_orders(script_tick) {
-                let order = match scripted.order(driven.slot, &units, scratch) {
-                    Ok(order) => order,
-                    Err(cause) => {
-                        BotUnitsMissing {
-                            slot: driven.slot,
-                            cause,
-                            action: scripted.action,
-                        }
-                        .log();
-                        continue;
-                    }
-                };
-                payload.clear();
-                order.write_payload(body, payload);
-                served.log(driven.slot, payload);
-            }
+            driven
+                .script
+                .step(script_tick, driven.slot, &units, buffers, &mut served);
         }
     }
 }
@@ -172,11 +146,11 @@ struct BotServer<'s> {
     signer: &'s Signer,
 }
 
-impl BotServer<'_> {
+impl BotSink for BotServer<'_> {
     /// Logs `payload` as an input of the bot of `slot`; one past the session's max length, past
     /// the ticks up to its max input lead, which the slot's inputs fill, or past a full log, is
     /// dropped.
-    fn log(&mut self, slot: PlayerSlot, payload: &[u8]) {
+    fn send(&mut self, slot: PlayerSlot, payload: &[u8]) {
         let input = ServerInput::Bot { slot, payload };
         let cause = match self.session.serve(input, self.signer) {
             Ok(()) => return,
@@ -189,6 +163,15 @@ impl BotServer<'_> {
             slot,
             len: payload.len(),
             cause,
+        }
+        .log();
+    }
+
+    fn unordered(&mut self, slot: PlayerSlot, action: Action, cause: UnitsMissing) {
+        BotUnitsMissing {
+            slot,
+            cause,
+            action,
         }
         .log();
     }
