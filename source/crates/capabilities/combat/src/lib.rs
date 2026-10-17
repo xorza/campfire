@@ -157,7 +157,6 @@ impl Module for Combat {
         d.part::<BodyUnit, TurretAngle>(|at| at.of_type::<Turret>().map(|_| TurretAngle::REST));
         d.component::<Kept>();
         d.component::<Life>();
-        d.component::<OnDeath>();
         d.component::<RecentAttackers>();
         d.component::<ClipShots>();
         // A unit with slots counts the shots of its weapons with a clip, from its spawn or a
@@ -185,7 +184,6 @@ impl Module for Combat {
         d.book::<ByType<OnDeath>>(OnDeath::book);
         d.book::<ByType<Armor>>(Armor::book);
         d.part::<BodyUnit, Life>(|at| at.of_type::<Life>().copied());
-        d.part::<BodyUnit, OnDeath>(|at| at.of_type::<OnDeath>().copied());
         // A unit that can die keeps who struck it, for its death's assisters.
         d.part::<BodyUnit, RecentAttackers>(|at| {
             at.of_type::<OnDeath>().map(|_| RecentAttackers::default())

@@ -4,6 +4,7 @@
 
 - **Life, weapons and one damage pass.** `combat` gives units a life pool and weapons, which are actions of the `attack` kind ([Actions](actions.md)), and runs damage, heals, deaths and kill credit; who may hit whom comes from the teams' relations.
 - **A type can die exactly when it has life.** A unit type has `combat` exactly when it has the life pool, so every unit that can reach zero life can die.
+- **What a death does is the type's.** A death reads `on_death` through its unit's type, as a hit reads its armor, and a unit dies when its life reaches zero, so no part of a unit repeats either. Refused: `on_death` copied onto each unit as state, which a snapshot and the hash carried for every unit, and a marker of the units that can die that `Life` requires, which says only that the unit has life, as the death's query reads it already.
 
 ## Weapons
 

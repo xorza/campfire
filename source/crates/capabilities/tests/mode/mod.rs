@@ -282,12 +282,13 @@ fn grunt_data() -> UnitTypeCore {
     }
 }
 
-/// A unit type of the test mode, as its books give it: 10 health, combat that keeps it when it
+/// A unit type of the test mode, as its books give it: 10 health, what becomes of it when it
 /// dies, its step, its body, its tracks, its slots, of its actions and its inventory, and its
 /// passive.
 #[derive(Debug, Clone)]
 struct TestType {
     unit_type: UnitType,
+    on_death: OnDeath,
     step: Option<MoveStep>,
     body: Option<BodyForm>,
     tracks: TrackSet,
@@ -297,10 +298,11 @@ struct TestType {
 }
 
 impl TestType {
-    /// A grunt of `unit_type`: a step of 1 m, no body, track, slot or passive.
+    /// A grunt of `unit_type`: kept when it dies, a step of 1 m, no body, track, slot or passive.
     fn grunt(unit_type: UnitType) -> Self {
         Self {
             unit_type,
+            on_death: OnDeath::Stay,
             step: Some(MoveStep::new(Num::ONE).unwrap()),
             body: None,
             tracks: TrackSet::default(),
@@ -334,7 +336,7 @@ impl TestType {
         for unit in types {
             let unit_type = unit.unit_type;
             lives.set(unit_type, Life::full(Num::int(10)));
-            deaths.set(unit_type, OnDeath::Stay);
+            deaths.set(unit_type, unit.on_death);
             steps.set_some(unit_type, unit.step);
             bodies.set_some(unit_type, unit.body);
             tracks.set_some(unit_type, (!unit.tracks.is_empty()).then_some(unit.tracks));
@@ -644,7 +646,8 @@ fn mode_files() -> ModeFiles {
 
 /// The test mode's unit types: its grunt, tower, two heroes' and crate's, the heroes on both
 /// tracks, hero X with one ability, `strike`, and hero Y with the passive `blessing`, the tower a
-/// circle of 1 m on the second layer and the crate a box of 2 by 2 m, neither of which walks.
+/// circle of 1 m on the second layer that despawns when it dies and the crate a box of 2 by 2 m,
+/// neither of which walks.
 fn test_types(types: [UnitType; 5], strike: ActionId, blessing: ModifierId) -> Vec<TestType> {
     let [grunt, tower, x, y, crate_type] = types.map(TestType::grunt);
     let hero = |grunt: TestType| TestType {
@@ -662,6 +665,7 @@ fn test_types(types: [UnitType; 5], strike: ActionId, blessing: ModifierId) -> V
             ..hero(y)
         },
         TestType {
+            on_death: OnDeath::Despawn,
             step: None,
             body: BodyForm::circle(Num::int(1)).map(|form| form.on(Layer::new(1))),
             ..tower

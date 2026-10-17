@@ -103,7 +103,7 @@ fn on_mode_input(ctx, player, name, value) {
         [FailureKind::Api(ModeRefusal::RespawnAlive.refused())]
     );
     let tower = Mode::entity_by_id(&game, 0);
-    game.entity_mut(tower).insert((Dead, OnDeath::Despawn));
+    game.entity_mut(tower).insert(Dead);
     Mode::tick_inputs(&mut game, &[(0, input("probe", "tower"))]);
     assert_eq!(
         Mode::failures(&game),

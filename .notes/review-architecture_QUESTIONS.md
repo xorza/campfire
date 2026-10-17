@@ -41,3 +41,14 @@ Decisions that the plan in `review-architecture.md` cannot take alone. Each name
   2. **Rows with hand numbers.** Each module declares its kinds as constants, `DataKind::new(3, "inventory")`, and the release asserts that each number is its place in the declaration order, as `Release::engine_tags` does for the tags. Cost: the 74 state types and the visibility tables change, and the visibility format reads a kind by its name only.
   3. **Rows numbered at run time.** The declarations walk numbers each kind, and each state type reads its kind's number through a resource. Cost: a read through a resource where a constant is now, in the filter of each sent component.
 - **Blocked:** the third bullet of 4.5 alone. Its first two bullets and the removal of the unbuilt capabilities do not wait for it.
+
+## Q5. Batch 4.5, the parts by type: `ClipShots`, `RecentAttackers` and `SpawnPoint`
+
+- **Item:** 4.5, K-11 and C-7, "per-type predicates give `ClipShots`, `RecentAttackers` (with its entries bounded by the window), `StatusTags` and `SpawnPoint`". `StatusTags` is done: production gives it to its gatherers, and a site gets its own at its spawn. The other three each meet a fact the plan does not name.
+  - **`ClipShots`** is required by `ActionSlots`, so a grant of slots during play brings it. A mode effect's grant (`mode/src/mode_effect.rs`, `ModeEffect::Grant`) can add a weapon with a clip to a unit of any type, and the attacks query takes `&mut ClipShots`, so a unit of a type with no clip weapon would lose its attacks after such a grant.
+  - **`RecentAttackers`** is read by scripts with a window of their own, from a type's params, as `ally.recent_attackers(unit.params.help_window_ms)` in every test mode's AI. No static window bounds its entries, and the assist window alone would cut what such a read sees.
+  - **`SpawnPoint`** has three readers, not one: combat's respawn, the orders' reset, which expects one on every unit the mode spawned (`orders/src/unit_order.rs:158`), and the script field `spawn_pos`. In the test modes, nearly every unit respawns or thinks, so it would keep the part.
+- **Options:**
+  1. **Keep the three as they are (recommended).** `ClipShots` stays with `ActionSlots`, `RecentAttackers` with a type that can die, and `SpawnPoint` on every unit placed at a spawn, and the bullet goes. Cost: an empty `ClipShots` and a `SpawnPoint` on units that never read them.
+  2. **Predicates with their paths.** A grant of slots that adds a clip weapon inserts `ClipShots`; the script API caps a `recent_attackers` window, and the entries are bounded by the cap and the assist window; a book of the types that keep their spawn, which combat's respawn and the orders' AI extend, gives `SpawnPoint`. Cost: a change of the script API's `recent_attackers`, a structural change at such a grant, and a book that two capabilities extend for one part.
+- **Blocked:** the first bullet of 4.5 alone.

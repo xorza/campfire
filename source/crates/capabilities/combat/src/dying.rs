@@ -2,10 +2,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::ActionProgress;
+use campfire_declare::ByType;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, UnitPools};
 use campfire_units::{Avatar, Dead, Owner, SpawnPoint};
-use campfire_values::Team;
+use campfire_values::{Team, UnitType};
 
 use crate::deaths::{Deaths, Fallen};
 use crate::kept::Kept;
@@ -37,7 +38,7 @@ impl Dying {
                 Option<&Owner>,
                 Has<Avatar>,
             ),
-            (With<OnDeath>, Without<Dead>, Changed<Life>),
+            (Without<Dead>, Changed<Life>),
         >,
         mut order: Local<'_, Ordered>,
     ) {
@@ -70,10 +71,11 @@ impl Dying {
     /// tick a later stage stopped keeping them.
     pub(super) fn despawn_dead(
         mut commands: Commands<'_, '_>,
-        dead: Query<'_, '_, (Entity, &OnDeath), (With<Dead>, Without<Kept>)>,
+        deaths: Res<'_, ByType<OnDeath>>,
+        dead: Query<'_, '_, (Entity, &UnitType), (With<Dead>, Without<Kept>)>,
     ) {
-        for (entity, &on_death) in &dead {
-            if on_death == OnDeath::Despawn {
+        for (entity, &unit_type) in &dead {
+            if deaths.get(unit_type) == Some(&OnDeath::Despawn) {
                 commands.entity(entity).despawn();
             }
         }

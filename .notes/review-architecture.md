@@ -644,10 +644,8 @@ Each change folds into its document when its batch lands. Each line names the de
 - `declare` assigns engine tag numbers in declaration order (RW 20). Waits for Q3 in `review-architecture_QUESTIONS.md`.
 
 **4.5 Parts from data.** Touches `combat`, `stats`, `units`, `production`, `sim`, `state-types`.
-- Per-type predicates give `ClipShots`, `RecentAttackers` (with its entries bounded by the window), `StatusTags` and `SpawnPoint` (K-11, C-7).
-- `OnDeath` is read through the type's book, and a `Mortal` marker is required by `Life` (K-15).
+- Per-type predicates give `ClipShots`, `RecentAttackers` (with its entries bounded by the window) and `SpawnPoint` (K-11, C-7). Waits for Q5 in `review-architecture_QUESTIONS.md`.
 - Each module declares its `DataKind` rows (E-6). Waits for Q4 in `review-architecture_QUESTIONS.md`.
-- **Format:** the snapshot's version rises, because parts leave units that do not use them.
 
 ### Phase 5: core pipelines and contracts
 
@@ -1057,7 +1055,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | K-10 | One rule each: first weapon by slot, one attack at a time, one turret for each type, attack projectiles at a unit | `attacks.rs:215-218`, `turret/mod.rs:19-25`, `load_check.rs:2162-2164` | Confirmed | Backlog |
 | K-11 | Units carry `ClipShots`, `RecentAttackers`, `Level`, `Modifiers` and `ModifierClocks` that their mode never reads. `RecentAttackers` keeps every attacker that still exists. | `combat/src/lib.rs:167, 189-191`, `recent_attackers.rs:135-144`, `stats/src/lib.rs:245-248` | Confirmed | 4.5 |
 | K-13 | About twenty passes scan every unit in each tick to find timers that are due | `volley.rs:27-49`, `attacks.rs:145-253`, `modifier_ends.rs:16-24`, `casts.rs:55-228`, `area_life.rs:329-334` | Confirmed scans. The cost is plausible. | 7.1 |
-| K-15 | `OnDeath` is a per-type fact copied onto every unit as state, and "can die" is stated three ways | `on_death.rs:68-96`, `combat/src/lib.rs:184-191` | Confirmed | 4.5 |
 | K-16 | An area's `inside` and an aura do one job in two shapes, and disagree on neutrals and lifeless units | `area_spec.rs:94-101`, `area_holds.rs:47-58`, `held_pass.rs:131-139` | Confirmed | Backlog |
 | K-17 | The one action pipeline is four hand-built loops | `attacks.rs:145-414`, `casts.rs:55-503` | Confirmed | 5.3 |
 | K-18 | A projectile reports through two channels, by its payload, and only one of them splashes | `flights.rs:406-434` | Confirmed | 5.4 |

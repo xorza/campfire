@@ -127,14 +127,15 @@ fn on_level_up(ctx, unit, track, level) {
         mode: 500,
         ..ScriptLimits::ROOMY
     };
-    let mut game = mode_match(script, limits);
+    // The grunts despawn when they die.
+    let despawn = |types: &mut [TestType]| types[0].on_death = OnDeath::Despawn;
+    let mut game = start_match_setup(script, limits, &mode_files(), despawn).unwrap();
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     // Units: the tower 0 of a, b's grunts 1 to 3, which despawn when they die, and the hero 4.
     // The tower's damage kills the three grunts in tick 1, as the hero reaches level 2.
     let grunts = [1, 2, 3].map(|at| Mode::entity_by_id(&game, at));
     let tower = game.get::<StableId>(Mode::entity_by_id(&game, 0)).copied();
     for grunt in grunts {
-        game.entity_mut(grunt).insert(OnDeath::Despawn);
         let target = *game.get::<StableId>(grunt).unwrap();
         DamagePass::queue(
             &mut game,

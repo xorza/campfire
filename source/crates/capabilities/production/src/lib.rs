@@ -19,7 +19,7 @@ use campfire_declare::{
 };
 use campfire_sim::{Capability, SimSet};
 use campfire_stats::StatsSet;
-use campfire_units::{BodyUnit, Dead, Owner, Player, UnitTypes, UnitsSet};
+use campfire_units::{BodyUnit, Dead, Owner, Player, StatusTags, UnitTypes, UnitsSet};
 use campfire_values::{Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
@@ -187,6 +187,10 @@ impl Module for Production {
         d.part::<BodyUnit, Builder>(|at| at.of_type::<Builder>().copied());
         d.part::<BodyUnit, Node>(|at| at.of_type::<Node>().copied());
         d.part::<BodyUnit, Gatherer>(|at| at.of_type::<Gatherer>().copied());
+        // A gatherer shows its loop in its status tags; a site gets its own at its spawn.
+        d.part::<BodyUnit, StatusTags>(|at| {
+            at.of_type::<Gatherer>().map(|_| StatusTags::default())
+        });
     }
 
     /// Adds production to a match: in Inputs, the tick's orders cancel trains and builds, and, on

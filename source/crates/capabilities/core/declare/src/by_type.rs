@@ -29,6 +29,12 @@ impl<T: Send + Sync + 'static> ByType<T> {
         self.entries.iter().flatten()
     }
 
+    /// Each type that has a value, with it, by type.
+    pub fn iter(&self) -> impl Iterator<Item = (UnitType, &T)> {
+        let entries = self.entries.iter().enumerate();
+        entries.filter_map(|(at, value)| Some((UnitType::at(at), value.as_ref()?)))
+    }
+
     /// Whether no type has a value.
     pub fn is_empty(&self) -> bool {
         self.values().next().is_none()
