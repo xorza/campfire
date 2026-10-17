@@ -349,7 +349,7 @@ Each section gives the target shape of one system, the findings it removes, and 
   - The journal and its durable heads are a `JournaledLog` wrapper that only the server owns (N-17).
   - The live log keeps its state, the entries since the last checkpoint, and the counts. Publication streams the journal's frames through a bounded reader, as 10-sessions.md says (N-14, decision D34).
   - A record is encoded once, into the journal's frame buffer, and signed over the bytes already written. The journal worker wakes once for each frame (N-13).
-- **Controllers and seats.** On the server, a Bevy relationship links a slot's entity and its link (N-18).
+- **Controllers and seats.** `Seats` stays the one record of each slot's link (N-18).
 - **Journal integrity.**
   - A read stops at the first bad frame, cuts the file there and logs a `JournalCut { bytes }` event with what it dropped, as RocksDB's default `kPointInTimeRecovery` does. The session continues from the last whole frame. A receipt promises that its inputs survive a crash, not a corruption of the medium, and 05 and 10 say so (N-15, decision D33).
   - The private record holds only the seed chain, and the terms come from the journal's header alone (N-8).
@@ -634,9 +634,6 @@ Each change folds into its document when its batch lands. Each line names the de
 ### Phase 5: core pipelines and contracts
 
 ### Phase 6: `Send` data and the server frame
-
-**6.4 The session log.** Touches `net` (seats).
-- `Seats` stays the one record of each slot's link, as decided on 2026-10-17, and a test pins that a second login of one main key in one frame dismisses the first (N-18).
 
 **6.5 Allocations on the network paths.** Touches `net` and `protocol`.
 - The ack has a bounded array (N-25), whose bound comes with the input message's largest encoding of 1.1 (N-1); it waits for 1.1.
@@ -1014,7 +1011,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-2 | A link that did not join uses every channel with no budget | `net_protocol/mod.rs:96-117`, `offering.rs:40, 176-193` | Confirmed | 1.1 |
 | N-9 | Replicated entities get `Replicate`, `Rooms` and `PredictionTarget` after their spawn | `kind_shows.rs:86-112`, `viewer.rs:136-190` | Confirmed | 7.5 |
 | N-10 | Lightyear's default features add interpolation, and the server binary links the client stack | `Cargo.toml:186`, `net/src/lib.rs:108-122` | Confirmed | 12.2 |
-| N-18 | A slot's controller has four types, and the link-to-slot fact three maps kept equal by hand | `slot_control.rs:30-40`, `controller.rs:184-193`, `log_carry.rs:227-273`, `door.rs:242-293` | Confirmed | 6.4 |
 | N-21 | A data directory holds one unpublished session | `session_dir/mod.rs:111-145` | Confirmed | 11.2 |
 | N-22 | All apps in a process share the global compute pool, whose scope runs other apps' tasks | `sim_server_plugins.rs:27`, `bevy_tasks task_pool.rs:310-330` | Plausible | 11.2 |
 | N-24 | A 2 ms frame loop runs every Lightyear system 500 times a second for each match | `net_protocol/mod.rs:73-76`, `apps/server/src/main.rs:193` | Plausible | 11.2 |

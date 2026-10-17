@@ -25,6 +25,7 @@ How a session outlives its server process, its players' links and its players.
 - **A journal that fails ends the server.** A failed write or sync is never retried: Linux may drop the pages a failed fsync held, so a retry can succeed over lost data, as PostgreSQL's fsyncgate showed. The host's supervisor starts the server again, and the start restores the session; the server never restarts itself.
 - **A disk that stops is a journal that fails.** A write and its sync that run past two minutes, as long as Linux's hung task detector waits, or records that pile up past a bound while the disk falls behind, fail the journal as a failed sync does; a writer that waits on the disk forever, as PostgreSQL's does, keeps receipts back and memory growing with no report.
 - **The newest login wins.** A join of a main key whose slot has a live link ends the old link and seats the new one, as game servers do, so a player who comes back is never locked out by a link the server has not yet seen fail.
+- **A slot's link has one record.** The server's `Seats` holds each slot's link, so of two logins of one main key in one frame, the later in the door's order dismisses the earlier, and a link's `PlayerLink` keeps only the slot and team its inputs read. Refused: a Bevy relationship from the slot's entity to its link, as the door's commands apply after the frame's joins, and a second join would read the old link unless the door kept a third record or seated through the world at once (2026-10-17).
 
 ## Slots and controllers
 
