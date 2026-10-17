@@ -3,7 +3,7 @@ use std::net::{Ipv4Addr, SocketAddr, UdpSocket};
 use std::time::Duration;
 
 use campfire_log::ErrorReport;
-use polling::{Event, Events, Poller};
+use polling::{Event, Events, PollMode, Poller};
 use quinn_udp::{RecvMeta, Transmit, UdpSocketState};
 use tracing::warn;
 
@@ -49,9 +49,12 @@ impl UdpPort {
         })
     }
 
+    /// Watches `socket` for reads, level-triggered, as epoll, kqueue and IOCP each support, so no
+    /// wait arms it again: a `modify` allocates on kqueue, as on macOS, and the thread waits each
+    /// frame.
     fn watch(poller: &Poller, socket: &UdpSocket, key: usize) -> io::Result<()> {
         // SAFETY: `UdpPort::drop` deletes each socket from this poller before the socket drops.
-        unsafe { poller.add(socket, Event::readable(key)) }
+        unsafe { poller.add_with_mode(socket, Event::readable(key), PollMode::Level) }
     }
 
     pub(crate) fn local_address(&self) -> io::Result<SocketAddr> {
@@ -76,9 +79,6 @@ impl UdpPort {
     /// Waits until the socket is readable, `timeout` passes, or `wake` is called; a wake that came
     /// since the last wait returns at once.
     pub(crate) fn wait(&self, events: &mut Events, timeout: Option<Duration>) -> io::Result<()> {
-        self.poller.modify(&self.socket, Event::readable(SOCKET))?;
-        self.poller
-            .modify(&self.wake.receiver, Event::readable(WAKE))?;
         events.clear();
         self.poller.wait(events, timeout)?;
         self.wake.drain();
