@@ -286,6 +286,7 @@ impl Module for Stats {
         d.book::<StatBook>(StatBook::build);
         d.fact::<UnitSteps>(StatBook::unit_steps);
         d.fact::<PoolNames>(PoolNames::build);
+        d.rule(PoolNames::rule);
         d.book::<PoolBook>(PoolBook::build);
         d.fact::<TypePools>(TypePools::build);
         d.rule(TypePools::rule);

@@ -2397,6 +2397,7 @@ dependencies = [
  "campfire-units",
  "campfire-values",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

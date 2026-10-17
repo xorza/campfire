@@ -12,12 +12,29 @@ use crate::Combat;
 use crate::armor::Armor;
 use crate::combat_book::CombatBook;
 use crate::combat_data::CombatData;
+use crate::error::CombatDataError;
 use crate::mode_combat_data::ModeCombatData;
 use crate::on_death::OnDeath;
 use crate::turret::Turret;
 use crate::turret::turret_data::TurretData;
 
 impl Combat {
+    /// The rule of the mode's `[combat]`: it names damage kinds and a life pool.
+    pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        let data = cx.mode_section::<ModeCombatData>();
+        let problem = if data.is_none_or(|data| data.damage_kinds.is_empty()) {
+            Some(CombatDataError::NoDamageKinds)
+        } else if data.is_none_or(|data| data.life.is_none()) {
+            Some(CombatDataError::NoLifePool)
+        } else {
+            None
+        };
+        problem.map_or(Ok(()), |problem| {
+            let at = BookPlace::Section(ModeCombatData::KEY);
+            Err(BookError::rule(PackageIndex::MODE, at, problem))
+        })
+    }
+
     /// The names of the mode's damage kinds; an error for a name twice, or past the most kinds a
     /// match holds.
     pub(crate) fn damage_kinds(cx: &BookCx<'_>) -> Result<DamageKindBook, BookError> {

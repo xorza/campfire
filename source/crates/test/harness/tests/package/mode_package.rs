@@ -10,6 +10,7 @@ use campfire_actions::{
 use campfire_capabilities::{CapabilityError, Release};
 use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
+use campfire_combat::CombatDataError;
 use campfire_common::{DeclaredName, MapName};
 use campfire_declare::NamesListError;
 use campfire_geometry::Metric;
@@ -1023,7 +1024,13 @@ static DATA_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Set("units.snow_owl.projectile.homing", "true"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Homing(action)) if action == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("snow_owl"),
+                &ProjectileError::HitsNothing,
+            )
+        },
     ),
     flaw(
         RIME,
@@ -1681,7 +1688,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "damage_kinds = []",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::NoDamageKinds),
+        |problem| rule(problem, &CombatDataError::NoDamageKinds),
     ),
     flaw(
         MODE_DATA,
@@ -2622,7 +2629,7 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("life = \"health\"\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::NoLifePool),
+        |problem| rule(problem, &CombatDataError::NoLifePool),
     ),
     flaw(
         MODE_DATA,
@@ -2658,7 +2665,10 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "mana"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Section("resources"), name } if name == "mana"),
+        |problem| {
+            let mana = NamesListError::Repeated(DeclaredName::new("mana").unwrap());
+            rule_at(problem, &Place::Section("resources"), &mana)
+        },
     ),
     // An engine stat is declared like any other: one the units carry and the mode does not
     // declare fails.

@@ -75,7 +75,7 @@ pub use crate::damage_handle::DamageHandle;
 pub use crate::damage_pass::DamagePass;
 pub use crate::deaths::{DeathView, Deaths, Fallen};
 pub use crate::dying::Dying;
-pub use crate::error::CombatRefusal;
+pub use crate::error::{CombatDataError, CombatRefusal};
 pub use crate::heal::{Heal, HealCause};
 pub use crate::heal_handle::HealHandle;
 pub use crate::kept::Kept;
@@ -174,6 +174,7 @@ impl Module for Combat {
         d.book::<DamageKindBook>(Self::damage_kinds);
         d.fact::<LifePool>(Self::life_pool);
         d.book::<CombatBook>(CombatBook::build);
+        d.rule(Self::rule);
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();

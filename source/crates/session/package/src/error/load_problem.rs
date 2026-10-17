@@ -62,9 +62,6 @@ pub enum LoadProblem {
     /// Data or a script at `at` uses a capability the mode does not declare.
     #[error("{at} uses {capability:?}, which the mode does not declare")]
     Undeclared { capability: Capability, at: Place },
-    /// The mode declares `combat`, and no damage kinds for its damage.
-    #[error("the mode declares combat, and no damage kinds")]
-    NoDamageKinds,
     /// A unit type's slot names an action its package does not have.
     #[error("a slot names no action \"{0}\"")]
     UnknownSlot(DeclaredName),
@@ -158,9 +155,6 @@ pub enum LoadProblem {
         name: String,
         of: NameKind,
     },
-    /// The mode declares `combat` but no `[combat] life`.
-    #[error("combat with no [combat] life")]
-    NoLifePool,
     /// A projectile or an area type, or what delivers or makes one.
     #[error(transparent)]
     Delivery(DeliveryProblem),

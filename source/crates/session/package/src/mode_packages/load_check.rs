@@ -20,7 +20,6 @@ use campfire_math::Num;
 use campfire_mode::ModeData;
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
-use campfire_players::ResourcesData;
 use campfire_projectiles::{ProjectileData, ProjectileHits};
 use campfire_script::{
     ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
@@ -28,9 +27,7 @@ use campfire_script::{
     UnknownName,
 };
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::{
-    ModePoolsData, ModeStatsData, ModifierData, ModifiersData, PassiveData, StatId, StatsData,
-};
+use campfire_stats::{ModeStatsData, ModifierData, ModifiersData, PassiveData, StatId, StatsData};
 use campfire_units::{CollisionData, TypeStateData};
 use campfire_values::{EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat};
 
@@ -85,8 +82,6 @@ struct ModeSections<'a> {
     navigation: Cow<'a, ModeNavigationData>,
     slots: Cow<'a, SlotKinds>,
     stats: Cow<'a, ModeStatsData>,
-    pools: Cow<'a, ModePoolsData>,
-    resources: Cow<'a, ResourcesData>,
 }
 
 impl<'a> ModeSections<'a> {
@@ -96,8 +91,6 @@ impl<'a> ModeSections<'a> {
             navigation: data.section_or_default(),
             slots: data.section_or_default(),
             stats: data.section_or_default(),
-            pools: data.section_or_default(),
-            resources: data.section_or_default(),
         }
     }
 }
@@ -163,6 +156,15 @@ impl<'a> LoadCheck<'a> {
             readers: Release::sections(),
         };
         check.sections_owned()?;
+        let stat_order = packages
+            .stat_graph()?
+            .order()
+            .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
+        let engine_tags = Release::engine_tags();
+        let input = packages.book_input(check.rate, &stat_order, &engine_tags);
+        // The modules' rules of their data come first, so a script that names what a broken rule
+        // leaves out shows the rule.
+        Release::check_rules(&input).map_err(|error| book_error(packages, error))?;
         check.mode().map_err(fail)?;
         check.planned_data().map_err(fail)?;
         check.loadout()?;
@@ -171,13 +173,7 @@ impl<'a> LoadCheck<'a> {
                 .dependent(view, dependent)
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
-        let stat_order = packages
-            .stat_graph()?
-            .order()
-            .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
-        let engine_tags = Release::engine_tags();
-        let input = packages.book_input(check.rate, &stat_order, &engine_tags);
-        Release::check_books(&input).map_err(|error| book_error(packages, error))?;
+        Release::books(&input).map_err(|error| book_error(packages, error))?;
         // A name is the client's alone, so it is checked last: a train or a build whose other
         // problems the checks above find shows those.
         shown_named(packages.content.actions()).map_err(fail)?;
@@ -195,8 +191,6 @@ impl<'a> LoadCheck<'a> {
         let content = &packages.content;
         let units = &content.units;
         self.names()?;
-        self.damage_kinds()?;
-        self.pools_and_resources()?;
         for (name, unit_type) in units {
             let at = Place::UnitType(name.clone());
             self.unit_type(unit_type, &at, content.actions(), content.modifiers())?;
@@ -855,23 +849,6 @@ impl<'a> LoadCheck<'a> {
         if known { Ok(()) } else { Err(unknown()) }
     }
 
-    /// The mode's damage kinds: with `combat`, at least one.
-    fn damage_kinds(&self) -> Result<(), LoadProblem> {
-        let kinds = &self.sections.combat.damage_kinds;
-        if !self
-            .packages
-            .manifest
-            .capabilities
-            .contains(Capability::Combat)
-        {
-            return Ok(());
-        }
-        if kinds.is_empty() {
-            return Err(LoadProblem::NoDamageKinds);
-        }
-        Ok(())
-    }
-
     /// A `gather` of `production` and `navigation`, whose worker walks, `id`: aimed at a unit.
     fn gather(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         let at = Place::Entry {
@@ -1175,28 +1152,6 @@ impl<'a> LoadCheck<'a> {
             let capability = owner.filter(|&capability| !declared.contains(capability))?;
             Some((key, capability))
         })
-    }
-
-    /// The mode's pools and player resources: no pool named as a resource, a pool only with
-    /// `stats`; and with `combat`, a life pool.
-    fn pools_and_resources(&self) -> Result<(), LoadProblem> {
-        let data = &self.sections;
-        if let Some(name) = (data.resources.0.iter()).find(|name| data.pools.0.contains_key(*name))
-        {
-            return Err(LoadProblem::Repeated {
-                at: Place::Section(ResourcesData::KEY),
-                name: name.to_string(),
-            });
-        }
-        let combat = self
-            .packages
-            .manifest
-            .capabilities
-            .contains(Capability::Combat);
-        if combat && data.combat.life.is_none() {
-            return Err(LoadProblem::NoLifePool);
-        }
-        Ok(())
     }
 
     /// A unit type at `at`, of a package of `actions` and `modifiers`: each capability its
