@@ -1,10 +1,10 @@
 use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, Checked, DataTable, MemberSpec, ScriptValue, Unit,
+    ApiBuilder, ApiError, ApiOwner, ApiVersion, Checked, DataTable, MemberSpec, ScriptValue, Unit,
 };
 use campfire_sim::Capability;
 
-use crate::action_data_field::ActionDataField;
+use crate::action_data::ActionData;
 use crate::actions_column::ActionsColumn;
 use crate::listed_effect::effect_data::EffectData;
 use crate::planned_effect::PlannedEffect;
@@ -33,7 +33,7 @@ impl ActionsApi {
                     .ok_or_else(|| ApiError::NoAttack.fail().into())
             },
         )
-        .action_fields(ActionDataField::of(None))
+        .action_fields(ApiVersion::FIRST, ActionData::pipeline_keys())
         .shared_data(
             DataTable::Effect,
             &[EffectData::TO],

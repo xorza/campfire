@@ -10,6 +10,7 @@ use campfire_sim::Capability;
 use campfire_values::{Number, PackageIndex};
 
 use crate::amount::Amount;
+use crate::dyn_eq::DynEq;
 use crate::effect_names::EffectNames;
 use crate::launch_id::LaunchId;
 use crate::list_hook::ListHook;
@@ -24,7 +25,7 @@ pub(crate) mod listed_spec;
 /// An effect of an action's list, as its data gives it, the type of the module that registers its
 /// key: what the core reads of it to check its action, and its resolve. No type of the core lists
 /// the effects (04-capabilities/actions.md, Each capability registers its effects).
-pub trait ListedEffect: EffectEq + Any + Debug + Send + Sync {
+pub trait ListedEffect: DynEq + Any + Debug + Send + Sync {
     /// The capability the mode declares for the effect to run; none for an effect of the core.
     fn needs(&self) -> Option<Capability>;
 
@@ -50,20 +51,9 @@ pub trait ListedEffect: EffectEq + Any + Debug + Send + Sync {
     fn resolve(&self, cx: &mut dyn EffectResolveCx) -> Result<Arc<dyn ListedSpec>, EffectError>;
 }
 
-/// Equality of two effects of the set, whatever their types: the same type, and equal.
-pub trait EffectEq {
-    fn eq_effect(&self, other: &dyn Any) -> bool;
-}
-
-impl<T: Eq + 'static> EffectEq for T {
-    fn eq_effect(&self, other: &dyn Any) -> bool {
-        other.downcast_ref::<T>() == Some(self)
-    }
-}
-
 impl PartialEq for dyn ListedEffect {
     fn eq(&self, other: &Self) -> bool {
-        self.eq_effect(other)
+        self.eq_dyn(other)
     }
 }
 

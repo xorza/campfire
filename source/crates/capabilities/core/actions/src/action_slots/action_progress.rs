@@ -49,7 +49,7 @@ impl ActionProgress {
             return None;
         };
         let slot = slots.slot(aim.slot)?;
-        let of_kind = book.get(slot.action?)?.kind.kind() == kind;
+        let of_kind = book.get(slot.action?)?.kind == kind;
         of_kind.then_some(aim)
     }
 
@@ -405,7 +405,7 @@ impl ActionProgress {
                         .is_some_and(|at| at.get() >= windup.get())
                 };
                 let attack = !attacks || (action.has_rank(rank) && started());
-                (action.kind.kind() == ActionKind::Attack) == attacks && attack
+                (action.kind == ActionKind::Attack) == attacks && attack
             })
         });
         // A cut channel of an action with one, at a rank it has, of a slot it has.

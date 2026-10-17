@@ -1,41 +1,36 @@
-use campfire_actions::{
-    ActionBook, ActionData, ActionKind, ActionProblem, ActionsData, ConstructData, PlacementData,
-    PlacementRule, Targeting, TypeSlotsData,
-};
+use campfire_actions::{ActionKind, ActionsData, ByAction, LoadedAction, Targeting, TypeSlotsData};
 use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, SourceType, UnitTypeData};
+use campfire_math::Num;
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::{LifePool, ModifierBook, StatsData, TypePoolsData};
 use campfire_units::{BodyForm, PoolNames, UnitTypes};
-use campfire_values::{ActionId, ModifierId, PackageIndex, ResourceId, Share, TypeScope, UnitType};
+use campfire_values::{Distance, ModifierId, ResourceId, Share, TypeScope, UnitType};
 
 use crate::Production;
 use crate::build_book::{BuildBook, NewBuild, PlacementCheck, Style};
+use crate::build_data::BuildData;
 use crate::builder::Builder;
+use crate::construct_data::ConstructData;
 use crate::drop_off_data::DropOffData;
 use crate::error::ProductionDataError;
+use crate::gather_data::GatherData;
+use crate::gather_spec::GatherSpec;
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
 use crate::node::Node;
 use crate::node_book::NodeBook;
 use crate::node_data::NodeData;
+use crate::placement_data::{PlacementData, PlacementRule};
 use crate::production_data::ProductionData;
 use crate::requirement_book::RequirementBook;
 use crate::resource_set::ResourceSet;
 use crate::supply_book::SupplyBook;
 use crate::supply_cost_book::SupplyCostBook;
 use crate::supply_data::SupplyData;
-
-/// An action of a package as production reads it: its package's place, its id there, its id in
-/// the match, and its data.
-#[derive(Debug, Clone, Copy)]
-struct PackageAction<'d> {
-    package: PackageIndex,
-    name: &'d DeclaredName,
-    action: ActionId,
-    data: &'d ActionData,
-}
+use crate::train_data::TrainData;
+use crate::train_spec::TrainSpec;
 
 impl Production {
     /// The rule of every unit type: a supply only in a mode that counts supply, and a train in its
@@ -58,7 +53,7 @@ impl Production {
             let mut slotted = slots.flat_map(|slots| slots.0.values()).flatten();
             let trains = slotted.find(|id| {
                 let action = actions.and_then(|actions| actions.0.get(*id));
-                action.is_some_and(|action| action.kind == ActionKind::Train)
+                action.is_some_and(|action| action.kind() == ActionKind::Train)
             });
             if let Some(id) = trains {
                 return fail(ProductionDataError::NoQueue(id.clone()));
@@ -82,32 +77,33 @@ impl Production {
                     name: id.clone(),
                 };
                 let fail = |problem| Err(BookError::rule(package, at(), problem));
-                match action.kind {
-                    ActionKind::Train => {
-                        if action.targeting != Targeting::None {
-                            return fail(ProductionDataError::TrainAims);
-                        }
-                        let trained = action.unit_type.as_ref();
-                        let trained = trained.and_then(|name| source.units.get(name));
-                        if trained.is_some_and(UnitTypeData::delivers) {
-                            return fail(ProductionDataError::Trained);
-                        }
-                        let walks = |unit: &&UnitTypeData| {
-                            unit.section::<StatsData>().is_some_and(StatsData::walks)
-                        };
-                        if trained.is_some_and(|unit| !walks(&unit)) {
-                            return fail(ProductionDataError::TrainStands);
-                        }
+                let train = action.section::<TrainData>();
+                if let Some(train) = train {
+                    if action.targeting != Targeting::None {
+                        return fail(ProductionDataError::TrainAims);
                     }
-                    ActionKind::Build if action.targeting != Targeting::Point => {
-                        return fail(ProductionDataError::BuildAims);
+                    let trained = source.units.get(&train.unit_type);
+                    if trained.is_some_and(UnitTypeData::delivers) {
+                        return fail(ProductionDataError::Trained);
                     }
-                    ActionKind::Gather if !matches!(action.targeting, Targeting::Unit(_)) => {
-                        return fail(ProductionDataError::GatherAims);
+                    let walks = |unit: &&UnitTypeData| {
+                        unit.section::<StatsData>().is_some_and(StatsData::walks)
+                    };
+                    if trained.is_some_and(|unit| !walks(&unit)) {
+                        return fail(ProductionDataError::TrainStands);
                     }
-                    _ => {}
                 }
-                let required = action.requires.iter().flat_map(|requires| &requires.units);
+                let build = action.section::<BuildData>();
+                if build.is_some() && action.targeting != Targeting::Point {
+                    return fail(ProductionDataError::BuildAims);
+                }
+                let gathers = action.section::<GatherData>().is_some();
+                if gathers && !matches!(action.targeting, Targeting::Unit(_)) {
+                    return fail(ProductionDataError::GatherAims);
+                }
+                let requires = train.and_then(|train| train.requires.as_ref());
+                let requires = requires.or_else(|| build?.requires.as_ref());
+                let required = requires.iter().flat_map(|requires| &requires.units);
                 let mut delivered = required
                     .filter(|name| source.units.get(*name).is_some_and(UnitTypeData::delivers));
                 if let Some(name) = delivered.next() {
@@ -136,36 +132,6 @@ impl Production {
         Ok(())
     }
 
-    /// Every package's actions, in the order of their ids.
-    fn actions<'c>(cx: &'c BookCx<'_>) -> Result<Vec<PackageAction<'c>>, BookError> {
-        let book = cx.book::<ActionBook>()?;
-        let mut actions = Vec::new();
-        for (package, source) in cx.packages() {
-            let data = source.content.get::<ActionsData>().into_iter();
-            for (name, data) in data.flat_map(|data| &data.0) {
-                let Some(action) = book.names().named((package, name.as_str())) else {
-                    continue;
-                };
-                actions.push(PackageAction {
-                    package,
-                    name,
-                    action,
-                    data,
-                });
-            }
-        }
-        Ok(actions)
-    }
-
-    /// The error of `name`, which the action `action` names and its package does not have.
-    fn unknown(action: PackageAction<'_>, name: UnknownName) -> BookError {
-        let at = BookPlace::Entry {
-            table: ActionsData::KEY,
-            name: action.name.clone(),
-        };
-        BookError::unknown(action.package, at, name)
-    }
-
     /// The resource `name` of `names`, the players' resources when the match has them; an error
     /// for one the mode does not declare.
     fn resource(
@@ -185,7 +151,7 @@ impl Production {
         let mut slotted = slots.0.values().flatten();
         slotted.any(|id| {
             let action = actions.and_then(|actions| actions.0.get(id));
-            action.is_some_and(|action| action.kind == kind)
+            action.is_some_and(|action| action.kind() == kind)
         })
     }
 }
@@ -201,17 +167,10 @@ impl BuildBook {
         let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
         let pools = cx.fact_if::<PoolNames>()?;
         let mut book = Self::default();
-        for action in Production::actions(cx)? {
-            let PackageAction {
-                package,
-                name,
-                data,
-                ..
-            } = action;
-            let Some(construct) = &data.construct else {
+        for action in LoadedAction::all(cx)? {
+            let Some(data) = action.section::<BuildData>() else {
                 continue;
             };
-            let unknown = |unknown| Production::unknown(action, unknown);
             let check = |rule: &PlacementRule| {
                 Ok(PlacementCheck {
                     filter: Filter::resolve(&rule.filter, tags)?,
@@ -225,27 +184,19 @@ impl BuildBook {
                     |placement| of(placement).iter().map(check).collect(),
                 )
             };
-            let style = match construct {
+            let style = match &data.construct {
                 ConstructData::Alone => Style::Alone,
                 ConstructData::Builder => Style::Builder,
                 ConstructData::Builders(rates) => Style::Builders(rates),
             };
-            let building = data.unit_type.as_ref();
-            let building = building.expect("a build's kind fields hold, as its parts checked");
-            let scope = TypeScope::of_package(package);
+            let building = &data.unit_type;
+            let scope = TypeScope::of_package(action.package);
             let unit_type = cx.unit_type(scope, building.as_str());
             let unit_type = unit_type.filter(|&unit_type| cx.type_of(unit_type).stands());
-            let unit_type =
-                unit_type.ok_or_else(|| unknown(UnknownName::new(NameKind::UnitType, building)))?;
-            let problem = |problem| {
-                let at = BookPlace::Entry {
-                    table: ActionsData::KEY,
-                    name: name.clone(),
-                };
-                BookError::rule(package, at, problem)
-            };
+            let unit_type = unit_type
+                .ok_or_else(|| action.unknown(UnknownName::new(NameKind::UnitType, building)))?;
             let form = bodies.get(unit_type).copied().filter(|form| form.is_box());
-            let form = form.ok_or_else(|| problem(ActionProblem::NoBox))?;
+            let form = form.ok_or_else(|| action.broken(ProductionDataError::NoBox))?;
             let held = cx.type_of(unit_type).data.section::<TypePoolsData>();
             let alive = held.is_some_and(|held| {
                 held.0.iter().any(|name| {
@@ -256,15 +207,16 @@ impl BuildBook {
             let start_life = data.start_life;
             let starts = start_life.is_some_and(|share| !share.is_zero());
             if (alive && !starts) || start_life.is_some_and(Share::is_zero) {
-                return Err(problem(ActionProblem::StartLife));
+                return Err(action.broken(ProductionDataError::StartLife));
             }
-            let near = rules(|placement| &placement.near).map_err(unknown)?;
-            let away = rules(|placement| &placement.away).map_err(unknown)?;
+            let near = rules(|placement| &placement.near).map_err(|name| action.unknown(name))?;
+            let away = rules(|placement| &placement.away).map_err(|name| action.unknown(name))?;
             book.push(
                 action.action,
                 NewBuild {
+                    unit_type,
                     form,
-                    start: data.start.unwrap_or_default(),
+                    start: data.start,
                     style,
                     start_life,
                     refund: data.cancel_refund.unwrap_or(Share::ALL),
@@ -277,15 +229,64 @@ impl BuildBook {
     }
 }
 
+impl TrainSpec {
+    /// What each train makes: a unit type of its package; an error for one it does not have.
+    pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
+        let mut book = ByAction::default();
+        for action in LoadedAction::all(cx)? {
+            let Some(data) = action.section::<TrainData>() else {
+                continue;
+            };
+            let scope = TypeScope::of_package(action.package);
+            let unit_type = cx.unit_type(scope, data.unit_type.as_str());
+            let unit_type = unit_type.ok_or_else(|| {
+                action.unknown(UnknownName::new(NameKind::UnitType, &data.unit_type))
+            })?;
+            book.set(action.action, Self { unit_type });
+        }
+        Ok(book)
+    }
+}
+
+impl GatherSpec {
+    /// What each gather gathers, carries and looks for another node within; an error for a
+    /// resource the mode does not declare.
+    pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
+        let resources = cx.book_if::<ResourceBook>()?;
+        let mut book = ByAction::default();
+        for action in LoadedAction::all(cx)? {
+            let Some(data) = action.section::<GatherData>() else {
+                continue;
+            };
+            let resource = Production::resource(resources, &data.resource);
+            book.set(
+                action.action,
+                Self {
+                    resource: resource.map_err(|name| action.unknown(name))?,
+                    take: data.take,
+                    bounce: data.bounce.map_or(Num::ZERO, Distance::get),
+                },
+            );
+        }
+        Ok(book)
+    }
+}
+
 impl RequirementBook {
-    /// What each action that requires anything requires of its caster's player: unit types of
-    /// its package it owns and modifiers of its package it holds; an error for a name the package
-    /// does not have.
+    /// What each train and build that requires anything requires of its caster's player: unit
+    /// types of its package it owns and modifiers of its package it holds; an error for a name the
+    /// package does not have.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let modifiers = cx.book_if::<ModifierBook>()?;
         let mut book = Self::default();
-        for action in Production::actions(cx)? {
-            let Some(requires) = &action.data.requires else {
+        for action in LoadedAction::all(cx)? {
+            let trains = action
+                .section::<TrainData>()
+                .map(|train| train.requires.as_ref());
+            let builds = action
+                .section::<BuildData>()
+                .map(|build| build.requires.as_ref());
+            let Some(requires) = trains.or(builds).flatten() else {
                 continue;
             };
             let scope = TypeScope::of_package(action.package);
@@ -294,14 +295,14 @@ impl RequirementBook {
                 unit_type.ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
             });
             let units = units.collect::<Result<Vec<UnitType>, UnknownName>>();
-            let units = units.map_err(|name| Production::unknown(action, name))?;
+            let units = units.map_err(|name| action.unknown(name))?;
             let held = requires.modifiers.iter().map(|name| {
                 let modifier = modifiers
                     .and_then(|modifiers| modifiers.names().named((action.package, name.as_str())));
                 modifier.ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
             });
             let held = held.collect::<Result<Vec<ModifierId>, UnknownName>>();
-            let held = held.map_err(|name| Production::unknown(action, name))?;
+            let held = held.map_err(|name| action.unknown(name))?;
             book.push(action.action, units, held);
         }
         Ok(book)
@@ -343,7 +344,7 @@ impl SupplyCostBook {
                 supplies.set(unit.unit_type, supply);
             }
         }
-        Ok(Self::new(supplies, cx.book::<ActionBook>()?))
+        Ok(Self::new(supplies, cx.book::<ByAction<TrainSpec>>()?))
     }
 }
 

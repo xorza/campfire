@@ -108,7 +108,7 @@ impl SimComponent for TrainQueue {
         let book = world.resource::<ActionBook>();
         let trains = self.entries.iter().all(|queued| {
             book.get(queued.action).is_some_and(|action| {
-                action.kind.kind() == ActionKind::Train && action.has_rank(queued.rank)
+                action.kind == ActionKind::Train && action.has_rank(queued.rank)
             })
         });
         let producers = world.resource::<ByType<ProductionData>>();

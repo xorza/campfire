@@ -1,6 +1,7 @@
-use campfire_actions::{ActionProgress, TimedSlots};
+use campfire_actions::{ActionProgress, ByAction, TimedSlots};
 use campfire_production::{
     Gatherer, Load, ModeSupplyData, ProductionRefusal, SupplyBook, SupplyCostBook, SupplyData,
+    TrainData, TrainSpec,
 };
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
@@ -21,10 +22,12 @@ fn on_mode_input(ctx, player, name, value) {
     let int = |value| Ranked::One(Number::Value(Scalar::Int(value)));
     let cost = ["mana", "gold"].map(|name| DeclaredName::new(name).unwrap());
     let train = ActionData {
-        kind: ActionKind::Train,
         cost: [(cost[0].clone(), int(30)), (cost[1].clone(), int(5))].into(),
         windup_ms: Some(int(300)),
-        unit_type: Some(DeclaredName::new("grunt").unwrap()),
+        section: Arc::new(TrainData {
+            unit_type: DeclaredName::new("grunt").unwrap(),
+            requires: None,
+        }),
         ..blink_data()
     };
     let train = Actions::load(
@@ -154,7 +157,7 @@ fn on_mode_input(ctx, player, name, value) {
             provides: 0,
         },
     );
-    let costs = SupplyCostBook::new(types, game.resource::<ActionBook>());
+    let costs = SupplyCostBook::new(types, game.resource::<ByAction<TrainSpec>>());
     SupplyBook(Some(ModeSupplyData { max: 5 })).load_into(&mut game);
     costs.load_into(&mut game);
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);

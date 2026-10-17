@@ -23,12 +23,14 @@ use campfire_units::Due;
 
 mod abilities_api;
 mod abilities_effect;
+mod cast_data;
 mod casts;
 mod channels;
 mod error;
 mod toggles;
 
 pub use crate::abilities_api::AbilitiesApi;
+pub use crate::cast_data::CastData;
 pub use crate::casts::Casts;
 pub use crate::channels::Channels;
 pub use crate::error::AbilitiesRefusal;
@@ -73,6 +75,7 @@ impl Module for Abilities {
         d.scratch::<Due<ChannelDue>>();
         d.calls::<Deliverers>();
         d.calls::<CastSpends>();
+        d.listed::<CastData>();
         d.api(AbilitiesApi::register);
     }
 

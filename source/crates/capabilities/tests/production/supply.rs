@@ -14,7 +14,7 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     // ordered in tick t joins at time t and spawns at time t + 2, the end of tick t + 1.
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(2), None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::new(2), None);
     let (grunt, barracks, depot) = (shop.grunt, shop.barracks, shop.depot);
     Production::count_supply(
         &mut game,
@@ -89,7 +89,7 @@ fn a_dead_producers_queue_holds_its_supply_and_its_own_cost_does_not_count() {
     // A barracks that uses 2 and gives 5, whose queue holds two grunts of 3.
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(9), None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::new(9), None);
     Production::count_supply(
         &mut game,
         10,
@@ -116,7 +116,7 @@ fn a_train_needs_the_units_and_the_player_modifiers_its_requires_names() {
     // The train needs a living forge of its player's, and its player's modifier 0.
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(5), None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::new(5), None);
     let drill = ModifierId::new(0);
     let mut requirements = RequirementBook::default();
     requirements.push(train, [shop.forge], [drill]);

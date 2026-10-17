@@ -14,7 +14,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     let shop = Shop::place(&mut game);
     let gold = ResourceId::new(0);
     Players::spawn(&mut game, 1, 1);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(4), None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::new(4), None);
     let mut queue = TrainQueue::default();
     for paid in [10, 20, 30] {
         let queued = Queued {
@@ -104,7 +104,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     let mut walkers = ByType::default();
     walkers.set(shop.grunt, walker);
     game.insert_resource(walkers);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
     shop.producer(
@@ -241,7 +241,7 @@ fn a_predicting_clients_train_reads_only_what_it_holds() {
     // server sent it, and trains grunts at once.
     Release::sync_held(&ORDERING, 6, |game| {
         let shop = Shop::place(game);
-        let train = Actions::add_train(game, shop.grunt, Ticks::ZERO, None);
+        let train = Production::add_train(game, shop.grunt, Ticks::ZERO, None);
         let producer = Production::allocate_id(game);
         let player = PlayerSlot::new(0);
         let queue = TrainQueue::default();

@@ -1,8 +1,7 @@
-use std::num::{NonZeroU8, NonZeroU16};
+use std::num::NonZeroU8;
 use std::ops::Range;
 
 use campfire_common::{DeclaredName, Ticks};
-use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_sim::TickRate;
 use campfire_units::PoolCost;
@@ -12,6 +11,7 @@ use crate::action_data::ActionData;
 use crate::action_range::ActionRange;
 use crate::cost_target::CostTarget;
 use crate::error::ActionProblem;
+use crate::kind_takes::RangeTakes;
 use crate::rank_fields::RankToggle;
 
 /// An action's fields at each rank: its values, and its costs in player resources, each rank's
@@ -22,7 +22,9 @@ pub struct LoadedRanks {
     pub(crate) resource_costs: Vec<ResourceAmount>,
 }
 
-/// An action's capability fields at one rank, times in ticks.
+/// The pipeline's capability fields of an action at one rank, every kind's, times in ticks; a
+/// kind's own values at each rank are its capability's (04-capabilities/actions.md, Each kind owns
+/// its section).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RankValues {
     pub range: ActionRange,
@@ -36,12 +38,6 @@ pub struct RankValues {
     pub(crate) charge: Option<Ticks>,
     /// Where its costs in its caster's player's resources lie in its action's buffer.
     pub(crate) resource_cost: CostRun,
-    /// A weapon's own damage, which an attack of no stat of damage deals.
-    pub amount: Option<Num>,
-    /// A weapon's own time from one attack's start to the next, a tick at least, which an
-    /// attack of no stat of rate waits.
-    pub period: Option<Ticks>,
-    pub clip: Option<ClipRule>,
 }
 
 /// A run of an action's buffer of resource costs: the costs of one rank.
@@ -64,14 +60,6 @@ impl CostRun {
     pub(crate) const fn range(self) -> Range<usize> {
         self.start as usize..self.end as usize
     }
-}
-
-/// A weapon's clip: the shots it fires before it reloads, and the ticks from the shot that
-/// empties it to the next.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ClipRule {
-    pub shots: NonZeroU16,
-    pub reload: Ticks,
 }
 
 /// How long a channel runs, and the time between its ticks, in ticks, both at least one, and
@@ -105,7 +93,7 @@ impl RankValues {
             return Err(ActionProblem::RankCount(ranks));
         }
         let ticks = |ms: u64| rate.ticks(ms).ok_or(TimeTooLarge);
-        let metered = data.kind.metered();
+        let metered = data.section.takes().range == RangeTakes::Meters;
         let mut loaded = LoadedRanks {
             values: Vec::with_capacity(usize::from(ranks)),
             resource_costs: Vec::new(),
@@ -114,10 +102,8 @@ impl RankValues {
             let fields = data
                 .fields_at(rank, &target)
                 .map_err(ActionProblem::Field)?;
-            if let Some(kind) = metered
-                && fields.range == ActionRange::Global
-            {
-                return Err(ActionProblem::Global(kind));
+            if metered && fields.range == ActionRange::Global {
+                return Err(ActionProblem::Global);
             }
             let start = loaded.resource_costs.len();
             loaded.resource_costs.extend(fields.resource_cost);
@@ -149,17 +135,6 @@ impl RankValues {
                     .transpose()?,
                 charge: fields.charge_ms.map(ticks).transpose()?,
                 resource_cost,
-                amount: fields.amount,
-                period: fields.period_ms.map(ticks).transpose()?,
-                clip: fields
-                    .clip
-                    .map(|clip| {
-                        Ok::<_, TimeTooLarge>(ClipRule {
-                            shots: clip.shots,
-                            reload: ticks(clip.reload_ms)?,
-                        })
-                    })
-                    .transpose()?,
             });
         }
         Ok(loaded)
@@ -192,12 +167,13 @@ mod tests {
     use campfire_values::ResourceId;
 
     use super::*;
+    use crate::kind_section::tests::TestKind;
 
     #[test]
     fn each_rank_holds_the_run_of_its_own_resource_costs() {
         // Costs in name order: gems 3 at both ranks, gold 50 then 75, and mana, a pool's, apart.
         let text = "targeting = \"none\"\ncost = { gold = [50, 75], gems = 3, mana = 10 }";
-        let data = Toml::parse::<ActionData>(text).unwrap();
+        let data = ActionData::read(Toml::parse(text).unwrap(), &TestKind::readers()).unwrap();
         let [gems, gold] = [0, 1].map(ResourceId::new);
         let target = |name: &DeclaredName| match name.as_str() {
             "gems" => Some(CostTarget::Resource(gems)),

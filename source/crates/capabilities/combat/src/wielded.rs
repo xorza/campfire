@@ -1,7 +1,9 @@
-use campfire_actions::{Caster, Purse, RankValues, Weapon};
+use campfire_actions::{Caster, Purse, RankValues};
 use campfire_players::ResourceAmount;
 use campfire_units::PoolPurse;
 use campfire_values::{ActionId, Block, Motion, Rank, UnitTags, UnitType};
+
+use crate::weapon::Weapon;
 
 /// The weapon of an attack under way: its slot, what it deals, and its values and its cost in
 /// player resources at the slot's rank.

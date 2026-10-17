@@ -1,46 +1,29 @@
 use std::str::FromStr;
 
 use campfire_geometry::Placed;
-use campfire_units::PoolCost;
 
 use super::*;
-use crate::action_range::ActionRange;
-use crate::rank_values::CostRun;
 
+/// A weapon of the first two stats' rate and damage.
 fn weapon() -> Weapon {
     Weapon {
-        rate: Source::Stat(StatId::new(0)),
-        damage: Source::Stat(StatId::new(1)),
-        ..OWN
+        rate: Rate::Stat(StatId::new(0)),
+        damage: WeaponDamage::Stat(StatId::new(1)),
+        ..own([3, 2], [5, 0])
     }
 }
 
-/// A weapon of its own period and amount.
-const OWN: Weapon = Weapon {
-    rate: Source::Own,
-    damage: Source::Own,
-    kind: DamageKind::new(0),
-    splash: None,
-    scatter: None,
-    pitch: None,
-    speed: None,
-};
-
-/// A rank's values of `windup` ticks, its own period `period` and amount `amount`.
-fn values(windup: u64, period: Option<u64>, amount: Option<Num>) -> RankValues {
-    RankValues {
-        range: ActionRange::Global,
-        cooldown: Ticks::ZERO,
-        cost: PoolCost::default(),
-        windup: Ticks::new(windup),
-        charges: None,
-        toggle: None,
-        channel: None,
-        charge: None,
-        resource_cost: CostRun::EMPTY,
-        amount,
-        period: period.map(Ticks::new),
+/// A weapon of its own periods and amounts at its two ranks, in ticks.
+fn own(periods: [u64; 2], amounts: [i64; 2]) -> Weapon {
+    Weapon {
+        rate: Rate::Period(Box::new(periods.map(Ticks::new))),
+        damage: WeaponDamage::Amount(Box::new(amounts.map(Num::int))),
+        kind: DamageKind::new(0),
         clip: None,
+        splash: None,
+        scatter: None,
+        pitch: None,
+        speed: None,
     }
 }
 
@@ -67,15 +50,14 @@ fn a_period_is_the_tick_rate_over_the_rate_rounded_up_and_past_the_windup() {
         (&none[..], u32::MAX, 0, u64::from(u32::MAX) << 24),
     ];
     for (values, hz, windup, period) in cases {
-        let got = weapon().period(values, &self::values(windup, None, None), hz);
+        let got = weapon().period(values, Rank::FIRST, Ticks::new(windup), hz);
         assert_eq!(got, Ticks::new(period), "{values:?} at {hz} after {windup}");
     }
 }
 
 #[test]
 fn damage_is_the_stat_at_its_place_and_never_negative() {
-    let own = values(0, None, None);
-    let damage = |stats: &[Num]| weapon().damage(stats, &own);
+    let damage = |stats: &[Num]| weapon().damage(stats, Rank::FIRST);
     let rate = Num::ONE;
     assert_eq!(damage(&[rate, decimal("23.5")]), decimal("23.5"));
     assert_eq!(damage(&[rate, decimal("-5")]), Num::ZERO);
@@ -84,23 +66,36 @@ fn damage_is_the_stat_at_its_place_and_never_negative() {
 
 #[test]
 fn a_weapon_of_its_own_period_and_amount_reads_them_at_its_rank_and_no_stat() {
-    // A period of 3 ticks after no windup is 3; after a windup of 3, it must outlast it: 4. Its
-    // amount of 5 is dealt whatever its unit's stats hold.
+    // Periods of 3 and 2 ticks: rank 1's 3 after no windup is 3; after a windup of 3, it must
+    // outlast it: 4; rank 2's 2 is 2. Its amounts of 5 and 0 are dealt whatever the stats hold.
     let stats = [Num::ONE, decimal("23.5")];
+    let weapon = own([3, 2], [5, 0]);
+    let second = Rank::new(2).unwrap();
     assert_eq!(
-        OWN.period(&stats, &values(0, Some(3), None), 30),
+        weapon.period(&stats, Rank::FIRST, Ticks::ZERO, 30),
         Ticks::new(3)
     );
     assert_eq!(
-        OWN.period(&stats, &values(3, Some(3), None), 30),
+        weapon.period(&stats, Rank::FIRST, Ticks::new(3), 30),
         Ticks::new(4)
     );
-    let five = Num::from_int(5).unwrap();
-    assert_eq!(OWN.damage(&stats, &values(0, None, Some(five))), five);
     assert_eq!(
-        OWN.damage(&[], &values(0, None, Some(Num::ZERO))),
-        Num::ZERO
+        weapon.period(&stats, second, Ticks::ZERO, 30),
+        Ticks::new(2)
     );
+    assert_eq!(weapon.damage(&stats, Rank::FIRST), Num::int(5));
+    assert_eq!(weapon.damage(&[], second), Num::ZERO);
+    // A clip at each rank reads its own rank's.
+    let clips = [3, 5].map(|shots| ClipRule {
+        shots: NonZeroU16::new(shots).unwrap(),
+        reload: Ticks::new(21),
+    });
+    let clipped = Weapon {
+        clip: Some(Box::new(clips)),
+        ..weapon
+    };
+    assert_eq!(clipped.clip(second), Some(clips[1]));
+    assert_eq!(own([1, 1], [0, 0]).clip(Rank::FIRST), None);
 }
 
 #[test]
@@ -175,7 +170,7 @@ fn a_slow_weapons_hit_lands_its_distance_over_its_speed_a_tick_after_its_shot() 
     // more in 2, a bit less at once, 0 m at once; a weapon of no speed at once.
     let slow = Weapon {
         speed: Speed::new(Num::int(30)),
-        ..OWN
+        ..own([1, 1], [0, 0])
     };
     let delay = |distance: Num| slow.delay(distance, 30);
     let e = Num::EPSILON;
@@ -184,7 +179,7 @@ fn a_slow_weapons_hit_lands_its_distance_over_its_speed_a_tick_after_its_shot() 
     assert_eq!(delay(Num::ONE + e), Some(Ticks::new(2)));
     assert_eq!(delay(Num::ONE - e), None);
     assert_eq!(delay(Num::ZERO), None);
-    assert_eq!(OWN.delay(Num::int(10), 30), None);
+    assert_eq!(own([1, 1], [0, 0]).delay(Num::int(10), 30), None);
     // At 60 Hz the same weapon flies half a meter a tick: 1 m is 2 ticks.
     assert_eq!(slow.delay(Num::ONE, 60), Some(Ticks::new(2)));
 }

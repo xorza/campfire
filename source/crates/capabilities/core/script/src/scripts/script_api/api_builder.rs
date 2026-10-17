@@ -298,16 +298,18 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records `fields` of an action's data, each by its name with its status.
+    /// Records `fields` of an action's data, each by its name, which the release runs since
+    /// `since`.
     pub fn action_fields(
         &mut self,
-        fields: impl IntoIterator<Item = (&'static str, Status)>,
+        since: ApiVersion,
+        fields: impl IntoIterator<Item = &'static str>,
     ) -> &mut Self {
-        for (name, status) in fields {
+        for name in fields {
             self.api.record_field(DataField {
                 table: DataTable::Action,
                 name,
-                status,
+                status: Status::Runs(since),
                 capability: self.capability,
             });
         }

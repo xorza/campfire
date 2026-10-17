@@ -1,6 +1,7 @@
-use campfire_actions::GatherSpec;
 use campfire_math::Num;
 use campfire_script::Filter;
+
+use crate::gather_spec::GatherSpec;
 
 /// A worker's gather: its action's spec, its filter of nodes, its range, and its time in ticks.
 #[derive(Debug, Clone, Copy)]

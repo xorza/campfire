@@ -1,17 +1,16 @@
 use std::any::TypeId;
-use std::cell::RefCell;
-use std::error::Error;
+use std::env;
 use std::num::NonZeroU64;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
-use std::{env, fmt};
 
 use campfire_actions::{
-    ActionData, DeliveryData, EffectData, ListedEffects, PlannedEffect, RequiresData, SlotKindData,
+    ActionData, DeliveryData, EffectData, KindSections, ListedEffects, PlannedEffect, SlotKindData,
 };
 use campfire_areas::{AreaData, AreaInsideData};
 use campfire_capabilities::Release;
-use campfire_combat::{CombatData, LeechData, ModeCombatData, TurretData};
+use campfire_codec::StructFields;
+use campfire_combat::{AttackData, CombatData, LeechData, ModeCombatData, TurretData};
 use campfire_declare::SectionTable;
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
@@ -21,7 +20,10 @@ use campfire_mode::{
 };
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
-use campfire_production::{DropOffData, ModeSupplyData, NodeData, ProductionData, SupplyData};
+use campfire_production::{
+    BuildData, DropOffData, GatherData, ModeSupplyData, NodeData, ProductionData, RequiresData,
+    SupplyData, TrainData,
+};
 use campfire_progression::TrackData;
 use campfire_projectiles::ProjectileData;
 use campfire_script::*;
@@ -32,7 +34,7 @@ use campfire_store::internals::PinnedFile;
 use campfire_units::{CollisionData, TagData};
 use campfire_values::TagProperty;
 use campfire_vision::VisionData;
-use serde::de::{self, Deserialize, Deserializer, Visitor};
+use serde::Deserialize;
 
 /// Each function `host`'s engine binds: its name, and the type of its first parameter.
 fn functions(host: &ScriptHost) -> Vec<(String, Option<TypeId>)> {
@@ -319,59 +321,11 @@ fn table<T: DataSection>() -> (DataTable, Vec<&'static str>) {
     (T::TABLE, serde_fields::<T>())
 }
 
-/// The names serde reads for `T`'s fields, as its derive or its own impl gives them.
+/// The names serde reads for `T`'s fields, as its derive or its own impl gives them, sorted.
 fn serde_fields<'de, T: Deserialize<'de>>() -> Vec<&'static str> {
-    let fields = RefCell::new(Vec::new());
-    let read = T::deserialize(FieldNames(&fields));
-    assert!(read.is_err(), "a field name reader reads no value");
-    let mut fields = fields.into_inner();
+    let mut fields = StructFields::of::<T>().to_vec();
     fields.sort_unstable();
     fields
-}
-
-/// A deserializer that reads only the field names of the struct it is asked for.
-#[derive(Debug)]
-struct FieldNames<'a>(&'a RefCell<Vec<&'static str>>);
-
-#[derive(Debug)]
-struct Read;
-
-impl fmt::Display for Read {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("read")
-    }
-}
-
-impl Error for Read {}
-
-impl de::Error for Read {
-    fn custom<T: fmt::Display>(_: T) -> Self {
-        Self
-    }
-}
-
-impl<'de> Deserializer<'de> for FieldNames<'_> {
-    type Error = Read;
-
-    fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, Read> {
-        Err(Read)
-    }
-
-    fn deserialize_struct<V: Visitor<'de>>(
-        self,
-        _: &'static str,
-        fields: &'static [&'static str],
-        _: V,
-    ) -> Result<V::Value, Read> {
-        self.0.borrow_mut().extend_from_slice(fields);
-        Err(Read)
-    }
-
-    serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes
-        byte_buf option unit unit_struct newtype_struct seq tuple tuple_struct map enum
-        identifier ignored_any
-    }
 }
 
 /// The most bytes a test reads of the reference: far past the few hundred kilobytes it holds.
@@ -425,10 +379,20 @@ fn the_data_fields_are_the_schemas() {
     mode.sort_unstable();
     let mut unit_type: Vec<&str> = sections.keys(SectionTable::UnitType).collect();
     unit_type.sort_unstable();
-    // An action's lists and an effect's members read with the release's readers, past serde.
-    let (action_table, mut action) = table::<ActionData>();
-    action.extend(ActionData::LISTS);
+    // An action's pipeline keys and its lists are every kind's, and the rest its kind's own,
+    // each field once.
+    let mut action: Vec<&str> = ActionData::pipeline_keys().collect();
+    let kinds = [
+        StructFields::of::<AttackData>(),
+        StructFields::of::<TrainData>(),
+        StructFields::of::<BuildData>(),
+        StructFields::of::<GatherData>(),
+    ];
+    action.extend(kinds.into_iter().flatten());
     action.sort_unstable();
+    action.dedup();
+    let mut kind: Vec<&str> = sections.listed_keys::<KindSections>().collect();
+    kind.sort_unstable();
     let mut effect: Vec<&str> = sections.listed_keys::<ListedEffects>().collect();
     effect.extend(PlannedEffect::ALL.map(PlannedEffect::name));
     effect.push(EffectData::TO);
@@ -446,7 +410,8 @@ fn the_data_fields_are_the_schemas() {
         table::<TeamData>(),
         table::<PlayersData>(),
         table::<SavesData>(),
-        (action_table, action),
+        (DataTable::Action, action),
+        (DataTable::ActionKind, kind),
         (DataTable::Effect, effect),
         table::<DeliveryData>(),
         table::<ProjectileData>(),

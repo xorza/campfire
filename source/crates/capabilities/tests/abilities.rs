@@ -7,20 +7,19 @@ use bevy_ecs::world::Mut;
 use campfire_abilities::internals::{MANA, RAGE, scaling_stats};
 use campfire_abilities::*;
 use campfire_actions::{
-    ActionBook, ActionData, ActionDataField, ActionError, ActionField, ActionKind, ActionProblem,
-    ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData,
-    ChargesData, ClipData, CostTarget, DeliveryData, EffectData, EffectTo, FromData, InProgress,
-    KindData, KindError, LaunchLists, ListedEffect, OrderPhase, RangeField, SlotAim, SlotKind,
-    SlotKindBook, SlotKindData, SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting,
-    TimedSlots, Toggle,
+    ActionBook, ActionData, ActionError, ActionField, ActionProblem, ActionProgress, ActionRange,
+    ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData, ChargesData, CostTarget,
+    DeliveryData, EffectData, EffectTo, InProgress, KindSection, LaunchLists, ListedEffect,
+    OrderPhase, PipelineField, RangeField, SlotAim, SlotKind, SlotKindBook, SlotKindData,
+    SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting, TimedSlots, Toggle,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas, LaunchEffectData};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order, Release};
 use campfire_combat::internals::Armed;
 use campfire_combat::{
-    Combat, CombatBook, CombatRefusal, Damage, DamageCause, DamageEffectData, DamagePass, OnDeath,
-    PassEntry, RecentAttackers,
+    AttackData, Combat, CombatBook, CombatRefusal, Damage, DamageCause, DamageEffectData,
+    DamagePass, OnDeath, PassEntry, RecentAttackers, WeaponValue,
 };
 use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_declare::Book;
@@ -31,6 +30,7 @@ use campfire_mode::Mode;
 use campfire_navigation::{MoveEffectData, Navigation, NavigationRefusal};
 use campfire_orders::{AiData, Orders, OrdersAction};
 use campfire_players::{Players, PlayersWorld};
+use campfire_production::TrainData;
 use campfire_progression::{
     Experience, Points, Progression, ProgressionAction, ProgressionRefusal, Thresholds, TrackData,
     TrackSet, XpEffectData,
@@ -133,7 +133,7 @@ fn lash_out() -> ActionData {
                 Param::Ranked(Ranked::One(Scalar::Int(500))),
             ),
         ]),
-        ..ActionData::cast(Targeting::None)
+        ..ActionData::of(Targeting::None, CastData::default())
     }
 }
 
@@ -154,166 +154,96 @@ fn strike() -> ActionData {
             DeclaredName::new("damage").unwrap(),
             Param::Ranked(Ranked::One(Scalar::Int(50))),
         )]),
-        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+        ..ActionData::of(
+            Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            CastData::default(),
+        )
+    }
+}
+
+/// A weapon of the rate of its unit's armor stat, and of its stat `attack_damage`, of physical
+/// damage.
+fn stat_attack() -> AttackData {
+    AttackData {
+        rate: WeaponValue::Stat(Stat::named("armor").unwrap()),
+        damage: WeaponValue::Stat(Stat::named("attack_damage").unwrap()),
+        damage_kind: DeclaredName::new("physical").unwrap(),
+        clip: None,
+        splash: None,
+        scatter: None,
+        pitch_deg: None,
+        speed: None,
     }
 }
 
 #[test]
-fn the_field_table_names_the_first_field_a_kind_misuses() {
+fn a_kinds_section_names_the_first_pipeline_field_it_misuses() {
     // Strike is a cast: its script, cooldown, cost and params are a cast's to take.
     let mut action = strike();
-    assert_eq!(ActionDataField::misused(&action, ActionKind::Cast), None);
-    // As an attack, its script comes first of what an attack refuses; as a train, also its
-    // script, before the range and the unit type it lacks.
+    assert_eq!(PipelineField::misused(&action), None);
+    let attack = stat_attack();
+    let train = TrainData {
+        unit_type: DeclaredName::new("grunt").unwrap(),
+        requires: None,
+    };
+    let of = |action: &ActionData, section: Arc<dyn KindSection>| ActionData {
+        section,
+        ..action.clone()
+    };
+    // As an attack, its script comes first of what an attack never takes; as a train, also its
+    // script, before the range a train never takes.
+    let attacking = |action: &ActionData| of(action, Arc::new(attack.clone()));
+    let training = |action: &ActionData| of(action, Arc::new(train.clone()));
     assert_eq!(
-        ActionDataField::misused(&action, ActionKind::Attack),
-        Some(ActionDataField::Script)
+        PipelineField::misused(&attacking(&action)),
+        Some(PipelineField::Script)
     );
     assert_eq!(
-        ActionDataField::misused(&action, ActionKind::Train),
-        Some(ActionDataField::Script)
+        PipelineField::misused(&training(&action)),
+        Some(PipelineField::Script)
     );
-    // With no script or cooldown, an attack lacks its weapon's rate, then a cast refuses the
-    // rate. An attack takes the params and an `on_hit` list, and refuses an `on_end` list.
+    // With no script or cooldown, an attack takes the rest, an `on_hit` list among them, and
+    // never an `on_end` list.
     action.script = None;
     action.cooldown_ms = None;
-    assert_eq!(
-        ActionDataField::misused(&action, ActionKind::Attack),
-        Some(ActionDataField::Rate)
-    );
-    action.rate = Some(Stat::named("armor").unwrap());
-    action.damage = Some(Stat::named("attack_damage").unwrap());
-    action.damage_kind = Some(DeclaredName::new("physical").unwrap());
     action.on_hit = sapper(false).on_hit;
-    assert_eq!(ActionDataField::misused(&action, ActionKind::Attack), None);
-    // Its kind's fields come as the attack needs them; as a cast, the rate it refuses is the
-    // error.
-    let attack = ActionData {
-        kind: ActionKind::Attack,
-        ..action.clone()
-    };
-    assert_eq!(
-        KindData::of(&attack),
-        Ok(KindData::Attack {
-            rate: FromData::Stat(&Stat::named("armor").unwrap()),
-            damage: FromData::Stat(&Stat::named("attack_damage").unwrap()),
-            damage_kind: &DeclaredName::new("physical").unwrap(),
-        })
-    );
-    // An attack takes its own amount in place of its damage stat, and its own period in place of
-    // its rate stat, one of each pair: both of a pair, or neither, is the pair's first field's
-    // misuse, as the table orders them. A clip is an attack's alone.
-    let five = Ranked::One(Number::Value(Scalar::Int(5)));
-    let own = ActionData {
-        rate: None,
-        damage: None,
-        amount: Some(five.clone()),
-        period_ms: Some(five.clone()),
-        clip: Some(ClipData {
-            shots: five.clone(),
-            reload_ms: five.clone(),
-        }),
-        ..attack.clone()
-    };
-    assert_eq!(
-        KindData::of(&own),
-        Ok(KindData::Attack {
-            rate: FromData::Own,
-            damage: FromData::Own,
-            damage_kind: &DeclaredName::new("physical").unwrap(),
-        })
-    );
-    let both = ActionData {
-        amount: Some(five),
-        ..attack.clone()
-    };
-    assert_eq!(
-        KindData::of(&both),
-        Err(KindError::Field(ActionDataField::Damage))
-    );
-    let neither = ActionData {
-        damage: None,
-        ..attack.clone()
-    };
-    assert_eq!(
-        KindData::of(&neither),
-        Err(KindError::Field(ActionDataField::Damage))
-    );
-    let unrated = ActionData {
-        rate: None,
-        ..attack.clone()
-    };
-    assert_eq!(
-        KindData::of(&unrated),
-        Err(KindError::Field(ActionDataField::Rate))
-    );
-    let clipped_cast = ActionData {
-        kind: ActionKind::Cast,
-        rate: None,
-        damage: None,
-        damage_kind: None,
-        on_hit: Vec::new(),
-        clip: own.clip,
-        ..attack
-    };
-    assert_eq!(
-        KindData::of(&clipped_cast),
-        Err(KindError::Field(ActionDataField::Clip))
-    );
-    let cast = ActionData {
-        kind: ActionKind::Cast,
-        ..action.clone()
-    };
-    assert_eq!(
-        KindData::of(&cast),
-        Err(KindError::Field(ActionDataField::Rate))
-    );
+    assert_eq!(PipelineField::misused(&attacking(&action)), None);
     let ending = ActionData {
         on_end: action.on_hit.clone(),
         ..action.clone()
     };
     assert_eq!(
-        ActionDataField::misused(&ending, ActionKind::Attack),
-        Some(ActionDataField::OnEnd)
+        PipelineField::misused(&attacking(&ending)),
+        Some(PipelineField::OnEnd)
     );
+    // An attack must have a range.
+    let unranged = ActionData {
+        range: None,
+        ..action.clone()
+    };
     assert_eq!(
-        ActionDataField::misused(&action, ActionKind::Cast),
-        Some(ActionDataField::Rate)
+        PipelineField::misused(&attacking(&unranged)),
+        Some(PipelineField::Range)
     );
-    // A train refuses its range first, then needs its unit type.
+    // A train never takes a range, params or a hit list; with none, it takes the rest.
     assert_eq!(
-        ActionDataField::misused(&action, ActionKind::Train),
-        Some(ActionDataField::Range)
+        PipelineField::misused(&training(&action)),
+        Some(PipelineField::Range)
     );
-    let train = ActionData {
+    let trained = ActionData {
         targeting: Targeting::None,
         range: None,
-        rate: None,
-        damage: None,
-        damage_kind: None,
-        amount: None,
-        period_ms: None,
-        clip: None,
-        ..action
-    };
-    assert_eq!(
-        ActionDataField::misused(&train, ActionKind::Train),
-        Some(ActionDataField::UnitType)
-    );
-    // Given its unit type, and none of the params and the hit list a train refuses, it gives
-    // the train that type.
-    let train = ActionData {
-        kind: ActionKind::Train,
-        unit_type: Some(DeclaredName::new("grunt").unwrap()),
         params: BTreeMap::new(),
         on_hit: Vec::new(),
-        ..train
+        ..action
     };
-    let grunt = DeclaredName::new("grunt").unwrap();
+    assert_eq!(PipelineField::misused(&training(&trained)), None);
     assert_eq!(
-        KindData::of(&train),
-        Ok(KindData::Train { unit_type: &grunt })
+        training(&trained).section::<TrainData>(),
+        Some(&train),
+        "a train's section is its capability's own type"
     );
+    assert_eq!(training(&trained).section::<AttackData>(), None);
 }
 
 const STRIKE: &str =
@@ -449,7 +379,10 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
         range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(5),
         )))),
-        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+        ..ActionData::of(
+            Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            CastData::default(),
+        )
     };
     let script =
         "fn on_resolve(ctx, caster, target) { ctx.knock_back(target, caster.pos, 3, 100); }";
@@ -563,7 +496,10 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
             effect(Arc::new(dash), EffectTo::Source),
         ],
         on_end: vec![effect(damage, EffectTo::Source)],
-        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+        ..ActionData::of(
+            Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            CastData::default(),
+        )
     };
     let source = r#"
         fn on_end(ctx, caster, hit) {
@@ -839,7 +775,6 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     let mut game = abilities_match();
     // Strike with a windup of 100 ms, 3 ticks.
     let data = ActionData {
-        kind: ActionKind::Cast,
         windup_ms: Some(Ranked::One(int(100))),
         ..strike()
     };
@@ -912,7 +847,6 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
     let overflow = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } num(1 << 20) * num(1 << 20) }"#;
     let undeclared = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } ctx.p.radius }"#;
     let data = ActionData {
-        kind: ActionKind::Cast,
         params: BTreeMap::new(),
         ..lash_out()
     };
@@ -984,7 +918,7 @@ fn on_resolve(ctx, caster, target) {
             Num::int(4),
         )))),
         clamp_to_range: clamp,
-        ..ActionData::cast(Targeting::Point)
+        ..ActionData::of(Targeting::Point, CastData::default())
     };
     let mut game = abilities_match();
     Abilities::load_stats(&mut game);
@@ -1068,7 +1002,7 @@ impl Reaching {
             range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
                 Num::int(4),
             )))),
-            ..ActionData::cast(Targeting::Point)
+            ..ActionData::of(Targeting::Point, CastData::default())
         };
         let jab = ActionData {
             script: Some(PackagePath::parse("jab.rhai").unwrap()),
@@ -1218,7 +1152,7 @@ fn charges_come_back(declared: &[Capability]) {
     Abilities::load_stats(&mut game);
     let plain = ActionData {
         script: Some(PackagePath::parse("cast.rhai").unwrap()),
-        ..ActionData::cast(Targeting::None)
+        ..ActionData::of(Targeting::None, CastData::default())
     };
     let step = ActionData {
         charges: Some(ChargesData {
@@ -1329,7 +1263,7 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
     // channel of 300 ms that ticks each 100 ms. The server resolves each cast, and a client,
     // with no script, predicts it: after each tick their slots are alike.
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let cast = || ActionData::cast(Targeting::None);
+    let cast = || ActionData::of(Targeting::None, CastData::default());
     let step = ActionData {
         charges: Some(ChargesData {
             max: Ranked::One(int(3)),
@@ -1431,7 +1365,10 @@ fn on_interrupt(ctx, caster, target) {
             damage_interrupts: false,
         }),
         hold: Some(DeclaredName::new("ward").unwrap()),
-        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+        ..ActionData::of(
+            Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            CastData::default(),
+        )
     };
     let drain = Abilities::load(&mut game, "drain", &drain, script);
     let ward = Stats::modifier(&game, PackageIndex::MODE, "ward").unwrap();
@@ -1527,7 +1464,10 @@ fn on_resolve(ctx, caster, target) {
             max_ms: Ranked::One(int(3000)),
         }),
         cost: cost("mana", int(10)),
-        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+        ..ActionData::of(
+            Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            CastData::default(),
+        )
     };
     let plain = ActionData {
         charge: None,
@@ -1727,7 +1667,6 @@ fn a_cast_draws_from_its_casters_player_pool() {
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
         let mut game = abilities_match_with(limits, &declared);
         let data = ActionData {
-            kind: ActionKind::Cast,
             params: BTreeMap::new(),
             ..lash_out()
         };
@@ -2001,7 +1940,6 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     };
     Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let mut claws = lash_out();
-    claws.kind = ActionKind::Attack;
     claws.script = None;
     claws.cooldown_ms = None;
     claws.cost = BTreeMap::new();
@@ -2010,9 +1948,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.range = Some(Ranked::One(RangeField::Range(ActionRange::meters(
         Num::int(2),
     ))));
-    claws.rate = Some(Stat::named("armor").unwrap());
-    claws.damage = Some(Stat::named("attack_damage").unwrap());
-    claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
+    claws.section = Arc::new(stat_attack());
     claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game, PackageIndex::MODE, "claws", &claws, None, 1).unwrap();
     let slots = TimedSlots::new(ActionSlots::new([(claws, SlotKind::new(0), Rank::new(1))]));
@@ -2910,17 +2846,11 @@ fn sapper(ranged: bool) -> ActionData {
         &[],
     );
     ActionData {
-        kind: ActionKind::Attack,
         script: None,
         range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(meters),
         )))),
-        rate: Some(Stat::named("armor").unwrap()),
-        damage: Some(Stat::named("attack_damage").unwrap()),
-        damage_kind: Some(DeclaredName::new("physical").unwrap()),
-        amount: None,
-        period_ms: None,
-        clip: None,
+        section: Arc::new(stat_attack()),
         delivery,
         params: BTreeMap::from([
             (
@@ -2945,7 +2875,10 @@ fn sapper(ranged: bool) -> ActionData {
                 EffectTo::Reached,
             ),
         ],
-        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+        ..ActionData::of(
+            Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            CastData::default(),
+        )
     }
 }
 
@@ -3302,7 +3235,6 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
         &[("attack_damage", half * 3)],
     );
     let data = ActionData {
-        kind: ActionKind::Cast,
         params: [(DeclaredName::new("power").unwrap(), power)].into(),
         ..strike()
     };

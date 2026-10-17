@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_actions::{ActionBook, KindSpec};
+use campfire_actions::ByAction;
 use campfire_declare::{Book, ByType};
 use campfire_script::MatchNames;
-use campfire_values::{ActionId, NameId, UnitType};
+use campfire_values::{NameId, UnitType};
 
 use crate::supply_data::SupplyData;
 use crate::train_queue::TrainQueue;
+use crate::train_spec::TrainSpec;
 
 /// What each unit type uses and gives of supply, and what the unit each train makes uses, by
 /// the train's action: the one rule by which every count of supply reads a unit. Package data,
@@ -15,7 +16,7 @@ use crate::train_queue::TrainQueue;
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub struct SupplyCostBook {
     types: Arc<ByType<SupplyData>>,
-    /// By action, 0 for an action that trains nothing.
+    /// By action, up to the last train, 0 for an action that trains nothing.
     trains: Arc<[u32]>,
 }
 
@@ -38,19 +39,14 @@ pub struct SupplyUnit<'a> {
 }
 
 impl SupplyCostBook {
-    /// The costs of `types`, and of the trains of `book`.
-    pub fn new(types: ByType<SupplyData>, book: &ActionBook) -> Self {
-        let trains = (0..)
-            .map_while(|at| book.get(ActionId::at(at)))
-            .map(|action| match action.kind {
-                KindSpec::Train(made) => types.get(made).map_or(0, |supply| supply.cost),
-                KindSpec::Cast
-                | KindSpec::Attack(_)
-                | KindSpec::Use
-                | KindSpec::Build(_)
-                | KindSpec::Gather(_) => 0,
-            })
-            .collect();
+    /// The costs of `types`, and of `trains`.
+    pub fn new(types: ByType<SupplyData>, trains: &ByAction<TrainSpec>) -> Self {
+        let mut costs = Vec::new();
+        for (action, train) in trains.iter() {
+            costs.resize(action.index() + 1, 0);
+            costs[action.index()] = types.get(train.unit_type).map_or(0, |supply| supply.cost);
+        }
+        let trains = costs.into();
         Self {
             types: Arc::new(types),
             trains,

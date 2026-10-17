@@ -33,6 +33,7 @@ campfire-units.workspace = true
 campfire-values.workspace = true
 
 bevy_ecs.workspace = true
+serde.workspace = true
 
 [dev-dependencies]
 campfire-abilities = { workspace = true, features = ["internals"] }

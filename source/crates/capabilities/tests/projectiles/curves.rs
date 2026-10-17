@@ -1,5 +1,5 @@
-use campfire_actions::{ShotDamage, SplashData};
-use campfire_combat::SCATTER_STREAM;
+use campfire_actions::ShotDamage;
+use campfire_combat::{SCATTER_STREAM, SplashData};
 use campfire_math::SinCos;
 use campfire_units::{CellSplit, Ground, HeightGrid};
 use campfire_values::{ActionId, DamageKind, Rank, RelationSet};

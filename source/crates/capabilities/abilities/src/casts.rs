@@ -144,7 +144,7 @@ impl Casts {
                 continue;
             };
             let action = book.get(id).expect("a slot's action is in the book");
-            if !matches!(action.kind.kind(), ActionKind::Cast | ActionKind::Use) {
+            if !matches!(action.kind, ActionKind::Cast | ActionKind::Use) {
                 continue;
             }
             if blocked {

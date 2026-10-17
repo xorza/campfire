@@ -5,12 +5,14 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, Actions, GatherSpec, SlotKind, TimedSlots};
+use campfire_actions::{ActionSlots, SlotKind, TimedSlots};
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_declare::{Book, Role};
 use campfire_math::{Num, Vec3};
 use campfire_players::{Players, PlayersWorld};
-use campfire_production::{GatherOrder, GatherStep, Gatherer, Node, NodeAt, NodeBook, ResourceSet};
+use campfire_production::{
+    GatherOrder, GatherSpec, GatherStep, Gatherer, Node, NodeAt, NodeBook, Production, ResourceSet,
+};
 use campfire_script::Filter;
 use campfire_sim::{Capability, IdAllocator, SimUpdate, StableId, TickRate};
 use campfire_units::{
@@ -82,7 +84,7 @@ fn two_fields() -> Match {
         bounce: Num::int(4),
     };
     let all = Filter::of_match_relations(&world, RelationSet::All);
-    let action = Actions::add_gather(&mut world, spec, all, Num::int(16), Ticks::new(3));
+    let action = Production::add_gather(&mut world, spec, all, Num::int(16), Ticks::new(3));
 
     let player = Owner::new(PlayerSlot::new(0));
     let at = |x: Num, z: Num| Vec3::new(x, Num::ZERO, z);

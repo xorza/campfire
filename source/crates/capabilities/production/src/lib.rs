@@ -12,7 +12,7 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
-use campfire_actions::ActionsSet;
+use campfire_actions::{ActionsSet, ByAction};
 use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
@@ -29,12 +29,17 @@ use crate::production_column::RowReads;
 
 mod book_builders;
 mod build_book;
+mod build_data;
+mod build_start;
 mod builder;
+mod construct_data;
 mod construction;
 mod drop_off_data;
 mod error;
 mod frame_point;
+mod gather_data;
 mod gather_loop;
+mod gather_spec;
 mod gatherer;
 mod holdings;
 mod mode_supply_data;
@@ -42,6 +47,7 @@ mod node;
 mod node_book;
 mod node_data;
 mod placement;
+mod placement_data;
 mod player_supply;
 mod production_action;
 mod production_api;
@@ -52,29 +58,38 @@ mod production_orders;
 mod rally;
 mod rally_target;
 mod requirement_book;
+mod requires_data;
 mod resource_set;
 mod site;
 mod supply;
 mod supply_book;
 mod supply_cost_book;
 mod supply_data;
+mod train_data;
 mod train_queue;
+mod train_spec;
 mod trains;
 
 pub use crate::build_book::{BuildBook, BuildSpec, NewBuild, PlacementCheck, Style};
+pub use crate::build_data::BuildData;
+pub use crate::build_start::BuildStart;
 pub use crate::builder::{BuildOrder, Builder};
+pub use crate::construct_data::ConstructData;
 pub use crate::construction::Construction;
 pub use crate::construction::step::{Start, Step};
 pub use crate::drop_off_data::DropOffData;
 pub use crate::error::{PointPastBound, ProductionDataError, ProductionRefusal};
 pub use crate::frame_point::FramePoint;
+pub use crate::gather_data::GatherData;
 pub use crate::gather_loop::GatherLoop;
+pub use crate::gather_spec::GatherSpec;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 pub use crate::mode_supply_data::ModeSupplyData;
 pub use crate::node::Node;
 pub use crate::node_book::NodeBook;
 pub use crate::node_data::NodeData;
 pub use crate::placement::Placement;
+pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::player_supply::PlayerSupply;
 pub use crate::production_action::ProductionAction;
 pub use crate::production_api::ProductionApi;
@@ -84,12 +99,15 @@ pub use crate::production_orders::ProductionOrders;
 pub use crate::rally::Rally;
 pub use crate::rally_target::RallyTarget;
 pub use crate::requirement_book::{Required, RequirementBook};
+pub use crate::requires_data::RequiresData;
 pub use crate::resource_set::ResourceSet;
 pub use crate::site::{Progressed, Site};
 pub use crate::supply_book::SupplyBook;
 pub use crate::supply_cost_book::{SupplyCostBook, SupplyUnit, UnitSupply};
 pub use crate::supply_data::SupplyData;
+pub use crate::train_data::TrainData;
 pub use crate::train_queue::{Queued, TrainQueue};
+pub use crate::train_spec::TrainSpec;
 pub use crate::trains::Trains;
 
 /// The `production` capability: units that train others, through a queue, within their player's
@@ -163,6 +181,11 @@ impl Module for Production {
         d.component::<Gatherer>();
         d.extend::<UnitTypes>(Self::tag_types);
         d.book::<ByType<ProductionData>>(ProductionData::book);
+        d.listed::<TrainData>();
+        d.listed::<BuildData>();
+        d.listed::<GatherData>();
+        d.book::<ByAction<TrainSpec>>(TrainSpec::book);
+        d.book::<ByAction<GatherSpec>>(GatherSpec::book);
         d.book::<RequirementBook>(RequirementBook::build);
         d.book::<SupplyCostBook>(SupplyCostBook::build);
         d.book::<BuildBook>(BuildBook::build);
@@ -287,31 +310,129 @@ impl Production {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_actions::{ActionBook, ActionProgress, ActionTarget};
+    use campfire_actions::internals::TestAction;
+    use campfire_actions::{
+        ActionData, ActionKind, ActionProgress, ActionRange, ActionTarget, Actions, Aim, ByAction,
+    };
+    use campfire_common::Ticks;
     use campfire_declare::{Book, ByType};
     use campfire_math::Num;
+    use campfire_players::ResourceAmount;
+    use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{IdAllocator, StableId};
-    use campfire_values::UnitType;
+    use campfire_units::{BuildTarget, Life};
+    use campfire_values::{ActionId, PackageIndex, TypeScope, UnitType};
 
     use crate::Production;
+    use crate::build_book::{BuildBook, NewBuild};
     use crate::builder::Builder;
+    use crate::gather_spec::GatherSpec;
     use crate::gatherer::{GatherStep, Gatherer};
     use crate::mode_supply_data::ModeSupplyData;
     use crate::site::Site;
     use crate::supply_book::SupplyBook;
     use crate::supply_cost_book::SupplyCostBook;
     use crate::supply_data::SupplyData;
-    use campfire_units::{BuildTarget, Life};
+    use crate::train_data::TrainData;
+    use crate::train_spec::TrainSpec;
+
+    /// A build tests add: its range in meters, its time, its cost in a player resource, and what
+    /// it places, as its build book holds it.
+    #[derive(Debug, Clone)]
+    pub struct TestBuild<'a> {
+        pub range: Num,
+        pub time: Ticks,
+        pub resource_cost: Option<ResourceAmount>,
+        pub build: NewBuild<'a>,
+    }
 
     impl Production {
+        /// Adds a train of `unit_type` that takes `time` and costs `resource_cost`, no pool and no
+        /// cooldown, to the match's action book and its trains' book.
+        pub fn add_train(
+            world: &mut World,
+            unit_type: UnitType,
+            time: Ticks,
+            resource_cost: Option<ResourceAmount>,
+        ) -> ActionId {
+            let action = TestAction {
+                resource_cost,
+                ..TestAction::new(ActionKind::Train, Aim::None, ActionRange::Global, time)
+            };
+            let id = Actions::add(world, "train", action);
+            let mut trains = world.get_resource_or_init::<ByAction<TrainSpec>>();
+            trains.set(id, TrainSpec { unit_type });
+            id
+        }
+
+        /// Resolves what the train `action`, which the action book of `world` loaded from `data`
+        /// of `package`, makes, into the match's trains' book, as the load resolves it.
+        pub fn load_train(
+            world: &mut World,
+            action: ActionId,
+            data: &ActionData,
+            package: PackageIndex,
+        ) {
+            let Some(train) = data.section::<TrainData>() else {
+                return;
+            };
+            let scope = TypeScope::of_package(package);
+            let names = world.resource::<MatchNames>();
+            let unit_type = names.named((scope, train.unit_type.as_str()));
+            let unit_type = unit_type.expect("a test's train makes a type of its package");
+            let mut trains = world.get_resource_or_init::<ByAction<TrainSpec>>();
+            trains.set(action, TrainSpec { unit_type });
+        }
+
+        /// Adds `build`, aimed at a point, no pool and no cooldown, to the match's action book
+        /// and its build book.
+        pub fn add_build(world: &mut World, build: TestBuild<'_>) -> ActionId {
+            let action = TestAction {
+                resource_cost: build.resource_cost,
+                ..TestAction::new(
+                    ActionKind::Build,
+                    Aim::Point { clamp: false },
+                    ActionRange::meters(build.range),
+                    build.time,
+                )
+            };
+            let id = Actions::add(world, "build", action);
+            world
+                .get_resource_or_init::<BuildBook>()
+                .push(id, build.build);
+            id
+        }
+
+        /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
+        /// `time`, to the match's action book and its gathers' book.
+        pub fn add_gather(
+            world: &mut World,
+            spec: GatherSpec,
+            aim: Filter,
+            range: Num,
+            time: Ticks,
+        ) -> ActionId {
+            let action = TestAction::new(
+                ActionKind::Gather,
+                Aim::Unit(aim),
+                ActionRange::meters(range),
+                time,
+            );
+            let id = Actions::add(world, "gather", action);
+            world
+                .get_resource_or_init::<ByAction<GatherSpec>>()
+                .set(id, spec);
+            id
+        }
+
         /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.
         pub fn count_supply(world: &mut World, max: u32, supplies: &[(UnitType, SupplyData)]) {
             let mut types = ByType::default();
             for &(unit_type, supply) in supplies {
                 types.set(unit_type, supply);
             }
-            let costs = SupplyCostBook::new(types, world.resource::<ActionBook>());
+            let costs = SupplyCostBook::new(types, world.resource::<ByAction<TrainSpec>>());
             costs.load_into(world);
             (SupplyBook(Some(ModeSupplyData { max }))).load_into(world);
         }

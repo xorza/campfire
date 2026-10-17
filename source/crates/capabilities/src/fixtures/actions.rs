@@ -4,17 +4,16 @@ use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, CostTarget,
     PackageAction, ProjectileFlight,
 };
+use campfire_combat::Combat;
 use campfire_common::DeclaredName;
 use campfire_declare::{Book, ByType};
+use campfire_production::Production;
 use campfire_projectiles::ProjectileSpec;
 use campfire_script::{Filter, MatchNames, NameKind, ScriptId, UnknownName};
 use campfire_sim::TickRate;
 use campfire_stats::{ModifierBook, Stats};
-use campfire_units::{ScriptBook, StatId};
-use campfire_values::{
-    ActionId, DamageKind, FilterData, ModifierId, PackageIndex, Param, Stat, Tag, TypeScope,
-    UnitType,
-};
+use campfire_units::ScriptBook;
+use campfire_values::{ActionId, FilterData, ModifierId, PackageIndex, Param, TypeScope, UnitType};
 
 use crate::fixtures::units::ViewFixtures;
 
@@ -38,29 +37,12 @@ impl<'w> WorldActionNames<'w> {
 }
 
 impl ActionNames for WorldActionNames<'_> {
-    fn stat(&self, stat: &Stat) -> Result<StatId, UnknownName> {
-        self.names
-            .stat_index(stat)
-            .ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
-    }
-
-    fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
-        self.names
-            .named(name.as_str())
-            .ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
-    }
-
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
         self.names.cost_target(name.as_str())
     }
 
     fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
         self.names.resolve_filter(filter)
-    }
-
-    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
-        let tag = self.names.tags().named(name.as_str());
-        tag.ok_or_else(|| UnknownName::new(NameKind::Tag, name))
     }
 
     fn modifier(
@@ -103,7 +85,7 @@ pub trait ActionsFixtures {
     /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
     /// package load checked, with its compiled script exactly when its data names one: its
     /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
-    /// rounded up.
+    /// rounded up, and an attack's weapon and a train's unit type into their books.
     fn load(
         world: &mut World,
         package: PackageIndex,
@@ -139,6 +121,9 @@ impl ActionsFixtures for Actions {
             };
             actions.load(scripts, action)
         });
+        let id_name = DeclaredName::new(name).expect("a test's action is named as data names it");
+        Combat::load_weapon(world, id, data, &id_name);
+        Production::load_train(world, id, data, package);
         let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
         Stats::load_action_params(world, id, &data.params, |stat| places[stat]);
         ActionBook::share_in(world);

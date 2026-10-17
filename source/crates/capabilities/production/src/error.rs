@@ -32,6 +32,13 @@ pub enum ProductionDataError {
     /// A gather that aims at something but a unit its filter selects.
     #[error("a gather aims at a unit its filter selects")]
     GatherAims,
+    /// A build whose unit type has no box body.
+    #[error("its building has no box body")]
+    NoBox,
+    /// A build whose site starts at no life: its `start_life` is 0, or missing for a building
+    /// with the life pool.
+    #[error("its building's site starts at no life")]
+    StartLife,
 }
 
 /// Why the production capability refused a script call: a script gave it a value it does not

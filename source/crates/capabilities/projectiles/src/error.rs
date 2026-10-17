@@ -39,12 +39,6 @@ pub enum ProjectileDeliveryError {
     /// It has an `on_hit` list or hook, and its projectile hits nothing.
     #[error("an `on_hit`, and its projectile hits nothing")]
     NoHit,
-    /// An attack whose projectile neither homes nor flies a curve, as a weapon's does.
-    #[error("a weapon's delivery is a homing projectile or a curve")]
-    Weapon,
-    /// A scatter of a projectile that flies no curve, which the scatter aims.
-    #[error("a scatter aims its delivery's curve")]
-    Scatter,
 }
 
 /// Why the projectiles capability refused a script call: a script gave it a value it does not

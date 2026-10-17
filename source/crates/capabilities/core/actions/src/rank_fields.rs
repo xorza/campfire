@@ -1,13 +1,11 @@
-use std::num::{NonZeroU8, NonZeroU16};
-
-use campfire_math::Num;
+use std::num::NonZeroU8;
 
 use campfire_players::ResourceAmount;
 use campfire_units::PoolCost;
 
 use crate::action_range::ActionRange;
 
-/// An action's capability fields at one rank, as data gives them: times in milliseconds, its
+/// The pipeline's capability fields of an action at one rank, as data gives them: times in milliseconds, its
 /// cost in its caster's pools, and in its caster's player's resources.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RankFields {
@@ -21,18 +19,6 @@ pub struct RankFields {
     pub channel: Option<RankChannel>,
     /// A charged action's most, in milliseconds.
     pub charge_ms: Option<u64>,
-    /// A weapon's own damage.
-    pub amount: Option<Num>,
-    /// A weapon's own period, in milliseconds.
-    pub period_ms: Option<u64>,
-    pub clip: Option<RankClip>,
-}
-
-/// A weapon's clip at one rank: the shots it fires before it reloads, and the time it reloads for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RankClip {
-    pub shots: NonZeroU16,
-    pub reload_ms: u64,
 }
 
 /// A channel at one rank: how long it runs, and the time between its ticks, both positive, and

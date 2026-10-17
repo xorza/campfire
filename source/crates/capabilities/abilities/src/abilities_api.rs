@@ -1,10 +1,9 @@
-use campfire_actions::{ActionDataField, ActionRange, ActionsColumn, SlotKind};
+use campfire_actions::{ActionRange, ActionsColumn, SlotKind};
 use campfire_math::{Num, Vec3};
 use campfire_script::{
     ApiBuilder, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet,
     ScriptCut, ScriptValue, Status, Unit,
 };
-use campfire_sim::Capability;
 use campfire_values::{ActionId, Block, TagProperty};
 
 use crate::abilities_effect::AbilitiesEffect;
@@ -73,7 +72,6 @@ impl AbilitiesApi {
         .hook(Hook::OnResolve, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnChannelTick, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnInterrupt, Status::Runs(ApiVersion::FIRST))
-        .action_fields(ActionDataField::of(Some(Capability::Abilities)))
         .shared_data(DataTable::UnitType, &["slots"], &[]);
     }
 

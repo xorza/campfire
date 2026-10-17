@@ -5,8 +5,8 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_actions::{
-    ActionDataField, ActionField, ActionKind, ActionProblem, EffectData, EffectRule, EffectTo,
-    LaunchLists, ListHook, ListedEffect, MeteredKind, PlannedEffect, SlotError,
+    ActionField, ActionProblem, EffectData, EffectRule, EffectTo, LaunchLists, ListHook,
+    ListedEffect, PipelineField, PlannedEffect, SlotError,
 };
 use campfire_areas::{AreaDeliveryError, LaunchEffectData};
 use campfire_capabilities::{CapabilityError, Release};
@@ -283,7 +283,7 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
         rule_at(
             problem,
             &entry("actions", "tower_attack"),
-            &ProjectileDeliveryError::Scatter,
+            &CombatDataError::Scatter,
         )
     };
     assert!(scatters(&error.problem), "{error:?}");
@@ -294,7 +294,7 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
         rule_at(
             problem,
             &entry("actions", "tower_attack"),
-            &ActionProblem::Speed,
+            &CombatDataError::Speed,
         )
     };
     assert!(speeds(&error.problem), "{error:?}");
@@ -304,7 +304,7 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
         rule_at(
             problem,
             &entry("actions", "wolf_attack"),
-            &ActionProblem::Splash,
+            &CombatDataError::Splash,
         )
     };
     assert!(splashes(&error.problem), "{error:?}");
@@ -435,7 +435,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
         rule_at(
             problem,
             &entry("actions", "melee_creep_attack"),
-            &ActionProblem::KindField(ActionDataField::OnEnd),
+            &ActionProblem::KindField(PipelineField::OnEnd),
         )
     };
     assert!(refused(&error.problem), "{error:?}");
@@ -994,7 +994,7 @@ static DATA_FLAWS: &[Flaw] = &[
             rule_at(
                 problem,
                 &entry("actions", "tower_attack"),
-                &ProjectileDeliveryError::Weapon,
+                &CombatDataError::Delivery,
             )
         },
     ),
@@ -1793,13 +1793,7 @@ static ACTION_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("rate = \"attack_speed\"\n", ""),
         MODE,
-        |problem| {
-            rule_at(
-                problem,
-                &entry("actions", "melee_creep_attack"),
-                &ActionProblem::KindField(ActionDataField::Rate),
-            )
-        },
+        |problem| read_fails(problem, "data/mode.toml", "a weapon's rate is a stat"),
     ),
     flaw(
         MODE_DATA,
@@ -1809,7 +1803,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             rule_at(
                 problem,
                 &entry("actions", "tower_attack"),
-                &CombatDataError::GlobalAttack,
+                &ActionProblem::Global,
             )
         },
     ),
@@ -1839,7 +1833,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             rule_at(
                 problem,
                 &entry("actions", "wolf_attack"),
-                &ActionProblem::KindField(ActionDataField::CooldownMs),
+                &ActionProblem::KindField(PipelineField::CooldownMs),
             )
         },
     ),
@@ -1850,13 +1844,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[actions.dread]\nrate = \"attack_speed\"\n",
         ),
         "hero-husk",
-        |problem| {
-            rule_at(
-                problem,
-                &entry("actions", "dread"),
-                &ActionProblem::KindField(ActionDataField::Rate),
-            )
-        },
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `rate`"),
     ),
     flaw(
         MODE_DATA,
@@ -3385,13 +3373,7 @@ static MAP_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nrequires = {}\n"),
         "hero-husk",
-        |problem| {
-            rule_at(
-                problem,
-                &entry("actions", "dread"),
-                &ActionProblem::KindField(ActionDataField::Requires),
-            )
-        },
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `requires`"),
     ),
     Flaw {
         file: UNITS,
@@ -3436,7 +3418,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| rule_at(problem, &entry("actions", "raise"), &ActionProblem::NoBox),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "raise"),
+                &ProductionDataError::NoBox,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -3471,7 +3459,7 @@ static MAP_FLAWS: &[Flaw] = &[
             rule_at(
                 problem,
                 &entry("actions", "raise"),
-                &ActionProblem::StartLife,
+                &ProductionDataError::StartLife,
             )
         },
     },
@@ -3483,13 +3471,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| {
-            rule_at(
-                problem,
-                &entry("actions", "raise"),
-                &ActionProblem::KindField(ActionDataField::Construct),
-            )
-        },
+        refused: |problem| read_fails(problem, "data/mode.toml", "missing field `construct`"),
     },
     Flaw {
         file: MODE_DATA,
@@ -3521,7 +3503,7 @@ static MAP_FLAWS: &[Flaw] = &[
             rule_at(
                 problem,
                 &entry("actions", "raise"),
-                &ActionProblem::StartLife,
+                &ProductionDataError::StartLife,
             )
         },
     },
@@ -3534,7 +3516,7 @@ static MAP_FLAWS: &[Flaw] = &[
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
         refused: |problem| {
-            let global = ActionProblem::Global(MeteredKind::Build);
+            let global = ActionProblem::Global;
             rule_at(problem, &entry("actions", "raise"), &global)
         },
     },
@@ -3566,7 +3548,7 @@ static MAP_FLAWS: &[Flaw] = &[
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
         refused: |problem| {
-            let global = ActionProblem::Global(MeteredKind::Gather);
+            let global = ActionProblem::Global;
             rule_at(problem, &entry("actions", "mine"), &global)
         },
     },
@@ -3598,13 +3580,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| {
-            rule_at(
-                problem,
-                &entry("actions", "mine"),
-                &ActionProblem::KindField(ActionDataField::Take),
-            )
-        },
+        refused: |problem| read_fails(problem, "data/mode.toml", "missing field `take`"),
     },
     Flaw {
         file: UNITS,
@@ -3651,13 +3627,7 @@ static MAP_FLAWS: &[Flaw] = &[
             "[actions.dread]\nunit_type = \"melee_creep\"\n",
         ),
         "hero-husk",
-        |problem| {
-            rule_at(
-                problem,
-                &entry("actions", "dread"),
-                &ActionProblem::KindField(ActionDataField::UnitType),
-            )
-        },
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `unit_type`"),
     ),
     // The release runs no action of the kind `enter` yet; an action sits in
     // slot kinds of one count of ranks.
@@ -3666,11 +3636,8 @@ static MAP_FLAWS: &[Flaw] = &[
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"enter\"\n"),
         "hero-husk",
         |problem| {
-            rule_at(
-                problem,
-                &entry("actions", "dread"),
-                &ActionProblem::NotRun(ActionKind::Enter),
-            )
+            let message = "the release runs no action of the kind `enter`";
+            read_fails(problem, "data/avatar.toml", message)
         },
     ),
     Flaw {

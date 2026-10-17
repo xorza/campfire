@@ -1,61 +1,52 @@
+use std::any::Any;
 use std::collections::BTreeMap;
-use std::num::{NonZeroU8, NonZeroU16, NonZeroU32};
+use std::num::NonZeroU8;
 use std::slice;
+use std::sync::Arc;
 
-use campfire_codec::{TomlError, TomlTable};
+use campfire_codec::{StructFields, TomlError, TomlTable, TomlValue};
 use campfire_common::DeclaredName;
 use campfire_declare::SectionReaders;
-use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
-use campfire_script::{DataSection, DataTable};
 use campfire_units::PoolCost;
 use campfire_values::{
-    Distance, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked, RelationSet, Scalar,
-    Share, Speed, Stat,
+    Distance, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked, Scalar,
 };
+use serde::Deserialize;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
 
 use crate::action_data::error::ActionField;
 use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
-use crate::build_start::BuildStart;
-use crate::construct_data::ConstructData;
 use crate::cost_target::CostTarget;
 use crate::delivery_data::DeliveryData;
+use crate::kind_section::{KindSection, KindSections};
 use crate::list_hook::ListHook;
 use crate::listed_effect::effect_data::EffectData;
 use crate::listed_effect::error::EffectRule;
-use crate::placement_data::PlacementData;
 use crate::range_field::RangeField;
-use crate::rank_fields::{RankChannel, RankCharges, RankClip, RankFields, RankToggle, TogglePer};
-use crate::requires_data::RequiresData;
+use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
 use crate::targeting::Targeting;
 
 pub(crate) mod error;
 
-/// An action as its package's `[actions.<id>]` declares it, in milliseconds. Each capability
-/// field may hold one value or one per rank. The release loads every field, and runs those the
-/// script API reference lists as running.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
+/// An action as its package's `[actions.<id>]` declares it, in milliseconds: the pipeline's
+/// fields, each capability field one value or one per rank, and its kind's section, which reads
+/// the rest of its table (04-capabilities/actions.md, Each kind owns its section).
+#[derive(Debug, Clone)]
 pub struct ActionData {
     /// The message of the name players see, which an avatar's or a loadout's action needs.
     pub name: Option<MessageId>,
-    #[serde(default)]
-    pub kind: ActionKind,
     /// The script, if the action needs one.
     pub script: Option<PackagePath>,
     pub targeting: Targeting,
     pub range: Option<Ranked<RangeField>>,
     pub cooldown_ms: Option<Ranked<Number>>,
     /// In each pool of the caster it names, and each resource of the caster's player.
-    #[serde(default)]
     pub cost: BTreeMap<DeclaredName, Ranked<Number>>,
     pub windup_ms: Option<Ranked<Number>>,
     /// A target beyond range is moved in, instead of the caster walking.
-    #[serde(default)]
     pub clamp_to_range: bool,
     pub toggle: Option<Toggle>,
     pub channel: Option<ChannelData>,
@@ -67,67 +58,103 @@ pub struct ActionData {
     /// The modifier held while the action has a rank.
     pub passive_modifier: Option<DeclaredName>,
     /// The passive modifier is held only while the action is off cooldown.
-    #[serde(default)]
     pub passive_while_ready: bool,
     /// How it reaches what it affects, other than at once.
     pub delivery: Option<DeliveryData>,
-    /// A weapon's stat of attacks a second, an `attack`'s alone.
-    pub rate: Option<Stat>,
-    /// A weapon's stat of its damage, an `attack`'s alone.
-    pub damage: Option<Stat>,
-    /// The kind of damage a weapon deals, an `attack`'s alone.
-    pub damage_kind: Option<DeclaredName>,
-    /// A weapon's own damage, in place of its stat `damage`, an `attack`'s alone.
-    pub amount: Option<Ranked<Number>>,
-    /// A weapon's own time from one attack's start to the next, in place of its stat `rate`, an
-    /// `attack`'s alone.
-    pub period_ms: Option<Ranked<Number>>,
-    /// A weapon's clip, an `attack`'s alone.
-    pub clip: Option<ClipData>,
-    /// The damage a weapon's projectile deals where it ends, an `attack`'s alone.
-    pub splash: Option<SplashData>,
-    /// How far from its target a weapon's projectile may aim, an `attack`'s alone.
-    pub scatter: Option<ScatterData>,
-    /// The pitches a weapon's target lies within, an `attack`'s alone.
-    pub pitch_deg: Option<PitchData>,
-    /// How fast a weapon of no projectile reaches its target, which delays its hit, an
-    /// `attack`'s alone (04-capabilities/combat.md, A slow weapon delays its damage).
-    pub speed: Option<Speed>,
-    /// The unit type of its package a `train` makes, a train's alone.
-    pub unit_type: Option<DeclaredName>,
-    /// What its player must hold for a `train` to join a queue, or a `build` to start.
-    pub requires: Option<RequiresData>,
-    /// How a `build`'s site grows.
-    pub construct: Option<ConstructData>,
-    /// When a `build` starts, as its builder arrives when absent.
-    pub start: Option<BuildStart>,
-    /// The share of its life pool's maximum a `build`'s site starts with.
-    pub start_life: Option<Share>,
-    /// The share of the player resources a `build` paid that a cancel of its site returns, all
-    /// when absent.
-    pub cancel_refund: Option<Share>,
-    /// Where a `build` may place its box.
-    pub placement: Option<PlacementData>,
-    /// The mode's player resource a `gather` gathers.
-    pub resource: Option<DeclaredName>,
-    /// The most a `gather`'s trip carries.
-    pub take: Option<NonZeroU32>,
-    /// How far from its node, in meters, a `gather` looks for another, none when absent.
-    pub bounce: Option<Distance>,
     /// Values for the script, as `ctx.p` reads them.
-    #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,
-    /// The effects of its resolve, which queue before its script's `on_resolve`. Its lists read
-    /// with the release's readers, as `ActionsData` reads them, so serde's read of an action
-    /// refuses them.
-    #[serde(skip)]
+    /// Its kind, and the fields of its kind's own, as the module that registers its kind reads
+    /// them.
+    pub section: Arc<dyn KindSection>,
+    /// The effects of its resolve, which queue before its script's `on_resolve`.
     pub on_resolve: Vec<EffectData>,
     /// The effects of each hit of its delivery, which queue before `on_hit`.
-    #[serde(skip)]
     pub on_hit: Vec<EffectData>,
     /// The effects of its delivery's end, which queue before `on_end`.
-    #[serde(skip)]
     pub on_end: Vec<EffectData>,
+}
+
+// By hand, as a derive compares the trait objects by a move.
+impl PartialEq for ActionData {
+    fn eq(&self, other: &Self) -> bool {
+        let Self {
+            name,
+            script,
+            targeting,
+            range,
+            cooldown_ms,
+            cost,
+            windup_ms,
+            clamp_to_range,
+            toggle,
+            channel,
+            hold,
+            charges,
+            charge,
+            passive_modifier,
+            passive_while_ready,
+            delivery,
+            params,
+            section,
+            on_resolve,
+            on_hit,
+            on_end,
+        } = self;
+        *name == other.name
+            && *script == other.script
+            && *targeting == other.targeting
+            && *range == other.range
+            && *cooldown_ms == other.cooldown_ms
+            && *cost == other.cost
+            && *windup_ms == other.windup_ms
+            && *clamp_to_range == other.clamp_to_range
+            && *toggle == other.toggle
+            && *channel == other.channel
+            && *hold == other.hold
+            && *charges == other.charges
+            && *charge == other.charge
+            && *passive_modifier == other.passive_modifier
+            && *passive_while_ready == other.passive_while_ready
+            && *delivery == other.delivery
+            && *params == other.params
+            && **section == *other.section
+            && *on_resolve == other.on_resolve
+            && *on_hit == other.on_hit
+            && *on_end == other.on_end
+    }
+}
+
+impl Eq for ActionData {}
+
+/// The keys of an action's table that serde reads, every kind's: its kind's name, which picks the
+/// reader of its section, and the fields of `ActionData` but its section and its lists, which read
+/// with the release's readers.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PipelineKeys {
+    name: Option<MessageId>,
+    #[serde(default)]
+    kind: ActionKind,
+    script: Option<PackagePath>,
+    targeting: Targeting,
+    range: Option<Ranked<RangeField>>,
+    cooldown_ms: Option<Ranked<Number>>,
+    #[serde(default)]
+    cost: BTreeMap<DeclaredName, Ranked<Number>>,
+    windup_ms: Option<Ranked<Number>>,
+    #[serde(default)]
+    clamp_to_range: bool,
+    toggle: Option<Toggle>,
+    channel: Option<ChannelData>,
+    hold: Option<DeclaredName>,
+    charges: Option<ChargesData>,
+    charge: Option<ChargeUpData>,
+    passive_modifier: Option<DeclaredName>,
+    #[serde(default)]
+    passive_while_ready: bool,
+    delivery: Option<DeliveryData>,
+    #[serde(default)]
+    params: BTreeMap<DeclaredName, Param>,
 }
 
 /// A toggle's cost, in each pool of the caster it names.
@@ -158,108 +185,6 @@ pub struct ChargesData {
     pub recharge_ms: Ranked<Number>,
 }
 
-/// A weapon's `clip`: the shots it fires before it reloads, and the time it reloads for, from
-/// the shot that empties it, in place of its period.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ClipData {
-    pub shots: Ranked<Number>,
-    pub reload_ms: Ranked<Number>,
-}
-
-/// A weapon's `splash` (04-capabilities/combat.md, An attack may splash): where its projectile
-/// ends, its damage to each living unit of the relations `affects` names whose volume lies
-/// within `radius` meters, and to its source unless `spares_source`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct SplashData {
-    pub radius: Num,
-    pub affects: RelationSet,
-    pub spares_source: bool,
-}
-
-/// A weapon's `scatter` (04-capabilities/combat.md, An attack may scatter): the most meters
-/// from its target's ground point its projectile aims at, `radius` and, for a target of a tag
-/// `tags` names, the largest of their radii more.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ScatterData {
-    pub radius: Num,
-    pub tags: BTreeMap<DeclaredName, Num>,
-}
-
-/// A weapon's `pitch_deg` (04-capabilities/combat.md, An attack may bound its pitch): the
-/// least and the most angle, in degrees above the ground plane, at which its target's center
-/// lies from its attacker's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PitchData {
-    pub low: Num,
-    pub high: Num,
-}
-
-/// Data is untrusted, so a radius that is not positive or past `MAX_BOUND` fails to read.
-impl<'de> Deserialize<'de> for SplashData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            radius: Num,
-            affects: RelationSet,
-            spares_source: Option<bool>,
-        }
-        let fields = Fields::deserialize(deserializer)?;
-        if fields.radius <= Num::ZERO || fields.radius > MAX_BOUND {
-            return Err(D::Error::custom(
-                "a splash's radius is positive, up to 2,048 m",
-            ));
-        }
-        Ok(Self {
-            radius: fields.radius,
-            affects: fields.affects,
-            spares_source: fields.spares_source.unwrap_or(true),
-        })
-    }
-}
-
-/// Data is untrusted, so a radius below 0 or past `MAX_BOUND` fails to read.
-impl<'de> Deserialize<'de> for ScatterData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            #[serde(default)]
-            radius: Num,
-            #[serde(default)]
-            tags: BTreeMap<DeclaredName, Num>,
-        }
-        let fields = Fields::deserialize(deserializer)?;
-        let holds = |radius: &Num| (Num::ZERO..=MAX_BOUND).contains(radius);
-        if !holds(&fields.radius) || !fields.tags.values().all(holds) {
-            return Err(D::Error::custom("a scatter's radius is from 0 to 2,048 m"));
-        }
-        Ok(Self {
-            radius: fields.radius,
-            tags: fields.tags,
-        })
-    }
-}
-
-/// Data is untrusted, so a pitch below −90° or above 90°, or a least one past the most, fails to
-/// read.
-impl<'de> Deserialize<'de> for PitchData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let [low, high] = <[Num; 2]>::deserialize(deserializer)?;
-        // A least of 90° or a most of −90° would hold one pitch, which the test of a bound,
-        // by the sine of the pitch past it, cannot tell from the opposite one.
-        let quarter = Num::int(90);
-        if low < -quarter || high > quarter || low > high || low == quarter || high == -quarter {
-            return Err(D::Error::custom(
-                "a pitch's bound is two angles from -90 to 90 degrees, the least first and \
-                 below 90, the most above -90",
-            ));
-        }
-        Ok(Self { low, high })
-    }
-}
-
 /// An action's `charge`: a cast that charges from its start, in place of its windup, and
 /// resolves when its order is given again or at `max_ms`, whichever is first.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -272,21 +197,18 @@ impl ActionData {
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
         let range = self.range.as_ref().and_then(Ranked::ranks);
-        let numbers = self.ranked_numbers().chain(self.costs()).map(Ranked::ranks);
+        let numbers = self.ranked_numbers().chain(self.costs());
+        let numbers = numbers.chain(self.section.numbers()).map(Ranked::ranks);
         let params = self.params.values().map(Param::ranks);
         [range].into_iter().chain(numbers).chain(params).flatten()
     }
 
-    /// Each of its capability fields that is a number at each rank, which may read a param:
-    /// its cooldown, windup, channel, charges, charge, and a weapon's amount, period and clip.
+    /// Each of the pipeline's fields it gives that is a number at each rank, which may read a
+    /// param: its cooldown, windup, channel, charges and charge.
     fn ranked_numbers(&self) -> impl Iterator<Item = &Ranked<Number>> {
         [
             self.cooldown_ms.as_ref(),
             self.windup_ms.as_ref(),
-            self.amount.as_ref(),
-            self.period_ms.as_ref(),
-            self.clip.as_ref().map(|clip| &clip.shots),
-            self.clip.as_ref().map(|clip| &clip.reload_ms),
             self.channel.as_ref().map(|channel| &channel.duration_ms),
             self.channel.as_ref().map(|channel| &channel.tick_ms),
             self.charges.as_ref().map(|charges| &charges.max),
@@ -367,15 +289,14 @@ impl ActionData {
         rank: Rank,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
     ) -> Result<RankFields, ActionField> {
-        let whole = |field, ranked: Option<&Ranked<Number>>| self.whole_at(rank, field, ranked);
+        let whole = |field, ranked: Option<&Ranked<Number>>| self.whole(rank, field, ranked);
         let range = match &self.range {
             None => ActionRange::Global,
             Some(ranked) => match ranked.get(rank).ok_or(ActionField::Range)? {
                 RangeField::Range(range) => *range,
                 RangeField::Param(reference) => {
-                    let meters = self
-                        .param_at(rank, reference.param.as_str(), ActionField::Range)?
-                        .to_num();
+                    let meters = self.param_at(rank, reference.param.as_str());
+                    let meters = meters.ok_or(ActionField::Range)?.to_num();
                     let meters = meters.and_then(Distance::new);
                     ActionRange::Meters(meters.ok_or(ActionField::Range)?)
                 }
@@ -405,87 +326,46 @@ impl ActionData {
             toggle: self.toggle_at(rank, &target)?,
             channel: self.channel_at(rank)?,
             charge_ms: self.charge_at(rank)?,
-            amount: self.amount_at(rank)?,
-            period_ms: self.period_at(rank)?,
-            clip: self.clip_at(rank)?,
         })
     }
 
-    /// A weapon's own damage at `rank`: a number at least 0.
-    fn amount_at(&self, rank: Rank) -> Result<Option<Num>, ActionField> {
-        let field = ActionField::Amount;
-        self.amount
-            .as_ref()
-            .map(|ranked| {
-                let value = match ranked.get(rank).ok_or(field)? {
-                    Number::Value(value) => *value,
-                    Number::Param(reference) => {
-                        self.param_at(rank, reference.param.as_str(), field)?
-                    }
-                };
-                let amount = value.to_num().filter(|amount| *amount >= Num::ZERO);
-                amount.ok_or(field)
-            })
-            .transpose()
-    }
-
-    /// A weapon's own period at `rank`: whole milliseconds, not 0.
-    fn period_at(&self, rank: Rank) -> Result<Option<u64>, ActionField> {
-        let field = ActionField::Period;
-        self.period_ms
-            .as_ref()
-            .map(|ranked| {
-                let period = self.whole_at(rank, field, Some(ranked))?;
-                (period > 0).then_some(period).ok_or(field)
-            })
-            .transpose()
-    }
-
-    /// A weapon's clip at `rank`: shots of 1 to 65,535, and a reload.
-    fn clip_at(&self, rank: Rank) -> Result<Option<RankClip>, ActionField> {
-        let field = ActionField::Clip;
-        self.clip
-            .as_ref()
-            .map(|clip| {
-                let shots = self.whole_at(rank, field, Some(&clip.shots))?;
-                let shots = u16::try_from(shots).ok().and_then(NonZeroU16::new);
-                Ok(RankClip {
-                    shots: shots.ok_or(field)?,
-                    reload_ms: self.whole_at(rank, field, Some(&clip.reload_ms))?,
-                })
-            })
-            .transpose()
-    }
-
-    /// Its param `name` at `rank`, a ranked one; `field` for one it does not declare, or a
-    /// scaling one, whose value is the caster's, not the action's.
-    fn param_at(&self, rank: Rank, name: &str, field: ActionField) -> Result<Scalar, ActionField> {
-        match self.params.get(name) {
-            Some(Param::Ranked(ranked)) => ranked.get(rank).copied().ok_or(field),
-            Some(Param::Scaling(_)) | None => Err(field),
+    /// The value `ranked` gives at `rank`, a `{ param }` read from its params at that rank; none
+    /// for a rank it lacks, or a param it does not declare or that scales, whose value is the
+    /// caster's, not the action's. A kind's section reads its own numbers by it.
+    pub fn value_at(&self, rank: Rank, ranked: &Ranked<Number>) -> Option<Scalar> {
+        match ranked.get(rank)? {
+            Number::Value(value) => Some(*value),
+            Number::Param(reference) => self.param_at(rank, reference.param.as_str()),
         }
     }
 
-    /// The whole number `ranked` gives at `rank`, a `{ param }` read at that rank; 0 with none,
-    /// and `field` for one that is not a whole number at least 0.
-    fn whole_at(
+    /// The whole number at least 0 that `ranked` gives at `rank`, as `value_at` reads it; none
+    /// for another value.
+    pub fn whole_at(&self, rank: Rank, ranked: &Ranked<Number>) -> Option<u64> {
+        match self.value_at(rank, ranked)? {
+            Scalar::Int(value) => u64::try_from(value).ok(),
+            Scalar::Decimal(_) => None,
+        }
+    }
+
+    /// Its param `name` at `rank`, a ranked one; none for one it does not declare, or a scaling
+    /// one.
+    fn param_at(&self, rank: Rank, name: &str) -> Option<Scalar> {
+        match self.params.get(name) {
+            Some(Param::Ranked(ranked)) => ranked.get(rank).copied(),
+            Some(Param::Scaling(_)) | None => None,
+        }
+    }
+
+    /// The whole number `ranked` gives at `rank`, as `whole_at` reads it; 0 with none, and
+    /// `field` for one that is not a whole number at least 0.
+    fn whole(
         &self,
         rank: Rank,
         field: ActionField,
         ranked: Option<&Ranked<Number>>,
     ) -> Result<u64, ActionField> {
-        let Some(ranked) = ranked else {
-            return Ok(0);
-        };
-        let value = match ranked.get(rank).ok_or(field)? {
-            Number::Value(value) => *value,
-            Number::Param(reference) => self.param_at(rank, reference.param.as_str(), field)?,
-        };
-        match value {
-            Scalar::Int(value) => u64::try_from(value).ok(),
-            Scalar::Decimal(_) => None,
-        }
-        .ok_or(field)
+        ranked.map_or(Ok(0), |ranked| self.whole_at(rank, ranked).ok_or(field))
     }
 
     /// Its charges at `rank`: a count of 1 to 255, and a recharge.
@@ -494,11 +374,11 @@ impl ActionData {
         self.charges
             .as_ref()
             .map(|charges| {
-                let max = self.whole_at(rank, field, Some(&charges.max))?;
+                let max = self.whole(rank, field, Some(&charges.max))?;
                 let max = u8::try_from(max).ok().and_then(NonZeroU8::new);
                 Ok(RankCharges {
                     max: max.ok_or(field)?,
-                    recharge_ms: self.whole_at(rank, field, Some(&charges.recharge_ms))?,
+                    recharge_ms: self.whole(rank, field, Some(&charges.recharge_ms))?,
                 })
             })
             .transpose()
@@ -520,7 +400,7 @@ impl ActionData {
                 };
                 let mut cost = Vec::with_capacity(costs.len());
                 for (name, amount) in costs {
-                    let amount = self.whole_at(rank, field, Some(amount))?;
+                    let amount = self.whole(rank, field, Some(amount))?;
                     let amount = i64::try_from(amount).ok().and_then(Num::from_int);
                     let Some(CostTarget::Pool(pool)) = target(name) else {
                         return Err(field);
@@ -541,7 +421,7 @@ impl ActionData {
         self.charge
             .as_ref()
             .map(|charge| {
-                let most = self.whole_at(rank, field, Some(&charge.max_ms))?;
+                let most = self.whole(rank, field, Some(&charge.max_ms))?;
                 (most > 0).then_some(most).ok_or(field)
             })
             .transpose()
@@ -554,8 +434,8 @@ impl ActionData {
         self.channel
             .as_ref()
             .map(|channel| {
-                let duration_ms = self.whole_at(rank, field, Some(&channel.duration_ms))?;
-                let tick_ms = self.whole_at(rank, field, Some(&channel.tick_ms))?;
+                let duration_ms = self.whole(rank, field, Some(&channel.duration_ms))?;
+                let tick_ms = self.whole(rank, field, Some(&channel.tick_ms))?;
                 if duration_ms == 0 || tick_ms == 0 {
                     return Err(field);
                 }
@@ -572,6 +452,7 @@ impl ActionData {
     pub fn param_refs(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
         self.ranked_numbers()
             .chain(self.costs())
+            .chain(self.section.numbers())
             .flat_map(Ranked::values)
             .filter_map(Number::param)
             .chain(
@@ -630,7 +511,16 @@ impl ActionData {
         found.into_iter()
     }
 
-    /// The action `table` gives, its lists each read with the release's `readers`.
+    /// The keys of an action's table that the pipeline reads, every kind's, its lists among
+    /// them; its kind's section reads the rest.
+    pub fn pipeline_keys() -> impl Iterator<Item = &'static str> {
+        let keys = StructFields::of::<PipelineKeys>().iter().copied();
+        keys.chain(Self::LISTS)
+    }
+
+    /// The action `table` gives: its lists each read with the release's `readers`, the keys of
+    /// the pipeline, and the rest of its table as the section of its kind, which the module that
+    /// registers the kind reads; an error for a kind no module registers.
     pub(crate) fn read(mut table: TomlTable, readers: &SectionReaders) -> Result<Self, TomlError> {
         let mut list = |key| {
             table
@@ -638,12 +528,72 @@ impl ActionData {
                 .map_or(Ok(Vec::new()), |list| EffectData::read_list(list, readers))
         };
         let [on_resolve, on_hit, on_end] = Self::LISTS.map(&mut list);
+        let keys = table.take_keys(StructFields::of::<PipelineKeys>().iter().copied());
+        let PipelineKeys {
+            name,
+            kind,
+            script,
+            targeting,
+            range,
+            cooldown_ms,
+            cost,
+            windup_ms,
+            clamp_to_range,
+            toggle,
+            channel,
+            hold,
+            charges,
+            charge,
+            passive_modifier,
+            passive_while_ready,
+            delivery,
+            params,
+        } = keys.read()?;
+        let Some(read) = readers.listed::<KindSections>(kind.name()) else {
+            return Err(TomlError::custom(format_args!(
+                "the release runs no action of the kind `{}`",
+                kind.name()
+            )));
+        };
+        let section = read(TomlValue::from(table), readers)?;
+        debug_assert_eq!(
+            section.kind(),
+            kind,
+            "a kind's section is registered by its kind's name"
+        );
         Ok(Self {
+            name,
+            script,
+            targeting,
+            range,
+            cooldown_ms,
+            cost,
+            windup_ms,
+            clamp_to_range,
+            toggle,
+            channel,
+            hold,
+            charges,
+            charge,
+            passive_modifier,
+            passive_while_ready,
+            delivery,
+            params,
+            section,
             on_resolve: on_resolve?,
             on_hit: on_hit?,
             on_end: on_end?,
-            ..table.read()?
         })
+    }
+
+    /// Its kind, as its section gives it.
+    pub fn kind(&self) -> ActionKind {
+        self.section.kind()
+    }
+
+    /// Its kind's section, when its kind's is an `S`.
+    pub fn section<S: KindSection>(&self) -> Option<&S> {
+        (&*self.section as &dyn Any).downcast_ref::<S>()
     }
 
     /// The filter its data names: its targeting's.
@@ -656,24 +606,21 @@ impl ActionData {
     }
 }
 
-impl DataSection for ActionData {
-    const TABLE: DataTable = DataTable::Action;
-}
-
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
+    use std::sync::Arc;
 
     use crate::action_data::ActionData;
-    use crate::action_kind::ActionKind;
+    use crate::kind_section::KindSection;
     use crate::targeting::Targeting;
 
     impl ActionData {
-        /// A cast of `targeting` and nothing more, as a table that names its targeting alone reads.
-        pub fn cast(targeting: Targeting) -> Self {
+        /// An action of `section`'s kind, of `targeting` and nothing more, as a table that names
+        /// its kind and its targeting alone reads.
+        pub fn of(targeting: Targeting, section: impl KindSection) -> Self {
             Self {
                 name: None,
-                kind: ActionKind::default(),
                 script: None,
                 targeting,
                 range: None,
@@ -689,27 +636,8 @@ pub(crate) mod internals {
                 passive_modifier: None,
                 passive_while_ready: false,
                 delivery: None,
-                rate: None,
-                damage: None,
-                damage_kind: None,
-                amount: None,
-                period_ms: None,
-                clip: None,
-                splash: None,
-                scatter: None,
-                pitch_deg: None,
-                speed: None,
-                unit_type: None,
-                requires: None,
-                construct: None,
-                start: None,
-                start_life: None,
-                cancel_refund: None,
-                placement: None,
-                resource: None,
-                take: None,
-                bounce: None,
                 params: BTreeMap::new(),
+                section: Arc::new(section),
                 on_resolve: Vec::new(),
                 on_hit: Vec::new(),
                 on_end: Vec::new(),
@@ -723,17 +651,38 @@ mod tests {
     use campfire_codec::Toml;
 
     use super::*;
+    use crate::kind_section::tests::TestKind;
+
+    fn read(text: &str) -> Result<ActionData, TomlError> {
+        ActionData::read(Toml::parse(text)?, &TestKind::readers())
+    }
 
     #[test]
-    fn a_cast_is_what_a_table_of_its_targeting_alone_reads() {
-        let read = |text: &str| Toml::parse::<ActionData>(text);
+    fn a_table_reads_its_pipeline_keys_and_gives_the_rest_to_its_kind() {
         assert_eq!(
             read(r#"targeting = "none""#),
-            Ok(ActionData::cast(Targeting::None))
+            Ok(ActionData::of(Targeting::None, TestKind::default()))
         );
+        let read_most = read("targeting = \"point\"\ncooldown_ms = 5\nmost = [1, 2]").unwrap();
         assert_eq!(
-            read(r#"targeting = "point""#),
-            Ok(ActionData::cast(Targeting::Point))
+            read_most.cooldown_ms,
+            Some(Ranked::One(Number::Value(Scalar::Int(5))))
         );
+        let most = Ranked::PerRank(vec![
+            Number::Value(Scalar::Int(1)),
+            Number::Value(Scalar::Int(2)),
+        ]);
+        assert_eq!(read_most.section::<TestKind>().unwrap().most, Some(most));
+        // The kind reads what the pipeline does not, so it refuses a key neither takes.
+        let unknown = read("targeting = \"none\"\nfastest = 1").unwrap_err();
+        assert!(unknown.to_string().contains("fastest"), "{unknown}");
+        // `enter` has no section in the crate's readers.
+        let unrun = read("targeting = \"none\"\nkind = \"enter\"").unwrap_err();
+        assert!(
+            unrun.to_string().contains("no action of the kind `enter`"),
+            "{unrun}"
+        );
+        // The kind's numbers count its ranks.
+        assert!(read_most.check_ranks(2) && !read_most.check_ranks(1));
     }
 }

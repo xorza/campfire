@@ -633,10 +633,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 5: core pipelines and contracts
 
-**5.1 Kind sections owned by capabilities.** Touches `actions`, `combat`, `production`, the top crate and `package`.
-- `ActionData` holds the common fields and a `kind` section of the capability's own type. The hand table goes. `Weapon`, `Scatter` and `Pitch` move to combat, and the build and gather types move to production (C-1). 5.3 is done: each kind calls the shared start and commit steps, so a weapon's pitch and period come from combat, the kind that owns them.
-- **Goldens:** none. Data that a kind ignored without a word is now refused.
-
 ### Phase 6: `Send` data and the server frame
 
 **6.4 The session log.** Touches `protocol` (session log, journal, controller, carry) and `net` (seats, player link, checkpoints).
@@ -921,7 +917,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
-| C-1 | Action kinds are a closed enum and a flat `ActionData` of 41 fields, with a hand table of the fields for each kind, and `expect`s that package data can reach | `kind_spec.rs:11-18`, `action_data/mod.rs:36-131`, `action_data_field.rs:16-58`, `kind_data.rs:48-79` | Confirmed | 5.1 |
 | S-8 | A listed effect's data key and its `ctx` call are two declarations, with two names | `listed_effect/mod.rs`, each `*_api.rs` | Confirmed | 8.1 |
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
 | C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |

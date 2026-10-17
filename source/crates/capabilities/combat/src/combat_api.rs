@@ -1,12 +1,13 @@
-use campfire_actions::{ActionDataField, ActionsColumn};
+use campfire_actions::ActionsColumn;
+use campfire_codec::StructFields;
 use campfire_math::Num;
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook,
     MemberSpec, RoleSet, ScriptWindow, Status, Unit,
 };
-use campfire_sim::Capability;
 use campfire_values::{Block, DamageKind, TagProperty};
 
+use crate::attack_data::AttackData;
 use crate::combat_column::CombatColumn;
 use crate::combat_data::CombatData;
 use crate::combat_effect::CombatEffect;
@@ -98,7 +99,10 @@ impl CombatApi {
         .data::<TurretData>(&["turn_rate", "tolerance_deg", "slot"], &[])
         .shared_data(DataTable::Mode, &["combat"], &[])
         .shared_data(DataTable::UnitType, &["combat", "turret"], &[])
-        .action_fields(ActionDataField::of(Some(Capability::Combat)))
+        .action_fields(
+            ApiVersion::FIRST,
+            StructFields::of::<AttackData>().iter().copied(),
+        )
         .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnDamageTaken, Status::Runs(ApiVersion::FIRST))

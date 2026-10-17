@@ -1,4 +1,6 @@
-use campfire_actions::{ActionKind, ActionsData, SlotClaim, SlotClaims, Targeting, TypeSlotsData};
+use campfire_actions::{
+    ActionData, ActionKind, ActionsData, SlotClaim, SlotClaims, Targeting, TypeSlotsData,
+};
 use campfire_declare::{BookCx, BookError, BookPlace, Section, SourceKind};
 use campfire_sim::Capability;
 
@@ -36,7 +38,7 @@ impl Interaction {
         let kind = |package, id| {
             let actions = cx.package(package).content.get::<ActionsData>();
             let action = actions.and_then(|actions| actions.0.get(id));
-            action.map(|action| action.kind)
+            action.map(ActionData::kind)
         };
         for unit in cx.types() {
             let fail = |problem| {
@@ -60,7 +62,7 @@ impl Interaction {
             let actions = source.content.get::<ActionsData>().into_iter();
             let mut actions = actions.flat_map(|actions| &actions.0);
             let aimless = actions.find(|(_, action)| {
-                action.kind == ActionKind::Use && !matches!(action.targeting, Targeting::Unit(_))
+                action.kind() == ActionKind::Use && !matches!(action.targeting, Targeting::Unit(_))
             });
             if let Some((id, _)) = aimless {
                 let at = BookPlace::Entry {
@@ -76,7 +78,7 @@ impl Interaction {
             }
             let actions = source.content.get::<ActionsData>().into_iter();
             let mut actions = actions.flat_map(|actions| &actions.0);
-            if let Some((id, _)) = actions.find(|(_, action)| action.kind == ActionKind::Use) {
+            if let Some((id, _)) = actions.find(|(_, action)| action.kind() == ActionKind::Use) {
                 let at = BookPlace::Entry {
                     table: ActionsData::KEY,
                     name: id.clone(),

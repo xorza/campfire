@@ -1,11 +1,10 @@
-use campfire_actions::{ActionDataField, DeliveryData, DeliveryShape};
+use campfire_actions::{DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
 use campfire_script::{
     ApiBuilder, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, RoleSet, ScriptPosition,
     Unit,
 };
-use campfire_sim::Capability;
 use campfire_units::NewUnit;
 
 use crate::error::ProjectilesRefusal;
@@ -36,7 +35,6 @@ impl ProjectilesApi {
                 Self::launch(ctx, from.get(), Toward::Unit(unit.id))
             },
         )
-        .action_fields(ActionDataField::of(Some(Capability::Projectiles)))
         .data::<DeliveryData>(&["projectile", "count", "spread_deg"], &[])
         .shared_data(DataTable::UnitType, &["projectile"], &[])
         .data::<ProjectileData>(

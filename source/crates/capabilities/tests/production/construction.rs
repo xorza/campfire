@@ -1,8 +1,8 @@
-use campfire_actions::BuildStart;
 use campfire_codec::Toml;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersAction;
+use campfire_production::internals::TestBuild;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
 use campfire_units::{BuildTarget, Layer, Life, MapBook, SeenBy, Wall};
@@ -100,19 +100,22 @@ impl Yard {
             resource: gold,
             amount: 15,
         };
-        let build = Actions::add_build(game, depot, Num::ONE, Ticks::new(4), Some(cost));
-        let mut builds = BuildBook::default();
-        let new = NewBuild {
-            form,
-            start: rules.start,
-            style: rules.style,
-            start_life: Some(share("0.1")),
-            refund: share("0.5"),
-            near: rules.near,
-            away: rules.away,
+        let build = TestBuild {
+            range: Num::ONE,
+            time: Ticks::new(4),
+            resource_cost: Some(cost),
+            build: NewBuild {
+                unit_type: depot,
+                form,
+                start: rules.start,
+                style: rules.style,
+                start_life: Some(share("0.1")),
+                refund: share("0.5"),
+                near: rules.near,
+                away: rules.away,
+            },
         };
-        builds.push(build, new);
-        game.insert_resource(builds);
+        let build = Production::add_build(game, build);
         // Builders, of a half meter, walk a meter a tick.
         let builder = Units::load_type(game, TypeScope::Mode, "builder", &UnitTypeCore::default());
         Units::give_type(game, builder, BodyForm::circle(Num::HALF).unwrap());

@@ -65,6 +65,13 @@ impl TomlTable {
     }
 }
 
+/// The table as a value, as a type a registry picks reads the rest of a table.
+impl From<TomlTable> for TomlValue {
+    fn from(table: TomlTable) -> Self {
+        Self(toml::Value::Table(table.0))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -88,6 +95,10 @@ mod tests {
         assert_eq!(kept[0].0, "step");
         assert_eq!(kept[0].1.clone().read::<i64>().unwrap(), 5);
         let split = table.take_keys(["step", "none"]);
+        assert_eq!(
+            TomlValue::from(split.clone()).read::<BTreeMap<String, i64>>(),
+            split.clone().read::<BTreeMap<String, i64>>()
+        );
         assert_eq!(
             split.read::<BTreeMap<String, i64>>().unwrap(),
             BTreeMap::from([("step".to_owned(), 5)])

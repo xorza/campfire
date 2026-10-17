@@ -135,7 +135,7 @@ impl ActionSlots {
     /// holds none.
     pub fn kind_in(&self, book: &ActionBook, slot: u8) -> Option<ActionKind> {
         let action = self.slot(slot)?.action?;
-        Some(book.get(action)?.kind.kind())
+        Some(book.get(action)?.kind)
     }
 
     /// The most slots a unit holds: every index a `u8` holds.

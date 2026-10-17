@@ -14,6 +14,7 @@ mod error;
 mod interaction_api;
 mod interaction_books;
 mod interaction_rules;
+mod use_action_data;
 mod use_data;
 mod use_orders;
 mod use_slot;
@@ -23,6 +24,7 @@ mod using;
 
 pub use crate::error::UseError;
 pub use crate::interaction_api::InteractionApi;
+pub use crate::use_action_data::UseActionData;
 pub use crate::use_data::UseData;
 pub use crate::use_slot::UseSlot;
 pub use crate::use_spec::UseSpec;
@@ -67,6 +69,7 @@ impl Module for Interaction {
     type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.listed::<UseActionData>();
         d.section::<UseData>();
         d.section::<UsesData>();
         d.book::<ByType<UseSpec>>(UseSpec::book);

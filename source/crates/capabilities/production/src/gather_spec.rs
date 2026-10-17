@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 
+use campfire_actions::PerAction;
 use campfire_math::Num;
 use campfire_values::ResourceId;
 
@@ -10,4 +11,8 @@ pub struct GatherSpec {
     pub resource: ResourceId,
     pub take: NonZeroU32,
     pub bounce: Num,
+}
+
+impl PerAction for GatherSpec {
+    const SCRIPTS_ONLY: bool = false;
 }

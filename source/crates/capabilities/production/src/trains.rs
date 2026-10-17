@@ -4,8 +4,8 @@ use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionKind, ActionProgress, ActionSlots, Caster, KindSpec, Payer,
-    Purse, SlotCommit, SlotTimes, StartChecked,
+    ActionCheck, ActionKind, ActionProgress, ActionSlots, ByAction, Caster, Payer, Purse,
+    SlotCommit, SlotTimes, StartChecked,
 };
 use campfire_declare::{ByType, RoleForm};
 use campfire_math::{Num, Vec3};
@@ -18,6 +18,7 @@ use campfire_units::{
 use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
 
 use crate::frame_point::FramePoint;
+use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::holdings::Holdings;
 use crate::node_book::NodeBook;
@@ -27,6 +28,7 @@ use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::supply::{Counted, Supply};
 use crate::train_queue::{Queued, TrainQueue};
+use crate::train_spec::TrainSpec;
 
 /// Where a producer's trained units come out and where they go, on the ground plane: its exit
 /// point, and the rally point its player set, else its default one; none of a producer that
@@ -90,6 +92,7 @@ impl Trains {
             actions: book,
             producers,
             requirements,
+            trains: specs,
             costs,
             rules,
         } = books;
@@ -160,9 +163,10 @@ impl Trains {
             if !holdings.meet(owner, modifiers, requirements.of(checked.id)) {
                 continue;
             }
-            let KindSpec::Train(made) = checked.action.kind else {
-                panic!("a train's action trains");
-            };
+            let made = specs
+                .get(checked.id)
+                .expect("a train's action trains")
+                .unit_type;
             let cost = costs.cost(made);
             let counts = rules.0.is_some().then_some(owner).flatten();
             if counts.is_some_and(|owner| !supply.has_room(owner, cost)) {
@@ -218,10 +222,11 @@ impl Trains {
                 .get::<TrainQueue>(entity)
                 .and_then(|queue| queue.done(now))
             {
-                let action = world.resource::<ActionBook>().get(head.action);
-                let Some(&KindSpec::Train(unit_type)) = action.map(|action| &action.kind) else {
-                    panic!("a train queues only trains");
-                };
+                let trains = world.resource::<ByAction<TrainSpec>>();
+                let unit_type = trains
+                    .get(head.action)
+                    .expect("a train queues only trains")
+                    .unit_type;
                 let producer = world.entity(entity);
                 let team = *producer.get::<Team>().expect("a producer has a team");
                 let owner = producer.get::<Owner>().map(|owner| owner.slot());
@@ -269,12 +274,9 @@ impl Trains {
             .resource(*target.get::<UnitType>()?)?;
         let pos = *target.get::<Position>()?;
         let slots = world.get::<ActionSlots>(trained)?;
-        let book = world.resource::<ActionBook>();
+        let gathers = world.resource::<ByAction<GatherSpec>>();
         let slot = slots.indexed().find_map(|(slot, action_slot)| {
-            let action = book.get(action_slot.action?)?;
-            let KindSpec::Gather(spec) = action.kind else {
-                return None;
-            };
+            let spec = gathers.get(action_slot.action?)?;
             (spec.resource == resource).then_some(slot)
         })?;
         Some(GatherOrder {

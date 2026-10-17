@@ -117,7 +117,7 @@ impl SimComponent for Site {
             .resource::<ActionBook>()
             .get(self.action)
             .is_some_and(|action| {
-                action.kind.kind() == ActionKind::Build
+                action.kind == ActionKind::Build
                     && action.has_rank(self.rank)
                     && action
                         .windup_ticks(self.rank)

@@ -17,14 +17,14 @@ use bevy::picking::pointer::PointerButton;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
 use bevy::ui::{BackgroundColor, FlexDirection, Node, PositionType, UiRect, Val};
-use campfire_actions::{ActionBook, ActionSlots, ActionTarget, KindSpec};
+use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget};
 use campfire_capabilities::{Action, Order};
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
 use campfire_players::{PlayerResources, PlayerRows};
-use campfire_production::{ProductionAction, Site, TrainQueue};
+use campfire_production::{BuildBook, ProductionAction, Site, TrainQueue};
 use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
 use campfire_units::{Dead, Owner};
 use campfire_values::{ActionId, ResourceId, UnitType};
@@ -111,6 +111,13 @@ enum Making {
     Build(UnitType),
 }
 
+/// The books the panel tells a train from a build by, and a build's building.
+#[derive(Debug, Clone, Copy)]
+struct MakingBooks<'a> {
+    actions: &'a ActionBook,
+    builds: &'a BuildBook,
+}
+
 /// What the panel reads of a unit: its slots, its train queue, and its site.
 #[derive(Debug, Clone, Copy)]
 struct PanelUnit<'a> {
@@ -183,8 +190,9 @@ impl CommandPanel {
     fn show(
         own: OwnPlayer<'_, '_>,
         (selection, index, units): (Res<'_, Selection>, Res<'_, EntityIndex>, PanelUnits<'_, '_>),
-        (book, names, tick): (
+        (book, builds, names, tick): (
             Res<'_, ActionBook>,
+            Res<'_, BuildBook>,
             Res<'_, ActionTexts>,
             Option<Res<'_, SimTick>>,
         ),
@@ -211,7 +219,11 @@ impl CommandPanel {
                 continue;
             }
             let held = PanelUnit { slots, queue, site };
-            if next.fill(unit, held, &book) {
+            let books = MakingBooks {
+                actions: &book,
+                builds: &builds,
+            };
+            if next.fill(unit, held, books) {
                 break;
             }
         }
@@ -399,10 +411,10 @@ impl Shown {
         self.site = None;
     }
 
-    /// Shows `unit`, as `held` and `book` give it, unless it is no site and has no button: then
+    /// Shows `unit`, as `held` and `books` give it, unless it is no site and has no button: then
     /// it shows nothing. Whether it shows the unit. A site shows its own row alone, as its actions
     /// wait for it to complete.
-    fn fill(&mut self, unit: StableId, held: PanelUnit<'_>, book: &ActionBook) -> bool {
+    fn fill(&mut self, unit: StableId, held: PanelUnit<'_>, books: MakingBooks<'_>) -> bool {
         self.clear();
         if let Some(site) = held.site {
             self.unit = Some(unit);
@@ -412,9 +424,9 @@ impl Shown {
         let slots = held.slots.into_iter().flat_map(ActionSlots::indexed);
         self.buttons.extend(slots.filter_map(|(slot, held)| {
             let action = held.action?;
-            let making = match book.get(action)?.kind {
-                KindSpec::Train(_) => Making::Train,
-                KindSpec::Build(building) => Making::Build(building),
+            let making = match books.actions.get(action)?.kind {
+                ActionKind::Train => Making::Train,
+                ActionKind::Build => Making::Build(books.builds.of(action)?.unit_type),
                 _ => return None,
             };
             Some(Button {
@@ -495,11 +507,14 @@ fn site_percent(progress: Num, time: Num) -> i64 {
 mod tests {
     use bevy::ecs::system::{IntoSystem, System};
     use bevy::ecs::world::World;
-    use campfire_actions::{Actions, SlotKind};
+    use campfire_actions::SlotKind;
     use campfire_capabilities::Match;
-    use campfire_production::Queued;
+    use campfire_production::internals::TestBuild;
+    use campfire_production::{BuildStart, NewBuild, Production, Queued, Style};
     use campfire_sim::{Capability, IdAllocator};
+    use campfire_units::BodyForm;
     use campfire_values::Rank;
+    use campfire_values::Share;
 
     use super::*;
 
@@ -516,9 +531,27 @@ mod tests {
         let mut world = Match::predicting(&[Capability::Production]);
         let (ranger, barracks) = (UnitType::new(1), UnitType::new(2));
         let time = Ticks::new(150);
-        let train = Actions::add_train(&mut world, ranger, time, None);
-        let build = Actions::add_build(&mut world, barracks, 10, Ticks::new(300), None);
-        let book = world.resource::<ActionBook>();
+        let train = Production::add_train(&mut world, ranger, time, None);
+        let build = TestBuild {
+            range: Num::int(10),
+            time: Ticks::new(300),
+            resource_cost: None,
+            build: NewBuild {
+                unit_type: barracks,
+                form: BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+                start: BuildStart::Arrival,
+                style: Style::Builder,
+                start_life: None,
+                refund: Share::ALL,
+                near: Vec::new(),
+                away: Vec::new(),
+            },
+        };
+        let build = Production::add_build(&mut world, build);
+        let books = MakingBooks {
+            actions: world.resource::<ActionBook>(),
+            builds: world.resource::<BuildBook>(),
+        };
         let kind = SlotKind::new(0);
         let rank = Some(Rank::FIRST);
         // A dozer's slots: a build in slot 0 and a train in slot 1.
@@ -540,7 +573,7 @@ mod tests {
             queue: Some(&queue),
             site: None,
         };
-        assert!(shown.fill(center, held, book));
+        assert!(shown.fill(center, held, books));
         assert_eq!(
             shown,
             Shown {
@@ -568,7 +601,7 @@ mod tests {
             queue: None,
             site: None,
         };
-        assert!(!shown.fill(wall, held, book));
+        assert!(!shown.fill(wall, held, books));
         assert_eq!(shown, Shown::default());
         // A site shows its row alone, though its type trains.
         let site = Site::new(build, Rank::FIRST, Num::ZERO, &[], None);
@@ -577,7 +610,7 @@ mod tests {
             queue: Some(&queue),
             site: Some(&site),
         };
-        assert!(shown.fill(wall, held, book));
+        assert!(shown.fill(wall, held, books));
         assert_eq!(
             shown,
             Shown {

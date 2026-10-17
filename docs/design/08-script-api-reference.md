@@ -387,10 +387,18 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | --- | --- | --- |
 | `name` | core | since 1.0 |
 | `kind` | core | since 1.0 |
+| `script` | core | since 1.0 |
 | `targeting` | core | since 1.0 |
 | `range` | core | since 1.0 |
+| `cooldown_ms` | core | since 1.0 |
 | `cost` | core | since 1.0 |
 | `windup_ms` | core | since 1.0 |
+| `clamp_to_range` | core | since 1.0 |
+| `toggle` | core | since 1.0 |
+| `channel` | core | since 1.0 |
+| `hold` | core | since 1.0 |
+| `charges` | core | since 1.0 |
+| `charge` | core | since 1.0 |
 | `passive_modifier` | core | since 1.0 |
 | `passive_while_ready` | core | since 1.0 |
 | `delivery` | core | since 1.0 |
@@ -408,14 +416,6 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `scatter` | combat | since 1.0 |
 | `pitch_deg` | combat | since 1.0 |
 | `speed` | combat | since 1.0 |
-| `script` | abilities | since 1.0 |
-| `cooldown_ms` | abilities | since 1.0 |
-| `clamp_to_range` | abilities | since 1.0 |
-| `toggle` | abilities | since 1.0 |
-| `channel` | abilities | since 1.0 |
-| `hold` | abilities | since 1.0 |
-| `charges` | abilities | since 1.0 |
-| `charge` | abilities | since 1.0 |
 | `unit_type` | production | since 1.0 |
 | `requires` | production | since 1.0 |
 | `construct` | production | since 1.0 |
@@ -426,6 +426,17 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `resource` | production | since 1.0 |
 | `take` | production | since 1.0 |
 | `bounce` | production | since 1.0 |
+
+### An action's `kind`
+
+| Field | Capability | Status |
+| --- | --- | --- |
+| `attack` | combat | since 1.0 |
+| `cast` | abilities | since 1.0 |
+| `train` | production | since 1.0 |
+| `build` | production | since 1.0 |
+| `gather` | production | since 1.0 |
+| `use` | interaction | since 1.0 |
 
 ### An effect of an action's `on_resolve`, `on_hit` or `on_end`
 

@@ -1,7 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_script::{Filter, UnknownName};
-use campfire_units::StatId;
-use campfire_values::{DamageKind, FilterData, ModifierId, PackageIndex, Stat, Tag, UnitType};
+use campfire_values::{FilterData, ModifierId, PackageIndex, UnitType};
 
 use crate::cost_target::CostTarget;
 use crate::delivery::ProjectileFlight;
@@ -9,14 +8,9 @@ use crate::delivery::ProjectileFlight;
 /// The match's ids of the names an action's data gives: what an action's load resolves them by,
 /// in a match's world or in the load's builder; an error for a name the match does not have.
 pub trait ActionNames {
-    /// The place of `stat` among the match's stats.
-    fn stat(&self, stat: &Stat) -> Result<StatId, UnknownName>;
-    fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName>;
     /// What a cost named `name` takes from; none for a name of neither.
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget>;
     fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName>;
-    /// The tag `name` among the match's.
-    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName>;
     /// The modifier `name` of `package`.
     fn modifier(
         &self,

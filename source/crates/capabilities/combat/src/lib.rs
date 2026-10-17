@@ -11,7 +11,7 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{Action, ActionBook, ActionSlots, ActionsSet, DamageKindBook, TogglePer};
+use campfire_actions::{ActionBook, ActionSlots, ActionsSet, ByAction, DamageKindBook, TogglePer};
 use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
@@ -28,6 +28,7 @@ use crate::turret::aiming::Aiming;
 use crate::volley::{GoingOff, Volley};
 
 mod armor;
+mod attack_data;
 mod attacks;
 mod clip_shots;
 mod combat_api;
@@ -57,10 +58,15 @@ mod recent_attackers;
 mod respawn;
 mod turret;
 mod volley;
+mod weapon;
+mod weapon_names;
 mod weighers;
 mod wielded;
 
 pub use crate::armor::{Armor, ArmorShare};
+pub use crate::attack_data::{
+    AttackData, ClipData, PitchData, ScatterData, SplashData, WeaponValue,
+};
 pub use crate::attacks::Attacks;
 pub use crate::clip_shots::ClipShots;
 pub use crate::combat_api::CombatApi;
@@ -88,6 +94,7 @@ pub use crate::respawn::Respawn;
 pub use crate::turret::Turret;
 pub use crate::turret::turret_angle::TurretAngle;
 pub use crate::turret::turret_data::TurretData;
+pub use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Weapon, WeaponDamage};
 pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
@@ -175,6 +182,8 @@ impl Module for Combat {
         d.book::<DamageKindBook>(Self::damage_kinds);
         d.fact::<LifePool>(Self::life_pool);
         d.book::<CombatBook>(CombatBook::build);
+        d.listed::<AttackData>();
+        d.book::<ByAction<Weapon>>(Weapon::book);
         d.rule(Self::rule);
         d.rule(Self::attacks_rule);
         d.listed::<DamageEffectData>();
@@ -207,8 +216,10 @@ impl Module for Combat {
         let turrets = cx
             .book::<ByType<Turret>>()
             .is_some_and(|turrets| !turrets.is_empty());
+        let slow = cx
+            .book::<ByAction<Weapon>>()
+            .is_some_and(|weapons| weapons.values().any(|weapon| weapon.speed.is_some()));
         let actions = cx.book::<ActionBook>();
-        let slow = actions.is_some_and(|book| book.iter().any(Action::is_slow));
         let toggles = actions.is_some_and(|book| {
             book.iter()
                 .any(|action| action.toggles_per(TogglePer::Attack))
@@ -265,22 +276,27 @@ pub mod internals {
 
     use bevy_ecs::system::RunSystemOnce;
     use bevy_ecs::world::World;
-    use campfire_actions::internals::TestWeapon;
+    use campfire_actions::internals::TestAction;
     use campfire_actions::{
-        ActionBook, ActionProgress, ActionRange, ActionSlots, Actions, InProgress, Pitch, SlotKind,
-        SlotTimes, SplashData,
+        ActionBook, ActionData, ActionKind, ActionProgress, ActionRange, ActionSlots, Actions, Aim,
+        ByAction, InProgress, LoadedAction, SlotKind, SlotTimes,
     };
-    use campfire_common::{Tick, Ticks};
+    use campfire_common::{DeclaredName, Tick, Ticks};
     use campfire_declare::ServerForm;
     use campfire_math::{Num, Rounding};
+    use campfire_players::ResourceAmount;
     use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{StableId, TickRate};
     use campfire_stats::{PoolBook, StatBook, StatRule, Stats};
     use campfire_units::{Life, PoolId, UnitTypeCore, Units};
-    use campfire_values::{DamageKind, Rank, RelationSet, Speed, Stat, UnitType};
+    use campfire_units::{PoolCost, StatId};
+    use campfire_values::{
+        ActionId, DamageKind, PackageIndex, Rank, RelationSet, Speed, Stat, UnitType,
+    };
 
     use crate::Combat;
+    use crate::attack_data::{AttackData, SplashData};
     use crate::attacks::Attacks;
     use crate::combat_book::CombatBook;
     use crate::damage::{Damage, DamageCause};
@@ -289,8 +305,121 @@ pub mod internals {
     use crate::on_death::OnDeath;
     use crate::pass_queue::PassEntry;
     use crate::volley::Volley;
+    use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Weapon, WeaponDamage};
+    use crate::weapon_names::WeaponNames;
+
+    /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
+    /// homing projectile it fires, if it fires one, where its rate and its damage come from, its
+    /// clip, its cost in pools and in a player resource, and its splash, its scatter's radius,
+    /// its bound of pitch and its speed, at its one rank.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct TestWeapon {
+        pub aim: Filter,
+        pub range: ActionRange,
+        pub windup: Ticks,
+        pub projectile: Option<UnitType>,
+        pub rate: Rate,
+        pub damage: WeaponDamage,
+        pub clip: Option<ClipRule>,
+        pub cost: PoolCost,
+        pub resource_cost: Option<ResourceAmount>,
+        pub splash: Option<SplashData>,
+        pub scatter: Option<Num>,
+        pub pitch: Option<Pitch>,
+        pub speed: Option<Speed>,
+    }
+
+    impl TestWeapon {
+        /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
+        /// rate and damage, costing nothing.
+        pub fn new(aim: Filter, range: ActionRange, windup: Ticks) -> Self {
+            Self {
+                aim,
+                range,
+                windup,
+                projectile: None,
+                rate: Rate::Stat(StatId::new(0)),
+                damage: WeaponDamage::Stat(StatId::new(1)),
+                clip: None,
+                cost: PoolCost::default(),
+                resource_cost: None,
+                splash: None,
+                scatter: None,
+                pitch: None,
+                speed: None,
+            }
+        }
+    }
 
     impl Combat {
+        /// Adds `weapon` to the match's action book and its weapon book, which deals damage of
+        /// the first kind.
+        pub fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
+            let action = TestAction {
+                cost: weapon.cost,
+                resource_cost: weapon.resource_cost,
+                ..TestAction::new(
+                    ActionKind::Attack,
+                    Aim::Unit(weapon.aim),
+                    weapon.range,
+                    weapon.windup,
+                )
+            };
+            let action = match weapon.projectile {
+                Some(projectile) => action.homing(projectile),
+                None => action,
+            };
+            let id = Actions::add(world, "weapon", action);
+            world.get_resource_or_init::<ByAction<Weapon>>().set(
+                id,
+                Weapon {
+                    rate: weapon.rate,
+                    damage: weapon.damage,
+                    kind: DamageKind::new(0),
+                    clip: weapon.clip.map(|clip| Box::from([clip])),
+                    splash: weapon.splash,
+                    scatter: weapon.scatter.map(|radius| Scatter {
+                        radius,
+                        tags: Box::new([]),
+                    }),
+                    pitch: weapon.pitch,
+                    speed: weapon.speed,
+                },
+            );
+            id
+        }
+
+        /// Resolves the weapon of `action`, which the action book of `world` loaded from `data` of
+        /// the mode's package, into the match's weapon book, as the load resolves it.
+        pub fn load_weapon(
+            world: &mut World,
+            action: ActionId,
+            data: &ActionData,
+            name: &DeclaredName,
+        ) {
+            let Some(attack) = data.section::<AttackData>() else {
+                return;
+            };
+            let book = world.resource::<ActionBook>();
+            let names = WeaponNames {
+                loaded: LoadedAction {
+                    package: PackageIndex::MODE,
+                    name,
+                    action,
+                    data,
+                },
+                action: book.get(action).expect("the book loaded the action"),
+                rate: *world.resource::<TickRate>(),
+                stats: world.get_resource::<StatBook>(),
+                kinds: world.resource::<MatchNames>().table::<DamageKind>(),
+                tags: world.resource::<MatchNames>().tags(),
+            };
+            let weapon = names.weapon(attack).expect("a test's weapon resolves");
+            world
+                .get_resource_or_init::<ByAction<Weapon>>()
+                .set(action, weapon);
+        }
+
         /// Strikes with each attack whose windup ended, as the server's strike set does once the
         /// tick's attacks paid: for a test that strikes outside a tick.
         pub fn strike_now(world: &mut World) {
@@ -407,7 +536,7 @@ pub mod internals {
                     self.windup,
                 )
             };
-            let id = Actions::add_weapon(world, weapon);
+            let id = Combat::add_weapon(world, weapon);
             Units::give_type(
                 world,
                 unit_type,

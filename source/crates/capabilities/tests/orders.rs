@@ -1,15 +1,15 @@
 use std::num::NonZeroU64;
 
 use bevy_ecs::change_detection::DetectChanges;
-use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
-    ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, InProgress, OrderPhase,
-    SlotAim, SlotKind, SlotTimes, SlotsMut, TimedSlots,
+    ActionProgress, ActionRange, ActionSlots, ActionTarget, InProgress, OrderPhase, SlotAim,
+    SlotKind, SlotTimes, SlotsMut, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
 use campfire_codec::Binary;
 use campfire_combat::internals::Armed;
+use campfire_combat::internals::TestWeapon;
 use campfire_combat::{Combat, OnDeath};
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_declare::MatchFacts;
@@ -22,6 +22,7 @@ use campfire_navigation::{
 };
 use campfire_orders::*;
 use campfire_players::{OutOfPlay, Players, PlayersWorld};
+use campfire_production::Production;
 use campfire_script::{
     ApiError, CapabilityRefusal, FailureKind, Filter, Hook, ScriptFailures, ScriptLimits,
     ScriptPools, TagNames,
@@ -308,7 +309,7 @@ fn a_hero_walks_to_its_players_target() {
 /// in slot 1.
 fn trainer(game: &mut Match) -> TwoHeroes {
     let heroes = TwoHeroes::place(game);
-    let train = Actions::add_train(game, UnitType::new(0), Ticks::ZERO, None);
+    let train = Production::add_train(game, UnitType::new(0), Ticks::ZERO, None);
     let entity = game.unit_entity(heroes.first);
     let mut unit = game.entity_mut(entity);
     let (mut slots, mut times, mut progress) = unit
@@ -892,7 +893,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
             ActionRange::meters(Num::int(20)),
             Ticks::new(2),
         );
-        let weapon = Actions::add_weapon(&mut game, weapon);
+        let weapon = Combat::add_weapon(&mut game, weapon);
         let slots = TimedSlots::new(ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]));
         Mode::spawn(&mut game, striker, (0, 0, 0), Team::new(0), slots)
     };

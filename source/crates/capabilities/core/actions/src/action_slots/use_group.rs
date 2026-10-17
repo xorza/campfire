@@ -40,7 +40,7 @@ impl UseGroup {
         let kind = slot
             .action
             .and_then(|id| book.get(id))
-            .map(|action| action.kind.kind());
+            .map(|action| action.kind);
         kind.map_or(Block::Cast, ActionKind::block)
     }
 }

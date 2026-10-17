@@ -54,7 +54,6 @@ impl ActionBook {
             parts,
         } = action;
         let ActionParts {
-            kind,
             passive,
             hold,
             aim,
@@ -70,7 +69,7 @@ impl ActionBook {
         let id = Arc::make_mut(&mut self.names).add((package, name));
         Arc::make_mut(&mut self.actions).push(Action {
             package,
-            kind,
+            kind: data.kind(),
             passive,
             hold,
             aim,

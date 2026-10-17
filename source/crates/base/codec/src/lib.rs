@@ -21,6 +21,7 @@ mod error;
 mod json;
 mod json_value;
 mod sink;
+mod struct_fields;
 mod toml;
 #[cfg(feature = "internals")]
 mod toml_document;
@@ -32,6 +33,7 @@ pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError};
 pub use crate::json::Json;
 pub use crate::json_value::JsonValue;
 pub use crate::sink::Sink;
+pub use crate::struct_fields::StructFields;
 pub use crate::toml::Toml;
 pub use crate::toml_table::TomlTable;
 pub use crate::toml_value::TomlValue;

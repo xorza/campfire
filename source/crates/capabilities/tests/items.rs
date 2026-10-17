@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use bevy_ecs::system::{Query, RunSystemOnce};
 use bevy_ecs::world::World;
+use campfire_abilities::CastData;
 use campfire_actions::{
     ActionData, ActionSlots, ActionTarget, Actions, EffectData, EffectTo, SlotKind, SlotTimes,
     Targeting, UseGroup,
@@ -86,11 +87,11 @@ impl Carrier {
         };
         let drink = ActionData {
             on_resolve: vec![heal],
-            ..ActionData::cast(Targeting::None)
+            ..ActionData::of(Targeting::None, CastData::default())
         };
         let flash = ActionData {
             cooldown_ms: Some(Ranked::One(Number::Value(Scalar::Int(1000)))),
-            ..ActionData::cast(Targeting::None)
+            ..ActionData::of(Targeting::None, CastData::default())
         };
         let mut load = |name: &str, data: &ActionData| {
             let id = Actions::load(game, PackageIndex::MODE, name, data, None, 1).unwrap();

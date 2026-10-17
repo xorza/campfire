@@ -1,5 +1,5 @@
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionSlots};
+use campfire_actions::{ActionBook, ActionSlots, ByAction};
 use campfire_math::Num;
 use campfire_script::{Effect, Frame};
 use campfire_sim::{EntityIndex, StableId};
@@ -11,6 +11,7 @@ use crate::damage::{Damage, DamageCause};
 use crate::damage_pass::DamagePass;
 use crate::heal::{Heal, HealCause};
 use crate::pass_queue::PassEntry;
+use crate::weapon::Weapon;
 
 /// A change to units' pools that a call queued, from its acting unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -90,13 +91,12 @@ impl Effect for CombatEffect {
                 let selected = (world.relations().between(team, aimed_team), tags);
                 let unit = world.entity(unit);
                 let book = world.resource::<ActionBook>();
+                let weapons = world.resource::<ByAction<Weapon>>();
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
                     let slot = slots.slot(slots.weapon_in(book, Some(selected))?)?;
-                    let weapon = book.get(slot.action?)?.kind.weapon()?;
-                    let rank = slot.rank?;
-                    Some((slot, rank, weapon, *book.get(slot.action?)?.values(rank)))
+                    Some((slot, slot.rank?, weapons.get(slot.action?)?))
                 });
-                let Some((slot, rank, weapon, values)) = first else {
+                let Some((slot, rank, weapon)) = first else {
                     return;
                 };
                 let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
@@ -104,7 +104,7 @@ impl Effect for CombatEffect {
                     action: slot.action,
                     ..damage(
                         target,
-                        weapon.damage(stats, &values),
+                        weapon.damage(stats, rank),
                         weapon.kind,
                         DamageCause::ExtraAttack { rank },
                     )

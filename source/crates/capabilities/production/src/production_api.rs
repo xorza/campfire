@@ -1,19 +1,22 @@
-use campfire_actions::{ActionDataField, RequiresData};
+use campfire_codec::StructFields;
 use campfire_common::PlayerSlot;
 use campfire_script::{
     ApiBuilder, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec,
     Status, Unit,
 };
-use campfire_sim::Capability;
 use campfire_values::{Block, TagProperty};
 
+use crate::build_data::BuildData;
 use crate::drop_off_data::DropOffData;
 use crate::error::ProductionRefusal;
+use crate::gather_data::GatherData;
 use crate::mode_supply_data::ModeSupplyData;
 use crate::node_data::NodeData;
 use crate::production_column::ProductionColumn;
 use crate::production_data::ProductionData;
+use crate::requires_data::RequiresData;
 use crate::supply_data::SupplyData;
+use crate::train_data::TrainData;
 
 /// What `production` gives scripts: each player's supply; and the data of `production` the
 /// release runs: a train's unit type and requirements, a unit type's queue and supply, and the
@@ -30,7 +33,18 @@ enum SupplyCount {
 
 impl ProductionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.action_fields(ActionDataField::of(Some(Capability::Production)))
+        let mut kinds: Vec<&'static str> = Vec::new();
+        let sections = [
+            StructFields::of::<TrainData>(),
+            StructFields::of::<BuildData>(),
+            StructFields::of::<GatherData>(),
+        ];
+        for field in sections.into_iter().flatten() {
+            if !kinds.contains(field) {
+                kinds.push(field);
+            }
+        }
+        api.action_fields(ApiVersion::FIRST, kinds)
             .data::<ProductionData>(&["queue", "exit", "rally"], &[])
             .data::<SupplyData>(&["cost", "provides"], &[])
             .shared_data(DataTable::Mode, &["supply"], &[])

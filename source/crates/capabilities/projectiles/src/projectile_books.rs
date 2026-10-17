@@ -1,4 +1,4 @@
-use campfire_actions::{ActionKind, ActionsData, DeliveryData, Flights, Targeting};
+use campfire_actions::{ActionsData, DeliveryData, Flights, Targeting};
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section};
 use campfire_math::Num;
 use campfire_script::{Hook, ScriptRole};
@@ -58,7 +58,7 @@ impl Projectiles {
     /// The rule of every action's projectile delivery: a unit type of the projectile section,
     /// aimed; a homing one alone and at a unit, a curve alone and at a unit or a point; one that
     /// hits a unit when the action has an `on_hit` list or hook, as a curve always meets what it
-    /// aims at; a weapon's a homing projectile or a curve; and a scatter's a curve.
+    /// aims at.
     pub(crate) fn deliveries_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let scripts = cx.given::<ScriptBook>();
         for (package, source) in cx.packages() {
@@ -106,10 +106,6 @@ impl Projectiles {
                     && (hooks_hit || !action.on_hit.is_empty())
                 {
                     ProjectileDeliveryError::NoHit
-                } else if action.kind == ActionKind::Attack && !projectile.flight().at_unit() {
-                    ProjectileDeliveryError::Weapon
-                } else if action.scatter.is_some() && projectile.curve.is_none() {
-                    ProjectileDeliveryError::Scatter
                 } else {
                     continue;
                 };

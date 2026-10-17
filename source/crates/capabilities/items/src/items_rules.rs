@@ -103,7 +103,7 @@ impl Items {
             let action = item.action.as_ref();
             let used = action.filter(|action| {
                 let data = actions.and_then(|actions| actions.get(*action));
-                data.is_some_and(|data| data.kind == ActionKind::Use)
+                data.is_some_and(|data| data.kind() == ActionKind::Use)
             });
             if let Some(action) = used {
                 return fail(name, ItemsDataError::UseAction(action.clone()));

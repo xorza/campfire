@@ -6,7 +6,7 @@ use campfire_players::ResourceBook;
 use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_units::{ModifierNames, PoolId, PoolNames, ScriptBook, StatId, StatNames, UnitTypes};
 use campfire_values::{
-    ActionId, DamageKind, FilterData, ModifierId, Names, PackageIndex, Param, Stat, Tag, TrackId,
+    ActionId, DamageKind, FilterData, ModifierId, Names, PackageIndex, Param, Tag, TrackId,
     TypeScope, UnitType,
 };
 
@@ -213,17 +213,6 @@ struct PackageNames<'n, 'c> {
 }
 
 impl ActionNames for PackageNames<'_, '_> {
-    fn stat(&self, stat: &Stat) -> Result<StatId, UnknownName> {
-        let found = self.names.stats.and_then(|stats| stats.named(stat.name()));
-        found.ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
-    }
-
-    fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
-        let kinds = self.names.damage_kinds;
-        let kind = kinds.and_then(|kinds| kinds.0.named(name.as_str()));
-        kind.ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
-    }
-
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
         let none = Names::default();
         let resources = self
@@ -237,11 +226,6 @@ impl ActionNames for PackageNames<'_, '_> {
 
     fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
         Filter::resolve(filter, self.names.types.tags())
-    }
-
-    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
-        let tag = self.names.types.tags().named(name.as_str());
-        tag.ok_or_else(|| UnknownName::new(NameKind::Tag, name))
     }
 
     fn modifier(
@@ -281,7 +265,9 @@ impl EffectNames for PackageNames<'_, '_> {
     }
 
     fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
-        ActionNames::damage_kind(self, name)
+        let kinds = self.names.damage_kinds;
+        let kind = kinds.and_then(|kinds| kinds.0.named(name.as_str()));
+        kind.ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
     }
 
     fn pool(&self, name: &DeclaredName) -> Result<PoolId, UnknownName> {
@@ -303,7 +289,8 @@ impl EffectNames for PackageNames<'_, '_> {
     }
 
     fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
-        ActionNames::tag(self, name)
+        let tag = self.names.types.tags().named(name.as_str());
+        tag.ok_or_else(|| UnknownName::new(NameKind::Tag, name))
     }
 
     fn package_type(&self, name: &DeclaredName) -> Result<UnitType, UnknownName> {

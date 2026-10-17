@@ -17,14 +17,14 @@ use crate::action_kind::ActionKind;
 use crate::actions_data::ActionsData;
 use crate::cost_target::CostTarget;
 use crate::delivery_data::DeliveryData;
-use crate::error::{ActionProblem, KindError, SlotError};
-use crate::kind_data::KindData;
+use crate::error::{ActionProblem, SlotError};
 use crate::list_hook::ListHook;
 use crate::listed_effect::effect_data::EffectData;
 use crate::listed_effect::effect_data::LaunchLists;
 use crate::listed_effect::error::EffectRule;
 use crate::listed_effect::listed_spec::EffectTo;
 use crate::listed_effect::{EffectRuleCx, RuleAt};
+use crate::pipeline_field::PipelineField;
 use crate::slot_kinds::SlotKinds;
 use crate::targeting::Targeting;
 use crate::type_slots_data::TypeSlotsData;
@@ -85,8 +85,8 @@ impl Actions {
         Ok(())
     }
 
-    /// The rules of every package's actions and of its unit types' slots: each action's fields of
-    /// its kind, the capabilities its kind, its delivery and its effects use, its effects' units,
+    /// The rules of every package's actions and of its unit types' slots: each action's pipeline
+    /// fields its kind takes, the capabilities its kind, its delivery and its effects use, its effects' units,
     /// the names of its costs, its modifiers and its params; each slot of a unit type holds an
     /// action once; and each action of an avatar package sits in a slot of the package's types.
     pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
@@ -110,10 +110,9 @@ impl Actions {
                     units: source.units,
                 };
                 at.kind(action)?;
-                at.weapon_fields(action)?;
                 at.effects(action)?;
                 if let Some(delivery) = &action.delivery {
-                    at.delivery(action, delivery)?;
+                    at.delivery(delivery)?;
                 }
                 let costs = action.cost_names();
                 let mut costs = costs
@@ -213,64 +212,27 @@ impl ActionAt<'_, '_> {
         self.cx.require(capability, self.package, || self.place())
     }
 
-    /// Its kind, one the release runs, with the fields the table of action fields lets its kind
-    /// take and the capabilities of its kind: a cast's `abilities`; a use's `interaction` and
-    /// `abilities`, whose casts run it; a train's `production`; a build's and a gather's
-    /// `production` and `navigation`, which tests a box for room and walks a worker; an attack's
-    /// `combat`. A clamp only of an aim at a point, and a hold only of a toggle or a channel.
+    /// Its kind: the pipeline's fields its section takes, and the capabilities its section
+    /// needs. A clamp only of an aim at a point, and a hold only of a toggle or a channel.
     fn kind(self, action: &ActionData) -> Result<(), BookError> {
-        let kind = match KindData::of(action) {
-            Ok(kind) => Some(kind),
-            Err(KindError::NotRun(_)) => None,
-            Err(KindError::Field(field)) => {
-                return Err(self.problem(ActionProblem::KindField(field)));
-            }
-        };
+        if let Some(field) = PipelineField::misused(action) {
+            return Err(self.problem(ActionProblem::KindField(field)));
+        }
         if action.clamp_to_range && action.targeting != Targeting::Point {
             return Err(self.problem(ActionProblem::ClampAims));
         }
         if action.hold.is_some() && action.toggle.is_none() && action.channel.is_none() {
             return Err(self.problem(ActionProblem::HoldAlone));
         }
-        let Some(kind) = kind else {
-            return Err(self.problem(ActionProblem::NotRun(action.kind)));
-        };
-        let needs: &[Capability] = match kind {
-            KindData::Cast => &[Capability::Abilities],
-            KindData::Use => &[Capability::Interaction, Capability::Abilities],
-            KindData::Train { .. } => &[Capability::Production],
-            KindData::Build { .. } | KindData::Gather { .. } => {
-                &[Capability::Production, Capability::Navigation]
-            }
-            KindData::Attack { .. } => &[Capability::Combat],
-        };
-        needs
+        action
+            .section
+            .needs()
             .iter()
             .try_for_each(|&capability| self.require(capability))
     }
 
-    /// Its weapon's fields that its delivery holds: a splash goes off where a projectile of its
-    /// delivery ends, a scatter aims a projectile of its delivery, and a speed delays the hit of a
-    /// weapon of no delivery (04-capabilities/combat.md, An attack may splash;
-    /// 04-capabilities/combat.md, An attack may scatter; 04-capabilities/combat.md, A slow weapon
-    /// delays its damage).
-    fn weapon_fields(self, action: &ActionData) -> Result<(), BookError> {
-        let projectile = matches!(action.delivery, Some(DeliveryData::Projectile { .. }));
-        if action.splash.is_some() && !projectile {
-            return Err(self.problem(ActionProblem::Splash));
-        }
-        if action.scatter.is_some() && !projectile {
-            return Err(self.problem(ActionProblem::Scatter));
-        }
-        if action.speed.is_some() && action.delivery.is_some() {
-            return Err(self.problem(ActionProblem::Speed));
-        }
-        Ok(())
-    }
-
-    /// Its delivery: of the capability of its kind, a unit type of its package, and, for an
-    /// attack, no area, as a weapon's is a homing projectile or a curve.
-    fn delivery(self, action: &ActionData, delivery: &DeliveryData) -> Result<(), BookError> {
+    /// Its delivery: of the capability of its form, and a unit type of its package.
+    fn delivery(self, delivery: &DeliveryData) -> Result<(), BookError> {
         let capability = match delivery {
             DeliveryData::Projectile { .. } => Capability::Projectiles,
             DeliveryData::Area { .. } => Capability::Areas,
@@ -280,9 +242,6 @@ impl ActionAt<'_, '_> {
         if !self.units.contains_key(name) {
             return Err(self.unknown(NameKind::UnitType, name));
         }
-        if action.kind == ActionKind::Attack && matches!(delivery, DeliveryData::Area { .. }) {
-            return Err(self.problem(ActionProblem::Weapon));
-        }
         Ok(())
     }
 
@@ -290,7 +249,7 @@ impl ActionAt<'_, '_> {
     /// attack, which reaches its target at once; and each list as `effect_list` checks it.
     fn effects(self, action: &ActionData) -> Result<(), BookError> {
         for (list, effects) in action.effect_lists() {
-            let delivers = action.delivery.is_some() || action.kind == ActionKind::Attack;
+            let delivers = action.delivery.is_some() || action.kind() == ActionKind::Attack;
             if !effects.is_empty() && list != ListHook::OnResolve && !delivers {
                 let rule = EffectRule::NoDelivery;
                 return Err(self.problem(ActionProblem::Effect { list, rule }));

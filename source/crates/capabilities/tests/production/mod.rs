@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionProgress, ActionSlots, Actions, SlotKind, TimedSlots};
+use campfire_actions::{ActionProgress, ActionSlots, SlotKind, TimedSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
@@ -218,7 +218,7 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
 fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() {
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
     // The first id goes to the producer spawned second, so the world holds them out of id order.
     let (first, second) = (
@@ -293,7 +293,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         resource: gold,
         amount: 2,
     };
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, Some(cost));
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, Some(cost));
     let (owned, unowned) = (
         Production::allocate_id(&mut game),
         Production::allocate_id(&mut game),
@@ -347,7 +347,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         .unwrap()
         .add(gold, 5)
         .unwrap();
-    let train = Actions::add_train(&mut client, shop.grunt, Ticks::ZERO, Some(cost));
+    let train = Production::add_train(&mut client, shop.grunt, Ticks::ZERO, Some(cost));
     let owned = Production::allocate_id(&mut client);
     let queue = TrainQueue::default();
     shop.producer(
@@ -395,7 +395,7 @@ fn a_producer_whose_tags_block_production_neither_pays_nor_queues() {
         resource: gold,
         amount: 2,
     };
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, Some(cost));
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, Some(cost));
     let (site, built) = (
         Production::allocate_id(&mut game),
         Production::allocate_id(&mut game),
@@ -469,7 +469,7 @@ fn a_train_queue_is_state_and_restores() {
     // A queue of two trains, the first ordered at tick 0 to be done at tick 3.
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(3), None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::new(3), None);
     let id = Production::allocate_id(&mut game);
     shop.producer(
         &mut game,
@@ -484,7 +484,7 @@ fn a_train_queue_is_state_and_restores() {
     // A restore loads the match's books first: the same train.
     let mut restored = shop_match();
     let restored_shop = Shop::place(&mut restored);
-    Actions::add_train(&mut restored, restored_shop.grunt, Ticks::new(3), None);
+    Production::add_train(&mut restored, restored_shop.grunt, Ticks::new(3), None);
     Release::restore_into(&game, &mut restored);
     // A train of the longest time, pushed at tick 0, is done at the limit; pushed a tick later,
     // or a tick longer, it fails to decode.

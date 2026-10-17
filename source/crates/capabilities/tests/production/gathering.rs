@@ -1,6 +1,5 @@
 use std::num::NonZeroU32;
 
-use campfire_actions::GatherSpec;
 use campfire_capabilities::Order;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
@@ -47,7 +46,7 @@ impl Mine {
             bounce: Num::int(4),
         };
         let all = Filter::of_release_relations(RelationSet::All);
-        let gather = Actions::add_gather(game, spec, all, Num::ONE, Ticks::new(3));
+        let gather = Production::add_gather(game, spec, all, Num::ONE, Ticks::new(3));
         // Minerals are boxes of 2 by 1 m; workers, of a half meter, walk a meter a tick.
         let mineral_body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
         Units::give_type(game, mineral, mineral_body);
@@ -452,7 +451,7 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     let slots = ActionSlots::new([(gather, SlotKind::new(0), Rank::new(1))]);
     Shop::give(&mut game, worker_type, slots);
     Shop::give(&mut game, worker_type, Gatherer::default());
-    let train = Actions::add_train(&mut game, worker_type, Ticks::ZERO, None);
+    let train = Production::add_train(&mut game, worker_type, Ticks::ZERO, None);
     let barracks = Production::allocate_id(&mut game);
     let player = Some(PlayerSlot::new(0));
     shop.producer(

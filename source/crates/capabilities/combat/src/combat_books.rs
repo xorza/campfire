@@ -3,16 +3,18 @@ use std::error::Error;
 use std::sync::Arc;
 
 use campfire_actions::{
-    ActionKind, ActionRange, ActionsData, DamageKindBook, RangeField, SlotKindBook, Targeting,
+    ActionBook, ActionKind, ActionsData, ByAction, DamageKindBook, LoadedAction, PerAction,
+    SlotKindBook, Targeting,
 };
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamesListError, Section};
 use campfire_script::{NameKind, UnknownName};
 use campfire_stats::{LifePool, StatBook, TypePoolsData, UnitStartError};
-use campfire_units::PoolNames;
+use campfire_units::{PoolNames, UnitTypes};
 use campfire_values::{Names, NamesError, PackageIndex};
 
 use crate::Combat;
 use crate::armor::Armor;
+use crate::attack_data::AttackData;
 use crate::combat_book::CombatBook;
 use crate::combat_data::CombatData;
 use crate::error::CombatDataError;
@@ -20,31 +22,20 @@ use crate::mode_combat_data::ModeCombatData;
 use crate::on_death::OnDeath;
 use crate::turret::Turret;
 use crate::turret::turret_data::TurretData;
+use crate::weapon::Weapon;
+use crate::weapon_names::WeaponNames;
 
 impl Combat {
-    /// The rule of every package's attacks: each aims at a unit, at a range in meters at every
-    /// rank.
+    /// The rule of every package's attacks: each aims at a unit.
     pub(crate) fn attacks_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         for (package, source) in cx.packages() {
             let actions = source.content.get::<ActionsData>().into_iter();
             let attacks = actions.flat_map(|actions| &actions.0);
-            let mut attacks = attacks.filter(|(_, action)| action.kind == ActionKind::Attack);
-            let broken = attacks.find_map(|(id, action)| {
-                let global = action.range.as_ref().is_some_and(|range| {
-                    range
-                        .values()
-                        .contains(&RangeField::Range(ActionRange::Global))
-                });
-                let problem = if !matches!(action.targeting, Targeting::Unit(_)) {
-                    CombatDataError::AttackAims
-                } else if global {
-                    CombatDataError::GlobalAttack
-                } else {
-                    return None;
-                };
-                Some((id, problem))
-            });
-            if let Some((id, problem)) = broken {
+            let mut attacks = attacks.filter(|(_, action)| action.kind() == ActionKind::Attack);
+            let broken =
+                attacks.find(|(_, action)| !matches!(action.targeting, Targeting::Unit(_)));
+            if let Some((id, _)) = broken {
+                let problem = CombatDataError::AttackAims;
                 let at = BookPlace::Entry {
                     table: ActionsData::KEY,
                     name: id.clone(),
@@ -130,6 +121,40 @@ impl CombatBook {
             stats.named_in(PackageIndex::MODE, at(), stat)
         })
     }
+}
+
+impl Weapon {
+    /// The weapon of each attack, its names resolved and its own values at each of its ranks, in
+    /// ticks at the match's rate; an error for a name the match does not have, a value that does
+    /// not hold at a rank, or a field its delivery does not serve.
+    pub fn book(cx: &BookCx<'_>) -> Result<ByAction<Self>, BookError> {
+        let actions = cx.book::<ActionBook>()?;
+        let stats = cx.book_if::<StatBook>()?;
+        let kinds = cx.book_if::<DamageKindBook>()?.map(|kinds| &*kinds.0);
+        let tags = cx.fact::<UnitTypes>()?.tags();
+        let mut book = ByAction::default();
+        for loaded in LoadedAction::all(cx)? {
+            let Some(data) = loaded.section::<AttackData>() else {
+                continue;
+            };
+            let names = WeaponNames {
+                loaded,
+                action: actions
+                    .get(loaded.action)
+                    .expect("a loaded action is in the book"),
+                rate: cx.rate(),
+                stats,
+                kinds,
+                tags,
+            };
+            book.set(loaded.action, names.weapon(data)?);
+        }
+        Ok(book)
+    }
+}
+
+impl PerAction for Weapon {
+    const SCRIPTS_ONLY: bool = false;
 }
 
 impl Armor {

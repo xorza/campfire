@@ -3,8 +3,8 @@ use campfire_players::ResourceAmount;
 use campfire_script::{Filter, Hook, HookSet, ScriptId};
 use campfire_values::{ModifierId, PackageIndex, Rank, Relation, TagSet};
 
+use crate::action_kind::ActionKind;
 use crate::delivery::Delivery;
-use crate::kind_spec::KindSpec;
 use crate::rank_fields::TogglePer;
 use crate::rank_values::RankValues;
 
@@ -13,7 +13,7 @@ use crate::rank_values::RankValues;
 pub struct Action {
     /// Its package: `PackageIndex::MODE` the mode, then each package the mode depends on.
     pub package: PackageIndex,
-    pub kind: KindSpec,
+    pub kind: ActionKind,
     /// The modifier its unit holds while it has a rank, and whether only while it is ready.
     pub passive: Option<Passive>,
     /// The modifier its unit holds while its toggle is on or its channel runs.
@@ -74,14 +74,6 @@ impl Action {
         self.ranks.iter().any(|values| values.channel.is_some())
     }
 
-    /// Whether it is an attack whose weapon's hit lands after its shot
-    /// (04-capabilities/combat.md, A slow weapon delays its damage).
-    pub fn is_slow(&self) -> bool {
-        self.kind
-            .weapon()
-            .is_some_and(|weapon| weapon.speed.is_some())
-    }
-
     /// Whether `rank` is one of its ranks, from 1 to its last.
     pub const fn has_rank(&self, rank: Rank) -> bool {
         rank.index() < self.ranks.len()
@@ -117,8 +109,8 @@ impl Action {
     /// The filter of the units it may attack, for a weapon, which the load lets aim only at a
     /// unit; `None` for another kind.
     pub(crate) const fn weapon_filter(&self) -> Option<Filter> {
-        match (&self.kind, self.aim) {
-            (KindSpec::Attack(_), Aim::Unit(filter)) => Some(filter),
+        match (self.kind, self.aim) {
+            (ActionKind::Attack, Aim::Unit(filter)) => Some(filter),
             _ => None,
         }
     }

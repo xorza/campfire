@@ -686,7 +686,8 @@ fn named(actions: &BTreeMap<DeclaredName, ActionData>) -> Result<(), LoadProblem
 /// Whether each train and build of `actions` has a name, which a client shows on its
 /// producer's button.
 fn shown_named(actions: &BTreeMap<DeclaredName, ActionData>) -> Result<(), LoadProblem> {
-    let shown = |action: &ActionData| matches!(action.kind, ActionKind::Train | ActionKind::Build);
+    let shown =
+        |action: &ActionData| matches!(action.kind(), ActionKind::Train | ActionKind::Build);
     match actions
         .iter()
         .find(|(_, action)| shown(action) && action.name.is_none())

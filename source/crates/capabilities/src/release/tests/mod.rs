@@ -511,13 +511,14 @@ fn a_module_names_another_modules_sets_only_where_its_sets_run() {
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 64] = [
+const LOOKUPS: [(&str, &str); 66] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_rules.rs", "named"),
     ("actions/action_slots/mod.rs", "named"),
     ("actions/cost_target.rs", "named"),
     ("actions/listed_effect/effect_data.rs", "named"),
+    ("actions/loaded_action.rs", "named"),
     ("actions/slot_claims.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
     ("areas/area_books.rs", "named"),
@@ -525,6 +526,7 @@ const LOOKUPS: [(&str, &str); 64] = [
     ("combat/armor.rs", "named"),
     ("combat/combat_books.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
+    ("combat/weapon_names.rs", "named"),
     ("declare/book_cx.rs", "named"),
     ("interaction/interaction_books.rs", "named"),
     ("items/item_books.rs", "named"),
@@ -737,9 +739,9 @@ fn each_role_of_a_module_takes_the_modules_name() {
 /// it, and the suffix of its name. A `*Book` is exactly a book, a `*Data` a table of package data.
 const SUFFIX_ROLES: [(&str, &str); 2] = [("Book", "Book"), ("DataSection", "Data")];
 
-/// The types that hold a suffix role but are named for what they are: the one generic book, a
-/// book of a value for each unit type.
-const SUFFIX_EXCEPTIONS: [&str; 1] = ["ByType"];
+/// The types that hold a suffix role but are named for what they are: the two generic books, of a
+/// value for each action and for each unit type.
+const SUFFIX_EXCEPTIONS: [&str; 2] = ["ByAction", "ByType"];
 
 /// The types `code` implements `role` for, by name: each `impl … <role> for <type>`.
 fn implementers<'c>(code: &'c str, role: &str) -> Vec<&'c str> {

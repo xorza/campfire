@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Or, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
 use bevy_ecs::world::{Mut, World};
-use campfire_actions::{ActionBook, ActionSlots, KindSpec};
+use campfire_actions::{ActionSlots, ByAction};
 use campfire_declare::RoleForm;
 use campfire_players::PlayersWorld;
 use campfire_sim::{
@@ -16,6 +16,7 @@ use crate::Production;
 use crate::gather_loop::checked_gather::CheckedGather;
 use crate::gather_loop::gather_view::{GatherView, HeldNode};
 use crate::gather_loop::step::Step;
+use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 use crate::node::Node;
 
@@ -344,11 +345,11 @@ impl GatherLoop {
         node: Entity,
     ) {
         let slots = world.get::<ActionSlots>(entity).expect("a worker's slots");
-        let action_id = slots.slot(order.slot).and_then(|slot| slot.action);
-        let action = action_id.and_then(|action| world.resource::<ActionBook>().get(action));
-        let Some(&KindSpec::Gather(spec)) = action.map(|action| &action.kind) else {
-            panic!("a worker's loop is of its gather");
-        };
+        let action = slots.slot(order.slot).and_then(|slot| slot.action);
+        let gathers = world.resource::<ByAction<GatherSpec>>();
+        let spec = *action
+            .and_then(|action| gathers.get(action))
+            .expect("a worker's loop is of its gather");
         let taken = match Self::node_mut(world, node) {
             Some(mut held) => held.take(spec.take),
             None => world

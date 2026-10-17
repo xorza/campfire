@@ -1,24 +1,51 @@
+use std::num::NonZeroU16;
+
 use campfire_common::Ticks;
 use campfire_geometry::Volume;
 use campfire_math::{Num, Rounding, SinCos, Vec3};
 use campfire_units::StatId;
-use campfire_values::{DamageKind, NameId, Speed, Tag, TagSet};
+use campfire_values::{DamageKind, NameId, Rank, Speed, Tag, TagSet};
 
-use crate::action_data::SplashData;
-use crate::rank_values::RankValues;
+use crate::attack_data::SplashData;
 
-/// What makes an action of kind `attack` a weapon: where its rate and its damage come from, the
-/// kind of damage it deals, its projectile's splash and scatter, its bound of pitch, and the
-/// speed that delays the hit of a weapon of no projectile, if it has them.
+/// What makes an action of kind `attack` a weapon, as the match runs it: where its rate and its
+/// damage come from, the kind of damage it deals, its clip at each rank, its projectile's splash
+/// and scatter, its bound of pitch, and the speed that delays the hit of a weapon of no
+/// projectile, if it has them.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Weapon {
-    pub(crate) rate: Source,
-    pub(crate) damage: Source,
+    pub(crate) rate: Rate,
+    pub(crate) damage: WeaponDamage,
     pub kind: DamageKind,
+    pub(crate) clip: Option<Box<[ClipRule]>>,
     pub splash: Option<SplashData>,
     pub scatter: Option<Scatter>,
     pub pitch: Option<Pitch>,
     pub speed: Option<Speed>,
+}
+
+/// Where a weapon's rate comes from: a place among its unit's stats, its attacks a second, or its
+/// own time from one attack's start to the next at each rank, a tick at least.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Rate {
+    Stat(StatId),
+    Period(Box<[Ticks]>),
+}
+
+/// Where a weapon's damage comes from: a place among its unit's stats, or its own amount at each
+/// rank, at least 0.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WeaponDamage {
+    Stat(StatId),
+    Amount(Box<[Num]>),
+}
+
+/// A weapon's clip at one rank: the shots it fires before it reloads, and the ticks from the shot
+/// that empties it to the next.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ClipRule {
+    pub shots: NonZeroU16,
+    pub reload: Ticks,
 }
 
 /// How far from its target's ground point a weapon's projectile may aim
@@ -104,25 +131,15 @@ impl Pitch {
     }
 }
 
-/// Where a weapon's value comes from: a place among its unit's stats, its rate in attacks a
-/// second, or its own value at its rank, its period or its amount, which the load checks it has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Source {
-    Stat(StatId),
-    Own,
-}
-
 impl Weapon {
     /// The ticks from the start of one attack to the next at the earliest, at `hz` ticks a second,
-    /// for a unit of stats `stats` and the weapon's values at its rank `values`: its own period,
-    /// or the tick rate over its rate exactly, rounded up, at least one bit of a second; either
-    /// longer than its windup.
-    pub fn period(&self, stats: &[Num], values: &RankValues, hz: u32) -> Ticks {
-        let period = match self.rate {
-            Source::Own => values
-                .period
-                .expect("a weapon of its own period has one at each rank"),
-            Source::Stat(rate) => {
+    /// for a unit of stats `stats` and the weapon at `rank`, of a windup of `windup`: its own
+    /// period, or the tick rate over its rate exactly, rounded up, at least one bit of a second;
+    /// either longer than its windup.
+    pub fn period(&self, stats: &[Num], rank: Rank, windup: Ticks, hz: u32) -> Ticks {
+        let period = match &self.rate {
+            Rate::Period(periods) => periods[rank.index()],
+            Rate::Stat(rate) => {
                 let rate = stats.get(rate.index()).copied().unwrap_or(Num::ZERO);
                 // A count of ticks, not a number: up to 2³² · 2²⁴ at the least rate, past a `Num`.
                 let rate = i128::from(rate.to_bits().max(1));
@@ -130,7 +147,7 @@ impl Weapon {
                 Ticks::new(u64::try_from(ticks).expect("2⁵⁶ ticks at most"))
             }
         };
-        Ticks::new(period.get().max(values.windup.get() + 1))
+        Ticks::new(period.get().max(windup.get() + 1))
     }
 
     /// The ticks its hit lands after its shot at a target `distance` meters away, at `hz` ticks a
@@ -147,18 +164,21 @@ impl Weapon {
         })
     }
 
-    /// The damage it deals for a unit of stats `stats` with the weapon's values at its rank
-    /// `values`: its own amount, or its stat, not negative.
-    pub fn damage(&self, stats: &[Num], values: &RankValues) -> Num {
-        match self.damage {
-            Source::Own => values
-                .amount
-                .expect("a weapon of its own damage has it at each rank"),
-            Source::Stat(damage) => {
+    /// The damage it deals at `rank` for a unit of stats `stats`: its own amount, or its stat,
+    /// not negative.
+    pub fn damage(&self, stats: &[Num], rank: Rank) -> Num {
+        match &self.damage {
+            WeaponDamage::Amount(amounts) => amounts[rank.index()],
+            WeaponDamage::Stat(damage) => {
                 let damage = stats.get(damage.index()).copied();
                 damage.unwrap_or(Num::ZERO).max(Num::ZERO)
             }
         }
+    }
+
+    /// Its clip at `rank`, if it has one.
+    pub fn clip(&self, rank: Rank) -> Option<ClipRule> {
+        self.clip.as_ref().map(|clips| clips[rank.index()])
     }
 }
 

@@ -1,7 +1,7 @@
 //! The uses in the 3v3: a fountain that the hero Husk uses with a prayer, which loads, and each
 //! flaw of a use, an object or a user, which fails the load with its own problem.
 
-use campfire_actions::{ActionDataField, ActionProblem, MeteredKind, SlotError};
+use campfire_actions::{ActionProblem, PipelineField, SlotError};
 use campfire_common::DeclaredName;
 use campfire_interaction::UseError;
 use campfire_items::ItemsDataError;
@@ -75,7 +75,7 @@ struct Flaw {
 }
 
 /// Whether `problem` is the prayer's data giving `field`, which its kind refuses or needs.
-fn misused(problem: &LoadProblem, field: ActionDataField) -> bool {
+fn misused(problem: &LoadProblem, field: PipelineField) -> bool {
     rule_at(
         problem,
         &entry("actions", "pray"),
@@ -89,7 +89,7 @@ const FLAWS: [Flaw; 21] = [
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("actions.pray.cooldown_ms", "1000"))],
         package: MODE,
-        refused: |problem| misused(problem, ActionDataField::CooldownMs),
+        refused: |problem| misused(problem, PipelineField::CooldownMs),
     },
     Flaw {
         edits: &[(
@@ -97,7 +97,7 @@ const FLAWS: [Flaw; 21] = [
             Edit::Set("actions.pray.charges", "{ max = 2, recharge_ms = 1000 }"),
         )],
         package: MODE,
-        refused: |problem| misused(problem, ActionDataField::Charges),
+        refused: |problem| misused(problem, PipelineField::Charges),
     },
     Flaw {
         edits: &[(
@@ -105,7 +105,7 @@ const FLAWS: [Flaw; 21] = [
             Edit::Set("actions.pray.toggle", "{ cost_per_second = { mana = 1 } }"),
         )],
         package: MODE,
-        refused: |problem| misused(problem, ActionDataField::Toggle),
+        refused: |problem| misused(problem, PipelineField::Toggle),
     },
     Flaw {
         edits: &[(
@@ -113,18 +113,18 @@ const FLAWS: [Flaw; 21] = [
             Edit::Set("actions.pray.charge", "{ max_ms = 1000 }"),
         )],
         package: MODE,
-        refused: |problem| misused(problem, ActionDataField::Charge),
+        refused: |problem| misused(problem, PipelineField::Charge),
     },
     Flaw {
         edits: &[(MODE_DATA, Edit::Remove("actions.pray.range"))],
         package: MODE,
-        refused: |problem| misused(problem, ActionDataField::Range),
+        refused: |problem| misused(problem, PipelineField::Range),
     },
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("actions.pray.range", r#""global""#))],
         package: MODE,
         refused: |problem| {
-            let global = ActionProblem::Global(MeteredKind::Use);
+            let global = ActionProblem::Global;
             rule_at(problem, &entry("actions", "pray"), &global)
         },
     },

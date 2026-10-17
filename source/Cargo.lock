@@ -2199,6 +2199,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "serde",
 ]
 
 [[package]]
@@ -2388,6 +2389,7 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-deliveries",
+ "campfire-geometry",
  "campfire-math",
  "campfire-players",
  "campfire-script",

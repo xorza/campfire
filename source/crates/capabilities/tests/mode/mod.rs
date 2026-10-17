@@ -7,8 +7,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
+use campfire_abilities::CastData;
 use campfire_actions::{
-    ActionBook, ActionData, ActionKind, ActionSlots, ActionTarget, Actions, SlotKind, SlotKindBook,
+    ActionBook, ActionData, ActionSlots, ActionTarget, Actions, SlotKind, SlotKindBook,
     SlotKindData, SlotKinds, SlotRanks, Targeting, UseGroup,
 };
 use campfire_capabilities::internals::*;
@@ -373,7 +374,7 @@ fn tracks() -> BTreeMap<DeclaredName, TrackData> {
 
 /// A cast of no target, cost, time or script: the test mode's spell and hero X's ability.
 fn blink_data() -> ActionData {
-    ActionData::cast(Targeting::None)
+    ActionData::of(Targeting::None, CastData::default())
 }
 
 /// Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's

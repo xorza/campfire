@@ -305,10 +305,9 @@ impl BuildPreview {
 mod tests {
     use bevy::ecs::system::{IntoSystem, RunSystemOnce, System};
     use bevy::ecs::world::World;
-    use campfire_actions::BuildStart;
     use campfire_capabilities::Match;
     use campfire_capabilities::internals::ProductionFixtures;
-    use campfire_production::{NewBuild, Production, Style};
+    use campfire_production::{BuildStart, NewBuild, Production, Style};
     use campfire_sim::Capability;
     use campfire_units::BodyForm;
     use campfire_values::{ActionId, Share, UnitType};
@@ -339,6 +338,7 @@ mod tests {
         let action = ActionId::new(0);
         let mut builds = BuildBook::default();
         let build = NewBuild {
+            unit_type: UnitType::new(0),
             form: BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
             start: BuildStart::Order,
             style: Style::Builder,

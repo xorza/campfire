@@ -2,8 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Without};
 use bevy_ecs::system::{Query, Res, ResMut, SystemParam};
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionSlots, ActionTarget, BuildStart, Caster, Purse, SlotAim,
-    SlotTimes,
+    ActionBook, ActionCheck, ActionSlots, ActionTarget, Caster, Purse, SlotAim, SlotTimes,
 };
 use campfire_geometry::{Metric, Placed, Shape};
 use campfire_math::{Num, Vec3};
@@ -15,6 +14,7 @@ use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::build_book::{BuildBook, Building, Style};
+use crate::build_start::BuildStart;
 use crate::builder::{BuildOrder, Builder};
 use crate::construction::step::{Start, Step};
 use crate::holdings::Holdings;
@@ -123,7 +123,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             BuildTarget::Site(site) => {
                 let (&at, &body, &unit_type, site_owner, _) =
                     self.sites.get(self.index.get(site)?).ok()?;
-                let same = unit_type == building.unit_type && site_owner == by.owner;
+                let same = unit_type == building.spec.unit_type && site_owner == by.owner;
                 same.then_some(BuildPlace {
                     pos: at.get(),
                     body,
@@ -173,7 +173,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             .placement
             .passes(team, placed.pos, placed.body, building.spec);
         (met && room).then_some(Start {
-            unit_type: building.unit_type,
+            unit_type: building.spec.unit_type,
             pos: placed.pos,
             angle,
             cost: checked.values.cost,

@@ -9,15 +9,14 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::system::{ResMut, RunSystemOnce};
 use bevy_ecs::world::World;
-use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
-    ActionProgress, ActionRange, ActionSlot, ActionSlots, Actions, ClipRule, InProgress, SlotKind,
-    SlotTimes, Source, Targets, TimedSlots,
+    ActionProgress, ActionRange, ActionSlot, ActionSlots, Actions, InProgress, SlotKind, SlotTimes,
+    Targets, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
-use campfire_combat::internals::{Armed, Attack};
+use campfire_combat::internals::{Armed, Attack, TestWeapon};
 use campfire_combat::*;
 use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_deliveries::{Died, Teleported};
@@ -174,10 +173,8 @@ fn an_attack_winds_up_and_strikes_each_period() {
 fn rifle_fight(game: &mut Match, held: impl Bundle) -> [StableId; 2] {
     let [dummy] = arm(game, [dummy()]);
     let weapon = TestWeapon {
-        rate: Source::Own,
-        damage: Source::Own,
-        period: Some(Ticks::new(3)),
-        amount: Some(Num::int(5)),
+        rate: Rate::Period(Box::new([Ticks::new(3)])),
+        damage: WeaponDamage::Amount(Box::new([Num::int(5)])),
         clip: Some(ClipRule {
             shots: NonZeroU16::new(3).unwrap(),
             reload: Ticks::new(21),
@@ -188,7 +185,7 @@ fn rifle_fight(game: &mut Match, held: impl Bundle) -> [StableId; 2] {
             Ticks::ZERO,
         )
     };
-    let rifle = Actions::add_weapon(game, weapon);
+    let rifle = Combat::add_weapon(game, weapon);
     let slots = ActionSlots::new([(rifle, SlotKind::new(0), Rank::new(1))]);
     let shooter = wielder(game, slots, &[]);
     let shooter = Mode::spawn(game, shooter, (4, 0, 0), Team::new(0), ());
@@ -333,16 +330,22 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
                 Ticks::new(windup),
             )
         };
-        Actions::add_weapon(game, weapon)
+        Combat::add_weapon(game, weapon)
     };
     let ground = weapon(
         &mut game,
         "enemies:ground",
         1,
         0,
-        Source::Stat(StatId::new(1)),
+        WeaponDamage::Stat(StatId::new(1)),
     );
-    let air = weapon(&mut game, "enemies:air", 5, 1, Source::Stat(StatId::new(2)));
+    let air = weapon(
+        &mut game,
+        "enemies:air",
+        5,
+        1,
+        WeaponDamage::Stat(StatId::new(2)),
+    );
     // Two units of the RTS weapons: the first with both learned, the second with its ground
     // weapon at rank 0.
     let kind = SlotKind::new(0);
@@ -474,7 +477,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             Ticks::new(2),
         )
     };
-    let weapon = Actions::add_weapon(&mut game, weapon);
+    let weapon = Combat::add_weapon(&mut game, weapon);
     let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
     let paying = wielder(&mut game, slots, &[Num::int(6), Num::int(10)]);
     let dummy = dummy().load(&mut game);
@@ -542,7 +545,7 @@ fn a_toggle_an_attack_cannot_pay_with_its_own_cost_turns_off_and_the_attack_stri
             Ticks::new(2),
         )
     };
-    let weapon = Actions::add_weapon(&mut game, weapon);
+    let weapon = Combat::add_weapon(&mut game, weapon);
     let toggle = Actions::add_attack_toggle(&mut game, PoolCost::new([(mana, Num::int(3))]));
     let slots = ActionSlots::new([
         (weapon, SlotKind::new(0), Rank::new(1)),

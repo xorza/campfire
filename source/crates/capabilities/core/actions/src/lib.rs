@@ -26,7 +26,6 @@ mod action;
 mod action_book;
 mod action_call;
 mod action_data;
-mod action_data_field;
 mod action_kind;
 mod action_load;
 mod action_names;
@@ -41,39 +40,39 @@ mod actions_column;
 mod actions_data;
 mod actions_effect;
 mod amount;
-mod build_start;
+mod by_action;
 mod cast_spends;
 mod channel_call;
 mod checked_action;
-mod construct_data;
 mod cost_target;
 mod damage_kind_book;
 mod delivery;
 mod delivery_data;
+mod dyn_eq;
 mod effect_list_book;
 mod effect_names;
 mod error;
 mod fan;
 mod flights;
-mod gather_spec;
 mod holds;
 mod in_progress;
-mod kind_data;
-mod kind_spec;
+mod kind_section;
+mod kind_takes;
 mod launch_id;
 mod list_hook;
 mod listed_effect;
 mod lists_of;
+mod loaded_action;
 mod loadout_ranks;
 mod payer;
-mod placement_data;
+mod per_action;
+mod pipeline_field;
 mod planned_effect;
 mod purse;
 mod range_field;
 mod rank_fields;
 mod rank_values;
 mod reached;
-mod requires_data;
 mod shot_damage;
 mod shots;
 mod slot_aim;
@@ -87,18 +86,13 @@ mod targeting;
 mod targets;
 mod track_names;
 mod type_slots_data;
-mod weapon;
 
 pub use crate::action::{Action, Aim, Passive};
 pub use crate::action_book::{ActionBook, PackageAction};
 pub use crate::action_call::{ActionCall, ResolvedCast, Started};
 pub use crate::action_data::error::ActionField;
-pub use crate::action_data::{
-    ActionData, ChannelData, ChargeUpData, ChargesData, ClipData, PitchData, ScatterData,
-    SplashData, Toggle,
-};
-pub use crate::action_data_field::ActionDataField;
-pub use crate::action_kind::{ActionKind, MeteredKind};
+pub use crate::action_data::{ActionData, ChannelData, ChargeUpData, ChargesData, Toggle};
+pub use crate::action_kind::ActionKind;
 pub use crate::action_load::ActionLoad;
 pub use crate::action_names::ActionNames;
 pub use crate::action_parts::ActionParts;
@@ -116,45 +110,43 @@ pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
 pub use crate::actions_data::ActionsData;
 pub use crate::amount::Amount;
-pub use crate::build_start::BuildStart;
+pub use crate::by_action::ByAction;
 pub use crate::cast_spends::CastSpends;
 pub use crate::channel_call::{ChannelCall, ChannelStep};
 pub use crate::checked_action::CheckedAction;
-pub use crate::construct_data::ConstructData;
 pub use crate::cost_target::CostTarget;
 pub use crate::damage_kind_book::DamageKindBook;
 pub use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
 pub use crate::delivery_data::DeliveryData;
+pub use crate::dyn_eq::DynEq;
 pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
-pub use crate::error::{ActionError, ActionProblem, KindError, SlotError, SlotKindsError};
+pub use crate::error::{ActionError, ActionProblem, SlotError, SlotKindsError};
 pub use crate::fan::Fan;
 pub use crate::flights::Flights;
-pub use crate::gather_spec::GatherSpec;
 pub use crate::in_progress::{InProgress, OrderPhase};
-pub use crate::kind_data::{FromData, KindData};
-pub use crate::kind_spec::KindSpec;
+pub use crate::kind_section::{KindSection, KindSections};
+pub use crate::kind_takes::{KindTakes, RangeTakes, Takes};
 pub use crate::launch_id::LaunchId;
 pub use crate::list_hook::ListHook;
 pub use crate::listed_effect::effect_data::{EffectData, LaunchLists};
 pub use crate::listed_effect::error::{EffectError, EffectRule};
 pub use crate::listed_effect::listed_spec::{EffectTo, ListedAt, ListedSpec};
 pub use crate::listed_effect::{
-    EffectEq, EffectResolveCx, EffectRuleCx, ListedEffect, ListedEffects, RuleAt,
+    EffectResolveCx, EffectRuleCx, ListedEffect, ListedEffects, RuleAt,
 };
 pub use crate::lists_of::{ListsOf, ReachHook};
+pub use crate::loaded_action::LoadedAction;
 pub use crate::loadout_ranks::LoadoutRanks;
 pub use crate::payer::Payer;
-pub use crate::placement_data::{PlacementData, PlacementRule};
+pub use crate::per_action::PerAction;
+pub use crate::pipeline_field::PipelineField;
 pub use crate::planned_effect::PlannedEffect;
 pub use crate::purse::Purse;
 pub use crate::range_field::RangeField;
-pub use crate::rank_fields::{
-    RankChannel, RankCharges, RankClip, RankFields, RankToggle, TogglePer,
-};
-pub use crate::rank_values::{ChannelRule, ChargeRule, ClipRule, LoadedRanks, RankValues};
+pub use crate::rank_fields::{RankChannel, RankCharges, RankFields, RankToggle, TogglePer};
+pub use crate::rank_values::{ChannelRule, ChargeRule, LoadedRanks, RankValues};
 pub use crate::reached::Reached;
-pub use crate::requires_data::RequiresData;
 pub use crate::shot_damage::ShotDamage;
 pub use crate::shots::{Shot, Shots};
 pub use crate::slot_aim::SlotAim;
@@ -168,7 +160,6 @@ pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
 pub use crate::track_names::TrackNames;
 pub use crate::type_slots_data::TypeSlotsData;
-pub use crate::weapon::{Pitch, Scatter, Source, Weapon};
 
 /// The core's actions: every action a match loads, and the slots units hold them in.
 #[derive(Debug)]
@@ -311,26 +302,24 @@ pub mod internals {
     use campfire_declare::Book;
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
-    use campfire_script::{Filter, HookSet, MatchNames, NameKind, UnknownName};
-    use campfire_units::{PoolCost, PoolId, StatId};
+    use campfire_script::{HookSet, MatchNames, NameKind, UnknownName};
+    use campfire_units::{PoolCost, PoolId};
     use campfire_values::{
-        ActionId, DamageKind, ModifierId, PackageIndex, Speed, Tag, TrackId, TypeScope, UnitType,
+        ActionId, DamageKind, ModifierId, PackageIndex, Tag, TrackId, TypeScope, UnitType,
     };
 
     use crate::Actions;
     use crate::action::{Action, Aim};
     use crate::action_book::ActionBook;
-    use crate::action_data::{ActionData, SplashData};
+    use crate::action_data::ActionData;
+    use crate::action_kind::ActionKind;
     use crate::action_range::ActionRange;
     use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
     use crate::effect_list_book::EffectListBook;
     use crate::effect_names::EffectNames;
     use crate::fan::Fan;
-    use crate::gather_spec::GatherSpec;
-    use crate::kind_spec::KindSpec;
     use crate::rank_fields::{RankToggle, TogglePer};
-    use crate::rank_values::{ClipRule, CostRun, RankValues};
-    use crate::weapon::{Pitch, Scatter, Source, Weapon};
+    use crate::rank_values::{CostRun, RankValues};
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
@@ -341,42 +330,34 @@ pub mod internals {
                 .named((package, name))
         }
 
-        /// Adds a gather of `spec` from the nodes `aim` selects, within `range` meters, a trip of
-        /// `time`, to the match's action book.
-        pub fn add_gather(
-            world: &mut World,
-            spec: GatherSpec,
-            aim: Filter,
-            range: Num,
-            time: Ticks,
-        ) -> ActionId {
+        /// Adds `action`, named `name` in its package, of no script, passive or hold, of one
+        /// rank of no cooldown, charges, toggle, channel or charge, to the match's action book.
+        pub fn add(world: &mut World, name: &str, action: TestAction) -> ActionId {
+            let resource_costs: Box<[ResourceAmount]> = action.resource_cost.into_iter().collect();
             Self::push(
                 world,
-                "gather",
+                name,
                 Action {
                     package: PackageIndex::MODE,
-                    kind: KindSpec::Gather(spec),
+                    kind: action.kind,
                     passive: None,
                     hold: None,
-                    aim: Aim::Unit(aim),
+                    aim: action.aim,
                     ranks: vec![RankValues {
-                        range: ActionRange::meters(range),
+                        range: action.range,
                         cooldown: Ticks::ZERO,
-                        cost: PoolCost::default(),
-                        windup: time,
+                        cost: action.cost,
+                        windup: action.windup,
                         charges: None,
                         toggle: None,
                         channel: None,
                         charge: None,
-                        resource_cost: CostRun::EMPTY,
-                        amount: None,
-                        period: None,
-                        clip: None,
+                        resource_cost: CostRun::whole(&resource_costs),
                     }],
-                    resource_costs: Box::default(),
+                    resource_costs,
                     script: None,
                     hooks: HookSet::default(),
-                    delivery: None,
+                    delivery: action.delivery,
                 },
             )
         }
@@ -389,7 +370,7 @@ pub mod internals {
                 "toggle",
                 Action {
                     package: PackageIndex::MODE,
-                    kind: KindSpec::Cast,
+                    kind: ActionKind::Cast,
                     passive: None,
                     hold: None,
                     aim: Aim::None,
@@ -406,9 +387,6 @@ pub mod internals {
                         channel: None,
                         charge: None,
                         resource_cost: CostRun::EMPTY,
-                        amount: None,
-                        period: None,
-                        clip: None,
                     }],
                     resource_costs: Box::default(),
                     script: None,
@@ -428,27 +406,51 @@ pub mod internals {
         }
     }
 
-    /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
-    /// homing projectile it fires, if it fires one, where its rate and its damage come from, its
-    /// own period, amount and clip, its cost in pools and in a player resource, and its splash,
-    /// its scatter's radius, its bound of pitch and its speed.
+    /// An action tests add: its kind, its aim, its range and its windup at its one rank, its cost
+    /// in pools and in a player resource, and its delivery.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub struct TestWeapon {
-        pub aim: Filter,
+    pub struct TestAction {
+        pub kind: ActionKind,
+        pub aim: Aim,
         pub range: ActionRange,
         pub windup: Ticks,
-        pub projectile: Option<UnitType>,
-        pub rate: Source,
-        pub damage: Source,
-        pub period: Option<Ticks>,
-        pub amount: Option<Num>,
-        pub clip: Option<ClipRule>,
         pub cost: PoolCost,
         pub resource_cost: Option<ResourceAmount>,
-        pub splash: Option<SplashData>,
-        pub scatter: Option<Num>,
-        pub pitch: Option<Pitch>,
-        pub speed: Option<Speed>,
+        pub delivery: Option<Delivery>,
+    }
+
+    impl TestAction {
+        /// An action of `kind` at `aim` within `range` that winds up `windup`, costing nothing
+        /// and delivering at once.
+        pub fn new(kind: ActionKind, aim: Aim, range: ActionRange, windup: Ticks) -> Self {
+            Self {
+                kind,
+                aim,
+                range,
+                windup,
+                cost: PoolCost::default(),
+                resource_cost: None,
+                delivery: None,
+            }
+        }
+
+        /// The same action, delivering a homing projectile of `unit_type`.
+        #[must_use]
+        pub const fn homing(self, unit_type: UnitType) -> Self {
+            Self {
+                delivery: Some(Delivery {
+                    unit_type,
+                    shape: DeliveryShape::Projectile {
+                        fan: Fan {
+                            count: NonZeroU8::MIN,
+                            spread_deg: Num::ZERO,
+                        },
+                        flight: ProjectileFlight::Homing,
+                    },
+                }),
+                ..self
+            }
+        }
     }
 
     /// The names of an action's effect lists as a match's world resolves them: its names, the
@@ -460,86 +462,7 @@ pub mod internals {
         package: PackageIndex,
     }
 
-    impl TestWeapon {
-        /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
-        /// rate and damage, costing nothing.
-        pub fn new(aim: Filter, range: ActionRange, windup: Ticks) -> Self {
-            Self {
-                aim,
-                range,
-                windup,
-                projectile: None,
-                rate: Source::Stat(StatId::new(0)),
-                damage: Source::Stat(StatId::new(1)),
-                period: None,
-                amount: None,
-                clip: None,
-                cost: PoolCost::default(),
-                resource_cost: None,
-                splash: None,
-                scatter: None,
-                pitch: None,
-                speed: None,
-            }
-        }
-    }
-
     impl Actions {
-        /// Adds `weapon` to the match's action book, which deals damage of the first kind.
-        pub fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
-            let delivery = weapon.projectile.map(|unit_type| Delivery {
-                unit_type,
-                shape: DeliveryShape::Projectile {
-                    fan: Fan {
-                        count: NonZeroU8::MIN,
-                        spread_deg: Num::ZERO,
-                    },
-                    flight: ProjectileFlight::Homing,
-                },
-            });
-            let resource_costs: Box<[ResourceAmount]> = weapon.resource_cost.into_iter().collect();
-            Self::push(
-                world,
-                "weapon",
-                Action {
-                    package: PackageIndex::MODE,
-                    kind: KindSpec::Attack(Weapon {
-                        rate: weapon.rate,
-                        damage: weapon.damage,
-                        kind: DamageKind::new(0),
-                        splash: weapon.splash,
-                        scatter: weapon.scatter.map(|radius| Scatter {
-                            radius,
-                            tags: Box::new([]),
-                        }),
-                        pitch: weapon.pitch,
-                        speed: weapon.speed,
-                    }),
-                    passive: None,
-                    hold: None,
-                    aim: Aim::Unit(weapon.aim),
-                    ranks: vec![RankValues {
-                        range: weapon.range,
-                        cooldown: Ticks::ZERO,
-                        cost: weapon.cost,
-                        windup: weapon.windup,
-                        charges: None,
-                        toggle: None,
-                        channel: None,
-                        charge: None,
-                        resource_cost: CostRun::whole(&resource_costs),
-                        amount: weapon.amount,
-                        period: weapon.period,
-                        clip: weapon.clip,
-                    }],
-                    resource_costs,
-                    script: None,
-                    hooks: HookSet::default(),
-                    delivery,
-                },
-            )
-        }
-
         /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which
         /// the package load checked: each name resolved to its id, each param to its place among
         /// the action's params.
@@ -555,88 +478,6 @@ pub mod internals {
                 .push(action, data, &names)
                 .expect("a test's effect lists name what its match has");
             world.insert_resource(lists);
-        }
-
-        /// Adds a train of `unit_type` that takes `time` and costs `resource_cost`, no pool and no
-        /// cooldown, to the match's action book.
-        pub fn add_train(
-            world: &mut World,
-            unit_type: UnitType,
-            time: Ticks,
-            resource_cost: Option<ResourceAmount>,
-        ) -> ActionId {
-            let resource_costs: Box<[ResourceAmount]> = resource_cost.into_iter().collect();
-            Self::push(
-                world,
-                "train",
-                Action {
-                    package: PackageIndex::MODE,
-                    kind: KindSpec::Train(unit_type),
-                    passive: None,
-                    hold: None,
-                    aim: Aim::None,
-                    ranks: vec![RankValues {
-                        range: ActionRange::Global,
-                        cooldown: Ticks::ZERO,
-                        cost: PoolCost::default(),
-                        windup: time,
-                        charges: None,
-                        toggle: None,
-                        channel: None,
-                        charge: None,
-                        resource_cost: CostRun::whole(&resource_costs),
-                        amount: None,
-                        period: None,
-                        clip: None,
-                    }],
-                    resource_costs,
-                    script: None,
-                    hooks: HookSet::default(),
-                    delivery: None,
-                },
-            )
-        }
-
-        /// Adds a build of `unit_type` within `range` meters, aimed at a point, that takes `time` and costs
-        /// `resource_cost`, no pool and no cooldown, to the match's action book.
-        pub fn add_build(
-            world: &mut World,
-            unit_type: UnitType,
-            range: impl Into<Num>,
-            time: Ticks,
-            resource_cost: Option<ResourceAmount>,
-        ) -> ActionId {
-            let range = range.into();
-            let resource_costs: Box<[ResourceAmount]> = resource_cost.into_iter().collect();
-            Self::push(
-                world,
-                "build",
-                Action {
-                    package: PackageIndex::MODE,
-                    kind: KindSpec::Build(unit_type),
-                    passive: None,
-                    hold: None,
-                    aim: Aim::Point { clamp: false },
-                    ranks: vec![RankValues {
-                        range: ActionRange::meters(range),
-                        cooldown: Ticks::ZERO,
-                        cost: PoolCost::default(),
-                        windup: time,
-                        charges: None,
-                        toggle: None,
-                        channel: None,
-                        charge: None,
-                        resource_cost: CostRun::whole(&resource_costs),
-                        amount: None,
-                        period: None,
-                        clip: None,
-                    }],
-                    resource_costs,
-                    script: None,
-                    hooks: HookSet::default(),
-                    delivery: None,
-                },
-            )
         }
     }
 
