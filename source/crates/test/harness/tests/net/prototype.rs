@@ -14,8 +14,9 @@ use campfire_harness::{End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
 use campfire_net::internals::SimServerWorldInternals;
+use campfire_net::internals::TickHashes;
 use campfire_net::{
-    InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders, TickHashes,
+    InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,
 };
 use campfire_orders::OrdersAction;
 use campfire_players::{PlayerResources, PlayersWorld, ResourcesData};

@@ -98,7 +98,6 @@ pub use crate::sim_server::sim_server_world::{SimServerWorld, StopRequest};
 pub use crate::sim_server::slot_bot_file::SlotBotFile;
 pub use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 pub use crate::sim_server::snapshot_dir::SnapshotDir;
-pub use crate::sim_server::tick_hashes::TickHashes;
 
 #[cfg(feature = "internals")]
 pub mod internals {
@@ -112,4 +111,5 @@ pub mod internals {
         reason = "a module's world trait for tests and benches is `<Module>WorldInternals` (AGENTS.md)"
     )]
     pub use crate::sim_server::sim_server_world::internals::SimServerWorldInternals;
+    pub use crate::sim_server::tick_hashes::TickHashes;
 }

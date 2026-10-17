@@ -108,7 +108,7 @@ impl Session {
         snapshot: &[u8],
     ) -> Result<(), SnapshotCheckError> {
         if SnapshotFingerprint::of(snapshot) != record.snapshot {
-            return Err(SnapshotCheckError::PackageFingerprint);
+            return Err(SnapshotCheckError::Fingerprint);
         }
         world
             .restore(snapshot)

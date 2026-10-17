@@ -10,9 +10,10 @@ use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::Num;
 use campfire_mode::PlayersData;
 use campfire_net::internals::SimServerWorldInternals;
+use campfire_net::internals::TickHashes;
 use campfire_net::{
     CloseCode, InputsDiscarded, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss,
-    SessionTimes, TickHashes,
+    SessionTimes,
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;

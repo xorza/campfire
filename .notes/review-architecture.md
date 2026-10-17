@@ -665,7 +665,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `MatchRun::begin` from `MatchSource::{New, Restored}` builds one `ServerMatch` (N-5).
 - `Session` owns its signer, and the frame's systems become ordinary systems (N-4).
 - `Session` keeps its `CheckedTerms` (N-6). `ModePackages` holds `SessionRules` and a `SessionPlan` (N-20).
-- `TickHashes` goes behind `internals`, and the error variant is renamed (N-29).
 - A restore refuses other `--visibility` or `--spectators` settings, as it refuses other picks (ISSUES, Server).
 
 **6.3 A declared server frame.** Touches `net` and 02-engine-core.md.
@@ -1080,7 +1079,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-23 | No log line names its session | `events/input_logged.rs:19-27` | Confirmed | 6.3 |
 | N-24 | A 2 ms frame loop runs every Lightyear system 500 times a second for each match | `net_protocol/mod.rs:73-76`, `apps/server/src/main.rs:193` | Plausible | 11.2 |
 | N-25 | Small allocations for each message on the network paths | `offering.rs:259-263`, `input_ack.rs:18-27`, `chain_history/mod.rs:45-52` | Confirmed | 6.5 |
-| N-29 | A test's per-tick hash runs in the production schedule, and an error variant names the wrong fingerprint | `sim_server/mod.rs:224, 473-476`, `session/error.rs:37` | Confirmed | 6.2 |
 
 ### The client, the importer and the checks
 

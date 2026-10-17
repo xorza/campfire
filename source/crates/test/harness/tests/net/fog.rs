@@ -7,8 +7,9 @@ use campfire_common::Tick;
 use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Progress, Route};
+use campfire_net::internals::TickHashes;
 use campfire_net::{
-    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
+    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock,
 };
 use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};

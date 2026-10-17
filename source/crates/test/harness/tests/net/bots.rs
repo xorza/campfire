@@ -11,7 +11,8 @@ use campfire_harness::{
 };
 use campfire_mode::{ModeWorld, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
-use campfire_net::{SessionTimes, SlotBot, TickHashes};
+use campfire_net::internals::TickHashes;
+use campfire_net::{SessionTimes, SlotBot};
 use campfire_progression::Experience;
 use campfire_protocol::{Controller, InputRules, LeaveReason, ServerInput, SessionLog, SlotPlan};
 use campfire_runner::{Replay, Session, SessionWorld};

@@ -289,7 +289,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     *other.last_mut().unwrap() ^= 1;
     assert_eq!(
         replay.check_snapshot(&record, &other),
-        Err(SnapshotCheckError::PackageFingerprint)
+        Err(SnapshotCheckError::Fingerprint)
     );
     assert_eq!(replay.check_snapshot(&record, &snapshot), Ok(()));
 
@@ -827,9 +827,7 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
     scratch.write(&named, "other");
     assert!(matches!(
         verify(&packages, "match.log", Some("snapshots")),
-        Err(VerifyError::Snapshot(
-            SnapshotCheckError::PackageFingerprint
-        ))
+        Err(VerifyError::Snapshot(SnapshotCheckError::Fingerprint))
     ));
     // A checkpoint whose state its replay does not reach.
     let forged = StateHash::new([7; 32]);

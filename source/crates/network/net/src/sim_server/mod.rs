@@ -26,7 +26,7 @@ use campfire_protocol::{
 use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError};
 use campfire_script::ScriptPrints;
-use campfire_sim::{SimTick, SimWorld, TickRate};
+use campfire_sim::{SimTick, TickRate};
 use campfire_units::Deaths;
 use campfire_visibility::Visibility;
 use lightyear::core::tick::TickDuration;
@@ -35,7 +35,7 @@ use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
     RoomAllocator, RoomPlugin,
 };
-use tracing::{trace, trace_span};
+use tracing::trace_span;
 
 use crate::close_code::CloseCode;
 use crate::events::input_logged::InputLogged;
@@ -81,7 +81,6 @@ use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
 use crate::sim_server::snapshot_dir::SnapshotDir;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
-use crate::sim_server::tick_hashes::TickHashes;
 use crate::sim_server::viewer::Viewer;
 
 pub(crate) mod bot_driver;
@@ -112,6 +111,7 @@ pub(crate) mod slot_bot_file;
 pub(crate) mod snapshot_dir;
 pub(crate) mod spectators;
 pub(crate) mod team_rooms;
+#[cfg(feature = "internals")]
 pub(crate) mod tick_hashes;
 pub(crate) mod viewer;
 
@@ -224,7 +224,6 @@ impl Plugin for SimServer {
             (
                 BotDriver::drive,
                 run_sim_tick,
-                record_hash.run_if(resource_exists::<TickHashes>),
                 // Right after the tick, before any entry of the next.
                 Self::at_boundary,
                 report_deaths,
@@ -232,6 +231,14 @@ impl Plugin for SimServer {
                 report_end,
             )
                 .chain()
+                .in_set(SimTickSystems),
+        );
+        #[cfg(feature = "internals")]
+        app.add_systems(
+            FixedUpdate,
+            tick_hashes::TickHashes::record
+                .after(run_sim_tick)
+                .before(Self::at_boundary)
                 .in_set(SimTickSystems),
         );
         app.configure_sets(FixedUpdate, SimTickSystems.run_if(sim_tick_due));
@@ -474,11 +481,7 @@ impl SimServer {
         Self::take_terms(world, &terms, visibility);
         let slots = restored.log.slot_count();
         let signer = Arc::clone(&server.signer);
-        let snapshots = restored.replay(world, &packages, signer, |world| {
-            if world.contains_resource::<TickHashes>() {
-                record_hash(world);
-            }
-        })?;
+        let snapshots = restored.replay(world, &packages, signer, replayed)?;
         let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
         let now = world.resource::<Time<Real>>().elapsed();
         let run = MatchRun {
@@ -645,11 +648,23 @@ fn run_sim_tick(world: &mut World) {
     world.run_session_tick();
 }
 
-fn record_hash(world: &mut World) {
-    let hash = world.state_hash();
-    let mut hashes = world.resource_mut::<TickHashes>();
-    trace!(tick = hashes.get().len(), %hash, "hashed the state");
-    hashes.push(hash);
+/// What a replayed tick of a restore leaves: a test's hash of it, which a test's build keeps.
+#[cfg_attr(
+    not(feature = "internals"),
+    expect(
+        clippy::missing_const_for_fn,
+        reason = "a test's build keeps the tick's hash, which no const fn computes"
+    )
+)]
+fn replayed(
+    #[cfg_attr(
+        not(feature = "internals"),
+        expect(unused_variables, reason = "only a test's build keeps a tick's hash")
+    )]
+    world: &mut World,
+) {
+    #[cfg(feature = "internals")]
+    tick_hashes::TickHashes::record(world);
 }
 
 /// Logs each unit that died in the tick just run, from combat's record of the tick's deaths,

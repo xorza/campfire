@@ -12,9 +12,10 @@ use bevy_app::AppExit;
 use campfire_common::{ExitStatus, StateHash, Tick};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::internals::SimServerWorldInternals;
+use campfire_net::internals::TickHashes;
 use campfire_net::{
     AbortError, CheckpointFailed, LogFilled, Publisher, RestoreMatchError, SeedsRanOut, ServerDir,
-    SessionDir, SimServerWorld, StopRequest, TickHashes,
+    SessionDir, SimServerWorld, StopRequest,
 };
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, JournalFrames, Outcome, SeedChain, SessionLog, Signer};

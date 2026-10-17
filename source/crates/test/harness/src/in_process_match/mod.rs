@@ -17,12 +17,12 @@ use campfire_codec::Toml;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
+use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
     ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
     MatchClock, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir, ServerPin,
     ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld, SlotBot,
-    TickHashes,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
