@@ -2,6 +2,7 @@ use campfire_common::MapName;
 use campfire_mode::PickError;
 use campfire_net::{AbortError, LobbyOpenError, WaitingError};
 use campfire_runner::TermsError;
+use campfire_visibility::VisibilityError;
 use thiserror::Error;
 
 /// Why a server did not start a session from its data directory.
@@ -18,6 +19,12 @@ pub(crate) enum OpeningError {
     /// A session waits to restore, and other picks of its options than its own were asked.
     #[error("a session waits to restore, and other picks of its options were asked")]
     OtherPicks,
+    /// The visibility settings asked are none the mode leaves the host.
+    #[error("the visibility asked")]
+    Visibility(#[source] VisibilityError),
+    /// A session waits to restore, and another visibility than its own was asked.
+    #[error("a session waits to restore, and another visibility or most of spectators was asked")]
+    OtherVisibility,
     #[error("could not end the session")]
     Abort(#[source] AbortError),
     /// The new session does not open, as a bot names a slot the mode does not have, or keeps no

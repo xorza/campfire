@@ -665,7 +665,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `MatchRun::begin` from `MatchSource::{New, Restored}` builds one `ServerMatch` (N-5).
 - `Session` owns its signer, and the frame's systems become ordinary systems (N-4).
 - `Session` keeps its `CheckedTerms` (N-6). `ModePackages` holds `SessionRules` and a `SessionPlan` (N-20).
-- A restore refuses other `--visibility` or `--spectators` settings, as it refuses other picks (ISSUES, Server).
 
 **6.3 A declared server frame.** Touches `net` and 02-engine-core.md.
 - Chained sets with `ambiguity_detection: Error` (N-3).
