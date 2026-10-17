@@ -4,7 +4,7 @@ use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::SessionTerms;
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
-use tracing::error;
+use tracing::{Span, error, info_span};
 
 use crate::events::session_written::SessionWritten;
 use crate::faults::Faults;
@@ -64,6 +64,12 @@ impl SessionOpening {
             Self::New(lobby) => lobby.terms(),
             Self::Restored(restore) => restore.session.terms(),
         }
+    }
+
+    /// The root span of the session's server, which names the session in each line its thread
+    /// logs inside it, as its app runs there.
+    pub fn span(&self) -> Span {
+        info_span!("session", id = %self.terms().session_id())
     }
 
     /// The setup of the server that opens it.

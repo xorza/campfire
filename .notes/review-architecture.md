@@ -362,7 +362,6 @@ Each section gives the target shape of one system, the findings it removes, and 
   - The delegation expiration has one decimal spelling (N-28).
   - `TickHashes` goes behind `internals`, and the misnamed error variant is renamed (N-29).
   - The offer and the ack allocate nothing for each message (N-25).
-  - A root span names each session in every log line (N-23).
 
 **Removes:** N-1 to N-8, N-11 to N-20, N-23, N-25, N-28, N-29, B-15, B-17, B-25.
 
@@ -651,9 +650,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `production` drops `navigation`: the room data and the open-cell query (R-31). Q8's design costs more than it measured; the step waits for Q11 in `review-architecture_QUESTIONS.md`.
 
 ### Phase 6: `Send` data and the server frame
-
-**6.3 A declared server frame.** Touches `net` and 02-engine-core.md.
-- A root span for each session (N-23).
 
 **6.4 The session log.** Touches `protocol` (session log, journal, controller, carry) and `net` (seats, player link, checkpoints).
 - `LogReplay`, the decode's signature policy, and `JournaledLog` (N-17).
@@ -1053,7 +1049,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-18 | A slot's controller has four types, and the link-to-slot fact three maps kept equal by hand | `slot_control.rs:30-40`, `controller.rs:184-193`, `log_carry.rs:227-273`, `door.rs:242-293` | Confirmed | 6.4 |
 | N-21 | A data directory holds one unpublished session | `session_dir/mod.rs:111-145` | Confirmed | 11.2 |
 | N-22 | All apps in a process share the global compute pool, whose scope runs other apps' tasks | `sim_server_plugins.rs:27`, `bevy_tasks task_pool.rs:310-330` | Plausible | 11.2 |
-| N-23 | No log line names its session | `events/input_logged.rs:19-27` | Confirmed | 6.3 |
 | N-24 | A 2 ms frame loop runs every Lightyear system 500 times a second for each match | `net_protocol/mod.rs:73-76`, `apps/server/src/main.rs:193` | Plausible | 11.2 |
 | N-25 | Small allocations for each message on the network paths | `offering.rs:259-263`, `input_ack.rs:18-27`, `chain_history/mod.rs:45-52` | Confirmed | 6.5 |
 

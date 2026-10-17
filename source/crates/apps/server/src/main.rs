@@ -126,11 +126,12 @@ fn run() -> Result<ExitCode, StartError> {
     let local = socket.local_address();
     let limit = AddressLimit::new(opening.seats(), opening.server().times.grace);
     let listening = announce(&opening, &mode, local, tls_key);
+    let session = opening.session.span();
     let mut app = server_app(opening, data, listening, capabilities, stop);
     let port_map = port_map.then(|| PortMap::start(local)).flatten();
     let server = app.world_mut().spawn((RawServer, socket.serve(limit))).id();
     app.world_mut().trigger(Start { entity: server });
-    let exit = app.run();
+    let exit = session.in_scope(|| app.run());
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP
     // request's 10 s, which no client waits for (15-quic-transport.md, A server maps its own port).
     drop(app);

@@ -7,13 +7,16 @@ use serde::{Deserialize, Deserializer};
 
 use crate::log_event::LogEvent;
 
-/// One line of a JSON log: the event's level, the module it came from, and its fields, with the
-/// message among them.
+/// One line of a JSON log: the event's level, the module it came from, its fields, with the
+/// message among them, and the spans it was logged in, the root first, each with its name and
+/// fields.
 #[derive(Debug, Deserialize)]
 pub struct LogLine {
     pub level: LogLevel,
     pub target: String,
     pub fields: JsonValue,
+    #[serde(default)]
+    pub spans: Vec<JsonValue>,
 }
 
 /// An event's level, as `tracing` names them.
@@ -37,6 +40,15 @@ impl LogLine {
     /// read as `E`.
     pub fn read<E: LogEvent>(&self) -> Option<Result<E, JsonError>> {
         (self.fields.text("message")? == E::MESSAGE).then(|| self.fields.read())
+    }
+
+    /// The text of field `field` of the span named `span` the line was logged in; none when it
+    /// was logged in no such span, or the span has no such text field.
+    pub fn span_text(&self, span: &str, field: &str) -> Option<&str> {
+        self.spans
+            .iter()
+            .find(|logged| logged.text("name") == Some(span))?
+            .text(field)
     }
 
     /// Reads a field that an event logs with `%`, as its `Display` writes it, back through

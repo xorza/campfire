@@ -171,10 +171,12 @@ impl LocalServer {
             restart: Arc::new(AtomicBool::new(false)),
             relinks: relinks.clone(),
         };
+        let opening = SessionOpening::New(Box::new(lobby));
+        let session = opening.span();
         let worker = Worker::start("local server", move || {
+            let _session = session.entered();
             let mut app = runs.app(server_io, dir);
-            app.world_mut()
-                .open_session(SessionOpening::New(Box::new(lobby)));
+            app.world_mut().open_session(opening);
             runs.run(app);
         });
         Ok(Self {
