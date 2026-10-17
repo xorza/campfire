@@ -639,21 +639,19 @@ Each change folds into its document when its batch lands. Each line names the de
 - **Goldens:** none. Data that a kind ignored without a word is now refused.
 
 **5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
-- The proposal is `docs/design/action-pipeline.md`; the batch waits for its review (Q10 in `review-architecture_QUESTIONS.md`).
+- The proposal is `docs/design/action-pipeline.md`, accepted as written (2026-10-17): one start and one commit in `actions`, each kind committing at today's moment, no golden moves.
 - One start and go-off pair in `actions` owns the checks and the times. Kinds plug in by a callback table (K-17).
 - The `Purse` contract, the living test and the passive hook are contracts in `units`, and `actions` drops `stats`. The needs-and-uses test covers core modules (C-3, E-5).
 - **Goldens:** they may move where the four loops differed. Each move is explained.
 
 **5.5 Contracts in `units`.** Touches `units`, `players`, `orders`, `navigation`, `production`, `interaction`, `items`, `net`, `visibility`, `vision`, `combat`.
-- `production` drops `navigation`: the room data and the open-cell query (R-31). Q8's design costs more than it measured; the step waits for Q11 in `review-architecture_QUESTIONS.md`.
+- `production` drops `navigation` (R-31), as decided on 2026-10-17: the walls move to `units` as map data; the placement tests the static bodies through `UnitsNear`; a train's open spawn cell comes from a one-shot system that `units` declares and navigation registers, which the train's finish runs. A golden may move where the unit grid and navigation's index differ within a tick; each move is explained.
 
 ### Phase 6: `Send` data and the server frame
 
 **6.4 The session log.** Touches `protocol` (session log, journal, controller, carry) and `net` (seats, player link, checkpoints).
-- `LogReplay`, the decode's signature policy, and `JournaledLog` (N-17). Waits for Q13 in `review-architecture_QUESTIONS.md`.
-- The live log keeps state, and publication streams the journal (N-14, D34). Waits for Q13 in `review-architecture_QUESTIONS.md`.
-- One encode for each record, and one wake of the journal worker for each frame (N-13). Waits for Q13 in `review-architecture_QUESTIONS.md`.
-- `check` and `apply` split, with parallel checks across slots (N-11). Waits for Q12 in `review-architecture_QUESTIONS.md`.
+- A proposal first, `docs/design/session-log-state.md`, for review before any code (decided 2026-10-17): the live log as its latest checkpoint's state and the entries since, as Raft keeps a snapshot and a tail; the replay as a cursor value the session owns beside the log; publication by two streaming passes over the journal, each load's cut applied; one encode for each record into the journal's frame buffer; the signature policy as a parameter of the decode (N-17, N-14, N-13, D34). The code waits for the review.
+- A bench of `record_inputs` with 8 and 32 slots' packets first (decided 2026-10-17). `check` and `apply` split, with parallel checks across slots, only when the bench shows the checks take a set share of the frame's budget (N-11).
 - One `Control` shape, and a relationship from a slot's entity to its link (N-18).
 
 **6.5 Allocations on the network paths.** Touches `net` and `protocol`.
