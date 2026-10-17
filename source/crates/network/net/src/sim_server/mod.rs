@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use bevy_app::{
@@ -18,18 +17,12 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_mode::MatchEnd;
-use campfire_package::ModePackages;
-use campfire_protocol::{
-    Applied, Controller, InputError, PlayerPacket, ServerInput, ServerSeeds, SessionLog,
-    SessionTerms,
-};
+use campfire_protocol::{Applied, Controller, InputError, PlayerPacket};
 use campfire_quic::{CloseLink, QuicPlugin};
-use campfire_runner::{CheckedTerms, Session, SessionSource, SessionWorld, StartError};
+use campfire_runner::{Session, SessionWorld};
 use campfire_script::ScriptPrints;
-use campfire_sim::{SimTick, TickRate};
+use campfire_sim::SimTick;
 use campfire_units::Deaths;
-use campfire_visibility::Visibility;
-use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
@@ -58,26 +51,18 @@ use crate::net_protocol::input_ack::InputAck;
 use crate::net_protocol::input_message::InputMessage;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::net_protocol::{MatchChannel, NetProtocol};
-use crate::pace::PaceSpeed;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::data_filter::DataFilters;
 use crate::sim_server::door::Door;
-use crate::sim_server::error::RestoreMatchError;
-use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
+use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
-use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{Dismissing, Offered, Offering};
 use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
-use crate::sim_server::seats::Seats;
-use crate::sim_server::server_bots::ServerBots;
-use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::{ReplayWith, SessionFiles};
 use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
-use crate::sim_server::snapshot_dir::SnapshotDir;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
 use crate::sim_server::viewer::Viewer;
@@ -100,6 +85,7 @@ pub(crate) mod seats;
 pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_layout;
+pub(crate) mod server_match;
 pub(crate) mod server_setup;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
@@ -260,34 +246,6 @@ struct SimTickSystems;
 #[derive(Resource, Debug)]
 struct Reload;
 
-/// What a match starts from: the log of its header, the seeds of its segments, its mode's
-/// packages, its journal and snapshots' directory if the server keeps them, and the server's
-/// setup.
-#[derive(Debug)]
-pub(crate) struct SessionStart<'a> {
-    pub(crate) log: SessionLog,
-    pub(crate) seeds: ServerSeeds,
-    pub(crate) packages: &'a ModePackages,
-    pub(crate) files: Option<SessionFiles>,
-    pub(crate) server: &'a ServerSetup,
-    pub(crate) bots: ServerBots,
-    /// The lobby's offering, which the door offers from then on.
-    pub(crate) offering: Offering,
-    /// The terms as the lobby made them, of the mode's rules.
-    pub(crate) checked: CheckedTerms,
-}
-
-/// What a match runs with from the next fixed tick, as it starts or restores, its journal kept
-/// already: the offering its door offers, the snapshots' directory when the server keeps them,
-/// its seats, and the server's bots.
-#[derive(Debug)]
-struct MatchRun {
-    offering: Offering,
-    snapshots: Option<SnapshotDir>,
-    seats: Seats,
-    bots: ServerBots,
-}
-
 /// The save commands' links, each with its player.
 type SaveLinks = QueryState<(
     &'static PlayerLink,
@@ -342,163 +300,6 @@ impl SimServer {
                 Err(refusal) => SaveRefused { refusal }.log(),
             }
         }
-    }
-
-    /// Starts the match of `start.log`'s header in the next fixed tick, recording into its log,
-    /// each segment drawing from its seed. From then on a frame advances the server's clock by
-    /// the ticks of the max input delay less one at most, a tick at least, so a burst after a
-    /// stall makes no on-time input late; a longer frame's time past that is dropped, and logged.
-    /// `clients` are the links of the players, each with its slot; each learns its slot and the
-    /// start tick. The server's bots play their slots.
-    /// From the first tick on, every unit replicates to the clients whose team sees it, and the
-    /// owner's client predicts it, but a projectile or an area. With its files, the log goes into
-    /// the journal as the server logs it, `JournalWatch` watches it, and the server takes the
-    /// checkpoints due. The door takes the joins from then on.
-    fn start_match(
-        world: &mut World,
-        start: SessionStart<'_>,
-        clients: &[(PlayerSlot, Entity)],
-    ) -> Result<(), StartError> {
-        let SessionStart {
-            log,
-            seeds,
-            packages,
-            files,
-            server,
-            bots,
-            offering,
-            checked,
-        } = start;
-        assert_eq!(
-            clients.len(),
-            log.header().players().count(),
-            "one client per player"
-        );
-        let terms = log.header().terms.clone();
-        Self::take_terms(world, &terms, checked.visibility);
-        let slots = log.slot_count();
-        Session::start(
-            world,
-            SessionSource {
-                log,
-                seeds,
-                packages,
-                checked,
-                signer: Some(Arc::clone(&server.signer)),
-            },
-        )?;
-        let snapshots = files.map(|SessionFiles { journal, snapshots }| {
-            JournalWatch::keep(world, journal, JournalFrom::Start);
-            snapshots
-        });
-        let run = MatchRun {
-            offering,
-            snapshots,
-            seats: Seats::empty(slots),
-            bots,
-        };
-        Self::run_match(world, run);
-        for &(slot, client) in clients {
-            Door::seat_new(world, client, slot);
-        }
-        Ok(())
-    }
-
-    /// Takes the session's `terms` before its match starts or restores: bounds the server's
-    /// frames, so a frame advances its clock by the ticks of the max input delay less one at
-    /// most, a tick at least, each as long as the clock's tick now, which a local match's pace may
-    /// have set; and keeps their `visibility`, the one copy of it, which each data filter takes
-    /// its audience from as the match's entities spawn.
-    fn take_terms(world: &mut World, terms: &SessionTerms, visibility: Visibility) {
-        let session = TickRate::new(terms.tick_hz).length();
-        let tick = world.resource::<TickDuration>().0;
-        assert!(
-            PaceSpeed::ALL
-                .iter()
-                .any(|speed| speed.tick(session) == tick),
-            "the server ticks at the session's rate at a speed, not every {tick:?}"
-        );
-        let burst = terms.inputs.max_delay.get().saturating_sub(1).max(1);
-        let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");
-        world
-            .resource_mut::<Time<Virtual>>()
-            .set_max_delta(tick * burst);
-        world.insert_resource(MatchVisibility(visibility));
-    }
-
-    /// Runs the match of the world's session from the next fixed tick, as it starts or restores:
-    /// the door offers `run.offering`, the checkpoints go into the snapshots' directory when the
-    /// server keeps them, the players sit in `run.seats`, and the server's bots play their slots.
-    fn run_match(world: &mut World, run: MatchRun) {
-        let MatchRun {
-            offering,
-            snapshots,
-            seats,
-            bots,
-        } = run;
-        world.insert_resource(Door::new(offering));
-        if let Some(snapshots) = snapshots {
-            Checkpoints::start(world, snapshots);
-        }
-        let log = world.resource::<Session>().log();
-        let (slots, next) = (log.slot_count(), log.next_tick());
-        world.insert_resource(seats);
-        world.insert_resource(Receipts::new(slots));
-        let start = world.resource::<LocalTimeline>().tick() + 1;
-        world.insert_resource(MatchClock::new(start, next));
-        world.insert_resource(FrameStart(next));
-        let driver = BotDriver::new(bots, next, world);
-        world.insert_resource(driver);
-    }
-
-    /// Restores the match of `restore`, a session a crash or a failed journal ended, of the mode
-    /// its packages hold, on its server: builds it from the snapshot of the latest
-    /// checkpoint whose record the log holds, or from tick 0 with none, and replays its log from
-    /// there to the tick the server stopped before, keeping each tick's state hash while the
-    /// world holds `TickHashes`; a checkpoint begun with no record is taken again as the replay
-    /// reaches its boundary, and one due at the last boundary, as a save the mode asked for,
-    /// begins there. It logs `Disconnected` for each slot a player controls, whose grace
-    /// period runs from then, and runs the match on from the next fixed tick, so the ticks the
-    /// stop lost take no time in the sim. The journal goes on from its last record, and
-    /// `JournalWatch` watches it. No client is linked: the players come back through the door.
-    pub(crate) fn restore_match(
-        world: &mut World,
-        restore: PendingRestore,
-    ) -> Result<(), RestoreMatchError> {
-        let PendingRestore {
-            session: restored,
-            packages,
-            server,
-            bots,
-            checked,
-        } = restore;
-        let terms = restored.log.header().terms.clone();
-        Self::take_terms(world, &terms, checked.visibility);
-        let slots = restored.log.slot_count();
-        let with = ReplayWith {
-            packages: &packages,
-            signer: Arc::clone(&server.signer),
-            checked,
-        };
-        let snapshots = restored.replay(world, with, replayed)?;
-        let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
-        let now = world.resource::<Time<Real>>().elapsed();
-        let run = MatchRun {
-            offering: Offering::new(terms, &server),
-            snapshots: Some(snapshots),
-            seats: Seats::gone(slots, players.iter().copied(), now),
-            bots,
-        };
-        Self::run_match(world, run);
-        // The stop may have come after the tick before this boundary, before the save it made due
-        // here began. The session may end there, and then logs nothing more.
-        Self::at_boundary(world);
-        if world.resource::<Session>().log().result().is_none() {
-            for &slot in &players {
-                Door::serve_unless_full(world, ServerInput::Disconnected { slot });
-            }
-        }
-        Ok(())
     }
 }
 

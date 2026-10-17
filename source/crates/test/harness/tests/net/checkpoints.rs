@@ -14,7 +14,7 @@ use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::internals::SimServerWorldInternals;
 use campfire_net::internals::TickHashes;
 use campfire_net::{
-    AbortError, CheckpointFailed, LogFilled, Publisher, RestoreMatchError, SeedsRanOut, ServerDir,
+    AbortError, CheckpointFailed, LogFilled, MatchBeginError, Publisher, SeedsRanOut, ServerDir,
     SessionDir, SimServerWorld, StopRequest,
 };
 use campfire_protocol::internals::TestKey;
@@ -141,7 +141,7 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
     scratch.remove(&latest);
     assert!(matches!(
         abort(&data),
-        Err(AbortError::Replay(RestoreMatchError::ReadSnapshot(_)))
+        Err(AbortError::Replay(MatchBeginError::ReadSnapshot(_)))
     ));
     scratch.write(&latest, kept);
     let file = abort(&data).unwrap();

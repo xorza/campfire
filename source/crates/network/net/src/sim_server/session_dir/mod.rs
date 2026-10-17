@@ -23,7 +23,7 @@ use campfire_store::{
 use crate::events::journal_cut::JournalCut;
 use crate::events::session_aborted::SessionAborted;
 use crate::sim_server::checkpoints::Checkpoints;
-use crate::sim_server::error::RestoreMatchError;
+use crate::sim_server::error::MatchBeginError;
 use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::session_dir::error::{
@@ -244,6 +244,14 @@ impl SessionDir {
     }
 }
 
+/// What a session's replay leaves beside its match: the watch of its journal, and its
+/// snapshots' directory.
+#[derive(Debug)]
+pub(crate) struct Replayed {
+    pub(crate) journal: JournalWatch,
+    pub(crate) snapshots: SnapshotDir,
+}
+
 /// What a session's replay takes beside its world: the packages of its mode, the server's
 /// signer, which signs what the session logs, and the log's terms as the mode's rules checked
 /// them.
@@ -260,18 +268,18 @@ impl RestoredSession {
         &self.log.header().terms
     }
 
-    /// Builds the session's match in `world`, of the mode `packages` holds: from the snapshot of
-    /// the latest checkpoint whose record the log holds, or from tick 0 with none; resumes its
-    /// journal, which `JournalWatch` watches; and replays the log from there to the tick the
-    /// server stopped before, running `after_tick` after each tick the replay runs, and taking
-    /// again a checkpoint begun with no record as the replay reaches its boundary; the session
-    /// signs with `signer`, the server's. Its snapshots.
+    /// Builds the session's match in `world`, of the mode `with.packages` holds: from the
+    /// snapshot of the latest checkpoint whose record the log holds, or from tick 0 with none;
+    /// resumes its journal; and replays the log from there to the tick the server stopped before,
+    /// running `after_tick` after each tick the replay runs, and taking again a checkpoint begun
+    /// with no record as the replay reaches its boundary; the session signs with `with.signer`,
+    /// the server's. The watch of its journal, and its snapshots, which `world` holds neither of.
     pub(crate) fn replay(
         self,
         world: &mut World,
         with: ReplayWith<'_>,
         mut after_tick: impl FnMut(&mut World),
-    ) -> Result<SnapshotDir, RestoreMatchError> {
+    ) -> Result<Replayed, MatchBeginError> {
         let ReplayWith {
             packages,
             signer,
@@ -295,7 +303,7 @@ impl RestoredSession {
                 &snapshots.file(fingerprint),
                 StateRegistry::MAX_SNAPSHOT_LEN,
             )
-            .map_err(RestoreMatchError::ReadSnapshot)?;
+            .map_err(MatchBeginError::ReadSnapshot)?;
             let source = SessionSource {
                 log: log.rewound(),
                 seeds,
@@ -307,7 +315,7 @@ impl RestoredSession {
                 segment,
                 snapshot: &snapshot,
             };
-            Session::resume(world, source, at).map_err(RestoreMatchError::Resume)?;
+            Session::resume(world, source, at).map_err(MatchBeginError::Resume)?;
         } else {
             let source = SessionSource {
                 log: log.rewound(),
@@ -316,17 +324,21 @@ impl RestoredSession {
                 checked,
                 signer: Some(signer),
             };
-            Session::start(world, source).map_err(RestoreMatchError::Start)?;
+            Session::start(world, source).map_err(MatchBeginError::Start)?;
         }
-        JournalWatch::keep(world, journal, JournalFrom::End { len: journal_len });
+        let journal = JournalWatch::keep(
+            &mut world.resource_mut::<Session>(),
+            journal,
+            JournalFrom::End { len: journal_len },
+        );
         let resumed = world.session().log().next_tick();
         world.replay_to(ticks, |world| {
             if world.session().log().next_tick() > resumed {
                 after_tick(world);
             }
-            Checkpoints::take_again(world, &snapshots).map_err(RestoreMatchError::WriteSnapshot)
+            Checkpoints::take_again(world, &snapshots).map_err(MatchBeginError::WriteSnapshot)
         })?;
-        Ok(snapshots)
+        Ok(Replayed { journal, snapshots })
     }
 
     /// Ends the session, as a server back past the restore window does, unless it ended before the
@@ -344,7 +356,7 @@ impl RestoredSession {
         let checked = SessionRules::of(packages)
             .check(self.terms())
             .map_err(|error| {
-                AbortError::Replay(RestoreMatchError::Start(StartError::Terms(error)))
+                AbortError::Replay(MatchBeginError::Start(StartError::Terms(error)))
             })?;
         let with = ReplayWith {
             packages,

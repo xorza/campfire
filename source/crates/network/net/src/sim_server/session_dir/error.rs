@@ -5,7 +5,7 @@ use campfire_protocol::{JournalReplayError, NotJournal, SessionId};
 use campfire_store::{AppendOpenError, DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
-use crate::sim_server::error::RestoreMatchError;
+use crate::sim_server::error::MatchBeginError;
 
 /// Why a server's data directory does not say which session to restore.
 #[derive(Debug, Error)]
@@ -46,7 +46,7 @@ pub enum RestoreError {
 pub enum AbortError {
     /// The session's match does not replay to where it stopped.
     #[error("the session's match does not replay")]
-    Replay(#[source] RestoreMatchError),
+    Replay(#[source] MatchBeginError),
     #[error("could not publish the log")]
     Publish(#[source] PublishError),
 }

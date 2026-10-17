@@ -25,15 +25,15 @@ pub(crate) enum JournalFrom {
 }
 
 impl JournalWatch {
-    /// Keeps `journal` as the journal of the world's session, from `from`, and watches it.
-    pub(crate) fn keep(world: &mut World, journal: SessionJournal, from: JournalFrom) {
-        world.insert_resource(Self(journal.watch()));
+    /// Keeps `journal` as the journal of `session`, from `from`; the watch of it.
+    pub(crate) fn keep(session: &mut Session, journal: SessionJournal, from: JournalFrom) -> Self {
+        let watch = Self(journal.watch());
         let journal = Box::new(journal);
-        let mut session = world.resource_mut::<Session>();
         match from {
             JournalFrom::Start => session.keep_journal(journal),
             JournalFrom::End { len } => session.resume_journal(journal, len),
         }
+        watch
     }
 
     /// Reports to `Faults` the journal's failure, when a write or a sync failed since the last

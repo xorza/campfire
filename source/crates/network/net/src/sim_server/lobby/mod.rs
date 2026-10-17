@@ -23,12 +23,12 @@ use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError
 use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_dir::ServerDir;
+use crate::sim_server::server_match::{MatchBegin, MatchSource, NewMatch, ServerMatch};
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{SessionDir, SessionFiles};
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::spectators::spectators_world::SpectatorsWorldCrate;
 use crate::sim_server::viewer::Viewer;
-use crate::sim_server::{SessionStart, SimServer};
 
 pub(crate) mod error;
 
@@ -291,18 +291,19 @@ impl Lobby {
             .expect("every delegation names this session, one main key each");
         info!(%session, players = links.len(), "every slot is taken; the match starts");
         let seeds = lobby.seed_chain.seeds();
-        let start = SessionStart {
-            log,
-            seeds,
+        let begin = MatchBegin {
+            source: MatchSource::New(NewMatch {
+                log,
+                seeds,
+                files: lobby.files,
+                clients: &links,
+            }),
             packages: &lobby.packages,
-            files: lobby.files,
             server: &lobby.server,
             bots: lobby.bots,
-            offering: lobby.offering,
             checked: lobby.checked,
         };
-        SimServer::start_match(world, start, &links)
-            .expect("the lobby's terms come from its own packages");
+        ServerMatch::begin(world, begin).expect("the lobby's terms come from its own packages");
         world.start_spectators();
     }
 

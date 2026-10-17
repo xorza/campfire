@@ -9,8 +9,8 @@ use campfire_runner::{CheckedTerms, Session, SessionRules, TermsError};
 use tracing::error;
 
 use crate::events::session_restored::SessionRestored;
-use crate::sim_server::SimServer;
 use crate::sim_server::server_bots::ServerBots;
+use crate::sim_server::server_match::{MatchBegin, MatchSource, ServerMatch};
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::RestoredSession;
 
@@ -24,7 +24,7 @@ pub struct PendingRestore {
     pub server: ServerSetup,
     pub bots: ServerBots,
     /// The session's terms as the rules of `packages` checked them.
-    pub(crate) checked: CheckedTerms,
+    checked: CheckedTerms,
 }
 
 /// A session to restore, its terms not yet checked by the rules of the packages the server
@@ -63,13 +63,26 @@ impl PendingRestore {
     }
 
     /// Restores the session in `world`'s server, its log's bytes from the first frame on, and
-    /// logs `SessionRestored`; see `SimServer::restore_match`. An error, logged, ends the app.
+    /// logs `SessionRestored`; see `ServerMatch::begin`. An error, logged, ends the app.
     pub fn run(world: &mut World) {
-        let restore = world
+        let Self {
+            session,
+            packages,
+            server,
+            bots,
+            checked,
+        } = world
             .remove_resource::<Self>()
             .expect("a restore runs while one waits");
-        let id = restore.session.log.session_id();
-        match SimServer::restore_match(world, restore) {
+        let id = session.log.session_id();
+        let begin = MatchBegin {
+            source: MatchSource::Restored(session),
+            packages: &packages,
+            server: &server,
+            bots,
+            checked,
+        };
+        match ServerMatch::begin(world, begin) {
             Ok(()) => {
                 let tick = world.resource::<Session>().log().next_tick();
                 SessionRestored { session: id, tick }.log();

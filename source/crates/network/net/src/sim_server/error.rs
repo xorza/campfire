@@ -4,9 +4,9 @@ use thiserror::Error;
 
 use crate::faults::error::SnapshotWriteError;
 
-/// Why a session a stop ended does not restore its match.
+/// Why a server's match does not begin: a new one, or one a stop ended, which it restores.
 #[derive(Debug, Error)]
-pub enum RestoreMatchError {
+pub enum MatchBeginError {
     /// The log does not start a match of the server's mode.
     #[error("the match does not start")]
     Start(#[source] StartError),
