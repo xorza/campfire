@@ -2,15 +2,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 use std::sync::Arc;
 
-use campfire_actions::{ActionData, SlotKinds, TypeSlotsData};
+use campfire_actions::{ActionData, ActionsData, SlotKinds, TypeSlotsData};
 use campfire_capabilities::{BookInput, Books, PackageContent, PackageScript, Release};
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
-use campfire_declare::{SourceKind, SourcePackage, UnitTypeData};
+use campfire_declare::{Section, SourceKind, SourcePackage, UnitTypeData};
 use campfire_mode::{MapData, ModeData};
 use campfire_navigation::ModeNavigationData;
 use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::TickRate;
-use campfire_stats::{EdgeError, ModeStatsData, StatGraph, StatId};
+use campfire_stats::{EdgeError, ModeStatsData, ModifiersData, StatGraph, StatId};
 use campfire_units::{HeightGrid, ModeTagsData, ScriptBook, TypeTagsData};
 use campfire_values::{EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
@@ -285,12 +285,20 @@ impl ModePackages {
                     for (action, param) in own.into_iter().chain(applied) {
                         for read in param.stats() {
                             graph.add(read, changed).map_err(|error| match error {
-                                EdgeError::Read(name) if let Some(action) = action => {
-                                    fail(Place::Action(action.clone()), name)
-                                }
-                                EdgeError::Read(name) | EdgeError::Changed(name) => {
-                                    fail(Place::Modifier(id.clone()), name)
-                                }
+                                EdgeError::Read(name) if let Some(action) = action => fail(
+                                    Place::Entry {
+                                        table: ActionsData::KEY,
+                                        name: action.clone(),
+                                    },
+                                    name,
+                                ),
+                                EdgeError::Read(name) | EdgeError::Changed(name) => fail(
+                                    Place::Entry {
+                                        table: ModifiersData::KEY,
+                                        name: id.clone(),
+                                    },
+                                    name,
+                                ),
                             })?;
                         }
                     }

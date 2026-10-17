@@ -78,7 +78,9 @@ pub enum BookPlace {
     },
     /// The mode's section of the key.
     Section(&'static str),
-    /// The mode's map.
+    /// The map's section of the key.
+    MapSection(&'static str),
+    /// The mode's map, its units and markers.
     Map,
     /// The mode's teams and their relations.
     Teams,
@@ -93,6 +95,7 @@ impl fmt::Display for BookPlace {
             Self::UnitType(unit_type) => write!(f, "{unit_type}"),
             Self::Entry { table, name } => write!(f, "{table}.{name}"),
             Self::Section(key) => write!(f, "the mode's [{key}]"),
+            Self::MapSection(key) => write!(f, "the map's [{key}]"),
             Self::Map => f.write_str("the map"),
             Self::Teams => f.write_str("the mode's teams"),
             Self::Types => f.write_str("the match's unit types"),

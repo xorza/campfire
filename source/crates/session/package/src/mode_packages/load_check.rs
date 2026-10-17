@@ -21,7 +21,9 @@ use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ItemError, ItemsData, ShopData};
 use campfire_math::Num;
 use campfire_mode::{ModeData, ModeError, Offers};
-use campfire_navigation::{MapNavigationData, ModeNavigationData, NavigationDataError};
+use campfire_navigation::{
+    MapNavigationData, MapPathsData, ModeNavigationData, NavigationDataError,
+};
 use campfire_orders::{AiData, AiError};
 use campfire_players::ResourcesData;
 use campfire_production::{ModeSupplyData, ProductionData, SupplyData};
@@ -310,7 +312,14 @@ impl<'a> LoadCheck<'a> {
             message(mode, &choice.name, &Place::Choice(id.clone()))?;
         }
         for (id, item) in packages.content.items() {
-            message(mode, &item.name, &Place::Item(id.clone()))?;
+            message(
+                mode,
+                &item.name,
+                &Place::Entry {
+                    table: ItemsData::KEY,
+                    name: id.clone(),
+                },
+            )?;
         }
         Ok(())
     }
@@ -440,7 +449,10 @@ impl<'a> LoadCheck<'a> {
         names: &mut PackageNames<'a>,
     ) -> Result<(), LoadProblem> {
         for (id, action) in actions {
-            let at = Place::Action(id.clone());
+            let at = Place::Entry {
+                table: ActionsData::KEY,
+                name: id.clone(),
+            };
             if let Some(name) = &action.name {
                 message(names.package, name, &at)?;
             }
@@ -500,7 +512,10 @@ impl<'a> LoadCheck<'a> {
         ranks: impl Fn(&str) -> u8,
     ) -> Result<(), LoadProblem> {
         for (id, modifier) in names.modifiers {
-            let at = Place::Modifier(id.clone());
+            let at = Place::Entry {
+                table: ModifiersData::KEY,
+                name: id.clone(),
+            };
             self.require(Capability::Stats, &at)?;
             self.own_tags(&modifier.tags, &at)?;
             // The ways pass on through an aura's modifier, which the checks below read.
@@ -923,7 +938,10 @@ impl<'a> LoadCheck<'a> {
 
     /// A `gather` of `production` and `navigation`, whose worker walks, `id`: aimed at a unit.
     fn gather(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
-        let at = Place::Action(id.clone());
+        let at = Place::Entry {
+            table: ActionsData::KEY,
+            name: id.clone(),
+        };
         self.require(Capability::Production, &at)?;
         self.require(Capability::Navigation, &at)?;
         if !matches!(action.targeting, Targeting::Unit(_)) {
@@ -936,7 +954,10 @@ impl<'a> LoadCheck<'a> {
     /// worker, `id`: aimed at a point. That it builds a unit type of its package that stands, the
     /// book build holds.
     fn build(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
-        let at = Place::Action(id.clone());
+        let at = Place::Entry {
+            table: ActionsData::KEY,
+            name: id.clone(),
+        };
         self.require(Capability::Production, &at)?;
         self.require(Capability::Navigation, &at)?;
         if action.targeting != Targeting::Point {
@@ -957,7 +978,10 @@ impl<'a> LoadCheck<'a> {
         action: &ActionData,
         units: &BTreeMap<DeclaredName, UnitTypeData>,
     ) -> Result<(), LoadProblem> {
-        let at = Place::Action(id.clone());
+        let at = Place::Entry {
+            table: ActionsData::KEY,
+            name: id.clone(),
+        };
         let kind = match KindData::of(action) {
             Ok(kind) => Some(kind),
             Err(KindError::NotRun(_)) => None,
@@ -1092,7 +1116,10 @@ impl<'a> LoadCheck<'a> {
         effects: &[EffectData],
         reaches: bool,
     ) -> Result<(), LoadProblem> {
-        let at = Place::Action(id.clone());
+        let at = Place::Entry {
+            table: ActionsData::KEY,
+            name: id.clone(),
+        };
         let fail = |problem| LoadProblem::Effect {
             action: id.clone(),
             list,
@@ -1169,42 +1196,42 @@ impl<'a> LoadCheck<'a> {
                     || combat.stats().next().is_some()
                     || combat.life.is_some(),
                 owner(DataTable::Mode, "combat"),
-                Place::Combat,
+                Place::Section(ModeCombatData::KEY),
             ),
             (
                 !data.stats.0.is_empty(),
                 owner(DataTable::Mode, "stats"),
-                Place::Stats,
+                Place::Section(ModeStatsData::KEY),
             ),
             (
                 !data.tracks.0.is_empty(),
                 owner(DataTable::Mode, "tracks"),
-                Place::Tracks,
+                Place::Section(ModeTracksData::KEY),
             ),
             (
                 !data.navigation.layers.is_empty(),
                 owner(DataTable::ModeNavigation, "layers"),
-                Place::Navigation,
+                Place::Section(ModeNavigationData::KEY),
             ),
             (
                 self.packages.data.section::<ModeSupplyData>().is_some(),
                 owner(DataTable::Mode, "supply"),
-                Place::Supply,
+                Place::Section(ModeSupplyData::KEY),
             ),
             (
                 map.section::<MapNavigationData>().is_some(),
                 Some(Capability::Navigation),
-                Place::MapNavigation,
+                Place::MapSection(MapNavigationData::KEY),
             ),
             (
                 !map.paths().is_empty(),
                 Some(Capability::Navigation),
-                Place::Paths,
+                Place::MapSection(MapPathsData::KEY),
             ),
             (
                 map.section::<GridData>().is_some(),
                 Some(Capability::Vision),
-                Place::MapGrid,
+                Place::MapSection(GridData::KEY),
             ),
         ];
         for (held, capability, at) in sections {
@@ -1222,12 +1249,18 @@ impl<'a> LoadCheck<'a> {
         if let Some(name) = (data.resources.0.iter()).find(|name| data.pools.0.contains_key(*name))
         {
             return Err(LoadProblem::Repeated {
-                at: Place::Resources,
+                at: Place::Section(ResourcesData::KEY),
                 name: name.to_string(),
             });
         }
         for name in data.pools.0.keys() {
-            self.require(Capability::Stats, &Place::Pool(name.clone()))?;
+            self.require(
+                Capability::Stats,
+                &Place::Entry {
+                    table: ModePoolsData::KEY,
+                    name: name.clone(),
+                },
+            )?;
         }
         let combat = self
             .packages
@@ -1397,7 +1430,10 @@ impl<'a> LoadCheck<'a> {
         let content = &packages.content;
         let items = content.items();
         for (id, item) in items {
-            let at = Place::Item(id.clone());
+            let at = Place::Entry {
+                table: ItemsData::KEY,
+                name: id.clone(),
+            };
             self.require(Capability::Items, &at)?;
             // The component loop and the components' cost, below, read each resource and each
             // component.
@@ -1427,7 +1463,13 @@ impl<'a> LoadCheck<'a> {
             if let Some((item, _)) = held {
                 return Err(LoadProblem::SharedPassive {
                     modifier: modifier.clone(),
-                    owners: [owner, Place::Item(item.clone())],
+                    owners: [
+                        owner,
+                        Place::Entry {
+                            table: ItemsData::KEY,
+                            name: item.clone(),
+                        },
+                    ],
                 });
             }
         }
@@ -1549,8 +1591,15 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::Use(UseProblem::KindSlotted { at, kind }));
         }
         let content = &packages.content;
-        let items = (content.items().iter())
-            .filter_map(|(id, item)| Some((Place::Item(id.clone()), item.action.as_ref()?)));
+        let items = (content.items().iter()).filter_map(|(id, item)| {
+            Some((
+                Place::Entry {
+                    table: ItemsData::KEY,
+                    name: id.clone(),
+                },
+                item.action.as_ref()?,
+            ))
+        });
         let loadouts = packages
             .dependencies
             .iter()
@@ -1742,7 +1791,10 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::Unknown {
                 of: NameKind::Cost,
-                at: Place::Action(id.clone()),
+                at: Place::Entry {
+                    table: ActionsData::KEY,
+                    name: id.clone(),
+                },
                 name: name.to_string(),
             });
         }
@@ -1853,21 +1905,11 @@ fn book_place(packages: &ModePackages, package: PackageIndex, at: BookPlace) -> 
             Place::Avatar(package.header.name.clone())
         }
         BookPlace::UnitType(TypePlace::Declared(name)) => Place::UnitType(name),
-        BookPlace::Entry { table, name } => match table {
-            ActionsData::KEY => Place::Action(name),
-            ModifiersData::KEY => Place::Modifier(name),
-            ItemsData::KEY => Place::Item(name),
-            ModePoolsData::KEY => Place::Pool(name),
-            other => unreachable!("no book names an entry of {other}"),
-        },
-        BookPlace::Section(key) => match key {
-            ModeCombatData::KEY => Place::Combat,
-            ModeTracksData::KEY => Place::Tracks,
-            ModeNavigationData::KEY => Place::Navigation,
-            ResourcesData::KEY => Place::Resources,
-            _ => Place::Mode,
-        },
-        BookPlace::Map | BookPlace::Teams => Place::Mode,
+        BookPlace::Entry { table, name } => Place::Entry { table, name },
+        BookPlace::Section(key) => Place::Section(key),
+        BookPlace::MapSection(key) => Place::MapSection(key),
+        BookPlace::Map => Place::Map,
+        BookPlace::Teams => Place::Mode,
         BookPlace::Types => Place::UnitTypes,
     }
 }
@@ -1972,10 +2014,13 @@ fn names_problem(key: &str, error: &NamesListError) -> LoadProblem {
         }),
         NamesListError::Repeated(name) => {
             let at = match key {
-                ModePoolsData::KEY => Place::Pool(name.clone()),
-                ResourcesData::KEY => Place::Resources,
-                ModeCombatData::KEY => Place::Combat,
-                ModeNavigationData::KEY => Place::Navigation,
+                ModePoolsData::KEY => Place::Entry {
+                    table: ModePoolsData::KEY,
+                    name: name.clone(),
+                },
+                ResourcesData::KEY => Place::Section(ResourcesData::KEY),
+                ModeCombatData::KEY => Place::Section(ModeCombatData::KEY),
+                ModeNavigationData::KEY => Place::Section(ModeNavigationData::KEY),
                 other => unreachable!("no list of names is the mode's [{other}]"),
             };
             LoadProblem::Repeated {
@@ -2075,7 +2120,13 @@ fn action_passives(
     actions: &BTreeMap<DeclaredName, ActionData>,
 ) -> impl Iterator<Item = (Place, &DeclaredName)> {
     actions.iter().filter_map(|(id, action)| {
-        Some((Place::Action(id.clone()), action.passive_modifier.as_ref()?))
+        Some((
+            Place::Entry {
+                table: ActionsData::KEY,
+                name: id.clone(),
+            },
+            action.passive_modifier.as_ref()?,
+        ))
     })
 }
 
@@ -2194,7 +2245,10 @@ fn delivery_holds(
     let name = delivery.unit_type();
     let unit_type = units.get(name).ok_or_else(|| LoadProblem::Unknown {
         of: NameKind::UnitType,
-        at: Place::Action(id.clone()),
+        at: Place::Entry {
+            table: ActionsData::KEY,
+            name: id.clone(),
+        },
         name: name.to_string(),
     })?;
     let wrong_section = || {
@@ -2274,7 +2328,10 @@ fn requires(
     let Some(requires) = &action.requires else {
         return Ok(());
     };
-    let at = Place::Action(id.clone());
+    let at = Place::Entry {
+        table: ActionsData::KEY,
+        name: id.clone(),
+    };
     if let Some(name) = requires
         .units
         .iter()

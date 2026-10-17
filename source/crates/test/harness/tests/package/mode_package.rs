@@ -635,7 +635,7 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Vision,
-                    at: Place::MapGrid
+                    at: Place::MapSection("grid")
                 }
             )
         },
@@ -649,7 +649,7 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Navigation,
-                    at: Place::MapNavigation
+                    at: Place::MapSection("navigation")
                 }
             )
         },
@@ -663,7 +663,7 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Production,
-                    at: Place::Supply
+                    at: Place::Section("supply")
                 }
             )
         },
@@ -679,7 +679,7 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Progression,
-                    at: Place::Tracks
+                    at: Place::Section("tracks")
                 }
             )
         },
@@ -853,7 +853,7 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"delivery = { projectile = "wraps" }"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "grasping_wraps" && name == "wraps"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Entry { table: "actions", name: action }, name } if action == "grasping_wraps" && name == "wraps"),
     ),
     flaw(
         HUSK,
@@ -1025,7 +1025,7 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ launch = { area = "pyre" } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "attack" && name == "pyre"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Entry { table: "actions", name: action }, name } if action == "attack" && name == "pyre"),
     ),
     flaw(
         CINDER,
@@ -1112,13 +1112,13 @@ static DATA_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Replace(SLOWS, r#"{ purge = { tag = "frozen" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Tag, at: Place::Action(action), name } if action == "fan_of_frost" && name == "frozen"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Tag, at: Place::Entry { table: "actions", name: action }, name } if action == "fan_of_frost" && name == "frozen"),
     ),
     flaw(
         RIME,
         Edit::Replace(SLOWS, r#"{ purge = { tag = "avatar" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Action(action), tag } if tag.name() == "avatar" && action == "fan_of_frost"),
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Entry { table: "actions", name: action }, tag } if tag.name() == "avatar" && action == "fan_of_frost"),
     ),
     flaw(
         RIME,
@@ -1555,13 +1555,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "damage_kind = \"fire\"\ndelivery = { projectile = \"tower_bolt\" }",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, at: Place::Action(action), name: kind } if action == "tower_attack" && kind == "fire"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, at: Place::Entry { table: "actions", name: action }, name: kind } if action == "tower_attack" && kind == "fire"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("rate = \"attack_speed\"\n", "rate = \"attack_sped\"\n"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Action(action), name } if action == "melee_creep_attack" && name == "attack_sped"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Entry { table: "actions", name: action }, name } if action == "melee_creep_attack" && name == "attack_sped"),
     ),
     flaw(
         MODE_DATA,
@@ -1618,7 +1618,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             r#"heal_scale = "heal_taken""#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Combat, name } if name == "heal_taken"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Section("combat"), name } if name == "heal_taken"),
     ),
     flaw(MAP, Edit::Remove("grid"), MODE, |problem| {
         rule(problem, &VisionDataError::NoGrid)
@@ -1930,7 +1930,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "spell_power",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Action(_), name } if name == "spell_power"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Entry { table: "actions", name: _ }, name } if name == "spell_power"),
     ),
     // The mode's `surge` adds attack damage by a param that only the mode's action `surge`,
     // which applies it, declares, and that reads spell vamp; `vamp` adds spell vamp by its own
@@ -1959,7 +1959,7 @@ static ACTION_FLAWS: &[Flaw] = &[
         "heroes/veil/data/avatar.toml",
         Edit::Replace("bonus = { attack_damage =", "bonus = { attack_dmg ="),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Modifier(id), name } if id == "dual_path" && name == "attack_dmg"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Entry { table: "modifiers", name: id }, name } if id == "dual_path" && name == "attack_dmg"),
     ),
 ];
 
@@ -2036,7 +2036,7 @@ static STAT_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Replace(r#"tags = ["slowed"]"#, r#"tags = ["projectile"]"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Modifier(id), tag } if tag.name() == "projectile" && id == "slow"),
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Entry { table: "modifiers", name: id }, tag } if tag.name() == "projectile" && id == "slow"),
     ),
     flaw(
         HUSK,
@@ -2138,13 +2138,13 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("actions.lash_out.passive_modifier", r#""withering_touch""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Avatar(avatar), Place::Action(action)] } if modifier == "withering_touch" && avatar == "hero-husk" && action == "lash_out"),
+        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Avatar(avatar), Place::Entry { table: "actions", name: action }] } if modifier == "withering_touch" && avatar == "hero-husk" && action == "lash_out"),
     ),
     flaw(
         HUSK,
         Edit::Set("actions.dread.passive_modifier", r#""lash_out_guard""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Action(first), Place::Action(second)] } if modifier == "lash_out_guard" && first == "dread" && second == "lash_out"),
+        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Entry { table: "actions", name: first }, Place::Entry { table: "actions", name: second }] } if modifier == "lash_out_guard" && first == "dread" && second == "lash_out"),
     ),
     // The same of the mode, a unit type's and an action's, and of a loadout, two actions'.
     Flaw {
@@ -2158,7 +2158,7 @@ static STAT_FLAWS: &[Flaw] = &[
             ),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::UnitType(tower), Place::Action(action)] } if modifier == "warden_blessing" && tower == "tower" && action == "tower_attack"),
+        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::UnitType(tower), Place::Entry { table: "actions", name: action }] } if modifier == "warden_blessing" && tower == "tower" && action == "tower_attack"),
     },
     Flaw {
         file: "spells/data/loadout.toml",
@@ -2168,7 +2168,7 @@ static STAT_FLAWS: &[Flaw] = &[
             Edit::Set("actions.haste.passive_modifier", r#""haste""#),
         )],
         package: "player-spells",
-        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Action(first), Place::Action(second)] } if modifier == "haste" && first == "blink" && second == "haste"),
+        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Entry { table: "actions", name: first }, Place::Entry { table: "actions", name: second }] } if modifier == "haste" && first == "blink" && second == "haste"),
     },
     // A modifier grants no engine tag: one that granted `avatar` would split who a player
     // commands between the type's own tags and the unit's.
@@ -2176,7 +2176,7 @@ static STAT_FLAWS: &[Flaw] = &[
         GALE,
         Edit::Set("modifiers.fair_wind.tags", r#"["avatar"]"#),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Modifier(name), tag } if name == "fair_wind" && tag.name() == "avatar"),
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Entry { table: "modifiers", name }, tag } if name == "fair_wind" && tag.name() == "avatar"),
     ),
     // A projectile type holds no passive, as a delivery's spawn gives none: a type with one is
     // a type that stands, which no delivery names.
@@ -2380,7 +2380,7 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK_TEXT,
         Edit::Replace("action-dread = Dread\n", ""),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Action(action), name } if action == "dread" && name == "action-dread"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Entry { table: "actions", name: action }, name } if action == "dread" && name == "action-dread"),
     ),
     flaw(
         HUSK_TEXT,
@@ -2510,7 +2510,7 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Rename("actions.lash_out.cost.mana", "rage"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Cost, at: Place::Action(id), name } if id == "lash_out" && name == "rage"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Cost, at: Place::Entry { table: "actions", name: id }, name } if id == "lash_out" && name == "rage"),
     ),
     flaw(
         "heroes/veil/scripts/dusk_mark.rhai",
@@ -2528,13 +2528,13 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace(r#"life = "health""#, r#"life = "hp""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Combat, name } if name == "hp"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Section("combat"), name } if name == "hp"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("[pools.mana]\nmax = \"mana\"", "[pools.mana]\nmax = \"mp\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Pool(pool), name } if pool.as_str() == "mana" && name == "mp"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Entry { table: "pools", name: pool }, name } if pool.as_str() == "mana" && name == "mp"),
     ),
     flaw(
         MODE_DATA,
@@ -2549,13 +2549,13 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "gold"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Resources, name } if name == "gold"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Section("resources"), name } if name == "gold"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "mana"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Resources, name } if name == "mana"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Section("resources"), name } if name == "mana"),
     ),
     // An engine stat is declared like any other: one the units carry and the mode does not
     // declare fails.
@@ -2598,13 +2598,13 @@ static STAT_FLAWS: &[Flaw] = &[
             r#"{ param = "bonus_speeds" }"#,
         ),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, at: Place::Modifier(id), name } if id == "gust_speed" && name == "bonus_speeds"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, at: Place::Entry { table: "modifiers", name: id }, name } if id == "gust_speed" && name == "bonus_speeds"),
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"hold = "still_mind""#, r#"hold = "still_mindful""#),
         "hero-kensho",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Action(ability), name: id } if ability == "still_mind" && id == "still_mindful"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Entry { table: "actions", name: ability }, name: id } if ability == "still_mind" && id == "still_mindful"),
     ),
     flaw(
         GALE,
@@ -2702,7 +2702,7 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Set("navigation.layers", r#"["ground", "ground"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Navigation, name } if name == "ground"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Section("navigation"), name } if name == "ground"),
     ),
     flaw(
         UNITS,
@@ -2720,7 +2720,7 @@ static MAP_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Navigation,
-                    at: Place::Navigation
+                    at: Place::Section("navigation")
                 }
             )
         },
@@ -2806,7 +2806,7 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
         MODE,
-        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Action(action) } if action == "recruit"),
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Entry { table: "actions", name: action } } if action == "recruit"),
     ),
     // A train needs the name players see on its producer's button.
     Flaw {
@@ -2912,7 +2912,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "recruit" && name == "tower_bolt"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Entry { table: "actions", name: action }, name } if action == "recruit" && name == "tower_bolt"),
     },
     Flaw {
         file: MODE_DATA,
@@ -2922,7 +2922,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Action(action), name } if action == "recruit" && name == "drill"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Entry { table: "actions", name: action }, name } if action == "recruit" && name == "drill"),
     },
     Flaw {
         file: MODE_DATA,
@@ -2932,7 +2932,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "recruit" && name == "keep"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Entry { table: "actions", name: action }, name } if action == "recruit" && name == "keep"),
     },
     // A unit type's passive is a modifier of its package.
     flaw(
@@ -2999,7 +2999,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "raise" && name == "caster_creep_bolt"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Entry { table: "actions", name: action }, name } if action == "raise" && name == "caster_creep_bolt"),
     },
     Flaw {
         file: MODE_DATA,
@@ -3100,7 +3100,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, at: Place::Action(action), name } if action == "mine" && name == "silver"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, at: Place::Entry { table: "actions", name: action }, name } if action == "mine" && name == "silver"),
     },
     Flaw {
         file: MODE_DATA,
@@ -3565,7 +3565,7 @@ fn a_build_or_a_gather_without_navigation_fails_its_load() {
                 &*error.problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Navigation,
-                    at: Place::Action(at),
+                    at: Place::Entry { table: "actions", name: at },
                 } if at == action
             ),
             "{action}: {error:?}"

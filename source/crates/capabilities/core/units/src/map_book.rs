@@ -75,7 +75,8 @@ impl MapBook {
     /// `[ground]` with no grid, or coarse cells that do not fit it.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let book = Self::of(cx.source().map, cx.given::<HeightGrid>());
-        book.map_err(|problem| BookError::rule(PackageIndex::MODE, BookPlace::Map, problem))
+        let at = BookPlace::MapSection(GroundData::KEY);
+        book.map_err(|problem| BookError::rule(PackageIndex::MODE, at, problem))
     }
 
     /// The book of a map of `sections`, its bounds among them, and of its height grid `heights`,

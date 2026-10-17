@@ -183,7 +183,10 @@ const FLAWS: [Flaw; 21] = [
             use_problem(
                 problem,
                 &UseProblem::Named {
-                    at: Place::Item(name("health_potion")),
+                    at: Place::Entry {
+                        table: "items",
+                        name: name("health_potion"),
+                    },
                     action: name("pray"),
                 },
             )

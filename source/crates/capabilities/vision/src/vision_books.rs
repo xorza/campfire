@@ -1,4 +1,4 @@
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Sections};
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, Sections};
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::Num;
 use campfire_units::{MapBook, TeamNames};
@@ -17,7 +17,8 @@ impl VisionBook {
     pub(crate) fn grid_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         if cx.map_section::<GridData>().is_none() {
             let problem = VisionDataError::NoGrid;
-            return Err(BookError::rule(PackageIndex::MODE, BookPlace::Map, problem));
+            let at = BookPlace::MapSection(GridData::KEY);
+            return Err(BookError::rule(PackageIndex::MODE, at, problem));
         }
         Ok(())
     }
@@ -30,7 +31,8 @@ impl VisionBook {
         let map = cx.book::<MapBook>()?;
         let teams = cx.fact::<TeamNames>()?.0.len();
         let book = Self::of(map, cx.source().map, teams);
-        book.map_err(|problem| BookError::rule(PackageIndex::MODE, BookPlace::Map, problem))
+        let at = BookPlace::MapSection(GridData::KEY);
+        book.map_err(|problem| BookError::rule(PackageIndex::MODE, at, problem))
     }
 
     /// The book of a map of `sections`, as `map` places its points, for `teams` teams; an error

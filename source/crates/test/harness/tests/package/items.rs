@@ -98,7 +98,10 @@ fn unread(problem: &LoadProblem, file: &str, message: &str) -> bool {
 }
 
 fn item(id: &str) -> Place {
-    Place::Item(name(id))
+    Place::Entry {
+        table: "items",
+        name: name(id),
+    }
 }
 
 /// The 3v3's fountain, its shop type.
