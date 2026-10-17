@@ -12,6 +12,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::interval::Interval;
+use crate::interval_revival::IntervalRevival;
 use crate::modifier_book::ModifierBook;
 use crate::modifiers::Modifiers;
 
@@ -81,8 +82,9 @@ impl ModifierClocks {
     }
 
     /// Counts the intervals of tick `now`: each instance of `modifiers` whose interval comes,
-    /// and whose modifier `takes_effect` lets act, goes to `due`, by id and source, and its next
-    /// comes an interval later; whether any came.
+    /// and whose modifier `takes_effect` lets act, goes to `due`, by id and source, once however
+    /// many of its ticks `now` passed, and its next comes at its first tick after `now`; whether
+    /// any came.
     pub fn advance_intervals(
         &mut self,
         modifiers: &Modifiers,
@@ -98,12 +100,54 @@ impl ModifierClocks {
             if interval.next > now {
                 continue;
             }
-            interval.next = interval.next.after(interval.every);
+            interval.next = interval.first_after(now);
             let instance = carried.instance;
             if takes_effect(instance.id) {
                 due(instance.id, instance.source);
             }
             any = true;
+        }
+        any
+    }
+
+    /// Moves each interval of tick `now` or before to its first tick after `now`, with no hook,
+    /// as a dead carrier's intervals keep the clock; whether any moved.
+    pub fn skip_intervals(&mut self, now: Tick) -> bool {
+        let mut any = false;
+        for interval in self
+            .clocks
+            .iter_mut()
+            .filter_map(|clock| clock.interval.as_mut())
+        {
+            if interval.next <= now {
+                interval.next = interval.first_after(now);
+                any = true;
+            }
+        }
+        any
+    }
+
+    /// Sets each interval of `modifiers` as `revival` gives its modifier's policy, as their
+    /// carrier comes back to life in tick `now`: one that resets comes a whole interval on, one
+    /// that fires comes in `now`; whether any changed.
+    pub fn revive_intervals(
+        &mut self,
+        modifiers: &Modifiers,
+        now: Tick,
+        revival: impl Fn(ModifierId) -> IntervalRevival,
+    ) -> bool {
+        let mut any = false;
+        for (clock, carried) in self.clocks.iter_mut().zip(modifiers.iter()) {
+            let Some(interval) = &mut clock.interval else {
+                continue;
+            };
+            let next = match revival(carried.instance.id) {
+                IntervalRevival::Continue => continue,
+                IntervalRevival::Reset => now.after(interval.every),
+                IntervalRevival::FireAndReset => now,
+            };
+            any |= interval.next != next;
+            interval.next = next;
         }
         any
     }

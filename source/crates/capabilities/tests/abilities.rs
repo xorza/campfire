@@ -46,9 +46,9 @@ use campfire_sim::{
     StateCopy,
 };
 use campfire_stats::{
-    Hold, Level, Life, LiveCarriers, ModifierBook, ModifierClocks, ModifierData, Modifiers, PoolId,
-    Pools, StatBook, StatChange, StatGraph, StatOp, StatRule, StatValue, Stats, StatsData,
-    UnitStats,
+    Hold, IntervalRevival, Level, Life, LiveCarriers, ModifierBook, ModifierClocks, ModifierData,
+    Modifiers, PoolId, Pools, StatBook, StatChange, StatGraph, StatOp, StatRule, StatValue, Stats,
+    StatsData, UnitStats,
 };
 use campfire_units::{
     Body, Dead, Destination, ForcedMove, MoveStep, Owner, SyncNone, TagData, UnitState,
@@ -2564,6 +2564,63 @@ fn on_interval(ctx, m) { throw "interval"; }
         };
         assert_eq!(Abilities::calls(&game), expected, "tick {tick}");
     }
+}
+
+#[test]
+fn an_interval_runs_nothing_while_its_carrier_is_dead_and_comes_back_by_its_policy() {
+    // A pulse of 100 ms, 3 ticks at 30 a second, held as a passive from tick 0, comes in tick 3.
+    // Its carrier is dead in ticks 4 to 12: no hook runs, and its 6, 9 and 12 pass. Back in tick
+    // 13, no interval bursts to catch up, and the policy says when it comes: `continue` on its
+    // own clock, 15, then 18; `reset` a whole interval after the return, 16, then 19;
+    // `fire_and_reset` at the return, 13, then 16 and 19.
+    let log = r#"fn on_interval(ctx, m) { throw "interval"; }"#;
+    for (policy, expected) in [
+        (IntervalRevival::Continue, &[3, 15, 18][..]),
+        (IntervalRevival::Reset, &[3, 16, 19]),
+        (IntervalRevival::FireAndReset, &[3, 13, 16, 19]),
+    ] {
+        let pulse = ModifierData {
+            interval_revival: policy,
+            ..scripted(Some(100), &[])
+        };
+        let mut game = abilities_match_with_modifiers(log, &[("pulse", pulse)]);
+        let mut data = lash_out();
+        data.passive_modifier = Some(DeclaredName::new("pulse").unwrap());
+        let action = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
+        let caster = Abilities::caster(&mut game, action, 1);
+        let entity = game.unit_entity(caster);
+        let mut came = Vec::new();
+        for tick in 0..20 {
+            if tick == 4 {
+                game.entity_mut(entity).insert(Dead);
+            }
+            if tick == 13 {
+                game.entity_mut(entity).remove::<Dead>();
+            }
+            game.step();
+            if Abilities::calls(&game).contains(&(caster, Hook::OnInterval)) {
+                came.push(tick);
+            }
+        }
+        assert_eq!(came, expected, "{policy:?}");
+    }
+
+    // A match of stats alone, with no combat, runs its modifiers' intervals too: a pulse given
+    // in tick 0 comes in ticks 3 and 6.
+    let mut game = abilities_match_with(ScriptLimits::ROOMY, &[Capability::Stats]);
+    Abilities::load_stats(&mut game);
+    let script = Units::compile_hooked(&mut game, log).unwrap();
+    let pulse = scripted(Some(100), &[]);
+    Stats::load_modifier(&mut game, PackageIndex::MODE, "pulse", &pulse, Some(script));
+    let unit = Mode::spawn_named(&mut game, "caster", Vec3::ZERO, Team::new(0), ());
+    Abilities::give(&mut game, unit, "pulse");
+    let came: Vec<u64> = (0..7)
+        .filter(|_| {
+            game.step();
+            Abilities::calls(&game).contains(&(unit, Hook::OnInterval))
+        })
+        .collect();
+    assert_eq!(came, [3, 6]);
 }
 
 #[test]

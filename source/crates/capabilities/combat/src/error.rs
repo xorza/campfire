@@ -6,7 +6,7 @@ use campfire_sim::Capability;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
 pub enum CombatRefusal {
     NegativeDamage,
-    /// A heal or restore of a negative amount.
+    /// A heal of a negative amount.
     NegativeHeal,
 }
 
@@ -17,7 +17,7 @@ impl CapabilityRefusal for CombatRefusal {
     fn message(self) -> &'static str {
         match self {
             Self::NegativeDamage => "damage is negative",
-            Self::NegativeHeal => "amount to heal or restore is negative",
+            Self::NegativeHeal => "amount to heal is negative",
         }
     }
 }

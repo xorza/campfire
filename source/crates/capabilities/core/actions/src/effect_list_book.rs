@@ -164,10 +164,12 @@ impl EffectListBook {
             DoesData::Restore(RestoreFields {
                 pool,
                 amount: restored,
-            }) => CapabilityDoesSpec::Restore {
-                pool: names.pool(pool)?,
-                amount: amount(restored)?,
-            },
+            }) => {
+                return Ok(DoesSpec::Restore {
+                    pool: names.pool(pool)?,
+                    amount: amount(restored)?,
+                });
+            }
             DoesData::Xp(XpFields {
                 track,
                 amount: given,
@@ -300,6 +302,11 @@ impl EffectListBook {
                         duration,
                     });
                 }
+                DoesSpec::Restore { pool, amount } => frame.queue(StatsEffect::Restore {
+                    unit: unit(),
+                    pool,
+                    amount: amount.number(frame),
+                }),
                 DoesSpec::Purge { tag } => frame.queue(StatsEffect::Purge {
                     carrier: unit(),
                     tag,

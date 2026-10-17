@@ -64,6 +64,8 @@ pub enum StatsRefusal {
     NegativeStacks,
     /// A pool the unit does not have.
     NoPool,
+    /// A negative amount to restore.
+    NegativeRestore,
     /// A stat or level field of a unit that has no stats.
     NoStats,
 }
@@ -83,6 +85,7 @@ impl CapabilityRefusal for StatsRefusal {
             Self::ParamTime => "a time of the modifier is negative or too large to count in ticks",
             Self::NegativeStacks => "a count of a modifier's stacks is negative",
             Self::NoPool => "unit has no such pool",
+            Self::NegativeRestore => "amount to restore is negative",
             Self::NoStats => "unit has no stats",
         }
     }

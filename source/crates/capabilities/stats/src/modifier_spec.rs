@@ -10,6 +10,7 @@ use campfire_values::{DeclaredName, FilterData, ModifierId, Names, Number, Param
 
 use crate::applier_param::ApplierParam;
 use crate::error::{ModifierProblem, SpecError};
+use crate::interval_revival::IntervalRevival;
 use crate::modifier_data::{ModifierData, Reapply};
 use crate::stat_id::StatId;
 use crate::stat_op::StatOp;
@@ -22,6 +23,7 @@ pub struct ModifierSpec {
     /// Absent: until removed.
     pub duration: Option<SpecTime>,
     pub interval: Option<SpecTime>,
+    pub revival: IntervalRevival,
     pub stacks_expire: Option<SpecTime>,
     pub reapply: Reapply,
     /// Absent: no limit.
@@ -144,6 +146,7 @@ impl ModifierSpec {
         Ok(Self {
             duration,
             interval,
+            revival: data.interval_revival,
             stacks_expire,
             reapply: data.reapply,
             max_stacks: data.max_stacks,

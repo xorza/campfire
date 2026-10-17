@@ -17,6 +17,7 @@ use crate::applier_param::ApplierParam;
 use crate::error::ModifierError;
 use crate::instance::{Instance, StackEnd, StatShare};
 use crate::interval::Interval;
+use crate::interval_revival::IntervalRevival;
 use crate::lifetime::{Ends, Hold, Lifetime};
 use crate::modifier_data::{ModifierData, Reapply};
 use crate::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
@@ -177,6 +178,11 @@ impl ModifierBook {
     /// The tags modifier `id` grants its carrier.
     pub fn tags(&self, id: ModifierId) -> TagSet {
         self.get(id).tags
+    }
+
+    /// What the interval of `id` does as its carrier comes back to life.
+    pub(crate) fn revival(&self, id: ModifierId) -> IntervalRevival {
+        self.get(id).spec.revival
     }
 
     /// The tag sets a unit's tags derive from beside its type's: those of each modifier of
@@ -346,6 +352,7 @@ pub(crate) mod internals {
     use campfire_script::HookSet;
     use campfire_values::{ModifierId, NameId, PackageIndex, TagSet};
 
+    use crate::interval_revival::IntervalRevival;
     use crate::modifier_book::{ModifierBook, ModifierEntry};
     use crate::modifier_data::Reapply;
     use crate::modifier_spec::{ModifierSpec, SpecChange, SpecNumber};
@@ -375,6 +382,7 @@ pub(crate) mod internals {
                 spec: ModifierSpec {
                     duration: None,
                     interval: None,
+                    revival: IntervalRevival::Continue,
                     stacks_expire: None,
                     reapply: Reapply::Refresh,
                     max_stacks: None,

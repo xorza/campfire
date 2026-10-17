@@ -1,10 +1,12 @@
 use campfire_common::{PlayerSlot, Ticks};
+use campfire_math::Num;
 use campfire_script::{
-    ApiBuilder, ApiOwner, ApiVersion, Applies, Checked, Ctx, DataTable, Hook, MemberSpec,
-    ScriptTicks, Status, Unit,
+    ApiBuilder, ApiOwner, ApiVersion, Applies, CapabilityRefusal, Checked, Ctx, DataTable, Hook,
+    MemberSpec, ScriptTicks, Status, Unit,
 };
 use campfire_values::{ModifierId, Rank, TagProperty};
 
+use crate::error::StatsRefusal;
 use crate::meter::Meter;
 use crate::modifier_data::{AuraData, ModifierData};
 use crate::modifier_handle::ModifierHandle;
@@ -70,6 +72,18 @@ impl StatsApi {
         );
     }
 
+    /// Queues the restore of `amount`, which is not negative, of `unit`'s `pool`.
+    fn restore(ctx: &Ctx, unit: &Unit, pool: PoolId, amount: Num) -> Checked<()> {
+        if amount < Num::ZERO {
+            return Err(StatsRefusal::NegativeRestore.fail().into());
+        }
+        ctx.queue(StatsEffect::Restore {
+            unit: unit.id,
+            pool,
+            amount,
+        })
+    }
+
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         ModifierHandle::register(api);
         Self::register_unit(api);
@@ -112,6 +126,16 @@ impl StatsApi {
             ),
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(StatsEffect::removing(&handle)),
         )
+        .call(
+            call(
+                "restore",
+                &[&["unit", "pool", "amount"]],
+                "gives `unit` back `amount` of its `pool`, unscaled, when it lives",
+            ),
+            |ctx: &mut Ctx, unit: Unit, pool: PoolId, amount: Num| {
+                Self::restore(ctx, &unit, pool, amount)
+            },
+        )
         .plan(call(
             "purge",
             &[&["unit", "tag"]],
@@ -124,6 +148,7 @@ impl StatsApi {
                 "script",
                 "duration_ms",
                 "interval_ms",
+                "interval_revival",
                 "stacks_expire_ms",
                 "reapply",
                 "max_stacks",

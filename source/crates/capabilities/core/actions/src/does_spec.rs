@@ -1,3 +1,4 @@
+use campfire_stats::PoolId;
 use campfire_values::{ModifierId, Tag, UnitType};
 
 use crate::amount::Amount;
@@ -13,6 +14,11 @@ pub(crate) enum DoesSpec {
     },
     Purge {
         tag: Tag,
+    },
+    /// `amount` of the unit's `pool`, unscaled.
+    Restore {
+        pool: PoolId,
+        amount: Amount,
     },
     /// A unit of the type `unit_type` of the action's package, despawning `duration_ms` after it
     /// spawns when given.

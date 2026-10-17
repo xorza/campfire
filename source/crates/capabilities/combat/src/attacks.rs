@@ -12,13 +12,14 @@ use campfire_declare::{ByType, RoleForm};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
 use campfire_script::ScriptsWorld;
 use campfire_sim::{EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
-use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats};
+use campfire_stats::{
+    ModifierEvents, PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats,
+};
 use campfire_units::{Body, Dead, Facing, ForcedMove, MapBook, Owner, UnitsNear};
 use campfire_values::{Block, Motion, TagSet, Team, UnitTags, UnitType};
 
 use crate::clip_shots::ClipShots;
 use crate::combat_event::CombatEvent;
-use crate::combat_hooks::CombatHooks;
 use crate::damage::{Damage, DamageCause};
 use crate::held_hits::HeldHits;
 use crate::pass_queue::PassQueue;
@@ -259,7 +260,7 @@ impl Attacks {
         attackers: &mut QueryState<Attacker<'_>, Without<Dead>>,
         mut going: Local<'_, Vec<GoingOff>>,
     ) {
-        let Some(events) = world.non_send::<CombatHooks>().events.clone() else {
+        let Some(events) = ModifierEvents::of(world) else {
             return;
         };
         let book = world.resource::<ActionBook>();
@@ -285,7 +286,7 @@ impl Attacks {
                     attacker, target, ..
                 } in &*going
                 {
-                    events.hear(batch, CombatEvent::Attack { attacker, target });
+                    CombatEvent::Attack { attacker, target }.reach(&events, batch);
                 }
             });
         }

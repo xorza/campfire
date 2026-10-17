@@ -9,6 +9,7 @@ use campfire_values::{DeclaredName, FilterData, Number, PackagePath, Param, Stat
 use serde::Deserialize;
 
 use crate::error::ModifierProblem;
+use crate::interval_revival::IntervalRevival;
 use crate::stat_change::StatChange;
 
 /// A modifier as its data file declares it, in milliseconds.
@@ -19,6 +20,9 @@ pub struct ModifierData {
     /// Absent: until removed.
     pub duration_ms: Option<Number>,
     pub interval_ms: Option<Number>,
+    /// What its interval does as its carrier comes back to life.
+    #[serde(default)]
+    pub interval_revival: IntervalRevival,
     pub stacks_expire_ms: Option<Number>,
     #[serde(default)]
     pub reapply: Reapply,

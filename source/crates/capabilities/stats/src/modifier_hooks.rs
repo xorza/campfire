@@ -3,19 +3,21 @@ use std::mem;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_script::{CallStart, Ctx, Hook, HookCall, Pool, ScriptBatch, ScriptValue};
+use campfire_script::{CallStart, Ctx, Hook, HookCall, Pool, ScriptBatch, ScriptValue, View};
 use campfire_sim::{SimTick, SimWorld, StableId};
-use campfire_stats::{
-    HandleOf, Instance, ModifierBook, ModifierClocks, Modifiers, StatsCall, StatsColumn,
-};
 use campfire_units::{Owner, TagEffect};
 use campfire_values::ModifierId;
 
-use crate::combat_event::CombatEvent;
-use crate::damage::Damage;
-use crate::damage_handle::DamageHandle;
+use crate::instance::Instance;
+use crate::modifier_book::ModifierBook;
+use crate::modifier_handle::HandleOf;
+use crate::modifiers::Modifiers;
+use crate::modifiers::modifier_clocks::ModifierClocks;
+use crate::stats_call::StatsCall;
+use crate::stats_column::StatsColumn;
 
-/// Runs modifier scripts' hooks for the combat events.
+/// Runs modifier scripts' hooks: those of an interval, and those of the events another
+/// capability reports to the modifiers its units hold, as combat's attacks, hits and kills.
 #[derive(Debug)]
 pub struct ModifierHooks {
     ctx: Ctx,
@@ -25,9 +27,9 @@ pub struct ModifierHooks {
 
 /// A modifier instance that hears an event: its id and its source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Heard {
-    id: ModifierId,
-    source: Option<StableId>,
+pub(crate) struct Heard {
+    pub(crate) id: ModifierId,
+    pub(crate) source: Option<StableId>,
 }
 
 /// The instance a hook runs for, and its script state, as the call starts to see them.
@@ -46,56 +48,15 @@ impl ModifierHooks {
         }
     }
 
-    /// Answers `event` by the hooks of the modifiers that hear it, in the order they are kept.
-    pub(crate) fn hear(&self, batch: &mut ScriptBatch<'_>, event: CombatEvent) {
-        let unit = |id| Some(self.ctx.view().unit_value(Some(id)));
-        let damage = |damage: Damage| {
-            let handle = DamageHandle::new(damage, self.ctx.view().clone());
-            Some(ScriptValue::of(handle))
-        };
-        let next = |depth: u8| depth.saturating_add(1);
-        match event {
-            CombatEvent::Interval {
-                carrier,
-                id,
-                source,
-            } => {
-                let heard = Heard { id, source };
-                self.call(batch, carrier, heard, Hook::OnInterval, 1, None);
-            }
-            CombatEvent::Attack { attacker, target } => {
-                self.run(batch, attacker, Hook::OnAttack, 1, || unit(target));
-            }
-            CombatEvent::AttackHit(hit) => {
-                if let Some(attacker) = hit.source {
-                    self.run(batch, attacker, Hook::OnAttackHit, next(hit.depth), || {
-                        damage(hit)
-                    });
-                }
-            }
-            CombatEvent::DamageTaken(taken) => {
-                let depth = next(taken.depth);
-                self.run(batch, taken.target, Hook::OnDamageTaken, depth, || {
-                    damage(taken)
-                });
-            }
-            CombatEvent::Kill {
-                killer,
-                victim,
-                depth,
-            } => self.run(batch, killer, Hook::OnKill, next(depth), || unit(victim)),
-            CombatEvent::Takedown {
-                unit: taker,
-                victim,
-                depth,
-            } => self.run(batch, taker, Hook::OnTakedown, next(depth), || unit(victim)),
-        }
+    /// The script view its calls see.
+    pub fn view(&self) -> &View {
+        self.ctx.view()
     }
 
     /// Runs `hook` of each modifier `carrier` holds whose script defines it, with what `arg`
     /// gives after `ctx` and `m`, at chain depth `depth`. `arg` runs only when one hears it: an
     /// event allocates its handle for no unit that has no hook for it.
-    fn run(
+    pub fn run(
         &self,
         batch: &mut ScriptBatch<'_>,
         carrier: StableId,
@@ -137,7 +98,7 @@ impl ModifierHooks {
     /// Calls `hook` of the instance `heard` on `carrier`, if it still holds: in the pool of its
     /// source, with its params, its `m` handle, and `arg`. Its effects apply when it returns; a
     /// call at `ScriptLimits::CHAIN_DEPTH` fails without running.
-    fn call(
+    pub(crate) fn call(
         &self,
         batch: &mut ScriptBatch<'_>,
         carrier: StableId,

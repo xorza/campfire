@@ -281,6 +281,27 @@ fn share(id: u16, source: Option<StableId>, value: Num, reapply: Reapply) -> App
 }
 
 #[test]
+fn a_restore_reaches_a_living_unit_with_no_life_and_no_dead_one() {
+    // A mode that names no life pool gives a unit health and mana as plain pools, and no life: it
+    // lives until it dies. Of its 250 mana, 100 spent leaves 150; a restore of 30 brings it to
+    // 180, unscaled. Once dead, a restore of 30 leaves it at 180.
+    let caster = stats(&[(stat("mana"), Num::int(250), Num::ZERO)]);
+    let mut game = stat_match(&[caster]);
+    let entity = unit(&mut game, 0);
+    game.step();
+    assert!(game.get::<Life>(entity).is_none());
+    let id = *game.get::<StableId>(entity).unwrap();
+    game.get_mut::<Pools>(entity)
+        .unwrap()
+        .take(MANA, Num::int(100));
+    Stats::restore(&mut game, id, MANA, Num::int(30));
+    assert_eq!(amounts(&game, entity, MANA), (Num::int(180), Num::int(250)));
+    game.entity_mut(entity).insert(Dead);
+    Stats::restore(&mut game, id, MANA, Num::int(30));
+    assert_eq!(amounts(&game, entity, MANA), (Num::int(180), Num::int(250)));
+}
+
+#[test]
 fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
     // Armor 10 + 2 a level, at level 3: 10 + 2 × 2 = 14.
     let armored = StatsData::from([(

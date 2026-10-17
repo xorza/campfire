@@ -16,6 +16,7 @@ use bevy_ecs::world::World;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
 };
+use campfire_math::Num;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::{BodyUnit, Dead, Owner, Player, SpawnHooks};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
@@ -38,6 +39,7 @@ mod held_modifiers;
 mod held_pass;
 mod instance;
 mod interval;
+mod interval_revival;
 mod level;
 mod life;
 mod lifetime;
@@ -48,7 +50,10 @@ mod modifier_adds;
 mod modifier_book;
 mod modifier_data;
 mod modifier_ends;
+mod modifier_events;
 mod modifier_handle;
+mod modifier_hooks;
+mod modifier_intervals;
 mod modifier_params;
 mod modifier_spec;
 mod modifiers;
@@ -94,6 +99,7 @@ pub use crate::held_modifiers::{Held, HeldModifiers};
 pub use crate::held_pass::HeldPass;
 pub use crate::instance::{Instance, StackEnd, StatShare};
 pub use crate::interval::Interval;
+pub use crate::interval_revival::IntervalRevival;
 pub use crate::level::Level;
 pub use crate::life::{Life, lives};
 pub use crate::lifetime::{Ends, Hold, Lifetime};
@@ -103,7 +109,10 @@ pub use crate::meter::Meter;
 pub use crate::modifier_book::{ModifierBook, ModifierEntry, ModifierLoad, PackageModifier};
 pub use crate::modifier_data::{AuraData, ModifierData, Reapply};
 pub use crate::modifier_ends::ModifierEnds;
+pub use crate::modifier_events::ModifierEvents;
 pub use crate::modifier_handle::{HandleData, HandleOf, ModifierHandle};
+pub use crate::modifier_hooks::ModifierHooks;
+pub use crate::modifier_intervals::ModifierIntervals;
 pub use crate::modifier_params::ModifierParams;
 pub use crate::modifier_spec::{
     AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
@@ -153,6 +162,8 @@ pub enum StatsSet {
     /// Once the attacks going off paid their toggles and before they strike: the grants the
     /// sources pushed apply.
     GrantAtStrike,
+    /// Modifiers' intervals come.
+    Interval,
     /// Once the tick's damage is dealt and before units die: the grants the sources pushed apply.
     GrantAtResolve,
     /// The grants the sources pushed apply.
@@ -168,11 +179,12 @@ pub enum StatsSet {
 
 impl StatsSet {
     /// The steps in the stages.
-    const STEPS: [Self; 8] = [
+    const STEPS: [Self; 9] = [
         Self::Expire,
         Self::Regenerate,
         Self::GrantAtInputs,
         Self::GrantAtStrike,
+        Self::Interval,
         Self::GrantAtResolve,
         Self::GrantAtEnd,
         Self::ClearDead,
@@ -206,6 +218,7 @@ impl ModuleSet for StatsSet {
             Self::Expire | Self::Regenerate => SetPlace::Phase(Phase::Begin),
             Self::GrantAtInputs => SetPlace::Phase(Phase::GrantAtInputs),
             Self::GrantAtStrike => SetPlace::Phase(Phase::GrantAtStrike),
+            Self::Interval => SetPlace::Phase(Phase::Interval),
             Self::GrantAtResolve => SetPlace::Phase(Phase::GrantAtResolve),
             Self::GrantAtEnd => SetPlace::Phase(Phase::GrantAtEnd),
             Self::ClearDead => SetPlace::Phase(Phase::ClearDead),
@@ -236,6 +249,7 @@ impl Module for Stats {
         d.cache::<LiveCarriers>();
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
+        d.non_send::<ModifierEvents>(|world, role| Some(ModifierEvents::install(world, role)));
         d.book::<ModifierBook>();
         d.book::<StatBook>();
         d.book::<PoolBook>();
@@ -269,6 +283,7 @@ impl Module for Stats {
                 .in_set(StatsSet::GrantAtResolve),
             GrantPass::run.in_set(StatsSet::GrantAtEnd),
             ModifierEnds::clear_dead_modifiers.in_set(StatsSet::ClearDead),
+            ModifierIntervals::run_intervals.in_set(StatsSet::Interval),
         ));
         cx.by_role(
             (AuraCarriers::track, HeldPass::run::<ServerForm>)
@@ -287,6 +302,24 @@ impl Module for Stats {
 }
 
 impl Stats {
+    /// Restores `amount` of unit `id`'s `pool`, unscaled, when the unit lives: it is not dead, and
+    /// its life, if it has one, is above zero, as a unit with no life lives until it dies.
+    pub fn restore(world: &mut World, id: StableId, pool: PoolId, amount: Num) {
+        let Some(entity) = world.entity_of(id) else {
+            return;
+        };
+        if amount <= Num::ZERO {
+            return;
+        }
+        let life = world.life_pool();
+        let mut unit = world.entity_mut(entity);
+        if let Ok(pools) = unit.get_components_mut::<UnitPools>()
+            && pools.lives()
+        {
+            pools.of(life).add(pool, amount);
+        }
+    }
+
     /// Ends the applications of the modifiers `carrier` holds that grant `tag`: an instance no
     /// hold keeps ends, and one a passive, an aura, an area or a player holds stays, as its holder
     /// would apply it again.

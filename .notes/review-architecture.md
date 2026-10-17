@@ -640,12 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 2: confirmed bugs
 
-**2.2 Stats owns its hooks.** Touches `stats` and `combat`.
-- `ModifierHooks` and the interval runner move to stats. Combat's events reach them through a callback table that stats declares (K-2).
-- `restore` becomes a stats effect with the one living test (K-3).
-- An interval's hook does not run while its unit is dead, and the modifier's data names the policy at the respawn: `continue` (the default), `reset` or `fire_and_reset` (K-1, D13). A test covers each policy.
-- **Goldens:** a golden moves only if a golden unit dies with an interval passive.
-
 **2.3 Script call bugs.** Touches `stats`, `mode` and `script`.
 - The `remove` description promises modifiers only. Phase 8 renames it (S-1).
 - `ctx.result` reads the match's result. A second end is a no-op. The two modes drop their `ended` state field (S-12).
@@ -1096,7 +1090,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
 | S-1 | `ctx.remove` binds modifiers only, though its text promises projectiles and areas | `stats_api.rs:107-114` | Checked | 2.3, 8.5 |
-| S-2, K-2 | Stats records `on_interval` as running, but only combat runs it, so a mode without combat never runs it | `stats_api.rs:120`, `combat/src/lib.rs:208` | Confirmed | 2.2 |
 | S-3 | The load checks a call's name and role, not its argument count or types. `unit.params` names are unchecked. | `script_facts/mod.rs:63-67, 253-263`, `member_spec.rs:20-22` | Confirmed | 8.1 |
 | S-4 | Names that the API returns are compared as strings that no check reads, and some drop their package scope | `view/mod.rs:199-204`, `damage_handle.rs:70-75` | Confirmed | 8.1 |
 | S-5 | The hook contract is a hand-kept core enum, and call sites pass untyped tuples | `hook.rs:9-135`, `script_batch.rs:84-99` | Confirmed | 8.2 |
@@ -1127,8 +1120,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
-| K-1 | A passive's interval stops while its unit is dead, then fires once for each tick after the respawn | `modifier_intervals.rs:21-53`, `modifier_clocks.rs:86-108` | Confirmed | 2.2 |
-| K-3 | `restore` is a combat effect and skips each unit with no `Life` | `combat_effect.rs:26-30, 106-108`, `damage_pass.rs:213-216` | Confirmed | 2.2 |
 | K-5 | Splash uses `<`, while the one reach rule is `≤` | `attacks.rs:120-122`, `metric.rs:54-73` | Confirmed | Backlog (D12) |
 | K-6 | A clip's reload counts from the attack's start, where the design and Zero Hour count from the shot | `attacks.rs:428-435` | Confirmed | Backlog (D14) |
 | K-7 | A weapon's own damage and period cannot be scaled by a stat | `weapon/mod.rs:107-163` | Confirmed | Backlog |

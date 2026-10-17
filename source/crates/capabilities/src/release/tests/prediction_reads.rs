@@ -69,10 +69,10 @@ fn server_only(world: &World) -> Vec<String> {
 const EXCLUSIVE: [&str; 6] = [
     "campfire_combat::attacks::Attacks::attack_events",
     "campfire_combat::damage_pass::DamagePass::run",
-    "campfire_combat::modifier_intervals::ModifierIntervals::run_intervals",
     "campfire_deliveries::delivery_hooks::DeliveryHooks::end",
     "campfire_production::construction::Construction::start_builds<campfire_vision::team_sight::ByHolding>",
     "campfire_production::gather_loop::GatherLoop::run<campfire_vision::team_sight::ByHolding>",
+    "campfire_stats::modifier_intervals::ModifierIntervals::run_intervals",
 ];
 
 #[test]

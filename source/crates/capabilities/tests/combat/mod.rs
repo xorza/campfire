@@ -1246,13 +1246,13 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     // and the life pool keeps its 60; one of the life pool's id reaches the life, which takes 15
     // more, unscaled, to 75, and the second pool keeps its 70.
     game.part_mut::<Pools>(source).take(mana, Num::int(50));
-    DamagePass::restore(&mut game, source, mana, Num::int(20));
+    Stats::restore(&mut game, source, mana, Num::int(20));
     let held = |game: &Match| {
         let mana = game.try_part::<Pools>(source).unwrap().current(mana);
         (game.part::<Life>(source).current(), mana)
     };
     assert_eq!(held(&game), (Num::int(60), Some(Num::int(70))));
-    DamagePass::restore(&mut game, source, PoolId::FIRST, Num::int(15));
+    Stats::restore(&mut game, source, PoolId::FIRST, Num::int(15));
     assert_eq!(held(&game), (Num::int(75), Some(Num::int(70))));
 }
 

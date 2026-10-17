@@ -30,6 +30,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
         script: None,
         duration_ms: Some(param("bind_ms")),
         interval_ms: Some(Number::Value(Scalar::Int(1500))),
+        interval_revival: IntervalRevival::Reset,
         stacks_expire_ms: Some(param("stun_ms")),
         reapply: Reapply::Stack,
         max_stacks: NonZeroU32::new(3),
@@ -85,6 +86,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
     let expected = ModifierSpec {
         duration: Some(SpecTime::Param(ParamPlace::Own(0))),
         interval: Some(SpecTime::Fixed(Ticks::new(45))),
+        revival: IntervalRevival::Reset,
         stacks_expire: Some(SpecTime::Param(ParamPlace::Applier(
             appliers.named("stun_ms").unwrap(),
         ))),

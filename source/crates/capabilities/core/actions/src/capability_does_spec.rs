@@ -1,5 +1,4 @@
 use campfire_sim::Capability;
-use campfire_stats::PoolId;
 use campfire_values::{DamageKind, TrackId, UnitType};
 
 use crate::amount::Amount;
@@ -15,10 +14,6 @@ pub enum CapabilityDoesSpec {
         kind: DamageKind,
     },
     Heal {
-        amount: Amount,
-    },
-    Restore {
-        pool: PoolId,
         amount: Amount,
     },
     Xp {
@@ -47,7 +42,7 @@ impl CapabilityDoesSpec {
     /// The capability whose effect it is.
     pub const fn capability(self) -> Capability {
         match self {
-            Self::Damage { .. } | Self::Heal { .. } | Self::Restore { .. } => Capability::Combat,
+            Self::Damage { .. } | Self::Heal { .. } => Capability::Combat,
             Self::Xp { .. } => Capability::Progression,
             Self::Launch { .. } => Capability::Areas,
             Self::Dash { .. } | Self::KnockBack { .. } => Capability::Navigation,
@@ -58,7 +53,6 @@ impl CapabilityDoesSpec {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_math::Num;
-    use campfire_stats::PoolId;
     use campfire_values::{DamageKind, TrackId, UnitType};
 
     use crate::amount::Amount;
@@ -76,10 +70,6 @@ pub(crate) mod internals {
                     kind: DamageKind::new(0),
                 },
                 Self::Heal { amount },
-                Self::Restore {
-                    pool: PoolId::new(0).unwrap(),
-                    amount,
-                },
                 Self::Xp {
                     track: TrackId::new(0),
                     amount,
@@ -102,11 +92,10 @@ pub(crate) mod internals {
                 let place = match does {
                     Self::Damage { .. } => 0,
                     Self::Heal { .. } => 1,
-                    Self::Restore { .. } => 2,
-                    Self::Xp { .. } => 3,
-                    Self::Launch { .. } => 4,
-                    Self::Dash { .. } => 5,
-                    Self::KnockBack { .. } => 6,
+                    Self::Xp { .. } => 2,
+                    Self::Launch { .. } => 3,
+                    Self::Dash { .. } => 4,
+                    Self::KnockBack { .. } => 5,
                 };
                 assert_eq!(place, at, "one of each kind, in order");
             }

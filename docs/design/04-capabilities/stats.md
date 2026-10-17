@@ -17,6 +17,7 @@
 
 ## Modifiers
 
+- **An interval's policy at a respawn.** A dead carrier's intervals run no hook, and keep their clock; as the carrier comes back, the modifier's `interval_revival` says what its interval does: `continue`, the default, comes when it would have, `reset` comes a whole interval later, and `fire_and_reset` comes at once, then a whole interval on, the three policies of Unreal's `EGameplayEffectPeriodInhibitionRemovedPolicy`. An interval never comes twice in one tick, so a clock that fell behind does not burst.
 - **One instance per id and source.** A carrier holds at most one instance of an id from each source; a reapply refreshes, stacks or is ignored, as the modifier says.
 - **A duration counts whole ticks from the end of its tick,** so it holds the same at any rate to within one tick.
 - **An instance lives while something keeps it.** A passive's rank, an aura, an area, a player and an application each keep it; it ends only when nothing does.

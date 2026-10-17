@@ -3,7 +3,7 @@ use campfire_actions::{ActionBook, ActionSlots, CapabilityDoesSpec};
 use campfire_math::Num;
 use campfire_script::{CallError, Effect, Frame, View};
 use campfire_sim::{EntityIndex, StableId};
-use campfire_stats::{Life, PoolId, UnitStats};
+use campfire_stats::{Life, UnitStats};
 use campfire_units::UnitsWorld;
 use campfire_values::{DamageKind, TagSet, Team, UnitTags};
 
@@ -23,12 +23,6 @@ pub enum CombatEffect {
     },
     /// A heal of `amount` to `unit`'s life pool, times one plus its `heal_scale` stat.
     Heal { unit: StableId, amount: Num },
-    /// `amount` of `unit`'s `pool` back.
-    Restore {
-        unit: StableId,
-        pool: PoolId,
-        amount: Num,
-    },
     /// An extra attack of the acting unit on `unit`, with its first weapon whose filter selects
     /// `unit`.
     AttackHit { unit: StableId },
@@ -37,7 +31,7 @@ pub enum CombatEffect {
 }
 
 impl CombatEffect {
-    /// Queues the listed `does`, a damage, a heal or a restore, to `unit` in `frame`.
+    /// Queues the listed `does`, a damage or a heal, to `unit` in `frame`.
     #[expect(
         clippy::unnecessary_wraps,
         reason = "its signature is the one every capability's listed effects queue by"
@@ -59,11 +53,6 @@ impl CombatEffect {
                 unit: id,
                 amount: amount.number(frame),
             },
-            CapabilityDoesSpec::Restore { pool, amount } => Self::Restore {
-                unit: id,
-                pool,
-                amount: amount.number(frame),
-            },
             _ => unreachable!("combat queues only its own listed effects"),
         };
         frame.queue(effect);
@@ -74,9 +63,9 @@ impl CombatEffect {
 /// From the call's acting unit and its ability, at its depth of the chain of combat events.
 impl Effect for CombatEffect {
     /// Applies the effect, which the call in `frame` queued: from its acting unit, by its ability,
-    /// at its chain depth, delivered by its hit. Damage and a heal join the pass's queue, a
-    /// restore applies at once, and an extra attack queues the source's attack damage, when it
-    /// still has an attack.
+    /// at its chain depth, delivered by its hit. Damage and a heal join the pass's queue, and an
+    /// extra attack queues the damage of the source's first weapon that selects its target, when
+    /// it still has one.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let (source, action, depth) = (frame.acting(), frame.action(), frame.depth());
         let damage = |target, amount, kind, cause| Damage {
@@ -104,9 +93,6 @@ impl Effect for CombatEffect {
                     depth,
                 };
                 DamagePass::queue(world, PassEntry::Heal(heal));
-            }
-            Self::Restore { unit, pool, amount } => {
-                DamagePass::restore(world, unit, pool, amount);
             }
             Self::Kill { unit } => {
                 if let Some(entity) = DamagePass::living(world, unit) {

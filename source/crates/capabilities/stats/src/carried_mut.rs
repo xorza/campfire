@@ -9,6 +9,7 @@ use campfire_values::ModifierId;
 
 use crate::application::{Adding, Application, ApplyAt};
 use crate::instance::StatShare;
+use crate::interval_revival::IntervalRevival;
 use crate::lifetime::Hold;
 use crate::modifier_book::ModifierBook;
 use crate::modifiers::modifier_clocks::ModifierClocks;
@@ -126,6 +127,22 @@ impl<'w> CarriedMut<'w> {
         let modifiers = &*self.modifiers;
         let clocks = self.clocks.bypass_change_detection();
         if clocks.advance_intervals(modifiers, now, takes_effect, due) {
+            self.clocks.set_changed();
+        }
+    }
+
+    /// See `ModifierClocks::skip_intervals`.
+    pub fn skip_intervals(&mut self, now: Tick) {
+        if self.clocks.bypass_change_detection().skip_intervals(now) {
+            self.clocks.set_changed();
+        }
+    }
+
+    /// See `ModifierClocks::revive_intervals`.
+    pub fn revive_intervals(&mut self, now: Tick, revival: impl Fn(ModifierId) -> IntervalRevival) {
+        let modifiers = &*self.modifiers;
+        let clocks = self.clocks.bypass_change_detection();
+        if clocks.revive_intervals(modifiers, now, revival) {
             self.clocks.set_changed();
         }
     }

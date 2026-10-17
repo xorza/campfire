@@ -1,5 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Ticks};
+use campfire_math::Num;
 use campfire_script::{Effect, Frame};
 use campfire_sim::StableId;
 use campfire_values::{ModifierId, Tag};
@@ -8,6 +9,7 @@ use crate::Stats;
 use crate::applier::Applier;
 use crate::modifier_adds::{HeldModifierAdds, ModifierAdd};
 use crate::modifier_handle::ModifierHandle;
+use crate::pool_id::PoolId;
 use crate::stats_call::StatsCall;
 use crate::stats_world::StatsWorld;
 
@@ -31,6 +33,12 @@ pub enum StatsEffect {
     /// The end of the applications of `carrier`'s modifiers that grant `tag`, whatever their
     /// source; an instance a hold keeps stays.
     Purge { carrier: StableId, tag: Tag },
+    /// `amount` of `unit`'s `pool`, unscaled, when it lives.
+    Restore {
+        unit: StableId,
+        pool: PoolId,
+        amount: Num,
+    },
 }
 
 impl StatsEffect {
@@ -79,6 +87,7 @@ impl StatsEffect {
                 source,
             } => Stats::remove_modifier(world, carrier, id, source),
             Self::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
+            Self::Restore { unit, pool, amount } => Stats::restore(world, unit, pool, amount),
         }
     }
 }

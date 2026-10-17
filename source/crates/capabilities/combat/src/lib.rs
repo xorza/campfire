@@ -34,7 +34,6 @@ mod combat_column;
 mod combat_data;
 mod combat_effect;
 mod combat_event;
-mod combat_hooks;
 mod damage;
 mod damage_handle;
 mod damage_pass;
@@ -44,11 +43,8 @@ mod error;
 mod heal;
 mod heal_handle;
 mod held_hits;
-mod interval_due;
 mod kept;
 mod mode_combat_data;
-mod modifier_hooks;
-mod modifier_intervals;
 mod next_damage;
 mod on_death;
 mod pass_queue;
@@ -69,7 +65,6 @@ pub use crate::combat_column::CombatColumn;
 pub use crate::combat_data::CombatData;
 pub use crate::combat_effect::CombatEffect;
 pub use crate::combat_event::CombatEvent;
-pub use crate::combat_hooks::CombatHooks;
 pub use crate::damage::{Damage, DamageCause};
 pub use crate::damage_handle::DamageHandle;
 pub use crate::damage_pass::DamagePass;
@@ -80,8 +75,6 @@ pub use crate::heal::{Heal, HealCause};
 pub use crate::heal_handle::HealHandle;
 pub use crate::kept::Kept;
 pub use crate::mode_combat_data::{LeechData, ModeCombatData};
-pub use crate::modifier_hooks::ModifierHooks;
-pub use crate::modifier_intervals::ModifierIntervals;
 pub use crate::on_death::OnDeath;
 pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
@@ -118,8 +111,6 @@ pub(crate) enum CombatSet {
     Pay,
     /// Windups that end strike, or fire, each with its roll drawn.
     Strike,
-    /// Modifiers' intervals come.
-    Interval,
     /// The tick's damage is dealt.
     Damage,
     /// Units at zero life die.
@@ -139,7 +130,6 @@ impl ModuleSet for CombatSet {
             Self::Hits => Phase::Hits,
             Self::Pay => Phase::Pay,
             Self::Strike => Phase::Strike,
-            Self::Interval => Phase::Interval,
             Self::Damage => Phase::Damage,
             Self::Die => Phase::Die,
             Self::Despawn => Phase::End,
@@ -172,7 +162,6 @@ impl Module for Combat {
         d.resource::<NextDamage>();
         d.resource::<HeldHits>();
         d.report::<Deaths>();
-        d.non_send::<CombatHooks>(|world, role| Some(CombatHooks::install(world, role)));
         d.calls::<Weighers>();
         d.book::<CombatBook>();
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
@@ -205,7 +194,6 @@ impl Module for Combat {
                 .in_set(CombatSet::Attack),
             Attacks::start_attacks.in_set(CombatSet::Attack),
             Attacks::take_hits.in_set(CombatSet::Hits),
-            ModifierIntervals::run_intervals.in_set(CombatSet::Interval),
             DamagePass::run.in_set(CombatSet::Damage),
             Dying::die.in_set(CombatSet::Die),
             Dying::respawn.in_set(CombatSet::Respawn),

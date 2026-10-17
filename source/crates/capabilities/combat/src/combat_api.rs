@@ -5,7 +5,6 @@ use campfire_script::{
     MemberSpec, RoleSet, ScriptWindow, Status, Unit,
 };
 use campfire_sim::Capability;
-use campfire_stats::PoolId;
 use campfire_values::{Block, DamageKind, TagProperty};
 
 use crate::combat_column::CombatColumn;
@@ -17,7 +16,7 @@ use crate::heal_handle::HealHandle;
 use crate::mode_combat_data::{LeechData, ModeCombatData};
 use crate::turret::turret_data::TurretData;
 
-/// The script API of `combat`: `ctx.damage`, `ctx.heal`, `ctx.restore`, `ctx.attack_hit`, and the
+/// The script API of `combat`: `ctx.damage`, `ctx.heal`, `ctx.attack_hit`, `ctx.kill`, and the
 /// `Damage` handle.
 #[derive(Debug)]
 pub struct CombatApi;
@@ -37,11 +36,6 @@ impl CombatApi {
             "heal",
             &[&["unit", "amount"]],
             "heals `unit`'s life pool, times one plus its `heal_scale` stat",
-        );
-        let restore = call(
-            "restore",
-            &[&["unit", "pool", "amount"]],
-            "gives `unit` back `amount` of its `pool`, unscaled",
         );
         let kill = call(
             "kill",
@@ -70,16 +64,6 @@ impl CombatApi {
                 amount,
             })
         })
-        .call(
-            restore,
-            |ctx: &mut Ctx, unit: Unit, pool: PoolId, amount: Num| {
-                Self::mend(ctx, amount, |amount| CombatEffect::Restore {
-                    unit: unit.id,
-                    pool,
-                    amount,
-                })
-            },
-        )
         .call(attack_hit, |ctx: &mut Ctx, target: Unit| {
             Self::attack_hit(ctx, &target)
         })
@@ -149,7 +133,7 @@ impl CombatApi {
         })
     }
 
-    /// Queues the heal or restore `effect` makes of `amount`, which is not negative.
+    /// Queues the heal `effect` makes of `amount`, which is not negative.
     fn mend(ctx: &Ctx, amount: Num, effect: impl FnOnce(Num) -> CombatEffect) -> Checked<()> {
         if amount < Num::ZERO {
             return Err(CombatRefusal::NegativeHeal.fail().into());

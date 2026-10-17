@@ -57,7 +57,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `reduce_cooldowns` | `(unit, kind, fraction)`, `kind` a slot kind | every role | abilities | since 1.0 | takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind` |
 | `remove` | `(handle)` | every role | stats | since 1.0 | ends the modifier, projectile or area at once |
 | `respawn` | `(unit, ms)` | mode | combat | since 1.0 | brings back `unit`, dead and of a type that stays, `ms` from the call |
-| `restore` | `(unit, pool, amount)`, `pool` a pool | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
+| `restore` | `(unit, pool, amount)`, `pool` a pool | every role | stats | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled, when it lives |
 | `reveal` | `(pos, radius, ms)` | action, modifier, AI | vision | since 1.0 | shows the acting unit's vision group the cells within `radius` of `pos` for `ms`, from this tick's Vision stage; no hidden unit |
 | `save` | `()` | mode | core | since 1.0 | asks for a save at the end of the tick |
 | `set_out` | `(player, out)` | mode | core | since 1.0 | holds `player` out of play while `out`, as when every avatar it holds is dead |
@@ -498,6 +498,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `script` | stats | since 1.0 |
 | `duration_ms` | stats | since 1.0 |
 | `interval_ms` | stats | since 1.0 |
+| `interval_revival` | stats | since 1.0 |
 | `stacks_expire_ms` | stats | since 1.0 |
 | `reapply` | stats | since 1.0 |
 | `max_stacks` | stats | since 1.0 |
