@@ -37,6 +37,7 @@ use campfire_units::{Body, MoveStep, Owner, UnitTypeBook};
 use campfire_values::{NameId, Team};
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
+use lightyear::interpolation::plugin::InterpolationSystems;
 use lightyear::prelude::server::RawServer;
 use lightyear::prelude::{
     Connect, Connected, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
@@ -934,7 +935,11 @@ fn pass_through_delay_lines(app: &mut App) {
         ),
     );
     app.add_systems(First, DelayLine::pin_round_trip);
-    app.add_systems(Update, DelayLine::pin_round_trip);
+    // Before Lightyear's own `Update` systems, which a server's frame follows.
+    app.add_systems(
+        Update,
+        DelayLine::pin_round_trip.before(InterpolationSystems::All),
+    );
 }
 
 pub(crate) mod bench {

@@ -17,6 +17,7 @@ internals = [
     "campfire-protocol/internals",
     "campfire-quic/internals",
     "campfire-runner/internals",
+    "campfire-schedule/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
@@ -39,6 +40,7 @@ campfire-players.workspace = true
 campfire-protocol.workspace = true
 campfire-quic.workspace = true
 campfire-runner.workspace = true
+campfire-schedule.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true

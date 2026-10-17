@@ -23,6 +23,7 @@ use campfire_runner::{Session, SessionWorld};
 use campfire_script::ScriptPrints;
 use campfire_sim::SimTick;
 use campfire_units::Deaths;
+use lightyear::interpolation::plugin::InterpolationSystems;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
@@ -135,9 +136,25 @@ impl Plugin for SimServer {
             },
         );
         app.init_resource::<Faults>();
+        app.configure_sets(
+            Update,
+            (
+                ServerFrameSystems::Intake,
+                ServerFrameSystems::Door,
+                ServerFrameSystems::SessionUpkeep,
+                ServerFrameSystems::Receipts,
+            )
+                .chain()
+                .after(InterpolationSystems::All),
+        );
         app.add_systems(
             Update,
-            PendingRestore::run.run_if(resource_exists::<PendingRestore>),
+            (
+                PendingRestore::run.run_if(resource_exists::<PendingRestore>),
+                Spectators::choose_teams,
+            )
+                .chain()
+                .in_set(ServerFrameSystems::Intake),
         );
         app.add_systems(
             Update,
@@ -148,7 +165,8 @@ impl Plugin for SimServer {
                 Lobby::start_when_full,
             )
                 .chain()
-                .run_if(resource_exists::<Lobby>),
+                .run_if(resource_exists::<Lobby>)
+                .in_set(ServerFrameSystems::Door),
         );
         // Each system that logs checks that the session runs as it starts, as another system of
         // the frame may end it.
@@ -156,32 +174,30 @@ impl Plugin for SimServer {
             Update,
             (Offering::offer_links::<Door>, Door::take_joins, Door::watch)
                 .chain()
+                .after(Lobby::start_when_full)
                 .distributive_run_if(resource_exists::<Door>)
-                .distributive_run_if(session_running),
+                .distributive_run_if(session_running)
+                .in_set(ServerFrameSystems::Door),
+        );
+        app.add_systems(
+            Update,
+            (
+                Self::take_save_commands
+                    .run_if(resource_exists::<Door>)
+                    .run_if(session_running),
+                Checkpoints::finish.run_if(resource_exists::<Checkpoints>),
+                JournalWatch::warn_slow.run_if(resource_exists::<JournalWatch>),
+            )
+                .chain()
+                .in_set(ServerFrameSystems::SessionUpkeep),
         );
         app.add_systems(
             Update,
             Receipts::give
-                .after(Door::watch)
                 .run_if(resource_exists::<Receipts>)
-                .run_if(session_running),
+                .run_if(session_running)
+                .in_set(ServerFrameSystems::Receipts),
         );
-        app.add_systems(
-            Update,
-            Checkpoints::finish.run_if(resource_exists::<Checkpoints>),
-        );
-        app.add_systems(
-            Update,
-            JournalWatch::warn_slow.run_if(resource_exists::<JournalWatch>),
-        );
-        app.add_systems(
-            Update,
-            Self::take_save_commands
-                .after(Door::watch)
-                .run_if(resource_exists::<Door>)
-                .run_if(session_running),
-        );
-        app.add_systems(Update, Spectators::choose_teams);
         app.add_observer(Spectators::leave);
         Viewer::follow_links(app);
         Viewer::follow_out_of_play(app);
@@ -234,6 +250,19 @@ impl Plugin for SimServer {
                 .before(report_deaths),
         );
     }
+}
+
+/// The steps of the server's frame in `Update`, in their order, after Lightyear's: what comes in
+/// from outside the session, a restore waiting or a spectator's choice; the door, which seats
+/// players, before the match in the lobby and after it at the door; the session's upkeep, its
+/// saves, checkpoints and journal; and the receipts of what the journal made durable. An app's
+/// own system of `Update` goes after them.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ServerFrameSystems {
+    Intake,
+    Door,
+    SessionUpkeep,
+    Receipts,
 }
 
 /// The systems of a fixed tick that runs a sim tick, whose condition is checked once, before the

@@ -2720,6 +2720,7 @@ dependencies = [
  "campfire-protocol",
  "campfire-quic",
  "campfire-runner",
+ "campfire-schedule",
  "campfire-script",
  "campfire-sim",
  "campfire-state-types",

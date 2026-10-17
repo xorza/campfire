@@ -79,6 +79,7 @@ pub use crate::sim_client::join_state::error::TermsMismatch;
 pub use crate::sim_client::join_state::{JoinState, Loss};
 pub use crate::sim_client::server_pin::ServerPin;
 pub use crate::sim_client::{LeaveRequest, PendingOrders, PendingSaves, SimClient, WatchRequest};
+pub use crate::sim_server::ServerFrameSystems;
 pub use crate::sim_server::error::MatchBeginError;
 pub use crate::sim_server::journal_watch::JournalWatch;
 pub use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};

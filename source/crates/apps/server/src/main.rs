@@ -27,8 +27,8 @@ use campfire_common::{ExitStatus, TlsKey};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
-    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, PendingRestore,
-    Publisher, RestoredSession, ServerDir, ServerSetup, SimServerPlugins, SimServerWorld,
+    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, Publisher,
+    RestoredSession, ServerDir, ServerFrameSystems, ServerSetup, SimServerPlugins, SimServerWorld,
     StopRequest, exit_code,
 };
 use campfire_package_disk::PackageDir;
@@ -213,7 +213,7 @@ fn server_app(
             }
         })
             .chain()
-            .after(PendingRestore::run),
+            .after(ServerFrameSystems::Receipts),
     );
     app
 }

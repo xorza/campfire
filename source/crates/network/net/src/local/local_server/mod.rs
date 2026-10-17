@@ -32,6 +32,7 @@ use crate::os::Os;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
+use crate::sim_server::ServerFrameSystems;
 use crate::sim_server::lobby::{Lobby, LobbyOpening};
 use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
@@ -312,7 +313,10 @@ impl Runs {
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
         app.insert_resource(Restart(Arc::clone(&self.restart)));
-        app.add_systems(Update, LocalServer::watch.after(PendingRestore::run));
+        app.add_systems(
+            Update,
+            LocalServer::watch.after(ServerFrameSystems::Receipts),
+        );
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server = app.world_mut().spawn((RawServer, Linked)).id();
         let address = SocketAddr::from(([127, 0, 0, 1], 1));
