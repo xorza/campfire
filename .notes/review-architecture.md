@@ -639,15 +639,15 @@ Each change folds into its document when its batch lands. Each line names the de
 
 **5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
 - The proposal is `docs/design/action-pipeline.md`, accepted as written (2026-10-17): one start and one commit in `actions`, each kind committing at today's moment, no golden moves.
-- One start and go-off pair in `actions` owns the checks and the times. Kinds plug in by a callback table (K-17). Waits for Q15 in `review-architecture_QUESTIONS.md`.
-- The `Purse` contract, the living test and the passive hook are contracts in `units`, and `actions` drops `stats`. The needs-and-uses test covers core modules (C-3, E-5). The living test waits for Q14 in `review-architecture_QUESTIONS.md`.
+- One start step and one commit step in `actions`, which each kind's system calls at its own moment, as a GAS ability calls `CommitAbility` (K-17, decided 2026-10-17): the start tests the block, checks, clamps and tests the reach; the commit pays the pools and resources and spends the cooldown, a charge and a toggle. No golden moves.
+- The living test and the passive hook are contracts in `units`, and `actions` drops `stats`; the purse is done. `Life` and its `Meter` move to `units` (decided 2026-10-17), so the test reads `Dead`, the empty life and the tags, exactly as `stats::lives` does; `stats` keeps the pool book, the maxima and the regen. The needs-and-uses test covers core modules (C-3, E-5).
 - **Goldens:** they may move where the four loops differed. Each move is explained.
 
 ### Phase 6: `Send` data and the server frame
 
 **6.4 The session log.** Touches `protocol` (session log, journal, controller, carry) and `net` (seats, player link, checkpoints).
-- A proposal first, `docs/design/session-log-state.md`, for review before any code (decided 2026-10-17): the live log as its latest checkpoint's state and the entries since, as Raft keeps a snapshot and a tail; the replay as a cursor value the session owns beside the log; publication by two streaming passes over the journal, each load's cut applied; one encode for each record into the journal's frame buffer; the signature policy as a parameter of the decode (N-17, N-14, N-13, D34). The code waits for the review.
-- A relationship from a slot's entity to its link (N-18). Waits for Q16 in `review-architecture_QUESTIONS.md`.
+- A proposal first, `docs/design/session-log-state.md`, for review before any code (decided 2026-10-17): the live log as its latest checkpoint's state and the entries since, as Raft keeps a snapshot and a tail; the replay as a cursor value the session owns beside the log; publication by two streaming passes over the journal, each load's cut applied; one encode for each record into the journal's frame buffer; the signature policy as a parameter of the decode (N-17, N-14, N-13, D34). Accepted on 2026-10-17.
+- `Seats` stays the one record of each slot's link, as decided on 2026-10-17, and a test pins that a second login of one main key in one frame dismisses the first (N-18).
 
 **6.5 Allocations on the network paths.** Touches `net` and `protocol`.
 - The ack has a bounded array (N-25), whose bound comes with the input message's largest encoding of 1.1 (N-1); it waits for 1.1.
