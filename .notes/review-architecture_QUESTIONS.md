@@ -31,3 +31,16 @@ A push only at the places that set a time misses all three, and an attack or a c
 | B. Do both | `OnMatch` reads the match entity through `Single`, a resource holds each player's entity by slot, and the damage pass keeps a `SystemState`. | About a day of work across `players`, `actions`, `combat` and every reader of `OnMatch` and `PlayerRows`, for no measured gain. `Single` skips a system while the match entity is missing. |
 
 **Blocked.** Only these two steps of 7.2.
+
+## Q20: Do the gather searches and the static following stay scans (7.3)?
+
+**Background.** R-5 asks that the gather loop's node and drop-off searches use the unit grid, and that each node keep its queue of waiting workers. R-30 asks that room making and the following of a static change query only the bounds of the change. Measured on 2026-10-18 (`./drive.py bench -- integration/gather` at `12a98cb63`), a whole tick of the gather bench, 200 workers at 16 nodes in two fields, costs 20.5 µs. Room making and the static following run only as a box spawns or a static body comes or goes, and then visit each walker once.
+
+**Options.**
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| A. Keep the scans (recommended) | The plan loses R-5 and R-30, and the measurement is the record of why. | A Zero Hour economy of hundreds of nodes would make the node search grow with nodes times workers, and a new bench would show it. |
+| B. Do both | The searches query the unit grid, a node keeps its queue as state, and the static following queries the change's bounds. | The unit grid must be fresh at each search, or a search misses a unit that moved since its last build. A node's queue changes the snapshot's format. The following of a static change needs an index of the routes' legs. |
+
+**Blocked.** Only R-5 and R-30 of 7.3. R-6 of 7.3 waits for Q18.

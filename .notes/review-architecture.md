@@ -650,9 +650,9 @@ Each change folds into its document when its batch lands. Each line names the de
 - The damage pass reads through a cached `SystemState` (K-21). Waits for Q19 in `review-architecture_QUESTIONS.md`.
 
 **7.3 Navigation and gathering passes.** Touches `navigation` and `production`.
-- `RouteMut`, so the report passes go, and `RouteAsks` (R-6).
-- Room making and static following query the change's bounds (R-30).
-- Gathering searches use the grid, and each node keeps its queue (R-5).
+- `RouteMut`, so the report passes go, and `RouteAsks` (R-6). Waits for Q18 in `review-architecture_QUESTIONS.md`, as a restore and a client's rollback write the route from outside the sim.
+- Room making and static following query the change's bounds (R-30). Waits for Q20 in `review-architecture_QUESTIONS.md`.
+- Gathering searches use the grid, and each node keeps its queue (R-5). Waits for Q20 in `review-architecture_QUESTIONS.md`.
 
 **7.4 Progress apart from configuration.** Waits for Q18 in `review-architecture_QUESTIONS.md`, as 7.1 changes the same parts. Touches `production`, `navigation`, `actions`.
 - `SiteProgress` and the route cursor become their own parts (R-26).

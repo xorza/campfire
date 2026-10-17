@@ -6,6 +6,8 @@ The issue log: every open problem of the project, under the step it waits for. T
 
 - **Mode.** [Scripting](../docs/design/02-engine-core.md#scripting)'s operation pools put the mode's inputs in the `mode` pool, and its player's row the calls a player causes; `mode/src/mode_hooks.rs` draws `on_mode_input` from the player's pool, as `Pool::Player`'s doc says. Options: the `mode` pool, as the table's row says, or the player's, as the code does.
 
+- **Driver.** No step of `./drive.py check` or `./drive.py gate` builds or runs a bench, so a bench that no longer runs goes unseen: `integration/gather/two_fields` panicked at its start, first on a conflict of production's systems in a match without stats, then on a book it loaded after its match installed, until commit `12a98cb63`. Options: a lane that builds the benches and runs each case once in the gate, or the benches left out of the gate as now.
+
 ## Research
 
 - **Navigation.** The levels by size of B2 make the Collide stage slower for walkers of ordinary sizes, with no wide body present, and the 3v3's ticks faster. On an i9-13980HX, with each walker's cell one `CellKey`, `integration/collision/spread` takes 95.5 µs against 59.8 µs with one level of cells twice the widest walker's radius, `crowded` 325.0 µs against 257.4 µs, `boxes` 681.4 µs against 613.8 µs, and `bridge`, with a 1,117 × 100 m box 2 m past the crowded scene, 715.4 µs against 650.9 µs; the scenes' walkers of 0.2 to 1.19 m spread over four levels, and each occupied cell searches the nine cells around its own at each coarser level. `integration/server_tick/mean_3v3` takes 479.2 ms, and 519.4 ms with one level.
