@@ -10,9 +10,9 @@ use campfire_actions::{
     ActionBook, ActionData, ActionDataField, ActionError, ActionField, ActionKind, ActionProblem,
     ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData,
     ChargesData, ClipData, CostTarget, DeliveryData, EffectData, EffectTo, FromData, InProgress,
-    KindData, KindError, LaunchLists, ListedEffect, ModifierEffectData, OrderPhase,
-    PurgeEffectData, RangeField, RestoreEffectData, SlotAim, SlotKind, SlotKindBook, SlotKindData,
-    SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting, TimedSlots, Toggle,
+    KindData, KindError, LaunchLists, ListedEffect, OrderPhase, RangeField, SlotAim, SlotKind,
+    SlotKindBook, SlotKindData, SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting,
+    TimedSlots, Toggle,
 };
 use campfire_areas::{Area, AreaData, AreaInsideData, Areas, LaunchEffectData};
 use campfire_capabilities::internals::*;
@@ -49,8 +49,8 @@ use campfire_sim::{
 };
 use campfire_stats::{
     Hold, IntervalRevival, Level, LiveCarriers, ModifierBook, ModifierClocks, ModifierData,
-    Modifiers, Pools, StatBook, StatChange, StatGraph, StatOp, StatRule, StatValue, Stats,
-    StatsData, UnitStats,
+    ModifierEffectData, Modifiers, Pools, PurgeEffectData, RestoreEffectData, StatBook, StatChange,
+    StatGraph, StatOp, StatRule, StatValue, Stats, StatsData, UnitStats,
 };
 use campfire_units::{
     Body, Dead, Destination, ForcedMove, Life, MoveStep, NeededLevel, Owner, PoolId, SyncNone,

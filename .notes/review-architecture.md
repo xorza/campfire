@@ -640,7 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 **5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
 - The proposal is `docs/design/action-pipeline.md`, accepted as written (2026-10-17): one start and one commit in `actions`, each kind committing at today's moment, no golden moves.
 - One start step and one commit step in `actions`, which each kind's system calls at its own moment, as a GAS ability calls `CommitAbility` (K-17, decided 2026-10-17): the start tests the block, checks, clamps and tests the reach; the commit pays the pools and resources and spends the cooldown, a charge and a toggle. No golden moves.
-- The living test and the passive hook are contracts in `units`, and `actions` drops `stats`; the purse is done. `Life` and its `Meter` move to `units` (decided 2026-10-17), so the test reads `Dead`, the empty life and the tags, exactly as `stats::lives` does; `stats` keeps the pool book, the maxima and the regen. The needs-and-uses test covers core modules (C-3, E-5).
 - **Goldens:** they may move where the four loops differed. Each move is explained.
 
 ### Phase 6: `Send` data and the server frame
@@ -915,7 +914,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | --- | --- | --- | --- | --- |
 | E-2 | A `Restoring` world flag switches hooks into a trusting mode that each hook must remember | `restoring.rs:1-7`, `entity_kinds.rs:38`, `level.rs:59` | Confirmed | 7.5 |
 | E-4 | About 90 functions take `&mut World`, so the tick is bound to one thread whatever the executor | `damage_pass.rs:103-124`, `attacks.rs:262`, `trains.rs:194` | Confirmed | 11.1 |
-| E-5 | The core `actions` module depends on `stats`, and the release test of needs skips core modules | `actions/Cargo.toml:31`, `release/tests/mod.rs:311-321` | Confirmed | 5.3 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
 | E-18 | A restore moves each entity once for each state type it holds | `state_registry/mod.rs:400-424, 662-684` | Confirmed | 7.5 |
 | E-19 | `StateRegistry` is a type list, a codec, a change tracker and a mode switch | `state_registry/mod.rs:57-64` | Confirmed | 7.7 |
@@ -930,7 +928,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | --- | --- | --- | --- | --- |
 | C-1 | Action kinds are a closed enum and a flat `ActionData` of 41 fields, with a hand table of the fields for each kind, and `expect`s that package data can reach | `kind_spec.rs:11-18`, `action_data/mod.rs:36-131`, `action_data_field.rs:16-58`, `kind_data.rs:48-79` | Confirmed | 5.1 |
 | S-8 | A listed effect's data key and its `ctx` call are two declarations, with two names | `listed_effect/mod.rs`, each `*_api.rs` | Confirmed | 8.1 |
-| C-3 | Costs, targets and passives tie the action pipeline to `stats`, and a target must have `Life` | `holds.rs:7-9`, `targets.rs:11, 85-90`, `purse.rs:2` | Confirmed | 5.3 |
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
 | C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |
 | C-14 | The match entity and the players are found through the `BTreeMap` index on each call | `on_match.rs:18-25`, `player_rows.rs:25-59`, `targets.rs:49-51` | Confirmed. The cost needs a bench. | 7.2 |

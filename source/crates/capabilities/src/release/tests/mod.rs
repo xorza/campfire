@@ -303,21 +303,40 @@ fn the_layers_follow_the_capability_crates_manifests() {
     assert_eq!(crates.layer("release"), None);
 }
 
-/// Each capability of the release's list, with what it needs and what it uses: the mode's as
-/// its scripted part states them, which the mode's core, a part of its crate, builds on none of.
+/// Each module of the release's list, by the folder of its crate, with what it needs and what it
+/// uses: a capability's by its name, the mode's as its scripted part states them, which the
+/// mode's core, a part of its crate, builds on none of; and a core module's by its crate, which
+/// needs and uses no capability, but the release's own.
 #[derive(Debug, Default)]
-struct Edges(Vec<(Capability, &'static [Capability], &'static [Capability])>);
+struct Edges(Vec<(&'static str, &'static [Capability], &'static [Capability])>);
 
 impl ModuleVisitor for Edges {
     fn module<M: Module>(&mut self) {
-        if let Some(capability) = M::CAPABILITY.filter(|&capability| capability != Mode) {
-            self.0.push((capability, M::NEEDS, M::USES));
+        match M::CAPABILITY {
+            Some(Mode) => {}
+            Some(capability) => self.0.push((capability.name(), M::NEEDS, M::USES)),
+            None => {
+                let path = type_name::<M>();
+                let krate = path
+                    .split("::")
+                    .next()
+                    .expect("a type's path has its crate");
+                // The release's own module, which builds the match, is of this crate, above every
+                // capability.
+                if krate == "campfire_capabilities" {
+                    return;
+                }
+                let folder = krate
+                    .strip_prefix("campfire_")
+                    .expect("a core module is of a campfire crate");
+                self.0.push((folder, M::NEEDS, M::USES));
+            }
         }
     }
 
     fn scripted<M: Module>(&mut self) {
         let capability = M::CAPABILITY.expect("the scripted part is the mode's");
-        self.0.push((capability, M::NEEDS, M::USES));
+        self.0.push((capability.name(), M::NEEDS, M::USES));
     }
 }
 
@@ -327,11 +346,12 @@ fn a_capabilitys_crate_depends_on_exactly_what_it_needs_or_uses() {
     let mut rows = Edges::default();
     Release::modules(&mut rows);
     let mut found = Vec::new();
-    for (capability, needs, uses) in rows.0 {
-        let name = capability.name();
+    // The core modules are checked too: the actions' among them depends on no capability.
+    assert!(rows.0.iter().any(|&(name, ..)| name == "actions"));
+    for (name, needs, uses) in rows.0 {
         let krate = crates
             .named(name)
-            .expect("each capability of the release is a crate");
+            .expect("each module of the release is a crate's");
         let mut depends: Vec<String> = (krate.depends.iter())
             .filter(|dependency| {
                 Capability::ALL
@@ -491,7 +511,7 @@ fn a_module_names_another_modules_sets_only_where_its_sets_run() {
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 63] = [
+const LOOKUPS: [(&str, &str); 64] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_rules.rs", "named"),
@@ -516,6 +536,7 @@ const LOOKUPS: [(&str, &str); 63] = [
     ("navigation/navigation_books.rs", "named"),
     ("production/book_builders.rs", "named"),
     ("progression/progression_books.rs", "named"),
+    ("stats/action_params.rs", "named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/modifier_spec.rs", "named"),
     ("stats/modifiers_data.rs", "named"),

@@ -10,16 +10,14 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::SystemSet;
 use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, Declarations, InstallCx, Module, ModuleSet, NamedMessages, NamedScripts, SetPlace,
 };
 use campfire_sim::{Capability, SimSet, Unpredicted};
-use campfire_stats::{ParamBook, StatGraph, StatsSet};
 use campfire_units::{BodyUnit, UnitsSet};
 
-use crate::action_ranks::ActionRanks;
 use crate::actions_api::ActionsApi;
 use crate::actions_column::RowReads;
 use crate::holds::Holds;
@@ -68,20 +66,15 @@ mod list_hook;
 mod listed_effect;
 mod lists_of;
 mod loadout_ranks;
-mod modifier_appliers;
-mod modifier_effect_data;
-mod modifier_ways;
 mod payer;
 mod placement_data;
 mod planned_effect;
-mod purge_effect_data;
 mod purse;
 mod range_field;
 mod rank_fields;
 mod rank_values;
 mod reached;
 mod requires_data;
-mod restore_effect_data;
 mod shot_damage;
 mod shots;
 mod slot_aim;
@@ -112,6 +105,7 @@ pub use crate::action_load::ActionLoad;
 pub use crate::action_names::ActionNames;
 pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
+pub use crate::action_ranks::ActionRanks;
 pub use crate::action_slots::action_progress::ActionProgress;
 pub use crate::action_slots::slot_times::{ActionCheck, SlotCharges, SlotTime, SlotTimes};
 pub use crate::action_slots::timed_slots::TimedSlots;
@@ -132,9 +126,7 @@ pub use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
 pub use crate::delivery_data::DeliveryData;
 pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
-pub use crate::error::{
-    ActionError, ActionProblem, AppliedError, KindError, SlotError, SlotKindsError, Way,
-};
+pub use crate::error::{ActionError, ActionProblem, KindError, SlotError, SlotKindsError};
 pub use crate::fan::Fan;
 pub use crate::flights::Flights;
 pub use crate::gather_spec::GatherSpec;
@@ -151,13 +143,9 @@ pub use crate::listed_effect::{
 };
 pub use crate::lists_of::{ListsOf, ReachHook};
 pub use crate::loadout_ranks::LoadoutRanks;
-pub use crate::modifier_appliers::ModifierAppliers;
-pub use crate::modifier_effect_data::ModifierEffectData;
-pub use crate::modifier_ways::ModifierWays;
 pub use crate::payer::Payer;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::planned_effect::PlannedEffect;
-pub use crate::purge_effect_data::PurgeEffectData;
 pub use crate::purse::Purse;
 pub use crate::range_field::RangeField;
 pub use crate::rank_fields::{
@@ -166,7 +154,6 @@ pub use crate::rank_fields::{
 pub use crate::rank_values::{ChannelRule, ChargeRule, ClipRule, LoadedRanks, RankValues};
 pub use crate::reached::Reached;
 pub use crate::requires_data::RequiresData;
-pub use crate::restore_effect_data::RestoreEffectData;
 pub use crate::shot_damage::ShotDamage;
 pub use crate::shots::{Shot, Shots};
 pub use crate::slot_aim::SlotAim;
@@ -202,7 +189,8 @@ pub enum ActionsSet {
     Trade,
     /// The tick's commands order units.
     Order,
-    /// Once the tick's orders and expiries are in: passives and holds push their grants.
+    /// Once the tick's orders and expiries are in: the actions' charges hold, before the
+    /// grants of the passives that wait for a ready action.
     HoldAtInputs,
     /// Units chase their targets.
     Chase,
@@ -221,9 +209,6 @@ pub enum ActionsSet {
     Deliver,
     /// The actions going off pay their toggles.
     Pay,
-    /// Once the attacks going off paid their toggles and before they strike: holds push the
-    /// grants of the toggles an unpaid cost turned off.
-    HoldAtStrike,
     /// The attacks going off strike, once the grants of the strike apply.
     Strike,
     /// Once the attacks going off struck: the tick's shots become launches.
@@ -237,11 +222,6 @@ pub enum ActionsSet {
     /// Once the tick's damage is dealt and before units die: what the damage launched lands,
     /// and the sources push what the tick spent.
     Resolve,
-    /// Once the tick's damage is dealt and before units die: passives and holds push their
-    /// grants.
-    HoldAtResolve,
-    /// Passives and holds push the grants of what the tick changed.
-    HoldAtEnd,
 }
 
 impl ModuleSet for ActionsSet {
@@ -255,9 +235,7 @@ impl ModuleSet for ActionsSet {
             Self::Queue => stage(SimSet::Inputs).after(Self::Learn),
             Self::Trade => stage(SimSet::Inputs).after(Self::Queue),
             Self::Order => stage(SimSet::Inputs).after(Self::Trade),
-            Self::HoldAtInputs => {
-                (stage(SimSet::Inputs).after(Self::Order)).before(StatsSet::GrantAtInputs)
-            }
+            Self::HoldAtInputs => stage(SimSet::Inputs).after(Self::Order),
             Self::Chase => stage(SimSet::Act),
             Self::WindUp => stage(SimSet::Act).after(Self::Chase),
             Self::Start => stage(SimSet::Act).after(Self::WindUp),
@@ -266,21 +244,12 @@ impl ModuleSet for ActionsSet {
             Self::Trigger => stage(SimSet::Hit).after(Self::Hit),
             Self::Deliver => stage(SimSet::Hit).after(Self::Trigger),
             Self::Pay => stage(SimSet::Hit).after(Self::Deliver),
-            Self::HoldAtStrike => {
-                (stage(SimSet::Hit).after(Self::Pay)).before(StatsSet::GrantAtStrike)
-            }
-            Self::Strike => {
-                (stage(SimSet::Hit).after(Self::HoldAtStrike)).after(StatsSet::GrantAtStrike)
-            }
+            Self::Strike => stage(SimSet::Hit).after(Self::Pay),
             Self::Fire => stage(SimSet::Hit).after(Self::Strike),
             Self::Cast => stage(SimSet::Hit).after(Self::Fire),
             Self::Launch => stage(SimSet::Hit).after(Self::Cast),
-            Self::Land => (stage(SimSet::Hit).after(Self::Launch)).before(StatsSet::Interval),
+            Self::Land => stage(SimSet::Hit).after(Self::Launch),
             Self::Resolve => stage(SimSet::Resolve),
-            Self::HoldAtResolve => {
-                (stage(SimSet::Resolve).after(Self::Resolve)).before(StatsSet::GrantAtResolve)
-            }
-            Self::HoldAtEnd => stage(SimSet::Vision).before(StatsSet::GrantAtEnd),
         }
     }
 }
@@ -304,12 +273,8 @@ impl Module for Actions {
         d.require::<ActionSlots, ActionProgress>();
         d.fact::<ActionLoad>(ActionLoad::build);
         d.book::<ActionBook>(ActionLoad::book);
-        d.book::<ParamBook>(ActionLoad::param_book);
         d.book::<EffectListBook>(ActionLoad::effects);
         d.book::<SlotKindBook>(SlotKindBook::build);
-        d.listed::<ModifierEffectData>();
-        d.listed::<PurgeEffectData>();
-        d.listed::<RestoreEffectData>();
         d.listed::<SpawnEffectData>();
         d.column::<ActionsColumn, RowReads>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
@@ -319,13 +284,7 @@ impl Module for Actions {
         d.rule(Self::rule);
         d.fact::<ActionRanks>(ActionRanks::build);
         d.rule(ActionRanks::rule);
-        d.fact::<ModifierAppliers>(ModifierAppliers::build);
-        d.fact::<ModifierWays>(ModifierWays::build);
-        d.rule(Self::passives_rule);
-        d.rule(ModifierWays::rule);
-        d.extend::<StatGraph>(ModifierWays::stat_edges);
         d.extend::<NamedScripts>(Self::named_scripts);
-        d.extend::<NamedScripts>(ModifierWays::named_scripts);
         d.extend::<NamedMessages>(Self::named_messages);
         d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
@@ -336,24 +295,10 @@ impl Module for Actions {
     }
 
     /// Adds the actions to a match whose core is installed, with none loaded yet, and the holds
-    /// of every action: its charges as each tick starts, which a cast of any match draws; and,
-    /// in a match with stats, whose modifiers a passive is, its passives then and as each stage
-    /// that changes ranks or cooldowns ends. The start of an action is the abilities'.
+    /// of every action's charges as each tick starts, which a cast of any match draws. The start
+    /// of an action is the abilities'.
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
         cx.add(ActionsSet::HoldAtInputs, Holds::hold_charges);
-        if cx.has(Capability::Stats) {
-            cx.add(
-                ActionsSet::HoldAtInputs,
-                Holds::want_passives.after(Holds::hold_charges),
-            );
-            for set in [
-                ActionsSet::HoldAtStrike,
-                ActionsSet::HoldAtResolve,
-                ActionsSet::HoldAtEnd,
-            ] {
-                cx.add(set, Holds::want_passives);
-            }
-        }
     }
 }
 
@@ -367,11 +312,9 @@ pub mod internals {
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
     use campfire_script::{Filter, HookSet, MatchNames, NameKind, UnknownName};
-    use campfire_stats::{ParamBook, Stats};
     use campfire_units::{PoolCost, PoolId, StatId};
     use campfire_values::{
-        ActionId, DamageKind, ModifierId, NameId, PackageIndex, Speed, Tag, TrackId, TypeScope,
-        UnitType,
+        ActionId, DamageKind, ModifierId, PackageIndex, Speed, Tag, TrackId, TypeScope, UnitType,
     };
 
     use crate::Actions;
@@ -508,12 +451,12 @@ pub mod internals {
         pub speed: Option<Speed>,
     }
 
-    /// The names of an action's effect lists as a match's world resolves them: its names, its param
-    /// book, and the modifiers of the action's package.
+    /// The names of an action's effect lists as a match's world resolves them: its names, the
+    /// action's params as its data names them, and the modifiers of the action's package.
     #[derive(Debug)]
     pub struct MatchEffectNames<'w> {
         world: &'w World,
-        action: ActionId,
+        data: &'w ActionData,
         package: PackageIndex,
     }
 
@@ -607,7 +550,7 @@ pub mod internals {
             data: &ActionData,
         ) {
             let mut lists = world.remove_resource::<EffectListBook>().unwrap();
-            let names = MatchEffectNames::new(world, action, package);
+            let names = MatchEffectNames::new(world, data, package);
             lists
                 .push(action, data, &names)
                 .expect("a test's effect lists name what its match has");
@@ -698,10 +641,10 @@ pub mod internals {
     }
 
     impl<'w> MatchEffectNames<'w> {
-        pub const fn new(world: &'w World, action: ActionId, package: PackageIndex) -> Self {
+        pub const fn new(world: &'w World, data: &'w ActionData, package: PackageIndex) -> Self {
             MatchEffectNames {
                 world,
-                action,
+                data,
                 package,
             }
         }
@@ -709,10 +652,10 @@ pub mod internals {
 
     impl EffectNames for MatchEffectNames<'_> {
         fn param(&self, name: &DeclaredName) -> Result<usize, UnknownName> {
-            self.world
-                .resource::<ParamBook>()
-                .actions()
-                .named(self.action.index(), name.as_str())
+            self.data
+                .params
+                .keys()
+                .position(|held| held == name)
                 .ok_or_else(|| UnknownName::new(NameKind::Param, name))
         }
 
@@ -731,7 +674,9 @@ pub mod internals {
         }
 
         fn modifier(&self, name: &DeclaredName) -> Result<ModifierId, UnknownName> {
-            Stats::modifier(self.world, self.package, name.as_str())
+            let modifiers = self.world.resource::<MatchNames>().table::<ModifierId>();
+            modifiers
+                .and_then(|modifiers| modifiers.named((self.package, name.as_str())))
                 .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
         }
 

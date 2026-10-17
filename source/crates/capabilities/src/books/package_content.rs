@@ -187,7 +187,7 @@ mod tests {
             ]
         );
         // Exactly one effect's key, of a module or planned, at every depth.
-        let unknown = "unknown field `bogus`, expected one of `modifier`, `purge`, `restore`, `spawn`, `xp`, `damage`, `heal`, `move`, `launch`, `loot`, `noise`, `to`";
+        let unknown = "unknown field `bogus`, expected one of `spawn`, `modifier`, `purge`, `restore`, `xp`, `damage`, `heal`, `move`, `launch`, `loot`, `noise`, `to`";
         for (list, message) in [
             ("[{}]", "exactly one effect"),
             (r#"[{ to = "source" }]"#, "exactly one effect"),

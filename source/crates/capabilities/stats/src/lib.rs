@@ -15,9 +15,10 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
+use campfire_actions::ActionsSet;
 use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
-    StateFields,
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, NamedScripts, ServerForm,
+    SetPlace, StateFields,
 };
 use campfire_math::Num;
 use campfire_players::Player;
@@ -28,6 +29,8 @@ use campfire_units::{
 };
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
+use crate::action_params::ActionParams;
+use crate::action_passives::ActionPassives;
 use crate::application::{Adding, ApplyAt};
 use crate::aura_carriers::AuraCarriers;
 use crate::modifier_adds::ModifierAdd;
@@ -36,6 +39,8 @@ use crate::stats_column::RowReads;
 
 use crate::modifier_intervals::IntervalDue;
 
+mod action_params;
+mod action_passives;
 mod application;
 mod applier;
 mod applier_param;
@@ -57,8 +62,10 @@ mod live_param;
 mod mode_pools_data;
 mod mode_stats_data;
 mod modifier_adds;
+mod modifier_appliers;
 mod modifier_book;
 mod modifier_data;
+mod modifier_effect_data;
 mod modifier_ends;
 mod modifier_events;
 mod modifier_handle;
@@ -67,6 +74,7 @@ mod modifier_intervals;
 mod modifier_param_table;
 mod modifier_params;
 mod modifier_spec;
+mod modifier_ways;
 mod modifiers;
 mod modifiers_data;
 mod move_speed_cap;
@@ -80,8 +88,10 @@ mod player_modifiers;
 mod pool_book;
 mod pool_data;
 mod pools;
+mod purge_effect_data;
 mod refresh;
 mod refresh_scratch;
+mod restore_effect_data;
 mod stat_book;
 mod stat_books;
 mod stat_change;
@@ -106,8 +116,8 @@ pub use crate::applier::Applier;
 pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
 pub use crate::error::{
-    EdgeError, ModifierError, ModifierProblem, ModifiersDataError, SpecError, StatGraphError,
-    StatsRefusal, UnitStartError,
+    AppliedError, EdgeError, ModifierError, ModifierProblem, ModifiersDataError, SpecError,
+    StatGraphError, StatsRefusal, UnitStartError, Way,
 };
 pub use crate::grant_pass::GrantPass;
 pub use crate::grants::{Grant, GrantChange, GrantFrom, Grants, GrantsIter, UnitGrants};
@@ -123,8 +133,10 @@ pub use crate::live_carriers::LiveCarriers;
 pub use crate::live_param::{LiveParam, ParamOwner};
 pub use crate::mode_pools_data::ModePoolsData;
 pub use crate::mode_stats_data::ModeStatsData;
+pub use crate::modifier_appliers::ModifierAppliers;
 pub use crate::modifier_book::{ModifierBook, ModifierEntry, ModifierLoad, PackageModifier};
 pub use crate::modifier_data::{AuraData, ModifierData, Reapply};
+pub use crate::modifier_effect_data::ModifierEffectData;
 pub use crate::modifier_ends::ModifierEnds;
 pub use crate::modifier_events::ModifierEvents;
 pub use crate::modifier_handle::{HandleData, HandleOf, ModifierHandle};
@@ -135,6 +147,7 @@ pub use crate::modifier_params::ModifierParams;
 pub use crate::modifier_spec::{
     AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
 };
+pub use crate::modifier_ways::ModifierWays;
 pub use crate::modifiers::modifier_clocks::{Clock, ModifierClocks, Spent};
 pub use crate::modifiers::{Absorbed, Carried, Modifiers, Touched};
 pub use crate::modifiers_data::ModifiersData;
@@ -147,7 +160,9 @@ pub use crate::player_modifiers::PlayerModifiers;
 pub use crate::pool_book::{PoolBook, PoolStats};
 pub use crate::pool_data::PoolData;
 pub use crate::pools::Pools;
+pub use crate::purge_effect_data::PurgeEffectData;
 pub use crate::refresh::Refresh;
+pub use crate::restore_effect_data::RestoreEffectData;
 pub use crate::stat_book::StatBook;
 pub use crate::stat_change::StatChange;
 pub use crate::stat_graph::StatGraph;
@@ -236,9 +251,12 @@ impl ModuleSet for StatsSet {
         let stage = SetPlace::stage;
         match self {
             Self::Expire | Self::Regenerate => SetPlace::at(UnitsSet::Begin),
-            Self::GrantAtInputs => stage(SimSet::Inputs).after(UnitsSet::Begin),
-            Self::GrantAtStrike | Self::Interval => stage(SimSet::Hit),
-            Self::GrantAtResolve => stage(SimSet::Resolve),
+            Self::GrantAtInputs => stage(SimSet::Inputs).after(ActionsSet::HoldAtInputs),
+            Self::GrantAtStrike => {
+                (stage(SimSet::Hit).after(ActionsSet::Pay)).before(ActionsSet::Strike)
+            }
+            Self::Interval => stage(SimSet::Hit).after(ActionsSet::Land),
+            Self::GrantAtResolve => stage(SimSet::Resolve).after(ActionsSet::Resolve),
             Self::ClearDead => stage(SimSet::Resolve).after(Self::GrantAtResolve),
             Self::Hold => stage(SimSet::Resolve).after(Self::ClearDead),
             Self::GrantAtEnd => stage(SimSet::Vision).before(UnitsSet::End),
@@ -280,6 +298,16 @@ impl Module for Stats {
         d.extend::<StateFields>(ModifiersData::state_fields);
         d.extend::<DeclaredTags>(ModifiersData::granted_tags);
         d.book::<ModifierBook>(ModifierBook::build);
+        d.book::<ParamBook>(ActionParams::book);
+        d.listed::<ModifierEffectData>();
+        d.listed::<PurgeEffectData>();
+        d.listed::<RestoreEffectData>();
+        d.fact::<ModifierAppliers>(ModifierAppliers::build);
+        d.fact::<ModifierWays>(ModifierWays::build);
+        d.rule(PassiveData::rule);
+        d.rule(ModifierWays::rule);
+        d.extend::<StatGraph>(ModifierWays::stat_edges);
+        d.extend::<NamedScripts>(ModifierWays::named_scripts);
         d.fact::<ModifierNames>(ModifierBook::names_fact);
         d.fact::<ModifierParamTable>(ModifierParamTable::build);
         d.fact::<StatGraph>(StatGraph::build);
@@ -322,16 +350,17 @@ impl Module for Stats {
         if regenerates {
             cx.add(StatsSet::Regenerate, Refresh::regenerate);
         }
+        // The actions' passives and holds push their grants right before each pass applies them.
         for set in [
             StatsSet::GrantAtInputs,
             StatsSet::GrantAtStrike,
             StatsSet::GrantAtEnd,
         ] {
-            cx.add(set, GrantPass::run);
+            cx.add(set, (ActionPassives::want, GrantPass::run).chain());
         }
         cx.add(
             StatsSet::GrantAtResolve,
-            (PlayerGrants::want, GrantPass::run).chain(),
+            (ActionPassives::want, PlayerGrants::want, GrantPass::run).chain(),
         );
         cx.add(StatsSet::ClearDead, ModifierEnds::clear_dead_modifiers);
         if intervals {

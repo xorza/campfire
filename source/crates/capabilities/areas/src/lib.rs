@@ -12,13 +12,13 @@
 
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, ActionsSet, ModifierAppliers};
+use campfire_actions::{ActionTarget, ActionsSet};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
 use campfire_sim::{Capability, SimSet, StableId};
-use campfire_stats::StatsSet;
+use campfire_stats::{ModifierAppliers, StatsSet};
 use campfire_units::{DeliveryEntity, UnitGrid, UnitTypes};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 

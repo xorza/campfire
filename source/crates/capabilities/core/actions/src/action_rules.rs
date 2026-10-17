@@ -8,8 +8,7 @@ use campfire_declare::{
 use campfire_players::ResourceBook;
 use campfire_script::{NameKind, ScriptRole, UnknownName};
 use campfire_sim::Capability;
-use campfire_stats::{ModifiersData, PassiveData};
-use campfire_units::PoolNames;
+use campfire_units::{ModifierNames, PoolNames};
 use campfire_values::{EngineTag, Names, PackageIndex};
 
 use crate::Actions;
@@ -18,7 +17,7 @@ use crate::action_kind::ActionKind;
 use crate::actions_data::ActionsData;
 use crate::cost_target::CostTarget;
 use crate::delivery_data::DeliveryData;
-use crate::error::{ActionProblem, AppliedError, KindError, SlotError};
+use crate::error::{ActionProblem, KindError, SlotError};
 use crate::kind_data::KindData;
 use crate::list_hook::ListHook;
 use crate::listed_effect::effect_data::EffectData;
@@ -86,40 +85,6 @@ impl Actions {
         Ok(())
     }
 
-    /// The rule of the passives: a modifier is the passive of one owner of its package at most,
-    /// of its unit types by `passive` and its actions by `passive_modifier`, as two would share
-    /// its hold.
-    pub(crate) fn passives_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
-        for (package, source) in cx.packages() {
-            let types = cx.types().iter().filter(|unit| unit.package == package);
-            let types = types.filter_map(|unit| {
-                let passive = unit.data.section::<PassiveData>()?;
-                Some((BookPlace::UnitType(unit.place()), &passive.0))
-            });
-            let actions = source.content.get::<ActionsData>();
-            let actions = actions.into_iter().flat_map(|actions| &actions.0);
-            let actions = actions.filter_map(|(id, action)| {
-                let at = BookPlace::Entry {
-                    table: ActionsData::KEY,
-                    name: id.clone(),
-                };
-                Some((at, action.passive_modifier.as_ref()?))
-            });
-            let mut held: BTreeMap<&DeclaredName, BookPlace> = BTreeMap::new();
-            for (owner, modifier) in types.chain(actions) {
-                if let Some(first) = held.get(modifier) {
-                    let problem = AppliedError::SharedPassive {
-                        modifier: modifier.clone(),
-                        first: first.clone(),
-                    };
-                    return Err(BookError::rule(package, owner, problem));
-                }
-                held.insert(modifier, owner);
-            }
-        }
-        Ok(())
-    }
-
     /// The rules of every package's actions and of its unit types' slots: each action's fields of
     /// its kind, the capabilities its kind, its delivery and its effects use, its effects' units,
     /// the names of its costs, its modifiers and its params; each slot of a unit type holds an
@@ -131,11 +96,12 @@ impl Actions {
         let no_resources = Names::default();
         let resources = cx.book_if::<ResourceBook>()?;
         let resources = resources.map_or(&no_resources, |resources| &*resources.0);
+        let modifiers = cx.fact_if::<ModifierNames>()?;
+        let modifiers = modifiers.map(|modifiers| &*modifiers.0);
         for (package, source) in cx.packages() {
             let Some(actions) = source.content.get::<ActionsData>() else {
                 continue;
             };
-            let modifiers = source.content.get::<ModifiersData>();
             for (id, action) in &actions.0 {
                 let at = ActionAt {
                     cx,
@@ -156,7 +122,9 @@ impl Actions {
                     return Err(at.unknown(NameKind::Cost, name));
                 }
                 let held = |name: &&DeclaredName| {
-                    modifiers.is_some_and(|modifiers| modifiers.0.contains_key(*name))
+                    modifiers.is_some_and(|modifiers| {
+                        modifiers.named((package, name.as_str())).is_some()
+                    })
                 };
                 if let Some(name) = action.modifiers().find(|name| !held(name)) {
                     return Err(at.unknown(NameKind::Modifier, name));

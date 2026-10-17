@@ -15,7 +15,7 @@ pub struct Action {
     pub package: PackageIndex,
     pub kind: KindSpec,
     /// The modifier its unit holds while it has a rank, and whether only while it is ready.
-    pub(crate) passive: Option<Passive>,
+    pub passive: Option<Passive>,
     /// The modifier its unit holds while its toggle is on or its channel runs.
     pub hold: Option<ModifierId>,
     pub aim: Aim,
@@ -36,7 +36,7 @@ pub struct Action {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Passive {
     pub modifier: ModifierId,
-    pub(crate) while_ready: bool,
+    pub while_ready: bool,
 }
 
 /// What an action aims at, as a match runs it: a unit target's filter resolved against the

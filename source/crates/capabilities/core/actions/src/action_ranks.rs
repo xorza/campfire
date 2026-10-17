@@ -13,7 +13,7 @@ use crate::type_slots_data::TypeSlotsData;
 /// The ranks of each package's actions, as their slots give them, package by package: what an
 /// action loads with, and the ranks a way of a modifier applies it at.
 #[derive(Debug, Default)]
-pub(crate) struct ActionRanks(Vec<PackageRanks>);
+pub struct ActionRanks(Vec<PackageRanks>);
 
 /// The ranks of one package's actions.
 #[derive(Debug)]
@@ -65,7 +65,7 @@ impl ActionRanks {
     }
 
     /// The ranks of the action `id` of the package at `package`; none for a rules package's.
-    pub(crate) fn of(&self, package: PackageIndex, id: &str) -> Option<u8> {
+    pub fn of(&self, package: PackageIndex, id: &str) -> Option<u8> {
         match &self.0[usize::from(package)] {
             PackageRanks::Slotted(ranks) => Some(ranks.get(id).copied().unwrap_or(1)),
             &PackageRanks::Loadout(ranks) => Some(ranks),

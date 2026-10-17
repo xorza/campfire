@@ -1,8 +1,8 @@
-use campfire_actions::{ModifierAppliers, Way};
 use campfire_common::Ticks;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamedScripts, PerType, ScriptParams};
 use campfire_script::{Hook, ScriptId, ScriptRole};
 use campfire_sim::TickRate;
+use campfire_stats::{ModifierAppliers, Way};
 use campfire_units::ScriptBook;
 
 use crate::ai_data::AiData;

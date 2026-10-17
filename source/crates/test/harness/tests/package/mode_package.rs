@@ -5,9 +5,8 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_actions::{
-    ActionDataField, ActionField, ActionKind, ActionProblem, AppliedError, EffectData, EffectRule,
-    EffectTo, LaunchLists, ListHook, ListedEffect, MeteredKind, PlannedEffect, PurgeEffectData,
-    SlotError, Way,
+    ActionDataField, ActionField, ActionKind, ActionProblem, EffectData, EffectRule, EffectTo,
+    LaunchLists, ListHook, ListedEffect, MeteredKind, PlannedEffect, SlotError,
 };
 use campfire_areas::{AreaDeliveryError, LaunchEffectData};
 use campfire_capabilities::{CapabilityError, Release};
@@ -32,7 +31,10 @@ use campfire_projectiles::{ProjectileDeliveryError, ProjectileError};
 use campfire_script::internals::Undefined;
 use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::{ModifierProblem, ModifiersDataError, StatGraphError, UnitStartError};
+use campfire_stats::{
+    AppliedError, ModifierProblem, ModifiersDataError, PurgeEffectData, StatGraphError,
+    UnitStartError, Way,
+};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{HeightGrid, TypesError, UnitTypeError};
 use campfire_values::{EngineEnum, Number, Scalar, Stat, TimeTooLarge};

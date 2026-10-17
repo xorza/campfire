@@ -2216,10 +2216,8 @@ dependencies = [
  "campfire-script",
  "campfire-sim",
  "campfire-state-types",
- "campfire-stats",
  "campfire-units",
  "campfire-values",
- "derive_more",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -3050,6 +3048,7 @@ name = "campfire-stats"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-actions",
  "campfire-codec",
  "campfire-common",
  "campfire-declare",

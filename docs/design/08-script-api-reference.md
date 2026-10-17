@@ -431,13 +431,13 @@ Each enum's module holds its members, and the function `named`, which gives the 
 
 | Field | Capability | Status |
 | --- | --- | --- |
-| `modifier` | core | since 1.0 |
-| `purge` | core | since 1.0 |
-| `restore` | core | since 1.0 |
 | `spawn` | core | since 1.0 |
 | `to` | core | since 1.0 |
 | `loot` | core | planned |
 | `noise` | core | planned |
+| `modifier` | stats | since 1.0 |
+| `purge` | stats | since 1.0 |
+| `restore` | stats | since 1.0 |
 | `xp` | progression | since 1.0 |
 | `damage` | combat | since 1.0 |
 | `heal` | combat | since 1.0 |

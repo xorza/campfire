@@ -4,10 +4,9 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, NameKind, UnknownName};
-use campfire_stats::{ModifierBook, ModifierParamTable, ParamBook, ParamTable, ParamTables};
 use campfire_units::{ModifierNames, PoolId, PoolNames, ScriptBook, StatId, StatNames, UnitTypes};
 use campfire_values::{
-    ActionId, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, Stat, Tag, TrackId,
+    ActionId, DamageKind, FilterData, ModifierId, Names, PackageIndex, Param, Stat, Tag, TrackId,
     TypeScope, UnitType,
 };
 
@@ -26,12 +25,10 @@ use crate::error::ActionError;
 use crate::flights::Flights;
 use crate::track_names::TrackNames;
 
-/// Every package's actions as a match loads them: the book, each action's params, one run per
-/// action, and its effect lists.
+/// Every package's actions as a match loads them: the book, and each action's effect lists.
 #[derive(Debug, Default)]
 pub struct ActionLoad {
     pub book: ActionBook,
-    pub params: ParamTable,
     pub effects: EffectListBook,
 }
 
@@ -98,20 +95,26 @@ impl ActionLoad {
                 parts,
             },
         );
-        let run = self.params.push(&data.params, |stat| {
-            let found = names.stats.and_then(|stats| stats.named(stat.name()));
-            found.ok_or_else(|| {
-                BookError::unknown(index, at(), UnknownName::new(NameKind::Stat, stat))
-            })
-        })?;
-        debug_assert_eq!(run, action.index(), "one run of params per action");
+        // Each stat a param scales by is the mode's: stats builds the params' table from them.
+        let scaled = data.params.values().filter_map(|param| match param {
+            Param::Scaling(scaling) => Some(scaling.ratios.keys().chain(scaling.bonus.keys())),
+            Param::Ranked(_) => None,
+        });
+        let unknown = scaled.flatten().find(|stat| {
+            names
+                .stats
+                .is_none_or(|stats| stats.named(stat.name()).is_none())
+        });
+        if let Some(stat) = unknown {
+            return Err(BookError::unknown(
+                index,
+                at(),
+                UnknownName::new(NameKind::Stat, stat),
+            ));
+        }
         if !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty()) {
             let mut effects = mem::take(&mut self.effects);
-            let pushed = effects.push(
-                action,
-                data,
-                &names.of_package(index, Some((action, &self.params))),
-            );
+            let pushed = effects.push(action, data, &names.of_package(index, Some(data)));
             self.effects = effects;
             pushed.map_err(|error| Self::error(index, id, error))?;
         }
@@ -138,20 +141,6 @@ impl ActionLoad {
     /// Every action's effect lists, as their load holds them.
     pub fn effects(cx: &BookCx<'_>) -> Result<EffectListBook, BookError> {
         Ok(cx.fact::<Self>()?.effects.clone())
-    }
-
-    /// The book of every action's and modifier's params, and where each action holds the params
-    /// its modifiers read of it.
-    pub fn param_book(cx: &BookCx<'_>) -> Result<ParamBook, BookError> {
-        let mut tables = ParamTables::default();
-        if let Some(modifiers) = cx.fact_if::<ModifierParamTable>()? {
-            tables.modifiers = modifiers.0.clone();
-        }
-        tables.actions = cx.fact::<Self>()?.params.clone();
-        let none = Names::default();
-        let modifiers = cx.book_if::<ModifierBook>()?;
-        let appliers = modifiers.map_or(&none, |modifiers| modifiers.appliers());
-        Ok(ParamBook::new(tables, appliers))
     }
 }
 
@@ -204,7 +193,7 @@ impl<'c> LoadNames<'c> {
     const fn of_package<'n>(
         &'n self,
         package: PackageIndex,
-        action: Option<(ActionId, &'n ParamTable)>,
+        action: Option<&'n ActionData>,
     ) -> PackageNames<'n, 'c> {
         PackageNames {
             names: self,
@@ -219,7 +208,8 @@ impl<'c> LoadNames<'c> {
 struct PackageNames<'n, 'c> {
     names: &'n LoadNames<'c>,
     package: PackageIndex,
-    action: Option<(ActionId, &'n ParamTable)>,
+    /// The data of the action whose effect lists resolve, whose params they name.
+    action: Option<&'n ActionData>,
 }
 
 impl ActionNames for PackageNames<'_, '_> {
@@ -283,8 +273,10 @@ impl ActionNames for PackageNames<'_, '_> {
 
 impl EffectNames for PackageNames<'_, '_> {
     fn param(&self, name: &DeclaredName) -> Result<usize, UnknownName> {
-        let (action, params) = self.action.expect("an effect list is of an action");
-        let param = params.named(action.index(), name.as_str());
+        let action = self.action.expect("an effect list is of an action");
+        // A param's place is its place among the action's, by name, as the params' table holds
+        // them.
+        let param = action.params.keys().position(|held| held == name);
         param.ok_or_else(|| UnknownName::new(NameKind::Param, name))
     }
 

@@ -12,12 +12,13 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
-use campfire_actions::{ActionsSet, ModifierAppliers};
+use campfire_actions::ActionsSet;
 use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, Declarations, InstallCx, Module, ModuleSet, NamedScripts, SetPlace,
 };
 use campfire_sim::{Capability, SimSet};
+use campfire_stats::ModifierAppliers;
 use campfire_units::{BodyUnit, Due};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 

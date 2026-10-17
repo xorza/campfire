@@ -1,8 +1,8 @@
-use campfire_actions::{ActionsData, DeliveryData, ModifierAppliers, Targeting, Way};
+use campfire_actions::{ActionsData, DeliveryData, Targeting};
 use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, TypePlace};
 use campfire_script::{NameKind, UnknownName};
-use campfire_stats::{ModifierBook, ModifiersData};
+use campfire_stats::{ModifierAppliers, ModifierBook, ModifiersData, Way};
 use campfire_units::UnitTypes;
 
 use crate::Areas;

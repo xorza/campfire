@@ -1,11 +1,12 @@
+use campfire_actions::ActionsData;
 use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, Fact};
 use campfire_script::{AppliedModifier, Applies, ScriptUses};
-use campfire_stats::{ModifiersData, PassiveData};
 use campfire_values::{PackageIndex, PackagePath};
 
-use crate::actions_data::ActionsData;
 use crate::error::Way;
+use crate::modifiers_data::ModifiersData;
+use crate::passive_data::PassiveData;
 
 /// What applies each package's modifiers, as data and scripts name them, before the ways pass on:
 /// a fact the modules whose data applies a modifier extend. A script applies the modifiers of

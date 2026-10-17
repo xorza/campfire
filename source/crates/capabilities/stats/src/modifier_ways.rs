@@ -1,18 +1,19 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use campfire_actions::{ActionData, ActionRanks, ActionsData};
 use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, BookPlace, Fact, NamedScripts, ScriptParams, Section};
 use campfire_math::Num;
 use campfire_script::{NameKind, ParamProblem, ScriptRole, ScriptUses, UnknownName};
 use campfire_sim::TickRate;
-use campfire_stats::{EdgeError, ModifierData, ModifiersData, StatGraph};
 use campfire_values::{PackageIndex, Param};
 
-use crate::action_data::ActionData;
-use crate::action_ranks::ActionRanks;
-use crate::actions_data::ActionsData;
+use crate::error::EdgeError;
 use crate::error::{AppliedError, Way};
 use crate::modifier_appliers::{ModifierAppliers, Pass};
+use crate::modifier_data::ModifierData;
+use crate::modifiers_data::ModifiersData;
+use crate::stat_graph::StatGraph;
 
 /// The ways each package's modifiers are applied, package by package: those `ModifierAppliers`
 /// gives, each passed on until nothing changes.
