@@ -68,7 +68,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
         .unwrap();
     change(&mut terms);
     Offer {
-        terms,
+        terms: Arc::new(terms),
         times: SessionTimes::DEFAULT,
         challenge: ConnectChallenge::new([9; 32]),
     }

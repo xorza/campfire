@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use campfire_protocol::{InputChain, InputHash};
 
 /// The heads of the player's chain from a point on, by seq: where the chain stood then, and the
@@ -8,7 +10,7 @@ pub(crate) struct ChainHistory {
     /// The seq of the first input after `base`.
     first_seq: u64,
     base: InputHash,
-    heads: Vec<InputHash>,
+    heads: VecDeque<InputHash>,
 }
 
 impl ChainHistory {
@@ -17,7 +19,7 @@ impl ChainHistory {
         Self {
             first_seq: chain.next_seq(),
             base: chain.head(),
-            heads: Vec::new(),
+            heads: VecDeque::new(),
         }
     }
 
@@ -28,7 +30,7 @@ impl ChainHistory {
 
     /// Notes the head after the chain's next input.
     pub(crate) fn push(&mut self, head: InputHash) {
-        self.heads.push(head);
+        self.heads.push_back(head);
     }
 
     /// The head after the chain's first `next_seq` inputs; none outside what it holds.

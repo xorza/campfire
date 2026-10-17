@@ -203,7 +203,7 @@ impl Lobby {
         &self.checked
     }
 
-    pub const fn terms(&self) -> &SessionTerms {
+    pub fn terms(&self) -> &SessionTerms {
         &self.offering.terms
     }
 
@@ -271,7 +271,7 @@ impl Lobby {
             return;
         }
         let lobby = world.remove_resource::<Self>().expect("the lobby is open");
-        let terms = lobby.offering.terms.clone();
+        let terms = SessionTerms::clone(&lobby.offering.terms);
         let mut joined = lobby.joined.into_iter();
         let mut links = Vec::with_capacity(lobby.players);
         let mut slots = Vec::with_capacity(terms.slots.len());

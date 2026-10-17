@@ -650,7 +650,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - A relationship from a slot's entity to its link (N-18). Waits for Q16 in `review-architecture_QUESTIONS.md`.
 
 **6.5 Allocations on the network paths.** Touches `net` and `protocol`.
-- The offer keeps its encoded body. The ack has a bounded array. `Version` keeps its tag text. The chain history is a `VecDeque` (N-25).
+- The ack has a bounded array (N-25), whose bound comes with the input message's largest encoding of 1.1 (N-1); it waits for 1.1.
 
 ### Phase 7: visit what is due or changed
 
