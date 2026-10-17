@@ -137,7 +137,11 @@ impl ModuleSet for ProductionSet {
         let inputs = || SetPlace::stage(SimSet::Inputs);
         match self {
             Self::Commands => SetPlace::at(ActionsSet::Queue),
-            Self::CheckBuilds => inputs().after(StatsSet::GrantAtInputs),
+            // After the actions' last step of Inputs too, as a match without stats has no grant
+            // to order through.
+            Self::CheckBuilds => inputs()
+                .after(ActionsSet::HoldAtInputs)
+                .after(StatsSet::GrantAtInputs),
             Self::Start => SetPlace::stage(SimSet::Act).after(ActionsSet::Start),
             Self::Finish => SetPlace::stage(SimSet::Mode),
             Self::Supply => SetPlace::at(UnitsSet::End),

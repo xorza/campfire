@@ -18,7 +18,7 @@ use campfire_orders::Ai;
 use campfire_players::{Player, PlayerResources};
 use campfire_script::{PlannedCapability, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimUpdate, StateRegistry};
+use campfire_sim::{SimUpdate, SimWorld, StateRegistry};
 use campfire_store::internals::{CargoManifest, SourceFiles};
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_units::UnitTypeCore;
@@ -141,6 +141,59 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
     }
     let combat_only = installed(&[Stats, Combat], Some(scripts));
     assert!(combat_only.contains_resource::<ActionBook>());
+}
+
+#[test]
+fn every_pair_of_capabilities_with_only_what_they_need_orders_every_pair_of_their_systems() {
+    // A step that a module orders against reaches it only through the modules installed, and
+    // the strict schedule refuses a pair of systems no step orders as the first tick builds it:
+    // so the match of each pair of capabilities, each with only what it needs, builds, for a
+    // server that runs scripts, one that runs none, and a predicting client. Production and
+    // navigation alone are such a pair: production's builds and gathers, which navigation
+    // brings, order against the actions' steps with no stats to order through.
+    let rows = Release::rows();
+    let limits = ScriptLimits {
+        per_call: NonZeroU64::MIN,
+        player: 1,
+        think: 1,
+        mode: 1,
+    };
+    let scripts = ScriptPools { limits, players: 1 };
+    let built: Vec<Capability> = Capability::ALL
+        .into_iter()
+        .filter(|&capability| capability != Mode)
+        .collect();
+    let mut matches = 0;
+    for (at, &first) in built.iter().enumerate() {
+        for &second in &built[at..] {
+            let mut declared = vec![first, second];
+            declared.dedup();
+            let mut next = 0;
+            while let Some(&capability) = declared.get(next) {
+                let needs = rows
+                    .needs(capability)
+                    .expect("a built capability has its row");
+                for &need in needs {
+                    if !declared.contains(&need) {
+                        declared.push(need);
+                    }
+                }
+                next += 1;
+            }
+            for mut game in [
+                installed(&declared, Some(scripts)),
+                installed(&declared, None),
+                Match::predicting(&declared),
+            ] {
+                game.step();
+                matches += 1;
+            }
+        }
+    }
+    // 12 capabilities a manifest declares: 12 alone and 12 * 11 / 2 = 66 pairs, three matches
+    // each.
+    assert_eq!(built.len(), 12);
+    assert_eq!(matches, (12 + 66) * 3);
 }
 
 #[test]
