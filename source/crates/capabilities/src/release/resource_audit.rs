@@ -12,8 +12,8 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, BuildFn, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind,
-    EntityParts, ExtendFn, Fact, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch,
-    Section, SpawnParts,
+    EntityParts, ExtendFn, Fact, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, RuleFn,
+    Scratch, Section, SpawnParts,
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
@@ -113,6 +113,8 @@ impl Declarations for DeclaredResources {
     fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
 
     fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn rule(&mut self, _: RuleFn) {}
 
     fn book<B: Book>(&mut self, _: BuildFn<B>) {
         self.ids.push(TypeId::of::<B>());

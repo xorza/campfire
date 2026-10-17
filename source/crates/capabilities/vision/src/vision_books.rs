@@ -13,6 +13,15 @@ use crate::vision_data::VisionData;
 use crate::vision_grid::VisionGrid;
 
 impl VisionBook {
+    /// The rule of a mode that declares vision: its map has a grid, for sight to reveal.
+    pub(crate) fn grid_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        if cx.map_section::<GridData>().is_none() {
+            let problem = VisionDataError::NoGrid;
+            return Err(BookError::rule(PackageIndex::MODE, BookPlace::Map, problem));
+        }
+        Ok(())
+    }
+
     /// The map's vision grid over its bounds, with its brush, for the match's teams; none for a
     /// map of no `[grid]`. An error for a cell that makes no grid of the bounds, a brush point
     /// that has no place on the map, points that make no simple polygon, or more teams than a

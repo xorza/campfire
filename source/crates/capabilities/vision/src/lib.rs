@@ -98,6 +98,7 @@ impl Module for Vision {
         d.component::<Sight>();
         d.book::<ByType<Sight>>(Sight::book);
         d.book::<VisionBook>(VisionBook::build);
+        d.rule(VisionBook::grid_rule);
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
         d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());

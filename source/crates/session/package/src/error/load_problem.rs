@@ -76,9 +76,6 @@ pub enum LoadProblem {
     /// The mode declares `combat`, and no damage kinds for its damage.
     #[error("the mode declares combat, and no damage kinds")]
     NoDamageKinds,
-    /// The mode declares `vision`, and its map has no grid for sight to reveal.
-    #[error("the mode declares vision, and its map has no grid")]
-    NoGrid,
     /// The mode declares `navigation`, and its map has no `[navigation]` cells to plan routes on.
     #[error("the mode declares navigation, and its map has no [navigation] cells")]
     NoPathingGrid,
@@ -155,7 +152,7 @@ pub enum LoadProblem {
     Mode(ModeError),
     /// Data at `at` breaks a rule of the module that reads it, as the module reports it.
     #[error("{at}")]
-    Book {
+    Rule {
         at: Place,
         #[source]
         problem: Problem,

@@ -8,7 +8,7 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, BookCx, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section,
+    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, SimResource};
@@ -57,6 +57,10 @@ impl Declarations for BookCells<'_, '_> {
 
     fn book<B: Book>(&mut self, build: BuildFn<B>) {
         self.0.declare_book(build);
+    }
+
+    fn rule(&mut self, rule: RuleFn) {
+        self.0.declare_rule(rule);
     }
 
     fn section<S: Section>(&mut self) {}

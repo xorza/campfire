@@ -12,7 +12,7 @@ use bevy_ecs::world::World;
 use campfire_declare::{
     Book, BuildFn, BuiltBooks, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations,
     EntityKind, EntityParts, ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, ModuleSet,
-    OneShot, Report, Role, Scratch, Section, SpawnParts,
+    OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, Ctx, RowReads, ViewColumn};
 use campfire_sim::{
@@ -139,6 +139,8 @@ impl Declarations for Installer<'_> {
     fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
 
     fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn rule(&mut self, _: RuleFn) {}
 
     fn book<B: Book>(&mut self, _: BuildFn<B>) {
         let book = (self.books.take::<B>())

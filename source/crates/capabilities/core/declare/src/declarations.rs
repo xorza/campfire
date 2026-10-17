@@ -12,7 +12,7 @@ use campfire_state_types::StateTypes;
 use campfire_values::EngineTag;
 
 use crate::book::Book;
-use crate::book_cx::{BuildFn, ExtendFn};
+use crate::book_cx::{BuildFn, ExtendFn, RuleFn};
 use crate::cache::Cache;
 use crate::callbacks::Callbacks;
 use crate::fact::Fact;
@@ -59,6 +59,10 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// `extend`, which adds the module's part to `B`, a book or a fact of a module it builds on,
     /// as soon as `B` is built.
     fn extend<B: Send + Sync + 'static>(&mut self, extend: ExtendFn<B>);
+
+    /// `rule`, a rule of the match's packages' data that the module reads, which the build of the
+    /// books checks before it builds them, and whose error is the module's own.
+    fn rule(&mut self, rule: RuleFn);
 
     /// `S`, a section of a data table that the module reads, by its key.
     fn section<S: Section>(&mut self);

@@ -116,6 +116,11 @@ fn undefined(problem: &LoadProblem, name: &str) -> bool {
     matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(error), .. } if error.undefined() == Some(Undefined::Variable(name)))
 }
 
+/// Whether `problem` is data that breaks the rule of a module whose error is `error`.
+fn rule<E: PartialEq + 'static>(problem: &LoadProblem, error: &E) -> bool {
+    matches!(problem, LoadProblem::Rule { problem, .. } if problem.get() == Some(error))
+}
+
 /// The way of the action `name`.
 fn by(name: &str) -> Way {
     Way::Action(DeclaredName::new(name).unwrap())
@@ -1616,17 +1621,14 @@ static ACTION_FLAWS: &[Flaw] = &[
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Combat, name } if name == "heal_taken"),
     ),
     flaw(MAP, Edit::Remove("grid"), MODE, |problem| {
-        matches!(problem, LoadProblem::NoGrid)
+        rule(problem, &VisionDataError::NoGrid)
     }),
     flaw(MAP, Edit::Remove("navigation"), MODE, |problem| {
         matches!(problem, LoadProblem::NoPathingGrid)
     }),
-    flaw(
-        MAP,
-        Edit::Set("grid.cell", r#""0""#),
-        MODE,
-        |problem| matches!(problem, LoadProblem::Book { problem, .. } if problem.get() == Some(&VisionDataError::Grid)),
-    ),
+    flaw(MAP, Edit::Set("grid.cell", r#""0""#), MODE, |problem| {
+        rule(problem, &VisionDataError::Grid)
+    }),
     flaw(
         MAP,
         Edit::Set("bounds", "{ min = [1, 0], max = [0, 1] }"),

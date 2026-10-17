@@ -199,7 +199,7 @@ impl<'a> LoadCheck<'a> {
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
         let engine_tags = Release::engine_tags();
         let input = packages.book_input(check.rate, &stat_order, &engine_tags);
-        let books = Release::books(&input).map_err(|error| book_error(packages, error))?;
+        let books = Release::check_books(&input).map_err(|error| book_error(packages, error))?;
         books
             .check_walkable()
             .map_err(|problem| fail(LoadProblem::Map(problem)))?;
@@ -255,11 +255,6 @@ impl<'a> LoadCheck<'a> {
             ))
         });
         passives_held_once(held.chain(action_passives(content.actions())))?;
-        if packages.manifest.capabilities.contains(Capability::Vision)
-            && packages.map.section::<GridData>().is_none()
-        {
-            return Err(LoadProblem::NoGrid);
-        }
         if packages
             .manifest
             .capabilities
@@ -1945,7 +1940,7 @@ fn rule_problem(
     if let (Some(error), BookPlace::Section(key)) = (problem.get::<NamesListError>(), &at) {
         return names_problem(key, error);
     }
-    LoadProblem::Book {
+    LoadProblem::Rule {
         at: book_place(packages, package, at),
         problem,
     }

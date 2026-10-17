@@ -10,7 +10,7 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, BuildFn, BuiltBooks, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn,
-    Fact, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section,
+    Fact, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, SimResource};
@@ -53,6 +53,8 @@ impl Declarations for LeftoverBooks<'_> {
     fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
 
     fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn rule(&mut self, _: RuleFn) {}
 
     fn book<B: Book>(&mut self, _: BuildFn<B>) {
         drop(self.0.take::<B>());

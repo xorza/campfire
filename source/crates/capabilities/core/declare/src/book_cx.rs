@@ -19,6 +19,9 @@ pub type BuildFn<B> = fn(&BookCx<'_>) -> Result<B, BookError>;
 /// How a module adds its part to a book or a fact of a module it builds on.
 pub type ExtendFn<B> = fn(&BookCx<'_>, &mut B) -> Result<(), BookError>;
 
+/// How a module checks a rule of the data it reads, which no book of its holds.
+pub type RuleFn = fn(&BookCx<'_>) -> Result<(), BookError>;
+
 /// What a match's books are built from, and the books and facts its modules declare, each built
 /// the first time a builder asks for it, its extensions added, so a builder reads the books of
 /// the modules it builds on, whatever their order (02-engine-core.md, Books built by their
@@ -30,6 +33,7 @@ pub struct BookCx<'a> {
     /// Where each package's scripts start among the match's.
     script_starts: Vec<usize>,
     cells: Vec<BookCell>,
+    rules: Vec<RuleFn>,
 }
 
 /// One declared book or fact: how it builds, what extends it, whether the match installs it, and
@@ -99,6 +103,7 @@ impl<'a> BookCx<'a> {
             type_names,
             script_starts,
             cells: Vec::new(),
+            rules: Vec::new(),
         }
     }
 
@@ -271,6 +276,20 @@ impl<'a> BookCx<'a> {
         }));
     }
 
+    /// Declares `rule`, which the build checks before any book.
+    pub fn declare_rule(&mut self, rule: RuleFn) {
+        self.rules.push(rule);
+    }
+
+    /// Checks every rule declared, in the order of their declarations; an error for the first the
+    /// data breaks.
+    pub fn check_all(&self) -> Result<(), BookError> {
+        for rule in &self.rules {
+            rule(self)?;
+        }
+        Ok(())
+    }
+
     /// Builds every book and fact declared, in the order of their declarations, each the first
     /// time it is asked for; an error for the first a build refuses.
     pub fn build_all(&self) -> Result<(), BookError> {
@@ -387,6 +406,14 @@ mod tests {
         fn share(&self, _: &View) {}
     }
 
+    /// The error of a script `path` of the mode that it does not hold.
+    fn broken(path: &str) -> BookError {
+        BookError::Script {
+            package: PackageIndex::MODE,
+            path: PackagePath::parse(path).unwrap(),
+        }
+    }
+
     fn with_cx<T>(run: impl FnOnce(BookCx<'_>) -> T) -> T {
         let none = Sections::default();
         let source = BookSource {
@@ -425,20 +452,18 @@ mod tests {
     }
 
     #[test]
-    fn the_first_error_a_build_refuses_ends_the_build() {
+    fn the_first_error_a_build_or_a_rule_refuses_ends_it() {
         with_cx(|mut cx| {
-            let refused = BookError::Script {
-                package: PackageIndex::MODE,
-                path: PackagePath::parse("scripts/none.rhai").unwrap(),
-            };
-            cx.declare_book::<Count>(|_| {
-                Err(BookError::Script {
-                    package: PackageIndex::MODE,
-                    path: PackagePath::parse("scripts/none.rhai").unwrap(),
-                })
-            });
+            cx.declare_book::<Count>(|_| Err(broken("scripts/none.rhai")));
             cx.declare_book::<Doubled>(|cx| Ok(Doubled(cx.book::<Count>()?.0)));
-            assert_eq!(cx.build_all(), Err(refused));
+            assert_eq!(cx.build_all(), Err(broken("scripts/none.rhai")));
+        });
+        // The rules check in their order, and the first the data breaks ends the check.
+        with_cx(|mut cx| {
+            cx.declare_rule(|_| Ok(()));
+            cx.declare_rule(|_| Err(broken("scripts/first.rhai")));
+            cx.declare_rule(|_| Err(broken("scripts/second.rhai")));
+            assert_eq!(cx.check_all(), Err(broken("scripts/first.rhai")));
         });
     }
 

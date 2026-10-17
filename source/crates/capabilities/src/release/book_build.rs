@@ -9,11 +9,31 @@ use crate::books::book_cells::BookCells;
 use crate::books::book_input::BookInput;
 use crate::release::Release;
 
+/// Whether a build of the books checks the rules of their data first.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Rules {
+    /// The package load's build, of data that comes in.
+    Checked,
+    /// A build of data that the load checked, or that a test makes.
+    Trusted,
+}
+
 impl Release {
     /// The books of `input`, which the package load checked, each built by the module of the
     /// match that declares it (02-engine-core.md, Books built by their owners); an error for what
-    /// the check does not see and the books cannot hold.
+    /// the books cannot hold.
     pub fn books(input: &BookInput<'_>) -> Result<Books, BookError> {
+        Self::build_books(input, Rules::Trusted)
+    }
+
+    /// The books of `input` as `books` builds them, once every rule of their data that a module
+    /// of the match declares holds, as the package load checks it; an error for the first rule
+    /// the data breaks.
+    pub fn check_books(input: &BookInput<'_>) -> Result<Books, BookError> {
+        Self::build_books(input, Rules::Checked)
+    }
+
+    fn build_books(input: &BookInput<'_>, rules: Rules) -> Result<Books, BookError> {
         let stat_order = StatOrder(input.stat_order.to_vec());
         let cap = MoveSpeedCap(input.max_move_speed.get());
         let teams = ModeTeams(input.teams.to_vec());
@@ -39,6 +59,9 @@ impl Release {
         };
         let mut cx = BookCx::new(source);
         Self::declare(input.set, &mut BookCells(&mut cx));
+        if rules == Rules::Checked {
+            cx.check_all()?;
+        }
         cx.build_all()?;
         let units = cx.take_fact::<ModeUnits>()?.unwrap_or_default();
         let map = cx

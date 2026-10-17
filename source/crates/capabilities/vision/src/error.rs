@@ -6,6 +6,9 @@ use thiserror::Error;
 /// expected failure; brushes count from 0.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum VisionDataError {
+    /// The mode declares vision, and its map has no grid for sight to reveal.
+    #[error("the mode declares vision, and its map has no grid")]
+    NoGrid,
     /// The grid's cell is not positive or beyond the world's bound, or it makes more than 2²²
     /// cells.
     #[error("the grid needs a positive cell within the world's bound and at most 2²² cells")]

@@ -19,7 +19,7 @@ use campfire_combat::ClipShots;
 use campfire_common::EnumAll;
 use campfire_declare::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section, SetPlace,
+    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
@@ -360,6 +360,8 @@ impl Declarations for DeclarationAudit {
     fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
 
     fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn rule(&mut self, _: RuleFn) {}
 
     fn book<B: Book>(&mut self, _: BuildFn<B>) {
         self.books.push(DeclaredBook {
