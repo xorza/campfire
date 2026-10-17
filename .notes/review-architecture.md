@@ -349,7 +349,6 @@ Each section gives the target shape of one system, the findings it removes, and 
   - The journal and its durable heads are a `JournaledLog` wrapper that only the server owns (N-17).
   - The live log keeps its state, the entries since the last checkpoint, and the counts. Publication streams the journal's frames through a bounded reader, as 10-sessions.md says (N-14, decision D34).
   - A record is encoded once, into the journal's frame buffer, and signed over the bytes already written. The journal worker wakes once for each frame (N-13).
-  - Begun checkpoints are a FIFO, so `begin` never waits (N-12).
 - **Controllers and seats.** `Control` is the one shape of a slot's controller, and `Controller` borrows it. The carry serializes it through one adapter. On the server, a Bevy relationship links a slot's entity and its link (N-18).
 - **Journal integrity.**
   - A read stops at the first bad frame, cuts the file there and logs a `JournalCut { bytes }` event with what it dropped, as RocksDB's default `kPointInTimeRecovery` does. The session continues from the last whole frame. A receipt promises that its inputs survive a crash, not a corruption of the medium, and 05 and 10 say so (N-15, decision D33).
@@ -654,7 +653,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `LogReplay`, the decode's signature policy, and `JournaledLog` (N-17).
 - The live log keeps state, and publication streams the journal (N-14, D34).
 - One encode for each record, and one wake of the journal worker for each frame (N-13).
-- A FIFO of begun checkpoints (N-12).
 - `check` and `apply` split, with parallel checks across slots and aux randomness from a CSPRNG for each signer (N-11).
 - One `Control` shape, and a relationship from a slot's entity to its link (N-18).
 
@@ -1041,7 +1039,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-9 | Replicated entities get `Replicate`, `Rooms` and `PredictionTarget` after their spawn | `kind_shows.rs:86-112`, `viewer.rs:136-190` | Confirmed | 7.5 |
 | N-10 | Lightyear's default features add interpolation, and the server binary links the client stack | `Cargo.toml:186`, `net/src/lib.rs:108-122` | Confirmed | 12.2 |
 | N-11 | Every signature check and signing runs on the tick thread, one slot after another, with a syscall for each signature's aux randomness | `sim_server/mod.rs:503-583`, `signer.rs:81-105` | Plausible cost | 6.4 |
-| N-12 | A checkpoint due before the last one's record arrives waits on its fsync | `checkpoints/mod.rs:75-120` | Plausible | 6.4 |
 | N-13 | Each record is encoded two or three times, with a wake for each record | `session_log/mod.rs:557-770`, `journal_records.rs:250-255` | Confirmed | 6.4 |
 | N-14 | The server keeps the whole session in memory and publishes from it, against 10-sessions.md | `session_log/mod.rs:87-88`, `session_dir/mod.rs:178-220` | Confirmed drift | 6.4 |
 | N-17 | `SessionLog` has 21 fields, a hidden replay mode and a signature mode | `session_log/mod.rs:77-120, 1137-1144` | Confirmed | 6.4 |

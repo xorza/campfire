@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use campfire_common::Tick;
 
 use crate::checkpoint::Checkpoint;
@@ -6,12 +8,13 @@ use crate::session_log::{at, offset};
 use crate::signature::Signature;
 
 /// A session's segments, in order: the first from tick 0, every other from its checkpoint, and
-/// the checkpoint begun that has no record yet.
+/// the checkpoints begun that have no record yet.
 #[derive(Debug)]
 pub(super) struct Segments {
     starts: Vec<SegmentStart>,
-    /// The checkpoint that starts the last segment, while its record has not come.
-    begun: Option<CheckpointBegun>,
+    /// The checkpoints that start the last segments, oldest first, while their records have not
+    /// come; the records come in that order.
+    begun: VecDeque<CheckpointBegun>,
 }
 
 /// Where a segment starts: the first tick it holds, and the checkpoint it starts from, which
@@ -36,7 +39,7 @@ impl Default for Segments {
                 tick: Tick::new(0),
                 checkpoint: None,
             }],
-            begun: None,
+            begun: VecDeque::new(),
         }
     }
 }
@@ -84,25 +87,37 @@ impl Segments {
             .filter_map(|segment| segment.checkpoint.as_ref())
     }
 
-    /// The checkpoint begun that has no record yet.
-    pub(super) const fn begun(&self) -> Option<&CheckpointBegun> {
-        self.begun.as_ref()
+    /// How many checkpoints begun have no record yet.
+    pub(super) fn begun_count(&self) -> usize {
+        self.begun.len()
+    }
+
+    /// The oldest checkpoint begun that has no record yet, whose record comes next.
+    pub(super) fn oldest_begun(&self) -> Option<&CheckpointBegun> {
+        self.begun.front()
+    }
+
+    /// The checkpoint begun last that has no record yet.
+    pub(super) fn latest_begun(&self) -> Option<&CheckpointBegun> {
+        self.begun.back()
     }
 
     /// Starts a segment at `begun`'s tick, whose checkpoint is begun.
     pub(super) fn begin(&mut self, begun: CheckpointBegun) {
-        debug_assert!(self.begun.is_none(), "one checkpoint is begun at a time");
         debug_assert_eq!(begun.segment, offset(self.starts.len()), "the next segment");
         self.starts.push(SegmentStart {
             tick: begun.tick,
             checkpoint: None,
         });
-        self.begun = Some(begun);
+        self.begun.push_back(begun);
     }
 
-    /// Keeps `logged` as the record of the checkpoint begun, which then has one.
+    /// Keeps `logged` as the record of the oldest checkpoint begun, which then has one.
     pub(super) fn record(&mut self, logged: LoggedCheckpoint) {
-        let begun = self.begun.take().expect("a record of the checkpoint begun");
+        let begun = self
+            .begun
+            .pop_front()
+            .expect("a record of the checkpoint begun");
         self.starts[at(begun.segment)].checkpoint = Some(logged);
     }
 }

@@ -318,10 +318,10 @@ impl SessionLog {
                 .is_none_or(|journal| fits(journal.len(), growth.journal, self.bounds.journal()))
     }
 
-    /// The bytes the session's end may still take: `END_RECORDS` records, and the record of a
+    /// The bytes the session's end may still take: `END_RECORDS` records, and the record of each
     /// checkpoint begun that has none yet.
     fn kept(&self) -> u64 {
-        self.unit * (END_RECORDS + u64::from(self.segments.begun().is_some()))
+        self.unit * (END_RECORDS + len(self.segments.begun_count()))
     }
 
     /// What an entry of `body` bytes adds: to the file, its kind's byte, its body, and the
@@ -410,9 +410,10 @@ impl SessionLog {
         self.loaded
     }
 
-    /// The checkpoint the log began and has no record of yet.
-    pub const fn begun_checkpoint(&self) -> Option<&CheckpointBegun> {
-        self.segments.begun()
+    /// The checkpoint the log began last and has no record of yet: the one at the boundary
+    /// before the next tick, when the log began one there.
+    pub fn begun_checkpoint(&self) -> Option<&CheckpointBegun> {
+        self.segments.latest_begun()
     }
 
     /// Every checkpoint record, by segment from the second.
@@ -848,8 +849,8 @@ impl SessionLog {
 
     /// Ends the last segment at the boundary before the next tick, and starts the next there, as
     /// a checkpoint begins: from then on the sim draws from the new segment's seed. Its record,
-    /// which the server signs once its snapshot is written, comes later by `record_checkpoint`;
-    /// until it does, the log begins no other. The last segment must hold a tick. The segment,
+    /// which the server signs once its snapshot is written, comes later by `record_checkpoint`,
+    /// after the records of the checkpoints begun before it. The last segment must hold a tick. The segment,
     /// the tick, and the log's own state there, which the record must carry. A checkpoint comes
     /// at a tick boundary, before any entry of the tick after it.
     pub fn begin_checkpoint(&mut self) -> Result<CheckpointBegun, CheckpointError> {
@@ -865,9 +866,6 @@ impl SessionLog {
             self.at_boundary(),
             "a checkpoint comes before any entry of its first tick"
         );
-        if self.segments.begun().is_some() {
-            return Err(CheckpointError::Pending);
-        }
         let tick = self.next_tick();
         if self.segments.last_start().tick == tick {
             return Err(CheckpointError::Empty);
@@ -887,8 +885,8 @@ impl SessionLog {
         Ok(begun)
     }
 
-    /// Logs `record`, with the server key's `signature` over it, as the record of the checkpoint
-    /// the log began and has none of yet, as many ticks after its boundary as it took: it must
+    /// Logs `record`, with the server key's `signature` over it, as the record of the oldest
+    /// checkpoint the log began and has none of yet, as many ticks after its boundary as it took: it must
     /// start that segment, at its tick, and carry the log's own state there, which a segment's
     /// verification from its checkpoint alone will start from. A refused record leaves the log
     /// unchanged.
@@ -897,7 +895,9 @@ impl SessionLog {
         record: Checkpoint,
         signature: &Signature,
     ) -> Result<(), CheckpointError> {
-        self.segments.begun().ok_or(CheckpointError::NotBegun)?;
+        self.segments
+            .oldest_begun()
+            .ok_or(CheckpointError::NotBegun)?;
         let server_key = &self.header.terms.server_key;
         let id = self.session_id;
         let signed = InSession {
@@ -929,13 +929,17 @@ impl SessionLog {
         self.take_checkpoint(record, &signature)
     }
 
-    /// Logs `record`, whose `signature` is the server's, as the record of the checkpoint begun.
+    /// Logs `record`, whose `signature` is the server's, as the record of the oldest checkpoint
+    /// begun.
     fn take_checkpoint(
         &mut self,
         record: Checkpoint,
         signature: &Signature,
     ) -> Result<(), CheckpointError> {
-        let begun = self.segments.begun().ok_or(CheckpointError::NotBegun)?;
+        let begun = self
+            .segments
+            .oldest_begun()
+            .ok_or(CheckpointError::NotBegun)?;
         if record.segment != begun.segment {
             return Err(CheckpointError::Segment);
         }

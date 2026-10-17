@@ -103,11 +103,13 @@ pub enum CheckpointError {
     /// The server key did not sign the record.
     #[error("checkpoint not signed by the server key")]
     BadSignature,
-    /// The record starts another segment than the one after the last.
-    #[error("checkpoint of another segment than the next")]
+    /// The record starts another segment than the oldest checkpoint begun that has none, or a
+    /// begin starts another than the next.
+    #[error("checkpoint of another segment than the one begun")]
     Segment,
-    /// The record starts its segment at another tick than the next.
-    #[error("checkpoint at another tick than the next")]
+    /// The record starts its segment at another tick than its begin, or a begin at another than
+    /// the next.
+    #[error("checkpoint at another tick than the one begun")]
     Tick,
     /// The last segment holds no tick.
     #[error("checkpoint ends a segment of no tick")]
@@ -115,9 +117,6 @@ pub enum CheckpointError {
     /// The record carries another state than the log's own at the boundary.
     #[error("checkpoint carries another state than the log's")]
     Carry,
-    /// A checkpoint the log began has no record yet.
-    #[error("a checkpoint begun has no record yet")]
-    Pending,
     /// The log began no checkpoint that the record would complete.
     #[error("no checkpoint begun for the record")]
     NotBegun,

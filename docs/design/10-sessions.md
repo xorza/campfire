@@ -45,6 +45,7 @@ How a session outlives its server process, its players' links and its players.
 ## Checkpoints
 
 - **Restore equivalence.** A match restored from a checkpoint plays the same ticks to the same hashes as the match that made it; every gap a test finds is closed as state, or as derived data rebuilt after a restore.
+- **A checkpoint never waits for the last.** The log keeps the checkpoints begun in the order they began, and their records come in that order, so a checkpoint due while the last one's snapshot still syncs begins at once. Refused: one checkpoint begun at a time, which made the tick at the boundary wait on the last snapshot's fsync.
 
 ## Saves and loads
 

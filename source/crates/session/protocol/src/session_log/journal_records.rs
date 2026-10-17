@@ -139,7 +139,10 @@ impl SessionLog {
                 }
             }
             JOURNAL_CHECKPOINT_DONE => {
-                let segment = self.segment();
+                let segment = self
+                    .segments
+                    .oldest_begun()
+                    .map_or_else(|| self.segment(), |begun| begun.segment);
                 self.record_done(&mut rest, segment)?;
             }
             JOURNAL_LOADED => {

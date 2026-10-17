@@ -56,10 +56,10 @@ impl Checkpoints {
     /// At the boundary before the next tick: begins the checkpoint due there, as the plan or a
     /// save of the mode's says, and sends it with the state changed since the last delta, queued
     /// behind the delta on the thread, if one is; `true` instead when the session ends there, the
-    /// checkpoint due past the seed chain's last segment. The log begins one checkpoint at a time,
-    /// so one due while the last one's record is still to come waits for it. With none due,
-    /// sends the state changed whenever the thread is free, so each delta holds the ticks since
-    /// the last, few unless a snapshot kept the thread.
+    /// checkpoint due past the seed chain's last segment. One due while the last one's record is
+    /// still to come begins at once, its record logged after that one's. With none due, sends
+    /// the state changed whenever the thread is free, so each delta holds the ticks since the
+    /// last, few unless a snapshot kept the thread.
     pub(crate) fn begin(world: &mut World) -> bool {
         let next = world.session().log().next_tick();
         let saved = world.save_due();
@@ -70,17 +70,6 @@ impl Checkpoints {
             if !checkpoints.thread.pending() {
                 Self::send(world, None);
             }
-            return false;
-        }
-        let recording = world
-            .resource::<Session>()
-            .log()
-            .begun_checkpoint()
-            .is_some();
-        if recording && let Err(error) = Self::settle(world) {
-            world
-                .resource_mut::<Faults>()
-                .report(Fault::Snapshot(error));
             return false;
         }
         match world.resource_mut::<Session>().begin_checkpoint() {

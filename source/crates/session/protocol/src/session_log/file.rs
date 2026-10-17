@@ -42,7 +42,7 @@ impl SessionLog {
     /// the delegation's JSON, 1 for a bot and 2 for an open slot.
     pub fn encode(&self, out: &mut Vec<u8>) {
         assert!(
-            self.segments.begun().is_none(),
+            self.segments.begun_count() == 0,
             "a log is written once every checkpoint it began has its record"
         );
         let start = self.put_segments(out, self.segments.len(), self.next_tick());

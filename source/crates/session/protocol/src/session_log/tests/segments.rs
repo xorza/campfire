@@ -167,22 +167,48 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
             CheckpointError::Carry,
         ),
     ];
-    // A record with no checkpoint begun, and a second begin before the first's record.
-    let signature = signed_by(&record, &TestKey::server());
+    // A record with no checkpoint begun, and a second begin at the first's boundary, which would
+    // end a segment of no tick.
+    let sign = |record: &Checkpoint| signed_by(record, &TestKey::server());
     assert_eq!(
-        log.record_checkpoint(record.clone(), &signature),
+        log.record_checkpoint(record.clone(), &sign(&record)),
         Err(CheckpointError::NotBegun)
     );
     log.begin_checkpoint().unwrap();
-    assert_eq!(log.begin_checkpoint(), Err(CheckpointError::Pending));
+    assert_eq!(log.begin_checkpoint(), Err(CheckpointError::Empty));
     for (record, key, error) in flawed {
         let signature = signed_by(&record, &key);
         assert_eq!(log.record_checkpoint(record, &signature), Err(error));
         assert_eq!(log.checkpoint_at(Tick::new(2)), None);
     }
-    // Once taken, a second checkpoint at the same tick would end a segment of no tick.
-    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
+    // A second checkpoint begins a tick later, before the first's record: the records come in
+    // the order of their begins, and the latest begun is the one at the boundary.
+    assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
+    let second = checkpoint(&log, 4);
+    let begun = log.begin_checkpoint().unwrap();
+    assert_eq!((begun.segment, begun.tick), (2, Tick::new(3)));
+    assert_eq!(log.begun_checkpoint(), Some(&begun));
+    // A journal kept from here holds both begins, and the records as they come.
+    let file = MemorySink::new();
+    log.keep_journal(file.boxed());
+    assert_eq!(
+        log.record_checkpoint(second.clone(), &sign(&second)),
+        Err(CheckpointError::Segment)
+    );
+    log.record_checkpoint(record.clone(), &sign(&record))
         .unwrap();
+    assert_eq!(log.begun_checkpoint(), Some(&begun));
+    log.record_checkpoint(second.clone(), &sign(&second))
+        .unwrap();
+    assert_eq!(log.begun_checkpoint(), None);
+    assert_eq!(log.checkpoints().collect::<Vec<_>>(), [&record, &second]);
+    let journal = file.bytes();
+    let rebuilt = SessionLog::from_journal(JournalFrames::new(&journal).unwrap(), RELEASE).unwrap();
+    assert_eq!(
+        rebuilt.checkpoints().collect::<Vec<_>>(),
+        [&record, &second]
+    );
+    // Once taken, a third checkpoint at the same tick would end a segment of no tick.
     assert_eq!(log.begin_checkpoint(), Err(CheckpointError::Empty));
 
     // A result signed by another key, or at another tick than the next.
