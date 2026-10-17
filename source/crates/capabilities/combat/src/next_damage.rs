@@ -1,4 +1,4 @@
-use std::mem;
+use std::vec::Drain;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
@@ -19,9 +19,9 @@ impl NextDamage {
         self.0.push(entry);
     }
 
-    /// Its entries, in the order queued, which it holds no more.
-    pub(crate) fn take(&mut self) -> Vec<PassEntry> {
-        mem::take(&mut self.0)
+    /// Its entries, in the order queued, which it holds no more, its buffer kept for the next.
+    pub(crate) fn drain(&mut self) -> Drain<'_, PassEntry> {
+        self.0.drain(..)
     }
 
     pub(crate) const fn is_empty(&self) -> bool {

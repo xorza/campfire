@@ -1,5 +1,6 @@
 use std::fmt;
 
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res, SystemState};
 use bevy_ecs::world::World;
@@ -100,12 +101,13 @@ impl DamagePass {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
         // Only a tick that carries entries writes the next tick's damage, which is state.
-        let carried = if world.resource::<NextDamage>().is_empty() {
-            Vec::new()
+        if world.resource::<NextDamage>().is_empty() {
+            world.resource_mut::<PassQueue>().begin([]);
         } else {
-            world.resource_mut::<NextDamage>().take()
-        };
-        world.resource_mut::<PassQueue>().begin(carried);
+            world.resource_scope(|world, mut carried: Mut<'_, NextDamage>| {
+                world.resource_mut::<PassQueue>().begin(carried.drain());
+            });
+        }
         let hooks = ModifierEvents::of(world);
         let weigh = world.resource::<Weighers>().get();
         if weigh.is_none() && hooks.is_none() {

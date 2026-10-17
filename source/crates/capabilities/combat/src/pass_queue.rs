@@ -74,7 +74,7 @@ impl PassQueue {
 
     /// Puts the queue in the order the pass applies it, the entries `carried` from the tick
     /// before first, and starts the pass.
-    pub(crate) fn begin(&mut self, carried: Vec<PassEntry>) {
+    pub(crate) fn begin(&mut self, carried: impl IntoIterator<Item = PassEntry>) {
         debug_assert!(!self.running, "one pass at a time");
         self.entries
             .sort_unstable_by_key(|queued| (queued.entry.source(), queued.order));
