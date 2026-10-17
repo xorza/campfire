@@ -11,7 +11,6 @@ use lightyear::prelude::MessageSender;
 use crate::net_protocol::MatchChannel;
 use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::seats::Seats;
-use crate::sim_server::server_signer::ServerSigner;
 
 /// How often the server gives receipts.
 const INTERVAL: Duration = Duration::from_secs(1);
@@ -40,7 +39,6 @@ impl Receipts {
         time: Res<'_, Time<Real>>,
         mut receipts: ResMut<'_, Self>,
         mut session: ResMut<'_, Session>,
-        signer: Res<'_, ServerSigner>,
         journal: Option<Res<'_, JournalWatch>>,
         seats: Res<'_, Seats>,
         mut links: Query<'_, '_, &mut MessageSender<SignedReceipt>>,
@@ -53,6 +51,9 @@ impl Receipts {
         if let Some(journal) = journal {
             session.advance_durable(journal.0.durable());
         }
+        let signer = session
+            .signer()
+            .expect("a server's session holds its signer");
         let log = session.log();
         for (slot, seat) in seats.iter() {
             let (Some(link), Some(head)) = (seat.link, log.durable_head(slot)) else {
@@ -68,7 +69,7 @@ impl Receipts {
             let receipt = Self::receipt(log.session_id(), slot, log.next_tick(), head);
             sender.send::<MatchChannel>(SignedReceipt {
                 receipt,
-                signature: signer.0.sign(&receipt),
+                signature: signer.sign(&receipt),
             });
             *given = Some(head);
         }

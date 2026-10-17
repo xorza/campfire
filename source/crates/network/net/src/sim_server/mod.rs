@@ -75,7 +75,6 @@ use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::SessionFiles;
 use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
 use crate::sim_server::snapshot_dir::SnapshotDir;
@@ -102,7 +101,6 @@ pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_layout;
 pub(crate) mod server_setup;
-pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
 pub(crate) mod sim_server_plugins;
@@ -379,13 +377,13 @@ impl SimServer {
         let terms = log.header().terms.clone();
         Self::take_terms(world, &terms, visibility);
         let slots = log.slot_count();
-        world.insert_resource(ServerSigner(Arc::clone(&server.signer)));
         Session::start(
             world,
             SessionSource {
                 log,
                 seeds,
                 packages,
+                signer: Some(Arc::clone(&server.signer)),
             },
         )?;
         let snapshots = files.map(|SessionFiles { journal, snapshots }| {

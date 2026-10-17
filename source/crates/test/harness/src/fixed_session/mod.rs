@@ -1,5 +1,6 @@
 use std::iter;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use campfire_common::PlayerSlot;
 use campfire_log::internals::LogCheck;
@@ -146,6 +147,7 @@ impl FixedSession {
             log: self.log(),
             seeds: Self::seeds(),
             packages: &self.packages,
+            signer: Some(Arc::new(Self::server_signer())),
         };
         let game = Session::start_match(source).unwrap();
         FixedMatch::new(game, chains, signers, self.terms.clone(), log)

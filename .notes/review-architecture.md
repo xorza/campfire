@@ -663,7 +663,7 @@ Each change folds into its document when its batch lands. Each line names the de
 
 **6.2 One server match.** Touches `net` (sim server, lobby, session directory), `runner` (session, session rules), `package`, `apps/server`.
 - `MatchRun::begin` from `MatchSource::{New, Restored}` builds one `ServerMatch` (N-5).
-- `Session` owns its signer, and the frame's systems become ordinary systems (N-4).
+- The frame's systems become ordinary systems: the door, the checkpoints and the bot driver; `Session` owns its signer already (N-4).
 - `Session` keeps its `CheckedTerms` (N-6). `ModePackages` holds `SessionRules` and a `SessionPlan` (N-20).
 
 **6.3 A declared server frame.** Touches `net` and 02-engine-core.md.

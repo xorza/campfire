@@ -177,7 +177,7 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
     fixed
         .game_mut()
         .session_mut()
-        .record_checkpoint(record, &FixedSession::server_signer())
+        .record_checkpoint(record)
         .unwrap();
     play(&mut fixed, &orders, 40..72, &mut trail);
     let game = fixed.game_mut();
@@ -186,9 +186,7 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
         outcome: outcome.unwrap_or(ended.outcome),
         ..ended
     };
-    game.session_mut()
-        .record_result(result, &FixedSession::server_signer())
-        .unwrap();
+    game.session_mut().record_result(result).unwrap();
     game.session_mut().reveal_seed();
     Run { fixed, trail }
 }
@@ -279,6 +277,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
             log: SessionLog::decode(&encoded(log)).unwrap().rewound(),
             seeds: first,
             packages: &packages(),
+            signer: None,
         }),
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
@@ -696,6 +695,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
             log: session.log(),
             seeds: ServerSeeds::new(0, ServerSeed::new([8; 32])),
             packages: &packages(),
+            signer: None,
         }),
         Err(StartError::Seed(SeedError::WrongSeed))
     ));
@@ -768,6 +768,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         log: thrown.log(),
         seeds: FixedSession::seeds(),
         packages: thrown.packages(),
+        signer: None,
     })
     .err();
     let Some(refused @ StartError::MatchStart(_)) = refused else {

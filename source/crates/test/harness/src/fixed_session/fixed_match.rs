@@ -73,8 +73,7 @@ impl FixedMatch {
 
     /// Logs `input` before the next tick, signed by the server at the place it takes.
     pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefused> {
-        let server = FixedSession::server_signer();
-        self.game.session_mut().serve(input, &server)
+        self.game.session_mut().serve(input)
     }
 
     /// Logs player `slot`'s join of their slot, with the delegation the session would start them
@@ -108,7 +107,7 @@ impl FixedMatch {
             .expect("a fixed session's chain holds the segment");
         self.game
             .session_mut()
-            .record_checkpoint(record.clone(), &FixedSession::server_signer())
+            .record_checkpoint(record.clone())
             .expect("the match's own checkpoint");
         record
     }
@@ -119,7 +118,7 @@ impl FixedMatch {
         let result = self.game.session_result();
         self.game
             .session_mut()
-            .record_result(result, &FixedSession::server_signer())
+            .record_result(result)
             .expect("the match's own result");
         self.game.session_mut().reveal_seed();
         result

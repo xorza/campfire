@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::QueryState;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::Local;
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use bevy_time::{Real, Time};
 use campfire_common::PlayerSlot;
 use campfire_log::ErrorReport;
@@ -26,7 +26,6 @@ use crate::sim_server::offering::{
 };
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::seats::{Seat, Seats};
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::spectators::spectators_world::SpectatorsWorldCrate;
 
 /// The session's door after the start: it offers the terms to every new link, and seats each
@@ -229,10 +228,10 @@ impl Door {
 
     /// Logs `input`, signed by the server.
     fn serve(world: &mut World, input: ServerInput<'_>) -> Result<(), JoinError> {
-        world.resource_scope(|world, mut session: Mut<'_, Session>| {
-            let signer = &world.resource::<ServerSigner>().0;
-            session.serve(input, signer).map_err(JoinError::Refused)
-        })
+        world
+            .resource_mut::<Session>()
+            .serve(input)
+            .map_err(JoinError::Refused)
     }
 
     /// Watches the seated links: a link that failed logs its slot `Disconnected`, and the grace

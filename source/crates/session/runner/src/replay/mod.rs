@@ -45,6 +45,7 @@ impl<'p> Replay<'p> {
                 log: published.rewound(),
                 seeds,
                 packages,
+                signer: None,
             })?,
             target: None,
             packages,

@@ -1,4 +1,5 @@
 use std::num::NonZeroU64;
+use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
@@ -27,8 +28,8 @@ pub(crate) mod session_world;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
 /// a bare one on a verifier, Lightyear's on a server. The server records inputs as they arrive,
-/// and signs what it logs with the signer it holds apart; a verifier records a published log's
-/// inputs again, and holds no signer. Either way each tick applies exactly the inputs the log
+/// and signs what it logs with the signer the session holds; a verifier records a published
+/// log's inputs again, and its session holds no signer. Either way each tick applies exactly the inputs the log
 /// gives it, and draws from the seed of the segment it runs in.
 #[derive(Resource, Debug)]
 pub struct Session {
@@ -44,6 +45,8 @@ pub struct Session {
     saves: SavesData,
     /// The ticks between two autosaves, without which the mode makes none.
     autosave: Option<Ticks>,
+    /// The server's signer, which signs what the session logs; none on a verifier.
+    signer: Option<Arc<Signer>>,
 }
 
 impl Session {
@@ -59,6 +62,7 @@ impl Session {
             log,
             seeds,
             packages,
+            signer,
         } = source;
         let header = log.header();
         let CheckedTerms { visibility, picks } = SessionRules::of(packages)
@@ -96,6 +100,7 @@ impl Session {
             rules,
             saves,
             autosave,
+            signer,
         })
     }
 
@@ -136,18 +141,25 @@ impl Session {
         self.log.record(packet, applied)
     }
 
-    /// Logs a server input before the next tick, signed in the log by `server` at the place it
+    /// Logs a server input before the next tick, signed in the log by the server at the place it
     /// takes; see `SessionLog::serve`. The mode's `[players]` refuses a change of a slot's
     /// controller it does not allow, before the log takes it.
-    pub fn serve(
-        &mut self,
-        input: ServerInput<'_>,
-        server: &Signer,
-    ) -> Result<(), ServerInputRefused> {
+    pub fn serve(&mut self, input: ServerInput<'_>) -> Result<(), ServerInputRefused> {
         self.check_rules(&input)?;
+        let server = Self::server(self.signer.as_deref());
         self.log
             .serve(input, server)
             .map_err(ServerInputRefused::Log)
+    }
+
+    /// The server's signer, which a server's session holds: only a server serves and records.
+    const fn server(signer: Option<&Signer>) -> &Signer {
+        signer.expect("a server's session holds its signer")
+    }
+
+    /// The server's signer, which signs what the session logs; none on a verifier.
+    pub const fn signer(&self) -> Option<&Arc<Signer>> {
+        self.signer.as_ref()
     }
 
     /// Refuses a change of a slot's controller that the mode's `[players]` does not allow.
@@ -212,22 +224,16 @@ impl Session {
             .map_err(CheckpointBeginError::Log)
     }
 
-    /// Logs the record of the checkpoint begun, signed in the log by `server`; see
+    /// Logs the record of the checkpoint begun, signed in the log by the server; see
     /// `SessionLog::serve_checkpoint`.
-    pub fn record_checkpoint(
-        &mut self,
-        record: Checkpoint,
-        server: &Signer,
-    ) -> Result<(), CheckpointError> {
+    pub fn record_checkpoint(&mut self, record: Checkpoint) -> Result<(), CheckpointError> {
+        let server = Self::server(self.signer.as_deref());
         self.log.serve_checkpoint(record, server)
     }
 
-    /// Logs the result, signed in the log by `server`; see `SessionLog::serve_result`.
-    pub fn record_result(
-        &mut self,
-        result: SessionResult,
-        server: &Signer,
-    ) -> Result<(), ResultError> {
+    /// Logs the result, signed in the log by the server; see `SessionLog::serve_result`.
+    pub fn record_result(&mut self, result: SessionResult) -> Result<(), ResultError> {
+        let server = Self::server(self.signer.as_deref());
         self.log.serve_result(result, server)
     }
 
@@ -348,12 +354,18 @@ pub(crate) mod internals {
             let session = game
                 .remove_resource::<Self>()
                 .expect("a session's match holds its session");
-            let Self { mut log, seeds, .. } = session;
+            let Self {
+                mut log,
+                seeds,
+                signer,
+                ..
+            } = session;
             log.load(at.segment).map_err(ResumeError::Load)?;
             let source = SessionSource {
                 log: log.rewound(),
                 seeds,
                 packages,
+                signer,
             };
             Self::resume_match(source, at)
         }

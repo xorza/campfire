@@ -4,14 +4,13 @@ use campfire_bots::{BotBuffers, BotScript, BotSink, OrderScript, UnitsMissing};
 use campfire_capabilities::Action;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
-use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog, Signer};
+use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
 use campfire_units::{HeldPlayerUnits, UnitTypeBook};
 
 use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
 use crate::events::bot_units_missing::BotUnitsMissing;
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
-use crate::sim_server::server_signer::ServerSigner;
 
 /// Plays the server's bots: before each tick, for each slot a bot plays, the orders and mode
 /// inputs its script has for that tick, each a payload as a client writes it, which the server
@@ -122,10 +121,7 @@ impl BotDriver {
             players,
             ..
         } = self;
-        let mut served = BotServer {
-            session,
-            signer: &world.resource::<ServerSigner>().0,
-        };
+        let mut served = BotServer { session };
         let units = players.get(world);
         for driven in bots {
             let since = tick
@@ -139,11 +135,10 @@ impl BotDriver {
     }
 }
 
-/// The session the bots' inputs go into, with the server's signer, which signs each.
+/// The session the bots' inputs go into, whose signer signs each.
 #[derive(Debug)]
 struct BotServer<'s> {
     session: &'s mut Session,
-    signer: &'s Signer,
 }
 
 impl BotSink for BotServer<'_> {
@@ -152,7 +147,7 @@ impl BotSink for BotServer<'_> {
     /// dropped.
     fn send(&mut self, slot: PlayerSlot, payload: &[u8]) {
         let input = ServerInput::Bot { slot, payload };
-        let cause = match self.session.serve(input, self.signer) {
+        let cause = match self.session.serve(input) {
             Ok(()) => return,
             Err(ServerInputRefused::Log(ServerInputError::PayloadTooLarge)) => DropCause::TooLarge,
             Err(ServerInputRefused::Log(ServerInputError::AheadOfTime)) => DropCause::AheadOfTime,

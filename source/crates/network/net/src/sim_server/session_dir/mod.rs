@@ -24,7 +24,6 @@ use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::error::RestoreMatchError;
 use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
 use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::error::{
     AbortError, FindError, PublishError, RestoreError, SessionCreateError, WaitingError,
 };
@@ -285,6 +284,7 @@ impl RestoredSession {
                 log: log.rewound(),
                 seeds,
                 packages,
+                signer: Some(signer),
             };
             let at = ResumeAt {
                 segment,
@@ -296,10 +296,10 @@ impl RestoredSession {
                 log: log.rewound(),
                 seeds,
                 packages,
+                signer: Some(signer),
             };
             Session::start(world, source).map_err(RestoreMatchError::Start)?;
         }
-        world.insert_resource(ServerSigner(signer));
         JournalWatch::keep(world, journal, JournalFrom::End { len: journal_len });
         let resumed = world.session().log().next_tick();
         world.replay_to(ticks, |world| {
@@ -330,7 +330,7 @@ impl RestoredSession {
             let result = world.session_result();
             world
                 .session_mut()
-                .record_result(result, signer)
+                .record_result(result)
                 .expect("the server's own result holds");
         }
         world.session_mut().reveal_seed();
