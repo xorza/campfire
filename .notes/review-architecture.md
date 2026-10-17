@@ -650,9 +650,9 @@ Each change folds into its document when its batch lands. Each line names the de
 ### Phase 6: `Send` data and the server frame
 
 **6.4 The session log.** Touches `protocol` (session log, journal, controller, carry) and `net` (seats, player link, checkpoints).
-- `LogReplay`, the decode's signature policy, and `JournaledLog` (N-17).
-- The live log keeps state, and publication streams the journal (N-14, D34).
-- One encode for each record, and one wake of the journal worker for each frame (N-13).
+- `LogReplay`, the decode's signature policy, and `JournaledLog` (N-17). Waits for Q13 in `review-architecture_QUESTIONS.md`.
+- The live log keeps state, and publication streams the journal (N-14, D34). Waits for Q13 in `review-architecture_QUESTIONS.md`.
+- One encode for each record, and one wake of the journal worker for each frame (N-13). Waits for Q13 in `review-architecture_QUESTIONS.md`.
 - `check` and `apply` split, with parallel checks across slots (N-11). Waits for Q12 in `review-architecture_QUESTIONS.md`.
 - One `Control` shape, and a relationship from a slot's entity to its link (N-18).
 

@@ -32,3 +32,16 @@ Each question waits for the user's decision. The plan's items point here.
   2. **Split and fan out now.** `SessionLog::record` splits into `check` (`&self`, the signature) and `apply`. `store` gains a scoped parallel map, and the frame checks the packets of different slots on it and applies them in slot order. Cost: a new proxy API and thread wakes in each frame, with no measured gain.
   3. **Split only.** `check` and `apply` split, and the frame calls them in turn on one thread. Cost: the code changes shape for a gain that comes only with option 2.
 - **Blocked:** the check-and-apply bullet of 6.4 alone.
+
+## Q13. Batch 6.4, N-17, N-14 and N-13: the session log's redesign needs a proposal
+
+- **Item:** 6.4, its first three bullets: `LogReplay`, the decode's signature policy and `JournaledLog` (N-17); the live log as state, and publication from the journal (N-14, D34); one encode for each record (N-13).
+- **Why it waits:** the three change one type, `SessionLog` (1,247 lines, 2,156 of tests), its journal, the runner's session and replay, and net's restore, load and publication. Two of the plan's shapes do not fit the code as built:
+  - A restore replays the log from the latest checkpoint and then runs on live, in the same `Session` resource, whose tick system pulls each tick's inputs from the session's own log. A `LogReplay` that borrows the log cannot live in that resource. The replay's state can leave the log only as a value the session owns beside it: the tick ends and a schedule of its own.
+  - A live log of state only drops the entries before its latest checkpoint, but `SessionLog::changes` serves the bot driver every slot change since tick 0, and a load decodes the log's own past through `encode_through`. Both then read the journal or the checkpoint's carry.
+  - A published file holds counts before what they count, so a bounded stream of the journal reads it twice: once to count, once to write, each load's cut applied.
+- **Options:**
+  1. **A proposal first (recommended).** I write `docs/design/session-log-state.md`, as 5.3's proposal was written, with the decisions above, the cost of each, and its checks, for review. The code waits for it. Cost: one review round.
+  2. **The small parts now, the rest later.** The decode's signature policy becomes a parameter, and the journal with its durable heads moves into a value only the server's session holds. The state-only log, the publication and the one encode wait. Cost: two passes over the same code.
+  3. **Keep the log's shape.** The replay mode becomes an explicit enum of the log, and the rest stays. Cost: N-14 stays against D34 and 10-sessions.md, which say the server publishes from the journal.
+- **Blocked:** the first three bullets of 6.4.
