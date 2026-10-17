@@ -3,13 +3,13 @@ use std::cell::{Cell, OnceCell};
 use std::fmt;
 
 use campfire_script::ScriptId;
-use campfire_sim::TickRate;
+use campfire_sim::{Capability, TickRate};
 use campfire_values::{NameId, Names, PackageIndex, PackagePath, TypeScope, UnitType};
 
 use crate::book::Book;
 use crate::book_source::{BookSource, SourceKind, SourcePackage, SourceType};
 use crate::built_books::BuiltBooks;
-use crate::error::BookError;
+use crate::error::{BookError, BookPlace};
 use crate::fact::Fact;
 use crate::section::{Section, SectionTable};
 
@@ -113,6 +113,24 @@ impl<'a> BookCx<'a> {
 
     pub const fn rate(&self) -> TickRate {
         self.source.rate
+    }
+
+    /// Whether the match declares `capability`; an error, of data at `at` of the package at
+    /// `package` that uses it, when it does not.
+    pub fn require(
+        &self,
+        capability: Capability,
+        package: PackageIndex,
+        at: impl FnOnce() -> BookPlace,
+    ) -> Result<(), BookError> {
+        if self.source.set.contains(capability) {
+            return Ok(());
+        }
+        Err(BookError::Undeclared {
+            package,
+            at: at(),
+            capability,
+        })
     }
 
     /// The mode's section `S`, if it gives it.

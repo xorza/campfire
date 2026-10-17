@@ -4,6 +4,7 @@ use std::fmt;
 
 use campfire_common::DeclaredName;
 use campfire_script::UnknownName;
+use campfire_sim::Capability;
 use campfire_values::{PackageIndex, PackagePath};
 use thiserror::Error;
 
@@ -24,6 +25,13 @@ pub enum BookError {
     Script {
         package: PackageIndex,
         path: PackagePath,
+    },
+    /// Data at `at` uses `capability`, which the mode does not declare.
+    #[error("{at} uses {capability:?}, which the mode does not declare")]
+    Undeclared {
+        package: PackageIndex,
+        at: BookPlace,
+        capability: Capability,
     },
     /// Data at `at` breaks a rule of the module that reads it.
     #[error("{at}")]

@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::error::Error;
 use std::sync::Arc;
 
-use campfire_actions::{DamageKindBook, SlotKindBook};
+use campfire_actions::{
+    ActionKind, ActionRange, ActionsData, DamageKindBook, RangeField, SlotKindBook, Targeting,
+};
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamesListError, Section};
 use campfire_script::{NameKind, UnknownName};
 use campfire_stats::{LifePool, PoolNames, StatBook, TypePoolsData, UnitStartError};
@@ -19,6 +21,39 @@ use crate::turret::Turret;
 use crate::turret::turret_data::TurretData;
 
 impl Combat {
+    /// The rule of every package's attacks: each aims at a unit, at a range in meters at every
+    /// rank.
+    pub(crate) fn attacks_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        for (package, source) in cx.packages() {
+            let actions = source.content.get::<ActionsData>().into_iter();
+            let attacks = actions.flat_map(|actions| &actions.0);
+            let mut attacks = attacks.filter(|(_, action)| action.kind == ActionKind::Attack);
+            let broken = attacks.find_map(|(id, action)| {
+                let global = action.range.as_ref().is_some_and(|range| {
+                    range
+                        .values()
+                        .contains(&RangeField::Range(ActionRange::Global))
+                });
+                let problem = if !matches!(action.targeting, Targeting::Unit(_)) {
+                    CombatDataError::AttackAims
+                } else if global {
+                    CombatDataError::GlobalAttack
+                } else {
+                    return None;
+                };
+                Some((id, problem))
+            });
+            if let Some((id, problem)) = broken {
+                let at = BookPlace::Entry {
+                    table: ActionsData::KEY,
+                    name: id.clone(),
+                };
+                return Err(BookError::rule(package, at, problem));
+            }
+        }
+        Ok(())
+    }
+
     /// The rule of the mode's `[combat]`: it names damage kinds and a life pool.
     pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let data = cx.mode_section::<ModeCombatData>();

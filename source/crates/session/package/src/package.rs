@@ -1,5 +1,5 @@
 use campfire_common::PackageFingerprint;
-use campfire_script::{Hook, ScriptApi, ScriptFacts, ScriptFunction, ScriptHost};
+use campfire_script::{ScriptApi, ScriptFacts, ScriptHost};
 use campfire_values::PackagePath;
 
 use crate::error::LoadError;
@@ -27,14 +27,6 @@ pub struct Script {
     pub path: PackagePath,
     pub source: String,
     pub(crate) facts: ScriptFacts,
-}
-
-impl Script {
-    /// Whether it defines `hook`.
-    pub(crate) fn defines(&self, hook: Hook) -> bool {
-        let named = |function: &ScriptFunction| Hook::named(&function.name) == Some(hook);
-        self.facts.functions.iter().any(named)
-    }
 }
 
 impl Package {

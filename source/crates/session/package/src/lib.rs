@@ -27,15 +27,10 @@ mod texts;
 
 pub use crate::avatar_unit::AvatarUnit;
 pub use crate::dependent::{Dependent, DependentKind};
-pub use crate::error::build_problem::BuildProblem;
-pub use crate::error::delivery_problem::DeliveryProblem;
-pub use crate::error::effect_problem::EffectProblem;
-pub use crate::error::gather_problem::GatherProblem;
 pub use crate::error::load_problem::LoadProblem;
 pub use crate::error::locale_problem::LocaleProblem;
 pub use crate::error::place::Place;
 pub use crate::error::script_problem::ScriptProblem;
-pub use crate::error::use_problem::UseProblem;
 pub use crate::error::way::Way;
 pub use crate::error::{ContentError, LoadError, PackageRef};
 pub use crate::file_index::{EncodedIndex, FileIndex};

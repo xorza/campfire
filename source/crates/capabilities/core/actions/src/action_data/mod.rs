@@ -605,7 +605,8 @@ impl ActionData {
     }
 
     /// Every effect of its lists, and of the lists a launch holds, however deep.
-    fn effects(&self) -> impl Iterator<Item = &EffectData> + '_ {
+    /// Its effects, each of its lists' and of the lists they launch.
+    pub fn effects(&self) -> impl Iterator<Item = &EffectData> + '_ {
         let mut found = Vec::new();
         let mut open: Vec<&EffectData> = self
             .on_resolve

@@ -1,4 +1,3 @@
-use campfire_actions::{ActionDataField, ActionKind, ListHook};
 use campfire_capabilities::CapabilityError;
 use campfire_common::{DeclaredName, MapName};
 use campfire_declare::Problem;
@@ -9,14 +8,9 @@ use campfire_values::{EngineTag, PackagePath, Stat};
 use thiserror::Error;
 
 use crate::error::ContentError;
-use crate::error::build_problem::BuildProblem;
-use crate::error::delivery_problem::DeliveryProblem;
-use crate::error::effect_problem::EffectProblem;
-use crate::error::gather_problem::GatherProblem;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
-use crate::error::use_problem::UseProblem;
 use crate::error::way::Way;
 use crate::files::package_name::PackageName;
 
@@ -62,12 +56,6 @@ pub enum LoadProblem {
     /// Data or a script at `at` uses a capability the mode does not declare.
     #[error("{at} uses {capability:?}, which the mode does not declare")]
     Undeclared { capability: Capability, at: Place },
-    /// A unit type's slot names an action its package does not have.
-    #[error("a slot names no action \"{0}\"")]
-    UnknownSlot(DeclaredName),
-    /// An avatar's action is in none of its slots, so it has no rank count.
-    #[error("action \"{0}\" is in no slot")]
-    Unslotted(DeclaredName),
     /// An action that players see has no `name`: an avatar's or a loadout's, which a player
     /// casts, or a train or a build, which a client shows as its producer's button.
     #[error("action \"{0}\", which players see, has no name")]
@@ -78,43 +66,6 @@ pub enum LoadProblem {
     /// Unit types place the action in slot kinds of other ranks.
     #[error("action \"{0}\" sits in slot kinds of other ranks")]
     ActionRanks(DeclaredName),
-    /// An action without a field its kind needs, or with one its kind refuses, as the table of
-    /// action fields says.
-    #[error("action \"{action}\": its kind needs or refuses `{}`", .field.name())]
-    KindField {
-        action: DeclaredName,
-        field: ActionDataField,
-    },
-    /// An attack aims at no unit.
-    #[error("action \"{0}\": an attack aims at a unit")]
-    AttackAims(DeclaredName),
-    /// An attack's range is global, not in meters.
-    #[error("action \"{0}\": an attack's range is in meters")]
-    GlobalAttack(DeclaredName),
-    /// A train aims at something: it takes no target.
-    #[error("action \"{0}\": a train takes no target")]
-    TrainAims(DeclaredName),
-    /// A train makes a unit type that does not walk, so no trained unit leaves its producer.
-    #[error("action \"{0}\": a train makes a unit type that walks")]
-    TrainStands(DeclaredName),
-    /// A build that does not hold.
-    #[error(transparent)]
-    Build(BuildProblem),
-    /// A gather that does not hold.
-    #[error(transparent)]
-    Gather(GatherProblem),
-    /// An action clamps its aim to its range, and aims at no point.
-    #[error("action \"{0}\": only a point aim clamps to the range")]
-    ClampAims(DeclaredName),
-    /// An action holds a modifier, and has no toggle or channel to hold it while.
-    #[error("action \"{0}\": a hold needs a toggle or a channel")]
-    HoldAlone(DeclaredName),
-    /// An action of a kind the release does not run yet.
-    #[error("action \"{action}\": the release does not run {kind:?} yet")]
-    KindNotRun {
-        action: DeclaredName,
-        kind: ActionKind,
-    },
     /// Data at `at` breaks a rule of the module that reads it, as the module reports it.
     #[error("{at}")]
     Rule {
@@ -155,17 +106,6 @@ pub enum LoadProblem {
         name: String,
         of: NameKind,
     },
-    /// A projectile or an area type, or what delivers or makes one.
-    #[error(transparent)]
-    Delivery(DeliveryProblem),
-    /// An effect of the action's list, the one before `list`.
-    #[error("action \"{action}\", `{}`", .list.name())]
-    Effect {
-        action: DeclaredName,
-        list: ListHook,
-        #[source]
-        problem: EffectProblem,
-    },
     /// A unit type or a modifier at `at` carries a tag only the engine gives.
     #[error("{at}: {:?}, a tag only the engine gives", .tag.name())]
     EngineTag { at: Place, tag: EngineTag },
@@ -194,9 +134,6 @@ pub enum LoadProblem {
         #[source]
         problem: LocaleProblem,
     },
-    /// A use, an object or a user.
-    #[error(transparent)]
-    Use(UseProblem),
     /// The data at `at` gives `field`, which the script API plans and the release does not read
     /// yet.
     #[error("{at}: {field} is planned, and the release does not read it yet")]

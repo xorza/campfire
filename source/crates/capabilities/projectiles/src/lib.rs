@@ -40,7 +40,7 @@ mod projectiles_api;
 mod projectiles_effect;
 mod struck_units;
 
-pub use crate::error::{ProjectileError, ProjectilesRefusal};
+pub use crate::error::{ProjectileDeliveryError, ProjectileError, ProjectilesRefusal};
 pub use crate::flight_state::FlightState;
 pub use crate::flying::Flying;
 pub use crate::launches::{Launch, LaunchPayload, Launches};
@@ -101,6 +101,7 @@ impl Module for Projectiles {
         d.fact::<Flights>(Self::flights);
         d.book::<ByType<ProjectileSpec>>(ProjectileSpec::book);
         d.rule(Self::rule);
+        d.rule(Self::deliveries_rule);
         d.api(ProjectilesApi::register);
     }
 

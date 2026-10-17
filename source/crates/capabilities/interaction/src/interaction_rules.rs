@@ -1,4 +1,4 @@
-use campfire_actions::{ActionKind, ActionsData, SlotClaim, SlotClaims, TypeSlotsData};
+use campfire_actions::{ActionKind, ActionsData, SlotClaim, SlotClaims, Targeting, TypeSlotsData};
 use campfire_declare::{BookCx, BookError, BookPlace, Section, SourceKind};
 use campfire_sim::Capability;
 
@@ -29,8 +29,9 @@ impl Interaction {
     }
 
     /// The rule of the uses: each `use` section names an action of its package of the `use`
-    /// kind, and no unit type's slots and no loadout name one, as a use runs only from its
-    /// object. A name the package does not have is the books' problem.
+    /// kind, no unit type's slots and no loadout name one, as a use runs only from its object,
+    /// and each use aims at a unit its filter selects. A name the package does not have is the
+    /// books' problem.
     pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let kind = |package, id| {
             let actions = cx.package(package).content.get::<ActionsData>();
@@ -53,6 +54,20 @@ impl Interaction {
             let named = slotted.find(|id| kind(unit.package, id) == Some(ActionKind::Use));
             if let Some(id) = named {
                 return fail(UseError::Named(id.clone()));
+            }
+        }
+        for (package, source) in cx.packages() {
+            let actions = source.content.get::<ActionsData>().into_iter();
+            let mut actions = actions.flat_map(|actions| &actions.0);
+            let aimless = actions.find(|(_, action)| {
+                action.kind == ActionKind::Use && !matches!(action.targeting, Targeting::Unit(_))
+            });
+            if let Some((id, _)) = aimless {
+                let at = BookPlace::Entry {
+                    table: ActionsData::KEY,
+                    name: id.clone(),
+                };
+                return Err(BookError::rule(package, at, UseError::Aims));
             }
         }
         for (package, source) in cx.packages() {

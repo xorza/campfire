@@ -1,3 +1,4 @@
+use campfire_common::DeclaredName;
 use thiserror::Error;
 
 use crate::effect_data::PlannedEffect;
@@ -28,7 +29,7 @@ pub enum ActionField {
 }
 
 /// A rule a listed effect breaks: a rule of its numbers, or the release's.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum EffectRule {
     /// An effect the release does not run yet.
     #[error("`{}` is an effect the release does not run yet", .0.name())]
@@ -43,4 +44,18 @@ pub enum EffectRule {
     /// reads a scaling param.
     #[error("a duration of no whole milliseconds")]
     Duration,
+    /// A list of a delivery's hit or end on an action that delivers nothing, which never runs.
+    #[error("the action delivers nothing to hit or end")]
+    NoDelivery,
+    /// An effect to the unit reached in a list that reaches none: `on_end`, or `on_resolve` of an
+    /// action that aims at no unit.
+    #[error("an effect to the unit reached, where the list reaches none")]
+    NoUnit,
+    /// A spawn of a unit type with a box body, which only a placement places, as an effect has no
+    /// placement's checks.
+    #[error("spawns a unit type with a box body, which only a placement places")]
+    SpawnBox,
+    /// A purge of a tag only the engine gives.
+    #[error("purges {0}, a tag only the engine gives")]
+    EngineTag(DeclaredName),
 }

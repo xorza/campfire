@@ -5,9 +5,7 @@ use campfire_actions::{ActionDataField, ActionProblem, MeteredKind, SlotError};
 use campfire_common::DeclaredName;
 use campfire_interaction::UseError;
 use campfire_items::ItemsDataError;
-use campfire_package::{
-    LoadError, LoadProblem, ModePackages, PackageName, PackageRef, Place, UseProblem,
-};
+use campfire_package::{LoadError, LoadProblem, ModePackages, PackageName, PackageRef, Place};
 use campfire_script::NameKind;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
@@ -78,11 +76,11 @@ struct Flaw {
 
 /// Whether `problem` is the prayer's data giving `field`, which its kind refuses or needs.
 fn misused(problem: &LoadProblem, field: ActionDataField) -> bool {
-    matches!(problem, LoadProblem::KindField { action, field: found } if action == "pray" && *found == field)
-}
-
-fn use_problem(problem: &LoadProblem, expected: &UseProblem) -> bool {
-    matches!(problem, LoadProblem::Use(found) if found == expected)
+    rule_at(
+        problem,
+        &entry("actions", "pray"),
+        &ActionProblem::KindField(field),
+    )
 }
 
 const FLAWS: [Flaw; 21] = [
@@ -133,7 +131,7 @@ const FLAWS: [Flaw; 21] = [
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("actions.pray.targeting", r#""point""#))],
         package: MODE,
-        refused: |problem| use_problem(problem, &UseProblem::Aims(name("pray"))),
+        refused: |problem| rule_at(problem, &entry("actions", "pray"), &UseError::Aims),
     },
     // A use section names a use of its package, and users among the match's tags.
     Flaw {

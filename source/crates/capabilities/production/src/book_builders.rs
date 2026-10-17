@@ -1,12 +1,12 @@
 use campfire_actions::{
     ActionBook, ActionData, ActionKind, ActionProblem, ActionsData, ConstructData, PlacementData,
-    PlacementRule, TypeSlotsData,
+    PlacementRule, Targeting, TypeSlotsData,
 };
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, SourceType};
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, SourceType, UnitTypeData};
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, NameKind, UnknownName};
-use campfire_stats::{LifePool, ModifierBook, PoolNames, TypePoolsData};
+use campfire_stats::{LifePool, ModifierBook, PoolNames, StatsData, TypePoolsData};
 use campfire_units::{BodyForm, UnitTypes};
 use campfire_values::{ActionId, ModifierId, PackageIndex, ResourceId, Share, TypeScope, UnitType};
 
@@ -62,6 +62,58 @@ impl Production {
             });
             if let Some(id) = trains {
                 return fail(ProductionDataError::NoQueue(id.clone()));
+            }
+        }
+        Ok(())
+    }
+
+    /// The rule of every package's trains, builds, gathers and requirements: a train aims at
+    /// nothing and makes a unit type of its package that walks, no delivery type; a build aims
+    /// at a point; a gather at a unit; and an action requires no delivery type, which no player
+    /// owns.
+    pub(crate) fn actions_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        for (package, source) in cx.packages() {
+            let Some(actions) = source.content.get::<ActionsData>() else {
+                continue;
+            };
+            for (id, action) in &actions.0 {
+                let at = || BookPlace::Entry {
+                    table: ActionsData::KEY,
+                    name: id.clone(),
+                };
+                let fail = |problem| Err(BookError::rule(package, at(), problem));
+                match action.kind {
+                    ActionKind::Train => {
+                        if action.targeting != Targeting::None {
+                            return fail(ProductionDataError::TrainAims);
+                        }
+                        let trained = action.unit_type.as_ref();
+                        let trained = trained.and_then(|name| source.units.get(name));
+                        if trained.is_some_and(UnitTypeData::delivers) {
+                            return fail(ProductionDataError::Trained);
+                        }
+                        let walks = |unit: &&UnitTypeData| {
+                            unit.section::<StatsData>().is_some_and(StatsData::walks)
+                        };
+                        if trained.is_some_and(|unit| !walks(&unit)) {
+                            return fail(ProductionDataError::TrainStands);
+                        }
+                    }
+                    ActionKind::Build if action.targeting != Targeting::Point => {
+                        return fail(ProductionDataError::BuildAims);
+                    }
+                    ActionKind::Gather if !matches!(action.targeting, Targeting::Unit(_)) => {
+                        return fail(ProductionDataError::GatherAims);
+                    }
+                    _ => {}
+                }
+                let required = action.requires.iter().flat_map(|requires| &requires.units);
+                let mut delivered = required
+                    .filter(|name| source.units.get(*name).is_some_and(UnitTypeData::delivers));
+                if let Some(name) = delivered.next() {
+                    let unknown = UnknownName::new(NameKind::UnitType, name);
+                    return Err(BookError::unknown(package, at(), unknown));
+                }
             }
         }
         Ok(())

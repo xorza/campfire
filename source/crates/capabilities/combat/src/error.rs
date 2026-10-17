@@ -13,6 +13,12 @@ pub enum CombatDataError {
     /// No life pool for its units to die at the end of.
     #[error("the mode declares combat, and no life pool")]
     NoLifePool,
+    /// An attack that aims at something but a unit.
+    #[error("an attack aims at a unit")]
+    AttackAims,
+    /// An attack whose range is global at a rank, where it is in meters.
+    #[error("an attack's range is in meters")]
+    GlobalAttack,
 }
 
 /// Why the combat capability refused a script call: a script gave it a value it does not take.

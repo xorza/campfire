@@ -31,6 +31,7 @@ mod action_load;
 mod action_names;
 mod action_parts;
 mod action_range;
+mod action_rules;
 mod action_slots;
 mod action_target;
 mod actions_api;
@@ -298,6 +299,7 @@ impl Module for Actions {
         d.book::<ByType<ActionSlots>>(ActionSlots::book);
         d.fact::<SlotClaims>(|_| Ok(SlotClaims::default()));
         d.rule(SlotClaims::rule);
+        d.rule(Self::rule);
         d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
         d.part::<BodyUnit, ActionProgress>(|at| {

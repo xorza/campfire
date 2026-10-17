@@ -17,6 +17,21 @@ pub enum ProductionDataError {
     /// A train in the slots of a unit type with no queue to train in.
     #[error("train {0} sits on a unit type with no queue")]
     NoQueue(DeclaredName),
+    /// A train that aims at something, where it takes no target.
+    #[error("a train takes no target")]
+    TrainAims,
+    /// A train that makes a projectile or an area type, whose units only actions deliver.
+    #[error("a train makes a projectile or an area type")]
+    Trained,
+    /// A train that makes a unit type that does not walk out of its producer.
+    #[error("a train makes a unit type that walks")]
+    TrainStands,
+    /// A build that aims at something but a point.
+    #[error("a build aims at a point")]
+    BuildAims,
+    /// A gather that aims at something but a unit its filter selects.
+    #[error("a gather aims at a unit its filter selects")]
+    GatherAims,
 }
 
 /// Why the production capability refused a script call: a script gave it a value it does not

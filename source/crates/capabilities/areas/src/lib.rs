@@ -45,7 +45,7 @@ pub use crate::area_spec::{AreaSpec, Inside};
 pub use crate::area_trigger::AreaTrigger;
 pub use crate::areas_api::AreasApi;
 pub use crate::areas_effect::AreasEffect;
-pub use crate::error::AreaError;
+pub use crate::error::{AreaDeliveryError, AreaError};
 
 /// The `areas` capability: area units, which actions deliver. It needs stats, whose modifiers an
 /// area holds on the units inside it.
@@ -98,6 +98,7 @@ impl Module for Areas {
         d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);
         d.extend::<UnitTypes>(Self::tag_types);
         d.book::<ByType<AreaSpec>>(AreaSpec::book);
+        d.rule(Self::deliveries_rule);
         d.api(AreasApi::register);
     }
 

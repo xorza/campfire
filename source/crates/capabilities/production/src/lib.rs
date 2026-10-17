@@ -173,6 +173,7 @@ impl Module for Production {
         d.book::<NodeBook>(NodeBook::build);
         d.book::<SupplyBook>(SupplyBook::build);
         d.rule(Self::rule);
+        d.rule(Self::actions_rule);
         d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
         d.book::<ByType<Builder>>(Builder::book);

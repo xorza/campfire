@@ -11,15 +11,10 @@ use thiserror::Error;
 use crate::error::load_problem::LoadProblem;
 use crate::files::package_name::PackageName;
 
-pub(crate) mod build_problem;
-pub(crate) mod delivery_problem;
-pub(crate) mod effect_problem;
-pub(crate) mod gather_problem;
 pub(crate) mod load_problem;
 pub(crate) mod locale_problem;
 pub(crate) mod place;
 pub(crate) mod script_problem;
-pub(crate) mod use_problem;
 pub(crate) mod way;
 
 /// Why a package file does not load. Packages are untrusted, so each is an expected failure.

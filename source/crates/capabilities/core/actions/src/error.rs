@@ -48,6 +48,27 @@ pub enum ActionProblem {
     /// A number or a duration of an effect of its list `list` breaks `rule`.
     #[error("its {list:?} list: {rule}")]
     Effect { list: ListHook, rule: EffectRule },
+    /// It clamps its aim to its range, and aims at other than a point.
+    #[error("only a point aim clamps to the range")]
+    ClampAims,
+    /// It holds a modifier, and has no toggle or channel to hold it while.
+    #[error("a hold needs a toggle or a channel")]
+    HoldAlone,
+    /// A splash, and no projectile delivery for it to go off where it ends.
+    #[error("a splash goes off where a projectile of its delivery ends")]
+    Splash,
+    /// A scatter, and no projectile delivery for it to aim.
+    #[error("a scatter aims a projectile of its delivery")]
+    Scatter,
+    /// A speed, which delays the hit of a weapon of no delivery, and a delivery.
+    #[error("a speed delays the hit of a weapon of no delivery")]
+    Speed,
+    /// An attack whose delivery is an area, where a weapon's is a homing projectile or a curve.
+    #[error("a weapon's delivery is a homing projectile or a curve")]
+    Weapon,
+    /// An avatar's action in no slot of its package's unit types.
+    #[error("in no slot of its package's unit types")]
+    Unslotted,
 }
 
 /// Why the mode's slot kinds do not load. Packages are untrusted, so each is an expected failure.
@@ -73,6 +94,9 @@ pub enum SlotError {
     /// Actions in a kind whose slots `by` fills.
     #[error("actions in slot kind {kind}, whose slots {by:?} fills")]
     ClaimedSlotted { kind: DeclaredName, by: Capability },
+    /// An action in two of its slots.
+    #[error("action {0} in two slots")]
+    Repeated(DeclaredName),
     /// More slots, its own and those its claims fill, than a unit holds.
     #[error("more slots than a unit holds")]
     TooMany,

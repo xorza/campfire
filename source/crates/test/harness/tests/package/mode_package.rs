@@ -6,7 +6,9 @@ use std::num::NonZeroU32;
 use campfire_actions::{
     ActionDataField, ActionField, ActionKind, ActionProblem, DoesData, EffectData, EffectRule,
     EffectTo, HealFields, LaunchFields, ListHook, MeteredKind, PlannedEffect, PurgeFields,
+    SlotError,
 };
+use campfire_areas::AreaDeliveryError;
 use campfire_capabilities::{CapabilityError, Release};
 use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
@@ -19,13 +21,13 @@ use campfire_mode::{ModeDataError, ModeError};
 use campfire_navigation::{MapProblem, NavigationDataError};
 use campfire_orders::AiError;
 use campfire_package::{
-    BuildProblem, ContentError, DeliveryProblem, EffectProblem, GatherProblem, LoadError,
-    LoadProblem, LocaleProblem, ModePackages, PackageName, PackageRef, Place, ScriptProblem, Way,
+    ContentError, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName, PackageRef,
+    Place, ScriptProblem, Way,
 };
 use campfire_package_disk::PackageDir;
 use campfire_production::ProductionDataError;
 use campfire_progression::TrackError;
-use campfire_projectiles::ProjectileError;
+use campfire_projectiles::{ProjectileDeliveryError, ProjectileError};
 use campfire_script::internals::Undefined;
 use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
@@ -176,7 +178,13 @@ fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_and_one_along_a_di
     let wraps = format!(r#"{{ speed = "20", width = "1.6", curve = {curve} }}"#);
     let edit = Edit::Set("units.grasping_wraps.projectile", &wraps);
     let error = load(&edited([(HUSK, edit)])).unwrap_err();
-    let along = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Curve(action)) if action == "grasping_wraps");
+    let along = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "grasping_wraps"),
+            &ProjectileDeliveryError::Curve,
+        )
+    };
     assert!(along(&error.problem), "{error:?}");
     // A curve takes nothing of a line's or a homing flight's, and its points lie on the way.
     for (projectile, message) in [
@@ -231,16 +239,34 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
     assert!(set(&[splash, scatter, pitch, curve]).is_ok());
     // A homing bolt does not scatter, and a weapon of no projectile does not splash.
     let error = set(&[scatter]).unwrap_err();
-    let scatters = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Scatter(action)) if action == "tower_attack");
+    let scatters = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "tower_attack"),
+            &ProjectileDeliveryError::Scatter,
+        )
+    };
     assert!(scatters(&error.problem), "{error:?}");
     // A melee weapon may be slow; a homing bolt flies at its own speed.
     assert!(set(&[("actions.wolf_attack.speed", r#""40""#)]).is_ok());
     let error = set(&[("actions.tower_attack.speed", r#""40""#)]).unwrap_err();
-    let speeds = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Speed(action)) if action == "tower_attack");
+    let speeds = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "tower_attack"),
+            &ActionProblem::Speed,
+        )
+    };
     assert!(speeds(&error.problem), "{error:?}");
     let melee = [("actions.wolf_attack.splash", splash.1)];
     let error = set(&melee).unwrap_err();
-    let splashes = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Splash(action)) if action == "wolf_attack");
+    let splashes = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "wolf_attack"),
+            &ActionProblem::Splash,
+        )
+    };
     assert!(splashes(&error.problem), "{error:?}");
     // Each reads only within its bounds.
     let file = "data/mode.toml";
@@ -365,7 +391,13 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
     let on_end = biting("on_end");
     let edit = Edit::Replace(MELEE_END, &on_end);
     let error = load(&edited([(MODE_DATA, edit)])).unwrap_err();
-    let refused = |problem: &LoadProblem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::OnEnd } if action == "melee_creep_attack");
+    let refused = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "melee_creep_attack"),
+            &ActionProblem::KindField(ActionDataField::OnEnd),
+        )
+    };
     assert!(refused(&error.problem), "{error:?}");
     // Cinder's bolt launches an eruption, an area type of her own package, where it hits.
     let edit = Edit::Set(
@@ -819,7 +851,7 @@ static DATA_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace(r#""tomb_bind"]"#, r#""tomb_binds"]"#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownSlot(id) if id == "tomb_binds"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Ability, at: Place::Avatar(_), name } if name == "tomb_binds"),
     ),
     flaw(
         HUSK,
@@ -858,7 +890,13 @@ static DATA_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("units.grasping_wraps.projectile.homing", "true"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Homing(action)) if action == "grasping_wraps"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "grasping_wraps"),
+                &ProjectileDeliveryError::Homing,
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -873,7 +911,13 @@ static DATA_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("actions.grasping_wraps.targeting", r#""none""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoAim(action)) if action == "grasping_wraps"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "grasping_wraps"),
+                &ProjectileDeliveryError::NoAim,
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -907,7 +951,13 @@ static DATA_FLAWS: &[Flaw] = &[
         UNITS,
         Edit::Remove("units.tower_bolt.projectile.homing"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Weapon(action)) if action == "tower_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &ProjectileDeliveryError::Weapon,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -916,7 +966,10 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"delivery = { projectile = "tower" }"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "tower_attack" && unit_type == "tower"),
+        |problem| {
+            let wrong = ProjectileDeliveryError::NotProjectile(DeclaredName::new("tower").unwrap());
+            rule_at(problem, &entry("actions", "tower_attack"), &wrong)
+        },
     ),
     // An area delivery names an area type, which lands on a point, a unit or the caster, takes
     // no count, and holds modifiers of its package; a delivery type has one section of the two.
@@ -927,13 +980,22 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"delivery = { area = "fire_lance" }"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "eruption" && unit_type == "fire_lance"),
+        |problem| {
+            let wrong = AreaDeliveryError::NotArea(DeclaredName::new("fire_lance").unwrap());
+            rule_at(problem, &entry("actions", "eruption"), &wrong)
+        },
     ),
     flaw(
         CINDER,
         Edit::Set("actions.eruption.targeting", r#""direction""#),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaDirection(action)) if action == "eruption"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "eruption"),
+                &AreaDeliveryError::Direction,
+            )
+        },
     ),
     flaw(
         CINDER,
@@ -1039,7 +1101,13 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ damage = { amount = 1, kind = "true" } }]"#,
         ),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoHit(action)) if action == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "snow_owl"),
+                &ProjectileDeliveryError::NoHit,
+            )
+        },
     ),
     flaw(
         SNOW_OWL,
@@ -1048,7 +1116,13 @@ static DATA_FLAWS: &[Flaw] = &[
             "fn on_hit(ctx, caster, target, hit) {}\n\nfn on_end(ctx, caster, hit) {",
         ),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoHit(action)) if action == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "snow_owl"),
+                &ProjectileDeliveryError::NoHit,
+            )
+        },
     ),
     flaw(
         RIME,
@@ -1064,7 +1138,10 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ launch = { area = "fire_lance" } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "attack" && unit_type == "fire_lance"),
+        |problem| {
+            let wrong = AreaDeliveryError::NotArea(DeclaredName::new("fire_lance").unwrap());
+            rule_at(problem, &entry("actions", "attack"), &wrong)
+        },
     ),
     flaw(
         CINDER,
@@ -1082,7 +1159,16 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ launch = { area = "eruption", on_end = [{ heal = { amount = 1 } }] } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "attack"),
+                &ActionProblem::Effect {
+                    list: ListHook::OnEnd,
+                    rule: EffectRule::NoUnit,
+                },
+            )
+        },
     ),
     // An action spawns a unit type of its own package that stands, an avatar's summon among
     // them, for a whole number of milliseconds: Rime's arrow, a projectile, is none. A summon of
@@ -1181,7 +1267,16 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ launch = { area = "eruption", on_end = [{ move = { to = "reached", speed = 5 }, to = "source" }] } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "attack"),
+                &ActionProblem::Effect {
+                    list: ListHook::OnEnd,
+                    rule: EffectRule::NoUnit,
+                },
+            )
+        },
     ),
     flaw(
         RIME,
@@ -1193,7 +1288,14 @@ static DATA_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Replace(SLOWS, r#"{ purge = { tag = "avatar" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Entry { table: "actions", name: action }, tag } if tag.name() == "avatar" && action == "fan_of_frost"),
+        |problem| {
+            let purged = EffectRule::EngineTag(DeclaredName::new("avatar").unwrap());
+            let effect = ActionProblem::Effect {
+                list: ListHook::OnHit,
+                rule: purged,
+            };
+            rule_at(problem, &entry("actions", "fan_of_frost"), &effect)
+        },
     ),
     flaw(
         RIME,
@@ -1209,14 +1311,12 @@ static DATA_FLAWS: &[Flaw] = &[
         Edit::Replace("on_hit = [", "on_end = ["),
         "hero-rime",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    list: ListHook::OnEnd,
-                    problem: EffectProblem::NoUnit,
-                    ..
-                }
-            )
+            let broken = EffectRule::NoUnit;
+            let effect = ActionProblem::Effect {
+                list: ListHook::OnEnd,
+                rule: broken,
+            };
+            rule(problem, &effect)
         },
     ),
     flaw(
@@ -1224,14 +1324,12 @@ static DATA_FLAWS: &[Flaw] = &[
         Edit::Replace("on_hit = [", "on_resolve = ["),
         "hero-rime",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    list: ListHook::OnResolve,
-                    problem: EffectProblem::NoUnit,
-                    ..
-                }
-            )
+            let broken = EffectRule::NoUnit;
+            let effect = ActionProblem::Effect {
+                list: ListHook::OnResolve,
+                rule: broken,
+            };
+            rule(problem, &effect)
         },
     ),
     flaw(
@@ -1239,14 +1337,12 @@ static DATA_FLAWS: &[Flaw] = &[
         Edit::Remove("actions.fan_of_frost.delivery"),
         "hero-rime",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    list: ListHook::OnHit,
-                    problem: EffectProblem::NoDelivery,
-                    ..
-                }
-            )
+            let broken = EffectRule::NoDelivery;
+            let effect = ActionProblem::Effect {
+                list: ListHook::OnHit,
+                rule: broken,
+            };
+            rule(problem, &effect)
         },
     ),
     flaw(
@@ -1337,7 +1433,13 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Trained(action)) if action == "recruit"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "recruit"),
+                &ProductionDataError::Trained,
+            )
+        },
     },
     flaw(
         "heroes/husk/scripts/extra.rhai",
@@ -1646,13 +1748,25 @@ static ACTION_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("rate = \"attack_speed\"\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Rate } if action == "melee_creep_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "melee_creep_attack"),
+                &ActionProblem::KindField(ActionDataField::Rate),
+            )
+        },
     ),
     flaw(
         MODE_DATA,
         Edit::Set("actions.tower_attack.range", r#""global""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::GlobalAttack(action) if action == "tower_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &CombatDataError::GlobalAttack,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -1661,7 +1775,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[actions.tower_attack]\nkind = \"attack\"\ntargeting = \"point\"",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::AttackAims(action) if action == "tower_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &CombatDataError::AttackAims,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -1670,7 +1790,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[actions.wolf_attack]\ncooldown_ms = 1000\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::CooldownMs } if action == "wolf_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "wolf_attack"),
+                &ActionProblem::KindField(ActionDataField::CooldownMs),
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -1679,7 +1805,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[actions.dread]\nrate = \"attack_speed\"\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Rate } if action == "dread"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "dread"),
+                &ActionProblem::KindField(ActionDataField::Rate),
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -1990,14 +2122,26 @@ static ACTION_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Remove("actions.chill_arrows.toggle"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::HoldAlone(action) if action.as_str() == "chill_arrows"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "chill_arrows"),
+                &ActionProblem::HoldAlone,
+            )
+        },
     ),
     // Only a point aim clamps to the range.
     flaw(
         "spells/data/loadout.toml",
         Edit::Set("actions.blink.targeting", r#""direction""#),
         "player-spells",
-        |problem| matches!(problem, LoadProblem::ClampAims(action) if action.as_str() == "blink"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "blink"),
+                &ActionProblem::ClampAims,
+            )
+        },
     ),
     // A stat change names one operation; a scaling param scales with declared stats alone.
     flaw(
@@ -2741,7 +2885,12 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace(r#""dread", "lash_out""#, r#""grasping_wraps", "lash_out""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Avatar(_), name } if name == "grasping_wraps"),
+        |problem| {
+            rule_of(problem, |at, error: &SlotError| {
+                let twice = SlotError::Repeated(DeclaredName::new("grasping_wraps").unwrap());
+                matches!(at, Place::Avatar(_)) && *error == twice
+            })
+        },
     ),
     flaw(
         MAP,
@@ -2895,7 +3044,13 @@ static MAP_FLAWS: &[Flaw] = &[
             r#""grasping_wraps", "lash_out""#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unslotted(id) if id == "dread"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "dread"),
+                &ActionProblem::Unslotted,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -3006,7 +3161,13 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::TrainAims(action) if action == "recruit"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "recruit"),
+                &ProductionDataError::TrainAims,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -3052,13 +3213,15 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         MODE,
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    problem: EffectProblem::SpawnBox,
-                    ..
-                }
-            )
+            rule_of(problem, |_, error: &ActionProblem| {
+                matches!(
+                    error,
+                    ActionProblem::Effect {
+                        rule: EffectRule::SpawnBox,
+                        ..
+                    }
+                )
+            })
         },
     ),
     Flaw {
@@ -3072,7 +3235,13 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::TrainStands(action) if action == "recruit"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "recruit"),
+                &ProductionDataError::TrainStands,
+            )
+        },
     },
     // A train's `requires` names unit types of its package that stand, and modifiers of its
     // package; a cast takes none. A unit type's `supply` needs the mode's `[supply]`.
@@ -3117,7 +3286,13 @@ static MAP_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nrequires = {}\n"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Requires } if action == "dread"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "dread"),
+                &ActionProblem::KindField(ActionDataField::Requires),
+            )
+        },
     ),
     Flaw {
         file: UNITS,
@@ -3146,7 +3321,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::Aims(action)) if action == "raise"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "raise"),
+                &ProductionDataError::BuildAims,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -3203,7 +3384,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Construct } if action == "raise"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "raise"),
+                &ActionProblem::KindField(ActionDataField::Construct),
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -3263,7 +3450,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Gather(GatherProblem::Aims(action)) if action == "mine"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "mine"),
+                &ProductionDataError::GatherAims,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -3306,7 +3499,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Take } if action == "mine"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "mine"),
+                &ActionProblem::KindField(ActionDataField::Take),
+            )
+        },
     },
     Flaw {
         file: UNITS,
@@ -3353,7 +3552,13 @@ static MAP_FLAWS: &[Flaw] = &[
             "[actions.dread]\nunit_type = \"melee_creep\"\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::UnitType } if action == "dread"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "dread"),
+                &ActionProblem::KindField(ActionDataField::UnitType),
+            )
+        },
     ),
     // The release runs no action of the kind `enter` yet; an action sits in
     // slot kinds of one count of ranks.
@@ -3361,7 +3566,13 @@ static MAP_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"enter\"\n"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindNotRun { action, kind: ActionKind::Enter } if action == "dread"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "dread"),
+                &ActionProblem::NotRun(ActionKind::Enter),
+            )
+        },
     ),
     Flaw {
         file: MODE_DATA,

@@ -175,6 +175,7 @@ impl Module for Combat {
         d.fact::<LifePool>(Self::life_pool);
         d.book::<CombatBook>(CombatBook::build);
         d.rule(Self::rule);
+        d.rule(Self::attacks_rule);
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();
