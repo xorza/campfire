@@ -3,6 +3,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::query::ROQueryItem;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
@@ -129,9 +130,9 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// match's role finds it; none for a role that holds none, as a client holds no script host.
     fn non_send<R: 'static>(&mut self, build: fn(&World, &Role) -> Option<R>);
 
-    /// The non-send resource `R`, which the module's load puts in from the books, not its
-    /// install, as the mode's load puts in the mode it runs.
-    fn non_send_loaded<R: 'static>(&mut self);
+    /// The resource `R`, which the module's load puts in from the books, not its install, as the
+    /// mode's load puts in the mode it runs.
+    fn loaded<R: Resource>(&mut self);
 
     /// `condition`, on which every stage of the tick and its start run: once it turns false, each
     /// stage from the next on runs no system, as the match's end stops them.

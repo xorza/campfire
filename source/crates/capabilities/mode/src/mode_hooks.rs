@@ -102,7 +102,7 @@ impl ModeHooks {
             &mut world.resource_mut::<UnansweredSlotEvents>().0,
         );
         pending.extend(world.resource::<TickInputs>().slot_events().iter().copied());
-        let hooks = world.non_send::<MatchMode>().schema.hooks;
+        let hooks = world.resource::<MatchMode>().schema.hooks;
         let now = world.resource::<SimTick>().end();
         let answered = Calls::scope(world, now, |call| {
             let mut answered = 0;

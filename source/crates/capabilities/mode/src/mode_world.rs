@@ -42,14 +42,14 @@ impl ModeWorld for World {
             self.mode_fields::<SyncNone>(),
             self.mode_fields::<SyncAll>(),
         );
-        self.non_send::<MatchMode>()
+        self.resource::<MatchMode>()
             .schema
             .merge_state(none, all, &mut state);
         state
     }
 
     fn team_of(&self, slot: PlayerSlot) -> Option<Team> {
-        self.get_non_send::<MatchMode>()?.teams.of(slot)
+        self.get_resource::<MatchMode>()?.teams.of(slot)
     }
 }
 

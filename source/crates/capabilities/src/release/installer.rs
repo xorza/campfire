@@ -261,7 +261,7 @@ impl Declarations for Installer<'_> {
         }
     }
 
-    fn non_send_loaded<R: 'static>(&mut self) {}
+    fn loaded<R: Resource>(&mut self) {}
 
     /// Each stage checks `condition` once, as it starts, with `SimEdge::Start` before them all,
     /// so the stage it turns false in is the last to run, its closing set with it.

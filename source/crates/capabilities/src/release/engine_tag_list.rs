@@ -97,7 +97,7 @@ impl Declarations for EngineTagList {
 
     fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {}
 
-    fn non_send_loaded<R: 'static>(&mut self) {}
+    fn loaded<R: Resource>(&mut self) {}
 
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 

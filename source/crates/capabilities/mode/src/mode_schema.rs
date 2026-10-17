@@ -1,43 +1,30 @@
-use campfire_script::{
-    HookSet, ScriptId, ScriptRole, ScriptValue, StateSchema, StateValue, SyncTo,
-};
+use campfire_script::{HookSet, ScriptId, ScriptRole, StateSchema, StateValue, SyncTo};
 use campfire_units::ScriptBook;
 use campfire_values::NameTable;
 
 use crate::mode_data::{InputType, ModeData};
-use crate::option_picks::OptionPicks;
 
 /// The one run of each of the schema's tables.
 const RUN: usize = 0;
 
-/// The mode's script and what its data declares: the hooks the script defines, the params, each
-/// option's picked value among them, the state fields and the input types. Package data, not
-/// state.
+/// The mode's script and what its data declares: the hooks the script defines, the state fields
+/// and the input types. Package data, not state.
 #[derive(Debug)]
 pub(crate) struct ModeSchema {
     pub(crate) script: ScriptId,
     /// Which of the mode's hooks the engine calls its script defines.
     pub(crate) hooks: HookSet,
-    /// One run each; each param as `ctx.p` reads it, converted once.
-    params: NameTable<ScriptValue>,
     /// The state's fields, each of class `none` or `all`.
     pub(crate) state: StateSchema,
     inputs: NameTable<InputType>,
 }
 
 impl ModeSchema {
-    /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives,
-    /// its options of the values `picks` gives.
-    pub(crate) fn new(
-        script: ScriptId,
-        scripts: &ScriptBook,
-        data: &ModeData,
-        picks: &OptionPicks,
-    ) -> Self {
+    /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives.
+    pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> Self {
         let mut schema = Self {
             script,
             hooks: scripts.defines(Some(script), ScriptRole::Mode),
-            params: NameTable::default(),
             state: StateSchema::new(
                 data.state
                     .iter()
@@ -45,29 +32,11 @@ impl ModeSchema {
             ),
             inputs: NameTable::default(),
         };
-        let params = data
-            .params
-            .iter()
-            .map(|(name, param)| (name, param.to_value()));
-        let options = picks
-            .values(&data.options)
-            .map(|(name, value)| (name, ScriptValue::from(value)));
-        schema.params.push(
-            params
-                .chain(options)
-                .map(|(name, value)| (name.as_str(), value)),
-        );
         let inputs = data.inputs.iter();
         schema
             .inputs
             .push(inputs.map(|(name, &kind)| (name.as_str(), kind)));
         schema
-    }
-
-    /// The param `name`, as `ctx.p` reads it.
-    pub(crate) fn param_named(&self, name: &str) -> Option<ScriptValue> {
-        let at = self.params.named(RUN, name)?;
-        Some(self.params.values(RUN)[at].clone())
     }
 
     /// Fills `into` with every state field, in the order of their names, from the fields of

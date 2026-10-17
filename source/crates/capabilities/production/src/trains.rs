@@ -205,7 +205,7 @@ impl Trains {
         if due.is_empty() {
             return;
         }
-        let spawner = world.non_send::<Spawner>().clone();
+        let spawner = world.resource::<Spawner>().clone();
         for &Keyed { entity, .. } in due {
             while let Some(head) = world
                 .get::<TrainQueue>(entity)

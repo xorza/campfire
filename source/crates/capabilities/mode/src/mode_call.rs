@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_navigation::IndexedBody;
@@ -9,6 +10,8 @@ use campfire_script::{
 use campfire_units::{SyncAll, SyncNone};
 
 use crate::choices::Choices;
+use crate::game_map::GameMap;
+use crate::mode_script::ModeScript;
 use crate::mode_spec::ModeSpec;
 use crate::mode_world::{ModeWorld, ModeWorldCrate};
 
@@ -19,7 +22,9 @@ use crate::mode_world::{ModeWorld, ModeWorldCrate};
 /// the batch's view holds none of them.
 #[derive(Debug)]
 pub struct ModeCall {
-    book: Rc<ModeSpec>,
+    book: Arc<ModeSpec>,
+    /// The mode's values as scripts read them.
+    script: Rc<ModeScript>,
     /// Whether the running call is the mode's, whose state and choices it holds.
     running: bool,
     /// Every field of the mode's state, in the order of their names.
@@ -78,14 +83,15 @@ impl CallParams for ModeCall {
     const SCOPE: ParamScope = ParamScope::Mode;
 
     fn param(&self, name: &str) -> Option<ScriptValue> {
-        self.book.schema.param_named(name)
+        self.script.param_named(name)
     }
 }
 
 impl ModeCall {
-    pub fn new(book: Rc<ModeSpec>) -> Self {
+    pub(crate) fn new(book: Arc<ModeSpec>, script: Rc<ModeScript>) -> Self {
         Self {
             book,
+            script,
             running: false,
             state: Vec::new(),
             none: Vec::new(),
@@ -112,8 +118,13 @@ impl ModeCall {
     }
 
     /// The match's mode.
-    pub(crate) fn spec(&self) -> Rc<ModeSpec> {
-        Rc::clone(&self.book)
+    pub(crate) fn spec(&self) -> Arc<ModeSpec> {
+        Arc::clone(&self.book)
+    }
+
+    /// `ctx.map`.
+    pub(crate) fn map(&self) -> GameMap {
+        self.script.map()
     }
 
     /// The mode's part of `frame`, which the mode added as it installed.

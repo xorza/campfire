@@ -171,7 +171,7 @@ impl ModeApi {
         )
         .call(
             MemberSpec::value("map", "the map: its paths and its markers"),
-            |ctx: &mut Ctx| -> Checked<GameMap> { Ok(ctx.mode_spec_or_fail()?.map()) },
+            |ctx: &mut Ctx| ctx.mode_map_or_fail(),
         )
         .call(
             MemberSpec::value(

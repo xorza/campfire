@@ -447,7 +447,7 @@ impl Declarations for DeclarationAudit {
         self.one_shots.push(Named::of::<R>());
     }
 
-    fn non_send_loaded<R: 'static>(&mut self) {}
+    fn loaded<R: Resource>(&mut self) {}
 
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 

@@ -74,7 +74,7 @@ impl<S: ModeSync> SimComponent for ModeState<S> {
     // A field the class does not declare, or of another type, reaches its script as a value it
     // never wrote.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let book = world.non_send::<MatchMode>();
+        let book = world.resource::<MatchMode>();
         book.schema.state.holds(S::SYNC, &self.values)
     }
 }

@@ -18,7 +18,7 @@ impl SimResource for UnansweredSlotEvents {
 
     // An event of a slot the session does not have reaches the mode's script as no player.
     fn check(&self, world: &World) -> bool {
-        let players = world.non_send::<MatchMode>().teams.players();
+        let players = world.resource::<MatchMode>().teams.players();
         self.0.iter().all(|event| event.slot.get() < players)
     }
 }

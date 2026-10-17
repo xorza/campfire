@@ -282,7 +282,7 @@ impl Units {
     /// calls, the script host they run in within the role's budgets, and their failures. A client
     /// runs no scripts.
     fn runtime<D: Declarations>(d: &mut D) {
-        d.non_send::<ViewReader>(|_, _| Some(ViewReader::default()));
+        d.cache::<ViewReader>();
         d.non_send::<View>(|world, _| {
             Some(View::new(*world.resource::<TickRate>(), ViewReader::read))
         });

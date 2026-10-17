@@ -33,7 +33,7 @@ impl SpawnGroup {
             .paths
             .waypoint(self.path, 0, self.from)
             .expect("a path has a waypoint");
-        let spawner = world.non_send::<Spawner>().clone();
+        let spawner = world.resource::<Spawner>().clone();
         for &GroupUnit { unit_type, id } in &self.units {
             let walker = (
                 OnPath::new(self.path),

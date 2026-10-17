@@ -212,7 +212,7 @@ impl Construction {
         let holder = one_holds.then_some(builder);
         let site_part = Site::new(action, start.rank, gain, paid, holder);
         let status = StatusTags::from([Production::CONSTRUCTING]);
-        let spawner = world.non_send::<Spawner>().clone();
+        let spawner = world.resource::<Spawner>().clone();
         let site = spawner.spawn(world, at, (site_part, status));
         if let Some(mut life) = world.get_mut::<Life>(site) {
             life.take(gain);

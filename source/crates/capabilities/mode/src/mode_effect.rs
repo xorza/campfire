@@ -102,7 +102,7 @@ impl Effect for ModeEffect {
                 world.entity_mut(entity).insert(MatchEnd::new(tick, result));
             }
             Self::SpawnUnit { at, grants } => {
-                let spawner = world.non_send::<Spawner>().clone();
+                let spawner = world.resource::<Spawner>().clone();
                 if grants.is_empty() {
                     spawner.spawn(world, at, ());
                 } else {

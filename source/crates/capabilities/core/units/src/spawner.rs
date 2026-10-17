@@ -1,7 +1,8 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_values::{NameId, UnitType};
 
@@ -15,10 +16,10 @@ use crate::unit_entity::body_unit::BodyUnit;
 /// the match's capabilities, a type's passive among them. `ModeUnits` builds it, as the types
 /// are the mode's, and the mode, a capability that spawns a typed unit, such as production, and
 /// a test call it. Package data, not state.
-#[derive(Debug, Clone)]
+#[derive(Resource, Debug, Clone)]
 pub struct Spawner {
     /// Whether it spawns each type, by type.
-    types: Rc<[bool]>,
+    types: Arc<[bool]>,
 }
 
 impl Spawner {

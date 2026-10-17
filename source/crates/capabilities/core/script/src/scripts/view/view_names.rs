@@ -1,5 +1,4 @@
 use std::fmt;
-use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_common::PlayerSlot;
@@ -23,7 +22,7 @@ pub struct ViewNames {
     tables: TypeSlots<dyn AnyNames>,
     tags: TagNames,
     /// The match's teams; none before a mode sets them.
-    teams: Option<Rc<Teams>>,
+    teams: Option<Arc<Teams>>,
     /// Each unit type's params, one run per type, in the order of the types.
     params: Arc<NameTable<Scalar>>,
 }
@@ -87,7 +86,7 @@ impl ViewNames {
     }
 
     /// Names the teams.
-    pub fn set_teams(&mut self, teams: Rc<Teams>) {
+    pub fn set_teams(&mut self, teams: Arc<Teams>) {
         self.set_table(Arc::clone(teams.names()));
         self.teams = Some(teams);
     }

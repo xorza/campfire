@@ -1,10 +1,13 @@
 use std::{fmt, mem};
 
 use bevy_ecs::archetype::ArchetypeId;
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{QueryState, ROQueryItem};
+use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, SystemState};
 use bevy_ecs::world::World;
+use campfire_declare::Cache;
 use campfire_script::{ReadOf, RowFill, RowReads, UnitRow, View, ViewColumn, ViewRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_values::{Team, UnitTags, UnitType};
@@ -23,7 +26,7 @@ use crate::units_world::UnitsWorld;
 /// core's parts of each unit and the source of each column, which fill the rows of units whose
 /// parts changed since the last read and keep the others. The view calls it through `read`, which
 /// `Units::open` gives it.
-#[derive(Debug, Default)]
+#[derive(Resource, Debug, Default)]
 pub struct ViewReader {
     /// The core's parts of each unit, once a read built its queries.
     core: Option<CoreSource>,
@@ -83,11 +86,9 @@ impl ViewReader {
     /// phase that runs scripts.
     pub(crate) fn read(world: &mut World) {
         let view = world.non_send::<View>().clone();
-        let mut reader = world
-            .remove_non_send::<Self>()
-            .expect("the core reads the view");
-        reader.read_into(world, &mut view.rows_mut());
-        world.insert_non_send(reader);
+        world.resource_scope(|world, mut reader: Mut<'_, Self>| {
+            reader.read_into(world, &mut view.rows_mut());
+        });
     }
 
     /// Reads the units of `world` into `rows`: fills the rows of units whose parts changed since
@@ -238,18 +239,22 @@ impl ViewReader {
             .columns()
             .index_of::<C>()
             .expect("the column was added");
-        let mut reader = world
-            .remove_non_send::<Self>()
-            .expect("the core reads the view");
-        assert!(
-            Self::source_mark(reader.sources.len()) < RowMarks::SOURCES,
-            "the marks have room for every source and the core"
-        );
-        reader
-            .sources
-            .push(Box::new(RowSource::<D, C>::new(world, column, fill)));
-        world.insert_non_send(reader);
+        world.resource_scope(|world, mut reader: Mut<'_, Self>| {
+            assert!(
+                Self::source_mark(reader.sources.len()) < RowMarks::SOURCES,
+                "the marks have room for every source and the core"
+            );
+            let source = RowSource::<D, C>::new(world, column, fill);
+            reader.sources.push(Box::new(source));
+        });
         rows.refill_next();
+    }
+}
+
+/// Every role reads its view's rows, from none kept.
+impl Cache for ViewReader {
+    fn installed() -> Option<Self> {
+        Some(Self::default())
     }
 }
 

@@ -16,7 +16,7 @@ impl Effect for ActionsEffect {
     // with it, so it spawns whole.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        let spawner = world.non_send::<Spawner>().clone();
+        let spawner = world.resource::<Spawner>().clone();
         match self.life {
             Some(life) => spawner.spawn(world, self.at, Lifespan::until(now.after(life))),
             None => spawner.spawn(world, self.at, ()),

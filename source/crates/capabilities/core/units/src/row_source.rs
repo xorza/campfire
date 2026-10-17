@@ -22,7 +22,8 @@ pub(crate) struct RowSource<D: RowReads, C: ViewColumn> {
     /// The place of its column among the view's.
     column: usize,
     fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_, C>),
-    of: PhantomData<C>,
+    /// The column it fills, which it holds none of.
+    of: PhantomData<fn() -> C>,
 }
 
 impl<D: RowReads, C: ViewColumn> RowSource<D, C> {
@@ -54,7 +55,7 @@ impl<D: RowReads, C: ViewColumn> fmt::Debug for RowSource<D, C> {
 }
 
 /// A row source of any parts, as the view holds them.
-pub(crate) trait FillRow: fmt::Debug {
+pub(crate) trait FillRow: fmt::Debug + Send + Sync {
     /// Starts a read of `world`: brings its queries up to the archetypes, starts its column's
     /// read, and marks for `source` each unit whose parts changed since its last read. Whether
     /// every row must be filled again, as the column asks.

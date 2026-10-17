@@ -9,7 +9,6 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-use std::rc::Rc;
 use std::sync::Arc;
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
@@ -26,6 +25,7 @@ use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick};
 use campfire_units::{BodyForm, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone, UnitsSet};
 use campfire_values::Relations;
 
+use crate::mode_script::ModeScript;
 use crate::out_of_play_marks::OutOfPlayMarks;
 
 mod calls;
@@ -55,6 +55,7 @@ mod mode_inputs;
 mod mode_load;
 mod mode_map;
 mod mode_schema;
+mod mode_script;
 mod mode_setup;
 mod mode_spec;
 mod mode_state;
@@ -181,20 +182,20 @@ impl Module for Mode {
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
         d.report::<SaveAsked>();
-        d.non_send_loaded::<MatchMode>();
-        d.non_send_loaded::<Spawner>();
+        d.loaded::<MatchMode>();
+        d.loaded::<Spawner>();
         d.check::<Player>(Self::players_spawned);
         d.part::<MatchEntity, Relations>(|at| {
-            Some(at.world().non_send::<MatchMode>().relations.clone())
+            Some(at.world().resource::<MatchMode>().relations.clone())
         });
         d.part::<MatchEntity, ModeState<SyncNone>>(|at| {
             Some(ModeState::initial(
-                &at.world().non_send::<MatchMode>().schema,
+                &at.world().resource::<MatchMode>().schema,
             ))
         });
         d.part::<MatchEntity, ModeState<SyncAll>>(|at| {
             Some(ModeState::initial(
-                &at.world().non_send::<MatchMode>().schema,
+                &at.world().resource::<MatchMode>().schema,
             ))
         });
         d.api(ModeApi::register);
@@ -267,20 +268,18 @@ impl Mode {
             .get_resource::<NavigationBook>()
             .map(|book| &book.paths);
         let path_names = paths.into_iter().flat_map(|paths| paths.names().texts());
+        let spawn_tags = &setup
+            .data
+            .section_or_default::<ModeNavigationData>()
+            .spawn_tags;
+        let map = GameMap::new(path_names.map(ScriptText::from), &markers, spawn_tags);
+        view.names_mut().set_table(Arc::clone(map.tags()));
+        let script = ModeScript::new(setup.data, setup.picks, map);
         let start = MapStart {
             teams,
             placed,
             relations,
-            map: GameMap::new(
-                path_names.map(ScriptText::from),
-                &markers,
-                &setup
-                    .data
-                    .section_or_default::<ModeNavigationData>()
-                    .spawn_tags,
-            ),
         };
-        view.names_mut().set_table(Arc::clone(start.map.tags()));
         Self::load_units(world, &units);
         let load = SpecLoad {
             start,
@@ -291,20 +290,21 @@ impl Mode {
             slots: world.resource::<ByType<ActionSlots>>(),
         };
         let book = ModeSpec::new(setup, load);
-        view.names_mut().set_teams(Rc::clone(&book.teams));
+        view.names_mut().set_teams(Arc::clone(&book.teams));
         view.names_mut().set_table(Arc::clone(book.choices.names()));
         let players = usize::try_from(book.teams.players()).expect("a player count fits usize");
         world.insert_resource(Choices::empty(&book.choices, players));
         let ctx = world.non_send::<Ctx>().clone();
-        let book = Rc::new(book);
-        ctx.frame().add_params(ModeCall::new(Rc::clone(&book)));
-        world.insert_non_send(MatchMode(Rc::clone(&book)));
+        let book = Arc::new(book);
+        ctx.frame()
+            .add_params(ModeCall::new(Arc::clone(&book), script));
+        world.insert_resource(MatchMode(Arc::clone(&book)));
     }
 
     /// Whether each slot of the session has its entity, as the mode's start spawns them, so no
     /// call finds one missing.
     fn players_spawned(world: &World) -> Result<(), Breach> {
-        let players = world.non_send::<MatchMode>().teams.players();
+        let players = world.resource::<MatchMode>().teams.players();
         let seated = (0..players)
             .map(PlayerSlot::new)
             .all(|slot| world.player_entity(slot).is_some());
@@ -314,7 +314,7 @@ impl Mode {
     /// Loads the spawner of `units`, the mode's unit types, into `world`: from then on, the mode
     /// and each capability spawn a unit of a type the mode spawns through it.
     pub fn load_units(world: &mut World, units: &ModeUnits) {
-        world.insert_non_send(units.spawner());
+        world.insert_resource(units.spawner());
     }
 
     /// Starts the match, before its first tick: the players spawn, each slot held or open as
@@ -323,7 +323,7 @@ impl Mode {
     /// from the start. An error when the call fails: a match its mode cannot start would run
     /// without its rules.
     pub fn start(world: &mut World, seatings: &[Seating]) -> Result<(), CallError> {
-        let book = world.non_send::<MatchMode>().clone();
+        let book = world.resource::<MatchMode>().clone();
         let teams = &book.teams;
         assert_eq!(
             seatings.len(),
@@ -338,7 +338,7 @@ impl Mode {
                 seating,
             }),
         );
-        let spawner = world.non_send::<Spawner>().clone();
+        let spawner = world.resource::<Spawner>().clone();
         for placed in &book.placed {
             let at = SpawnAt {
                 id: world.resource_mut::<IdAllocator>().allocate(),
@@ -501,7 +501,7 @@ pub mod internals {
 
         /// How many slots the session of the installed mode has.
         pub fn slots(world: &World) -> usize {
-            let players = world.non_send::<MatchMode>().teams.players();
+            let players = world.resource::<MatchMode>().teams.players();
             usize::try_from(players).expect("slots fit usize")
         }
 
@@ -534,7 +534,7 @@ pub mod internals {
         pub fn test_spawner(world: &World) -> Option<Spawner> {
             match world.get_non_send::<FixtureSpawner>() {
                 Some(FixtureSpawner(spawner)) => Some(spawner.clone()),
-                None => world.get_non_send::<Spawner>().cloned(),
+                None => world.get_resource::<Spawner>().cloned(),
             }
         }
 

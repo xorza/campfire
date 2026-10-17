@@ -186,7 +186,7 @@ impl Declarations for DeclaredResources {
         self.ids.push(TypeId::of::<R>());
     }
 
-    fn non_send_loaded<R: 'static>(&mut self) {
+    fn loaded<R: Resource>(&mut self) {
         self.ids.push(TypeId::of::<R>());
     }
 

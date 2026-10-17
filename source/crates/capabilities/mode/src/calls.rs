@@ -1,5 +1,5 @@
 use std::ops::ControlFlow;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_combat::{Damage, DamageHandle, Heal, HealHandle};
@@ -46,7 +46,7 @@ impl Calls<'_, '_> {
     }
 
     /// The match's mode.
-    pub(crate) fn book(&self) -> Rc<ModeSpec> {
+    pub(crate) fn book(&self) -> Arc<ModeSpec> {
         self.ctx.match_mode_spec()
     }
 

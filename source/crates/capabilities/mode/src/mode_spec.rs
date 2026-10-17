@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::sync::Arc;
 
 use campfire_actions::ActionSlots;
 use campfire_declare::ByType;
@@ -7,7 +7,6 @@ use campfire_units::{BodyForm, ScriptBook};
 use campfire_values::{Names, Relations, Team, UnitType};
 
 use crate::choice_specs::ChoiceSpecs;
-use crate::game_map::GameMap;
 use crate::mode_schema::ModeSchema;
 use crate::mode_setup::ModeSetup;
 use crate::mode_units::ModeUnits;
@@ -20,7 +19,7 @@ use crate::roster::Roster;
 pub struct ModeSpec {
     pub(crate) schema: ModeSchema,
     pub(crate) roster: Roster,
-    pub(crate) teams: Rc<Teams>,
+    pub(crate) teams: Arc<Teams>,
     pub(crate) choices: ChoiceSpecs,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
@@ -35,18 +34,15 @@ pub struct ModeSpec {
     /// How the teams regard each other as the match starts, and which friendly pairs share
     /// vision.
     pub relations: Relations,
-    /// `ctx.map`, as scripts read it, and where avatars spawn.
-    map: GameMap,
 }
 
-/// What the mode's map gives its book: the teams' names, the units it places, how the teams
-/// regard each other as the match starts, and the map as scripts read it.
+/// What the mode's map gives its book: the teams' names, the units it places, and how the teams
+/// regard each other as the match starts.
 #[derive(Debug)]
 pub struct MapStart {
     pub(crate) teams: Names<Team>,
     pub(crate) placed: Vec<PlacedUnit>,
     pub relations: Relations,
-    pub(crate) map: GameMap,
 }
 
 /// What the mode's book takes of the load beside its setup: what its map gives, the ranks of
@@ -77,7 +73,6 @@ impl ModeSpec {
             teams,
             placed,
             relations,
-            map,
         } = start;
         let seats = setup.teams.iter().map(|team| team.slots);
         let teams = Teams::new(teams, seats, setup.players)
@@ -87,9 +82,9 @@ impl ModeSpec {
             spawned.set(unit_type, ());
         }
         Self {
-            schema: ModeSchema::new(setup.script, scripts, setup.data, setup.picks),
+            schema: ModeSchema::new(setup.script, scripts, setup.data),
             roster: Roster::new(units.avatars, &units.loadout),
-            teams: Rc::new(teams),
+            teams: Arc::new(teams),
             choices: ChoiceSpecs::new(&setup.data.choices),
             loadout_ranks,
             spawned,
@@ -97,7 +92,6 @@ impl ModeSpec {
             slots: slots.clone(),
             placed,
             relations,
-            map,
         }
     }
 
@@ -115,9 +109,5 @@ impl ModeSpec {
     /// only actions deliver its units.
     pub(crate) fn spawns(&self, unit_type: UnitType) -> bool {
         self.spawned.get(unit_type).is_some()
-    }
-
-    pub(crate) fn map(&self) -> GameMap {
-        self.map.clone()
     }
 }
