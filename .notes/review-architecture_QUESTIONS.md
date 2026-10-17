@@ -31,3 +31,13 @@ Each question waits for the user's decision. The plan's items point here.
   2. **The relationship, with a frame's seats in a local.** `PlayerLink` becomes the relationship; the door keeps the links it seated this frame in a `Local`, which a second join reads before the commands apply. Cost: the local is a third record for one frame, and every path that seats must read it.
   3. **The relationship, the door exclusive again.** The door seats through the world at once, so the relationship holds at each join. Cost: N-4 goes back for the door.
 - **Blocked:** the second half of N-18 alone.
+
+## Q17. Batch 6.4, the session log: review of its proposal
+
+- **Item:** 6.4, N-17, N-14 and N-13. The proposal is [session-log-state.md](../docs/design/session-log-state.md), written as Q13 decided.
+- **Why it waits:** the batch changes the protocol's log, its journal, the runner's session and replay, and net's restore, load and publication; Q13 asked for its design to be reviewed before it is built.
+- **Options:**
+  1. **Accept the proposal (recommended).** The live log as the latest checkpoint's state and the entries since; the carry gains, for each slot, whether it changed hands since tick 0; a replay cursor the session owns; publication from the journal in two passes; one encode for each record; the signature policy as a decode parameter; the journal a value of the server's session. No published byte and no golden moves.
+  2. **Accept it with the publication from the live log rebuilt whole.** The two-pass reader is dropped, and the end rebuilds the log from the journal and encodes it. Cost: the session's whole log in memory once at the end.
+  3. **Change the proposal.** You name the decisions to change.
+- **Blocked:** the first three bullets of 6.4.
