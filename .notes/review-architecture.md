@@ -640,10 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 2: confirmed bugs
 
-**2.4 Client picking and ground.** Touches the client.
-- Picking takes an analytic ray test against each drawing's `Shape` (A-2).
-- One function adds the drawn ground only on a planar map (A-12).
-
 **2.5 Placement under fog.** Touches `production`.
 - A static body that the builder's team does not see does not block a placement, as Zero Hour's `isLocationLegalToBuild` refuses an unseen point (RW 9).
 
@@ -1205,7 +1201,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
 | A-1 | No client module list: `if`s in `add_ends`, `Option` params and `expect`s in shared systems | `client/src/main.rs:196-283`, `hud/mod.rs:23-24`, `view/mod.rs:543-552` | Confirmed | 10.1 |
-| A-2 | The pointer picks by the ground footprint, so the upper part of a tall building cannot be clicked | `pointer.rs:79-136` | Confirmed | 2.4 |
 | A-3 | Models carry no team color, and the palette has three teams | `view/mod.rs:91-92, 324-328` | Confirmed | 10.3 |
 | A-4 | The HUD and the fallback shapes are sized for the MOBA | `hud/gauge.rs:80-91`, `view/look.rs:37-71` | Confirmed | 10.3 |
 | A-5 | Keys and two Zero Hour camera numbers are Rust constants in the client | `orders.rs:57-71`, `player_camera.rs:43-46`, `camera_rig.rs:77-80` | Confirmed | 10.3 |
@@ -1215,7 +1210,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | A-9 | `Option<Res<..>>` for resources that the plugins insert at build | `own_player.rs:11`, `view/mod.rs:852-860`, `inventory_bar.rs:103-104` | Confirmed | 10.1 |
 | A-10 | Systems run every frame where a change, a run condition or an observer fits, and `CameraRig` is always changed | `view/mod.rs:262-875`, `build_preview.rs:85-242`, `camera_rig.rs:208` | Confirmed | 10.1 |
 | A-11 | The client decodes the map's heights a second time and has its own package reader | `client_data/mod.rs:73-168` | Confirmed | 10.2 |
-| A-12 | The client adds the drawn ground to positions on every map, spatial maps included | `view/mod.rs:922-929`, `map_book.rs:28-36` | Plausible | 2.4 |
 | A-13 | Placing a build is a mode held by whether a resource exists | `placing.rs`, `orders.rs:78-81`, `selecting.rs:68-69` | Confirmed | 10.1 |
 | A-15 | The match's end shows as English text in code | `view/mod.rs:851-875` | Confirmed | 10.3 |
 | A-16 | Zero Hour's fixed rules come from importer Rust, because a rules package can hold no data | `rules_package.rs:35-177`, `imported_type.rs:130-208`, `mode_packages/mod.rs:188-205` | Confirmed | 9.1, 9.2 |

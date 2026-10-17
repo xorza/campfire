@@ -9,6 +9,7 @@ use campfire_client_files::{
 };
 use campfire_codec::{Binary, Toml, TomlError};
 use campfire_common::MapName;
+use campfire_geometry::Metric;
 use campfire_log::ErrorReport;
 use campfire_package::{ContentError, ModePackages, PackageReader};
 use campfire_units::HeightGrid;
@@ -32,6 +33,8 @@ pub(crate) struct ClientData {
     pub(crate) materials: Vec<BTreeMap<String, MaterialFile>>,
     /// The ground's heights from the map's heightmap; none for a map of no heightmap.
     pub(crate) heights: Option<GroundHeights>,
+    /// How the map reads a position: above its ground, or as a point in space.
+    pub(crate) metric: Metric,
     /// The map's terrain over its heights; none for a map of no heights, of no terrain file, or
     /// of one that does not read or is not the heights' shape.
     pub(crate) terrain: Option<TerrainFile>,
@@ -63,7 +66,18 @@ impl ClientData {
             data.read_package(view.index, &view.package.files);
         }
         data.read_map(&packages.mode().package.files, packages.map_name());
+        data.metric = packages.map().metric;
         data
+    }
+
+    /// The drawn heights a sim position stands above: the ground's on a planar map, where a
+    /// position's height is above its ground; none on a spatial map, where a position is a point
+    /// in space (04-capabilities/00-overview.md, The sim's ground is the map's height grid).
+    pub(crate) const fn lifts(&self) -> Option<&GroundHeights> {
+        match self.metric {
+            Metric::Planar => self.heights.as_ref(),
+            Metric::Spatial => None,
+        }
     }
 
     /// Reads the mode's own package's files of `map`: its heights and its terrain over them, the

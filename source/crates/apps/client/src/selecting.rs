@@ -144,9 +144,7 @@ impl Selecting {
         if press.drags {
             pointer.own_units_within(press.rect(), &mut picked);
         } else {
-            let unit = pointer
-                .ground()
-                .and_then(|point| pointer.own_unit_at(point));
+            let unit = pointer.own_unit_under();
             picked.extend(unit);
         }
         if selection.bypass_change_detection().pick(&picked) {

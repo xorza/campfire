@@ -102,7 +102,7 @@ impl Orders {
         let Some(point) = pointer.ground() else {
             return;
         };
-        let under = pointer.unit_at(point, selection.get());
+        let under = pointer.unit_under(selection.get());
         let avatar = own
             .avatar()
             .filter(|avatar| selection.get().contains(&avatar.id));
@@ -143,8 +143,8 @@ impl Orders {
             return;
         };
         let ground = pointer.ground();
-        let under = ground
-            .and_then(|point| pointer.unit_at(point, slice::from_ref(&avatar.id)))
+        let under = pointer
+            .unit_under(slice::from_ref(&avatar.id))
             .map(|unit| unit.id);
         let point = ground.and_then(position);
         let ability_use = if keys.any_pressed(LEARN_KEYS) {

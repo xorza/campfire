@@ -2323,6 +2323,7 @@ dependencies = [
  "campfire-codec",
  "campfire-combat",
  "campfire-common",
+ "campfire-geometry",
  "campfire-interaction",
  "campfire-items",
  "campfire-log",

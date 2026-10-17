@@ -1,3 +1,4 @@
+use campfire_geometry::Metric;
 use std::f32::consts::FRAC_PI_4;
 use std::sync::Arc;
 use std::time::Duration;
@@ -229,6 +230,28 @@ fn the_result_stands_by_the_clients_team() {
     for own in [Some(a), None] {
         assert_eq!(Standing::of(MatchResult::Draw, own), Some(Standing::Draw));
     }
+}
+
+#[test]
+fn a_position_stands_on_the_drawn_ground_of_a_planar_map_and_is_its_own_point_on_a_spatial_one() {
+    // Ground 8 samples high everywhere, a step of 0.5 m: 4 m under every point. A position 2 m
+    // up at (3, 0) draws at 4 + 2 = 6 m on a planar map, and at its own 2 m on a spatial one.
+    let grid = HeightGrid::new(
+        [Num::int(-10), Num::int(-10)],
+        Num::int(10),
+        Num::from_bits(1 << (Num::FRAC_BITS - 1)),
+        4,
+        vec![8; 16],
+    )
+    .unwrap();
+    let mut data = ClientData {
+        heights: Some(GroundHeights::of(grid, None)),
+        ..ClientData::default()
+    };
+    let pos = Position::from((3, 2, 0));
+    assert_eq!(ground(pos, data.lifts()), Vec3::new(3.0, 6.0, 0.0));
+    data.metric = Metric::Spatial;
+    assert_eq!(ground(pos, data.lifts()), Vec3::new(3.0, 2.0, 0.0));
 }
 
 #[test]

@@ -361,7 +361,7 @@ impl View {
         mut cuboids: Local<'_, BTreeMap<[u32; 3], Handle<Mesh>>>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.heights.as_ref();
+        let heights = data.lifts();
         for (unit, &pos, team, walks, avatar, own, dead, received, body, &unit_type, facing) in
             &units
         {
@@ -471,7 +471,7 @@ impl View {
         data: Res<'_, ClientData>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.heights.as_ref();
+        let heights = data.lifts();
         for (shot, &pos, &unit_type, received) in &shots {
             let at = ground(pos, heights);
             let root = commands
@@ -521,7 +521,7 @@ impl View {
         data: Res<'_, ClientData>,
         mut roots: Query<'_, '_, (&mut Heading, &mut Transform)>,
     ) {
-        let heights = data.heights.as_ref();
+        let heights = data.lifts();
         for (&pos, drawing) in &shots {
             let Ok((mut heading, mut transform)) = roots.get_mut(drawing.root()) else {
                 continue;
@@ -544,7 +544,7 @@ impl View {
         data: Res<'_, ClientData>,
         mut commands: Commands<'_, '_>,
     ) {
-        let heights = data.heights.as_ref();
+        let heights = data.lifts();
         for (area, &pos, &unit_type, received) in &areas {
             let radius = reach
                 .as_ref()
@@ -731,7 +731,7 @@ impl View {
         data: Res<'_, ClientData>,
         mut roots: Query<'_, '_, &mut Glide>,
     ) {
-        let heights = data.heights.as_ref();
+        let heights = data.lifts();
         for (&pos, facing, drawing) in &units {
             if let Ok(mut glide) = roots.get_mut(drawing.root()) {
                 glide.tick(Spot {
@@ -749,7 +749,7 @@ impl View {
         data: Res<'_, ClientData>,
         mut roots: Query<'_, '_, (&Transform, &mut Glide)>,
     ) {
-        let heights = data.heights.as_ref();
+        let heights = data.lifts();
         for (&pos, facing, drawing) in &units {
             if let Ok((transform, mut glide)) = roots.get_mut(drawing.root()) {
                 let drawn = Spot {
@@ -920,7 +920,7 @@ fn yaw(facing: Option<&Facing>) -> f32 {
 }
 
 /// A sim place in the renderer's floats: its height above the ground, which `heights` gives
-/// beneath it, or 0 on a map with none.
+/// beneath it, or above 0 on a map with none or a spatial map's, as `ClientData::lifts` gives.
 fn ground(pos: Position, heights: Option<&GroundHeights>) -> Vec3 {
     let point = pos.get();
     let (x, z) = (point.x.float(), point.z.float());

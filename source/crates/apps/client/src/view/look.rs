@@ -212,8 +212,8 @@ mod tests {
                 .abs_diff_eq(Vec3::Z, 1e-6)
         );
         // It covers a point 1.9 m along z and 0.9 m along x from its center, and not 1.1 m along x.
-        assert!(expected.covers(Vec2::new(0.9, 1.9)));
-        assert!(!expected.covers(Vec2::new(1.1, 0.0)));
+        assert!(expected.crossed(Vec2::new(0.9, 1.9), Vec2::ZERO).is_some());
+        assert!(expected.crossed(Vec2::new(1.1, 0.0), Vec2::ZERO).is_none());
         // The avatar's capsule stands its half length over its radius, 0.75 + 0.5; dead, it lies
         // on its side, its axis its radius over the ground. The box stands as it stood.
         let dead = Handle::default();
