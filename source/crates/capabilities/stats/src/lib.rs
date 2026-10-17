@@ -61,6 +61,7 @@ mod modifier_intervals;
 mod modifier_params;
 mod modifier_spec;
 mod modifiers;
+mod modifiers_data;
 mod param_book;
 mod param_read;
 mod param_source;
@@ -127,6 +128,7 @@ pub use crate::modifier_spec::{
 };
 pub use crate::modifiers::modifier_clocks::{Clock, ModifierClocks, Spent};
 pub use crate::modifiers::{Absorbed, Carried, Modifiers, Touched};
+pub use crate::modifiers_data::ModifiersData;
 pub use crate::param_book::{ParamBook, ParamTables};
 pub use crate::param_source::ParamSource;
 pub use crate::param_table::ParamTable;
@@ -244,6 +246,7 @@ impl Module for Stats {
     type Set = StatsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<ModifiersData>();
         d.section::<TypePoolsData>();
         d.section::<StatsData>();
         d.section::<PassiveData>();

@@ -301,7 +301,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         to: EffectTo::Source,
     };
     assert_eq!(
-        rime.content.actions["fan_of_frost"].on_hit.last(),
+        rime.content.actions()["fan_of_frost"].on_hit.last(),
         Some(&heal)
     );
     // A purge names a tag the match declares, which Rime's slow grants.
@@ -316,7 +316,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         tag: DeclaredName::new("slowed").unwrap(),
     });
     assert_eq!(
-        rime.content.actions["fan_of_frost"]
+        rime.content.actions()["fan_of_frost"]
             .on_hit
             .last()
             .map(|effect| &effect.does),
@@ -348,7 +348,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
     let on_hit = biting("on_hit");
     let edit = Edit::Replace(MELEE_END, &on_hit);
     let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
-    let weapon = &packages.content().actions["melee_creep_attack"];
+    let weapon = &packages.content().actions()["melee_creep_attack"];
     assert_eq!((weapon.on_hit.len(), weapon.params.len()), (1, 1));
     let on_end = biting("on_end");
     let edit = Edit::Replace(MELEE_END, &on_end);
@@ -371,7 +371,7 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
         on_hit: Vec::new(),
         on_end: Vec::new(),
     });
-    let on_hit = &cinder.content.actions["attack"].on_hit;
+    let on_hit = &cinder.content.actions()["attack"].on_hit;
     assert_eq!(
         on_hit.iter().map(|effect| &effect.does).collect::<Vec<_>>(),
         [&launch]

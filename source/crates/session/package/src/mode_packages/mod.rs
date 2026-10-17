@@ -272,9 +272,9 @@ impl ModePackages {
                 let problem = LoadProblem::Unknown { at, name, of };
                 LoadError::of(&view.package.header.name, problem)
             };
-            for (id, modifier) in &content.modifiers {
+            for (id, modifier) in content.modifiers() {
                 let by: Vec<(&DeclaredName, &ActionData)> =
-                    ways.actions_of(id.as_str(), &content.actions).collect();
+                    ways.actions_of(id.as_str(), content.actions()).collect();
                 for (changed, change) in &modifier.stats {
                     let Some(name) = change.value.param() else {
                         continue;
@@ -337,7 +337,7 @@ impl ModePackages {
             iter::once(content).chain(dependencies.iter().map(|dependent| &dependent.content));
         let modifiers = contents
             .clone()
-            .flat_map(|content| content.modifiers.values())
+            .flat_map(|content| content.modifiers().values())
             .flat_map(|modifier| &modifier.tags);
         let avatars = dependencies
             .iter()

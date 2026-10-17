@@ -37,7 +37,7 @@ impl<'a> ModifierWays<'a> {
                 .into_iter()
                 .flat_map(|script| script.facts.applied())
         };
-        for (id, action) in &content.actions {
+        for (id, action) in content.actions() {
             let way = Way::Action(id.clone());
             let inside = match &action.delivery {
                 Some(DeliveryData::Area { unit_type }) => content
@@ -83,7 +83,7 @@ impl<'a> ModifierWays<'a> {
             found.add(passive.0.as_str(), &Way::NoAction);
         }
         let mut passes: Vec<(&str, &str)> = Vec::new();
-        for (id, modifier) in &content.modifiers {
+        for (id, modifier) in content.modifiers() {
             if let Some(aura) = &modifier.aura {
                 passes.push((id.as_str(), aura.modifier.as_str()));
             }

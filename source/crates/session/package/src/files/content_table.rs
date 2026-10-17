@@ -11,7 +11,7 @@ impl ContentTable {
     /// the table stays.
     pub(crate) fn take<E: Error>(table: &mut TomlTable) -> Result<PackageContent, E> {
         let readers = Release::sections();
-        let content = table.take_keys(PackageContent::KEYS);
+        let content = table.take_keys(PackageContent::keys(&readers));
         content
             .read_with(PackageContent::seed(&readers))
             .map_err(E::custom)

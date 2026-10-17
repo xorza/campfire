@@ -307,7 +307,7 @@ impl Moba3v3 {
     /// The MOBA 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: impl IntoIterator<Item = SlotPlan>) -> ScriptedMode<Self> {
         let packages = TestMode::Moba3v3.packages();
-        let items = &packages.mode().content.items;
+        let items = packages.mode().content.items();
         let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
         let item = |name: &str| items.named(name).expect("an item of the 3v3");
         let script = Self::script(&item);

@@ -128,10 +128,7 @@ const fn stamp(index: u64) -> u64 {
 /// The item `name` of the 3v3.
 fn item(moba: &ScriptedMode<Moba3v3>, name: &str) -> ItemId {
     let mode = moba.packages().mode();
-    let items: Names<ItemId> = mode
-        .content
-        .items
-        .keys()
+    let items: Names<ItemId> = (mode.content.items().keys())
         .map(DeclaredName::as_str)
         .collect();
     items.named(name).unwrap()
@@ -215,7 +212,7 @@ fn action(moba: &ScriptedMode<Moba3v3>, player: u32, slot: u8) -> &ActionData {
         .packages()
         .find(|view| view.package.header.name == package);
     let name = DeclaredName::new(name).unwrap();
-    &view.unwrap().content.actions[&name]
+    &view.unwrap().content.actions()[&name]
 }
 
 /// A whole number of `ranked` at `rank`, a learned slot's.

@@ -20,6 +20,9 @@ pub enum SectionTable {
     Mode,
     /// A map's `map/<name>/map.toml`.
     Map,
+    /// A package's content: its actions, modifiers and item types, each by id, beside its unit
+    /// types.
+    Package,
     /// A unit type, `[units.<id>]`.
     UnitType,
     /// A unit type's key that makes it a delivery type, whose units only actions deliver and no

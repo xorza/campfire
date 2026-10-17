@@ -3,9 +3,9 @@ use std::mem;
 use std::sync::Arc;
 
 use campfire_actions::{
-    ActionData, ActionKind, ActionNames, ActionParts, ActionProblem, ActionSlots, ConstructData,
-    CostTarget, EffectNames, PackageAction, PlacementData, PlacementRule, ProjectileFlight,
-    SlotKindBook, SlotKinds, TypeSlotsData, UseGroup,
+    ActionData, ActionKind, ActionNames, ActionParts, ActionProblem, ActionSlots, ActionsData,
+    ConstructData, CostTarget, EffectNames, PackageAction, PlacementData, PlacementRule,
+    ProjectileFlight, SlotKindBook, SlotKinds, TypeSlotsData, UseGroup,
 };
 use campfire_areas::{AreaData, AreaError, AreaSpec, Areas};
 use campfire_combat::{Armor, CombatBook, CombatData, ModeCombatData, OnDeath, Turret, TurretData};
@@ -13,7 +13,7 @@ use campfire_common::DeclaredName;
 use campfire_declare::UnitTypeData;
 use campfire_interaction::{UseData, UseSlot, UseSpec, UsesData};
 use campfire_items::{
-    Inventory, InventoryData, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData,
+    Inventory, InventoryData, ItemBook, ItemError, ItemId, ItemSpec, ItemsData, Shop, ShopData,
 };
 use campfire_mode::{MapInput, ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
 use campfire_navigation::{ModeNavigationData, Walker, WalkerKinds};
@@ -28,9 +28,9 @@ use campfire_projectiles::{ProjectileData, ProjectileSpec, Projectiles};
 use campfire_script::{Filter, NameKind, ScriptId, UnknownName};
 use campfire_sim::Capability;
 use campfire_stats::{
-    ModePoolsData, ModeStatsData, ModifierBook, ModifierError, ModifierLoad, PackageModifier,
-    ParamBook, ParamTable, PassiveData, PoolBook, PoolId, SpecError, StatBook, StatId, StatsData,
-    TypePassive, TypePoolsData,
+    ModePoolsData, ModeStatsData, ModifierBook, ModifierError, ModifierLoad, ModifiersData,
+    PackageModifier, ParamBook, ParamTable, PassiveData, PoolBook, PoolId, SpecError, StatBook,
+    StatId, StatsData, TypePassive, TypePoolsData,
 };
 use campfire_units::{
     Avatar, CollisionData, ModeTagsData, TypeOrigin, TypesError, UnitTypeCore, UnitTypes,
@@ -374,7 +374,8 @@ impl<'a> BookBuilder<'a> {
         package: &BookPackage<'_>,
         actions: &BTreeMap<&str, ActionId>,
     ) -> Result<ItemBook, BookError> {
-        let items = &package.content.items;
+        let items = package.content.section_or_default::<ItemsData>();
+        let items = &items.0;
         let ids: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
         let resources = &self.names.resources;
         let names = self.names(index, None);
@@ -489,10 +490,9 @@ impl<'a> BookBuilder<'a> {
         index: PackageIndex,
         package: &BookPackage<'_>,
     ) -> Result<(), BookError> {
-        let modifiers: Vec<PackageModifier<'_>> = package
-            .content
-            .modifiers
-            .iter()
+        let modifiers = package.content.section::<ModifiersData>();
+        let modifiers: Vec<PackageModifier<'_>> = (modifiers.into_iter())
+            .flat_map(|modifiers| &modifiers.0)
             .map(|(name, data)| {
                 let script = data.script.as_ref().map(|path| self.script(index, path));
                 Ok(PackageModifier {
@@ -544,10 +544,9 @@ impl<'a> BookBuilder<'a> {
         package: &'a BookPackage<'a>,
         ranks: impl Fn(&str) -> Option<u8>,
     ) -> Result<BTreeMap<&'a str, ActionId>, BookError> {
-        package
-            .content
-            .actions
-            .iter()
+        let actions = package.content.section::<ActionsData>();
+        (actions.into_iter())
+            .flat_map(|actions| &actions.0)
             .map(|(id, data)| {
                 let ranks = ranks(id.as_str()).unwrap_or(1);
                 Ok((id.as_str(), self.action(index, id, data, ranks)?))
@@ -923,7 +922,8 @@ impl<'a> BookBuilder<'a> {
             let slots = file.section_or_default::<TypeSlotsData>();
             let mut slotted = slots.0.values().flatten();
             slotted.any(|id| {
-                let action = package.content.actions.get(id);
+                let actions = package.content.section::<ActionsData>();
+                let action = actions.and_then(|actions| actions.0.get(id));
                 action.is_some_and(|action| action.kind == kind)
             })
         };

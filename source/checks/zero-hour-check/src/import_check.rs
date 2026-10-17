@@ -308,7 +308,7 @@ impl ImportCheck<'_> {
 
     /// How many actions of `kind` the mode holds.
     fn kind_count(&self, kind: ActionKind) -> usize {
-        let actions = self.packages.content().actions.values();
+        let actions = self.packages.content().actions().values();
         actions.filter(|action| action.kind == kind).count()
     }
 }

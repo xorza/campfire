@@ -81,7 +81,7 @@ pub struct TableSeed<'r> {
 
 /// A data table as its seed reads it: its sections, whether one makes its unit type a delivery
 /// type, and the rest of its keys kept whole, which its own fields read.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct TableRead {
     pub sections: Sections,
     pub delivers: bool,
@@ -93,6 +93,36 @@ impl TableRead {
     /// in the error type of the read it is part of.
     pub fn own<T: DeserializeOwned, E: Error>(rest: TomlTable) -> Result<T, E> {
         rest.read().map_err(TomlError::into_de)
+    }
+}
+
+impl TableSeed<'_> {
+    /// The error of `key`, which neither the table's own keys `own` nor its sections take.
+    pub fn unknown<E: Error>(&self, key: &str, own: &[&'static str]) -> E {
+        let keys = own.iter().copied().chain(self.readers.keys(self.table));
+        let keys: Vec<String> = keys.map(|key| format!("`{key}`")).collect();
+        E::custom(format_args!(
+            "unknown field `{key}`, expected one of {}",
+            keys.join(", ")
+        ))
+    }
+
+    /// Reads the value at `key` of `map` into `read` as its section, when a section of the table
+    /// takes `key`; whether one does. A table that holds keys of its own reads each of them
+    /// itself, as a package its unit types.
+    pub fn next_section<'de, A: MapAccess<'de>>(
+        &self,
+        key: &str,
+        map: &mut A,
+        read: &mut TableRead,
+    ) -> Result<bool, A::Error> {
+        let Some(reader) = self.readers.reader(self.table, key) else {
+            return Ok(false);
+        };
+        read.sections
+            .push(map.next_value_seed(SectionSeed(reader))?);
+        read.delivers |= reader.table == SectionTable::DeliveryType;
+        Ok(true)
     }
 }
 

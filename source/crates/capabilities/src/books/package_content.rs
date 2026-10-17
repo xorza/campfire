@@ -1,39 +1,69 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fmt;
+use std::{fmt, iter};
 
-use campfire_actions::ActionData;
+use campfire_actions::{ActionData, ActionsData};
 use campfire_common::DeclaredName;
-use campfire_declare::{SectionReaders, UnitTypeData};
-use campfire_items::ItemData;
-use campfire_stats::ModifierData;
+use campfire_declare::{Section, SectionReaders, SectionTable, Sections, TableRead, UnitTypeData};
+use campfire_items::{ItemData, ItemsData};
+use campfire_stats::{ModifierData, ModifiersData};
 use serde::Deserializer;
-use serde::de::{DeserializeSeed, Error, MapAccess, Visitor};
+use serde::de::{DeserializeSeed, MapAccess, Visitor};
 
 use crate::books::units_seed::UnitsSeed;
 
-/// What a package holds for a match, each by its id in the package: its actions, its modifiers,
-/// its unit types and its item types. The mode, an avatar and a loadout hold the same shape, and
-/// the load lets only the mode hold item types.
+/// What a package holds for a match: its unit types by name, and the sections of the modules that
+/// read the rest, its actions, modifiers and item types by id. The mode, an avatar and a loadout
+/// hold the same shape, and the load lets only the mode hold item types.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PackageContent {
-    pub actions: BTreeMap<DeclaredName, ActionData>,
-    pub modifiers: BTreeMap<DeclaredName, ModifierData>,
     pub units: BTreeMap<DeclaredName, UnitTypeData>,
-    pub items: BTreeMap<DeclaredName, ItemData>,
+    pub sections: Sections,
 }
 
 impl PackageContent {
-    const ACTIONS: &'static str = "actions";
-    const MODIFIERS: &'static str = "modifiers";
     const UNITS: &'static str = "units";
-    const ITEMS: &'static str = "items";
 
-    /// The keys of a data file's table that hold a package's content.
-    pub const KEYS: [&'static str; 4] = [Self::ACTIONS, Self::MODIFIERS, Self::UNITS, Self::ITEMS];
+    /// The keys of a data file's table that hold a package's content, as `readers` register its
+    /// sections.
+    pub fn keys(readers: &SectionReaders) -> impl Iterator<Item = &'static str> {
+        iter::once(Self::UNITS).chain(readers.keys(SectionTable::Package))
+    }
 
-    /// What reads a package's content, its unit types' sections as `readers` register them.
+    /// What reads a package's content, its sections and its unit types' as `readers` register
+    /// them.
     pub const fn seed(readers: &SectionReaders) -> ContentSeed<'_> {
         ContentSeed(readers)
+    }
+
+    /// Its section `S`, if it gives it.
+    pub fn section<S: Section>(&self) -> Option<&S> {
+        debug_assert_eq!(S::TABLE, SectionTable::Package, "{}", S::KEY);
+        self.sections.get()
+    }
+
+    /// Its actions, by id: none when it gives no `[actions]`.
+    pub fn actions(&self) -> &BTreeMap<DeclaredName, ActionData> {
+        static NONE: ActionsData = ActionsData(BTreeMap::new());
+        &self.section().unwrap_or(&NONE).0
+    }
+
+    /// Its modifiers, by id: none when it gives no `[modifiers]`.
+    pub fn modifiers(&self) -> &BTreeMap<DeclaredName, ModifierData> {
+        static NONE: ModifiersData = ModifiersData(BTreeMap::new());
+        &self.section().unwrap_or(&NONE).0
+    }
+
+    /// Its item types, by id: none when it gives no `[items]`.
+    pub fn items(&self) -> &BTreeMap<DeclaredName, ItemData> {
+        static NONE: ItemsData = ItemsData(BTreeMap::new());
+        &self.section().unwrap_or(&NONE).0
+    }
+
+    /// Its section `S`, or the value a package that does not give it reads as.
+    pub fn section_or_default<S: Section + Default>(&self) -> Cow<'_, S> {
+        debug_assert_eq!(S::TABLE, SectionTable::Package, "{}", S::KEY);
+        self.sections.get_or_default()
     }
 }
 
@@ -60,17 +90,21 @@ impl<'de> Visitor<'de> for ContentSeed<'_> {
     }
 
     fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<PackageContent, A::Error> {
-        let mut content = PackageContent::default();
+        let readers = self.0;
+        let table = readers.table(SectionTable::Package);
+        let mut read = TableRead::default();
+        let mut units = BTreeMap::new();
         while let Some(key) = map.next_key::<String>()? {
-            match key.as_str() {
-                PackageContent::ACTIONS => content.actions = map.next_value()?,
-                PackageContent::MODIFIERS => content.modifiers = map.next_value()?,
-                PackageContent::UNITS => content.units = map.next_value_seed(UnitsSeed(self.0))?,
-                PackageContent::ITEMS => content.items = map.next_value()?,
-                _ => return Err(A::Error::unknown_field(&key, &PackageContent::KEYS)),
+            if key == PackageContent::UNITS {
+                units = map.next_value_seed(UnitsSeed(readers))?;
+            } else if !table.next_section(&key, &mut map, &mut read)? {
+                return Err(table.unknown(&key, &[PackageContent::UNITS]));
             }
         }
-        Ok(content)
+        Ok(PackageContent {
+            units,
+            sections: read.sections,
+        })
     }
 }
 
@@ -82,24 +116,26 @@ mod tests {
     use crate::release::Release;
 
     #[test]
-    fn a_package_reads_its_four_keys_and_no_other() {
+    fn a_package_reads_its_unit_types_and_its_sections_and_no_other_key() {
+        let readers = Release::sections();
         let read = |text: &str| {
             let raw = Toml::parse::<TomlTable>(text).unwrap();
-            raw.read_with(PackageContent::seed(&Release::sections()))
+            raw.read_with(PackageContent::seed(&readers))
         };
-        let content =
-            read("[units.scout]\ntags = [\"fast\"]\n[actions]\n[modifiers]\n[items]").unwrap();
+        let content = read("[units.scout]\ntags = [\"fast\"]\n[actions]\n[modifiers]").unwrap();
+        let units: Vec<&str> = content.units.keys().map(DeclaredName::as_str).collect();
+        assert_eq!(units, ["scout"]);
         assert_eq!(
-            content
-                .units
-                .keys()
-                .map(DeclaredName::as_str)
-                .collect::<Vec<_>>(),
-            ["scout"]
+            content.section::<ActionsData>(),
+            Some(&ActionsData::default())
+        );
+        assert_eq!(
+            PackageContent::keys(&readers).collect::<Vec<_>>(),
+            ["units", "actions", "modifiers", "items"]
         );
         assert_eq!(
             read("[unit]").unwrap_err().message(),
-            "unknown field `unit`, expected one of `actions`, `modifiers`, `units`, `items`"
+            "unknown field `unit`, expected one of `units`, `actions`, `modifiers`, `items`"
         );
     }
 }

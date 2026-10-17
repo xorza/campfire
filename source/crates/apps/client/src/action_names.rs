@@ -49,7 +49,7 @@ impl ActionNames {
         let mut names: Vec<String> = book.names().iter().map(|(_, id)| id.to_owned()).collect();
         for view in packages.packages() {
             let header = &view.package.header;
-            for (id, action) in &view.content.actions {
+            for (id, action) in view.content.actions() {
                 let (Some(name), Some(at)) =
                     (&action.name, book.names().named((view.index, id.as_str())))
                 else {

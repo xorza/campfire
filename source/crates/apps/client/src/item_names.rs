@@ -49,7 +49,7 @@ impl ItemNames {
         let mode = packages.mode().package;
         let header = &mode.header;
         let mut names = vec![String::new(); book.names().len()];
-        for (id, item) in &packages.content().items {
+        for (id, item) in packages.content().items() {
             let at = book
                 .names()
                 .named(id.as_str())

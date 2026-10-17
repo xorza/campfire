@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use serde::Deserializer;
-use serde::de::{DeserializeSeed, Error};
+use serde::de::DeserializeSeed;
 
 use crate::section::{Section, SectionTable};
 use crate::section_readers::{SectionReaders, TableRead};
@@ -53,22 +53,14 @@ impl<'de> DeserializeSeed<'de> for UnitTypeSeed<'_> {
     type Value = UnitTypeData;
 
     fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<UnitTypeData, D::Error> {
-        let readers = self.0;
+        let table = self.0.table(SectionTable::UnitType);
         let TableRead {
             sections,
             delivers,
             rest,
-        } = readers
-            .table(SectionTable::UnitType)
-            .deserialize(deserializer)?;
+        } = table.deserialize(deserializer)?;
         if let Some(key) = rest.keys().next() {
-            let expected: Vec<String> = (readers.keys(SectionTable::UnitType))
-                .map(|key| format!("`{key}`"))
-                .collect();
-            let expected = expected.join(", ");
-            return Err(D::Error::custom(format_args!(
-                "unknown field `{key}`, expected one of {expected}"
-            )));
+            return Err(table.unknown(key, &[]));
         }
         Ok(UnitTypeData { sections, delivers })
     }

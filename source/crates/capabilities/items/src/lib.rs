@@ -26,6 +26,7 @@ mod item_holds;
 mod item_id;
 mod items_action;
 mod items_api;
+mod items_data;
 mod shop;
 mod shop_data;
 mod shopping;
@@ -40,6 +41,7 @@ pub use crate::item_holds::ItemHolds;
 pub use crate::item_id::ItemId;
 pub use crate::items_action::ItemsAction;
 pub use crate::items_api::ItemsApi;
+pub use crate::items_data::ItemsData;
 pub use crate::shop::Shop;
 pub use crate::shop_data::ShopData;
 pub use crate::shopping::Shopping;
@@ -83,6 +85,7 @@ impl Module for Items {
     type Set = ItemsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<ItemsData>();
         d.section::<InventoryData>();
         d.section::<ShopData>();
         d.callback::<CastSpends>((), Self::spend_use);

@@ -200,9 +200,9 @@ impl<'a> LoadCheck<'a> {
             .map_err(|problem| fail(LoadProblem::Map(problem)))?;
         // A name is the client's alone, so it is checked last: a train or a build whose other
         // problems the checks above find shows those.
-        shown_named(&packages.content.actions).map_err(fail)?;
+        shown_named(packages.content.actions()).map_err(fail)?;
         for dependent in &packages.dependencies {
-            shown_named(&dependent.content.actions)
+            shown_named(dependent.content.actions())
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
         Ok(stat_order)
@@ -241,7 +241,7 @@ impl<'a> LoadCheck<'a> {
         self.uses()?;
         for (name, unit_type) in units {
             let at = Place::UnitType(name.clone());
-            self.unit_type(unit_type, &at, &content.actions, &content.modifiers)?;
+            self.unit_type(unit_type, &at, content.actions(), content.modifiers())?;
         }
         let held = units.iter().filter_map(|(name, unit_type)| {
             Some((
@@ -249,7 +249,7 @@ impl<'a> LoadCheck<'a> {
                 &unit_type.section::<PassiveData>()?.0,
             ))
         });
-        passives_held_once(held.chain(action_passives(&content.actions)))?;
+        passives_held_once(held.chain(action_passives(content.actions())))?;
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.section::<GridData>().is_none()
         {
@@ -263,7 +263,7 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::NoPathingGrid);
         }
-        let mut names = PackageNames::new(&packages.mode, &content.modifiers, &content.actions);
+        let mut names = PackageNames::new(&packages.mode, content.modifiers(), content.actions());
         let mode_params: BTreeSet<&str> = data.param_names().map(DeclaredName::as_str).collect();
         if let ModeScript::Own(path) = &packages.script {
             names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
@@ -275,10 +275,10 @@ impl<'a> LoadCheck<'a> {
         }
         let ranks = self.slotted_ranks(units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
-        self.actions(&content.actions, units, &mut names)?;
+        self.actions(content.actions(), units, &mut names)?;
         let view = packages.mode();
         let ways = packages.modifier_ways(view);
-        self.modifiers(&mut names, &ways, &content.actions, ranks)?;
+        self.modifiers(&mut names, &ways, content.actions(), ranks)?;
         self.scripts(&names)
     }
 
@@ -309,7 +309,7 @@ impl<'a> LoadCheck<'a> {
         for (id, choice) in &data.choices {
             message(mode, &choice.name, &Place::Choice(id.clone()))?;
         }
-        for (id, item) in &packages.content.items {
+        for (id, item) in packages.content.items() {
             message(mode, &item.name, &Place::Item(id.clone()))?;
         }
         Ok(())
@@ -322,7 +322,7 @@ impl<'a> LoadCheck<'a> {
             if !matches!(dependent.kind, DependentKind::Loadout) {
                 continue;
             }
-            let actions = dependent.content.actions.keys();
+            let actions = dependent.content.actions().keys();
             if let Some(id) = actions.clone().find(|&id| !seen.insert(id)) {
                 let problem = LoadProblem::Repeated {
                     at: Place::Loadouts,
@@ -345,10 +345,10 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         let package = &dependent.package;
         let content = &dependent.content;
-        if !content.items.is_empty() {
+        if !content.items().is_empty() {
             return Err(LoadProblem::Item(ItemProblem::OutsideMode));
         }
-        let (actions, modifiers) = (&content.actions, &content.modifiers);
+        let (actions, modifiers) = (content.actions(), content.modifiers());
         // Its types that stand, an avatar's summons or a loadout's: their slots hold actions of
         // the package as the avatar's do.
         let standing = || {
@@ -758,10 +758,8 @@ impl<'a> LoadCheck<'a> {
             .collect();
         for view in packages.packages() {
             let content = view.content;
-            let modifiers = content
-                .modifiers
-                .values()
-                .flat_map(|modifier| modifier.state.keys());
+            let modifiers =
+                (content.modifiers().values()).flat_map(|modifier| modifier.state.keys());
             let avatar = match view.kind {
                 ViewKind::Avatar(avatar) => Some(&avatar.unit),
                 ViewKind::Mode | ViewKind::Loadout | ViewKind::Rules => None,
@@ -880,7 +878,7 @@ impl<'a> LoadCheck<'a> {
                 return self.stats_declared([&stat], &at);
             }
             NameKind::Choice => declares(data.choices.keys(), name),
-            NameKind::Item => packages.content.items.contains_key(name),
+            NameKind::Item => packages.content.items().contains_key(name),
             NameKind::Armor => self.sections.combat.armors.contains_key(name),
             NameKind::Cost => self.names.cost_target(name).is_some(),
             NameKind::MarkerTag => {
@@ -1397,7 +1395,7 @@ impl<'a> LoadCheck<'a> {
     fn items(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let content = &packages.content;
-        let items = &content.items;
+        let items = content.items();
         for (id, item) in items {
             let at = Place::Item(id.clone());
             self.require(Capability::Items, &at)?;
@@ -1422,7 +1420,7 @@ impl<'a> LoadCheck<'a> {
                 &unit_type.section::<PassiveData>()?.0,
             ))
         });
-        for (owner, modifier) in mode_passives.chain(action_passives(&content.actions)) {
+        for (owner, modifier) in mode_passives.chain(action_passives(content.actions())) {
             let held = items
                 .iter()
                 .find(|(_, item)| item.modifiers.contains(modifier));
@@ -1456,7 +1454,7 @@ impl<'a> LoadCheck<'a> {
         {
             return Ok(());
         }
-        let items = &self.packages.content.items;
+        let items = self.packages.content.items();
         let other = |item: &&DeclaredName| {
             items
                 .get(*item)
@@ -1551,19 +1549,17 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::Use(UseProblem::KindSlotted { at, kind }));
         }
         let content = &packages.content;
-        let items = content
-            .items
-            .iter()
+        let items = (content.items().iter())
             .filter_map(|(id, item)| Some((Place::Item(id.clone()), item.action.as_ref()?)));
         let loadouts = packages
             .dependencies
             .iter()
             .filter(|dependent| matches!(dependent.kind, DependentKind::Loadout))
-            .flat_map(|dependent| dependent.content.actions.iter())
+            .flat_map(|dependent| dependent.content.actions().iter())
             .filter(|(_, action)| action.kind == ActionKind::Use)
             .map(|(id, _)| (Place::Loadouts, id));
         let named = items
-            .filter(|(_, id)| is_use(&content.actions, id) == Some(true))
+            .filter(|(_, id)| is_use(content.actions(), id) == Some(true))
             .chain(loadouts)
             .next();
         named.map_or(Ok(()), |(at, action)| {
@@ -1585,10 +1581,10 @@ impl<'a> LoadCheck<'a> {
             .map(|(name, unit_type)| PackageType {
                 at: Place::UnitType(name.clone()),
                 unit_type,
-                actions: &packages.content.actions,
+                actions: packages.content.actions(),
             });
         let dependents = packages.dependencies.iter().flat_map(|dependent| {
-            let actions = &dependent.content.actions;
+            let actions = dependent.content.actions();
             let avatar = match &dependent.kind {
                 DependentKind::Avatar(avatar) => Some(PackageType {
                     at: Place::Avatar(dependent.package.header.name.clone()),

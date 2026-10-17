@@ -284,7 +284,7 @@ fn every_moba_ability_reads_into_the_schema() {
     let mut read = 0;
     for name in HEROES {
         let data = abilities(name);
-        for (action, data) in &data.actions {
+        for (action, data) in data.actions() {
             if let Some(script) = &data.script {
                 assert!(hero(name).read_text(script).is_ok(), "{name}.{action}");
             }
@@ -296,7 +296,7 @@ fn every_moba_ability_reads_into_the_schema() {
 
     // Husk's Lash Out reads exactly as its file writes it.
     let husk = abilities("husk");
-    let lash_out = &husk.actions["lash_out"];
+    let lash_out = &husk.actions()["lash_out"];
     assert_eq!(lash_out.targeting, Targeting::None);
     assert_eq!(lash_out.range, None);
     let int = |value| Number::Value(Scalar::Int(value));
@@ -330,7 +330,7 @@ fn every_moba_ability_reads_into_the_schema() {
     // 28 018.
     let veil = abilities("veil");
     let Param::Scaling(Scaling { bonus, ratios, .. }) =
-        &veil.modifiers["dual_path"].params["spell_vamp"]
+        &veil.modifiers()["dual_path"].params["spell_vamp"]
     else {
         panic!("spell vamp scales");
     };
@@ -340,11 +340,11 @@ fn every_moba_ability_reads_into_the_schema() {
     assert!(ratios.is_empty());
     // Rime's Snow Owl reaches farther at each rank.
     let rime = abilities("rime");
-    let Some(Ranked::PerRank(ranges)) = &rime.actions["snow_owl"].range else {
+    let Some(Ranked::PerRank(ranges)) = &rime.actions()["snow_owl"].range else {
         panic!("a range per rank");
     };
     assert_eq!(ranges[1], RangeField::Range(ActionRange::Meters(half * 65)));
-    let wraps = &husk.actions["grasping_wraps"];
+    let wraps = &husk.actions()["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
     let eleven = RangeField::Range(ActionRange::Meters(Num::int(11)));
     assert_eq!(wraps.range, Some(Ranked::One(eleven)));
@@ -632,7 +632,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let mut game = arena.start(RATE, 1);
     // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
     assert_eq!(
-        abilities(arena.packages(), "rime").actions["fan_of_frost"].script,
+        abilities(arena.packages(), "rime").actions()["fan_of_frost"].script,
         None
     );
     let fan = arena.action(&game, "hero-rime", "fan_of_frost");
@@ -912,7 +912,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     assert_eq!(
-        abilities(arena.packages(), "veil").actions["smoke_ring"].script,
+        abilities(arena.packages(), "veil").actions()["smoke_ring"].script,
         None
     );
     let ring = arena.action(&game, "hero-veil", "smoke_ring");

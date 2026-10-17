@@ -34,6 +34,7 @@ mod action_slots;
 mod action_target;
 mod actions_api;
 mod actions_column;
+mod actions_data;
 mod actions_effect;
 mod amount;
 mod build_start;
@@ -102,6 +103,7 @@ pub use crate::action_slots::timed_slots::TimedSlots;
 pub use crate::action_slots::{ActionSlot, ActionSlots, SlotsMut};
 pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
+pub use crate::actions_data::ActionsData;
 pub use crate::amount::Amount;
 pub use crate::build_start::BuildStart;
 pub use crate::capability_does_spec::CapabilityDoesSpec;
@@ -262,6 +264,7 @@ impl Module for Actions {
     type Set = ActionsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<ActionsData>();
         d.section::<TypeSlotsData>();
         d.section::<SlotKinds>();
         d.removals::<Unpredicted>();

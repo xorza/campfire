@@ -35,7 +35,7 @@ fn name(text: &str) -> DeclaredName {
 #[test]
 fn the_3v3s_items_read_as_their_data_holds_them() {
     let packages = with_items(&[]).unwrap();
-    let items = &packages.content().items;
+    let items = packages.content().items();
     assert_eq!(items.len(), 11);
     // A health potion of 50, five to a slot, of one use, drunk by its action.
     let potion = &items[&name("health_potion")];
