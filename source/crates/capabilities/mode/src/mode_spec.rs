@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use campfire_actions::ActionSlots;
+use campfire_common::PlayerSlot;
 use campfire_declare::ByType;
 use campfire_script::Teams;
 use campfire_units::{BodyForm, ScriptBook};
@@ -59,6 +60,11 @@ pub struct SpecLoad<'a> {
 }
 
 impl ModeSpec {
+    /// The team of player `slot`; `None` for a slot the session does not have.
+    pub fn team_of(&self, slot: PlayerSlot) -> Option<Team> {
+        self.teams.of(slot)
+    }
+
     /// The book of `setup`, for players the teams seat, with what `load` gives.
     pub fn new(setup: ModeSetup<'_>, load: SpecLoad<'_>) -> Self {
         let SpecLoad {

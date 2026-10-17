@@ -1,12 +1,13 @@
 use bevy_ecs::resource::Resource;
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::system::ResMut;
+use bevy_ecs::world::World;
 use campfire_bots::{BotBuffers, BotScript, BotSink, OrderScript, UnitsMissing};
 use campfire_capabilities::Action;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_protocol::{Controller, ServerInput, ServerInputError, SessionLog};
 use campfire_runner::{ServerInputRefused, Session};
-use campfire_units::{HeldPlayerUnits, UnitTypeBook};
+use campfire_units::{PlayerUnits, UnitTypeBook};
 
 use crate::events::bot_payload_dropped::{BotPayloadDropped, DropCause};
 use crate::events::bot_units_missing::BotUnitsMissing;
@@ -27,8 +28,6 @@ pub(crate) struct BotDriver {
     followed: usize,
     /// The buffers of the bots' steps, kept so no input allocates.
     buffers: BotBuffers,
-    /// Who each slot commands, kept so no tick builds its query again.
-    players: HeldPlayerUnits,
 }
 
 /// A bot the driver plays: its slot, its script, and the tick the script's ticks count from.
@@ -43,7 +42,7 @@ impl BotDriver {
     /// The driver of `bots` in the match of `world`, from tick `next` on: what their scripts had
     /// for earlier ticks was logged already, by the run a restore follows. Each unit type a
     /// script names is one of the match's, as the server's start checked.
-    pub(crate) fn new(bots: ServerBots, next: Tick, world: &mut World) -> Self {
+    pub(crate) fn new(bots: ServerBots, next: Tick, world: &World) -> Self {
         let ServerBots { slots, takeover } = bots;
         let types = world.resource::<UnitTypeBook>().types();
         let script = |script: &OrderScript| {
@@ -57,7 +56,6 @@ impl BotDriver {
             takeover,
             followed: 0,
             buffers: BotBuffers::default(),
-            players: HeldPlayerUnits::new(world),
         }
     }
 
@@ -77,15 +75,15 @@ impl BotDriver {
             .collect()
     }
 
-    /// Logs the bots' inputs for the next tick of the session in `world`.
-    pub(crate) fn drive(world: &mut World) {
-        world.resource_scope(|world, mut driver: Mut<'_, Self>| {
-            let tick = world.resource::<Session>().log().next_tick();
-            driver.follow_controllers(world.resource::<Session>(), tick);
-            world.resource_scope(|world, mut session: Mut<'_, Session>| {
-                driver.log_due(world, &mut session, tick);
-            });
-        });
+    /// Logs the bots' inputs for the next tick of the session.
+    pub(crate) fn drive(
+        mut driver: ResMut<'_, Self>,
+        mut session: ResMut<'_, Session>,
+        units: PlayerUnits<'_, '_>,
+    ) {
+        let tick = session.log().next_tick();
+        driver.follow_controllers(&session, tick);
+        driver.log_due(&units, &mut session, tick);
     }
 
     /// Plays the takeover script in each slot that became a bot's after its player left, from the
@@ -114,15 +112,9 @@ impl BotDriver {
 
     /// Logs what each bot's script has due by `tick` into `session`, as the bots' one step gives
     /// it: its mode inputs, then its orders, each for the slot's units it names.
-    fn log_due(&mut self, world: &World, session: &mut Session, tick: Tick) {
-        let Self {
-            bots,
-            buffers,
-            players,
-            ..
-        } = self;
+    fn log_due(&mut self, units: &PlayerUnits<'_, '_>, session: &mut Session, tick: Tick) {
+        let Self { bots, buffers, .. } = self;
         let mut served = BotServer { session };
-        let units = players.get(world);
         for driven in bots {
             let since = tick
                 .since(driven.since)
@@ -130,7 +122,7 @@ impl BotDriver {
             let script_tick = Tick::new(since.get());
             driven
                 .script
-                .step(script_tick, driven.slot, &units, buffers, &mut served);
+                .step(script_tick, driven.slot, units, buffers, &mut served);
         }
     }
 }

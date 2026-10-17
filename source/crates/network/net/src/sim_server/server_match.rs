@@ -150,9 +150,7 @@ impl ServerMatch {
                     bots,
                 };
                 run.insert(world);
-                for &(slot, client) in clients {
-                    Door::seat_new(world, client, slot);
-                }
+                Door::seat_new(world, clients);
             }
             MatchSource::Restored(restored) => {
                 let slots = restored.log.slot_count();
@@ -176,9 +174,10 @@ impl ServerMatch {
                 // The stop may have come after the tick before this boundary, before the save it
                 // made due here began. The session may end there, and then logs nothing more.
                 SimServer::at_boundary(world);
-                if world.resource::<Session>().log().result().is_none() {
+                let mut session = world.resource_mut::<Session>();
+                if session.log().result().is_none() {
                     for &slot in &players {
-                        Door::serve_unless_full(world, ServerInput::Disconnected { slot });
+                        Door::serve_unless_full(&mut session, ServerInput::Disconnected { slot });
                     }
                 }
             }

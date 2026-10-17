@@ -343,8 +343,6 @@ Each section gives the target shape of one system, the findings it removes, and 
   - Each registered message type declares its largest encoding in `net_protocol`. The fork's channel refuses a fragment count past that bound before it allocates, grows its buffer as fragments arrive, caps the half-built messages for each channel and link, and expires them on reliable channels too (N-1).
   - A link carries only the join channel, with a window of one, until it joins. The other channels come with `Joined`, and a message on them before then closes the link (N-2).
   - 05-protocol-spec.md states the bounds.
-- **One running match.**
-  - `Session` owns its signer (`None` on a verifier), so `serve`, `record_checkpoint` and `record_result` need no second resource. The door, the checkpoints, the receipts and the bot driver become ordinary systems, and only `run_sim_tick` stays exclusive (N-4).
 - **A declared frame.**
   - The server's frame is chained sets: `Intake → Door → SessionUpkeep → Receipts → Boundary`. They build with `ambiguity_detection: Error`, and Lightyear's sets are marked where they touch only their own components (N-3).
   - `ServerPhase { Lobby, Restoring, Running, Ended, Reloading }` is a Bevy `States` enum. `OnEnter(Running)` builds `ServerMatch` (N-7).
@@ -657,9 +655,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `production` drops `navigation`: the room data and the open-cell query (R-31). Q8's design costs more than it measured; the step waits for Q11 in `review-architecture_QUESTIONS.md`.
 
 ### Phase 6: `Send` data and the server frame
-
-**6.2 One server match.** Touches `net` (sim server, lobby, session directory), `runner` (session, session rules), `package`, `apps/server`.
-- The frame's systems become ordinary systems: the door, the checkpoints and the bot driver; `Session` owns its signer already (N-4).
 
 **6.3 A declared server frame.** Touches `net` and 02-engine-core.md.
 - Chained sets with `ambiguity_detection: Error` (N-3).
@@ -1055,7 +1050,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-1 | A fragment count from the peer sizes an allocation before any check | `lightyear transport/channel/fragments/receive.rs:137-147` at `54e6be2` | Checked | 1.1 |
 | N-2 | A link that did not join uses every channel with no budget | `net_protocol/mod.rs:96-117`, `offering.rs:40, 176-193` | Confirmed | 1.1 |
 | N-3 | The single-threaded executor fixes the server frame's order, which no set declares | `sim_server_plugins.rs:39-57`, `sim_server/mod.rs:151-200` | Confirmed | 6.3 |
-| N-4 | The server frame is a run of exclusive systems, to pair `Session` with `ServerSigner` | `door.rs:64, 231-242`, `checkpoints/mod.rs:101, 209-214` | Confirmed | 6.2 |
 | N-7 | The server's lifecycle is the set of resources that exist | `sim_server/mod.rs:151-233, 617-630` | Confirmed | 6.3 |
 | N-9 | Replicated entities get `Replicate`, `Rooms` and `PredictionTarget` after their spawn | `kind_shows.rs:86-112`, `viewer.rs:136-190` | Confirmed | 7.5 |
 | N-10 | Lightyear's default features add interpolation, and the server binary links the client stack | `Cargo.toml:186`, `net/src/lib.rs:108-122` | Confirmed | 12.2 |

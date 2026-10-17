@@ -2,12 +2,16 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Remove;
 use bevy_ecs::observer::On;
 use bevy_ecs::system::{Commands, Query};
+use campfire_common::Tick;
 use campfire_values::TeamSet;
 use campfire_visibility::{SpectatorFog, Visibility};
-use lightyear::prelude::{Connected, MessageReceiver};
+use lightyear::prelude::{Connected, MessageReceiver, MessageSender};
 use tracing::info;
 
 use crate::error::JoinError;
+use crate::match_clock::MatchClock;
+use crate::net_protocol::MatchChannel;
+use crate::net_protocol::watch_start::WatchStart;
 use crate::net_protocol::watch_teams::WatchTeams;
 use crate::sim_server::viewer::{Viewer, Watching};
 
@@ -21,6 +25,22 @@ pub(crate) mod spectators_world;
 pub(crate) struct Spectators;
 
 impl Spectators {
+    /// Tells the client of `link`, a spectator, through `sender`, the Lightyear tick of the
+    /// match's next sim tick, `first`, by `clock`.
+    pub(crate) fn tell_start(
+        sender: &mut MessageSender<WatchStart>,
+        clock: &MatchClock,
+        first: Tick,
+        link: Entity,
+    ) {
+        let start_tick = clock.net_tick(first);
+        sender.send::<MatchChannel>(WatchStart {
+            start_tick: start_tick.0,
+            first,
+        });
+        info!(link = link.to_bits(), "a spectator watches");
+    }
+
     /// The view of a spectator that joins a session of `visibility` with `watching` spectators
     /// in it: every unit, or every team's view together, which it may change; an error when every
     /// place the session admits is taken.

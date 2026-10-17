@@ -49,7 +49,7 @@ impl ModeWorld for World {
     }
 
     fn team_of(&self, slot: PlayerSlot) -> Option<Team> {
-        self.get_resource::<MatchMode>()?.teams.of(slot)
+        self.get_resource::<MatchMode>()?.team_of(slot)
     }
 }
 
