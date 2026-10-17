@@ -8,6 +8,7 @@ use campfire_script::{
     StateValue,
 };
 use campfire_units::{SyncAll, SyncNone};
+use campfire_values::Scalar;
 
 use crate::choices::Choices;
 use crate::game_map::GameMap;
@@ -84,6 +85,12 @@ impl CallParams for ModeCall {
 
     fn param(&self, name: &str) -> Option<ScriptValue> {
         self.script.param_named(name)
+    }
+
+    /// None: a mode's params are read by name alone, as no effect list of the mode's numbers
+    /// a param by its place.
+    fn param_at(&self, _: usize) -> Option<Scalar> {
+        None
     }
 }
 

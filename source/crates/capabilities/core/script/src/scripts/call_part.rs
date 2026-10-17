@@ -2,6 +2,7 @@ use std::any::Any;
 use std::fmt;
 
 use bevy_ecs::world::World;
+use campfire_values::Scalar;
 
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::{ApiError, CallError};
@@ -39,6 +40,10 @@ pub trait CallParams: CallPart {
 
     /// The running call's param `name`, when it declares one.
     fn param(&self, name: &str) -> Option<ScriptValue>;
+
+    /// The running call's param at place `at` among its call's, when it has one: a number of an
+    /// action's effect list reads its param by the place its load resolved.
+    fn param_at(&self, at: usize) -> Option<Scalar>;
 }
 
 /// A part of any type, as the frame holds it.
@@ -68,6 +73,7 @@ impl<P: CallPart> AnyPart for P {
 struct ParamsAt {
     at: usize,
     param: fn(&dyn Any, &str) -> Option<ScriptValue>,
+    param_at: fn(&dyn Any, usize) -> Option<Scalar>,
 }
 
 /// The parts of the frame, each of its own type, in the order they were added, and the part
@@ -91,6 +97,7 @@ impl CallParts {
         *scope = Some(ParamsAt {
             at,
             param: Self::param_of::<P>,
+            param_at: Self::param_at_of::<P>,
         });
     }
 
@@ -133,10 +140,25 @@ impl CallParts {
         let part: &P = part.downcast_ref().expect("a scope's part is of its type");
         part.param(name)
     }
+
+    /// The running call's param of `scope` at place `at`; none when no part holds the scope's
+    /// params, or its call has no param there.
+    pub(crate) fn param_at(&self, scope: ParamScope, at: usize) -> Option<Scalar> {
+        let source = self.params[scope.index()]?;
+        (source.param_at)(self.parts.at(source.at).as_any(), at)
+    }
+
+    /// The param at place `at` of `part`, a part of type `P`.
+    fn param_at_of<P: CallParams>(part: &dyn Any, at: usize) -> Option<Scalar> {
+        let part: &P = part.downcast_ref().expect("a scope's part is of its type");
+        part.param_at(at)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use campfire_math::Num;
+
     use super::*;
 
     /// A part with the mode's params: `waves`, and no other.
@@ -159,6 +181,10 @@ mod tests {
         fn param(&self, name: &str) -> Option<ScriptValue> {
             (name == "waves").then(|| ScriptValue::of(3_i64))
         }
+
+        fn param_at(&self, at: usize) -> Option<Scalar> {
+            (at == 0).then(|| Scalar::from(Num::int(3)))
+        }
     }
 
     #[test]
@@ -173,11 +199,20 @@ mod tests {
         );
         let unknown = Err(ApiError::Unknown(NameKind::Param));
         assert_eq!(read(&parts, ParamScope::Action, "waves"), unknown);
+        assert_eq!(parts.param_at(ParamScope::Mode, 0), None);
         parts.add(Plain);
         parts.add_params(ModeParams);
         assert_eq!(read(&parts, ParamScope::Mode, "waves"), Ok(Some(3)));
         assert_eq!(read(&parts, ParamScope::Mode, "wave"), unknown);
         assert_eq!(read(&parts, ParamScope::Action, "waves"), unknown);
+        // By place too: the scope's part gives its param at 0, none past it, and no other scope
+        // finds it.
+        assert_eq!(
+            parts.param_at(ParamScope::Mode, 0),
+            Some(Scalar::from(Num::int(3)))
+        );
+        assert_eq!(parts.param_at(ParamScope::Mode, 1), None);
+        assert_eq!(parts.param_at(ParamScope::Action, 0), None);
         assert!(parts.get::<ModeParams>().is_some());
     }
 

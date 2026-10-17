@@ -2,7 +2,6 @@ use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_script::{Frame, UnknownName};
 use campfire_sim::TickRate;
-use campfire_stats::StatsCall;
 use campfire_values::Number;
 
 use crate::effect_names::EffectNames;
@@ -34,7 +33,9 @@ impl Amount {
     pub fn number(self, frame: &Frame) -> Num {
         match self {
             Self::Value(value) => value,
-            Self::Param(at) => StatsCall::ability_value(frame, at)
+            Self::Param(at) => frame
+                .param_at(at)
+                .expect("an effect list's book holds each param it reads")
                 .to_num()
                 .expect("an effect list's book holds each param it reads a number")
                 .max(Num::ZERO),

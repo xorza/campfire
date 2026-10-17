@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{IdAllocator, StableId};
-use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank};
+use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank, Scalar};
 
 use crate::scripts::call_part::{CallParams, CallPart, CallParts, Commit};
 use crate::scripts::call_start::{CallStart, Purity};
@@ -165,6 +165,12 @@ impl Frame {
     /// error when no part holds them, or that part's call declares no such param.
     pub fn param(&self, name: &str) -> Result<ScriptValue, ApiError> {
         self.parts.param(self.running().role.params(), name)
+    }
+
+    /// The running call's param at place `at` among its call's, of the part that holds its
+    /// role's scope of params; none when no part holds them, or the call has no param there.
+    pub fn param_at(&self, at: usize) -> Option<Scalar> {
+        self.parts.param_at(self.running().role.params(), at)
     }
 }
 

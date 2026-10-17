@@ -92,6 +92,11 @@ impl CallParams for StatsCall {
         });
         value.map(ScriptValue::from)
     }
+
+    /// Its ability's param at `at`, at the call's rank.
+    fn param_at(&self, at: usize) -> Option<Scalar> {
+        self.values.get(at).copied()
+    }
 }
 
 impl StatsCall {
@@ -140,11 +145,6 @@ impl StatsCall {
     /// What the calls' effects add modifiers by.
     pub(crate) const fn adds(&mut self) -> &mut HeldModifierAdds {
         &mut self.adds
-    }
-
-    /// The running call's ability's param at `at`, at its rank.
-    pub fn ability_value(frame: &Frame, at: usize) -> Scalar {
-        Self::of(frame).values[at]
     }
 }
 
