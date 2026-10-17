@@ -1,14 +1,15 @@
 use campfire_common::{EnumAll, NamedEnum};
 use serde::{Deserialize, Deserializer};
 
-/// What a tag can stop its unit doing, or being: moving, the actions of a group, being chosen
-/// as a target, taking damage. Each member's name is as a mode's `blocks` writes it.
+/// What a tag can stop its unit doing, or being: moving, the actions of a group, producing,
+/// being chosen as a target, taking damage. Each member's name is as a mode's `blocks` writes it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, NamedEnum)]
 pub enum Block {
     Move,
     Attack,
     Cast,
     Use,
+    Produce,
     Target,
     Damage,
 }

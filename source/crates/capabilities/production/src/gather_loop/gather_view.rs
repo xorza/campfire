@@ -3,14 +3,14 @@ use std::slice;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_actions::{ActionBook, ActionSlots, Aim, KindSpec};
+use campfire_actions::{ActionBook, ActionKind, ActionSlots, Aim, KindSpec};
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_geometry::Placed;
 use campfire_math::Vec3;
 use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, Owner};
-use campfire_values::{Block, Relations, ResourceId, Team, UnitTags, UnitType};
+use campfire_values::{Relations, ResourceId, Team, UnitTags, UnitType};
 
 use crate::gather_loop::Worker;
 use crate::gather_loop::checked_gather::CheckedGather;
@@ -246,7 +246,7 @@ impl GatherView<'_, '_> {
             body: body.copied(),
         };
         let node = self.node(order.node.node, seeker);
-        if tags.is_some_and(|tags| tags.properties.blocks(Block::Use)) {
+        if tags.is_some_and(|tags| tags.properties.blocks(ActionKind::Gather.block())) {
             return match (order.step, node) {
                 (GatherStep::Gathering { .. }, Some(node)) => Step::Interrupt(node.entity),
                 _ => Step::Hold,

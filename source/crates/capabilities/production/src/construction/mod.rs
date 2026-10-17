@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
 use bevy_ecs::world::{EntityMut, World};
-use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
+use campfire_actions::{ActionBook, ActionKind, ActionSlots, Payer, SlotTimes};
 use campfire_declare::{ByType, RoleForm};
 use campfire_geometry::Placed;
 use campfire_math::Num;
@@ -11,7 +11,7 @@ use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, StatsWorld, UnitPools};
 use campfire_units::{Body, Dead, MapBook, Owner, SpawnAt, Spawner, StatusTags};
-use campfire_values::{Block, Team, UnitTags};
+use campfire_values::{Team, UnitTags};
 use campfire_vision::TeamSight;
 
 use crate::Production;
@@ -295,7 +295,9 @@ impl Construction {
             };
             let builder = Placed::new(from.get(), Body::shape_of(body));
             let reaches = placed.reached_by(map.metric, builder, range);
-            if reaches && !tags.is_some_and(|tags| tags.properties.blocks(Block::Use)) {
+            if reaches
+                && !tags.is_some_and(|tags| tags.properties.blocks(ActionKind::Build.block()))
+            {
                 building.push(BuildingAt {
                     site,
                     builder: builder_id,

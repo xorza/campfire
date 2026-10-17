@@ -5,9 +5,10 @@ use bevy_ecs::entity::Entity;
 use campfire_common::Tick;
 
 /// The entities a pass visits when their tick comes, as a pass that visits what changed keeps
-/// them: each with the one tick it is due at, the earliest first. An entity pushed again takes
-/// the new tick in place of its old, so the run holds an entry for each entity once, and a push
-/// of the tick it holds adds nothing. An entry is a visit, never a promise: one whose entity
+/// them: each with the one tick it is due at, the earliest first. An entity pushed again keeps
+/// the earlier of its two ticks, so a pass may push one entity at each of its due times and get
+/// the first, and a push of a tick no earlier than the one it holds adds nothing. An entry is a
+/// visit, never a promise: one whose entity
 /// changed since, or went, costs a visit that finds nothing due. A cache of the pass that owns
 /// it, which a restore's new systems build again from their first run, where every part reads as
 /// changed; outside the state hash.
@@ -20,13 +21,16 @@ pub struct DueRun {
 }
 
 impl DueRun {
-    /// Visits `entity` at `at`, in place of the tick it was due at.
+    /// Visits `entity` at `at`, or at the tick it is due at when that comes first.
     pub fn push(&mut self, at: Tick, entity: Entity) {
         let index = entity.index_u32() as usize;
         if self.due.len() <= index {
             self.due.resize(index + 1, None);
         }
-        if self.due[index] == Some((at, entity)) {
+        if let Some((held, holder)) = self.due[index]
+            && holder == entity
+            && held <= at
+        {
             return;
         }
         self.due[index] = Some((at, entity));
@@ -69,7 +73,7 @@ mod tests {
         let mut due = Vec::new();
         run.take_due(Tick::new(2), &mut due);
         assert_eq!(due, []);
-        // Tick 5 comes, b's push at 5 in the place of its 3: each entity once; 9 stays.
+        // Tick 5 comes, b's push at 5 kept at its earlier 3: each entity once; 9 stays.
         run.take_due(Tick::new(5), &mut due);
         due.sort_unstable();
         let mut at_five = [a, b];
@@ -85,16 +89,26 @@ mod tests {
         run.clear();
         run.take_due(Tick::new(100), &mut due);
         assert_eq!(due, []);
-        // An entity pushed again at its tick holds one entry; pushed at another, the new tick
-        // takes the old one's place: c, due at 4, then 7, comes in tick 7 once.
+        // An entity pushed again at its tick, or a later one, holds one entry: c, due at 4, then
+        // 7, comes in tick 4 once. Pushed at an earlier tick, the earlier holds: a, due at 9,
+        // then 8, comes in tick 8, and its entry of 9 is passed over.
         run.push(Tick::new(4), c);
         run.push(Tick::new(4), c);
-        assert_eq!(run.entries.len(), 1);
         run.push(Tick::new(7), c);
-        run.take_due(Tick::new(6), &mut due);
+        assert_eq!(run.entries.len(), 1);
+        run.take_due(Tick::new(3), &mut due);
         assert_eq!(due, []);
-        run.take_due(Tick::new(7), &mut due);
+        run.take_due(Tick::new(4), &mut due);
         assert_eq!(due, [c]);
+        assert!(run.entries.is_empty());
+        due.clear();
+        run.push(Tick::new(9), a);
+        run.push(Tick::new(8), a);
+        run.take_due(Tick::new(8), &mut due);
+        assert_eq!(due, [a]);
+        due.clear();
+        run.take_due(Tick::new(9), &mut due);
+        assert_eq!(due, []);
         assert!(run.entries.is_empty());
     }
 }

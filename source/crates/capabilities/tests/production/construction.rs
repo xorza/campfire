@@ -6,7 +6,7 @@ use campfire_orders::OrdersAction;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
 use campfire_stats::Life;
-use campfire_units::{Layer, MapBook, StatusTags};
+use campfire_units::{Layer, MapBook};
 use campfire_values::{RelationSet, Share, TeamSet};
 use campfire_vision::{SeenBy, Vision};
 use serde::Deserialize;

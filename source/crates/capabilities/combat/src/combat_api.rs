@@ -53,7 +53,9 @@ impl CombatApi {
         let attack_hit = call(
             "attack_hit",
             &[&["target"]],
-            "an extra attack of the acting unit on `target`: no crit, and no `on_attack`",
+            "an extra attack of the acting unit on `target`, with its first weapon whose filter selects \
+             `target`, struck at once: no crit, no `on_attack`, and nothing when no weapon selects \
+             it",
         )
         .roles(RoleSet::ACTING);
         api.call(

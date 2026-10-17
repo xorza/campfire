@@ -14,7 +14,7 @@ use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
 use campfire_units::{Body, Dead, Destination, Facing, MapBook, Owner, SpawnAt, Spawner};
-use campfire_values::{Relation, Team, UnitType};
+use campfire_values::{Relation, Team, UnitTags, UnitType};
 
 use crate::frame_point::FramePoint;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
@@ -46,6 +46,7 @@ type Training = (
     &'static mut TrainQueue,
     UnitPools,
     Option<&'static Owner>,
+    Option<&'static UnitTags>,
 );
 
 /// The trains units were ordered: their start in Act, and their finish, which spawns the unit
@@ -54,11 +55,12 @@ type Training = (
 pub struct Trains;
 
 impl Trains {
-    /// Starts each ordered train, in Act, by its unit's stable id: one that passes the core's
-    /// checks, finds a place in its unit's queue, meets its `requires` and, with supply, finds room
-    /// under its player's cap, pays its whole cost, in pools and player resources, goes on
-    /// cooldown, and joins the queue, where it holds its supply. The order ends either way, and the
-    /// unit stays free. Supply and the units a requirement finds are counted once, as the first
+    /// Starts each ordered train, in Act, by its unit's stable id: one whose unit's tags do not
+    /// block production that passes the core's checks, finds a place in its unit's queue, meets
+    /// its `requires` and, with supply, finds room under its player's cap, pays its whole cost, in
+    /// pools and player resources, goes on cooldown, and joins the queue, where it holds its
+    /// supply (04-capabilities/production.md, Tags block production). The order ends either way,
+    /// and the unit stays free. Supply and the units a requirement finds are counted once, as the first
     /// train comes to them. A predicting client's form `F` pays nothing, as the unit's pools and
     /// its player's resources are the server's.
     #[expect(
@@ -114,13 +116,25 @@ impl Trains {
         }
         let mut training = units.p1();
         for &Keyed { entity, .. } in trains {
-            let (_, _, &unit_type, (slots, mut progress), mut times, mut queue, pools, held_by) =
-                training.get_mut(entity).expect("a unit in the order");
+            let (
+                _,
+                _,
+                &unit_type,
+                (slots, mut progress),
+                mut times,
+                mut queue,
+                pools,
+                held_by,
+                tags,
+            ) = training.get_mut(entity).expect("a unit in the order");
             let pools = pools.of(life.as_deref().and_then(PoolBook::life));
             let ordered = progress
                 .ordered(slots, &book, ActionKind::Train)
                 .expect("an ordered train");
             progress.stop();
+            if tags.is_some_and(|tags| tags.properties.blocks(ActionKind::Train.block())) {
+                continue;
+            }
             let purse = Purse::of(pools.read(), resources.of(held_by));
             let owner = held_by.map(|owner| owner.slot());
             let no_target = |_| Relation::Friendly;

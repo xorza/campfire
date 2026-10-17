@@ -25,7 +25,8 @@
 - **A build starts on arrival or on order.** An arrival build starts when its builder comes in range, as StarCraft II's SCV; an order build pays and places its site in the tick its order applies, wherever its builder stands, as Zero Hour's dozer does, and the builder then walks to it.
 - **Two builders, one site.** Builds start by their builders' stable ids, and each sees the sites placed before it, so two builders that arrive at one place in one tick place one site.
 - **A site gains its life as it progresses,** keeping the damage it takes, as in StarCraft II, its gains exact so a complete site has gained exactly its maximum.
-- **A site is not yet a building.** It gives no supply, meets no requirement, and its tag blocks its attacks and casts.
+- **A site is not yet a building.** It gives no supply, meets no requirement, and its tag blocks its attacks, casts, uses and trains.
+- **Tags block production.** A train starts only when its producer's tags do not block `produce`, as a cast starts only when they do not block `cast`; each kind of action names the one block that stops it, so a stun that a mode declares can stop a queue or leave it running.
 
 ## Placement
 

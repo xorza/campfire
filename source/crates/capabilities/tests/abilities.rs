@@ -2019,6 +2019,59 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         clocks.shield_of(modifiers, ward, Some(beast)),
         Some(Num::int(40))
     );
+
+    // Two passives that wait for their slots each come back at their own slot's tick: slot 0's
+    // guard 10 ticks on, slot 1's ward 50 ticks on, though slot 1 comes later in the unit's slots.
+    let mut game = abilities_match_with(ScriptLimits::ROOMY, &declared);
+    Abilities::load_stats(&mut game);
+    for (name, shield) in [("guard", 75), ("ward", 40)] {
+        let shield = ModifierData {
+            shield: Some(int(shield)),
+            ..ModifierData::default()
+        };
+        Stats::load_modifier(&mut game, PackageIndex::MODE, name, &shield, None);
+    }
+    let waiting = |name: &str, modifier: &str| {
+        let mut data = lash_out();
+        data.passive_modifier = Some(DeclaredName::new(modifier).unwrap());
+        data.passive_while_ready = true;
+        (name.to_owned(), data)
+    };
+    let [first, second] = [waiting("lash_out", "guard"), waiting("bulwark", "ward")]
+        .map(|(name, data)| Abilities::load(&mut game, &name, &data, LASH_OUT));
+    let slots = TimedSlots::new(ActionSlots::new([
+        (first, SlotKind::new(0), Rank::new(1)),
+        (second, SlotKind::new(0), Rank::new(1)),
+    ]));
+    let parts = (Owner::new(PlayerSlot::new(0)), slots);
+    let caster = Mode::spawn_named(&mut game, "caster", Vec3::ZERO, Team::new(0), parts);
+    let entity = game.unit_entity(caster);
+    game.step();
+    let [guard, ward] =
+        ["guard", "ward"].map(|name| Stats::modifier(&game, PackageIndex::MODE, name).unwrap());
+    let held = |game: &Match, id| {
+        let modifiers = game.get::<Modifiers>(entity).unwrap();
+        modifiers.get(id, Some(caster)).is_some()
+    };
+    assert!(held(&game, guard) && held(&game, ward));
+    let now = game.now();
+    {
+        let mut times = game.get_mut::<SlotTimes>(entity).unwrap();
+        times.cool_down(0, now.after(Ticks::new(10)));
+        times.cool_down(1, now.after(Ticks::new(50)));
+    }
+    game.step();
+    assert!(!held(&game, guard) && !held(&game, ward));
+    while game.now() < now.after(Ticks::new(10)) {
+        game.step();
+    }
+    game.step();
+    assert!(held(&game, guard) && !held(&game, ward));
+    while game.now() < now.after(Ticks::new(50)) {
+        game.step();
+    }
+    game.step();
+    assert!(held(&game, guard) && held(&game, ward));
 }
 
 #[test]
@@ -2839,15 +2892,26 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
     // calls `ctx.attack_hit` strikes with the caster's weapon in tick 0. Each deals 40, 500 → 460;
     // then its list shields the target by `mark`, from the attacker with the weapon's `sap` of
     // 40, at once, and queues its `bite` of 10 + 0.5 × 40 = 30 at the end of the pass, which the
-    // shield absorbs: 460 left, and 10 of the shield.
+    // shield absorbs: 460 left, and 10 of the shield. An extra attack takes the first weapon
+    // whose filter selects its target: past a first weapon for allies alone, which would mark
+    // nothing, the sapper still strikes.
     let extra = "fn on_resolve(ctx, caster, target) { ctx.attack_hit(target); }";
     for (row, ranged, by_cast, hits_in) in [
         ("melee", false, false, 0),
         ("ranged", true, false, 4),
         ("extra", false, true, 0),
+        ("extra past a weapon for allies", false, true, 0),
     ] {
         let (mut game, fighter) = weapon_match();
         let weapon = Abilities::load_weapon(&mut game, "sapper", &sapper(ranged));
+        let for_allies = (row == "extra past a weapon for allies").then(|| {
+            let data = ActionData {
+                targeting: Targeting::Unit(FilterData::parse("allies").unwrap()),
+                on_hit: Vec::new(),
+                ..sapper(false)
+            };
+            Abilities::load_weapon(&mut game, "salve", &data)
+        });
         let out = if ranged { 4 } else { 1 };
         let target = Abilities::spawn_combatant(&mut game, (out, 0, 0), Team::new(1), ());
         let attacker = if by_cast {
@@ -2858,10 +2922,12 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
                 ..strike()
             };
             let cast = Abilities::load(&mut game, "swing", &data, extra);
-            let slots = TimedSlots::new(ActionSlots::new([
-                (cast, SlotKind::new(0), Rank::new(1)),
-                (weapon, SlotKind::new(1), Rank::new(1)),
-            ]));
+            let weapons = for_allies.into_iter().chain([weapon]);
+            let slots = TimedSlots::new(ActionSlots::new(
+                [(cast, SlotKind::new(0), Rank::new(1))]
+                    .into_iter()
+                    .chain(weapons.map(|weapon| (weapon, SlotKind::new(1), Rank::new(1)))),
+            ));
             let caster = Abilities::fighter(&mut game, fighter, slots);
             Abilities::cast(&mut game, caster, ActionTarget::Unit(target));
             caster

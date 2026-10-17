@@ -233,7 +233,8 @@ impl Production {
         TagProperties::NONE
             .with_block(Block::Attack)
             .with_block(Block::Cast)
-            .with_block(Block::Use),
+            .with_block(Block::Use)
+            .with_block(Block::Produce),
     );
     /// The engine tag of node types, which workers gather from.
     pub const NODE: EngineTag = EngineTag::new(5, "node", TagProperties::NONE);

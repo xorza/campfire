@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
 use bevy_ecs::world::World;
@@ -14,7 +15,8 @@ use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld, StableId, Unpredicted};
 use campfire_units::{
-    BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, UnitTypeCore, Units,
+    BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, StatusTags,
+    UnitTypeCore, Units,
 };
 use campfire_values::{ActionId, Rank, ResourceId, Team, TypeScope, UnitType};
 use serde::Serialize;
@@ -376,6 +378,52 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
             .collect::<Vec<_>>(),
         [train]
     );
+}
+
+#[test]
+fn a_producer_whose_tags_block_production_neither_pays_nor_queues() {
+    let mut game = shop_match_of(&[Capability::Stats, Capability::Production]);
+    let shop = Shop::place(&mut game);
+    // The engine tags' properties come with the sealed types, as a match's load gives them.
+    Units::seal_types(&mut game, &BTreeMap::new());
+    let gold = ResourceId::new(0);
+    let player = PlayerSlot::new(0);
+    Players::spawn(&mut game, 1, 1);
+    game.player_resources_mut(player)
+        .unwrap()
+        .add(gold, 5)
+        .unwrap();
+    let cost = ResourceAmount {
+        resource: gold,
+        amount: 2,
+    };
+    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, Some(cost));
+    let (site, built) = (
+        Production::allocate_id(&mut game),
+        Production::allocate_id(&mut game),
+    );
+    for (id, x) in [(site, 10), (built, 20)] {
+        let queue = TrainQueue::default();
+        shop.producer(&mut game, id, x, Team::new(1), Some(player), train, queue);
+    }
+    // A site under construction holds the `constructing` tag, which blocks production: its order
+    // ends, and it pays and queues nothing. The built producer pays 2 of the 5 gold and trains.
+    game.insert_parts(site, StatusTags::from([Production::CONSTRUCTING]));
+    game.step();
+    Production::order_train(&mut game, site);
+    Production::order_train(&mut game, built);
+    game.step();
+    assert_eq!(
+        shop.spawns(&mut game),
+        [(Team::new(1), Vec3::from((20, 0, 0)), Some(player))]
+    );
+    assert_eq!(game.player_resources(player).unwrap().amount(gold), 3);
+    let entity = game.unit_entity(site);
+    assert_eq!(
+        game.get::<ActionProgress>(entity).unwrap().in_progress(),
+        None
+    );
+    assert_eq!(game.get::<TrainQueue>(entity), Some(&TrainQueue::default()));
 }
 
 #[test]

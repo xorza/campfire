@@ -1,3 +1,4 @@
+use campfire_values::Block;
 use serde::{Deserialize, Serialize};
 
 /// What is special about an action, beside the pipeline every action runs. The release runs every
@@ -34,6 +35,17 @@ impl ActionKind {
         Self::Build,
         Self::Gather,
     ];
+
+    /// The block that keeps a unit from starting an action of the kind; a slot of a unit's use
+    /// group starts as a use whatever its kind (`UseGroup::group`).
+    pub const fn block(self) -> Block {
+        match self {
+            Self::Cast | Self::Craft => Block::Cast,
+            Self::Attack => Block::Attack,
+            Self::Use | Self::Enter | Self::Build | Self::Gather => Block::Use,
+            Self::Train => Block::Produce,
+        }
+    }
 
     /// Whether the release runs actions of the kind, one of `RUN`: a planned one, as `enter`, it
     /// does not.

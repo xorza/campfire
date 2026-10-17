@@ -1,9 +1,11 @@
 use campfire_actions::{ActionDataField, RequiresData};
 use campfire_common::PlayerSlot;
 use campfire_script::{
-    ApiBuilder, ApiOwner, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, Unit,
+    ApiBuilder, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec,
+    Status, Unit,
 };
 use campfire_sim::Capability;
+use campfire_values::{Block, TagProperty};
 
 use crate::drop_off_data::DropOffData;
 use crate::error::ProductionRefusal;
@@ -39,6 +41,10 @@ impl ProductionApi {
             )
             .data::<ModeSupplyData>(&["max"], &[])
             .data::<RequiresData>(&["units", "modifiers"], &[])
+            .tag_property(
+                TagProperty::Blocks(Block::Produce),
+                Status::Runs(ApiVersion::FIRST),
+            )
             .data::<NodeData>(&["resource", "amount"], &[])
             .data::<DropOffData>(&["resources"], &[])
             .bind(

@@ -640,12 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 2: confirmed bugs
 
-**2.1 Action gates and due pushes.** Touches `actions`, `abilities`, `production`, `combat`.
-- `ActionKind::block` names each kind's `Block`, with a new `Block::Produce` that `constructing` blocks. `start_trains` and the order check test it (R-1).
-- `DueRun::push` keeps the earliest tick since the last take (C-16). Phase 7 replaces `DueRun`, and its index keeps this rule.
-- `AttackHit` resolves the weapon whose filter selects the target, and refuses with `NoAttack` when none does (K-4).
-- **Goldens:** a golden moves only where a golden match hits the bug.
-
 **2.2 Stats owns its hooks.** Touches `stats` and `combat`.
 - `ModifierHooks` and the interval runner move to stats. Combat's events reach them through a callback table that stats declares (K-2).
 - `restore` becomes a stats effect with the one living test (K-3).
@@ -1085,7 +1079,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-13 | Each `UnitsNear` reader holds `ResMut`, because the first reader rebuilds the grid | `unit_grid.rs:25-58` | Confirmed | 6.1 |
 | C-14 | The match entity and the players are found through the `BTreeMap` index on each call | `on_match.rs:18-25`, `player_rows.rs:25-59`, `targets.rs:49-51` | Confirmed. The cost needs a bench. | 7.2 |
 | C-15, S-24 | The script view walks and copies every entity for each script batch. Each call copies the mode state and every player's resources and resolves its literal names again. | `view_reader.rs:136-180`, `scripts_world.rs:15-17`, `mode_call.rs:194-208` | Plausible: needs a bench | 7.2 |
-| C-16 | Two "while ready" passives: `want_passives` pushes once for each slot, and `DueRun` keeps the last push, so the earlier passive comes back late | `holds.rs:116-127`, `due_run.rs:22-33` | Checked | 2.1 |
 | C-17 | `want_passives` scans every unit in four sets, and `end_lifespans` scans every lifespan in each tick | `actions/src/lib.rs:242-250`, `unit_ticks.rs:31-42` | Confirmed | 7.1 |
 | C-18 | Slots, times and progress are three components that stay in step only by index, and each `zip` truncates silently | `action_slots/mod.rs:30-33`, `slot_times.rs:234-354` | Confirmed | 7.4 |
 | C-19 | Resource costs are a flat buffer whose shape a division implies | `action.rs:21-24, 89-93` | Confirmed | 5.1 |
@@ -1136,7 +1129,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | --- | --- | --- | --- | --- |
 | K-1 | A passive's interval stops while its unit is dead, then fires once for each tick after the respawn | `modifier_intervals.rs:21-53`, `modifier_clocks.rs:86-108` | Confirmed | 2.2 |
 | K-3 | `restore` is a combat effect and skips each unit with no `Life` | `combat_effect.rs:26-30, 106-108`, `damage_pass.rs:213-216` | Confirmed | 2.2 |
-| K-4 | `ctx.attack_hit` uses the first weapon whether or not its filter selects the target | `combat_effect.rs:116-143` | Checked | 2.1 |
 | K-5 | Splash uses `<`, while the one reach rule is `≤` | `attacks.rs:120-122`, `metric.rs:54-73` | Confirmed | Backlog (D12) |
 | K-6 | A clip's reload counts from the attack's start, where the design and Zero Hour count from the shot | `attacks.rs:428-435` | Confirmed | Backlog (D14) |
 | K-7 | A weapon's own damage and period cannot be scaled by a stat | `weapon/mod.rs:107-163` | Confirmed | Backlog |
@@ -1160,7 +1152,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
-| R-1 | A building under construction, or a stunned building, trains units | `casts.rs:118-128`, `trains.rs:68-174` | Checked | 2.1 |
 | R-2 | A restored unit with the level track and no `Points` panics at its next level-up | `progression_effect.rs:69-73`, `experience.rs:87-95` | Plausible | 3.1 |
 | R-3 | A restored `NextThink` or queue head in the far future freezes AI or production with no error | `next_think.rs:36-38`, `train_queue.rs:106-124` | Confirmed | 3.1 |
 | R-4 | Exclusive production and AI systems run in each tick and scan their whole population | `trains.rs:94-192`, `construction/mod.rs:82-352`, `gather_loop/mod.rs:144-150`, `destinations.rs:19-111` | Confirmed | 7.1 |

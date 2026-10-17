@@ -4,7 +4,8 @@ use campfire_math::Num;
 use campfire_script::{CallError, Effect, Frame, View};
 use campfire_sim::{EntityIndex, StableId};
 use campfire_stats::{Life, PoolId, UnitStats};
-use campfire_values::DamageKind;
+use campfire_units::UnitsWorld;
+use campfire_values::{DamageKind, TagSet, Team, UnitTags};
 
 use crate::damage::{Damage, DamageCause};
 use crate::damage_pass::DamagePass;
@@ -28,7 +29,8 @@ pub enum CombatEffect {
         pool: PoolId,
         amount: Num,
     },
-    /// An extra attack of the acting unit on `unit`.
+    /// An extra attack of the acting unit on `unit`, with its first weapon whose filter selects
+    /// `unit`.
     AttackHit { unit: StableId },
     /// `unit`'s life taken whole, so it dies as the next Die stage finds it, with no killer.
     Kill { unit: StableId },
@@ -115,13 +117,25 @@ impl Effect for CombatEffect {
             }
             Self::AttackHit { unit: target } => {
                 let index = world.resource::<EntityIndex>();
-                let Some(unit) = source.and_then(|source| index.get(source)) else {
+                let (Some(unit), Some(aimed)) = (
+                    source.and_then(|source| index.get(source)),
+                    index.get(target),
+                ) else {
                     return;
                 };
+                let (Some(&team), Some(&aimed_team)) =
+                    (world.get::<Team>(unit), world.get::<Team>(aimed))
+                else {
+                    return;
+                };
+                let tags = world
+                    .get::<UnitTags>(aimed)
+                    .map_or(TagSet::NONE, |tags| tags.tags);
+                let selected = (world.relations().between(team, aimed_team), tags);
                 let unit = world.entity(unit);
                 let book = world.resource::<ActionBook>();
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
-                    let slot = slots.slot(slots.weapon_in(book, None)?)?;
+                    let slot = slots.slot(slots.weapon_in(book, Some(selected))?)?;
                     let weapon = book.get(slot.action?)?.kind.weapon()?;
                     let rank = slot.rank?;
                     Some((slot, rank, weapon, *book.get(slot.action?)?.values(rank)))

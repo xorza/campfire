@@ -12,7 +12,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `add_resource` | `(player, name, amount)`, `name` a player resource | every role | core | since 1.0 | adds `amount` of the player resource `name`, one the mode declares, to `player` |
 | `add_xp` | `(unit, track, amount)`, `track` a track | every role | progression | since 1.0 | gives `unit` `amount` of experience on `track`, one of its unit type's |
 | `area` | `(pos)` | action | areas | since 1.0 | lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick |
-| `attack_hit` | `(target)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
+| `attack_hit` | `(target)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`, with its first weapon whose filter selects `target`, struck at once: no crit, no `on_attack`, and nothing when no weapon selects it |
 | `available` | `(player, choice, value)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `avatars` | `()` or `(team)`, `team` a team | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
 | `carry` | read | mode | core | planned | the carry the session loaded, which the mode writes for the next session |
@@ -239,6 +239,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `hidden = true` | since 1.0 |
 | `detects = true` | since 1.0 |
 | `blocks = ["cast"]` | since 1.0 |
+| `blocks = ["produce"]` | since 1.0 |
 
 ## Data fields
 
