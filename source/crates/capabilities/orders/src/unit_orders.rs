@@ -41,9 +41,9 @@ pub(super) struct Mover {
 
 /// The orders of `orders` among the tick's inputs: each unit's checked, then applied.
 #[derive(Debug)]
-pub struct OrderInputs;
+pub struct UnitOrders;
 
-impl OrderInputs {
+impl UnitOrders {
     /// Checks each order of the tick, in input order, so a later order in the tick wins, for each
     /// of its units, by stable id. An order to a unit its player does not control, that is dead or
     /// resets, is dropped, and so are a move of a unit with nowhere to walk, an attack on a unit

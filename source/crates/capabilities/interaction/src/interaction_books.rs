@@ -22,7 +22,7 @@ impl Interaction {
             };
             let held = slots.take(unit.unit_type);
             let held = held.unwrap_or_else(|| ActionSlots::new([]));
-            slots.set(unit.unit_type, held.with_empty(uses.kind(), 1));
+            slots.set(unit.unit_type, uses.extend_slots(held));
         }
         Ok(())
     }

@@ -26,31 +26,31 @@ mod ai_data;
 mod destinations;
 mod error;
 mod next_think;
-mod order_inputs;
 mod orders_action;
 mod orders_api;
 mod orders_effect;
 mod resetting;
 mod thinking;
 mod unit_order;
+mod unit_orders;
 
 pub use crate::ai::Ai;
 pub use crate::ai_data::AiData;
 pub use crate::destinations::Destinations;
 pub use crate::error::{AiError, OrdersRefusal};
 pub use crate::next_think::NextThink;
-pub use crate::order_inputs::{OrderInputs, PlayerOrders};
 pub use crate::orders_action::OrdersAction;
 pub use crate::orders_api::OrdersApi;
 pub use crate::resetting::Resetting;
 pub use crate::thinking::Thinking;
 pub use crate::unit_order::{OrderedUnit, UnitOrder};
+pub use crate::unit_orders::{PlayerOrders, UnitOrders};
 
 /// The steps of `orders`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
 pub enum OrdersSet {
-    /// The tick's orders become each unit's current order.
-    Orders,
+    /// The tick's commands become each unit's current order.
+    Commands,
     /// Units follow their paths and chase their targets, before attacks start.
     Chase,
     /// AI of the units due this tick issues orders.
@@ -62,7 +62,7 @@ impl ModuleSet for OrdersSet {
 
     fn place(self) -> SetPlace {
         match self {
-            Self::Orders => SetPlace::at(ActionsSet::Order),
+            Self::Commands => SetPlace::at(ActionsSet::Order),
             Self::Chase => SetPlace::at(ActionsSet::Chase),
             Self::Think => SetPlace::stage(SimSet::Think),
         }
@@ -107,7 +107,7 @@ impl Module for Orders {
     /// units it holds.
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
         cx.by_role(
-            OrdersSet::Orders,
+            OrdersSet::Commands,
             Self::check_orders::<ByVision>(),
             Self::check_orders::<ByHolding>(),
         );
@@ -127,8 +127,8 @@ impl Orders {
     /// apply them.
     fn check_orders<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
         (
-            OrderInputs::check_player_orders::<S>,
-            OrderInputs::apply_player_orders,
+            UnitOrders::check_player_orders::<S>,
+            UnitOrders::apply_player_orders,
         )
             .chain()
     }

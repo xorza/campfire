@@ -666,9 +666,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20).
 - `Destination` writes and the standing-room query are contracts, and `production` drops `navigation` (R-31).
 - A death record and an audience contract, and `net` drops `combat` and `vision` (N-26).
-- `TickCommand::controls` is the one control answer (RW 20).
-- The use slot extends through `UseSlot::extend_slots` (RW 20).
-- One naming of order inputs and order sets (RW 20).
 
 ### Phase 6: `Send` data and the server frame
 
