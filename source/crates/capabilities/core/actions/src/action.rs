@@ -5,6 +5,7 @@ use campfire_values::{ModifierId, PackageIndex, Rank, Relation, TagSet};
 
 use crate::delivery::Delivery;
 use crate::kind_spec::KindSpec;
+use crate::rank_fields::TogglePer;
 use crate::rank_values::RankValues;
 
 /// An action as a match runs it.
@@ -56,6 +57,30 @@ impl Action {
     /// Its script, when it defines `hook`.
     pub fn hook(&self, hook: Hook) -> Option<ScriptId> {
         self.script.filter(|_| self.hooks.contains(hook))
+    }
+
+    /// Whether a rank of it toggles.
+    pub fn toggles(&self) -> bool {
+        self.ranks.iter().any(|values| values.toggle.is_some())
+    }
+
+    /// Whether a rank of it toggles, paying its cost `per`.
+    pub fn toggles_per(&self, per: TogglePer) -> bool {
+        let mut toggles = self.ranks.iter().filter_map(|values| values.toggle);
+        toggles.any(|toggle| toggle.per == per)
+    }
+
+    /// Whether a rank of it channels.
+    pub fn channels(&self) -> bool {
+        self.ranks.iter().any(|values| values.channel.is_some())
+    }
+
+    /// Whether it is an attack whose weapon's hit lands after its shot
+    /// (04-capabilities/combat.md, A slow weapon delays its damage).
+    pub fn is_slow(&self) -> bool {
+        self.kind
+            .weapon()
+            .is_some_and(|weapon| weapon.speed.is_some())
     }
 
     /// Whether `rank` is one of its ranks, from 1 to its last.

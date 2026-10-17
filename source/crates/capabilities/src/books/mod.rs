@@ -18,6 +18,8 @@ pub(crate) mod book_cells;
 pub(crate) mod book_input;
 pub(crate) mod leftover_books;
 pub(crate) mod package_content;
+#[cfg(test)]
+pub(crate) mod test_package;
 pub(crate) mod units_seed;
 
 /// The books of a match, built once from its packages at its tick rate, each until the build
@@ -97,6 +99,9 @@ impl Books {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use std::any::type_name;
+
+    use campfire_declare::Book;
     use campfire_mode::ModeUnits;
 
     use crate::books::Books;
@@ -105,6 +110,13 @@ pub(crate) mod internals {
         /// The units the mode spawns, which a test that starts no mode spawns itself.
         pub const fn mode_units(&self) -> &ModeUnits {
             &self.inputs.units
+        }
+
+        /// Puts `book` in place of the one built, as a test gives its own before the build.
+        pub fn replace<B: Book>(&mut self, book: B) {
+            let built = self.built.take::<B>();
+            assert!(built.is_some(), "{} is built", type_name::<B>());
+            self.built.add(book);
         }
     }
 }

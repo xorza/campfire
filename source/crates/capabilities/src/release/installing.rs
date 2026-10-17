@@ -6,9 +6,9 @@ use campfire_sim::SimParts;
 use crate::release::declaring::{Declaring, Scripts};
 use crate::release::installer::{InstallParts, Installer};
 
-/// The walk that installs each module a match runs, as `facts` says: its declarations, then its
-/// systems; at the match's build, every module but the mode's scripted part, which a second walk
-/// installs alone once the scripts compile.
+/// The walk that installs each module a match runs, as `facts` says, in two passes: its
+/// declarations, which put its books in, then its systems, which the books' facts decide; the mode's
+/// scripted part apart, which a third walk installs whole once the scripts compile.
 pub(super) struct Installing<'a> {
     parts: SimParts<'a>,
     books: &'a mut BuiltBooks,
@@ -16,12 +16,16 @@ pub(super) struct Installing<'a> {
     walk: Walk,
 }
 
-/// Which modules of the list a walk installs.
+/// Which modules of the list a walk installs, and what of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Walk {
-    /// Every module but the mode's scripted part, as the match is built.
-    Build,
-    /// The mode's scripted part alone, once the scripts compile.
+    /// The declarations of every module but the mode's scripted part, as the match is built.
+    Declare,
+    /// The systems of every module but the mode's scripted part, once every book is in place
+    /// (02-engine-core.md, Books before the install).
+    Install,
+    /// The mode's scripted part alone, its declarations then its systems, once the scripts
+    /// compile.
     Scripted,
 }
 
@@ -41,8 +45,8 @@ impl<'a> Installing<'a> {
         }
     }
 
-    /// Installs `M`: its declarations, then its systems.
-    fn install<M: Module>(&mut self) {
+    /// Puts in the declarations of `M`.
+    fn declare<M: Module>(&mut self) {
         let SimParts {
             world,
             schedule,
@@ -56,6 +60,13 @@ impl<'a> Installing<'a> {
         };
         let mut installer = Installer::new(parts, self.facts);
         Declaring::new(self.facts.facts.set, Scripts::Visited, &mut installer).declare::<M>();
+    }
+
+    /// Adds the systems of `M`.
+    fn install<M: Module>(&mut self) {
+        let SimParts {
+            world, schedule, ..
+        } = &mut self.parts;
         M::install(&mut InstallCx::<M::Set>::new(schedule, self.facts, world));
     }
 }
@@ -71,13 +82,18 @@ impl fmt::Debug for Installing<'_> {
 
 impl ModuleVisitor for Installing<'_> {
     fn module<M: Module>(&mut self) {
-        if self.walk == Walk::Build && self.facts.facts.set.runs(M::CAPABILITY) {
-            self.install::<M>();
+        if self.facts.facts.set.runs(M::CAPABILITY) {
+            match self.walk {
+                Walk::Declare => self.declare::<M>(),
+                Walk::Install => self.install::<M>(),
+                Walk::Scripted => {}
+            }
         }
     }
 
     fn scripted<M: Module>(&mut self) {
         if self.walk == Walk::Scripted {
+            self.declare::<M>();
             self.install::<M>();
         }
     }

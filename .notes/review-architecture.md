@@ -643,9 +643,6 @@ Each change folds into its document when its batch lands. Each line names the de
 **4.1 Books before the install.** Touches the release, `declare`, `values` (engine tags).
 - `declare` assigns engine tag numbers in declaration order (RW 20). Waits for Q3 in `review-architecture_QUESTIONS.md`.
 
-**4.3 Books, sections and map sections declared with their builders.** Touches the top crate's books, `declare`, `mode` (the map), `vision`, `production`, `stats`, `combat`, `abilities`, each capability, and the test fixtures.
-- The rest of the load facts decide which systems install, and their run conditions go: the vision grid, the supply's count, turrets, clips, slow weapons, intervals, regen, toggles and channels. Today the fixtures of these load their data after the build, so they move first (E-10, K-12, from 4.1).
-
 **4.4 Data checks declared with their modules.** Touches `package` and each capability.
 - `d.check` returns the module's own error inside a `LoadProblem` case of `declare`. `package` keeps only the checks across packages and drops its capability dependencies (B-18).
 - The load check's name tables come from the modules' own name facts, as the books' build makes them, and `ModeNames` goes; a book error's module problem maps to its load problem in the module, not in `package`'s hand list of problem types.
@@ -986,7 +983,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | E-6 | `Capability` names five capabilities with no module, and `DataKind` names capability concepts in the lowest layers | `sim/src/capability.rs:12-31`, `data_kind.rs:9-48` | Confirmed | 4.5 |
 | E-7 | The script `View` owns the damage-kind, resource and team names that restore checks read | `books/mod.rs:118-133`, `units.rs:208-245` | Confirmed | 6.1 |
 | E-8, C-12, R-11 | `MatchMode`, `Spawner`, `ViewReader` and `CombatHooks` are non-send with no script handle in them. `Spawner` holds an `Rc<[bool]>` for one `debug_assert!`. | `mode/src/lib.rs:192-208`, `spawner.rs:19-22, 50`, `view_reader.rs:27-41`, `combat_hooks.rs:12-26` | Confirmed | 6.1 |
-| E-10, K-12 | The vision grid, the supply's count and feature passes are run conditions or passes with nothing to do, as the fixtures load their data after the build | `vision/src/lib.rs:108-116`, `production/src/lib.rs:200-204`, `refresh.rs:225-245` | Confirmed | 4.3 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
 | E-18 | A restore moves each entity once for each state type it holds | `state_registry/mod.rs:400-424, 662-684` | Confirmed | 7.5 |
 | E-19 | `StateRegistry` is a type list, a codec, a change tracker and a mode switch | `state_registry/mod.rs:57-64` | Confirmed | 7.7 |

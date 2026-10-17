@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
+use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_actions::CostTarget;
 use campfire_common::Tick;
 use campfire_script::{Filter, ScriptNames, TagNames, View};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimSet, SimTick, SimUpdate, StableId};
+use campfire_sim::{SimSet, SimTick, StableId};
 use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, PoolId, StatId, Stats};
 use campfire_units::internals::TEST_PACKAGE;
 use campfire_units::{StatusTags, TagBook, Units};
@@ -124,9 +124,7 @@ impl UnitsFixtures for Units {
                 Self::set_blocks(world, id, blocks);
             }
         };
-        world
-            .resource_mut::<Schedules>()
-            .add_systems(SimUpdate, block.in_set(stage));
+        world.add_tick_systems(block.in_set(stage));
     }
 
     fn name_kinds(world: &World, damage_kinds: &[&str], pools: &[&str], resources: &[&str]) {

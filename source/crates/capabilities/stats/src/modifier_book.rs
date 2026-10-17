@@ -181,6 +181,13 @@ impl ModifierBook {
         self.get(id).tags
     }
 
+    /// Whether a modifier has an interval.
+    pub(crate) fn has_intervals(&self) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| entry.spec.interval.is_some())
+    }
+
     /// What the interval of `id` does as its carrier comes back to life.
     pub(crate) fn revival(&self, id: ModifierId) -> IntervalRevival {
         self.get(id).spec.revival

@@ -11,7 +11,7 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionTarget, ActionsSet, CastSpends};
+use campfire_actions::{Action, ActionBook, ActionTarget, ActionsSet, CastSpends};
 use campfire_common::{EnumAll, Ticks};
 use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::Deliverers;
@@ -77,18 +77,29 @@ impl Module for Abilities {
     /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
     /// only cools down, as the server's does. On the server, each toggle that is on pays its cost
-    /// each second, as the toggle's cost is the server's.
+    /// each second, as the toggle's cost is the server's. The channels and the toggles install
+    /// only in a match whose actions have them (02-engine-core.md, Books before the install).
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        let actions = cx.book::<ActionBook>();
+        let channels = actions.is_some_and(|book| book.iter().any(Action::channels));
+        let toggles = actions.is_some_and(|book| book.iter().any(Action::toggles));
         cx.add(AbilitiesSet::StartCasts, Casts::start_casts);
-        cx.unscripted(
-            AbilitiesSet::Resolve,
-            (Casts::predict_casts, Channels::predict_channels).chain(),
-        );
-        cx.scripted(
-            AbilitiesSet::Resolve,
-            (Casts::resolve_casts, Channels::run_channels).chain(),
-        );
-        cx.server(AbilitiesSet::Toggles, Toggles::run_toggles);
+        if channels {
+            cx.unscripted(
+                AbilitiesSet::Resolve,
+                (Casts::predict_casts, Channels::predict_channels).chain(),
+            );
+            cx.scripted(
+                AbilitiesSet::Resolve,
+                (Casts::resolve_casts, Channels::run_channels).chain(),
+            );
+        } else {
+            cx.unscripted(AbilitiesSet::Resolve, Casts::predict_casts);
+            cx.scripted(AbilitiesSet::Resolve, Casts::resolve_casts);
+        }
+        if toggles {
+            cx.server(AbilitiesSet::Toggles, Toggles::run_toggles);
+        }
     }
 }
 

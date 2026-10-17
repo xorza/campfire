@@ -306,10 +306,18 @@ impl Module for Stats {
     /// derived again, and the components that hold their effect follow them; as each tick
     /// starts, the living units' pools regenerate. The grants the sources push apply as each
     /// tick starts, before attacks strike, before units die and as the tick ends. With no stat
-    /// book, as before a mode loads one, nothing changes.
+    /// book, as before a mode loads one, nothing changes. The regen and the intervals install
+    /// only in a match whose pools and modifiers have them (02-engine-core.md, Books before the
+    /// install).
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        let regenerates = cx.book::<PoolBook>().is_some_and(PoolBook::regenerates);
+        let intervals = cx
+            .book::<ModifierBook>()
+            .is_some_and(ModifierBook::has_intervals);
         cx.add(StatsSet::Expire, ModifierEnds::expire_modifiers);
-        cx.add(StatsSet::Regenerate, Refresh::regenerate);
+        if regenerates {
+            cx.add(StatsSet::Regenerate, Refresh::regenerate);
+        }
         for set in [
             StatsSet::GrantAtInputs,
             StatsSet::GrantAtStrike,
@@ -322,7 +330,9 @@ impl Module for Stats {
             (PlayerGrants::want, GrantPass::run).chain(),
         );
         cx.add(StatsSet::ClearDead, ModifierEnds::clear_dead_modifiers);
-        cx.add(StatsSet::Interval, ModifierIntervals::run_intervals);
+        if intervals {
+            cx.add(StatsSet::Interval, ModifierIntervals::run_intervals);
+        }
         cx.by_role(
             StatsSet::Hold,
             (AuraCarriers::track, HeldPass::run::<ServerForm>).chain(),

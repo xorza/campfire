@@ -139,7 +139,7 @@ pub(crate) mod internals {
             let set = spec.set;
             let books = Release::empty_books(spec.rate());
             let mut world = World::new();
-            Release::build(&mut world, spec, books, MatchKind::Rules);
+            Release::build(&mut world, spec.open(), books, MatchKind::Rules);
             // A mode declares the kinds its units' slots are of: here one, whose one rank comes
             // with the spawn, which a test that needs others replaces.
             let basic = SlotKindData {

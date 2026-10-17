@@ -198,8 +198,8 @@ impl Module for Production {
     /// are the server's: a predicting client derives none, as it holds only the units its team
     /// sees, and its unit comes back by replication. A build's placement tests the units the
     /// server's vision sees, or, on a predicting client, the units it holds. On the server, a
-    /// player spawns with its supply, which the refresh writes in place; a client receives its own
-    /// player's.
+    /// player spawns with its supply, which the refresh of a mode that counts supply writes in
+    /// place; a client receives its own player's.
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
         cx.by_role(
             ProductionSet::Commands,
@@ -207,10 +207,9 @@ impl Module for Production {
             ProductionOrders::apply_cancels::<ByHolding>,
         );
         cx.server(ProductionSet::Commands, ProductionOrders::set_rallies);
-        cx.server(
-            ProductionSet::Supply,
-            PlayerSupply::refresh.run_if(SupplyBook::counts),
-        );
+        if cx.book::<SupplyBook>().is_some_and(|book| book.counts()) {
+            cx.server(ProductionSet::Supply, PlayerSupply::refresh);
+        }
         // A build places a box, which only navigation tests for room, and a worker walks.
         if !cx.has(Capability::Navigation) {
             cx.by_role(

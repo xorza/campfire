@@ -1,8 +1,10 @@
 use std::any::type_name;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::schedule::Schedules;
 use bevy_ecs::world::World;
 use campfire_script::View;
+use campfire_sim::SimUpdate;
 
 use crate::role::Role;
 
@@ -24,11 +26,19 @@ pub trait Book: Resource + Sized {
     }
 
     /// Puts the book in place of the one the build put in `world`, as a test that loads a book
-    /// alone does, and gives the script view what it copies of it.
+    /// alone does, and gives the script view what it copies of it, before the match's systems
+    /// install, as their install reads the books (02-engine-core.md, A test's match installs at
+    /// its first tick).
     fn load_into(self, world: &mut World) {
         assert!(
             world.contains_resource::<Self>(),
             "{} is declared by its owner",
+            type_name::<Self>()
+        );
+        let built = world.get_resource::<Schedules>();
+        assert!(
+            !built.is_some_and(|schedules| schedules.contains(SimUpdate)),
+            "{} loads before its match's systems install",
             type_name::<Self>()
         );
         world.insert_resource(self);

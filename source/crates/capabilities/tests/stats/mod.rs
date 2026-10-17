@@ -13,7 +13,7 @@ use campfire_mode::Mode;
 use campfire_script::{ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, IdAllocator, Position, SimComponent, SimUpdate, SimWorld, StableId, Unpredicted,
+    Capability, IdAllocator, Position, SimComponent, SimWorld, StableId, Unpredicted,
 };
 use campfire_stats::*;
 use campfire_units::{
@@ -906,7 +906,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     assert_eq!(restored.get::<UnitStats>(copy), Some(&UnitStats::default()));
     assert_eq!(restored.get::<UnitTags>(copy), Some(&UnitTags::default()));
     game.step();
-    restored.run_schedule(SimUpdate);
+    restored.step();
     for (world, entity) in [(&game, walker), (&restored, copy)] {
         let stats = world.get::<UnitStats>(entity).unwrap();
         assert_eq!(stats.values()[speed.index()], Num::int(2));

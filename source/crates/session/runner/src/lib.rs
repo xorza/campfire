@@ -26,3 +26,9 @@ pub use crate::session::session_world::SessionWorld;
 pub use crate::session_rules::error::TermsError;
 pub use crate::session_rules::{CheckedTerms, HostChoices, SessionRules};
 pub use crate::slot_rules::error::SlotRuleError;
+
+/// What the test harness builds an arena of.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::match_build::internals::ArenaSpec;
+}

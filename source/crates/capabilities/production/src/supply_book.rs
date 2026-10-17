@@ -1,5 +1,4 @@
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::Res;
 use campfire_declare::Book;
 use campfire_script::View;
 
@@ -10,9 +9,9 @@ use crate::mode_supply_data::ModeSupplyData;
 pub struct SupplyBook(pub Option<ModeSupplyData>);
 
 impl SupplyBook {
-    /// The run condition of what counts supply: whether the mode counts it.
-    pub(crate) fn counts(book: Res<'_, Self>) -> bool {
-        book.0.is_some()
+    /// Whether the mode counts supply, which its refresh needs.
+    pub(crate) const fn counts(self) -> bool {
+        self.0.is_some()
     }
 }
 

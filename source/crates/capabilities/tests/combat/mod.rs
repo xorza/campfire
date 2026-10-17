@@ -4,7 +4,7 @@ use std::num::NonZeroU16;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::component::Component;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
+use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::system::RunSystemOnce;
 use bevy_ecs::world::World;
 use campfire_actions::internals::TestWeapon;
@@ -25,8 +25,8 @@ use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimTick, SimUpdate,
-    SimWorld, StableId, Unpredicted,
+    Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimTick, SimWorld,
+    StableId, Unpredicted,
 };
 use campfire_stats::{
     Application, Ends, Life, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance,
@@ -1116,8 +1116,7 @@ fn damage_after_the_pass_waits_for_the_next_and_a_life_at_zero_acts_no_more() {
     let hook = hook
         .in_set(SimEdge::After(SimSet::Mode))
         .after(StatsSet::Refresh(SimEdge::After(SimSet::Mode)));
-    game.resource_mut::<Schedules>()
-        .add_systems(SimUpdate, hook);
+    game.add_tick_systems(hook);
     game.run_until(2);
     assert_eq!(Stats::health(&game, target), 100);
     assert!(game.try_part::<Dead>(attacker).is_none());
@@ -1357,8 +1356,7 @@ fn a_read_of_what_the_client_lacks_fails_the_sync_test() {
         };
         let peek = peek.in_set(SimEdge::After(SimSet::Mode));
         let after = peek.after(StatsSet::Refresh(SimEdge::After(SimSet::Mode)));
-        game.resource_mut::<Schedules>()
-            .add_systems(SimUpdate, after);
+        game.add_tick_systems(after);
     });
 }
 

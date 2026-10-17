@@ -134,7 +134,6 @@ fn on_mode_input(ctx, player, name, value) {
 "#;
     // Hero X uses 2 and gives 6, of a most of 5; a grunt uses 1.
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     let view = game.non_send::<View>().clone();
     let named = |name: &str| view.names().named((TypeScope::Mode, name)).unwrap();
     let (hero, grunt) = (named("hero-x"), named("grunt"));
@@ -156,6 +155,7 @@ fn on_mode_input(ctx, player, name, value) {
     let costs = SupplyCostBook::new(types, game.resource::<ActionBook>());
     SupplyBook(Some(ModeSupplyData { max: 5 })).load_into(&mut game);
     costs.load_into(&mut game);
+    Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     // Player 0 owns three grunts, one of them dead; player 1 one. The second carries 7 gold, the
     // third gathers and carries nothing.
     let gold = resource("gold").unwrap();
@@ -195,11 +195,10 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(Mode::field(&game, "count"), StateValue::Int(70_000));
     assert_eq!(Mode::failures(&game), []);
     // A mode that counts no supply fails the call.
-    SupplyBook(None).load_into(&mut game);
-    SupplyCostBook::default().load_into(&mut game);
-    Mode::tick_inputs(&mut game, &[(0, input("phase", "read"))]);
+    let mut uncounted = mode_match(script, ScriptLimits::ROOMY);
+    Mode::tick_inputs(&mut uncounted, &[(0, input("phase", "read"))]);
     assert_eq!(
-        Mode::failures(&game),
+        Mode::failures(&uncounted),
         [FailureKind::Api(ProductionRefusal::NoSupply.refused())]
     );
 }

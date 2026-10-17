@@ -10,7 +10,7 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemCondition, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_sim::Capability;
@@ -106,17 +106,17 @@ impl Module for Vision {
         d.server_part::<UnitEntity, SeenBy>();
     }
 
-    /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
-    /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
-    /// teams that see it, with the reveals under way. A match sees nothing until its mode gives
-    /// the grid. What a team sees is the server's: a predicting client holds the units its team sees, as
-    /// the server sends them, and reveals nothing.
+    /// Adds vision to a match, on combat, when its map has a grid: in Vision, the last stage of a
+    /// tick, each living unit with a sight reveals the grid cells around it to its vision group,
+    /// and each unit learns the teams that see it, with the reveals under way. A match of no grid
+    /// sees nothing. What a team sees is the server's: a predicting client holds the units its
+    /// team sees, as the server sends them, and reveals nothing.
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
-        cx.server(
-            VisionSet::Refill,
-            Seeing::refill.run_if(VisionBook::has_grid.and_then(Seeing::unfilled)),
-        );
-        cx.server(VisionSet::See, Seeing::see.run_if(VisionBook::has_grid));
+        if !cx.book::<VisionBook>().is_some_and(VisionBook::has_grid) {
+            return;
+        }
+        cx.server(VisionSet::Refill, Seeing::refill.run_if(Seeing::unfilled));
+        cx.server(VisionSet::See, Seeing::see);
     }
 }
 
@@ -150,16 +150,6 @@ pub mod internals {
             );
             let brush = BrushMap::new(&grid, brush);
             (VisionBook(Some(VisionGrid { grid, brush, teams }))).load_into(world);
-        }
-
-        /// Takes the map's vision grid out of a match that holds one, so no Vision stage runs
-        /// until a test loads a grid: a unit keeps the teams the last stage found, and one no
-        /// stage spoke of is seen by its own vision group alone, or by every team when it has
-        /// none.
-        pub fn clear_grid(world: &mut World) {
-            if world.contains_resource::<VisionBook>() {
-                VisionBook::default().load_into(world);
-            }
         }
     }
 

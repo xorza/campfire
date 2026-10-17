@@ -4,15 +4,13 @@ use std::panic::{self, AssertUnwindSafe};
 use bevy_ecs::resource::Resource;
 use campfire_combat::CombatBook;
 use campfire_common::SegmentSeed;
-use campfire_declare::{Book, Role};
+use campfire_declare::{Book, ByType, Role};
 use campfire_math::Num;
 use campfire_orders::Ai;
 use campfire_script::{ScriptLimits, ScriptPools, View};
-use campfire_sim::Capability;
+use campfire_sim::{Capability, SimWorld};
 use campfire_stats::{ModifierBook, ParamBook, StatBook, StatRule};
 use campfire_values::Stat;
-
-use campfire_declare::ByType;
 
 use crate::books::Books;
 use crate::release::Release;
@@ -64,10 +62,21 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     let mut game = stats_match(books);
     assert_eq!(game.resource::<StatBook>().len(), 1);
     assert!(!game.contains_resource::<CombatBook>());
-    // A book its installed owner did not declare, a book declared and not built, and one built
-    // and not declared are each a logic error.
+    // A book its installed owner did not declare, a book declared and not built, one built and
+    // not declared, and one loaded after the install are each a logic error.
     let said = panic_of(|| CombatBook::default().load_into(&mut game));
     assert!(said.ends_with("is declared by its owner"), "{said}");
+    // A book its owner declared loads only before the match's systems install, as their install
+    // reads it: into a test's match whose first tick has not come, not into one built.
+    let said = panic_of(|| StatBook::new(&rules, Num::ONE).load_into(&mut game));
+    assert!(
+        said.ends_with("StatBook loads before its match's systems install"),
+        "{said}"
+    );
+    let mut open = Match::unscripted(&[Capability::Stats]);
+    StatBook::new(&rules, Num::ONE).load_into(&mut open);
+    open.step();
+    assert_eq!(open.resource::<StatBook>().len(), 1);
     let mut missing = Release::empty_books(Match::TEST_RATE);
     missing.built.take::<ModifierBook>().unwrap();
     let said = panic_of(|| drop(stats_match(missing)));

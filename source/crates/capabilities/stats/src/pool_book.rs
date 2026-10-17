@@ -66,6 +66,11 @@ impl PoolBook {
         self.life
     }
 
+    /// Whether a pool regenerates, by a stat of its regen.
+    pub(crate) fn regenerates(&self) -> bool {
+        self.pools.iter().any(|stats| stats.regen.is_some())
+    }
+
     /// Each pool, with its stats.
     pub fn iter(&self) -> impl Iterator<Item = (PoolId, PoolStats)> + '_ {
         (0..).zip(&self.pools).map(|(at, &stats)| {

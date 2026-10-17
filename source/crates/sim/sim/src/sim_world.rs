@@ -74,6 +74,9 @@ impl SimWorld for World {
     }
 
     fn step(&mut self) {
+        // A test's match whose build its loads left open ends it before its first tick.
+        #[cfg(feature = "internals")]
+        crate::sim_world_builder::SimWorldBuilder::finish_open(self);
         self.run_schedule(SimUpdate);
         self.clear_trackers();
     }
@@ -132,7 +135,10 @@ pub(crate) mod internals {
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::entity::Entity;
-    use bevy_ecs::schedule::{InternedSystemSet, IntoSystemSet, SystemSet};
+    use bevy_ecs::schedule::{
+        InternedSystemSet, IntoScheduleConfigs, IntoSystemSet, Schedules, SystemSet,
+    };
+    use bevy_ecs::system::ScheduleSystem;
     use bevy_ecs::world::{Mut, World};
     use campfire_common::{PlayerSlot, Tick};
     use campfire_schedule::StrictSchedule;
@@ -141,6 +147,7 @@ pub(crate) mod internals {
     use crate::sim_tick::SimTick;
     use crate::sim_update::{SimUpdate, TickEnd, start_tick};
     use crate::sim_world::SimWorld;
+    use crate::sim_world_builder::internals::OpenBuild;
     use crate::stable_id::StableId;
     use crate::stable_id::entity_index::EntityIndex;
     use crate::state_registry::StateRegistry;
@@ -164,6 +171,9 @@ pub(crate) mod internals {
         /// bench's probes time it with either stage. It builds the schedule as
         /// `build_without_sync_points` does, so a sync point it finds is one the code added.
         fn systems_outside(&mut self, sets: &[InternedSystemSet]) -> Vec<String>;
+
+        /// Adds a test's `systems` to the tick's schedule, built or still open.
+        fn add_tick_systems<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>);
 
         /// The name of each state type the match registers, in their order.
         fn state_names(&self) -> Vec<&'static str>;
@@ -241,6 +251,18 @@ pub(crate) mod internals {
                     .map(|(_, system)| system.name().shortname().to_string())
                     .collect()
             })
+        }
+
+        fn add_tick_systems<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
+            match self.get_resource_mut::<OpenBuild>() {
+                Some(mut open) => {
+                    open.schedule_mut().add_systems(systems);
+                }
+                None => {
+                    self.resource_mut::<Schedules>()
+                        .add_systems(SimUpdate, systems);
+                }
+            }
         }
 
         fn state_names(&self) -> Vec<&'static str> {

@@ -29,6 +29,11 @@ impl<T: Send + Sync + 'static> ByType<T> {
         self.entries.iter().flatten()
     }
 
+    /// Whether no type has a value.
+    pub fn is_empty(&self) -> bool {
+        self.values().next().is_none()
+    }
+
     /// Takes `unit_type`'s value out, as an extension of the book changes it before the book is
     /// shared.
     pub fn take(&mut self, unit_type: UnitType) -> Option<T> {

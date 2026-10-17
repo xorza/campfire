@@ -222,9 +222,9 @@ impl Release {
     }
 
     /// Builds the match of `spec` in the world, a new world, of `books`, as `start` says:
-    /// prepares it for the sim, keeps its facts, installs each module of the list the match runs,
-    /// in order, its declarations, its books among them, then its systems, so each install reads
-    /// its books; binds the script API of the match's modules into the script host the core's
+    /// prepares it for the sim, keeps its facts, puts in the declarations of each module of the
+    /// list the match runs, in order, its books among them, then adds the systems of each, so
+    /// each install reads every book; binds the script API of the match's modules into the script host the core's
     /// install puts in, and the mode's names into the script view; then starts the match, as
     /// `start` says, and builds its schedule once. A match that ended runs no stage. The world
     /// then holds the match whole: its schedule, its state registry, and its facts.
@@ -262,7 +262,7 @@ impl Release {
             parts,
             &mut built,
             &install,
-            Walk::Build,
+            Walk::Declare,
         ));
         Self::declare(Self::capabilities(), &mut LeftoverBooks(&mut built));
         assert!(built.is_empty(), "each built book is declared: {built:?}");
@@ -272,6 +272,16 @@ impl Release {
                 Self::declare(set, &mut ApiBinder(builder));
             });
         }
+        #[cfg(feature = "internals")]
+        if spec.end.leaves_open() {
+            assert!(
+                matches!(kind, MatchKind::Rules),
+                "an open build starts no mode"
+            );
+            sim.leave_open(Self::finish_open);
+            return;
+        }
+        Self::install_systems(&mut sim, &install);
         match kind {
             MatchKind::Rules => {}
             MatchKind::Predicting => {
@@ -295,11 +305,22 @@ impl Release {
             }
         }
         #[cfg(feature = "internals")]
-        if spec.unbuilt {
+        if spec.end.leaves_unbuilt() {
             sim.leave_unbuilt();
             return;
         }
         sim.build();
+    }
+
+    /// Adds the systems of each module the match runs, as the facts of its books decide.
+    fn install_systems(sim: &mut SimWorldBuilder<'_>, install: &InstallFacts<'_>) {
+        let mut none = BuiltBooks::default();
+        Self::modules(&mut Installing::new(
+            sim.parts(),
+            &mut none,
+            install,
+            Walk::Install,
+        ));
     }
 
     /// Compiles `scripts` into the match's script host, each at its place among them, as the
@@ -420,10 +441,26 @@ pub(crate) mod internals {
             books
         }
 
+        /// Ends a test's open build: seals its unit types, as a spawn does, then adds the systems
+        /// of each module the match runs, as the facts of its books are now, and builds the tick's
+        /// schedule (02-engine-core.md, A test's match installs at its first tick).
+        pub(super) fn finish_open(mut sim: SimWorldBuilder<'_>) {
+            Units::seal_once(sim.world());
+            let facts = sim.world().resource::<MatchFacts>().clone();
+            let install = InstallFacts {
+                called: Self::called(facts.set, &facts.role),
+                facts: &facts,
+                mode_script: None,
+            };
+            Self::install_systems(&mut sim, &install);
+            sim.build();
+        }
+
         /// Installs the mode's scripted part into `world`, a match a test built with no mode and
         /// whose books the test loaded piece by piece since, and loads the mode of `setup` with
         /// what `inputs` takes from the books: the tick's schedule opens again, and builds again.
         pub fn install_mode(world: &mut World, setup: ModeSetup<'_>, inputs: ModeInputs) {
+            let open = SimWorldBuilder::is_open(world);
             let facts = world.resource::<MatchFacts>().clone();
             assert!(
                 facts.role.scripts(),
@@ -444,7 +481,11 @@ pub(crate) mod internals {
                 Walk::Scripted,
             ));
             Mode::load(sim.parts().world, setup, inputs);
-            sim.build();
+            if open {
+                sim.leave_open(Self::finish_open);
+            } else {
+                sim.build();
+            }
         }
 
         /// The script API of the release, recorded as a match's engine binds it, with the names

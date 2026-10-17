@@ -692,8 +692,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
 #[test]
 fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
     let arena = arena();
-    let mut game = arena.start(RATE, 1);
-    arena.load_vision(&mut game, 2);
+    let mut game = arena.start_seeing(RATE, 1, 2);
     let snow_owl = arena.action(&game, "hero-rime", "snow_owl");
     let caster = caster(&arena, &mut game, snow_owl, 1, Kit::Bare, ());
     // An enemy at (10, 0): its cell's center (10.5, 0.5) is √12.5 ≈ 3.54 m from the point, within
@@ -746,8 +745,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
 #[test]
 fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
     let arena = arena();
-    let mut game = arena.start(RATE, 1);
-    arena.load_vision(&mut game, 3);
+    let mut game = arena.start_seeing(RATE, 1, 3);
     let farsight = arena.action(&game, "player-spells", "farsight");
     let caster = caster(&arena, &mut game, farsight, 1, Kit::Bare, ());
     // Revealed 6 m round (20, 0): the cell of (25, 0), its center (25.5, 0.5) √30.5 ≈ 5.52 m

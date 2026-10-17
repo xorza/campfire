@@ -11,7 +11,9 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionSlots, ActionsSet, DamageKindBook, EffectQueues};
+use campfire_actions::{
+    Action, ActionBook, ActionSlots, ActionsSet, DamageKindBook, EffectQueues, TogglePer,
+};
 use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
@@ -195,15 +197,26 @@ impl Module for Combat {
     /// go, after the Mode stage saw them. A unit's hits, damage, death and despawn, its attackers
     /// and its toggles' pay are the server's: a predicting client deals no damage, as its pools
     /// and its deaths come from the server, despawns no unit, forgets no attacker it never held,
-    /// and pays no toggle; it predicts a respawn that is due.
+    /// and pays no toggle; it predicts a respawn that is due. The turrets' aim, the slow weapons'
+    /// hits and the pay of toggles that cost an attack install only in a match whose books have
+    /// them (02-engine-core.md, Books before the install).
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
-        cx.add(
-            CombatSet::Attack,
-            (
+        let turrets = cx
+            .book::<ByType<Turret>>()
+            .is_some_and(|turrets| !turrets.is_empty());
+        let actions = cx.book::<ActionBook>();
+        let slow = actions.is_some_and(|book| book.iter().any(Action::is_slow));
+        let toggles = actions.is_some_and(|book| {
+            book.iter()
+                .any(|action| action.toggles_per(TogglePer::Attack))
+        });
+        if turrets {
+            cx.add(
+                CombatSet::Attack,
                 Aiming::aim.before(Attacks::start_attacks),
-                Attacks::start_attacks,
-            ),
-        );
+            );
+        }
+        cx.add(CombatSet::Attack, Attacks::start_attacks);
         cx.add(CombatSet::Respawn, Dying::respawn);
         cx.server(CombatSet::Hits, Attacks::take_hits);
         cx.server(CombatSet::Damage, DamagePass::run);
@@ -222,19 +235,23 @@ impl Module for Combat {
             )
                 .chain(),
         );
-        cx.server(
-            CombatSet::Pay,
-            Attacks::pay_attack_toggles.after(Volley::collect),
-        );
+        if toggles {
+            cx.server(
+                CombatSet::Pay,
+                Attacks::pay_attack_toggles.after(Volley::collect),
+            );
+        }
         cx.server(
             CombatSet::Respawn,
             Dying::forget_attackers.before(Dying::respawn),
         );
         cx.server(CombatSet::Despawn, Dying::despawn_dead);
-        cx.server(
-            CombatSet::Hits,
-            Attacks::land_held.before(Attacks::take_hits),
-        );
+        if slow {
+            cx.server(
+                CombatSet::Hits,
+                Attacks::land_held.before(Attacks::take_hits),
+            );
+        }
     }
 }
 
