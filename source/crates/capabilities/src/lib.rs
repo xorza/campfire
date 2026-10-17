@@ -34,6 +34,7 @@ pub use crate::order::{Action, Order};
 pub use crate::release::Release;
 pub use crate::release::error::CapabilityError;
 pub use crate::release::r#match::Match;
+pub use crate::release::match_kind::{MatchKind, ModeStart, PackageScript};
 pub use crate::release::match_spec::MatchSpec;
 
 #[cfg(feature = "internals")]

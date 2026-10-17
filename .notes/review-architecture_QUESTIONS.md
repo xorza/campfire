@@ -21,3 +21,13 @@ Decisions that the plan in `review-architecture.md` cannot take alone. Each name
   2. **Keep the exception.** A debug build's print goes to `tracing` at the debug level, and the test names it. Cost: the sim logs, in a debug build, the one place it does.
   3. **No print.** Rhai's `print` and `debug` do nothing in every build. Cost: a scripter loses print debugging.
 - **Blocked:** nothing. The test holds every other crate now.
+
+## Q3. Batch 4.1, the engine tags' numbers: given in order, or written by hand
+
+- **Item:** 4.1, RW 20, "`declare` assigns engine tag numbers in declaration order". Each module writes its tags' numbers by hand, as `Projectiles::TAG = EngineTag::new(2, …)`, and `Release::engine_tags` asserts that each number is its place in the declaration order.
+- **Why it waits:** a number given at run time can no longer be a constant, and a tag constant is what the hot filters read, as `UnitTags::has(Dead::TAG)`; the choice trades a hand number, which an assertion already checks, for a read through a resource on each use.
+- **Options:**
+  1. **Keep the hand numbers (recommended).** The assertion fails a wrong number at the first build, and the constants stay free to read. Cost: a new module's author picks the next number, which the assertion then checks.
+  2. **Numbers at run time.** The declarations walk gives each tag its number into `TagBook`, and each use reads it there. Cost: a resource read where a constant is now, in filters that run for each unit.
+  3. **One list in `declare`.** An enum of every engine tag, whose discriminant is its number. Cost: a lower layer names each capability's tag, against "The core names no capability".
+- **Blocked:** nothing. The rest of 4.1 is done without it.

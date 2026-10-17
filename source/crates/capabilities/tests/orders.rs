@@ -12,6 +12,7 @@ use campfire_codec::Binary;
 use campfire_combat::internals::Armed;
 use campfire_combat::{Combat, OnDeath};
 use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_declare::MatchFacts;
 use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Grid};
 use campfire_math::{Num, Vec3};
@@ -23,8 +24,8 @@ use campfire_orders::*;
 use campfire_players::{OutOfPlay, Players, PlayersWorld};
 use campfire_script::internals::FailureKind;
 use campfire_script::{
-    ApiError, CallError, CapabilityRefusal, Filter, Hook, ScriptBudgets, ScriptError,
-    ScriptFailures, ScriptLimits, TagNames,
+    ApiError, CallError, CapabilityRefusal, Filter, Hook, ScriptError, ScriptFailures,
+    ScriptLimits, ScriptPools, TagNames,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -212,7 +213,7 @@ const ORDERS: [Capability; 4] = [
 /// A match of `ORDERS` with `paths`, whose scripts run within `limits`, and the stat book a
 /// weapon reads.
 fn orders_match_with(paths: Paths, limits: ScriptLimits) -> Match {
-    let scripts = ScriptBudgets::new(limits, 2);
+    let scripts = ScriptPools { limits, players: 2 };
     let mut game = Match::server(&ORDERS, scripts);
     Navigation::load_paths(&mut game, paths);
     Combat::load_weapon_stats(&mut game);
@@ -470,13 +471,13 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
 
     // Player 0 out of play: its order applies while it sees what its team sees, the default, and
     // none does once it sees what a spectator sees; player 1's applies either way.
-    assert_eq!(*game.resource::<OutView>(), OutView::Team);
+    assert_eq!(game.resource::<MatchFacts>().out, OutView::Team);
     Players::spawn(&mut game, 2, 0);
     let out = game.player_entity(PlayerSlot::new(0)).unwrap();
     game.entity_mut(out).insert(OutOfPlay);
     let destination = |game: &Match, unit| game.part::<Destination>(unit).get();
     for (view, x) in [(OutView::Team, 3_i16), (OutView::Spectators, 6)] {
-        game.insert_resource(view);
+        game.resource_mut::<MatchFacts>().out = view;
         let before = destination(&game, first);
         game.step_with(&[
             (PlayerSlot::new(0), &move_to(first, x.into(), 3)),

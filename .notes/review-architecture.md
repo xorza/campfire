@@ -640,21 +640,18 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 4: declarations own what a module adds
 
-**4.1 Books before the install.** Touches the release, `declare`, `sim`, `runner` (match build), `mode`, and each capability's install.
-- `Books::build` runs first, and `Release::build(world, spec, &books)` installs once and builds the schedule once. `install_mode` merges into it, and `Book: Default` goes (E-12).
-- Load facts decide which systems install, and the run conditions on them go (E-10, K-12).
-- The sim and the release become modules of the list (E-14). The script budgets split into the limits and a declared scratch (E-13).
-- Declarations install by role (E-9).
-- `declare` assigns engine tag numbers in declaration order (RW 20).
-- `take_shots`, `launch` and `land` install only on the server (RW 20).
+**4.1 Books before the install.** Touches the release, `declare`, `values` (engine tags).
+- `declare` assigns engine tag numbers in declaration order (RW 20). Waits for Q3 in `review-architecture_QUESTIONS.md`.
 
 **4.2 Sets ordered by anchors.** Touches `declare`, every capability's `ModuleSet`, and 02-engine-core.md.
 - `Module::Set` becomes an associated type, and `InstallCx<'_, M>::add` takes it (E-15).
 - `Phase` goes. Each set orders against anchors of the modules it needs (E-3).
 - **Goldens:** they may move where an order between unrelated sets changes, and each move is explained.
 
-**4.3 Books, sections and map sections declared with their builders.** Touches the top crate's books, `declare`, `mode` (the map), and each capability.
+**4.3 Books, sections and map sections declared with their builders.** Touches the top crate's books, `declare`, `mode` (the map), `vision`, `production`, `stats`, `combat`, `abilities`, each capability, and the test fixtures.
 - `d.book::<B>()` with its builder, and a unit-type section and a map section that each module registers by name. `BookParts`, the `built.add` list and `UnitTypeData`'s closed table go (E-11, K-19, R-22).
+- `Book: Default` goes: a test fixture gives its data to the builders before its match builds, as `Release::empty_books` gives every book empty now (E-12, from 4.1).
+- The rest of the load facts decide which systems install, and their run conditions go: the vision grid, the supply's count, turrets, clips, slow weapons, intervals, regen, toggles and channels. Today the fixtures of these load their data after the build, so they move first (E-10, K-12, from 4.1).
 
 **4.4 Data checks declared with their modules.** Touches `package` and each capability.
 - `d.check` returns the module's own error inside a `LoadProblem` case of `declare`. `package` keeps only the checks across packages and drops its capability dependencies (B-18).
@@ -996,11 +993,8 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | E-6 | `Capability` names five capabilities with no module, and `DataKind` names capability concepts in the lowest layers | `sim/src/capability.rs:12-31`, `data_kind.rs:9-48` | Confirmed | 4.5 |
 | E-7 | The script `View` owns the damage-kind, resource and team names that restore checks read | `books/mod.rs:118-133`, `units.rs:208-245` | Confirmed | 6.1 |
 | E-8, C-12, R-11 | `MatchMode`, `Spawner`, `ViewReader` and `CombatHooks` are non-send with no script handle in them. `Spawner` holds an `Rc<[bool]>` for one `debug_assert!`. | `mode/src/lib.rs:192-208`, `spawner.rs:19-22, 50`, `view_reader.rs:27-41`, `combat_hooks.rs:12-26` | Confirmed | 6.1 |
-| E-9 | The client installs the script view, its readers, and state resources that the server never sends | `units.rs:265-268`, `installer.rs:68-91` | Confirmed. That a client system reads one is plausible. | 4.1 |
-| E-10, E-12, K-12 | The install runs before the books, so books are `Default`, load facts are run conditions in each tick, and feature passes run with nothing to do | `release/mod.rs:194-258`, `mode/src/lib.rs:218-240`, `combat/src/lib.rs:202-239`, `refresh.rs:225-245` | Confirmed | 4.1 |
+| E-10, E-12, K-12 | Books are `Default`, the vision grid, the supply's count and feature passes are run conditions or passes with nothing to do, as the fixtures load their data after the build | `declare/src/book.rs`, `vision/src/lib.rs:108-116`, `production/src/lib.rs:200-204`, `refresh.rs:225-245` | Confirmed | 4.3 |
 | E-11, K-19 | The books, the unit-type sections and their resolvers are hand lists in the top crate, and every book is built for every mode | `book_parts.rs:24-73`, `book_builder.rs:189-322`, `unit_type_data.rs:20-61` | Confirmed | 4.3 |
-| E-13 | The script budgets are kept twice, and the spend for each tick is an undeclared resource | `role.rs:23, 46-51`, `script_budgets.rs:7-48` | Confirmed | 4.1 |
-| E-14 | Resources that the sim and the release insert are listed again by hand for the audit | `sim_world_builder.rs:53-67`, `resource_audit.rs:81-88` | Confirmed | 4.1 |
 | E-15 | A system's set is not held by a type | `install_cx.rs:258-308`, `module.rs:69-83` | Confirmed | 4.2 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
 | E-18 | A restore moves each entity once for each state type it holds | `state_registry/mod.rs:400-424, 662-684` | Confirmed | 7.5 |

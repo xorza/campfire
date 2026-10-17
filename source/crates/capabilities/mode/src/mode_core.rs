@@ -5,7 +5,7 @@ use crate::match_end::MatchEnd;
 
 /// The part of the mode every match installs, whatever its role: the match's end, and the stop
 /// of every stage once it comes, as a client holds the end the server sends. The scripted part,
-/// `Mode`, installs once the books are in.
+/// `Mode`, installs once the scripts compile.
 #[derive(Debug)]
 pub struct ModeCore;
 

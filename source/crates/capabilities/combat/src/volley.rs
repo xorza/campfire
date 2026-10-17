@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
 use campfire_actions::ActionProgress;
 use campfire_common::Tick;
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_sim::{SimTick, StableId};
 use campfire_units::Dead;
 
@@ -72,6 +72,10 @@ impl Volley {
 }
 
 impl Scratch for Volley {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         self.0.is_empty()
     }

@@ -21,6 +21,7 @@ use criterion::{Criterion, Throughput};
 
 use crate::release::Release;
 use crate::release::r#match::Match;
+use crate::release::match_kind::MatchKind;
 use crate::release::match_spec::MatchSpec;
 
 /// Workers in each of the two fields.
@@ -51,7 +52,8 @@ fn two_fields() -> Match {
     let rate = TickRate::new(NonZeroU32::new(30).unwrap());
     // A match without navigation runs no gather, as only navigation tests a box for room.
     let set = Release::capability_set(&[Capability::Production, Capability::Navigation]).unwrap();
-    let mut world = Match::new(MatchSpec::new(SegmentSeed::ZERO, rate, Role::Rules).set(set));
+    let spec = MatchSpec::new(SegmentSeed::ZERO, rate, Role::Rules).set(set);
+    let mut world = Match::new(spec, Release::empty_books(), MatchKind::Rules);
 
     let gold = ResourceId::new(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);

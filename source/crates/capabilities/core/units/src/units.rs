@@ -9,8 +9,8 @@ use campfire_declare::{
     ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, Phase, SetPlace,
 };
 use campfire_script::{
-    CoreApi, Ctx, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId, ScriptList,
-    StatePlace, StateSchema, View, ViewApi,
+    CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
+    ScriptList, StatePlace, StateSchema, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
@@ -55,7 +55,7 @@ use crate::view_reader::ViewReader;
 /// The core's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
 pub(crate) enum UnitsSet {
-    /// Every pool starts full.
+    /// Every pool starts full, and the last tick's failures clear.
     BeginTick,
     /// The units whose lifespan ended despawn.
     EndLifespans,
@@ -119,6 +119,7 @@ impl Module for Units {
         d.derived::<ArrivedShort>();
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
+        d.report::<ScriptBudgets>();
         d.on_insert::<UnitType>(TagBook::give_tags);
         d.cache::<UnitGrid>();
         d.cache::<UnitTracker<GridUnits>>();
@@ -272,8 +273,8 @@ impl Units {
                 .then(|| Ctx::new(world.non_send::<View>().clone()))
         });
         d.non_send::<ScriptHost>(|world, role| {
-            let budgets = role.budgets()?;
-            let mut host = ScriptHost::new(budgets.limits().per_call);
+            let pools = role.pools()?;
+            let mut host = ScriptHost::new(pools.limits.per_call);
             world.non_send::<Ctx>().tag(&mut host);
             Some(host)
         });

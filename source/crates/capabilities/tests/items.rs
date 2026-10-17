@@ -11,12 +11,13 @@ use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order};
 use campfire_combat::OnDeath;
 use campfire_common::{PlayerSlot, Tick};
+use campfire_declare::MatchFacts;
 use campfire_items::*;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
 use campfire_players::{OutOfPlay, Players, PlayersWorld, ResourceAmount};
-use campfire_script::{Filter, ScriptBudgets, ScriptLimits};
+use campfire_script::{Filter, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
 use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
@@ -164,7 +165,10 @@ impl Carrier {
 fn carrier_match() -> Match {
     Match::server(
         &Carrier::CAPABILITIES,
-        ScriptBudgets::new(ScriptLimits::ROOMY, 1),
+        ScriptPools {
+            limits: ScriptLimits::ROOMY,
+            players: 1,
+        },
     )
 }
 
@@ -419,7 +423,13 @@ struct ShopMatch {
 
 fn shop_match() -> ShopMatch {
     let declared = [Capability::Stats, Capability::Items];
-    let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 2));
+    let mut game = Match::server(
+        &declared,
+        ScriptPools {
+            limits: ScriptLimits::ROOMY,
+            players: 2,
+        },
+    );
     let gold = ResourceId::new(0);
     let item = |cost: i64, components: &[u32], stack: u32| ItemSpec {
         cost: vec![ResourceAmount {
@@ -603,10 +613,10 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     // sees, and none once it sees what a spectator sees, as each capability's orders refuse it.
     let out = game.player_entity(PlayerSlot::new(0)).unwrap();
     game.entity_mut(out).insert(OutOfPlay);
-    game.insert_resource(OutView::Spectators);
+    game.resource_mut::<MatchFacts>().out = OutView::Spectators;
     step(&mut game, &[buy(2, shop)]);
     assert_eq!(gold(&game), 300);
-    game.insert_resource(OutView::Team);
+    game.resource_mut::<MatchFacts>().out = OutView::Team;
     step(&mut game, &[buy(2, shop)]);
     assert_eq!(gold(&game), 250);
 

@@ -1,12 +1,11 @@
 use bevy_ecs::world::World;
-use campfire_capabilities::{Match, MatchSpec, Release};
+use campfire_capabilities::{Match, MatchKind, MatchSpec, ModeStart, Release};
 use campfire_common::SegmentSeed;
 use campfire_declare::Role;
-use campfire_mode::{ModeInputs, ModeSetup, OptionPicks};
+use campfire_mode::{ModeSetup, OptionPicks};
 use campfire_package::ModePackages;
-use campfire_script::ScriptBudgets;
+use campfire_script::ScriptPools;
 use campfire_sim::TickRate;
-use campfire_units::Units;
 
 /// A match of a mode, built from its read packages.
 #[derive(Debug)]
@@ -23,36 +22,37 @@ impl MatchBuild {
         players: u32,
     ) -> MatchSpec {
         let manifest = packages.manifest();
-        let budgets = ScriptBudgets::new(manifest.script_limits, players);
-        MatchSpec::new(seed, rate, Role::Server(budgets)).set(manifest.capabilities)
+        let pools = ScriptPools {
+            limits: manifest.script_limits,
+            players,
+        };
+        MatchSpec::new(seed, rate, Role::Server(pools)).set(manifest.capabilities)
     }
 
-    /// Puts into `world`, a match of the spec of `packages`, every package's scripts, the books
-    /// at the match's rate, and the mode itself, of the values `picks` gives its options.
-    pub(crate) fn install_mode(
+    /// Builds the match of `spec` in `world`, a new world, of `packages`, for `players` players,
+    /// with every package's scripts, the books at the match's rate, and the mode itself, of the
+    /// values `picks` gives its options.
+    pub(crate) fn build(
         world: &mut World,
+        spec: MatchSpec,
         packages: &ModePackages,
         players: u32,
         picks: &OptionPicks,
     ) {
-        let ModeInputs { units, load } = Self::books(world, packages);
+        let books = packages.books(spec.rate());
+        let scripts = packages.scripts();
         let setup = ModeSetup {
             script: packages.mode_script(),
             data: packages.data(),
             picks,
             teams: &packages.manifest().teams,
             players,
-            units,
         };
-        Release::install_mode(world, setup, load);
-    }
-
-    /// The first part of `install_mode`: every package's scripts and the books at the match's
-    /// rate in place; what the mode's install takes from them.
-    pub(crate) fn books(world: &mut World, packages: &ModePackages) -> ModeInputs {
-        packages.compile_scripts(|source| Units::compile(world, source));
-        let rate = *world.resource::<TickRate>();
-        packages.books(rate).install(world)
+        let start = ModeStart {
+            scripts: &scripts,
+            setup,
+        };
+        Release::build(world, spec, books, MatchKind::Mode(start));
     }
 
     /// A restore target: the match of `packages` for `players` players at `rate`, of the values
@@ -77,18 +77,18 @@ impl MatchBuild {
         players: u32,
         picks: &OptionPicks,
     ) -> Match {
-        let mut game = Match::new(spec);
-        Self::install_mode(&mut game, packages, players, picks);
-        game
+        let mut world = World::new();
+        Self::build(&mut world, spec, packages, players, picks);
+        Match::from_built(world)
     }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_capabilities::Match;
+    use campfire_capabilities::{Match, MatchKind, Release};
     use campfire_common::SegmentSeed;
     use campfire_log::internals::LogCheck;
-    use campfire_mode::{Mode, ModeInputs, OptionPicks};
+    use campfire_mode::{Mode, OptionPicks};
     use campfire_package::ModePackages;
     use campfire_players::Players;
     use campfire_sim::TickRate;
@@ -104,8 +104,10 @@ pub(crate) mod internals {
         pub fn arena(packages: &ModePackages, rate: TickRate, players: u32) -> Match {
             let log = LogCheck::start();
             let spec = Self::spec(packages, SegmentSeed::ZERO, rate, players);
-            let mut game = Match::new(spec).with_log(log);
-            let ModeInputs { units, .. } = Self::books(&mut game, packages);
+            let books = packages.books(rate);
+            let units = books.mode_units().clone();
+            let mut game = Match::new(spec, books, MatchKind::Rules).with_log(log);
+            Release::compile(&mut game, &packages.scripts());
             Vision::clear_grid(&mut game);
             Players::start_without_mode(&mut game, [], 0);
             Mode::load_units(&mut game, &units);

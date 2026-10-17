@@ -13,7 +13,7 @@ use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
 use campfire_players::Players;
 use campfire_script::internals::FailedCall;
-use campfire_script::{Filter, ScriptBudgets, ScriptFailures, ScriptLimits};
+use campfire_script::{Filter, ScriptFailures, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::Stats;
@@ -72,7 +72,13 @@ impl Objects {
             Capability::Orders,
             Capability::Interaction,
         ];
-        let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 2));
+        let mut game = Match::server(
+            &declared,
+            ScriptPools {
+                limits: ScriptLimits::ROOMY,
+                players: 2,
+            },
+        );
         Units::name_kinds(&game, &["true"], &["health", "mana", "rage"], &[]);
         Abilities::load_types(&mut game);
         Abilities::load_stats(&mut game);

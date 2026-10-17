@@ -14,7 +14,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_bots::{BotOrder, BotScript, BotUnits, ScriptedInput};
-use campfire_capabilities::{MatchSpec, Order, Release};
+use campfire_capabilities::{MatchKind, MatchSpec, Order, Release};
 use campfire_combat::Fallen;
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declare::Role;
@@ -195,11 +195,8 @@ impl Plugin for SimClient {
         let packages = &self.packages;
         // A client runs no scripts: it predicts only its own player's units.
         let set = packages.manifest().capabilities;
-        Release::build(
-            world,
-            MatchSpec::new(PREDICTION_SEED, rate, Role::Client).set(set),
-        );
-        packages.books(rate).install_prediction(world);
+        let spec = MatchSpec::new(PREDICTION_SEED, rate, Role::Client).set(set);
+        Release::build(world, spec, packages.books(rate), MatchKind::Predicting);
         mark_unpredicted(world);
         world.insert_resource(PlayerSigner(Signer::new(self.session_key, self.os.entropy)));
         world.insert_resource(self.hosting);

@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_math::Vec3;
 use campfire_sim::StableId;
 use campfire_values::UnitType;
@@ -24,6 +24,10 @@ pub struct Shot {
 }
 
 impl Scratch for Shots {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         self.0.is_empty()
     }

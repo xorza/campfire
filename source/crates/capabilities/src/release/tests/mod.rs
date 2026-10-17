@@ -16,7 +16,7 @@ use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::PlayerResources;
-use campfire_script::{ScriptBudgets, ScriptLimits, View};
+use campfire_script::{ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::internals::{CargoManifest, SourceFiles};
@@ -26,6 +26,7 @@ use campfire_values::Team;
 
 use super::*;
 use crate::release::r#match::Match;
+use crate::release::match_kind::MatchKind;
 
 #[test]
 fn a_set_holds_each_capability_once_with_what_it_builds_on() {
@@ -87,8 +88,8 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
 }
 
 /// Installs `declared` into a fresh match that runs `scripts`.
-fn installed(declared: &[Capability], budgets: Option<ScriptBudgets>) -> Match {
-    Match::test(declared, Match::TEST_RATE, budgets)
+fn installed(declared: &[Capability], pools: Option<ScriptPools>) -> Match {
+    Match::test(declared, Match::TEST_RATE, pools)
 }
 
 #[test]
@@ -100,8 +101,8 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
         think: 1,
         mode: 1,
     };
-    let scripts = ScriptBudgets::new(limits, 1);
-    let mut scripted = installed(&all, Some(scripts.clone()));
+    let scripts = ScriptPools { limits, players: 1 };
+    let mut scripted = installed(&all, Some(scripts));
     let client = installed(&all, None);
     for (world, scripts) in [(&scripted, true), (&client, false)] {
         assert_eq!(world.get_non_send::<ScriptHost>().is_some(), scripts);
@@ -789,11 +790,13 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
     // The learns are progression's, the cancels and rallies production's, the trades items'; a
     // trade, as a server runs it. No match here declares `orders`.
     let scheduled = |declared: &[Capability]| {
-        let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
-        let world = Match::new(
-            MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets))
-                .set(Release::capability_set(declared).unwrap()),
-        );
+        let budgets = ScriptPools {
+            limits: ScriptLimits::ROOMY,
+            players: 1,
+        };
+        let spec = MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets))
+            .set(Release::capability_set(declared).unwrap());
+        let world = Match::new(spec, Release::empty_books(), MatchKind::Rules);
         let schedules = world.resource::<Schedules>();
         let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();
         let names: Vec<String> = systems
@@ -811,6 +814,7 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
     assert_eq!(scheduled(&with(&all)), [true, true, true]);
 }
 
+mod books;
 mod declaration_audit;
 mod genre_words;
 mod prediction_reads;

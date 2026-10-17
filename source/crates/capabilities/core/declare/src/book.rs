@@ -6,9 +6,9 @@ use campfire_script::View;
 
 use crate::role::Role;
 
-/// Package data a module reads, which its declaration puts in a match empty, and the install
-/// fills from the packages, each book through `Book::load_into`. The module that declares it is its
-/// owner, which the install knows.
+/// Package data a module reads, which its builder makes from the packages before the match is
+/// built, and which the build puts in as its owner declares it, before its owner installs. The
+/// module that declares it is its owner, which the install knows.
 pub trait Book: Resource + Default {
     /// Whether only a match that runs scripts reads it, so a client holds none.
     const SCRIPTS_ONLY: bool;
@@ -23,9 +23,8 @@ pub trait Book: Resource + Default {
         role.scripts() || !Self::SCRIPTS_ONLY
     }
 
-    /// Puts the book in place of the empty one its owner's declaration put in `world`, and gives
-    /// the script view what it copies of it: the step of the install for each book, which a test
-    /// that loads a book alone takes too.
+    /// Puts the book in place of the one the build put in `world`, as a test that loads a book
+    /// alone does, and gives the script view what it copies of it.
     fn load_into(self, world: &mut World) {
         assert!(
             world.contains_resource::<Self>(),

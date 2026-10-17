@@ -11,7 +11,7 @@ use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::NavigationEffect;
 use campfire_projectiles::*;
-use campfire_script::{Effect, Frame, ScriptBudgets, ScriptLimits};
+use campfire_script::{Effect, Frame, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::{Life, Stats};
@@ -59,7 +59,10 @@ const ALONG_X: Vec3 = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
 /// A match of `declared`, with combat and projectiles among them, and the stat book a weapon
 /// reads.
 fn volley_match_of(declared: &[Capability]) -> Match {
-    let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+    let budgets = ScriptPools {
+        limits: ScriptLimits::ROOMY,
+        players: 1,
+    };
     let mut game = Match::server(declared, budgets);
     Combat::load_weapon_stats(&mut game);
     game

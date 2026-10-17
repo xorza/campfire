@@ -66,9 +66,8 @@ fn server_only(world: &World) -> Vec<String> {
 /// so the check cannot read what each reads, and `Release::sync_held` checks them by what they
 /// do. The test fails on one this list lacks, and on one it names that is gone, so no new one
 /// joins them unchecked.
-const EXCLUSIVE: [&str; 6] = [
+const EXCLUSIVE: [&str; 5] = [
     "campfire_combat::attacks::Attacks::attack_events",
-    "campfire_combat::damage_pass::DamagePass::run",
     "campfire_deliveries::delivery_hooks::DeliveryHooks::end",
     "campfire_production::construction::Construction::start_builds<campfire_vision::team_sight::ByHolding>",
     "campfire_production::gather_loop::GatherLoop::run<campfire_vision::team_sight::ByHolding>",
@@ -81,7 +80,13 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     let mut world = World::new();
     let rate = Match::TEST_RATE;
     let spec = |role| MatchSpec::new(SegmentSeed::ZERO, rate, role).set(set);
-    Release::build(&mut world, spec(Role::Client).unbuilt());
+    let rules = MatchKind::Rules;
+    Release::build(
+        &mut world,
+        spec(Role::Client).unbuilt(),
+        Release::empty_books(),
+        rules,
+    );
     let unpredicted = world.register_component::<Unpredicted>();
     let holds = ClientHolds::of(&mut world, set);
     // Each read of a type a client holds of no unit it does not predict, by system, each system
@@ -143,18 +148,29 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     exclusive.dedup();
     assert_eq!(exclusive, EXCLUSIVE);
     // The server builds each system that computes its own state, and the client none: the pay of
-    // ability and attack toggles, the slow weapons' hits, the forgetting of attackers, the
-    // despawns of the dead and of empty nodes, the trades, the supply's count, the rallies, the
-    // trains' finish, the sight, the areas' triggers and the projectiles' flight.
+    // ability and attack toggles, the slow weapons' hits, the hits, the damage and the deaths,
+    // the forgetting of attackers, the despawns of the dead and of empty nodes, the trades, the
+    // supply's count, the rallies, the trains' finish, the sight, the areas' landings, at their
+    // two places, and triggers, and the projectiles' shots, launches and flight.
     let mut server = World::new();
-    Release::build(&mut server, spec(Role::Rules));
+    Release::build(
+        &mut server,
+        spec(Role::Rules),
+        Release::empty_books(),
+        MatchKind::Rules,
+    );
     let (client, server) = (system_names(&mut world), server_only(&server));
     let own = [
         "campfire_abilities::toggles::Toggles::run_toggles",
+        "campfire_areas::area_life::AreaLife::land",
+        "campfire_areas::area_life::AreaLife::land",
         "campfire_areas::area_life::AreaLife::trigger",
         "campfire_combat::attacks::Attacks::land_held",
         "campfire_combat::attacks::Attacks::pay_attack_toggles",
+        "campfire_combat::attacks::Attacks::take_hits",
+        "campfire_combat::damage_pass::DamagePass::run",
         "campfire_combat::dying::Dying::despawn_dead",
+        "campfire_combat::dying::Dying::die",
         "campfire_combat::dying::Dying::forget_attackers",
         "campfire_items::trade_orders::TradeOrders::trade_items",
         "campfire_production::gather_loop::GatherLoop::despawn_empty_nodes",
@@ -162,6 +178,8 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_production::production_orders::ProductionOrders::set_rallies",
         "campfire_production::trains::Trains::finish_trains",
         "campfire_projectiles::flying::Flying::fly",
+        "campfire_projectiles::launching::Launching::launch",
+        "campfire_projectiles::launching::Launching::take_shots",
         "campfire_vision::seeing::Seeing::refill",
         "campfire_vision::seeing::Seeing::see",
     ];

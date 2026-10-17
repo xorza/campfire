@@ -7,7 +7,7 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowFill, RowReads, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, SimComponent};
+use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent};
 use campfire_state_types::StateTypes;
 use campfire_values::EngineTag;
 
@@ -30,7 +30,7 @@ pub type ColumnFill<D, C> = for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<
 /// among them, and every consumer reads the same list: the install, the script API's binding,
 /// the network layer's lists of state types, and the declaration audit. No method has a default,
 /// so a new category stops every consumer until it says what it does with it.
-pub trait Declarations: StateTypes + KindVisitor {
+pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// Starts the declarations of the module of `capability`: the core's, `None`, or a
     /// capability's, the mode's among them.
     fn module(&mut self, capability: Option<Capability>);

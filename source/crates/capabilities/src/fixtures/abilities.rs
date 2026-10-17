@@ -5,7 +5,7 @@ use campfire_abilities::internals::{MANA, RAGE};
 use campfire_actions::{ActionData, ActionProgress, ActionSlots, Actions, SlotKind, TimedSlots};
 use campfire_combat::OnDeath;
 use campfire_common::PlayerSlot;
-use campfire_declare::CapabilitySet;
+use campfire_declare::MatchFacts;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_sim::internals::SimWorldInternals;
@@ -90,7 +90,8 @@ impl AbilitiesFixtures for Abilities {
 
     fn give_combatant(world: &mut World, unit_type: UnitType) {
         if world
-            .resource::<CapabilitySet>()
+            .resource::<MatchFacts>()
+            .set
             .contains(Capability::Combat)
         {
             Units::give_type(world, unit_type, Life::full(Num::int(500)));

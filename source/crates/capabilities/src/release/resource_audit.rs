@@ -6,6 +6,7 @@ use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
 use bevy_ecs::message::Messages;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
@@ -14,14 +15,13 @@ use campfire_declare::{
     KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
 };
 use campfire_mode::ModeWorld;
-use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ScriptBudgets, ViewColumn};
+use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
 use campfire_sim::{
-    Breach, Capability, HostRule, Removed, SimComponent, SimResource, SimWorldBuilder,
+    Breach, Capability, HostRule, OwnResources, Removed, SimComponent, SimResource,
 };
 use campfire_state_types::{Replication, StateTypes};
 use campfire_units::EntityKinds;
 use campfire_values::EngineTag;
-use campfire_visibility::OutView;
 
 use crate::release::Release;
 
@@ -41,14 +41,12 @@ pub(super) struct DeclaredResources {
 }
 
 impl DeclaredResources {
-    /// The resources of `world`, a match of `set`, that no declaration names, the release's
-    /// own, the sim's own and those of `host` aside, then, while the match runs, each scratch
+    /// The resources of `world`, a match of `set`, that no declaration names, those of `host`
+    /// aside, then, while the match runs, each scratch
     /// resource not clear, each by its name.
     pub(super) fn audit(set: CapabilitySet, world: &World, host: &[TypeId]) -> Vec<String> {
         let mut declared = Self::default();
         Release::declare(set, &mut declared);
-        declared.ids.extend(Self::release_own());
-        declared.ids.extend(SimWorldBuilder::sim_resources());
         declared.ids.extend(host);
         // Bevy's walk of the resources leaves the non-send ones out, which its storage lists.
         let components = world.components();
@@ -77,17 +75,6 @@ impl DeclaredResources {
                 .map(|check| format!("{} is not clear", check.name)),
         );
         unlisted
-    }
-
-    /// What the release puts in a match itself: its capabilities, what a client's view of it
-    /// leaves out, its role, and its script budgets.
-    const fn release_own() -> [TypeId; 4] {
-        [
-            TypeId::of::<CapabilitySet>(),
-            TypeId::of::<OutView>(),
-            TypeId::of::<Role>(),
-            TypeId::of::<ScriptBudgets>(),
-        ]
     }
 }
 
@@ -193,4 +180,10 @@ impl Declarations for DeclaredResources {
     }
 
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
+}
+
+impl OwnResources for DeclaredResources {
+    fn own<R: Resource>(&mut self) {
+        self.ids.push(TypeId::of::<R>());
+    }
 }

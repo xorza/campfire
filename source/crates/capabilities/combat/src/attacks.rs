@@ -343,8 +343,9 @@ impl Attacks {
     /// the attack's start instead, its clip full again. A windup whose attacker's tags keep it
     /// from attacking, or that no longer affords its cost, stops instead, and spends nothing. A
     /// client that predicts the attack only makes the weapon ready again and counts its clip, as
-    /// the damage, the launch and the cost come from the server. An attacker that lives no more
-    /// strikes nothing, as one its tags keep from attacking.
+    /// the damage, the launch and the cost come from the server, so it holds no held hits, which
+    /// the server alone computes. An attacker that lives no more strikes nothing, as one its tags
+    /// keep from attacking.
     pub(super) fn strike<F: RoleForm>(
         (clock, rng, book, life): (
             TickClock<'_>,
@@ -378,7 +379,7 @@ impl Attacks {
             Res<'_, EntityIndex>,
             Query<'_, '_, (&Position, Option<&UnitTags>, Option<&Body>), Without<Dead>>,
             Res<'_, MapBook>,
-            ResMut<'_, HeldHits>,
+            Option<ResMut<'_, HeldHits>>,
         ),
         mut going: Local<'_, Vec<GoingOff>>,
     ) {
@@ -486,7 +487,10 @@ impl Attacks {
                     weapon.delay(distance, clock.rate().hz().get())
                 });
                 match delay {
-                    Some(delay) => held.hold(now.after(delay), damage),
+                    Some(delay) => held
+                        .as_mut()
+                        .expect("a server's match, which strikes, holds its held hits")
+                        .hold(now.after(delay), damage),
                     None => queue.push_damage(damage, now),
                 }
             }

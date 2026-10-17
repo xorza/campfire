@@ -3,7 +3,7 @@ use bevy_ecs::query::{Has, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget, Targets};
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_interaction::{UnitUse, Using};
 use campfire_math::Vec3;
 use campfire_navigation::{GroupBox, Party, PartyKey};
@@ -180,6 +180,10 @@ impl OrderInputs {
 }
 
 impl Scratch for PlayerOrders {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         self.0.is_empty()
     }

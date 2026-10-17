@@ -12,8 +12,7 @@
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bevy_ecs::schedule::common_conditions::not;
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemCondition, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
 use campfire_combat::{Weigh, Weighers};
@@ -21,7 +20,7 @@ use campfire_common::{EnumAll, PlayerSlot};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
 use campfire_players::{Players, PlayersWorld, Seating, SlotStart};
-use campfire_script::{CallError, Ctx, Hook, Pool, ScriptText, View};
+use campfire_script::{CallError, Ctx, Hook, Pool, ScriptRole, ScriptText, View};
 use campfire_sim::{Breach, Capability, IdAllocator, SimTick};
 use campfire_units::{
     BodyForm, MatchEntity, Player, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone,
@@ -132,7 +131,7 @@ pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
 pub use crate::unanswered_slot_events::UnansweredSlotEvents;
 
 /// The scripted part of the mode of a match: the core's rules above the capabilities, which a
-/// match that runs scripts installs after them, once its books are in; `ModeCore` is the part
+/// match that runs scripts installs after them, once its scripts compile; `ModeCore` is the part
 /// every match installs.
 #[derive(Debug)]
 pub struct Mode;
@@ -213,45 +212,69 @@ impl Module for Mode {
     /// `on_mode_input`; in Mode, the tick's joins and leaves run `on_player_join` and
     /// `on_player_leave`, due timers run `on_timer`, or fire with no call in a mode without it, the
     /// tick's deaths run `on_unit_died`, and, with progression, the levels reached run
-    /// `on_level_up`, or clear in a mode without it. `Mode::load` gives them the mode they run,
-    /// and each hook's system runs only in a mode that defines its hook.
+    /// `on_level_up`, or clear in a mode without it. Each hook's system installs only in a mode
+    /// whose script defines its hook, a fact of the load; `Mode::load` gives them the mode they
+    /// run.
     fn install(cx: &mut InstallCx<'_>) {
-        let defines = ModeHooks::defines;
-        let joins = defines(Hook::OnPlayerJoin).or_else(defines(Hook::OnPlayerLeave));
-        cx.systems((
-            ModeHooks::mode_inputs
-                .run_if(defines(Hook::OnModeInput))
-                .in_set(ModeSet::Inputs),
-            (
-                ModeHooks::slot_events.run_if(joins),
-                ModeHooks::run_timers.run_if(defines(Hook::OnTimer)),
-                ModeHooks::fire_timers.run_if(not(defines(Hook::OnTimer))),
-                ModeHooks::unit_deaths.run_if(defines(Hook::OnUnitDied)),
-            )
-                .chain()
-                .in_set(ModeSet::Hooks),
-            OutOfPlayMarks::refresh.in_set(ModeSet::OutOfPlay),
-        ));
-        if cx.has(Capability::Progression) {
+        let scripts = cx.book::<ScriptBook>();
+        let hooks = scripts
+            .expect("a match that runs its mode holds its scripts' hooks")
+            .defines(cx.mode_script(), ScriptRole::Mode);
+        let defines = |hook| hooks.contains(hook);
+        let timers = (ModeHooks::run_timers, ModeHooks::fire_timers);
+        if defines(Hook::OnModeInput) {
+            cx.systems(ModeHooks::mode_inputs.in_set(ModeSet::Inputs));
+        }
+        if defines(Hook::OnPlayerJoin) || defines(Hook::OnPlayerLeave) {
             cx.systems(
-                (
-                    ModeHooks::level_ups.run_if(defines(Hook::OnLevelUp)),
-                    ModeHooks::clear_level_ups.run_if(not(defines(Hook::OnLevelUp))),
-                )
-                    .chain()
-                    .after(ModeHooks::unit_deaths)
+                ModeHooks::slot_events
+                    .before(timers.0)
+                    .before(timers.1)
                     .in_set(ModeSet::Hooks),
             );
+        }
+        if defines(Hook::OnTimer) {
+            cx.systems(timers.0.in_set(ModeSet::Hooks));
+        } else {
+            cx.systems(timers.1.in_set(ModeSet::Hooks));
+        }
+        if defines(Hook::OnUnitDied) {
+            cx.systems(
+                ModeHooks::unit_deaths
+                    .after(timers.0)
+                    .after(timers.1)
+                    .in_set(ModeSet::Hooks),
+            );
+        }
+        cx.systems(OutOfPlayMarks::refresh.in_set(ModeSet::OutOfPlay));
+        if cx.has(Capability::Progression) {
+            if defines(Hook::OnLevelUp) {
+                cx.systems(
+                    (ModeHooks::level_ups.after(ModeHooks::unit_deaths))
+                        .after(timers.0)
+                        .after(timers.1)
+                        .in_set(ModeSet::Hooks),
+                );
+            } else {
+                cx.systems(
+                    (ModeHooks::clear_level_ups.after(ModeHooks::unit_deaths))
+                        .after(timers.0)
+                        .after(timers.1)
+                        .in_set(ModeSet::Hooks),
+                );
+            }
         }
     }
 }
 
 impl Mode {
     /// Loads the mode of `setup` into a match whose capabilities, mode and books are installed
-    /// and whose unit types, abilities and AI are loaded, with what `load` takes from the books:
-    /// the map's pathing grid, for the kinds of its walkers, and its teams.
-    pub fn load(world: &mut World, setup: ModeSetup<'_>, load: ModeLoad) {
+    /// and whose unit types, abilities and AI are loaded, with what `inputs` takes from the
+    /// books: the map's pathing grid, for the kinds of its walkers, its teams, and the units the
+    /// mode spawns.
+    pub fn load(world: &mut World, setup: ModeSetup<'_>, inputs: ModeInputs) {
         let view = world.non_send::<View>().clone();
+        let ModeInputs { units, load } = inputs;
         let ModeLoad {
             map,
             walkers,
@@ -280,9 +303,10 @@ impl Mode {
             ),
         };
         view.names_mut().set_table(Arc::clone(start.map.tags()));
-        Self::load_units(world, &setup.units);
+        Self::load_units(world, &units);
         let load = SpecLoad {
             start,
+            units,
             loadout_ranks,
             scripts: world.resource::<ScriptBook>(),
             bodies: world.resource::<ByType<BodyForm>>(),

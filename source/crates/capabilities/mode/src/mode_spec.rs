@@ -10,6 +10,7 @@ use crate::choice_specs::ChoiceSpecs;
 use crate::game_map::GameMap;
 use crate::mode_schema::ModeSchema;
 use crate::mode_setup::ModeSetup;
+use crate::mode_units::ModeUnits;
 use crate::placed_unit::PlacedUnit;
 use crate::roster::Roster;
 
@@ -54,6 +55,7 @@ pub struct MapStart {
 #[derive(Debug)]
 pub struct SpecLoad<'a> {
     pub start: MapStart,
+    pub units: ModeUnits,
     pub loadout_ranks: u8,
     pub scripts: &'a ScriptBook,
     pub bodies: &'a ByType<BodyForm>,
@@ -65,6 +67,7 @@ impl ModeSpec {
     pub fn new(setup: ModeSetup<'_>, load: SpecLoad<'_>) -> Self {
         let SpecLoad {
             start,
+            units,
             loadout_ranks,
             scripts,
             bodies,
@@ -80,12 +83,12 @@ impl ModeSpec {
         let teams = Teams::new(teams, seats, setup.players)
             .expect("the session checked its players against the teams' slots");
         let mut spawned = ByType::default();
-        for &unit_type in &setup.units.unit_types {
+        for &unit_type in &units.unit_types {
             spawned.set(unit_type, ());
         }
         Self {
             schema: ModeSchema::new(setup.script, scripts, setup.data, setup.picks),
-            roster: Roster::new(setup.units.avatars, &setup.units.loadout),
+            roster: Roster::new(units.avatars, &units.loadout),
             teams: Rc::new(teams),
             choices: ChoiceSpecs::new(&setup.data.choices),
             loadout_ranks,

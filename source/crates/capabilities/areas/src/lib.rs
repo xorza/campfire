@@ -101,14 +101,14 @@ impl Module for Areas {
     /// tick's projectiles launch, its areas land. In Resolve, the areas the damage pass launched
     /// land, and then, before stats hold their modifiers, each area lists those it holds on the
     /// units inside. A launch queues as an effect of `areas`. A predicting client predicts no
-    /// delivery, so it triggers none.
+    /// delivery, so it lands none and triggers none.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.server(AreaLife::trigger.in_set(AreasSet::Trigger));
-        cx.systems((
+        cx.server((
+            AreaLife::trigger.in_set(AreasSet::Trigger),
             AreaLife::land.in_set(AreasSet::Land),
             AreaLife::land.in_set(AreasSet::LandAtResolve),
-            AreaHolds::hold_inside.in_set(AreasSet::HoldInside),
         ));
+        cx.systems(AreaHolds::hold_inside.in_set(AreasSet::HoldInside));
     }
 }
 

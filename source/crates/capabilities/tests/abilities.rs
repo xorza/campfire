@@ -38,7 +38,7 @@ use campfire_projectiles::{Projectile, ProjectileData, Projectiles, ProjectilesR
 use campfire_script::internals::{FailedCall, FailureKind};
 use campfire_script::{
     ApiError, CapabilityRefusal, Hook, NameKind, NumError, Pool, ScriptBudgets, ScriptLimits,
-    StateDecl, StateDefault, StateType, StateValue, SyncTo, SyncedStateDecl,
+    ScriptPools, StateDecl, StateDefault, StateType, StateValue, SyncTo, SyncedStateDecl,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -327,7 +327,7 @@ fn abilities_match() -> Match {
 /// A match of two players of `declared`, whose scripts run within `limits`, and who hold
 /// gold, as a mode would keep it, with the types the tests spawn.
 fn abilities_match_with(limits: ScriptLimits, declared: &[Capability]) -> Match {
-    let mut game = Match::server(declared, ScriptBudgets::new(limits, 2));
+    let mut game = Match::server(declared, ScriptPools { limits, players: 2 });
     // The damage kinds a mode would declare: the MOBA test content's.
     Units::name_kinds(&game, &["physical", "magic", "true"], &POOLS, &["gold"]);
     Players::spawn(&mut game, 2, 1);
@@ -1358,7 +1358,13 @@ fn a_client_predicts_a_resolved_casts_slot_as_the_server_resolves_it() {
         let slots = TimedSlots::new(ActionSlots::new(slots));
         Mode::spawn(game, unit_type, Vec3::ZERO, Team::new(0), slots)
     };
-    let mut server = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 1));
+    let mut server = Match::server(
+        &declared,
+        ScriptPools {
+            limits: ScriptLimits::ROOMY,
+            players: 1,
+        },
+    );
     let mut client = Match::unscripted(&declared);
     let on_server = caster(&mut server);
     let on_client = caster(&mut client);

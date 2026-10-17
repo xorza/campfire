@@ -22,7 +22,7 @@ use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
-use campfire_script::{Filter, ScriptBudgets, ScriptLimits, View};
+use campfire_script::{Filter, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimTick, SimUpdate,
@@ -61,7 +61,10 @@ const fn dummy() -> Armed {
 
 /// A match of stats and combat, with the stat book a weapon reads.
 fn fight_match() -> Match {
-    let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+    let budgets = ScriptPools {
+        limits: ScriptLimits::ROOMY,
+        players: 1,
+    };
     let mut game = Match::server(&[Capability::Stats, Capability::Combat], budgets);
     Combat::load_weapon_stats(&mut game);
     game

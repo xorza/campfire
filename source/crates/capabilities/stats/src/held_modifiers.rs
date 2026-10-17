@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, Rank};
 
@@ -22,6 +22,10 @@ pub struct Held {
 }
 
 impl Scratch for HeldModifiers {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         self.0.is_empty()
     }

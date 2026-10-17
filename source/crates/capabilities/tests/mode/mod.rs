@@ -36,7 +36,7 @@ use campfire_progression::{Experience, Points, Progression, Thresholds, TrackDat
 use campfire_script::internals::FailureKind;
 use campfire_script::{
     ApiError, CallError, NameKind, ParamProblem, Pool, ScriptBudgets, ScriptFailures, ScriptId,
-    ScriptLimits, ScriptRole, StateDecl, StateDefault, StateType, StateValue, SyncTo,
+    ScriptLimits, ScriptPools, ScriptRole, StateDecl, StateDefault, StateType, StateValue, SyncTo,
     SyncedStateDecl, View,
 };
 use campfire_sim::{
@@ -669,25 +669,23 @@ fn test_types(types: [UnitType; 5], strike: ActionId, blessing: ModifierId) -> V
     ]
 }
 
-/// The test mode's setup from `files`, of `script`, of the unit `types`, with its one spell.
-fn setup<'a>(
-    files: &'a ModeFiles,
-    script: ScriptId,
-    types: &[TestType],
-    spell: LoadoutSetup,
-) -> ModeSetup<'a> {
-    let unit_types = types.iter().map(|unit| unit.unit_type);
+/// The test mode's setup from `files`, of `script`.
+fn setup(files: &ModeFiles, script: ScriptId) -> ModeSetup<'_> {
     ModeSetup {
         script,
         data: &files.data,
         picks: &files.picks,
         teams: &files.teams,
         players: 3,
-        units: ModeUnits {
-            unit_types: unit_types.collect(),
-            avatars: Names::from(["hero-x", "hero-y"]),
-            loadout: spell,
-        },
+    }
+}
+
+/// The test mode's units: the unit `types`, its two heroes, and its one spell.
+fn mode_units(types: &[TestType], spell: LoadoutSetup) -> ModeUnits {
+    ModeUnits {
+        unit_types: types.iter().map(|unit| unit.unit_type).collect(),
+        avatars: Names::from(["hero-x", "hero-y"]),
+        loadout: spell,
     }
 }
 
@@ -795,7 +793,7 @@ fn installed_match(
     files: &ModeFiles,
     adjust: impl FnOnce(&mut [TestType]),
 ) -> Match {
-    let scripts = ScriptBudgets::new(limits, 3);
+    let scripts = ScriptPools { limits, players: 3 };
     let declared = [
         Capability::Stats,
         Capability::Combat,
@@ -851,9 +849,9 @@ fn installed_match(
     let blessing = Stats::modifier(&game, PackageIndex::MODE, "blessing").unwrap();
     let mut types = test_types(types, strike, blessing);
     adjust(&mut types);
-    let setup = setup(files, script, &types, spell);
+    let units = mode_units(&types, spell);
     let load = load_mode_books(&mut game, files, &types);
-    Release::install_mode(&mut game, setup, load);
+    Release::install_mode(&mut game, setup(files, script), ModeInputs { units, load });
     // The scripts name pools the data does not declare, whose maxima no stat sets.
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
     game

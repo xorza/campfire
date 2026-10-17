@@ -3,45 +3,43 @@
 
 use std::sync::Arc;
 
-use bevy_ecs::world::World;
 use campfire_common::DeclaredName;
 use campfire_declare::ByType;
 use campfire_mode::ModeInputs;
 use campfire_navigation::{MapProblem, WalkCheck, Walker};
-use campfire_script::View;
 use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook, UnitTypes};
-use campfire_values::{DamageKind, Names, PackageIndex, ResourceId, UnitType};
+use campfire_values::{DamageKind, EngineTag, Names, PackageIndex, ResourceId, UnitType};
 
 use crate::books::book_builder::BookBuilder;
-use crate::books::book_fill::BookFill;
 use crate::books::book_input::{BookInput, BookPackage};
 use crate::books::built_books::BuiltBooks;
 use crate::books::error::BookError;
-use crate::release::Release;
 
 pub(crate) mod book_builder;
-pub(crate) mod book_fill;
 pub(crate) mod book_input;
 pub(crate) mod book_parts;
 pub(crate) mod book_place;
 pub(crate) mod built_books;
 pub(crate) mod error;
+#[cfg(feature = "internals")]
+pub(crate) mod every_book;
+pub(crate) mod leftover_books;
 pub(crate) mod package_content;
 pub(crate) mod type_place;
 pub(crate) mod unit_start;
 pub(crate) mod unit_type_data;
 
-/// The books of a match, built once from its packages at its tick rate, each until the install
-/// puts it where its owner declares it; the names of the mode's damage kinds and players'
-/// resources, which the script view holds; and what the mode's install takes.
+/// The books of a match, built once from its packages at its tick rate, each until the build
+/// puts it where its owner declares it, before its owner installs; the names of the mode's damage
+/// kinds and players' resources, which the script view holds; and what the mode's load takes.
 #[derive(Debug)]
 pub struct Books {
-    built: BuiltBooks,
-    damage_kinds: Arc<Names<DamageKind>>,
-    resources: Arc<Names<ResourceId>>,
+    pub(crate) built: BuiltBooks,
+    pub(crate) damage_kinds: Arc<Names<DamageKind>>,
+    pub(crate) resources: Arc<Names<ResourceId>>,
     /// The tags of the markers the mode's units spawn at, which the map's walk check reads.
-    spawn_tags: Box<[DeclaredName]>,
-    inputs: ModeInputs,
+    pub(crate) spawn_tags: Box<[DeclaredName]>,
+    pub(crate) inputs: ModeInputs,
 }
 
 impl Books {
@@ -52,15 +50,16 @@ impl Books {
     }
 
     /// The unit types of `packages`, the mode's then each dependency's, and the tags of the
-    /// match: the engine's, then `tag_names`, then those the types name, in the order their ids
-    /// follow; an error for a type its scope names already, or past the most types or tags a
-    /// match holds. The build's first step, and the tables a check of the packages resolves
-    /// their names by.
+    /// match: `engine_tags`, the release's, then `tag_names`, then those the types name, in the
+    /// order their ids follow; an error for a type its scope names already, or past the most
+    /// types or tags a match holds. The build's first step, and the tables a check of the
+    /// packages resolves their names by.
     pub fn unit_types(
+        engine_tags: &[EngineTag],
         tag_names: &[DeclaredName],
         packages: &[BookPackage<'_>],
     ) -> Result<UnitTypes, TypesError> {
-        let mut types = UnitTypes::new(Release::engine_tags());
+        let mut types = UnitTypes::new(engine_tags.to_vec());
         for name in tag_names {
             types.declare(name.as_str())?;
         }
@@ -110,46 +109,18 @@ impl Books {
         };
         check.run(name_of)
     }
-
-    /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are
-    /// compiled: the mode's names in the script view, then each book its owner declares, where
-    /// its install put an empty one. A book declared and not built, or built and not declared, is
-    /// a logic error.
-    pub fn install(self, world: &mut World) -> ModeInputs {
-        let Self {
-            mut built,
-            damage_kinds,
-            resources,
-            inputs,
-            ..
-        } = self;
-        {
-            let view = world.non_send::<View>();
-            let mut names = view.names_mut();
-            names.set_table(damage_kinds);
-            names.set_table(resources);
-        }
-        Self::fill(&mut built, world);
-        inputs
-    }
-
-    /// Takes each book every module declares out of `built`, which must hold it, and puts it in
-    /// `world` where the match holds it; `built` must hold no other book.
-    fn fill(built: &mut BuiltBooks, world: &mut World) {
-        let mut fill = BookFill { built, world };
-        Release::declare(Release::capabilities(), &mut fill);
-        assert!(built.is_empty(), "each built book is declared: {built:?}");
-    }
-
-    /// Puts the books in `world`, a client's, whose capabilities are installed with no scripts,
-    /// and the map's pathing grid for the kinds of its walkers, as a match's mode install puts
-    /// it. The client then predicts its units by the rules the server runs: it starts their
-    /// actions, and runs none of their effects.
-    pub fn install_prediction(self, world: &mut World) {
-        let ModeInputs { load, .. } = self.install(world);
-        load.map.install_pathing(world, load.walkers);
-    }
 }
 
-#[cfg(test)]
-mod tests;
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_mode::ModeUnits;
+
+    use crate::books::Books;
+
+    impl Books {
+        /// The units the mode spawns, which a test that starts no mode spawns itself.
+        pub const fn mode_units(&self) -> &ModeUnits {
+            &self.inputs.units
+        }
+    }
+}

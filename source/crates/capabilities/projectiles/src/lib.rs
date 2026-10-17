@@ -103,13 +103,13 @@ impl Module for Projectiles {
     /// and its hits and its end run their action's `on_hit` and `on_end`; after attacks strike
     /// and casts resolve, the tick's launches take off, and fly from the next tick. A teleport
     /// makes each projectile that homes on its unit lose it. A predicting client predicts no
-    /// delivery, so it flies none.
+    /// delivery, so it takes no shot, launches none and flies none.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.systems((
+        cx.server((
             Launching::take_shots.in_set(ProjectilesSet::TakeShots),
             Launching::launch.in_set(ProjectilesSet::Launch),
+            Flying::fly.in_set(ProjectilesSet::Fly),
         ));
-        cx.server(Flying::fly.in_set(ProjectilesSet::Fly));
     }
 }
 

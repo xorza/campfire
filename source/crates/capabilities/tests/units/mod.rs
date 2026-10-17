@@ -17,7 +17,7 @@ use campfire_mode::Mode;
 use campfire_navigation::OnPath;
 use campfire_script::internals::FailureKind;
 use campfire_script::{
-    ApiError, CapabilityRefusal, NameKind, NumError, ScriptBudgets, ScriptLimits, ScriptList,
+    ApiError, CapabilityRefusal, NameKind, NumError, ScriptLimits, ScriptList, ScriptPools,
     ScriptValue, Unit, View,
 };
 use campfire_sim::internals::SimWorldInternals;
@@ -38,7 +38,7 @@ use campfire_vision::SeenBy;
 /// `bare`, of 1 life and no slot.
 fn units_match() -> Match {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
     let mut game = Match::server(&declared, scripts);
     Units::name_kinds(&game, &[], &["health", "mana"], &[]);

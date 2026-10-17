@@ -10,7 +10,7 @@ use campfire_common::{DeclaredName, Tick, Ticks};
 use campfire_declare::Book;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_script::{ScriptBudgets, ScriptLimits};
+use campfire_script::{ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, IdAllocator, Position, SimComponent, SimUpdate, SimWorld, StableId, Unpredicted,
@@ -608,7 +608,7 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
 #[test]
 fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let mut game = Match::server(&[Capability::Stats], scripts);
     // Before any system builds its queries, as a predicting client registers it, so that a unit
     // it holds can be marked below.
@@ -742,7 +742,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
 #[test]
 fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let mut game = Match::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);
@@ -785,7 +785,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
 #[test]
 fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let mut game = Match::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);

@@ -151,7 +151,8 @@ impl<'a> LoadCheck<'a> {
             .stat_graph()?
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
-        let input = packages.book_input(check.rate, &stat_order);
+        let engine_tags = Release::engine_tags();
+        let input = packages.book_input(check.rate, &stat_order, &engine_tags);
         let books = Books::build(&input).map_err(|error| book_error(packages, error))?;
         books
             .check_walkable()

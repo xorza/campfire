@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use campfire_actions::{CostTarget, SlotKind};
-use campfire_capabilities::{BookError, Books};
+use campfire_capabilities::{BookError, Books, Release};
 use campfire_mode::{ModeMap, ModeNames};
 use campfire_progression::TrackBook;
 use campfire_units::UnitTypes;
@@ -48,7 +48,8 @@ impl<'a> NameTables<'a> {
     pub(crate) fn of(packages: &'a ModePackages) -> Result<Self, BookError> {
         let data = &packages.data;
         let book_packages = packages.book_packages();
-        let types = Books::unit_types(packages.tag_names(), &book_packages);
+        let engine_tags = Release::engine_tags();
+        let types = Books::unit_types(&engine_tags, packages.tag_names(), &book_packages);
         let tracks = TrackBook::new(&data.tracks).map_err(BookError::Tracks)?;
         let paths = packages.map.paths.iter().map(|path| path.name.as_str());
         Ok(NameTables {

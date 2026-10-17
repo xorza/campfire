@@ -38,6 +38,7 @@ pub(crate) mod script_fn;
 pub(crate) mod script_lasting;
 pub(crate) mod script_limits;
 pub(crate) mod script_names;
+pub(crate) mod script_pools;
 pub(crate) mod script_position;
 pub(crate) mod script_radius;
 pub(crate) mod script_role;

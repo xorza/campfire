@@ -140,7 +140,7 @@ impl<'a> BookBuilder<'a> {
             script_starts.push(start);
             start += package.scripts.len();
         }
-        let types = Books::unit_types(input.tag_names, &input.packages);
+        let types = Books::unit_types(input.engine_tags, input.tag_names, &input.packages);
         let books = BookParts {
             types: types?,
             supply: data.supply,

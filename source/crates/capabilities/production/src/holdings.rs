@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::ResMut;
 use campfire_common::PlayerSlot;
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_stats::PlayerModifiers;
 use campfire_units::Owner;
 use campfire_values::UnitType;
@@ -90,6 +90,10 @@ impl Holdings {
 }
 
 impl Scratch for Holdings {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         !self.read && self.units.is_empty()
     }

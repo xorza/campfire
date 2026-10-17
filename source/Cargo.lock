@@ -2437,6 +2437,7 @@ dependencies = [
  "campfire-sim",
  "campfire-state-types",
  "campfire-values",
+ "campfire-visibility",
 ]
 
 [[package]]
@@ -2953,7 +2954,6 @@ dependencies = [
  "campfire-script",
  "campfire-sim",
  "campfire-test-packages",
- "campfire-units",
  "campfire-visibility",
  "campfire-vision",
  "secp256k1",

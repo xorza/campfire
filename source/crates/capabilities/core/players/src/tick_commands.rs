@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 
 use bevy_ecs::system::{Local, Res, SystemParam};
 use campfire_common::PlayerSlot;
+use campfire_declare::MatchFacts;
 use campfire_sim::{StableId, TickInputs};
 use campfire_units::Owner;
 use campfire_visibility::OutView;
@@ -18,7 +19,7 @@ use crate::player_rows::PlayerRows;
 #[derive(SystemParam, Debug)]
 pub struct TickCommands<'w, 's, A: CapabilityAction> {
     inputs: Res<'w, TickInputs>,
-    out_view: Res<'w, OutView>,
+    facts: Res<'w, MatchFacts>,
     out: PlayerRows<'w, 's, OutOfPlay>,
     /// The units of the order read last.
     units: Local<'s, Vec<StableId>>,
@@ -47,7 +48,7 @@ struct Sent {
 impl<A: CapabilityAction> TickCommands<'_, '_, A> {
     /// Gives `apply` each order of the tick, in input order.
     pub fn for_each(&mut self, mut apply: impl FnMut(TickCommand<'_, A>)) {
-        let spectating = *self.out_view == OutView::Spectators;
+        let spectating = self.facts.out == OutView::Spectators;
         self.sent.clear();
         for command in self.inputs.commands(A::CAPABILITY) {
             if spectating && self.out.of_slot(command.slot).is_some() {

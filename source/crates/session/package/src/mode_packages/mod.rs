@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::iter;
 use std::sync::Arc;
-use std::{fmt, iter};
 
 use campfire_actions::ActionData;
 use campfire_capabilities::{
-    BookInput, BookKind, BookPackage, Books, PackageContent, Release, UnitTypeData,
+    BookInput, BookKind, BookPackage, Books, PackageContent, PackageScript, Release, UnitTypeData,
 };
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
 use campfire_mode::{MapData, ModeData};
@@ -129,34 +129,28 @@ impl ModePackages {
             self.manifest.tick_hz.contains(rate.hz()),
             "a session's rate is within the manifest's range"
         );
-        Books::build(&self.book_input(rate, &self.stat_order))
+        let engine_tags = Release::engine_tags();
+        Books::build(&self.book_input(rate, &self.stat_order, &engine_tags))
             .expect("the load built the books at the fastest rate")
     }
 
     /// The names of its unit types, each in its scope, as a match's books number them.
     pub fn unit_types(&self) -> Arc<Names<UnitType>> {
-        let types = Books::unit_types(self.tag_names(), &self.book_packages());
+        let engine_tags = Release::engine_tags();
+        let types = Books::unit_types(&engine_tags, self.tag_names(), &self.book_packages());
         Arc::clone(types.expect("the load declared every type").types())
     }
 
-    /// Compiles every script of its packages by `compile`, in the order a match compiles them,
-    /// which must number each at its place, as its book of hooks holds it; the load parsed each
-    /// one, so none fails.
-    pub fn compile_scripts<E: fmt::Debug>(
-        &self,
-        mut compile: impl FnMut(&str) -> Result<ScriptId, E>,
-    ) {
+    /// Every script of its packages, in the order a match compiles them, which numbers each at
+    /// its place, as its book of hooks holds it; the load parsed each one.
+    pub fn scripts(&self) -> Vec<PackageScript<'_>> {
         let scripts = self.packages().flat_map(|view| &view.package.scripts);
-        for (at, script) in scripts.enumerate() {
-            let id = compile(&script.source)
-                .unwrap_or_else(|error| panic!("the load parsed {}: {error:?}", script.path));
-            assert_eq!(
-                id,
-                ScriptId::nth(at),
-                "the host numbers {} at its place",
-                script.path
-            );
-        }
+        scripts
+            .map(|script| PackageScript {
+                path: &script.path,
+                source: &script.source,
+            })
+            .collect()
     }
 
     /// The mode's script, by its place among the scripts a match compiles: past every script of
@@ -190,6 +184,7 @@ impl ModePackages {
         &'a self,
         rate: TickRate,
         stat_order: &'a [StatId],
+        engine_tags: &'a [EngineTag],
     ) -> BookInput<'a> {
         BookInput {
             data: &self.data,
@@ -198,6 +193,7 @@ impl ModePackages {
             teams: &self.manifest.teams,
             max_move_speed: self.manifest.max_move_speed,
             set: self.manifest.capabilities,
+            engine_tags,
             tag_names: &self.tag_names,
             packages: self.book_packages(),
             scripts: &self.scripts,

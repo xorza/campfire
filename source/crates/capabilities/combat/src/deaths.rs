@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_declare::Report;
+use campfire_declare::{Report, Role};
 use campfire_sim::StableId;
 use campfire_values::Team;
 
@@ -114,7 +114,7 @@ impl Deaths {
 }
 
 impl Report for Deaths {
-    fn installed() -> Option<Self> {
+    fn installed(_: &Role) -> Option<Self> {
         Some(Self::default())
     }
 }

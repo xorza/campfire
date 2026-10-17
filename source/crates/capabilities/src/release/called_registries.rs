@@ -5,6 +5,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
@@ -13,7 +14,7 @@ use campfire_declare::{
     ModuleSet, OneShot, Report, Role, Scratch,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
+use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, SimResource};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_values::EngineTag;
 
@@ -98,4 +99,8 @@ impl Declarations for CalledRegistries {
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 
     fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {}
+}
+
+impl OwnResources for CalledRegistries {
+    fn own<R: Resource>(&mut self) {}
 }

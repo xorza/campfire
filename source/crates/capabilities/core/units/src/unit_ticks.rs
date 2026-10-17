@@ -12,12 +12,12 @@ use crate::new_unit_states::NewUnitStates;
 pub(crate) struct UnitTicks;
 
 impl UnitTicks {
-    /// Clears, as each tick starts, the script budgets' use and the failures recorded.
+    /// Fills every pool, and clears the failures the last tick recorded, as each tick starts.
     pub(super) fn begin_tick(
         mut budgets: ResMut<'_, ScriptBudgets>,
         mut failures: NonSendMut<'_, ScriptFailures>,
     ) {
-        budgets.begin_tick();
+        budgets.refill();
         failures.clear();
     }
 

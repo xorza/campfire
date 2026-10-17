@@ -1,17 +1,19 @@
 use std::fmt;
 
-use campfire_declare::{InstallCx, MatchFacts, Module, ModuleVisitor};
+use campfire_declare::{InstallCx, InstallFacts, Module, ModuleVisitor};
 use campfire_sim::SimParts;
 
+use crate::books::built_books::BuiltBooks;
 use crate::release::declaring::{Declaring, Scripts};
-use crate::release::installer::Installer;
+use crate::release::installer::{InstallParts, Installer};
 
 /// The walk that installs each module a match runs, as `facts` says: its declarations, then its
 /// systems; at the match's build, every module but the mode's scripted part, which a second walk
-/// installs alone once the books are in.
+/// installs alone once the scripts compile.
 pub(super) struct Installing<'a> {
     parts: SimParts<'a>,
-    facts: &'a MatchFacts<'a>,
+    books: &'a mut BuiltBooks,
+    facts: &'a InstallFacts<'a>,
     walk: Walk,
 }
 
@@ -20,13 +22,24 @@ pub(super) struct Installing<'a> {
 pub(super) enum Walk {
     /// Every module but the mode's scripted part, as the match is built.
     Build,
-    /// The mode's scripted part alone, once the books are in.
+    /// The mode's scripted part alone, once the scripts compile.
     Scripted,
 }
 
 impl<'a> Installing<'a> {
-    pub(super) const fn new(parts: SimParts<'a>, facts: &'a MatchFacts<'a>, walk: Walk) -> Self {
-        Installing { parts, facts, walk }
+    /// The walk of `walk` into the match of `parts`, its books from `books`.
+    pub(super) const fn new(
+        parts: SimParts<'a>,
+        books: &'a mut BuiltBooks,
+        facts: &'a InstallFacts<'a>,
+        walk: Walk,
+    ) -> Self {
+        Installing {
+            parts,
+            books,
+            facts,
+            walk,
+        }
     }
 
     /// Installs `M`: its declarations, then its systems.
@@ -36,9 +49,15 @@ impl<'a> Installing<'a> {
             schedule,
             registry,
         } = &mut self.parts;
-        let mut installer = Installer::new(world, schedule, registry, self.facts);
-        Declaring::new(self.facts.set, Scripts::Visited, &mut installer).declare::<M>();
-        M::install(&mut InstallCx::new(schedule, self.facts));
+        let parts = InstallParts {
+            world,
+            schedule,
+            registry,
+            books: self.books,
+        };
+        let mut installer = Installer::new(parts, self.facts);
+        Declaring::new(self.facts.facts.set, Scripts::Visited, &mut installer).declare::<M>();
+        M::install(&mut InstallCx::new(schedule, self.facts, world));
     }
 }
 
@@ -53,7 +72,7 @@ impl fmt::Debug for Installing<'_> {
 
 impl ModuleVisitor for Installing<'_> {
     fn module<M: Module>(&mut self) {
-        if self.walk == Walk::Build && self.facts.set.runs(M::CAPABILITY) {
+        if self.walk == Walk::Build && self.facts.facts.set.runs(M::CAPABILITY) {
             self.install::<M>();
         }
     }

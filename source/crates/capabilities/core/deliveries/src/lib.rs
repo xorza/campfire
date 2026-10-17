@@ -8,7 +8,9 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, Reached};
 use campfire_common::EnumAll;
-use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, Scratch, SetPlace};
+use campfire_declare::{
+    Declarations, InstallCx, Module, ModuleSet, Phase, Role, Scratch, SetPlace,
+};
 use campfire_math::Vec3;
 use campfire_sim::{Breach, Capability, StableId};
 use campfire_units::ForcedMove;
@@ -151,6 +153,10 @@ impl Deliveries {
 }
 
 impl Scratch for Deliveries {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         self.delivered.is_empty() && self.ended.is_empty()
     }

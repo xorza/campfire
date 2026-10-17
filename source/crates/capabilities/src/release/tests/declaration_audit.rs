@@ -25,7 +25,9 @@ use campfire_deliveries::{Deliverers, DeliveryKind};
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_production::{Gatherer, PlayerSupply, Site, TrainQueue};
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource, Unpredicted};
+use campfire_sim::{
+    Breach, Capability, HostRule, OnAny, OwnResources, SimComponent, SimResource, Unpredicted,
+};
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
 use campfire_units::{BodyUnit, Dead, DeliveryEntity, Owner, Player, UnitEntity};
@@ -125,6 +127,8 @@ struct DeclarationAudit {
     one_shots: Vec<Named>,
     /// Each part a server's match derives: its holder, and its type.
     server_parts: Vec<(Named, Named)>,
+    /// Each resource the match's build puts in itself.
+    owns: Vec<Named>,
 }
 
 impl DeclarationAudit {
@@ -163,6 +167,7 @@ impl DeclarationAudit {
         );
         once("resource", self.resources.clone());
         once("run", self.one_shots.iter().map(|ty| ty.name).collect());
+        once("own", self.owns.iter().map(|ty| ty.name).collect());
         once("book", self.books.iter().map(|book| book.ty.name).collect());
         once("column", self.columns.iter().map(|ty| ty.name).collect());
         once(
@@ -450,6 +455,12 @@ impl Declarations for DeclarationAudit {
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 
     fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {}
+}
+
+impl OwnResources for DeclarationAudit {
+    fn own<R: Resource>(&mut self) {
+        self.owns.push(Named::of::<R>());
+    }
 }
 
 #[test]

@@ -2,7 +2,7 @@ use std::num::NonZeroU64;
 
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_capabilities::{Match, Release};
+use campfire_capabilities::Match;
 use campfire_common::{AfterLeave, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
 use campfire_players::Seating;
@@ -83,8 +83,7 @@ impl Session {
         let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         let rate = TickRate::new(header.terms.tick_hz);
         let spec = MatchBuild::spec(packages, seed, rate, players).out(visibility.out());
-        Release::build(world, spec);
-        MatchBuild::install_mode(world, packages, players, &picks);
+        MatchBuild::build(world, spec, packages, players, &picks);
         let saves = packages.data().saves;
         let autosave = saves.autosave_ms.map(|ms| {
             rate.ticks(NonZeroU64::from(ms).get())

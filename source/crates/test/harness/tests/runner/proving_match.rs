@@ -8,9 +8,9 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
 use campfire_actions::{ActionProgress, ActionSlots, ActionTarget};
 use campfire_areas::Area;
-use campfire_capabilities::{MatchSpec, Order, Release};
+use campfire_capabilities::{MatchKind, MatchSpec, Order, Release};
 use campfire_common::{PlayerSlot, SegmentSeed};
-use campfire_declare::{CapabilitySet, Role};
+use campfire_declare::{CapabilitySet, MatchFacts, Role};
 use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::{Num, Vec3};
 use campfire_mode::ModeWorld;
@@ -19,7 +19,7 @@ use campfire_production::TrainQueue;
 use campfire_progression::Experience;
 use campfire_projectiles::Projectile;
 use campfire_runner::{MatchBuild, Session, SessionWorld};
-use campfire_script::{ScriptBudgets, ScriptFailures, StateValue};
+use campfire_script::{ScriptFailures, StateValue};
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Level, Modifiers};
@@ -568,15 +568,23 @@ fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and
 fn every_order_each_mode_relies_on_in_each_role_is_stated() {
     // Bevy's sync points order the systems they lie between, so a pair that only one of them
     // keeps apart passes the ambiguity check until the systems around it change: each mode of
-    // the workspace, in each role, builds its tick with none, which panics on such a pair.
+    // the workspace, in each role, builds its tick with none, which panics on such a pair: a
+    // server's with its mode, the rules alone, and a predicting client's, each of its own books.
     for mode in TestMode::ALL {
         let packages = mode.packages();
+        let slots = u32::try_from(packages.manifest().slots()).unwrap();
+        drop(MatchBuild::test_target_without_sync_points(
+            &packages, slots,
+        ));
         let manifest = packages.manifest();
         let rate = TickRate::new(manifest.tick_hz.default());
-        let budgets = ScriptBudgets::new(manifest.script_limits, 2);
-        for role in [Role::Server(budgets), Role::Rules, Role::Client] {
+        for (role, kind) in [
+            (Role::Rules, MatchKind::Rules),
+            (Role::Client, MatchKind::Predicting),
+        ] {
             let spec = MatchSpec::new(SegmentSeed::ZERO, rate, role).set(manifest.capabilities);
-            Release::build(&mut World::new(), spec.without_sync_points());
+            let books = packages.books(rate);
+            Release::build(&mut World::new(), spec.without_sync_points(), books, kind);
         }
     }
     let proving = ProvingMatch::load();
@@ -584,6 +592,6 @@ fn every_order_each_mode_relies_on_in_each_role_is_stated() {
         MatchBuild::test_target_without_sync_points(proving.packages(), ProvingMatch::PLAYERS);
     // Each game system sits in a set its module declares: one ordered by hand runs where Bevy
     // picks, and one between two stages before or after the probe there.
-    let sets = Release::module_sets(*target.resource::<CapabilitySet>());
+    let sets = Release::module_sets(target.resource::<MatchFacts>().set);
     assert_eq!(target.systems_outside(&sets), Vec::<String>::new());
 }

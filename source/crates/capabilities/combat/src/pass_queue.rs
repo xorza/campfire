@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
@@ -122,6 +122,10 @@ impl PassEntry {
 }
 
 impl Scratch for PassQueue {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         !self.running && self.entries.is_empty() && self.given.is_empty() && self.at == 0
     }

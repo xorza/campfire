@@ -186,19 +186,22 @@ impl Module for Combat {
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
-    /// go, after the Mode stage saw them. A unit's despawn, its attackers and its toggles' pay are
-    /// the server's: a predicting client despawns no unit, forgets no attacker it never held, and
-    /// pays no toggle, as its pools come from the server.
+    /// go, after the Mode stage saw them. A unit's hits, damage, death and despawn, its attackers
+    /// and its toggles' pay are the server's: a predicting client deals no damage, as its pools
+    /// and its deaths come from the server, despawns no unit, forgets no attacker it never held,
+    /// and pays no toggle; it predicts a respawn that is due.
     fn install(cx: &mut InstallCx<'_>) {
         cx.systems((
             Aiming::aim
                 .before(Attacks::start_attacks)
                 .in_set(CombatSet::Attack),
             Attacks::start_attacks.in_set(CombatSet::Attack),
+            Dying::respawn.in_set(CombatSet::Respawn),
+        ));
+        cx.server((
             Attacks::take_hits.in_set(CombatSet::Hits),
             DamagePass::run.in_set(CombatSet::Damage),
             Dying::die.in_set(CombatSet::Die),
-            Dying::respawn.in_set(CombatSet::Respawn),
         ));
         cx.systems(Volley::collect.in_set(CombatSet::Pay));
         cx.by_role(

@@ -1,12 +1,11 @@
 use campfire_script::ScriptId;
 
 use crate::mode_data::ModeData;
-use crate::mode_units::ModeUnits;
 use crate::option_picks::OptionPicks;
 use crate::team_manifest::TeamManifest;
 
-/// What a match of a mode needs, from its packages, with its unit types, abilities and AI loaded
-/// into the match: the input of `Mode::load`.
+/// What a match of a mode needs from its packages, beside its books: the input of `Mode::load`,
+/// with what its books give the mode.
 #[derive(Debug)]
 pub struct ModeSetup<'a> {
     /// The mode script, compiled.
@@ -19,5 +18,4 @@ pub struct ModeSetup<'a> {
     pub teams: &'a [TeamManifest],
     /// The players of the session.
     pub players: u32,
-    pub units: ModeUnits,
 }

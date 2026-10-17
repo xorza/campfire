@@ -1,10 +1,10 @@
-use std::any::type_name;
 use std::fmt::Debug;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
@@ -13,22 +13,19 @@ use campfire_declare::{
     ModuleSet, OneShot, Report, Role, Scratch,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
+use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, SimResource};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_values::EngineTag;
 
 use crate::books::built_books::BuiltBooks;
 
-/// The install of the books, a walk of every module's declarations: each declared book is taken
-/// from `built`, which must hold it, and goes in `world` in place of the empty one its owner's
-/// declaration put there; one the match does not hold, as its install put none, is dropped.
+/// The end of the books' install, a walk of every module's declarations: each book of a module
+/// the match does not run, which its install did not take, is dropped, so a built book no module
+/// declares is left.
 #[derive(Debug)]
-pub(super) struct BookFill<'a> {
-    pub(super) built: &'a mut BuiltBooks,
-    pub(super) world: &'a mut World,
-}
+pub(crate) struct LeftoverBooks<'a>(pub(crate) &'a mut BuiltBooks);
 
-impl StateTypes for BookFill<'_> {
+impl StateTypes for LeftoverBooks<'_> {
     fn component<C: Replication>(&mut self) {}
 
     fn derived<C: Component>(&mut self) {}
@@ -40,13 +37,13 @@ impl StateTypes for BookFill<'_> {
     fn sim_component<C: Replication>(&mut self) {}
 }
 
-impl KindVisitor for BookFill<'_> {
+impl KindVisitor for LeftoverBooks<'_> {
     fn kind<K: EntityKind>(&mut self) {}
 
     fn state<K: EntityKind, S: Component>(&mut self) {}
 }
 
-impl Declarations for BookFill<'_> {
+impl Declarations for LeftoverBooks<'_> {
     fn module(&mut self, _: Option<Capability>) {}
 
     fn require<H: SimComponent, C: SimComponent>(&mut self) {}
@@ -56,11 +53,7 @@ impl Declarations for BookFill<'_> {
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
     fn book<B: Book>(&mut self) {
-        let book = self.built.take::<B>();
-        let book = book.unwrap_or_else(|| panic!("{} is declared and built", type_name::<B>()));
-        if self.world.contains_resource::<B>() {
-            book.load_into(self.world);
-        }
+        drop(self.0.take::<B>());
     }
 
     fn sets<S: ModuleSet>(&mut self) {}
@@ -106,4 +99,8 @@ impl Declarations for BookFill<'_> {
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 
     fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {}
+}
+
+impl OwnResources for LeftoverBooks<'_> {
+    fn own<R: Resource>(&mut self) {}
 }

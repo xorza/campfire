@@ -1,4 +1,3 @@
-use std::any::TypeId;
 use std::mem::ManuallyDrop;
 use std::{fmt, thread};
 
@@ -8,6 +7,7 @@ use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
 
 use crate::id_allocator::IdAllocator;
+use crate::own_resources::OwnResources;
 use crate::sim_rng::SimRng;
 use crate::sim_tick::SimTick;
 use crate::sim_update::SimUpdate;
@@ -47,23 +47,21 @@ pub struct SimParts<'a> {
 }
 
 impl SimWorldBuilder<'_> {
-    /// The resources a match holds of its own, whatever its modules install: the sim's, those a
-    /// server's state registry puts in as it tracks the state's changes, and Bevy's world and
-    /// schedules.
-    pub const fn sim_resources() -> [TypeId; 11] {
-        [
-            TypeId::of::<SimTick>(),
-            TypeId::of::<TickRate>(),
-            TypeId::of::<SimRng>(),
-            TypeId::of::<IdAllocator>(),
-            TypeId::of::<EntityIndex>(),
-            TypeId::of::<TickInputs>(),
-            TypeId::of::<StateRegistry>(),
-            TypeId::of::<StateChanges>(),
-            TypeId::of::<CopyQueries>(),
-            TypeId::of::<Schedules>(),
-            TypeId::of::<DefaultQueryFilters>(),
-        ]
+    /// Visits, with `v`, the resources a match holds of its own, whatever its modules install:
+    /// the sim's, those a server's state registry puts in as it tracks the state's changes, and
+    /// Bevy's world and schedules.
+    pub fn own_resources<V: OwnResources + ?Sized>(v: &mut V) {
+        v.own::<SimTick>();
+        v.own::<TickRate>();
+        v.own::<SimRng>();
+        v.own::<IdAllocator>();
+        v.own::<EntityIndex>();
+        v.own::<TickInputs>();
+        v.own::<StateRegistry>();
+        v.own::<StateChanges>();
+        v.own::<CopyQueries>();
+        v.own::<Schedules>();
+        v.own::<DefaultQueryFilters>();
     }
 }
 
@@ -75,24 +73,6 @@ impl<'w> SimWorldBuilder<'w> {
             world,
             schedule: SimUpdate::schedule(),
             registry: StateRegistry::new(),
-            unbuilt: Unbuilt,
-        }
-    }
-
-    /// Opens `world`, a sim world built before, again, for an install after the build, as a mode
-    /// installs into a match whose capabilities are in place.
-    pub fn reopen(world: &'w mut World) -> Self {
-        let schedule = world
-            .resource_mut::<Schedules>()
-            .remove(SimUpdate)
-            .expect("a built match holds the tick's schedule");
-        let registry = world
-            .remove_resource::<StateRegistry>()
-            .expect("a built match holds its state registry");
-        SimWorldBuilder {
-            world,
-            schedule,
-            registry,
             unbuilt: Unbuilt,
         }
     }
@@ -163,11 +143,33 @@ impl fmt::Debug for SimParts<'_> {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use bevy_ecs::schedule::Schedules;
+    use bevy_ecs::world::World;
     use campfire_schedule::StrictSchedule;
 
-    use crate::sim_world_builder::SimWorldBuilder;
+    use crate::sim_update::SimUpdate;
+    use crate::sim_world_builder::{SimWorldBuilder, Unbuilt};
+    use crate::state_registry::StateRegistry;
 
-    impl SimWorldBuilder<'_> {
+    impl<'w> SimWorldBuilder<'w> {
+        /// Opens `world`, a sim world built before, again, for an install after the build, as a
+        /// test's mode installs into a match whose books the test loaded piece by piece.
+        pub fn reopen(world: &'w mut World) -> Self {
+            let schedule = world
+                .resource_mut::<Schedules>()
+                .remove(SimUpdate)
+                .expect("a built match holds the tick's schedule");
+            let registry = world
+                .remove_resource::<StateRegistry>()
+                .expect("a built match holds its state registry");
+            SimWorldBuilder {
+                world,
+                schedule,
+                registry,
+                unbuilt: Unbuilt,
+            }
+        }
+
         /// Leaves Bevy's automatic sync points out of the tick's schedule: one orders the systems
         /// it lies between, so `build` then panics on every pair of systems that only a sync
         /// point keeps in order. A schedule keeps it through a reopen.
@@ -193,11 +195,24 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use std::any::TypeId;
     use std::num::NonZeroU32;
     use std::panic;
 
+    use bevy_ecs::resource::Resource;
+
     use super::*;
     use crate::state_registry::state_delta::StateDelta;
+
+    /// The resources a visit of a build's own lists, by their ids.
+    #[derive(Debug, Default)]
+    struct OwnIds(Vec<TypeId>);
+
+    impl OwnResources for OwnIds {
+        fn own<R: Resource>(&mut self) {
+            self.0.push(TypeId::of::<R>());
+        }
+    }
 
     const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
@@ -233,10 +248,11 @@ mod tests {
             .iter_resources()
             .filter_map(|(info, _)| info.type_id())
             .collect();
-        let mut own = SimWorldBuilder::sim_resources().to_vec();
+        let mut own = OwnIds::default();
+        SimWorldBuilder::own_resources(&mut own);
         held.sort_unstable();
-        own.sort_unstable();
-        assert_eq!(held, own);
+        own.0.sort_unstable();
+        assert_eq!(held, own.0);
 
         // A builder dropped before `build` would leave its world with no schedule: it panics.
         let dropped = panic::catch_unwind(|| {

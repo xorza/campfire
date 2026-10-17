@@ -2,7 +2,7 @@ use std::mem;
 use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::{Local, NonSend, Res, ResMut};
+use bevy_ecs::system::{Local, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_combat::{Deaths, Kept};
 use campfire_common::PlayerSlot;
@@ -25,17 +25,12 @@ pub(super) struct Input {
 }
 
 /// The mode's hooks, each in the Mode stage: its inputs, its slot events, its timers, the deaths
-/// and the level-ups. Each hook's system runs under a run condition on the hooks the mode
-/// defines, which its load fixes.
+/// and the level-ups. Each hook's system installs only in a mode whose script defines its hook,
+/// which the load fixes.
 #[derive(Debug)]
 pub struct ModeHooks;
 
 impl ModeHooks {
-    /// The run condition of the system of `hook`: whether the mode defines it.
-    pub(super) fn defines(hook: Hook) -> impl Fn(NonSend<'_, MatchMode>) -> bool + Clone {
-        move |mode: NonSend<'_, MatchMode>| mode.schema.hooks.contains(hook)
-    }
-
     /// Runs `on_mode_input` for each mode input of the tick, in input order, from its player's
     /// pool. An input whose name the mode does not declare, or whose value is not of its type, is
     /// ignored.

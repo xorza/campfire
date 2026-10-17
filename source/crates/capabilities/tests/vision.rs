@@ -5,7 +5,7 @@ use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_math::Num;
 use campfire_mode::Mode;
 use campfire_script::internals::FailureKind;
-use campfire_script::{ApiError, ScriptBudgets, ScriptLimits, Unit};
+use campfire_script::{ApiError, ScriptLimits, ScriptPools, Unit};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
 use campfire_stats::Life;
@@ -27,7 +27,7 @@ fn vision_match_of_teams(teams: usize) -> Match {
 /// tests' seers.
 fn vision_match_with_brush(teams: usize, brush: &[Polygon]) -> Match {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
     let mut game = Match::server(&declared, scripts);
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();

@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
-use campfire_declare::Report;
+use campfire_declare::{Report, Role};
 
 /// The boundary the mode last asked for a save at, by `ctx.save()`: the end of the tick it asked
 /// in, or the match's start, for a save `on_match_start` asked for. Not state: a checkpoint,
@@ -23,7 +23,7 @@ impl SaveAsked {
 
 /// The mode puts it in as it asks for a save.
 impl Report for SaveAsked {
-    fn installed() -> Option<Self> {
+    fn installed(_: &Role) -> Option<Self> {
         None
     }
 }

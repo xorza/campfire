@@ -42,6 +42,11 @@ impl MatchSpec {
         }
     }
 
+    /// The rate the match ticks at.
+    pub const fn rate(&self) -> TickRate {
+        self.rate
+    }
+
     /// The match's capabilities.
     pub fn set(self, set: CapabilitySet) -> Self {
         Self { set, ..self }

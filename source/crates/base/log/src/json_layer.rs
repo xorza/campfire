@@ -27,9 +27,9 @@ pub(crate) mod internals {
 
     use tracing::level_filters::LevelFilter;
     use tracing::subscriber;
-    use tracing_subscriber::Layer;
     use tracing_subscriber::layer::SubscriberExt;
     use tracing_subscriber::util::SubscriberInitExt;
+    use tracing_subscriber::{Layer, Registry};
 
     use crate::error_report::ErrorReport;
     use crate::json_layer::json;
@@ -45,8 +45,8 @@ pub(crate) mod internals {
         assert_eq!(read.as_ref().ok(), Some(event), "{}: {read:?}", lines[0]);
     }
 
-    /// The lines the process's subscriber keeps, once a check installed it: statics, as tracing's
-    /// global subscriber takes no state of the test that holds it.
+    /// The lines the process's capture keeps, once a check or a binary's log put it in: statics,
+    /// as tracing's global subscriber takes no state of the test that holds it.
     static LINES: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
 
     /// The check the process's fixtures share, while one of them holds it.
@@ -55,7 +55,8 @@ pub(crate) mod internals {
     /// The events at Warn and Error that the code a test runs logs on any thread of its process,
     /// records of the `log` crate among them, as nextest runs each test in a process of its own.
     /// A test takes those it causes; when the process's last check drops, each event left fails
-    /// the test, as the LAN check fails a match that logs one.
+    /// the test, as the LAN check fails a match that logs one. In a binary that logs, as a check
+    /// that plays a fixture's match, the capture is a layer of the binary's own log.
     #[derive(Debug)]
     pub struct LogCheck(Arc<Kept>);
 
@@ -66,16 +67,23 @@ pub(crate) mod internals {
     }
 
     impl LogCheck {
-        /// The process's check: the one its fixtures share, or a new one; the first makes the
-        /// process's subscriber.
+        /// The process's check: the one its fixtures share, or a new one, which keeps none of the
+        /// events before it; the first makes the process's subscriber, unless a binary's log
+        /// holds the capture already.
         pub fn start() -> Self {
             let mut shared = SHARED.lock().unwrap_or_else(PoisonError::into_inner);
             if let Some(held) = shared.upgrade() {
                 return Self(held);
             }
-            let kept = Arc::new(Kept {
-                lines: Arc::clone(LINES.get_or_init(Kept::install)),
-            });
+            if LINES.get().is_none() {
+                tracing_subscriber::registry()
+                    .with(capture_layer())
+                    .try_init()
+                    .expect("a process's subscriber is a check's alone");
+            }
+            let lines = Arc::clone(LINES.get().expect("the capture keeps its lines"));
+            lines.lock().unwrap().clear();
+            let kept = Arc::new(Kept { lines });
             *shared = Arc::downgrade(&kept);
             Self(kept)
         }
@@ -99,22 +107,17 @@ pub(crate) mod internals {
         }
     }
 
-    impl Kept {
-        /// Makes the process's subscriber one that keeps its events at Warn and Error, with no
-        /// time, so a failure names the same lines in every run; its lines.
-        fn install() -> Arc<Mutex<Vec<u8>>> {
-            let lines = Arc::new(Mutex::new(Vec::new()));
-            let writer = {
-                let lines = Arc::clone(&lines);
-                move || Captured(Arc::clone(&lines))
-            };
-            let layer = json(writer).without_time().with_filter(LevelFilter::WARN);
-            tracing_subscriber::registry()
-                .with(layer)
-                .try_init()
-                .expect("a process's subscriber is a check's alone");
-            lines
-        }
+    /// The layer of the process's capture, which keeps its events at Warn and Error, with no
+    /// time, so a failure names the same lines in every run: the process's subscriber of a test,
+    /// or a layer of a binary's log. One in a process.
+    pub(crate) fn capture_layer() -> Box<dyn Layer<Registry> + Send + Sync> {
+        let lines = Arc::new(Mutex::new(Vec::new()));
+        assert!(
+            LINES.set(Arc::clone(&lines)).is_ok(),
+            "a process holds one capture"
+        );
+        let writer = move || Captured(Arc::clone(&lines));
+        Box::new(json(writer).without_time().with_filter(LevelFilter::WARN))
     }
 
     impl Drop for Kept {
