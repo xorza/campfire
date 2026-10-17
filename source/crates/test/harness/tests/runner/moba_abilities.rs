@@ -25,9 +25,9 @@ use campfire_package::{ModePackages, PackageFiles};
 use campfire_package_disk::PackageDir;
 use campfire_projectiles::Projectile;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
-use campfire_stats::{Life, PoolMeters, Pools, Stats};
+use campfire_stats::{PoolMeters, Pools, Stats};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{Body, ForcedMove, MoveStep, Owner, SeenBy};
+use campfire_units::{Body, ForcedMove, Life, MoveStep, Owner, SeenBy};
 use campfire_values::{
     ActionId, ModifierId, Number, Param, Rank, Ranked, Scalar, Scaling, Stat, Team,
 };

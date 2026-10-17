@@ -30,11 +30,10 @@ use campfire_runner::{
     SlotRuleError, SnapshotCheckError, StartError, TermsError, UncheckedSource,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
-use campfire_stats::Life;
 use campfire_store::internals::{PinnedFile, Scratch};
 use campfire_store::{AppendWriter, PathError, ReadError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::Destination;
+use campfire_units::{Destination, Life};
 use campfire_values::Rank;
 use campfire_verifier::{VerifyError, verify_file, verify_log};
 

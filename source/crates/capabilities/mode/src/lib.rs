@@ -390,10 +390,8 @@ pub mod internals {
         EntityIndex, IdAllocator, Position, SimTick, SimWorld, SlotEvent, SlotEventKind, StableId,
         TickInputs,
     };
-    use campfire_stats::{
-        Application, Life, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats,
-    };
-    use campfire_units::{Owner, SpawnAt, Spawner, Units};
+    use campfire_stats::{Application, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats};
+    use campfire_units::{Life, Owner, SpawnAt, Spawner, Units};
     use campfire_values::{NameId, PackageIndex, Rank, Stat, TagSet, Team, UnitType};
 
     use crate::Mode;

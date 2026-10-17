@@ -18,8 +18,8 @@ use campfire_declare::{
 };
 use campfire_math::RngStream;
 use campfire_sim::{Capability, SimSet};
-use campfire_stats::{Life, LifePool, StatsSet, TypePools};
-use campfire_units::{BodyUnit, Dead, Deaths, Due, SpawnPoint, UnitGrid, UnitsSet};
+use campfire_stats::{LifePool, StatsSet, TypePools};
+use campfire_units::{BodyUnit, Dead, Deaths, Due, Life, SpawnPoint, UnitGrid, UnitsSet};
 
 use crate::combat_column::RowReads;
 use crate::held_hits::HeldHits;
@@ -276,8 +276,8 @@ pub mod internals {
     use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{StableId, TickRate};
-    use campfire_stats::{Life, PoolBook, StatBook, StatRule, Stats};
-    use campfire_units::{PoolId, UnitTypeCore, Units};
+    use campfire_stats::{PoolBook, StatBook, StatRule, Stats};
+    use campfire_units::{Life, PoolId, UnitTypeCore, Units};
     use campfire_values::{DamageKind, Rank, RelationSet, Speed, Stat, UnitType};
 
     use crate::Combat;

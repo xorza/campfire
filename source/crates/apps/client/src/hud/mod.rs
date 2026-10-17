@@ -23,8 +23,8 @@ use bevy::transform::components::Transform;
 use campfire_actions::{ActionProgress, ActionSlots, SlotCharges, SlotTimes};
 use campfire_progression::{Learning, Points};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
-use campfire_stats::{Level, Life, Pools};
-use campfire_units::Dead;
+use campfire_stats::{Level, Pools};
+use campfire_units::{Dead, Life};
 use campfire_values::{Rank, Team};
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind, SlotPlace};

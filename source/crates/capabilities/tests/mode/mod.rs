@@ -50,12 +50,12 @@ use campfire_sim::{
     SlotEventKind, StableId, TickRate,
 };
 use campfire_stats::{
-    Application, Hold, Level, Life, ModePoolsData, ModeStatsData, ModifierClocks, ModifierData,
+    Application, Hold, Level, ModePoolsData, ModeStatsData, ModifierClocks, ModifierData,
     Modifiers, NewInstance, PlayerModifiers, PoolBook, Pools, Reapply, StatBook, StatRule,
     StatShare, Stats, TypePassive, UnitStats,
 };
 use campfire_units::{
-    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MapBook, MapPoint,
+    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, Life, MapBook, MapPoint,
     MetricData, ModeTagsData, MoveStep, Owner, PoolId, SyncAll, SyncNone, UnitTypeCore, Units,
     UnitsWorld,
 };

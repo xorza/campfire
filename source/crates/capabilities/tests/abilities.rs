@@ -48,13 +48,13 @@ use campfire_sim::{
     StateCopy,
 };
 use campfire_stats::{
-    Hold, IntervalRevival, Level, Life, LiveCarriers, ModifierBook, ModifierClocks, ModifierData,
+    Hold, IntervalRevival, Level, LiveCarriers, ModifierBook, ModifierClocks, ModifierData,
     Modifiers, Pools, StatBook, StatChange, StatGraph, StatOp, StatRule, StatValue, Stats,
     StatsData, UnitStats,
 };
 use campfire_units::{
-    Body, Dead, Destination, ForcedMove, MoveStep, Owner, PoolId, SyncNone, TagData, UnitState,
-    UnitTypeCore, Units,
+    Body, Dead, Destination, ForcedMove, Life, MoveStep, Owner, PoolId, SyncNone, TagData,
+    UnitState, UnitTypeCore, Units,
 };
 use campfire_values::{
     ActionId, ActionStart, Block, DamageKind, FilterData, NameId, Number, PackageIndex,

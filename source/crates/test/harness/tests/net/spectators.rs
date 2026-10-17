@@ -12,8 +12,7 @@ use campfire_net::{
     CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, WatchRequest,
 };
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
-use campfire_stats::Life;
-use campfire_units::{SpawnPoint, UnitsWorld};
+use campfire_units::{Life, SpawnPoint, UnitsWorld};
 use campfire_values::{Relations, Team, TeamSet};
 use lightyear::prelude::Replicate;
 

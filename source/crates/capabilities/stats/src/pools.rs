@@ -5,11 +5,10 @@ use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_sim::{SimComponent, TickRate};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_units::{PoolId, UnitEntity};
+use campfire_units::{Meter, PoolId, UnitEntity};
 use campfire_values::NameId;
 use serde::{Deserialize, Serialize};
 
-use crate::meter::Meter;
 use crate::pool_book::PoolBook;
 
 /// A unit's pools but its life, by pool id: each an amount from 0 to its maximum, none where its

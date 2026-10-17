@@ -1,19 +1,19 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::PerType;
+use campfire_declare::{ByType, PerType};
 use campfire_math::Num;
 use campfire_sim::{SimComponent, TickRate};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
 
 use crate::meter::Meter;
-use crate::pool_book::PoolBook;
+use crate::unit_entity::UnitEntity;
 
 /// A unit's life: its meter of the mode's life pool, which every client that sees the unit
-/// receives, where its other pools are `Pools`, of another kind. A unit holds it exactly when it
-/// has combat; `lives` says when the unit lives.
+/// receives, where its other pools are stats' `Pools`, of another kind. A unit holds it exactly
+/// when it has combat; `lives` says when the unit lives. A contract part: the action pipeline's
+/// living test reads it, and stats, which keeps the pools' maxima and regen, writes it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Life(Meter);
@@ -35,11 +35,11 @@ impl Life {
         self.0.is_empty()
     }
 
-    pub(crate) const fn meter(self) -> Meter {
+    pub const fn meter(self) -> Meter {
         self.0
     }
 
-    pub(crate) const fn meter_mut(&mut self) -> &mut Meter {
+    pub const fn meter_mut(&mut self) -> &mut Meter {
         &mut self.0
     }
 
@@ -71,13 +71,13 @@ impl SimComponent for Life {
     const NAME: &'static str = "stats.life";
     type Host = UnitEntity;
 
-    // A life in a match whose mode names no life pool has no pool's stats to follow; what its
-    // meter carries, regen adds, as `Pools` holds.
+    // A life in a match whose types have none, as a mode that names no life pool gives none, has
+    // no pool's stats to follow; what its meter carries, regen adds, as `Pools` holds.
     fn check(&self, world: &World, _: Entity) -> bool {
         let hz = world.resource::<TickRate>().hz().get();
         world
-            .get_resource::<PoolBook>()
-            .is_some_and(|book| book.life().is_some())
+            .get_resource::<ByType<Self>>()
+            .is_some_and(|lives| !lives.is_empty())
             && self.0.settled(hz)
     }
 }

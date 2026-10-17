@@ -9,8 +9,8 @@ use campfire_actions::ActionProgress;
 use campfire_declare::ByType;
 use campfire_deliveries::{Died, Teleported};
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
-use campfire_stats::{Life, UnitPools};
-use campfire_units::{Avatar, Dead, Owner, SpawnPoint};
+use campfire_stats::UnitPools;
+use campfire_units::{Avatar, Dead, Life, Owner, SpawnPoint};
 use campfire_units::{Deaths, Fallen};
 use campfire_values::{Team, UnitType};
 

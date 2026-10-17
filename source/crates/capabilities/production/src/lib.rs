@@ -292,7 +292,6 @@ pub mod internals {
     use campfire_math::Num;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{IdAllocator, StableId};
-    use campfire_stats::Life;
     use campfire_values::UnitType;
 
     use crate::Production;
@@ -303,7 +302,7 @@ pub mod internals {
     use crate::supply_book::SupplyBook;
     use crate::supply_cost_book::SupplyCostBook;
     use crate::supply_data::SupplyData;
-    use campfire_units::BuildTarget;
+    use campfire_units::{BuildTarget, Life};
 
     impl Production {
         /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.

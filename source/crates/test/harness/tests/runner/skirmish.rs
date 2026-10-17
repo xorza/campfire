@@ -12,9 +12,8 @@ use campfire_players::{HeldOut, PlayersWorld};
 use campfire_protocol::{InputRules, Outcome, SessionLog, SlotPlan};
 use campfire_runner::{Replay, SessionWorld};
 use campfire_sim::StableId;
-use campfire_stats::Life;
 use campfire_test_packages::TestMode;
-use campfire_units::{Dead, Units, UnitsWorld};
+use campfire_units::{Dead, Life, Units, UnitsWorld};
 use campfire_values::{Names, ResourceId, UnitType};
 
 /// The units of the type `name` that player `slot` owns, by stable id.

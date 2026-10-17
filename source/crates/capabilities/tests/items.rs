@@ -21,8 +21,8 @@ use campfire_players::{OutOfPlay, Players, PlayersWorld, ResourceAmount};
 use campfire_script::{Filter, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
-use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
-use campfire_units::{Dead, Owner, UnitTypeCore, Units};
+use campfire_stats::{Hold, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
+use campfire_units::{Dead, Life, Owner, UnitTypeCore, Units};
 use campfire_values::{
     ActionId, Block, ModifierId, NameId, PackageIndex, ResourceId, Team, UnitType,
 };

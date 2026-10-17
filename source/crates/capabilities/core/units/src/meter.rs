@@ -25,7 +25,7 @@ impl Meter {
         })
     }
 
-    pub(crate) const fn current(self) -> Num {
+    pub const fn current(self) -> Num {
         self.current
     }
 
@@ -33,7 +33,7 @@ impl Meter {
         self.max
     }
 
-    pub(crate) const fn is_empty(self) -> bool {
+    pub const fn is_empty(self) -> bool {
         self.current.to_bits() == 0
     }
 
@@ -43,14 +43,14 @@ impl Meter {
     }
 
     /// Empties it, its maximum kept.
-    pub(crate) const fn drain(&mut self) {
+    pub const fn drain(&mut self) {
         self.current = Num::ZERO;
         self.settle();
     }
 
     /// Sets the maximum to `max`, which is positive: a rise raises the current amount as much, a
     /// fall keeps it but at most the new maximum.
-    pub(crate) fn set_max(&mut self, max: Num) {
+    pub fn set_max(&mut self, max: Num) {
         debug_assert!(max > Num::ZERO, "a meter's maximum is positive");
         if max > self.max {
             self.current += max - self.max;
@@ -64,7 +64,7 @@ impl Meter {
     /// Adds a tick's share of `per_second` at `hz` ticks a second, within 0 and the maximum:
     /// the bits a second divided by `hz`, the remainder carried to the next tick, so `hz` ticks
     /// add exactly `per_second`. At either end the remainder is dropped.
-    pub(crate) fn regen(&mut self, per_second: Num, hz: u32) {
+    pub fn regen(&mut self, per_second: Num, hz: u32) {
         let total = i128::from(per_second.to_bits()) + i128::from(self.carry);
         let hz = i128::from(hz);
         let gain = total.div_euclid(hz);
@@ -109,7 +109,7 @@ impl Meter {
 
     /// Whether what it carries is what regen at `hz` ticks a second leaves: less than a bit, and
     /// nothing at either end.
-    pub(crate) const fn settled(self, hz: u32) -> bool {
+    pub const fn settled(self, hz: u32) -> bool {
         let ends = self.current.to_bits() == 0 || self.current.to_bits() == self.max.to_bits();
         self.carry < hz && !(ends && self.carry != 0)
     }

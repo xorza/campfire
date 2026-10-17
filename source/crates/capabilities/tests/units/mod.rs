@@ -26,7 +26,7 @@ use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, Restoring, SimComponent, SimTick, SimWorld,
     SnapshotError, StableId,
 };
-use campfire_stats::{Level, Life, StatRule, Stats, StatsRefusal};
+use campfire_stats::{Level, StatRule, Stats, StatsRefusal};
 use campfire_units::*;
 use campfire_values::{
     Block, PackageIndex, PathId, Scalar, Stat, Team, TeamSet, TypeScope, UnitTags, UnitType,

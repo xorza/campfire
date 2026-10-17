@@ -8,8 +8,7 @@ use campfire_script::{
     AnyKeptRows, ColumnRows, KeptRows, RowFill, RunMove, ScriptList, ScriptValue, ScriptWindow,
     Unit, ViewColumn,
 };
-use campfire_stats::Life;
-use campfire_units::Dead;
+use campfire_units::{Dead, Life};
 use campfire_values::{UnitTags, UnitType};
 
 use crate::on_death::OnDeath;
@@ -142,7 +141,7 @@ impl CombatColumn {
     /// may be a target, in the core's row; who struck it recently, in combat's column.
     pub(super) fn fill_row(parts: ROQueryItem<'_, '_, RowReads>, fill: &mut RowFill<'_, Self>) {
         let (dead, life, tags, recent) = parts;
-        fill.row.alive = campfire_stats::lives(dead, life);
+        fill.row.alive = campfire_units::lives(dead, life);
         fill.row.targetable = Targets::targetable(dead, life, tags);
         fill.column
             .push(recent.into_iter().flat_map(RecentAttackers::iter));

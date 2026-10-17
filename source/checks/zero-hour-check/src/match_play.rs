@@ -6,8 +6,7 @@ use campfire_math::{Num, Vec3};
 use campfire_protocol::ServerInput;
 use campfire_runner::SessionWorld;
 use campfire_sim::{Position, StableId};
-use campfire_stats::Life;
-use campfire_units::{HeldPlayerUnits, Units};
+use campfire_units::{HeldPlayerUnits, Life, Units};
 use campfire_values::UnitType;
 
 use crate::failure::Failure;

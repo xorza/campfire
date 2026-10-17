@@ -26,11 +26,11 @@ use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::{Replay, Session};
 use campfire_script::StateValue;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
-use campfire_stats::{Life, Modifiers, Stats, StatsWorld};
+use campfire_stats::{Modifiers, Stats, StatsWorld};
 use campfire_test_packages::TestMode;
 use campfire_units::{
-    DashTo, Dead, Destination, ForcedMove, MapBook, MoveStep, Owner, PoolId, SyncAll, SyncNone,
-    Units, UnitsWorld,
+    DashTo, Dead, Destination, ForcedMove, Life, MapBook, MoveStep, Owner, PoolId, SyncAll,
+    SyncNone, Units, UnitsWorld,
 };
 use campfire_values::{Names, PackageIndex, Relation, Relations, ResourceId, Team};
 use lightyear::prelude::{

@@ -19,8 +19,10 @@ use campfire_script::{
     ScriptsWorld, Unit,
 };
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
-use campfire_stats::{Life, PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
-use campfire_units::{ArrivedShort, Body, Dead, Destination, Due, ForcedMove, Owner, PoolPayer};
+use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
+use campfire_units::{
+    ArrivedShort, Body, Dead, Destination, Due, ForcedMove, Life, Owner, PoolPayer,
+};
 use campfire_values::{ActionId, DashDelivery, Motion, Rank, Team, UnitTags};
 
 use crate::Abilities;
@@ -260,7 +262,7 @@ impl Casts {
                 .expect("a due cast is under way");
             let slot = caster.slots.slot(underway.slot()).expect("a cast's slot");
             let motion = Motion::of(caster.forced);
-            let can_cast = campfire_stats::lives(false, caster.life)
+            let can_cast = campfire_units::lives(false, caster.life)
                 && !Caster::of(caster.tags, motion, caster.used).blocked(Some(slot), &book);
             if !can_cast {
                 caster.progress.interrupt();

@@ -3,8 +3,8 @@ use campfire_actions::{ActionBook, ActionSlots};
 use campfire_math::Num;
 use campfire_script::{Effect, Frame};
 use campfire_sim::{EntityIndex, StableId};
-use campfire_stats::{Life, UnitStats};
-use campfire_units::UnitsWorld;
+use campfire_stats::UnitStats;
+use campfire_units::{Life, UnitsWorld};
 use campfire_values::{DamageKind, TagSet, Team, UnitTags};
 
 use crate::damage::{Damage, DamageCause};

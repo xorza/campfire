@@ -14,8 +14,8 @@ use campfire_projectiles::*;
 use campfire_script::{Effect, Frame, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
-use campfire_stats::{Life, Stats};
-use campfire_units::{BodyForm, DashTo, Dead, Deaths, MapBook, SeenBy, UnitTypeCore, Units};
+use campfire_stats::Stats;
+use campfire_units::{BodyForm, DashTo, Dead, Deaths, Life, MapBook, SeenBy, UnitTypeCore, Units};
 use campfire_values::{FilterData, Team, TypeScope, UnitType};
 use campfire_vision::{Sight, Vision};
 

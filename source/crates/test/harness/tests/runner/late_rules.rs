@@ -11,8 +11,8 @@ use campfire_harness::{MatchUnits, Moba3v3};
 use campfire_math::Num;
 use campfire_mode::{MatchResult, ModeWorld};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_stats::{Life, Stats};
-use campfire_units::Dead;
+use campfire_stats::Stats;
+use campfire_units::{Dead, Life};
 use campfire_values::{PackageIndex, Team};
 
 use crate::runner::moba::{gold, run_to};

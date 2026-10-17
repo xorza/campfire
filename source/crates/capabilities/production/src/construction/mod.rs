@@ -8,9 +8,10 @@ use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
-use campfire_stats::{Life, StatsWorld, UnitPools};
+use campfire_stats::{StatsWorld, UnitPools};
 use campfire_units::{
-    Body, BuildTarget, Dead, Destination, GridBuild, MapBook, Owner, SpawnAt, Spawner, StatusTags,
+    Body, BuildTarget, Dead, Destination, GridBuild, Life, MapBook, Owner, SpawnAt, Spawner,
+    StatusTags,
 };
 use campfire_values::{Team, UnitTags};
 use campfire_vision::TeamSight;

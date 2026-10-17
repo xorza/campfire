@@ -25,8 +25,8 @@ use campfire_runner::SessionWorld;
 use campfire_script::{ScriptFailures, ScriptHost, StateValue};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
-use campfire_stats::{Level, Life, Stats};
-use campfire_units::{Dead, Deaths, Owner};
+use campfire_stats::{Level, Stats};
+use campfire_units::{Dead, Deaths, Life, Owner};
 use campfire_values::{PackageIndex, Rank, Scalar, Team, UnitType};
 
 use crate::runner::match_3v3::showcase::Showcase;

@@ -3,10 +3,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryData};
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_units::{Dead, PoolCost, PoolId, PoolPayer, PoolPurse};
+use campfire_units::{Dead, Life, Meter, PoolCost, PoolId, PoolPayer, PoolPurse, lives};
 
-use crate::life::{self, Life};
-use crate::meter::Meter;
 use crate::pool_book::PoolBook;
 use crate::pools::Pools;
 
@@ -40,9 +38,9 @@ pub struct PoolMetersMut<'a> {
 }
 
 impl<'w> UnitPoolsItem<'w, '_> {
-    /// Whether the unit lives, as `life::lives` says.
+    /// Whether the unit lives, as `lives` says.
     pub fn lives(&self) -> bool {
-        life::lives(self.dead, self.life.as_deref())
+        lives(self.dead, self.life.as_deref())
     }
 
     /// Its pools, the life pool `life_pool`.
@@ -66,9 +64,9 @@ impl<'w> UnitPoolsItem<'w, '_> {
 }
 
 impl<'w> UnitPoolsReadOnlyItem<'w, '_> {
-    /// Whether the unit lives, as `life::lives` says.
+    /// Whether the unit lives, as `lives` says.
     pub fn lives(&self) -> bool {
-        life::lives(self.dead, self.life)
+        lives(self.dead, self.life)
     }
 
     /// Its pools, the life pool `life_pool`.

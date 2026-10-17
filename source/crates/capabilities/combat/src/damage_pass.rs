@@ -12,10 +12,10 @@ use campfire_math::{Num, Rounding};
 use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorld};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
-    CarriedMut, Life, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatId,
-    StatsWorld, UnitStats,
+    CarriedMut, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatId, StatsWorld,
+    UnitStats,
 };
-use campfire_units::{Avatar, Deaths, Fallen, Owner, TagEffect};
+use campfire_units::{Avatar, Deaths, Fallen, Life, Owner, TagEffect};
 use campfire_values::{Block, NameId, Team, UnitTags, UnitType};
 
 use crate::armor::Armor;

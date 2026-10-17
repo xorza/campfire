@@ -14,8 +14,7 @@ use campfire_production::{Site, TrainQueue};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputRules, SlotPlan};
 use campfire_sim::StableId;
-use campfire_stats::Life;
-use campfire_units::{BuildTarget, UnitsWorld};
+use campfire_units::{BuildTarget, Life, UnitsWorld};
 use campfire_values::{Names, ResourceId};
 
 use crate::failure::Failure;

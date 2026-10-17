@@ -7,8 +7,7 @@ use campfire_declare::ByType;
 use campfire_deliveries::{DeliveryQueue, Died, Teleported};
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, StableId};
-use campfire_stats::Life;
-use campfire_units::{BodyUnit, UnitsNear};
+use campfire_units::{BodyUnit, Life, UnitsNear};
 use campfire_values::{Team, UnitType};
 
 use crate::flight_state::FlightState;

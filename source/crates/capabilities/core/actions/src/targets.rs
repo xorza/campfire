@@ -6,8 +6,7 @@ use campfire_math::{Num, Vec3};
 use campfire_players::OnMatch;
 use campfire_script::LivingUnit;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
-use campfire_stats::Life;
-use campfire_units::{Body, Dead, MapBook};
+use campfire_units::{Body, Dead, Life, MapBook};
 use campfire_values::{Block, Relation, Relations, TagSet, Team, UnitTags};
 
 /// The units an attack may target: units with a life that live by `stats`' living test, whose
@@ -88,7 +87,7 @@ impl Targets<'_, '_> {
     /// let it be one. This is the one rule of a target, which the script view reads too.
     pub fn targetable(dead: bool, life: Option<&Life>, tags: Option<&UnitTags>) -> bool {
         life.is_some()
-            && campfire_stats::lives(dead, life)
+            && campfire_units::lives(dead, life)
             && !tags.is_some_and(|tags| tags.properties.blocks(Block::Target))
     }
 
@@ -105,7 +104,7 @@ impl Targets<'_, '_> {
     pub fn living_at(&self, entity: Entity) -> Option<LivingUnit> {
         let row = self.units.get(entity).ok()?;
         let (_, _, _, life, _, _) = row;
-        campfire_stats::lives(false, Some(life)).then(|| Targets::body(row))
+        campfire_units::lives(false, Some(life)).then(|| Targets::body(row))
     }
 
     /// The unit of `entity`, when a living unit that may be a target.

@@ -1,12 +1,11 @@
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, Fact, NamesListError, SourceType};
 use campfire_math::Num;
 use campfire_script::{NameKind, UnknownName};
+use campfire_units::{Life, Meter};
 use campfire_values::{NameId, Stat};
 
 use crate::error::UnitStartError;
-use crate::life::Life;
 use crate::life_pool::LifePool;
-use crate::meter::Meter;
 use crate::mode_pools_data::ModePoolsData;
 use crate::pool_names::PoolNames;
 use crate::pools::Pools;

@@ -10,8 +10,8 @@ use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, StableId};
-use campfire_stats::{Life, Pools};
-use campfire_units::{MoveStep, Owner, UnitTypeCore, Units};
+use campfire_stats::Pools;
+use campfire_units::{Life, MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{ActionId, PackageIndex, Rank, Team, TypeScope, UnitType};
 
 use crate::fixtures::actions::ActionsFixtures;

@@ -8,8 +8,7 @@ use campfire_script::FailureKind;
 use campfire_script::{ApiError, ScriptLimits, ScriptPools, Unit};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
-use campfire_stats::Life;
-use campfire_units::{BodyForm, Dead, UnitTypeCore, Units, UnitsWorld};
+use campfire_units::{BodyForm, Dead, Life, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope, VisionShare};
 use campfire_vision::*;
 

@@ -12,8 +12,8 @@ use campfire_orders::OrdersAction;
 use campfire_protocol::SessionLog;
 use campfire_runner::{Replay, Session};
 use campfire_sim::{Position, SimWorld, StableId};
-use campfire_stats::{Life, Pools};
-use campfire_units::{Body, Dead, PoolId, SeenBy};
+use campfire_stats::Pools;
+use campfire_units::{Body, Dead, Life, PoolId, SeenBy};
 use campfire_values::{NameId, Team};
 
 const MATCH_TICKS: u64 = 600;

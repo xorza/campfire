@@ -9,13 +9,11 @@ use campfire_script::{
     View, ViewColumn,
 };
 use campfire_sim::StableId;
-use campfire_units::PoolId;
+use campfire_units::{Life, Meter, PoolId};
 use campfire_values::{ActionId, ModifierId, NameId, Rank};
 
 use crate::error::StatsRefusal;
 use crate::level::Level;
-use crate::life::Life;
-use crate::meter::Meter;
 use crate::modifier_book::ModifierBook;
 use crate::modifier_handle::{HandleOf, ModifierHandle};
 use crate::modifiers::Modifiers;

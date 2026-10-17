@@ -49,12 +49,10 @@ mod instance;
 mod interval;
 mod interval_revival;
 mod level;
-mod life;
 mod life_pool;
 mod lifetime;
 mod live_carriers;
 mod live_param;
-mod meter;
 mod mode_pools_data;
 mod mode_stats_data;
 mod modifier_adds;
@@ -120,12 +118,10 @@ pub use crate::instance::{Instance, StackEnd, StatShare};
 pub use crate::interval::Interval;
 pub use crate::interval_revival::IntervalRevival;
 pub use crate::level::Level;
-pub use crate::life::{Life, lives};
 pub use crate::life_pool::LifePool;
 pub use crate::lifetime::{Ends, Hold, Lifetime};
 pub use crate::live_carriers::LiveCarriers;
 pub use crate::live_param::{LiveParam, ParamOwner};
-pub use crate::meter::Meter;
 pub use crate::mode_pools_data::ModePoolsData;
 pub use crate::mode_stats_data::ModeStatsData;
 pub use crate::modifier_book::{ModifierBook, ModifierEntry, ModifierLoad, PackageModifier};
@@ -484,14 +480,13 @@ pub mod internals {
     use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId, TickRate};
-    use campfire_units::{ScriptBook, UnitTypeBook, Units};
+    use campfire_units::{Life, ScriptBook, UnitTypeBook, Units};
     use campfire_values::{
         ActionId, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet, UnitType,
     };
 
     use crate::Stats;
     use crate::applier::Applier;
-    use crate::life::Life;
     use crate::lifetime::Hold;
     use crate::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
     use crate::modifier_data::ModifierData;

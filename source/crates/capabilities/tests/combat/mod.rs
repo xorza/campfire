@@ -32,12 +32,12 @@ use campfire_sim::{
     StableId, Unpredicted,
 };
 use campfire_stats::{
-    Application, Ends, Life, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance,
-    PoolBook, Pools, StatBook, StatId, StatRule, Stats, StatsSet,
+    Application, Ends, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance, PoolBook,
+    Pools, StatBook, StatId, StatRule, Stats, StatsSet,
 };
 use campfire_units::{
-    BodyForm, Dead, Deaths, Fallen, MapBook, Owner, PoolCost, PoolId, SpawnPoint, UnitTypeCore,
-    Units, UnitsWorld,
+    BodyForm, Dead, Deaths, Fallen, Life, MapBook, Owner, PoolCost, PoolId, SpawnPoint,
+    UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
     ActionId, Block, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, Rank,
