@@ -1,7 +1,7 @@
 use std::num::NonZeroU8;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// A unit type's `inventory` section: how many slots it carries items in, at least one, and the

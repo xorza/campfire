@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
-use campfire_values::DeclaredName;
+use campfire_common::DeclaredName;
 
 use crate::zero_hour::error::{NameClash, TypeError};
 use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;

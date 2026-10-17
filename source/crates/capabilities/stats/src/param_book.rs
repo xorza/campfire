@@ -2,11 +2,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{ParamProblem, View};
 use campfire_sim::TickRate;
-use campfire_values::{ActionId, DeclaredName, ModifierId, NameId, Names, Param, Rank, Stat};
+use campfire_values::{ActionId, ModifierId, NameId, Names, Param, Rank, Stat};
 
 use crate::applier_param::ApplierParam;
 use crate::live_param::{LiveParam, ParamOwner};
@@ -237,7 +238,8 @@ pub(crate) mod internals {
     use std::convert::Infallible;
     use std::sync::Arc;
 
-    use campfire_values::{DeclaredName, Names, Param, Stat};
+    use campfire_common::DeclaredName;
+    use campfire_values::{Names, Param, Stat};
 
     use crate::applier_param::ApplierParam;
     use crate::param_book::{ApplierPlaces, ParamBook};

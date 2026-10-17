@@ -1,5 +1,5 @@
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// A unit type's `uses` section, which lets its units use objects: the mode's slot kind of the one

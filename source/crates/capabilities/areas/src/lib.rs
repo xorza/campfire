@@ -151,12 +151,13 @@ impl Areas {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
+    use campfire_common::DeclaredName;
     use campfire_declare::ByType;
     use campfire_script::{NameKind, UnknownName};
     use campfire_sim::TickRate;
     use campfire_stats::Stats;
     use campfire_units::{UnitTypeBook, Units};
-    use campfire_values::{DeclaredName, PackageIndex, UnitType};
+    use campfire_values::{PackageIndex, UnitType};
 
     use crate::Areas;
     use crate::area_data::AreaData;

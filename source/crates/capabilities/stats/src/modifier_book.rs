@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{
@@ -8,9 +9,7 @@ use campfire_script::{
 };
 use campfire_sim::TickRate;
 use campfire_units::{ScriptBook, StatusTags};
-use campfire_values::{
-    ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet,
-};
+use campfire_values::{ActionId, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet};
 
 use crate::application::{Adding, Application, ApplyAt, NewInstance};
 use crate::applier_param::ApplierParam;

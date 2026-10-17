@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, MessageId};
+use campfire_values::MessageId;
 use serde::Deserialize;
 
 /// An item type, `[items.<id>]` of the mode package: the message of the name players see; what it

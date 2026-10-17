@@ -1,6 +1,6 @@
+use campfire_common::DeclaredName;
 use campfire_geometry::{BodyBox, MAX_BOUND, Radius};
 use campfire_math::Num;
-use campfire_values::DeclaredName;
 use serde::{Serialize, Serializer};
 
 use crate::zero_hour::error::TypeError;

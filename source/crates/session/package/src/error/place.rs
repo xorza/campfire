@@ -1,4 +1,5 @@
-use campfire_values::{DeclaredName, PackagePath};
+use campfire_common::DeclaredName;
+use campfire_values::PackagePath;
 use derive_more::Display;
 
 use crate::files::package_name::PackageName;

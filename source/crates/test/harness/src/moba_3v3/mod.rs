@@ -3,7 +3,7 @@ use std::iter;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, UseGroup};
 use campfire_capabilities::{Action, Order};
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{DeclaredName, PlayerSlot, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
 use campfire_items::{Inventory, ItemId, ItemsAction};
 use campfire_math::Num;
@@ -16,7 +16,7 @@ use campfire_sim::{Position, StableId};
 use campfire_stats::Life;
 use campfire_test_packages::TestMode;
 use campfire_units::Dead;
-use campfire_values::{DeclaredName, Names, Team};
+use campfire_values::{Names, Team};
 
 use crate::fixed_session::FixedSession;
 use crate::fixed_session::fixed_match::FixedMatch;

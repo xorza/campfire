@@ -270,8 +270,9 @@ impl Install {
     }
 
     /// The archives under `dir`, `at` its path in the install: each file, or link to one, whose
-    /// name ends in `.big`, ignoring case, as the game's search finds them. A name that is not
-    /// UTF-8 sorts by its lossy text, and opens by its own.
+    /// name ends in `.big`, ignoring case, as the game's search finds them, a link by its
+    /// target's path, as a read follows no link. A name that is not UTF-8 sorts by its lossy
+    /// text, and opens by its own.
     fn find(dir: &Path, at: &str, found: &mut Vec<Found>) -> Result<(), ZeroHourError> {
         for entry in DirEntries::read(dir)? {
             let name = format!("{at}{}", entry.name.to_string_lossy());
@@ -281,7 +282,11 @@ impl Install {
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("big"));
             match entry.kind {
                 EntryKind::Dir => Self::find(&path, &format!("{name}/"), found)?,
-                EntryKind::File | EntryKind::Link if big => found.push(Found { name, path }),
+                EntryKind::File if big => found.push(Found { name, path }),
+                EntryKind::Link if big => {
+                    let path = DirEntries::link_target(&path)?;
+                    found.push(Found { name, path });
+                }
                 EntryKind::File | EntryKind::Link | EntryKind::Other => {}
             }
         }

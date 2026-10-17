@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use campfire_codec::Toml;
+use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_values::DeclaredName;
 use serde::Serialize;
 
 use crate::zero_hour::combat_import::CombatImport;

@@ -5,6 +5,7 @@ use std::time::SystemTime;
 
 use crate::input_file::error::ReadError;
 use crate::path_error::PathError;
+use crate::platform::no_follow::NoFollow;
 
 pub(crate) mod error;
 
@@ -123,10 +124,11 @@ impl InputFile {
         open().map_err(PathError::at(path))
     }
 
-    /// The regular file at `path`, open, with its metadata. The path's kind is checked before
-    /// it opens, as PostgreSQL checks a key file's: an open of a pipe waits for a writer, and
-    /// Windows opens no directory as a file. The handle's own kind is checked again after, so a
-    /// file swapped in between is still refused.
+    /// The regular file at `path`, open, with its metadata; `Link` when its last name is a
+    /// link, which is not followed. The path's kind is checked before it opens, as PostgreSQL
+    /// checks a key file's: an open of a pipe waits for a writer, and Windows opens no directory
+    /// as a file. The open follows no link and the handle's own kind is checked again after, so
+    /// a file or a link swapped in between is still refused.
     pub(crate) fn open(path: &Path) -> Result<Opened, ReadError> {
         let missing = |error: io::Error| {
             if error.kind() == io::ErrorKind::NotFound {
@@ -135,10 +137,16 @@ impl InputFile {
                 ReadError::Read(error)
             }
         };
-        if !fs::metadata(path).map_err(missing)?.is_file() {
+        let named = fs::symlink_metadata(path).map_err(missing)?;
+        if named.is_symlink() {
+            return Err(ReadError::Link);
+        }
+        if !named.is_file() {
             return Err(ReadError::NotFile);
         }
-        let file = File::open(path).map_err(missing)?;
+        let file = NoFollow::open(path)
+            .map_err(missing)?
+            .ok_or(ReadError::Link)?;
         let metadata = file.metadata().map_err(ReadError::Read)?;
         if !metadata.is_file() {
             return Err(ReadError::NotFile);

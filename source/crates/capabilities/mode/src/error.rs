@@ -1,9 +1,9 @@
-use campfire_common::EnumAll;
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_geometry::PolygonError;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use campfire_units::GroundError;
-use campfire_values::{DeclaredName, Scalar};
+use campfire_values::Scalar;
 use thiserror::Error;
 
 /// A list of the mode's names, as its data gives it.

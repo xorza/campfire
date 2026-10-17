@@ -1,5 +1,6 @@
+use campfire_common::DeclaredName;
 use campfire_script::UnknownName;
-use campfire_values::{DeclaredName, TimeTooLarge};
+use campfire_values::TimeTooLarge;
 use thiserror::Error;
 
 use crate::action_data::error::{ActionField, EffectRule};

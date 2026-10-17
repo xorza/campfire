@@ -18,7 +18,7 @@ use campfire_combat::{
     CombatBook, Damage, DamageCause, DamagePass, Heal, HealCause, ModeCombatData, OnDeath,
     PassEntry, RecentAttackers, Respawn,
 };
-use campfire_common::{PlayerSlot, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, Ticks};
 use campfire_declare::{Book, ByType};
 use campfire_geometry::{Bounds, Grid, Metric};
 use campfire_items::Inventory;
@@ -53,9 +53,9 @@ use campfire_units::{
     Owner, Player, SyncAll, SyncNone, UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, MessageId, ModifierId, Names,
-    Number, PackageIndex, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar,
-    Stat, Team, TrackId, TypeScope, UnitTags, UnitType,
+    ActionId, DamageKind, EngineEnum, FilterData, MessageId, ModifierId, Names, Number,
+    PackageIndex, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat,
+    Team, TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
 

@@ -640,14 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 3: boundaries
 
-**3.3 Secrets and spellings.** Touches `net` (key file), `protocol` (signer, delegation), `common`, `values`, `store`, `math`.
-- An owned `ServerKey` and an `Arc<Signer>`. `Secret` is not `Copy` and is zeroed on drop (N-19).
-- The delegation's expiration has one decimal spelling (N-28).
-- Reads open with no-follow flags behind `platform` (B-16).
-- `Flat::length_squared` computes in `u128` (B-26).
-- One name newtype with a length bound (B-12).
-- `Value32` writes as hex in text formats (B-14).
-
 **3.4 Tests that can fail.** Touches `rules`, `log`, `common` (allocation audit), the release tests and the harness.
 - `LogCheck` and the allocation audit become global for each process (B-2).
 - The layers come from `cargo metadata`, with one manifest reader. Tests hold that no crate of the sim's closure has `store`, `tracing` or `log`, and that `protocol` has no `store` (B-3, B-4).
@@ -1158,7 +1150,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-14 | The server keeps the whole session in memory and publishes from it, against 10-sessions.md | `session_log/mod.rs:87-88`, `session_dir/mod.rs:178-220` | Confirmed drift | 6.4 |
 | N-17 | `SessionLog` has 21 fields, a hidden replay mode and a signature mode | `session_log/mod.rs:77-120, 1137-1144` | Confirmed | 6.4 |
 | N-18 | A slot's controller has four types, and the link-to-slot fact three maps kept equal by hand | `slot_control.rs:30-40`, `controller.rs:184-193`, `log_carry.rs:227-273`, `door.rs:242-293` | Confirmed | 6.4 |
-| N-19, B-25 | The server's key and the segment seed are `Copy` values in several places, never erased, and `Secret` compares in variable time | `key_file/mod.rs:16-45`, `server_setup.rs:9-13`, `secret.rs:11-12` | Confirmed copies | 3.3 |
 | N-20 | Package facts are copied into the session, and every caller builds the session rules again | `session/mod.rs:34-93`, `session_rules/mod.rs:55-65` | Confirmed | 6.2 |
 | N-21 | A data directory holds one unpublished session | `session_dir/mod.rs:111-145` | Confirmed | 11.2 |
 | N-22 | All apps in a process share the global compute pool, whose scope runs other apps' tasks | `sim_server_plugins.rs:27`, `bevy_tasks task_pool.rs:310-330` | Plausible | 11.2 |
@@ -1167,7 +1158,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-25 | Small allocations for each message on the network paths | `offering.rs:259-263`, `input_ack.rs:18-27`, `chain_history/mod.rs:45-52` | Confirmed | 6.5 |
 | N-26, B-19 | `net` depends on `combat` for a log line and on `vision` for interest | `sim_server/mod.rs:16, 654-665`, `team_rooms.rs:4`, `kind_shows.rs:13` | Confirmed | 5.5 |
 | N-27, B-18 | Every capability's data rules live in `package`'s one load check, so `package` depends on five capability crates | `load_check.rs` (2,237 lines), `error/load_problem.rs:1-12` | Confirmed | 4.4 |
-| N-28 | A delegation's expiration accepts several spellings | `delegation/mod.rs:130, 182-187` | Confirmed | 3.3 |
 | N-29 | A test's per-tick hash runs in the production schedule, and an error variant names the wrong fingerprint | `sim_server/mod.rs:224, 473-476`, `session/error.rs:37` | Confirmed | 6.2 |
 
 ### The client, the importer and the checks
@@ -1208,16 +1198,12 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | B-8 | `checked_step_toward` divides by a length that was already rounded | `vec3/mod.rs:172-200` | Confirmed path | 12.1 |
 | B-9 | The lane root and lane division rest on IEEE default rounding, which 09 says they do not | `simd/u64x4/mod.rs:18-43`, `simd/i64x4/mod.rs:88-97` | Confirmed | 12.1 |
 | B-10 | Math's inline `div` is `unsafe` that no outside API asks for, with no recorded decision | `wide_division/x86_64.rs:14-26` | Confirmed | 12.1 |
-| B-12 | `MapName` and `DeclaredName` copy one grammar, with no length bound and two allocations for each decode | `map_name/mod.rs:16-41`, `declared_name.rs:15-46` | Confirmed | 3.3 |
 | B-13 | Two member lists for each named enum, and a linear search on each encode | `common-derive/src/lib.rs:47-105`, `named_enum.rs:19-44` | Confirmed | 12.1 |
-| B-14 | A 32-byte value displays as hex but serializes as 32 numbers in text formats | `value32/mod.rs:120-130` | Confirmed | 3.3 |
-| B-16 | `store` reads follow links, against 02 Storage | `input_file/mod.rs:130-146`, `secret_file/mod.rs:29` | Confirmed | 3.3 |
 | B-20 | `quic` depends on `log` for `ErrorReport` alone | `quic/Cargo.toml`, `error_report/mod.rs` | Confirmed | 12.1 |
 | B-21 | Features the build does not use: `bevy_ecs` defaults, `reflect_auto_register`, Rhai's module system | `Cargo.toml:154, 165, 198` | Confirmed | 8.3, 12.2 |
 | B-22 | The forks are patched by branch, not by revision | `Cargo.toml:386-416` | Confirmed | 12.2 |
 | B-23 | `miniz_oxide` is pinned beside Bevy's own version | `Cargo.toml:188` | Confirmed | 12.2 |
 | B-24 | The archetype watch starts after the spawn, so "spawns whole" has no test | `archetype_watch.rs:10-14` | Confirmed | 7.5 |
-| B-26 | `Flat::length_squared` overflows on its own domain | `flat.rs:37-48` | Confirmed | 3.3 |
 
 ### The older review's open items
 

@@ -1,4 +1,4 @@
-use campfire_codec::Binary;
+use campfire_codec::{Binary, Json};
 
 use super::*;
 
@@ -31,6 +31,12 @@ fn a_value_writes_as_hex_reads_back_and_encodes_as_its_bytes() {
     let encoded = Binary::encode(&value);
     assert_eq!(encoded, Binary::encode(&bytes));
     assert_eq!(Binary::decode::<Value32<Probe>>(&encoded).unwrap(), value);
+    // A text format writes its hex, the one spelling it reads back.
+    let json = Json::write(&value);
+    assert_eq!(json, format!("\"{written}\""));
+    assert_eq!(Json::parse::<Value32<Probe>>(&json).unwrap(), value);
+    let upper = format!("\"{}\"", written.to_uppercase());
+    assert!(Json::parse::<Value32<Probe>>(&upper).is_err());
     // Values order by their bytes; a content meaning's is the SHA-256 of its bytes.
     assert!(Value32::<Probe>::new([0; 32]) < value);
     assert_eq!(

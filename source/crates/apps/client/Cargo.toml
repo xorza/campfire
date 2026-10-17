@@ -24,6 +24,7 @@ campfire-orders.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
 campfire-players.workspace = true
+campfire-protocol.workspace = true
 campfire-production.workspace = true
 campfire-progression.workspace = true
 campfire-projectiles.workspace = true

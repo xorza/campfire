@@ -9,7 +9,7 @@ use bevy_ecs::world::EntityRef;
 use campfire_actions::ActionProgress;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
-use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, Tick, Ticks};
 use campfire_harness::{End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
@@ -31,7 +31,7 @@ use campfire_units::{
     DashTo, Dead, Destination, ForcedMove, MapBook, MoveStep, Owner, SyncAll, SyncNone, Units,
     UnitsWorld,
 };
-use campfire_values::{DeclaredName, Names, PackageIndex, Relation, Relations, ResourceId, Team};
+use campfire_values::{Names, PackageIndex, Relation, Relations, ResourceId, Team};
 use lightyear::prelude::{
     Client, Connected, Link, MessageSender, Predicted, PredictionManager, PredictionTarget,
     Replicate, RollbackMode,

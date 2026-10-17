@@ -1,12 +1,15 @@
 use secp256k1::{Keypair, Secp256k1, SignOnly, XOnlyPublicKey};
+use zeroize::Zeroizing;
 
 use crate::entropy::Entropy;
 use crate::signature::Signature;
 use crate::signed::{self, Signed};
 
 /// A key that signs, the context its signatures take, and what fills their randomness: each
-/// signature takes fresh auxiliary randomness, as BIP-340 recommends against side channels.
-#[derive(Debug, Clone)]
+/// signature takes fresh auxiliary randomness, as BIP-340 recommends against side channels. It
+/// is its key's one owner: not `Clone`, shared by `Arc`, and it erases the key as it drops or
+/// renews it.
+#[derive(Debug)]
 pub struct Signer {
     key: Keypair,
     secp: Secp256k1<SignOnly>,
@@ -24,8 +27,13 @@ impl Signer {
 
     /// Takes a new key, from fresh randomness, as a player renews their delegation.
     pub fn renew(&mut self) {
-        let entropy = self.entropy;
-        self.key = entropy.keypair();
+        self.key.non_secure_erase();
+        self.key = self.entropy.keypair();
+    }
+
+    /// The key's secret, which derives the keys of other protocols, as the server's TLS key.
+    pub fn secret_bytes(&self) -> Zeroizing<[u8; 32]> {
+        Zeroizing::new(self.key.secret_bytes())
     }
 
     pub fn public_key(&self) -> XOnlyPublicKey {
@@ -61,5 +69,11 @@ impl Signer {
             .secp
             .sign_schnorr_with_aux_rand(message, &self.key, &aux);
         Signature::from_bytes(signature.to_byte_array())
+    }
+}
+
+impl Drop for Signer {
+    fn drop(&mut self) {
+        self.key.non_secure_erase();
     }
 }

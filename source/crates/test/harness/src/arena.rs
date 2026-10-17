@@ -2,7 +2,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_actions::Actions;
 use campfire_capabilities::{Match, Order};
-use campfire_common::PlayerSlot;
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_math::Vec3;
 use campfire_mode::Mode;
 use campfire_package::ModePackages;
@@ -11,7 +11,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimWorld, StableId, TickRate};
 use campfire_stats::{PoolId, Stats};
 use campfire_test_packages::PackageTree;
-use campfire_values::{ActionId, DeclaredName, ModifierId, Names, PackageIndex, Team};
+use campfire_values::{ActionId, ModifierId, Names, PackageIndex, Team};
 use campfire_vision::Vision;
 
 use campfire_runner::MatchBuild;

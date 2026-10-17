@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
-use campfire_common::Ticks;
+use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable, StateDecl};
 use campfire_sim::TickRate;
-use campfire_values::{DeclaredName, FilterData, Number, PackagePath, Param, Stat};
+use campfire_values::{FilterData, Number, PackagePath, Param, Stat};
 use serde::Deserialize;
 
 use crate::error::ModifierProblem;

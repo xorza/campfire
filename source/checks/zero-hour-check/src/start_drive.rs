@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_capabilities::Order;
+use campfire_common::DeclaredName;
 use campfire_geometry::Shape;
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
@@ -9,7 +10,6 @@ use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
 use campfire_sim::Position;
 use campfire_units::{Body, Destination};
-use campfire_values::DeclaredName;
 
 use crate::failure::Failure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};

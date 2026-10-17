@@ -1,8 +1,9 @@
+use campfire_common::DeclaredName;
 use campfire_geometry::{Grid, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
 use campfire_units::{Body, MapBook};
-use campfire_values::{DeclaredName, UnitType};
+use campfire_values::UnitType;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::error::MapProblem;

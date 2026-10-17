@@ -13,7 +13,6 @@ use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
 use campfire_log::ErrorReport;
 use campfire_mode::OptionValue;
 use campfire_package::ModePackages;
-use campfire_protocol::Signer;
 use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_sim::TickRate;
 use campfire_store::Worker;
@@ -124,15 +123,17 @@ impl LocalServer {
             os,
         } = setup;
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
-        let key = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
+        let signer = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
             .map_err(LocalServerError::Key)?;
+        let signer = Arc::new(signer);
+        let key = signer.public_key();
         Self::end_earlier(Publisher {
             data: &dir,
             packages: &packages,
-            signer: &Signer::new(key, os.entropy),
+            signer: &signer,
         })?;
         let server = ServerSetup {
-            key,
+            signer,
             times: SessionTimes::DEFAULT,
             os,
         };
@@ -177,7 +178,7 @@ impl LocalServer {
         Ok(Self {
             stop,
             pin: ServerPin {
-                key: key.x_only_public_key().0,
+                key,
                 tls_key: TLS_KEY,
                 tick_hz,
             },

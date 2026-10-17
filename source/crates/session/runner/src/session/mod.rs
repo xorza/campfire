@@ -73,7 +73,7 @@ impl Session {
         let server_seed = seeds
             .seed(segment)
             .expect("the seeds reach the log's last segment");
-        let seed = header.segment_seed(segment, &server_seed);
+        let seed = header.segment_seed(segment, server_seed);
         let rules = SlotRules::new(packages.data().players);
         for &change in log.changes() {
             rules
@@ -239,7 +239,7 @@ impl Session {
             .seeds
             .seed(self.log.segment())
             .expect("the seeds reach the log's last segment");
-        self.log.reveal_seed(last);
+        self.log.reveal_seed(last.clone());
     }
 
     pub const fn log(&self) -> &SessionLog {

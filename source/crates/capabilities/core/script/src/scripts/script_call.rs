@@ -27,10 +27,14 @@ impl CallPart for ScriptCall {
     const COMMITS: Commit = Commit::AfterEffects;
 
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
-        let opener = world.resource::<SimRng>().opener();
-        if self.opener != Some(opener) {
+        let rng = world.resource::<SimRng>();
+        if !self
+            .opener
+            .as_ref()
+            .is_some_and(|opener| opener.is_current(rng))
+        {
             self.open.clear();
-            self.opener = Some(opener);
+            self.opener = Some(rng.opener());
         }
         self.drawer = start.acting;
         Ok(())
@@ -59,7 +63,7 @@ impl ScriptCall {
         let at = match self.open.binary_search_by_key(&drawer, |&(held, _)| held) {
             Ok(at) => at,
             Err(at) => {
-                let opener = self.opener.expect("a call began");
+                let opener = self.opener.as_ref().expect("a call began");
                 let rng = match drawer {
                     Some(unit) => opener.open(UNIT_DRAWS, unit),
                     None => opener.open(MODE_DRAWS, StableId::MATCH),
@@ -87,7 +91,7 @@ mod tests {
         let mut ids = IdAllocator::default();
         let units: [StableId; 4] = array::from_fn(|_| ids.allocate());
         let mut call = ScriptCall {
-            opener: Some(opener),
+            opener: Some(opener.clone()),
             ..ScriptCall::default()
         };
         // Drawers out of id order, the mode among them, and each again later.

@@ -1,11 +1,10 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
-use campfire_common::{MapName, PackageFingerprint, Version};
+use campfire_common::{DeclaredName, MapName, PackageFingerprint, Version};
 use campfire_mode::{OptionData, OptionPicks};
 use campfire_package::{ModePackages, TickRange};
 use campfire_protocol::{InputRules, SeedCommitment, SessionTerms, SlotPlan};
-use campfire_values::DeclaredName;
 use campfire_visibility::{ModeVisibility, Visibility};
 use secp256k1::XOnlyPublicKey;
 

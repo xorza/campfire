@@ -383,8 +383,7 @@ impl SessionLog {
 
     /// Every segment's server seed, once the log is published.
     pub fn revealed_seeds(&self) -> Option<ServerSeeds> {
-        self.revealed
-            .map(|seed| ServerSeeds::new(self.segment(), seed))
+        (self.revealed.as_ref()).map(|seed| ServerSeeds::new(self.segment(), seed.clone()))
     }
 
     /// The last segment, which the next tick runs in.

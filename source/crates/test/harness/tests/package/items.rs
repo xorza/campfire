@@ -5,6 +5,7 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use campfire_capabilities::UnitTypeData;
 use campfire_codec::Toml;
+use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_package::{
     ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
@@ -12,7 +13,6 @@ use campfire_package::{
 use campfire_script::NameKind;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
-use campfire_values::DeclaredName;
 
 use crate::package::moba::{edited, load};
 

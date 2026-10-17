@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use campfire_common::DeclaredName;
 use campfire_script::{StateSchema, TagNames};
 use campfire_values::{
-    DeclaredName, EngineTag, NameId, NameTable, Names, NamesError, Scalar, Tag, TagProperties,
-    TagSet, TypeScope, UnitType,
+    EngineTag, NameId, NameTable, Names, NamesError, Scalar, Tag, TagProperties, TagSet, TypeScope,
+    UnitType,
 };
 
 use crate::body_form::BodyForm;

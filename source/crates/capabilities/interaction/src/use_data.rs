@@ -1,5 +1,6 @@
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, FilterData};
+use campfire_values::FilterData;
 use serde::Deserialize;
 
 /// A unit type's `use` section, which makes its units objects others use: an action of its

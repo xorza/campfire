@@ -13,6 +13,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
@@ -31,13 +32,11 @@ use campfire_net::{
     StopRequest, exit_code,
 };
 use campfire_package_disk::PackageDir;
-use campfire_protocol::Signer;
 use campfire_quic::{AddressLimit, LinkTimes, PortMap, ServerSocket};
 use campfire_store::StopSignals;
 use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
 use tracing::{error, info};
-use zeroize::Zeroizing;
 
 use crate::args::{Args, CommandLine};
 use crate::error::StartError;
@@ -90,10 +89,13 @@ fn run() -> Result<ExitCode, StartError> {
         ..
     } = args;
     let data = ServerDir::open(&data)?;
-    let key = KeyFile::read_or_create(&data.layout().key_file(), Os::SYSTEM.entropy)?;
+    let signer = Arc::new(KeyFile::read_or_create(
+        &data.layout().key_file(),
+        Os::SYSTEM.entropy,
+    )?);
     // The socket binds before any session opens, so a port in use ends the start and leaves the
     // data as it was.
-    let secret = Zeroizing::new(key.secret_bytes());
+    let secret = signer.secret_bytes();
     let socket = ServerSocket::bind(address, &secret, LinkTimes::CAMPFIRE)?;
     drop(secret);
     let tls_key = socket.tls_key();
@@ -112,7 +114,7 @@ fn run() -> Result<ExitCode, StartError> {
         data: &data,
         packages,
         server: ServerSetup {
-            key,
+            signer,
             times,
             os: Os::SYSTEM,
         },
@@ -158,11 +160,10 @@ fn open(
     waiting: Option<RestoredSession>,
     setup: OpeningSetup<'_>,
 ) -> Result<Opening, OpeningError> {
-    let signer = Signer::new(setup.server.key, Os::SYSTEM.entropy);
     let publisher = Publisher {
         data: setup.data,
         packages: &setup.packages,
-        signer: &signer,
+        signer: &setup.server.signer,
     };
     let window = RestoreWindow {
         length: setup.server.times.restore_window,

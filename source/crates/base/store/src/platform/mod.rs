@@ -5,6 +5,7 @@
 pub(crate) mod durable_name;
 #[cfg(feature = "internals")]
 pub(crate) mod file_link;
+pub(crate) mod no_follow;
 pub(crate) mod owner_only;
 pub(crate) mod shared_port;
 pub(crate) mod stop_signals;

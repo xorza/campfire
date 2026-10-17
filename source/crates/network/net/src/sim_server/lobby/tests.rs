@@ -3,17 +3,17 @@ use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
 use campfire_bots::OrderScript;
-use campfire_common::ChannelBinding;
+use campfire_common::{ChannelBinding, DeclaredName};
 use campfire_mode::PickError;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy,
-    SeedContribution,
+    SeedContribution, Signer,
 };
 use campfire_state_types::DataKind;
 use campfire_store::internals::Scratch;
 use campfire_test_packages::TestMode;
-use campfire_values::{DeclaredName, Scalar};
+use campfire_values::Scalar;
 use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
 
@@ -51,7 +51,7 @@ fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
         host: HostVisibility::default(),
         options: Vec::new(),
         server: ServerSetup {
-            key: TestKey::server(),
+            signer: Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(5))),
             times: SessionTimes::DEFAULT,
             os: Os {
                 clock: Clock::manual(TestKey::NOW),

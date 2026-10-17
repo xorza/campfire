@@ -1,5 +1,6 @@
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{Block, DeclaredName, TagProperties};
+use campfire_values::{Block, TagProperties};
 use serde::Deserialize;
 
 /// A tag's properties as the mode's `[tags.<name>]` declares them; a tag it does not declare has

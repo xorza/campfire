@@ -2,7 +2,7 @@ use campfire_common::{EnumAll, NamedEnum};
 use derive_more::Display;
 use serde::{Deserialize, Deserializer};
 
-use crate::declared_name::DeclaredName;
+use campfire_common::DeclaredName;
 
 /// A stat, as data and `unit.stat(name)` name it: one a capability reads, or one the mode
 /// declares for its own scripts and modifiers.

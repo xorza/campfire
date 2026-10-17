@@ -2,6 +2,7 @@ use std::fs::OpenOptions;
 use std::io::Write;
 
 use super::*;
+use crate::dir_entries::DirEntries;
 use crate::scratch::Scratch;
 
 #[test]
@@ -33,6 +34,29 @@ fn a_read_gives_a_files_bytes_within_its_bound_and_says_why_it_refuses() {
     assert!(matches!(
         refused(&scratch.path("dir"), 64),
         ReadError::NotFile
+    ));
+    // A link to the file is refused, by each read, and leads to the file by its target's path;
+    // one to no file leads nowhere.
+    scratch.link("five", "link");
+    let link = scratch.path("link");
+    assert!(matches!(refused(&link, 64), ReadError::Link));
+    assert!(matches!(
+        InputFile::ranges(&link).unwrap_err().error,
+        ReadError::Link
+    ));
+    let target = DirEntries::link_target(&link).unwrap();
+    assert_eq!(target, DirEntries::link_target(&five).unwrap());
+    assert_eq!(InputFile::read(&target, 5).unwrap(), b"12345");
+    scratch.link("none", "dangling");
+    assert!(matches!(
+        DirEntries::link_target(&scratch.path("dangling"))
+            .unwrap_err()
+            .error,
+        ReadError::Missing
+    ));
+    assert!(matches!(
+        refused(&scratch.path("dangling"), 64),
+        ReadError::Link
     ));
     assert!(matches!(
         refused(&scratch.path("bad\0name"), 64),

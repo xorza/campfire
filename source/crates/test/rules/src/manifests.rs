@@ -12,9 +12,10 @@ use crate::workspace::{
 #[test]
 fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
     // `common` holds plain values, so it needs serde and its derives, its own derives' crate,
-    // the two hashes that make its 32-byte values, SHA-256 and BLAKE3, and `backtrace` for the
-    // allocation audit, which only a test build turns on; a proxy reaches only its own group's
-    // crates, so its exemption covers no call of another group.
+    // the two hashes that make its 32-byte values, SHA-256 and BLAKE3, `zeroize`, which erases
+    // a secret as it drops, and `backtrace` for the allocation audit, which only a test build
+    // turns on; a proxy reaches only its own group's crates, so its exemption covers no call of
+    // another group.
     assert_eq!(
         crate_dependencies("base/common"),
         [
@@ -23,7 +24,8 @@ fn common_and_each_proxy_depend_on_their_listed_crates_alone() {
             "campfire-common-derive",
             "derive_more",
             "serde",
-            "sha2"
+            "sha2",
+            "zeroize"
         ]
     );
     let manifest = read(

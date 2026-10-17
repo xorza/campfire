@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use campfire_common::DeclaredName;
 use campfire_declare::PerType;
 use campfire_math::{Num, Rounding};
 use campfire_script::{NameKind, UnknownName};
-use campfire_values::{DamageKind, DeclaredName, NameId, Names};
+use campfire_values::{DamageKind, NameId, Names};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 

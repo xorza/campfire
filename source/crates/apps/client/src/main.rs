@@ -33,18 +33,18 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_bots::{BotScript, OrderScript};
-use campfire_common::ExitStatus;
+use campfire_common::{DeclaredName, ExitStatus};
 use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
     Hosting, JoinRole, KeyFile, NetProtocol, Os, Pace, SimClient, WatchRequest, exit_code,
 };
 use campfire_package::{ModePackages, Texts};
 use campfire_package_disk::PackageDir;
+use campfire_protocol::Signer;
 use campfire_sim::{Capability, TickRate};
 use campfire_store::SecretFile;
-use campfire_values::{DeclaredName, Names, ResourceId, Team, TeamSet};
+use campfire_values::{Names, ResourceId, Team, TeamSet};
 use lightyear::prelude::Connect;
-use secp256k1::Keypair;
 use tracing::error;
 
 use crate::action_names::ActionNames;
@@ -130,8 +130,8 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Usage);
         }
     };
-    let main_key = match main_key(&args) {
-        Ok(key) => key,
+    let main = match main_key(&args) {
+        Ok(signer) => Arc::new(signer),
         Err(code) => return code,
     };
     let watch = match watched_teams(&args, &packages) {
@@ -146,7 +146,7 @@ fn main() -> ExitCode {
     let pin = connection.pin();
     let tick = TickRate::new(pin.tick_hz).length();
     let sim_client = SimClient {
-        main_key,
+        main,
         session_key: Os::SYSTEM.entropy.keypair(),
         server: pin,
         role: if args.spectate {
@@ -292,14 +292,15 @@ fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
     Ok(packages)
 }
 
-/// The player's main key: the key file's, made when missing, or a new one with no file; the exit
-/// code when the file does not read.
-fn main_key(args: &Args) -> Result<Keypair, ExitCode> {
+/// The signer of the player's main key: the key file's, made when missing, or a new one with no
+/// file; the exit code when the file does not read.
+fn main_key(args: &Args) -> Result<Signer, ExitCode> {
+    let entropy = Os::SYSTEM.entropy;
     let Some(path) = &args.key else {
-        return Ok(Os::SYSTEM.entropy.keypair());
+        return Ok(Signer::new(entropy.keypair(), entropy));
     };
     let file = SecretFile::at(path.clone());
-    KeyFile::read_or_create(&file, Os::SYSTEM.entropy).map_err(|error| {
+    KeyFile::read_or_create(&file, entropy).map_err(|error| {
         error!(key = %file, error = %ErrorReport::of(&error), "the key file does not read");
         ExitCode::from(ExitStatus::Failure)
     })

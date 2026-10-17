@@ -15,7 +15,7 @@ use campfire_actions::{
 use campfire_areas::Area;
 use campfire_capabilities::{Match, Order, PackageContent};
 use campfire_combat::Combat;
-use campfire_common::PlayerSlot;
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_harness::Arena;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
@@ -28,7 +28,7 @@ use campfire_stats::{Life, PoolMeters, Pools, Stats};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{Body, ForcedMove, MoveStep, Owner};
 use campfire_values::{
-    ActionId, DeclaredName, ModifierId, Number, Param, Rank, Ranked, Scalar, Scaling, Stat, Team,
+    ActionId, ModifierId, Number, Param, Rank, Ranked, Scalar, Scaling, Stat, Team,
 };
 use campfire_vision::SeenBy;
 

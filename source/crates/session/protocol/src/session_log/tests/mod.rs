@@ -513,7 +513,7 @@ fn a_tampered_packet_is_refused() {
         let mut ticks = chained();
         (case.change)(&mut ticks);
         // A log file with the same packets is refused for the same packet.
-        let file = frame(&header(), &ticks, &[], Some(server_seed()));
+        let file = frame(&header(), &ticks, &[], Some(&server_seed()));
         assert_eq!(
             SessionLog::decode(&file).err(),
             Some(case.refused.clone()),
@@ -817,15 +817,15 @@ fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
         ]))
     });
     assert_ne!(expected[0], expected[1]);
-    for (segment, expected) in (0..).zip(expected) {
+    for (segment, expected) in (0..).zip(&expected) {
         let seed = header().segment_seed(segment, &SEED_CHAIN.seed(segment));
-        assert_eq!(seed, expected);
+        assert_eq!(&seed, expected);
     }
     // A seed of another segment, or of no chain of the commitment's, is no seed of its chain.
     let commitment = header().terms.seed_commitment;
-    assert!(ServerSeeds::new(1, s1).commits_to(&commitment));
-    for (segment, server_seed) in [(0, s1), (1, s0), (0, ServerSeed::new([4; 32]))] {
-        let seeds = ServerSeeds::new(segment, server_seed);
+    assert!(ServerSeeds::new(1, s1.clone()).commits_to(&commitment));
+    for (segment, server_seed) in [(0, &s1), (1, &s0), (0, &ServerSeed::new([4; 32]))] {
+        let seeds = ServerSeeds::new(segment, server_seed.clone());
         assert!(!seeds.commits_to(&commitment), "{segment}: {server_seed:?}");
     }
 
@@ -839,16 +839,16 @@ fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
     let mut swapped = header();
     swapped.slots.swap(0, 1);
     for other in [changed, swapped] {
-        for (segment, expected) in (0..).zip(expected) {
+        for (segment, expected) in (0..).zip(&expected) {
             let seed = other.segment_seed(segment, &SEED_CHAIN.seed(segment));
-            assert_ne!(seed, expected, "{segment}: {other:?}");
+            assert_ne!(&seed, expected, "{segment}: {other:?}");
         }
     }
 
     let mut log = new_log();
     assert_eq!(log.revealed_seed(), None);
-    log.reveal_seed(s0);
-    assert_eq!(log.revealed_seed(), Some(s0));
+    log.reveal_seed(s0.clone());
+    assert_eq!(log.revealed_seed(), Some(&s0));
 }
 
 #[test]
@@ -865,7 +865,7 @@ fn frame(
     header: &SessionHeader,
     ticks: &[Vec<Sent<'_>>],
     tail: &[Sent<'_>],
-    revealed: Option<ServerSeed>,
+    revealed: Option<&ServerSeed>,
 ) -> Vec<u8> {
     let mut bytes = b"campfire/session-log/v6".to_vec();
     let terms = &header.terms;
@@ -936,11 +936,11 @@ fn a_log_file_decodes_to_the_same_log() {
     let bytes = encoded(&log);
     let mut sent = chained_with_tail();
     let tail = sent.pop().unwrap();
-    assert_eq!(bytes, frame(&header(), &sent, &tail, Some(server_seed())));
+    assert_eq!(bytes, frame(&header(), &sent, &tail, Some(&server_seed())));
 
     let mut decoded = SessionLog::decode(&bytes).unwrap();
     assert_eq!(decoded.header(), log.header());
-    assert_eq!(decoded.revealed_seed(), Some(server_seed()));
+    assert_eq!(decoded.revealed_seed(), Some(&server_seed()));
     assert_eq!(decoded.next_tick(), Tick::new(5));
     assert_eq!(encoded(&decoded), bytes);
     let live = record(header(), &sent).unwrap().applied;
@@ -1208,12 +1208,12 @@ fn flawed_log_files_are_refused() {
             LogError::Malformed(Binary::decode::<Option<u8>>(&[2]).unwrap_err()),
         ),
         (
-            frame(&header(), &sent, &[], Some(ServerSeed::new([4; 32]))),
+            frame(&header(), &sent, &[], Some(&ServerSeed::new([4; 32]))),
             LogError::WrongSeed,
         ),
         // Segment 1's seed is in the chain, but not the seed of the one segment the log holds.
         (
-            frame(&header(), &sent, &[], Some(SEED_CHAIN.seed(1))),
+            frame(&header(), &sent, &[], Some(&SEED_CHAIN.seed(1))),
             LogError::WrongSeed,
         ),
         (overlong, LogError::NotCanonical),
@@ -1578,7 +1578,7 @@ mod segments;
 
 impl SessionLog {
     /// The last segment's server seed, once the log is published.
-    const fn revealed_seed(&self) -> Option<ServerSeed> {
-        self.revealed
+    const fn revealed_seed(&self) -> Option<&ServerSeed> {
+        self.revealed.as_ref()
     }
 }

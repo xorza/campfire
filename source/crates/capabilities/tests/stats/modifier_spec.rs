@@ -3,14 +3,13 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_capabilities::{Match, Release};
-use campfire_common::Ticks;
+use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::*;
 use campfire_units::UnitTypes;
 use campfire_values::{
-    DeclaredName, FilterData, ModifierId, NameId, Names, Number, Param, ParamRef, Ranked, Scalar,
-    Stat,
+    FilterData, ModifierId, NameId, Names, Number, Param, ParamRef, Ranked, Scalar, Stat,
 };
 
 fn name(text: &str) -> DeclaredName {

@@ -1,8 +1,8 @@
 use bevy_ecs::system::SystemState;
 use bevy_ecs::world::World;
+use campfire_common::DeclaredName;
 use campfire_sim::{EntityIndex, IdAllocator};
 use campfire_units::{Avatar, Dead, Owner};
-use campfire_values::DeclaredName;
 
 use super::*;
 

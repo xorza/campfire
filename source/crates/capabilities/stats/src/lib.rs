@@ -412,6 +412,7 @@ pub mod internals {
     use std::collections::BTreeMap;
 
     use bevy_ecs::world::{Mut, World};
+    use campfire_common::DeclaredName;
     use campfire_declare::Book;
     use campfire_math::Num;
     use campfire_script::ScriptId;
@@ -419,8 +420,7 @@ pub mod internals {
     use campfire_sim::{SimWorld, StableId, TickRate};
     use campfire_units::{ScriptBook, UnitTypeBook, Units};
     use campfire_values::{
-        ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet,
-        UnitType,
+        ActionId, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet, UnitType,
     };
 
     use crate::Stats;

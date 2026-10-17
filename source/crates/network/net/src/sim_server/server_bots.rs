@@ -42,7 +42,8 @@ impl SlotBot {
 
 #[cfg(test)]
 mod tests {
-    use campfire_values::{DeclaredName, TypeScope};
+    use campfire_common::DeclaredName;
+    use campfire_values::TypeScope;
 
     use super::*;
 

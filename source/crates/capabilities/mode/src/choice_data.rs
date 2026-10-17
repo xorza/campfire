@@ -1,7 +1,8 @@
 use std::num::NonZeroU8;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, MessageId};
+use campfire_values::MessageId;
 use serde::Deserialize;
 
 /// A choice of the mode's `[choices]`: the message of the name players see, what it offers, how

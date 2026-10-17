@@ -105,8 +105,8 @@ pub mod internals {
     use std::collections::BTreeMap;
 
     use bevy_ecs::world::World;
+    use campfire_common::DeclaredName;
     use campfire_declare::Book;
-    use campfire_values::DeclaredName;
 
     use crate::Progression;
     use crate::track_book::TrackBook;

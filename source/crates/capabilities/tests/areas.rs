@@ -3,7 +3,7 @@ use campfire_areas::*;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
-use campfire_common::{Tick, Ticks};
+use campfire_common::{DeclaredName, Tick, Ticks};
 use campfire_deliveries::{Deliveries, Delivering};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
@@ -14,8 +14,7 @@ use campfire_sim::{Capability, SimComponent};
 use campfire_stats::{ModifierData, Stats};
 use campfire_units::{UnitTypeCore, UnitTypes, Units};
 use campfire_values::{
-    DeclaredName, EngineTag, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, TagSet,
-    Team, TypeScope,
+    EngineTag, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, TagSet, Team, TypeScope,
 };
 
 #[test]

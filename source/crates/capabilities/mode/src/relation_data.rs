@@ -1,5 +1,6 @@
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, Relation};
+use campfire_values::Relation;
 use serde::Deserialize;
 
 /// A pair of the mode's teams as its `[[relations]]` declare them: how they regard each other,

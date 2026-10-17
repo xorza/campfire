@@ -4,6 +4,7 @@ use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, CostTarget,
     PackageAction, ProjectileFlight,
 };
+use campfire_common::DeclaredName;
 use campfire_declare::{Book, ByType};
 use campfire_projectiles::ProjectileSpec;
 use campfire_script::{Filter, NameKind, ScriptId, UnknownName, View};
@@ -11,8 +12,8 @@ use campfire_sim::TickRate;
 use campfire_stats::{ModifierBook, StatId, Stats};
 use campfire_units::ScriptBook;
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, PackageIndex, Param, Stat, Tag,
-    TypeScope, UnitType,
+    ActionId, DamageKind, FilterData, ModifierId, PackageIndex, Param, Stat, Tag, TypeScope,
+    UnitType,
 };
 
 use crate::fixtures::units::ViewFixtures;

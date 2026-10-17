@@ -4,12 +4,13 @@
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
+use campfire_common::DeclaredName;
 use campfire_declare::ByType;
 use campfire_mode::ModeInputs;
 use campfire_navigation::{MapProblem, WalkCheck, Walker};
 use campfire_script::View;
 use campfire_units::{BodyForm, MapBook, TypesError, UnitTypeBook, UnitTypes};
-use campfire_values::{DamageKind, DeclaredName, Names, PackageIndex, ResourceId, UnitType};
+use campfire_values::{DamageKind, Names, PackageIndex, ResourceId, UnitType};
 
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_fill::BookFill;

@@ -127,7 +127,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     log.record_result(ended, &signature).unwrap();
     log.reveal_seed(SEED_CHAIN.seed(1));
     assert_eq!(
-        log.revealed_seeds().unwrap().seed(0),
+        log.revealed_seeds().unwrap().seed(0).cloned(),
         Some(SEED_CHAIN.seed(0))
     );
     let bytes = encoded(&log);

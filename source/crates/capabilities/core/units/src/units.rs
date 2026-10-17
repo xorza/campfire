@@ -302,13 +302,11 @@ pub(crate) mod internals {
 
     use bevy_ecs::change_detection::Mut;
     use bevy_ecs::world::World;
-    use campfire_common::NamedEnum;
+    use campfire_common::{DeclaredName, NamedEnum};
     use campfire_declare::{Book, ByType};
     use campfire_script::{CallError, Ctx, ScriptError, ScriptHost, ScriptId, ScriptValue, View};
     use campfire_sim::StableId;
-    use campfire_values::{
-        Block, DeclaredName, PackageIndex, Relation, Scalar, Team, TypeScope, UnitType,
-    };
+    use campfire_values::{Block, PackageIndex, Relation, Scalar, Team, TypeScope, UnitType};
 
     use crate::script_book::ScriptBook;
     use crate::tag_book::TagBook;

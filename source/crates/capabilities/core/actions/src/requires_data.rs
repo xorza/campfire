@@ -1,5 +1,5 @@
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// A train's or a build's `requires`: unit types of the action's package, of each of which its

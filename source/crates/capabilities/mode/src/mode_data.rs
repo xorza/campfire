@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use campfire_actions::SlotKinds;
 use campfire_combat::ModeCombatData;
+use campfire_common::DeclaredName;
 use campfire_navigation::ModeNavigationData;
 use campfire_production::ModeSupplyData;
 use campfire_progression::TrackData;
@@ -10,7 +11,7 @@ use campfire_script::{
 };
 use campfire_stats::{PoolData, StatRule};
 use campfire_units::TagData;
-use campfire_values::{DeclaredName, MessageId, Scalar, Stat};
+use campfire_values::{MessageId, Scalar, Stat};
 use campfire_visibility::ModeVisibility;
 use serde::{Deserialize, Serialize};
 

@@ -1,7 +1,6 @@
-use campfire_common::EnumAll;
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_script::{CapabilityRefusal, ParamProblem, UnknownName};
 use campfire_sim::Capability;
-use campfire_values::DeclaredName;
 use thiserror::Error;
 
 /// Why a modifier does not load.

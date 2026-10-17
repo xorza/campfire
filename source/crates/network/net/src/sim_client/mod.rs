@@ -93,8 +93,8 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
 /// in-process channels.
 #[derive(Debug)]
 pub struct SimClient {
-    /// The player's Nostr identity, which signs the delegation.
-    pub main_key: Keypair,
+    /// The signer of the player's Nostr identity, which signs the delegation.
+    pub main: Arc<Signer>,
     /// This session's key, which the delegation lets sign the player's inputs.
     pub session_key: Keypair,
     pub server: ServerPin,
@@ -205,7 +205,7 @@ impl Plugin for SimClient {
         world.insert_resource(self.hosting);
         world.insert_resource(self.os.clone());
         world.insert_resource(JoinState::new(Joining {
-            main_key: self.main_key,
+            main: Arc::clone(&self.main),
             server: self.server,
             role: self.role,
             rules: SessionRules::of(packages),

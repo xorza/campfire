@@ -1,5 +1,5 @@
+use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_values::DeclaredName;
 
 use crate::zero_hour::error::{TypeError, ZeroHourError};
 use crate::zero_hour::format::game_float;

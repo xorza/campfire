@@ -2,11 +2,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::View;
 use campfire_stats::Level;
-use campfire_values::{DeclaredName, NameId, Names, TrackId};
+use campfire_values::{NameId, Names, TrackId};
 
 use crate::error::TrackError;
 use crate::track_data::TrackData;

@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use campfire_actions::ActionData;
+use campfire_common::DeclaredName;
 use campfire_items::ItemData;
 use campfire_stats::ModifierData;
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 use crate::books::unit_type_data::UnitTypeData;

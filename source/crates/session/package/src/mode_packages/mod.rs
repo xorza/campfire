@@ -6,13 +6,13 @@ use campfire_actions::ActionData;
 use campfire_capabilities::{
     BookInput, BookKind, BookPackage, Books, PackageContent, Release, UnitTypeData,
 };
-use campfire_common::{MapName, PackageFingerprint};
+use campfire_common::{DeclaredName, MapName, PackageFingerprint};
 use campfire_mode::{MapData, ModeData};
 use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::TickRate;
 use campfire_stats::{EdgeError, StatGraph, StatId};
 use campfire_units::{HeightGrid, ScriptBook};
-use campfire_values::{DeclaredName, EngineTag, Names, PackageIndex, PackagePath, UnitType};
+use campfire_values::{EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::limit::Limit;

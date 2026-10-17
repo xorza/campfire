@@ -96,6 +96,18 @@ impl Os {
         File::open(path)
     }
 
+    pub(crate) fn open_no_follow(path: &Path) -> io::Result<Option<File>> {
+        match OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_NOFOLLOW)
+            .open(path)
+        {
+            Ok(file) => Ok(Some(file)),
+            Err(error) if error.raw_os_error() == Some(libc::ELOOP) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     pub(crate) fn sync_dir(directory: &Path) -> io::Result<()> {
         File::open(directory)?.sync_all()
     }

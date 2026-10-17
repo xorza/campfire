@@ -1,6 +1,6 @@
-use campfire_common::EnumAll;
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, Number};
+use campfire_values::Number;
 use serde::de::{Error, IgnoredAny};
 use serde::{Deserialize, Deserializer};
 

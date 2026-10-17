@@ -34,8 +34,12 @@ impl Flat {
         Self::from_nums([point.x, point.z])
     }
 
+    /// Within `i128` but for two vectors of `i64::MIN` on both axes, whose 2¹²⁷ panics, as a
+    /// release build's `+` would wrap.
     pub const fn dot(self, rhs: Self) -> i128 {
-        Self::product(self.0[0], rhs.0[0]) + Self::product(self.0[1], rhs.0[1])
+        let x = Self::product(self.0[0], rhs.0[0]);
+        x.checked_add(Self::product(self.0[1], rhs.0[1]))
+            .expect("a dot product within i128")
     }
 
     /// Positive when `rhs` turns counterclockwise from `self`, seen from above.
@@ -43,8 +47,14 @@ impl Flat {
         Self::product(self.0[0], rhs.0[1]) - Self::product(self.0[1], rhs.0[0])
     }
 
+    /// `x² + z²`, exact: each square is at most 2¹²⁶, so their sum, 2¹²⁷ at `i64::MIN` on both
+    /// axes, fits a `u128`, where `dot`'s `i128` would wrap.
     pub const fn length_squared(self) -> u128 {
-        self.dot(self).unsigned_abs()
+        let x = self.0[0].unsigned_abs() as u128;
+        let z = self.0[1].unsigned_abs() as u128;
+        // Below 2¹²⁸, the sum cannot wrap, and the wrapping steps skip the checks a release
+        // build makes.
+        x.wrapping_mul(x).wrapping_add(z.wrapping_mul(z))
     }
 
     /// `f` of each axis.
@@ -129,6 +139,9 @@ mod tests {
         assert_eq!((a.cross(b), b.cross(a)), (26, -26));
         assert_eq!(a.length_squared(), 25);
         assert_eq!(Flat::new(0, 0).length_squared(), 0);
+        // The longest vector, (−2⁶³)² + (−2⁶³)² = 2¹²⁷, one past what an `i128` holds.
+        let longest = Flat::new(i128::from(i64::MIN), i128::from(i64::MIN));
+        assert_eq!(longest.length_squared(), 1 << 127);
         // Products past an i64 stay exact: (2⁶³ − 1)² + 1 and (2⁶³ − 1) · (2⁶³ − 1) − 0; and the
         // widest cross, (−2⁶³)(−2⁶³) − (−2⁶³)(2⁶³ − 1) = 2¹²⁷ − 2⁶³.
         let wide = Flat::new(i128::from(i64::MAX), 1);
@@ -153,6 +166,13 @@ mod tests {
     #[should_panic(expected = "overflow")]
     fn an_overflow_panics() {
         let _sum = Flat::new(i128::from(i64::MAX), 0) + Flat::new(1, 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "a dot product within i128")]
+    fn the_dot_product_of_the_two_longest_vectors_panics() {
+        let longest = Flat::new(i128::from(i64::MIN), i128::from(i64::MIN));
+        let _dot = longest.dot(longest);
     }
 
     #[test]

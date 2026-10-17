@@ -2337,6 +2337,7 @@ dependencies = [
  "campfire-production",
  "campfire-progression",
  "campfire-projectiles",
+ "campfire-protocol",
  "campfire-quic",
  "campfire-sim",
  "campfire-stats",
@@ -2412,6 +2413,7 @@ dependencies = [
  "derive_more",
  "serde",
  "sha2 0.11.0",
+ "zeroize",
 ]
 
 [[package]]
@@ -2549,6 +2551,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-actions",
+ "campfire-common",
  "campfire-declare",
  "campfire-interaction",
  "campfire-players",
@@ -2951,7 +2954,6 @@ dependencies = [
  "campfire-sim",
  "campfire-test-packages",
  "campfire-units",
- "campfire-values",
  "campfire-visibility",
  "campfire-vision",
  "secp256k1",
@@ -3012,7 +3014,6 @@ dependencies = [
  "lightyear",
  "thiserror 2.0.21",
  "tracing",
- "zeroize",
 ]
 
 [[package]]

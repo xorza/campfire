@@ -1,4 +1,4 @@
-use campfire_values::DeclaredName;
+use campfire_common::DeclaredName;
 use derive_more::Display;
 
 use crate::books::type_place::TypePlace;

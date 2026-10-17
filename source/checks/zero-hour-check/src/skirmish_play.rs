@@ -3,7 +3,7 @@ use std::num::NonZeroU32;
 use campfire_actions::ActionTarget;
 use campfire_bots::{BotScript, OrderScript};
 use campfire_capabilities::Order;
-use campfire_common::PlayerSlot;
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Num;
 use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
@@ -16,7 +16,7 @@ use campfire_protocol::{InputRules, SlotPlan};
 use campfire_sim::StableId;
 use campfire_stats::Life;
 use campfire_units::UnitsWorld;
-use campfire_values::{DeclaredName, Names, ResourceId};
+use campfire_values::{Names, ResourceId};
 
 use crate::failure::Failure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};

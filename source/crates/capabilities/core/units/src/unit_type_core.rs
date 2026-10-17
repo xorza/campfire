@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
+use campfire_common::DeclaredName;
 use campfire_script::SyncedStateDecl;
-use campfire_values::{DeclaredName, Scalar};
+use campfire_values::Scalar;
 use serde::Deserialize;
 
 /// A unit type's core fields as its data file declares them: its tags, which filters select, the
@@ -21,7 +22,8 @@ pub struct UnitTypeCore {
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
-    use campfire_values::{DeclaredName, Scalar};
+    use campfire_common::DeclaredName;
+    use campfire_values::Scalar;
 
     use crate::unit_type_core::UnitTypeCore;
 

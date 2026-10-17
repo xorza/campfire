@@ -139,8 +139,8 @@ impl LoadError {
 
 #[cfg(test)]
 mod tests {
+    use campfire_common::DeclaredName;
     use campfire_stats::ModifierProblem;
-    use campfire_values::DeclaredName;
 
     use super::*;
     use crate::error::locale_problem::LocaleProblem;

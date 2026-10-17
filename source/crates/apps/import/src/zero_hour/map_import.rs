@@ -6,13 +6,13 @@ use campfire_client_files::{
     TerrainSurface,
 };
 use campfire_codec::{Binary, Toml};
+use campfire_common::DeclaredName;
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::Num;
 use campfire_mode::{
     GroundData, MapData, MapNavigationData, MapPoint, MarkerData, ModeParam, PlacedUnitData,
 };
 use campfire_units::{CellSplit, CoarseSpan, Ground, HeightGrid};
-use campfire_values::DeclaredName;
 
 use crate::zero_hour::cliff_walls::{CellFrame, CliffWalls};
 use crate::zero_hour::error::MapError;

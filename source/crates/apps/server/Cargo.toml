@@ -25,7 +25,6 @@ clap.workspace = true
 lightyear.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-zeroize.workspace = true
 
 [dev-dependencies]
 campfire-store = { workspace = true, features = ["internals"] }

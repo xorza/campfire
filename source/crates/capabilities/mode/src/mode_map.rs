@@ -1,10 +1,11 @@
 use bevy_ecs::world::World;
+use campfire_common::DeclaredName;
 use campfire_geometry::Grid;
 use campfire_navigation::{
     MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, WalkerKinds, Walls,
 };
 use campfire_units::{BodyForm, Ground, HeightGrid, Layer, MapBook};
-use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType, VisionShare};
+use campfire_values::{Names, NamesError, Relations, Team, UnitType, VisionShare};
 use campfire_vision::{BrushMap, VisionBook, VisionGrid};
 
 use crate::error::ModeError;

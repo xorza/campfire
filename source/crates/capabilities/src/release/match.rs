@@ -75,7 +75,7 @@ pub(crate) mod internals {
     use campfire_actions::{SlotKindBook, SlotKindData, SlotKinds};
     use campfire_codec::Binary;
     use campfire_combat::Combat;
-    use campfire_common::SegmentSeed;
+    use campfire_common::{DeclaredName, SegmentSeed};
     use campfire_declare::{Book, Role};
     use campfire_log::internals::LogCheck;
     use campfire_mode::Mode;
@@ -83,7 +83,6 @@ pub(crate) mod internals {
     use campfire_script::ScriptBudgets;
     use campfire_sim::{Capability, TickRate};
     use campfire_stats::PoolId;
-    use campfire_values::DeclaredName;
     use serde::Serialize;
     use serde::de::DeserializeOwned;
 

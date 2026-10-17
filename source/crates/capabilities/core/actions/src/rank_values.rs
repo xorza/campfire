@@ -1,11 +1,11 @@
 use std::num::{NonZeroU8, NonZeroU16};
 
-use campfire_common::Ticks;
+use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_sim::TickRate;
 use campfire_stats::PoolCost;
-use campfire_values::{DeclaredName, Rank, TimeTooLarge};
+use campfire_values::{Rank, TimeTooLarge};
 
 use crate::action_data::ActionData;
 use crate::action_range::ActionRange;

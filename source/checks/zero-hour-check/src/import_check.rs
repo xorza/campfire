@@ -4,12 +4,11 @@ use std::num::NonZeroU32;
 use campfire_actions::ActionKind;
 use campfire_client_files::{ClientObjects, ClientUnits, MapConditions, TerrainFile};
 use campfire_codec::Binary;
-use campfire_common::MapName;
+use campfire_common::{DeclaredName, MapName};
 use campfire_import::{DropCause, Imported, WeaponDrop};
 use campfire_math::Num;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
-use campfire_values::DeclaredName;
 use tracing::info;
 
 use crate::error::CheckError;

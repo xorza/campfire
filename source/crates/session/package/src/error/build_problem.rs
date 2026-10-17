@@ -1,4 +1,4 @@
-use campfire_values::DeclaredName;
+use campfire_common::DeclaredName;
 use thiserror::Error;
 
 /// What does not hold of a `build` action, by its id.

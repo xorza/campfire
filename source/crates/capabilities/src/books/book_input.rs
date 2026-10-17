@@ -1,9 +1,10 @@
+use campfire_common::DeclaredName;
 use campfire_declare::CapabilitySet;
 use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_sim::TickRate;
 use campfire_stats::StatId;
 use campfire_units::{HeightGrid, ScriptBook};
-use campfire_values::{DeclaredName, PackagePath, Speed};
+use campfire_values::{PackagePath, Speed};
 
 use crate::books::package_content::PackageContent;
 use crate::books::unit_type_data::UnitTypeData;

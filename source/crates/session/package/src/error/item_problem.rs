@@ -1,4 +1,4 @@
-use campfire_values::DeclaredName;
+use campfire_common::DeclaredName;
 use thiserror::Error;
 
 use crate::error::place::Place;

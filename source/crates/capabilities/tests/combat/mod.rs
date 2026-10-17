@@ -17,7 +17,7 @@ use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
 use campfire_combat::internals::{Armed, Attack};
 use campfire_combat::*;
-use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed, Tick, Ticks};
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
@@ -34,9 +34,8 @@ use campfire_stats::{
 };
 use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{
-    ActionId, Block, DamageKind, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex,
-    Rank, Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
-    VisionShare,
+    ActionId, Block, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, Rank,
+    Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType, VisionShare,
 };
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.

@@ -160,7 +160,7 @@ impl Lobby {
             OptionPicks::named(session_rules.options(), &options).map_err(LobbyError::Options)?;
         let terms = session_rules
             .terms(HostChoices {
-                server_key: server.key.x_only_public_key().0,
+                server_key: server.signer.public_key(),
                 seed_commitment: seed_chain.commitment(),
                 tick_hz,
                 inputs,
@@ -188,7 +188,7 @@ impl Lobby {
     pub fn keep_files(&mut self, data: &ServerDir) -> Result<(), KeepFilesError> {
         assert!(self.files.is_none(), "a session keeps one journal");
         let private = SessionPrivate {
-            seed_chain: self.seed_chain,
+            seed_chain: self.seed_chain.clone(),
         };
         let session = self.terms().session_id();
         let dir = SessionDir::create(data, session, &private).map_err(KeepFilesError::Dir)?;

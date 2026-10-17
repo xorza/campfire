@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
+use campfire_common::DeclaredName;
 use campfire_math::{Num, Rounding};
-use campfire_values::{DeclaredName, NameTable, Param, Rank, Ranked, Scalar, Stat};
+use campfire_values::{NameTable, Param, Rank, Ranked, Scalar, Stat};
 
 use crate::param_source::ParamSource;
 use crate::stat_id::StatId;

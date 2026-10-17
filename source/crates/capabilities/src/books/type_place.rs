@@ -1,4 +1,4 @@
-use campfire_values::DeclaredName;
+use campfire_common::DeclaredName;
 use derive_more::Display;
 
 /// A unit type that stands, as a book error names it: the avatar its package stands as, or a

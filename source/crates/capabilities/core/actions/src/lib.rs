@@ -258,15 +258,15 @@ pub mod internals {
     use std::num::NonZeroU8;
 
     use bevy_ecs::world::World;
-    use campfire_common::Ticks;
+    use campfire_common::{DeclaredName, Ticks};
     use campfire_declare::Book;
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
     use campfire_script::{Filter, HookSet, NameKind, UnknownName, View};
     use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
     use campfire_values::{
-        ActionId, DamageKind, DeclaredName, ModifierId, NameId, PackageIndex, Speed, Tag, TrackId,
-        TypeScope, UnitType,
+        ActionId, DamageKind, ModifierId, NameId, PackageIndex, Speed, Tag, TrackId, TypeScope,
+        UnitType,
     };
 
     use crate::Actions;

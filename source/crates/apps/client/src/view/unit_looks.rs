@@ -106,8 +106,9 @@ mod tests {
     use bevy::app::{App, TaskPoolPlugin};
     use bevy::asset::{AssetApp, AssetPlugin};
     use campfire_client_files::{ClientModel, ClientUnits, ModelScale};
+    use campfire_common::DeclaredName;
     use campfire_units::TypeOrigin;
-    use campfire_values::{DeclaredName, PackagePath};
+    use campfire_values::PackagePath;
 
     use super::*;
 

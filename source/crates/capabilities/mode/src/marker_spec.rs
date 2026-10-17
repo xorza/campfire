@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
+use campfire_common::DeclaredName;
 use campfire_geometry::Bounds;
 use campfire_math::Vec3;
-use campfire_values::{DeclaredName, Team};
+use campfire_values::Team;
 
 use crate::mode_data::ModeParam;
 

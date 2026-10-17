@@ -1,6 +1,6 @@
+use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 

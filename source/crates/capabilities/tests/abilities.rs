@@ -22,7 +22,7 @@ use campfire_combat::{
     Combat, CombatBook, CombatRefusal, Damage, DamageCause, DamagePass, OnDeath, PassEntry,
     RecentAttackers,
 };
-use campfire_common::{PlayerSlot, StateHash, Tick, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_declare::Book;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Rng, RngStream, Vec3};
@@ -55,9 +55,9 @@ use campfire_units::{
     UnitTypeCore, Units,
 };
 use campfire_values::{
-    ActionId, ActionStart, Block, DamageKind, DeclaredName, FilterData, NameId, Number,
-    PackageIndex, PackagePath, Param, ParamRef, Rank, Ranked, ResourceId, Scalar, Scaling, Stat,
-    Team, TimeTooLarge, TrackId, TypeScope, UnitTags, UnitType,
+    ActionId, ActionStart, Block, DamageKind, FilterData, NameId, Number, PackageIndex,
+    PackagePath, Param, ParamRef, Rank, Ranked, ResourceId, Scalar, Scaling, Stat, Team,
+    TimeTooLarge, TrackId, TypeScope, UnitTags, UnitType,
 };
 
 /// Lash Out as the MOBA's Husk had it when these tests were written: the engine's tests keep

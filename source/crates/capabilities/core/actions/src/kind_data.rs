@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
-use campfire_values::{DeclaredName, Distance, Stat};
+use campfire_common::DeclaredName;
+use campfire_values::{Distance, Stat};
 
 use crate::action_data::ActionData;
 use crate::action_data_field::ActionDataField;

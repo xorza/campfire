@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use bevy_app::{
@@ -21,7 +22,7 @@ use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
 use campfire_protocol::{
     Applied, Controller, InputError, PlayerPacket, ServerInput, ServerSeeds, SessionLog,
-    SessionTerms, Signer,
+    SessionTerms,
 };
 use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError};
@@ -368,7 +369,7 @@ impl SimServer {
         let terms = log.header().terms.clone();
         Self::take_terms(world, &terms, visibility);
         let slots = log.slot_count();
-        world.insert_resource(ServerSigner(Signer::new(server.key, server.os.entropy)));
+        world.insert_resource(ServerSigner(Arc::clone(&server.signer)));
         Session::start(
             world,
             SessionSource {
@@ -469,7 +470,7 @@ impl SimServer {
             .visibility;
         Self::take_terms(world, &terms, visibility);
         let slots = restored.log.slot_count();
-        let signer = Signer::new(server.key, server.os.entropy);
+        let signer = Arc::clone(&server.signer);
         let snapshots = restored.replay(world, &packages, signer, |world| {
             if world.contains_resource::<TickHashes>() {
                 record_hash(world);

@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 
+use campfire_common::DeclaredName;
 use campfire_geometry::{Bounds, Grid, Metric, Polygon};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{PathEnd, Wall};
 use campfire_sim::Position;
 use campfire_units::{CellSplit, CoarseSpan, Layer};
-use campfire_values::{DeclaredName, Names};
+use campfire_values::Names;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ModeError;
@@ -242,9 +243,9 @@ fn is_default<T: Default + PartialEq>(value: &T) -> bool {
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 
+    use campfire_common::DeclaredName;
     use campfire_geometry::{Bounds, Metric};
     use campfire_math::Num;
-    use campfire_values::DeclaredName;
 
     use crate::map_data::{MapData, MarkerData, PlacedUnitData};
     use crate::map_point::MapPoint;

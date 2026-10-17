@@ -6,7 +6,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
-use campfire_common::{Tick, Ticks};
+use campfire_common::{DeclaredName, Tick, Ticks};
 use campfire_declare::Book;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
@@ -24,8 +24,7 @@ use campfire_values::{
     UnitType,
 };
 use campfire_values::{
-    DeclaredName, EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling,
-    Stat,
+    EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat,
 };
 
 /// `value` sixteenths.

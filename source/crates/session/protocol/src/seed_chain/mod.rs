@@ -9,7 +9,7 @@ use crate::server_seeds::ServerSeeds;
 /// Every segment's server seed, fixed when the server opens the session, as a one-way hash chain:
 /// segment `k`'s seed is the root hashed `N − 1 − k` times, so each seed is the hash of the next.
 /// Revealing a seed reveals every earlier one and no later one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SeedChain {
     /// `s_(N−1)`, the last segment's seed. It is random, and the server keeps it secret.
     root: ServerSeed,
@@ -32,7 +32,7 @@ impl SeedChain {
             "segment {segment} is past the chain's {} segments",
             self.len
         );
-        let mut seed = self.root;
+        let mut seed = self.root.clone();
         for _ in segment + 1..self.len.get() {
             seed = seed.earlier();
         }
@@ -41,7 +41,7 @@ impl SeedChain {
 
     /// Every segment's seed, as the server that holds the chain knows them.
     pub fn seeds(&self) -> ServerSeeds {
-        ServerSeeds::new(self.len.get() - 1, self.root)
+        ServerSeeds::new(self.len.get() - 1, self.root.clone())
     }
 
     /// `C(s_0)`, what the session's terms commit to.

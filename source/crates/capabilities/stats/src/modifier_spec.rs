@@ -2,11 +2,11 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_common::Ticks;
+use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_script::{Filter, StateSchema, SyncTo, TagNames, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::{DeclaredName, FilterData, ModifierId, Names, Number, Param, Stat};
+use campfire_values::{FilterData, ModifierId, Names, Number, Param, Stat};
 
 use crate::applier_param::ApplierParam;
 use crate::error::{ModifierProblem, SpecError};

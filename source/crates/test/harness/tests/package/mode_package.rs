@@ -10,7 +10,7 @@ use campfire_actions::{
 use campfire_capabilities::{CapabilityError, Release, UnitStartError};
 use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
-use campfire_common::MapName;
+use campfire_common::{DeclaredName, MapName};
 use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_mode::ModeError;
@@ -28,7 +28,7 @@ use campfire_sim::{Capability, TickRate};
 use campfire_stats::ModifierProblem;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::HeightGrid;
-use campfire_values::{DeclaredName, EngineEnum, Number, Scalar, TimeTooLarge};
+use campfire_values::{EngineEnum, Number, Scalar, TimeTooLarge};
 
 use crate::package::moba::{edited, load, moba, two_lanes};
 

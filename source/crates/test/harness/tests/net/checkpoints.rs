@@ -6,6 +6,7 @@
 
 use std::num::{NonZeroU8, NonZeroU32};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bevy_app::AppExit;
 use campfire_common::{ExitStatus, StateHash, Tick};
@@ -130,7 +131,7 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
         session.abort(Publisher {
             data,
             packages: local.packages(),
-            signer: &Signer::new(TestKey::server(), Entropy::Fixed(6)),
+            signer: &Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(6))),
         })
     };
     // With the latest snapshot gone, it reads that snapshot, and fails.

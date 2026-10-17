@@ -1,9 +1,8 @@
 use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale};
-use campfire_common::ContentHash;
+use campfire_common::{ContentHash, DeclaredName};
 use campfire_package_disk::PackageDir;
 use campfire_sim::Capability;
 use campfire_store::internals::Scratch;
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 use super::*;

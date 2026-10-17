@@ -1,3 +1,4 @@
+use campfire_common::DeclaredName;
 use campfire_geometry::Metric;
 use std::f32::consts::FRAC_PI_4;
 use std::sync::Arc;
@@ -17,7 +18,7 @@ use campfire_math::Num;
 use campfire_projectiles::{Flight, Payload};
 use campfire_sim::IdAllocator;
 use campfire_units::{HeightGrid, TypeOrigin, TypeOriginBook};
-use campfire_values::{ActionId, DamageKind, DeclaredName, PackageIndex, PackagePath, Rank};
+use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 
 use super::*;
 

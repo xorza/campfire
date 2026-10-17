@@ -1,4 +1,5 @@
 use std::mem;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
@@ -11,7 +12,6 @@ use campfire_runner::SessionRules;
 use campfire_values::Team;
 use campfire_visibility::Visibility;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
-use secp256k1::Keypair;
 
 use crate::error::ReceiptRefusal;
 use crate::hosting::Hosting;
@@ -97,7 +97,7 @@ pub enum Loss {
 /// they mean to reach, whether they play or watch, and the rules of the mode the client holds.
 #[derive(Debug)]
 pub(crate) struct Joining {
-    pub(crate) main_key: Keypair,
+    pub(crate) main: Arc<Signer>,
     pub(crate) server: ServerPin,
     pub(crate) role: JoinRole,
     pub(crate) rules: SessionRules,
@@ -649,8 +649,7 @@ impl Joining {
             seed_contribution: SeedContribution::new(signer.entropy().random()),
             expiration: now + DELEGATION_LIFETIME,
         };
-        let main = Signer::new(self.main_key, signer.entropy());
-        Delegation::sign(&main, &granted, now)
+        Delegation::sign(&self.main, &granted, now)
     }
 }
 

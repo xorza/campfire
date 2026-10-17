@@ -1,5 +1,4 @@
-use campfire_common::EnumAll;
-use campfire_values::DeclaredName;
+use campfire_common::{DeclaredName, EnumAll};
 
 /// Zero Hour's damage types, in the order of `DamageTypeFlags`' names: Generals' `FLESHY_SNIPER`
 /// is not among them.

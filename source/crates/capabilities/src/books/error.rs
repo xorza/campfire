@@ -1,4 +1,5 @@
 use campfire_actions::{ActionError, ActionProblem};
+use campfire_common::DeclaredName;
 use campfire_items::ItemError;
 use campfire_mode::{ModeError, ModeNamesError};
 use campfire_orders::AiError;
@@ -6,7 +7,7 @@ use campfire_progression::TrackError;
 use campfire_script::UnknownName;
 use campfire_stats::ModifierProblem;
 use campfire_units::TypesError;
-use campfire_values::{DeclaredName, PackageIndex, PackagePath, Stat};
+use campfire_values::{PackageIndex, PackagePath, Stat};
 use thiserror::Error;
 
 use crate::books::book_place::BookPlace;

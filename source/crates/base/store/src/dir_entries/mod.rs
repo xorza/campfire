@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::fs::{self, FileType};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::durable_dir::DurableDir;
 use crate::input_file::error::ReadError;
@@ -32,6 +32,21 @@ pub enum EntryKind {
 }
 
 impl DirEntries {
+    /// The path of the file or directory the link at `link` leads to, through every link on the
+    /// way, for a caller that means a link's target, as a read follows none; `Missing` when it
+    /// leads nowhere.
+    pub fn link_target(link: &Path) -> Result<PathBuf, PathError<ReadError>> {
+        fs::canonicalize(link)
+            .map_err(|error| {
+                if error.kind() == io::ErrorKind::NotFound {
+                    ReadError::Missing
+                } else {
+                    ReadError::Read(error)
+                }
+            })
+            .map_err(PathError::at(link))
+    }
+
     /// The entries of the directory at `path`; `Missing` when there is none, `NotDir` when the
     /// path names another kind of entry.
     pub fn read(path: &Path) -> Result<Vec<DirEntry>, PathError<ReadError>> {

@@ -2,10 +2,9 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
-use campfire_common::{MapName, PlayerSlot, TlsKey};
+use campfire_common::{DeclaredName, MapName, PlayerSlot, TlsKey};
 use campfire_mode::OptionValue;
 use campfire_net::SlotBotFile;
-use campfire_values::DeclaredName;
 use clap::Parser;
 use secp256k1::XOnlyPublicKey;
 

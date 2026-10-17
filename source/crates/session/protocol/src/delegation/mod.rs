@@ -127,7 +127,7 @@ impl Delegation {
                 server_key,
                 session_id: parsed(&event, DelegationTag::SessionId)?,
                 seed_contribution: parsed(&event, DelegationTag::SeedContribution)?,
-                expiration: parsed(&event, DelegationTag::Expiration)?,
+                expiration: decimal(&event, DelegationTag::Expiration)?,
             },
         })
     }
@@ -183,6 +183,17 @@ fn parsed<T: FromStr>(event: &Event, delegation_tag: DelegationTag) -> Result<T,
     tag(event, delegation_tag)?
         .parse()
         .ok()
+        .ok_or(DelegationError::MalformedTag(delegation_tag))
+}
+
+/// The one value of the tag `delegation_tag`, in the one decimal spelling `to_string` writes:
+/// no sign and no leading zero, so each value has one event and one id.
+fn decimal(event: &Event, delegation_tag: DelegationTag) -> Result<u64, DelegationError> {
+    let text = tag(event, delegation_tag)?;
+    let canonical = text == "0"
+        || (text.starts_with(|first: char| first.is_ascii_digit() && first != '0')
+            && text.bytes().all(|byte| byte.is_ascii_digit()));
+    (canonical.then(|| text.parse().ok()).flatten())
         .ok_or(DelegationError::MalformedTag(delegation_tag))
 }
 

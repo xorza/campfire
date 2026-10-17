@@ -17,7 +17,6 @@ internals = [
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-units/internals",
-    "campfire-values/internals",
     "campfire-visibility/internals",
     "campfire-vision/internals",
 ]
@@ -34,7 +33,6 @@ campfire-protocol.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-units.workspace = true
-campfire-values.workspace = true
 campfire-visibility.workspace = true
 campfire-vision = { workspace = true, optional = true }
 

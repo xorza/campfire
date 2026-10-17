@@ -9,6 +9,7 @@ use campfire_actions::{
 };
 use campfire_areas::{AreaError, AreaSpec, Areas};
 use campfire_combat::{Armor, CombatBook, CombatData, OnDeath, Turret};
+use campfire_common::DeclaredName;
 use campfire_interaction::{UseData, UseSlot, UseSpec};
 use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
 use campfire_mode::{MapInput, ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
@@ -29,8 +30,8 @@ use campfire_stats::{
 };
 use campfire_units::{Avatar, TypeOrigin, TypesError, UnitTypes};
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex,
-    PackagePath, Share, Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
+    ActionId, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, PackagePath, Share,
+    Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
 };
 
 use crate::books::Books;

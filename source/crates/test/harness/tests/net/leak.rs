@@ -251,7 +251,7 @@ impl LeakCheck {
         local.await_avatars(JOIN_FRAMES);
         let host = HostVisibility {
             settings: host.iter().map(|text| text.parse().unwrap()).collect(),
-            max_spectators: setup.max_spectators,
+            max_spectators: local.setup().max_spectators,
         };
         let visibility = local.packages().data().visibility.session(&host).unwrap();
         let mut roles: Vec<Role> = (0..PLAYERS)

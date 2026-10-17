@@ -2,9 +2,10 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_script::View;
-use campfire_values::{DeclaredName, Names, Stat};
+use campfire_values::{Names, Stat};
 
 use crate::pool_data::PoolData;
 use crate::pool_id::PoolId;

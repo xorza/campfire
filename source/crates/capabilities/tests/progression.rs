@@ -1,5 +1,6 @@
 use campfire_capabilities::{Match, Release};
 use campfire_codec::{Binary, Toml};
+use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
@@ -8,7 +9,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld};
 use campfire_stats::Level;
 use campfire_units::{UnitTypeCore, Units};
-use campfire_values::{DeclaredName, Team, TrackId};
+use campfire_values::{Team, TrackId};
 use serde::Serialize;
 
 const fn track(at: u8) -> TrackId {

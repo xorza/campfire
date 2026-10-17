@@ -2,14 +2,15 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU16, NonZeroU32};
 use std::slice;
 
+use campfire_common::DeclaredName;
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_script::{DataSection, DataTable};
 use campfire_stats::PoolCost;
 use campfire_values::{
-    DeclaredName, Distance, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked,
-    RelationSet, Scalar, Share, Speed, Stat,
+    Distance, FilterData, MessageId, Number, PackagePath, Param, Rank, Ranked, RelationSet, Scalar,
+    Share, Speed, Stat,
 };
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};

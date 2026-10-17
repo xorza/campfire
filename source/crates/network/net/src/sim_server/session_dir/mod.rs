@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_ecs::world::World;
@@ -71,7 +72,7 @@ pub struct RestoredSession {
 pub struct Publisher<'a> {
     pub data: &'a ServerDir,
     pub packages: &'a ModePackages,
-    pub signer: &'a Signer,
+    pub signer: &'a Arc<Signer>,
 }
 
 impl SessionDir {
@@ -258,7 +259,7 @@ impl RestoredSession {
         self,
         world: &mut World,
         packages: &ModePackages,
-        signer: Signer,
+        signer: Arc<Signer>,
         mut after_tick: impl FnMut(&mut World),
     ) -> Result<SnapshotDir, RestoreMatchError> {
         let Self {
@@ -323,7 +324,7 @@ impl RestoredSession {
             signer,
         } = publisher;
         let mut world = World::new();
-        self.replay(&mut world, packages, signer.clone(), |_| {})
+        self.replay(&mut world, packages, Arc::clone(signer), |_| {})
             .map_err(AbortError::Replay)?;
         if world.session().log().result().is_none() {
             let result = world.session_result();
@@ -363,7 +364,6 @@ mod tests {
         let data = ServerDir::open(&root).unwrap();
         let key = TestKey::of(8);
         let seed_chain = SeedChain::new([9; 32], NonZeroU32::MIN);
-        let private = SessionPrivate { seed_chain };
         let terms = SessionTerms {
             server_key: key.x_only_public_key().0,
             tick_hz: NonZeroU32::new(30).unwrap(),
@@ -382,6 +382,7 @@ mod tests {
             visibility: Visibility::DEFAULT.encode(),
             options: Vec::new(),
         };
+        let private = SessionPrivate { seed_chain };
         let id = terms.session_id();
         let session = Path::new("data/sessions").join(id.to_string());
         let path = scratch.path(&session);

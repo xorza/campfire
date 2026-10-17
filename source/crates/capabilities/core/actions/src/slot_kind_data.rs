@@ -1,8 +1,8 @@
 use std::num::NonZeroU8;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
 use campfire_stats::Level;
-use campfire_values::DeclaredName;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 

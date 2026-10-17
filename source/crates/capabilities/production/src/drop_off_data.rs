@@ -1,5 +1,5 @@
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// A unit type's `drop_off` section: the mode's player resources a worker's load of joins its

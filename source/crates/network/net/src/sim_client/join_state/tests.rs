@@ -39,7 +39,7 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
         tick_hz,
     };
     JoinState::new(Joining {
-        main_key: TestKey::of(1),
+        main: Arc::new(Signer::new(TestKey::of(1), Entropy::Fixed(6))),
         server,
         role: JoinRole::Play,
         rules: lane_rules(),

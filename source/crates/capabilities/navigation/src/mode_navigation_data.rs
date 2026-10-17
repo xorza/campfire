@@ -1,5 +1,5 @@
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// The mode's `[navigation]` section: the layers bodies move on, the first the default, and the

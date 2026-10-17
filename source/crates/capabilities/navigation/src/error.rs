@@ -1,7 +1,6 @@
-use campfire_common::EnumAll;
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
-use campfire_values::DeclaredName;
 use thiserror::Error;
 
 /// Why a map cannot be walked as its mode needs, for the widest walker among the map's walls and

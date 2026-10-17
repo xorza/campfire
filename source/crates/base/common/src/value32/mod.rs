@@ -25,7 +25,8 @@ pub trait ContentMeaning: Meaning {}
 
 /// 32 bytes of the meaning `K`, every meaning's by one implementation, so each has the same calls:
 /// it writes as exactly 64 lowercase hex digits, the one spelling it reads back, serializes as
-/// its 32 bytes, and orders and hashes by them. Each meaning names it by an alias,
+/// `Bytes32` does, its hex in a text format and its 32 bytes in a binary one, and orders and
+/// hashes by its bytes. Each meaning names it by an alias,
 /// `pub type SessionId = Value32<SessionIdMeaning>`.
 pub struct Value32<K> {
     bytes: Bytes32,

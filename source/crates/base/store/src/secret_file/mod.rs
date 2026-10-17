@@ -26,8 +26,8 @@ impl SecretFile {
     }
 
     /// The bytes of the file, at most `max_len`, checked from its open handle before any is
-    /// read, so the file checked is the file read; a link is followed; `Exposed` when others may
-    /// open it. The buffer is allocated once, at `max_len + 1`, and never grows, so no copy of the
+    /// read, so the file checked is the file read; `Link` for a link, which is not followed;
+    /// `Exposed` when others may open it. The buffer is allocated once, at `max_len + 1`, and never grows, so no copy of the
     /// secret stays in freed memory, and is zeroed when dropped.
     pub fn read(&self, max_len: usize) -> Result<Zeroizing<Vec<u8>>, PathError<ReadError>> {
         self.read_checked(max_len)

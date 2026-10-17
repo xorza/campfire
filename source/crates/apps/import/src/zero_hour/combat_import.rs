@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
 use campfire_client_files::ClientUnits;
-use campfire_common::NamedEnum;
+use campfire_common::{DeclaredName, NamedEnum};
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
-use campfire_values::{DeclaredName, RelationSet};
+use campfire_values::RelationSet;
 use serde::Serialize;
 
 use crate::zero_hour::error::ZeroHourError;

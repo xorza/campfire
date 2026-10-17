@@ -1,8 +1,8 @@
 use std::num::NonZeroU32;
 
+use campfire_common::DeclaredName;
 use campfire_math::Vec3;
 use campfire_units::Facing;
-use campfire_values::DeclaredName;
 
 use super::*;
 use crate::turret::turret_angle::TurretAngle;

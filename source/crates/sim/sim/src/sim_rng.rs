@@ -23,7 +23,7 @@ pub struct SimRng {
 /// each sequence it opens for that start, as the debug check of `SimRng` cannot see it. Two
 /// openers are equal only for the same start of a tick, so a holder that compares them knows when
 /// to drop what it opened.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RngOpener {
     seed: SegmentSeed,
     tick: Tick,
@@ -64,9 +64,9 @@ impl SimRng {
 
     /// What opens the running tick's sequences during a call that holds no world, as a script's
     /// draws do; its holder keeps each sequence it opens for the tick.
-    pub const fn opener(&self) -> RngOpener {
+    pub fn opener(&self) -> RngOpener {
         RngOpener {
-            seed: self.seed,
+            seed: self.seed.clone(),
             tick: self.tick,
             start: self.starts,
         }
@@ -85,6 +85,12 @@ impl SimRng {
 }
 
 impl RngOpener {
+    /// Whether it opens the sequences of `rng`'s running start of its tick, as `rng`'s opener
+    /// does, with no copy of the seed.
+    pub fn is_current(&self, rng: &SimRng) -> bool {
+        self.seed == rng.seed && self.tick == rng.tick && self.start == rng.starts
+    }
+
     /// The sequence of `stream` for `entity` in its tick, as `SimRng::open` opens it.
     pub fn open(&self, stream: RngStream, entity: StableId) -> Rng {
         Rng::new(&self.seed, stream, entity.get(), self.tick)

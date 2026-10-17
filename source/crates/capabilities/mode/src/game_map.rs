@@ -2,8 +2,9 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use campfire_common::DeclaredName;
 use campfire_script::{ScriptList, ScriptText, ScriptValue, plain_script_arg};
-use campfire_values::{DeclaredName, NameId, Names};
+use campfire_values::{NameId, Names};
 
 use crate::marker::{Marker, MarkerInfo};
 use crate::marker_spec::MarkerSpec;
@@ -110,8 +111,8 @@ plain_script_arg!(GameMap);
 mod tests {
     use std::collections::BTreeMap;
 
+    use campfire_common::DeclaredName;
     use campfire_script::ScriptText;
-    use campfire_values::DeclaredName;
 
     use crate::game_map::GameMap;
     use crate::marker_spec::MarkerSpec;

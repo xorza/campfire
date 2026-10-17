@@ -9,6 +9,7 @@ use campfire_actions::{
     SpawnFields, Targeting, XpFields,
 };
 use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
+use campfire_common::DeclaredName;
 use campfire_geometry::Metric;
 use campfire_items::{ItemData, ItemError};
 use campfire_math::Num;
@@ -23,9 +24,7 @@ use campfire_script::{
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{ModifierData, StatId};
 use campfire_units::TypesError;
-use campfire_values::{
-    DeclaredName, EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat,
-};
+use campfire_values::{EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;

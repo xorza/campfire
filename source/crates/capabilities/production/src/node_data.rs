@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// A unit type's `node` section: a node of the mode's player resource `resource`, holding

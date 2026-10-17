@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
+use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_values::{DeclaredName, PackagePath};
+use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

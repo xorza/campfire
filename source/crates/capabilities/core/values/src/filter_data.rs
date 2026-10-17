@@ -4,8 +4,8 @@ use campfire_common::NamedEnum;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::declared_name::DeclaredName;
 use crate::relation_set::RelationSet;
+use campfire_common::DeclaredName;
 
 /// A filter in data, such as an area's `affects`: a set of relations, then tags after colons,
 /// each one the unit must have, or with `!` one it must not, which the load checks against the

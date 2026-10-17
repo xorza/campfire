@@ -337,9 +337,10 @@ mod tests {
     use campfire_client_files::{
         Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale,
     };
+    use campfire_common::DeclaredName;
     use campfire_math::Num;
     use campfire_units::HeightGrid;
-    use campfire_values::{DeclaredName, PackagePath};
+    use campfire_values::PackagePath;
 
     use super::*;
 

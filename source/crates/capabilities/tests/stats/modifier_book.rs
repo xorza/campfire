@@ -2,14 +2,15 @@ use std::collections::BTreeMap;
 use std::convert::Infallible;
 
 use campfire_capabilities::{Match, Release};
+use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_script::ParamProblem;
 use campfire_script::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
 use campfire_stats::*;
 use campfire_units::{ScriptBook, UnitTypes};
 use campfire_values::{
-    ActionId, DeclaredName, ModifierId, NameId, Number, PackageIndex, Param, ParamRef, Rank,
-    Ranked, Scalar, Scaling, Stat,
+    ActionId, ModifierId, NameId, Number, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar,
+    Scaling, Stat,
 };
 
 fn name(text: &str) -> DeclaredName {

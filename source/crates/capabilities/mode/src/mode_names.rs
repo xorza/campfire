@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
+use campfire_common::DeclaredName;
 use campfire_script::{NameKind, UnknownName};
 use campfire_stats::PoolId;
 use campfire_units::{BodyForm, CollisionData, Layer};
-use campfire_values::{DamageKind, DeclaredName, NameId, Names, NamesError, ResourceId};
+use campfire_values::{DamageKind, NameId, Names, NamesError, ResourceId};
 
 use crate::error::{ModeList, ModeNamesError};
 use crate::mode_data::ModeData;

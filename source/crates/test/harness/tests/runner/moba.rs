@@ -2,7 +2,7 @@
 //! the heroes' experience.
 
 use bevy_ecs::world::World;
-use campfire_common::PlayerSlot;
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_harness::{FixedMatch, Moba3v3, ScriptedMode};
 use campfire_math::Num;
 use campfire_players::PlayersWorld;
@@ -11,7 +11,7 @@ use campfire_runner::SessionWorld;
 use campfire_script::ScriptFailures;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimTick, StableId};
-use campfire_values::{DeclaredName, Names, ResourceId, TrackId};
+use campfire_values::{Names, ResourceId, TrackId};
 
 /// Runs `fixed` until tick `end` starts, checking that no script call fails.
 pub(crate) fn run_to(fixed: &mut FixedMatch, end: u64) {

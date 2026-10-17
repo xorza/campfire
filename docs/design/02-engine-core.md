@@ -131,6 +131,7 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **`protocol` does no IO.** The session log writes framed records into a `RecordSink`, which `net` implements over `store`.
 - **One thread for each job.** Every thread starts through `store`'s `Worker`, named and joined; none waits for the disk or allocates in a steady state, and each keeps its failure for its owner, so a failure at shutdown reaches the exit code.
 - **A data directory is locked.** `DataDir` exists only while it holds its directory's lock, so a second process on one directory is refused, and refuses a directory others may open, as Tor does.
+- **Reads follow no link.** A read opens with `O_NOFOLLOW`, or the link itself on Windows, and refuses a path whose last name is a link, as OpenSSH opens a key; a caller that means a link's target, as the Zero Hour import reads a player's install, names the target first. Refused: reads that follow links, by which a link left in a data directory reads a file elsewhere.
 - **Bounded reads, no existence checks.** A read never passes a bound its format's owner derives, and no code asks whether a path exists: it reads or lists, and takes `Missing`, so every answer comes from one moment.
 - **No policy in `store`.** A failure is an enum of the step that failed; the caller decides, as `net` ends the server with code 74 on a journal failure.
 

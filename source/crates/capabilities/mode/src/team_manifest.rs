@@ -1,4 +1,4 @@
-use campfire_values::DeclaredName;
+use campfire_common::DeclaredName;
 use serde::Deserialize;
 
 /// A playing team as a mode's manifest declares it: its name, and how many player slots it has.

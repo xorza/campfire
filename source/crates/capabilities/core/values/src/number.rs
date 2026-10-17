@@ -1,8 +1,8 @@
 use campfire_math::Num;
 use serde::Deserialize;
 
-use crate::declared_name::DeclaredName;
 use crate::scalar::Scalar;
+use campfire_common::DeclaredName;
 
 /// A number field of data: a value, or `{ param = "<name>" }`, which reads the param of that name
 /// as `ctx.p` does.

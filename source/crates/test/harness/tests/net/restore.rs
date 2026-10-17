@@ -4,6 +4,7 @@
 //! session than its directory's, and a seed chain the session's terms do not commit to.
 
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use campfire_common::{StateHash, Tick};
 use campfire_harness::{End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
@@ -123,7 +124,7 @@ fn a_session_past_its_window_ends_aborted_its_journal_cut_at_a_tear() {
         .abort(Publisher {
             data: &stopped,
             packages: local.packages(),
-            signer: &Signer::new(key, Entropy::Fixed(6)),
+            signer: &Arc::new(Signer::new(key, Entropy::Fixed(6))),
         })
         .unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());

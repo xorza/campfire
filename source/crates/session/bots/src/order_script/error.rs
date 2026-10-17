@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use campfire_codec::TomlError;
+use campfire_common::DeclaredName;
 use campfire_store::{PathError, ReadError};
-use campfire_values::DeclaredName;
 use thiserror::Error;
 
 /// Why an order script does not read.

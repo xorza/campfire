@@ -26,7 +26,7 @@ use campfire_net::{
 };
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Entropy, InputRules, SeedChain, ServerInput};
+use campfire_protocol::{Entropy, InputRules, SeedChain, ServerInput, Signer};
 use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
@@ -57,7 +57,7 @@ const TLS_KEY: TlsKey = TlsKey::new([3; 32]);
 const BINDING: LinkBinding = LinkBinding(ChannelBinding::new([3; 32]));
 
 /// What an `InProcessMatch` runs: how many players join, and how.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MatchSetup {
     /// The players, a client each, in the slots from 0: one or two in the lane mode, a slot a
     /// side, and at most `MAX_PLAYERS`.
@@ -161,7 +161,7 @@ impl MatchSetup {
 
     /// Two players through `link`, whose clients roll back only on a misprediction, with a
     /// server that runs 3 frames a tick.
-    pub const fn duo(link: LinkModel, seed_chain: SeedChain) -> Self {
+    pub fn duo(link: LinkModel, seed_chain: SeedChain) -> Self {
         Self {
             players: 2,
             link,
@@ -224,7 +224,8 @@ impl InProcessMatch {
             (1..=2).contains(&setup.players),
             "the lane mode takes 1 or 2 players"
         );
-        Self::of_mode(setup, Self::lane_mode(setup.rules, setup.saves))
+        let packages = Self::lane_mode(setup.rules, setup.saves);
+        Self::of_mode(setup, packages)
     }
 
     /// A match of `packages` at their default rate, its clients connected and synced.
@@ -252,6 +253,7 @@ impl InProcessMatch {
             clients: Vec::with_capacity(setup.players),
             client_entities: Vec::with_capacity(setup.players),
             links: Vec::with_capacity(setup.players),
+            link_rows: Vec::with_capacity(setup.players),
             links_made: 0,
             spectators: 0,
             setup,
@@ -260,13 +262,13 @@ impl InProcessMatch {
             pace,
             clock: Clock::manual(TestKey::NOW),
             step_cost: StepCost::default(),
-            link_rows: Vec::with_capacity(setup.players),
             log,
         };
-        for client in 0..setup.players {
-            let player = match setup.links {
+        let MatchSetup { players, links, .. } = local.setup;
+        for client in 0..players {
+            let player = match links {
                 LinkLayout::InOrder => client,
-                LinkLayout::Reversed => setup.players - 1 - client,
+                LinkLayout::Reversed => players - 1 - client,
             };
             local.add_client(player);
         }
@@ -419,11 +421,11 @@ impl InProcessMatch {
             .packages()
     }
 
-    /// What the server opens or restores its session with: its key, the setup's times, a fixed
-    /// clock and fixed random bytes.
+    /// What the server opens or restores its session with: the signer of its key, the setup's
+    /// times, a fixed clock and fixed random bytes.
     fn server_setup(&self) -> ServerSetup {
         ServerSetup {
-            key: TestKey::server(),
+            signer: Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(5))),
             times: self.setup.times,
             os: Os {
                 clock: self.clock.clone(),
@@ -545,7 +547,7 @@ impl InProcessMatch {
         let mut lobby = Lobby::new(LobbySetup {
             opening,
             tick_hz: packages.manifest().tick_hz.default(),
-            seed_chain: self.setup.seed_chain,
+            seed_chain: self.setup.seed_chain.clone(),
             inputs: InputRules::LAN,
             slots: self.setup.players + self.setup.bots.len(),
         })
@@ -866,7 +868,7 @@ impl ClientApp {
             ),
         };
         let sim_client = SimClient {
-            main_key: keys.main,
+            main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
             session_key: keys.session,
             server: ServerPin {
                 key: TestKey::server().x_only_public_key().0,

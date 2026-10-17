@@ -1,4 +1,4 @@
-use campfire_values::DeclaredName;
+use campfire_common::DeclaredName;
 use derive_more::Display;
 
 /// A way a modifier is applied, by the ways stats give (04-capabilities/stats.md, An application
