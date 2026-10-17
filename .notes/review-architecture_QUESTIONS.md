@@ -21,3 +21,13 @@ Each question waits for the user's decision. The plan's items point here.
   2. **The callback table, as proposed.** One core system visits the units by stable id and calls each kind's start and go-off through the table. Cost: exclusive world access for each candidate unit in Act, and the kinds' order within a tick changes, so goldens may move against the proposal's "no golden moves".
   3. **Defer K-17.** Keep the loops as they are until a measurement or a new kind shows the cost of the duplication. Cost: K-17 stays open.
 - **Blocked:** the pipeline bullet of 5.3, and 5.1, which needs the kinds' plug-in.
+
+## Q16. Batch 6.4, N-18: a relationship from a slot's entity to its link
+
+- **Item:** 6.4, N-18, the second half: "On the server, a Bevy relationship links a slot's entity and its link". The first half, one `Control` shape, is done.
+- **Why it waits:** a one-to-one Bevy relationship (`PlayerLink` on the link pointing at the slot's `Player` entity, `SeatedLink` on that entity) would replace `Seats`' link, and Bevy removes an older link's `PlayerLink` as a newer one is inserted. But the door now runs as an ordinary system (N-4), and seats players through `Commands`, which apply at the frame's sync point. Two joins of one main key in one frame then miss each other: the second finds no `SeatedLink` yet, does not dismiss the first link, and the relationship drops the first's `PlayerLink` without a word, so the first link stays open with no seat. `Seats` holds the link at once, so today the first link is dismissed.
+- **Options:**
+  1. **Keep `Seats` as the one record of the link (recommended).** `PlayerLink` keeps the slot and team the link carries, which the hot input path reads, and `Seats` the link of each slot; a test pins that a second login in the same frame dismisses the first. Cost: two records of one fact stay, kept by the door's one seat and leave paths.
+  2. **The relationship, with a frame's seats in a local.** `PlayerLink` becomes the relationship; the door keeps the links it seated this frame in a `Local`, which a second join reads before the commands apply. Cost: the local is a third record for one frame, and every path that seats must read it.
+  3. **The relationship, the door exclusive again.** The door seats through the world at once, so the relationship holds at each join. Cost: N-4 goes back for the door.
+- **Blocked:** the second half of N-18 alone.

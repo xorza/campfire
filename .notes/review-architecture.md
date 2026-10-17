@@ -349,7 +349,7 @@ Each section gives the target shape of one system, the findings it removes, and 
   - The journal and its durable heads are a `JournaledLog` wrapper that only the server owns (N-17).
   - The live log keeps its state, the entries since the last checkpoint, and the counts. Publication streams the journal's frames through a bounded reader, as 10-sessions.md says (N-14, decision D34).
   - A record is encoded once, into the journal's frame buffer, and signed over the bytes already written. The journal worker wakes once for each frame (N-13).
-- **Controllers and seats.** `Control` is the one shape of a slot's controller, and `Controller` borrows it. The carry serializes it through one adapter. On the server, a Bevy relationship links a slot's entity and its link (N-18).
+- **Controllers and seats.** On the server, a Bevy relationship links a slot's entity and its link (N-18).
 - **Journal integrity.**
   - A read stops at the first bad frame, cuts the file there and logs a `JournalCut { bytes }` event with what it dropped, as RocksDB's default `kPointInTimeRecovery` does. The session continues from the last whole frame. A receipt promises that its inputs survive a crash, not a corruption of the medium, and 05 and 10 say so (N-15, decision D33).
   - The private record holds only the seed chain, and the terms come from the journal's header alone (N-8).
@@ -649,7 +649,7 @@ Each change folds into its document when its batch lands. Each line names the de
 **6.4 The session log.** Touches `protocol` (session log, journal, controller, carry) and `net` (seats, player link, checkpoints).
 - A proposal first, `docs/design/session-log-state.md`, for review before any code (decided 2026-10-17): the live log as its latest checkpoint's state and the entries since, as Raft keeps a snapshot and a tail; the replay as a cursor value the session owns beside the log; publication by two streaming passes over the journal, each load's cut applied; one encode for each record into the journal's frame buffer; the signature policy as a parameter of the decode (N-17, N-14, N-13, D34). The code waits for the review.
 - A bench of `record_inputs` with 8 and 32 slots' packets first (decided 2026-10-17). `check` and `apply` split, with parallel checks across slots, only when the bench shows the checks take a set share of the frame's budget (N-11).
-- One `Control` shape, and a relationship from a slot's entity to its link (N-18).
+- A relationship from a slot's entity to its link (N-18). Waits for Q16 in `review-architecture_QUESTIONS.md`.
 
 **6.5 Allocations on the network paths.** Touches `net` and `protocol`.
 - The offer keeps its encoded body. The ack has a bounded array. `Version` keeps its tag text. The chain history is a `VecDeque` (N-25).
