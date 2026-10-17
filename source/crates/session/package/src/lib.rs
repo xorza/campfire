@@ -27,7 +27,6 @@ mod texts;
 
 pub use crate::avatar_unit::AvatarUnit;
 pub use crate::dependent::{Dependent, DependentKind};
-pub use crate::error::box_problem::BoxProblem;
 pub use crate::error::build_problem::BuildProblem;
 pub use crate::error::delivery_problem::DeliveryProblem;
 pub use crate::error::effect_problem::EffectProblem;

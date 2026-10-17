@@ -10,19 +10,17 @@ use campfire_actions::{
 };
 use campfire_areas::AreaData;
 use campfire_capabilities::Release;
-use campfire_combat::{CombatData, ModeCombatData};
+use campfire_combat::ModeCombatData;
 use campfire_common::DeclaredName;
 use campfire_declare::{
     BookError, BookPlace, Section, SectionReaders, SectionTable, TypePlace, UnitTypeData,
 };
-use campfire_geometry::Metric;
 use campfire_items::ItemsData;
 use campfire_math::Num;
 use campfire_mode::ModeData;
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
 use campfire_players::ResourcesData;
-use campfire_production::{ModeSupplyData, ProductionData, SupplyData};
 use campfire_projectiles::{ProjectileData, ProjectileHits};
 use campfire_script::{
     ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
@@ -32,15 +30,12 @@ use campfire_script::{
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{
     ModePoolsData, ModeStatsData, ModifierData, ModifiersData, PassiveData, StatId, StatsData,
-    TypePoolsData,
 };
-use campfire_units::{CollisionData, TypeParamsData, TypeStateData, TypeTagsData};
+use campfire_units::{CollisionData, TypeStateData};
 use campfire_values::{EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat};
-use campfire_vision::VisionData;
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
-use crate::error::box_problem::BoxProblem;
 use crate::error::build_problem::BuildProblem;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
@@ -69,8 +64,6 @@ pub(crate) struct LoadCheck<'a> {
     names: NameTables,
     /// The release's engine tags, which no package gives.
     engine: Vec<EngineTag>,
-    /// The move speed cap, in meters a second.
-    cap: Num,
     /// The script API of the release, which every name a script uses must be of.
     api: &'a ScriptApi,
     /// The fastest rate the mode allows, at which a time counts the most ticks.
@@ -163,7 +156,6 @@ impl<'a> LoadCheck<'a> {
             packages,
             names: names.map_err(|error| book_error(packages, error))?,
             engine,
-            cap: manifest.max_move_speed.get(),
             api,
             rate: TickRate::new(manifest.tick_hz.fastest()),
             state_fields: LoadCheck::state_fields(packages),
@@ -1207,30 +1199,6 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A box body only on a planar map.
-    fn body_box(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        let boxed = unit_type
-            .section::<CollisionData>()
-            .is_some_and(|collision| collision.form.is_box());
-        if boxed && self.packages.map.metric() == Metric::Spatial {
-            let at = at.clone();
-            return Err(LoadProblem::BoxBody {
-                at,
-                problem: BoxProblem::Spatial,
-            });
-        }
-        Ok(())
-    }
-
-    /// A `supply` of `unit_type`, at `at`, needs the mode's `[supply]`.
-    fn sections(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        let counted = self.packages.data.section::<ModeSupplyData>().is_some();
-        if unit_type.section::<SupplyData>().is_some() && !counted {
-            return Err(LoadProblem::SupplyUncounted(at.clone()));
-        }
-        Ok(())
-    }
-
     /// A unit type at `at`, of a package of `actions` and `modifiers`: each capability its
     /// sections use declared, its pools as `unit_pools` takes them, a box body only where
     /// `body_box` allows it; its slots of kinds the mode declares, each holding actions of
@@ -1246,14 +1214,6 @@ impl<'a> LoadCheck<'a> {
         actions: &BTreeMap<DeclaredName, ActionData>,
         modifiers: &BTreeMap<DeclaredName, ModifierData>,
     ) -> Result<(), LoadProblem> {
-        self.sections(unit_type, at)?;
-        self.own_tags(&unit_type.section_or_default::<TypeTagsData>().0, at)?;
-        self.body_box(unit_type, at)?;
-        if unit_type.delivers() && !delivery_only(unit_type) {
-            return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
-                at.clone(),
-            )));
-        }
         if let Some(area) = unit_type.section::<AreaData>() {
             // The modifiers' ways, which the modifiers' checks read, pass on through an area's
             // `inside` modifiers.
@@ -1261,27 +1221,6 @@ impl<'a> LoadCheck<'a> {
                 modifier_exists(modifiers, modifier.as_str(), at)?;
             }
         }
-        if let Some(projectile) = unit_type.section::<ProjectileData>() {
-            if projectile.homing && projectile.speed <= self.cap {
-                return Err(LoadProblem::Delivery(DeliveryProblem::NotFaster(
-                    at.clone(),
-                )));
-            }
-            let hits_aside = projectile.homing
-                || projectile.stop_on_hit
-                || projectile.once_per_cast
-                || (projectile.width > Num::ZERO && projectile.curve.is_none());
-            if projectile.hits == ProjectileHits::Nothing && hits_aside {
-                return Err(LoadProblem::Delivery(DeliveryProblem::HitsNothing(
-                    at.clone(),
-                )));
-            }
-        }
-        self.unit_pools(
-            &unit_type.section_or_default::<TypePoolsData>().0,
-            unit_type.section::<CombatData>().is_some(),
-            at,
-        )?;
         // The slotted ranks, which the actions' checks read, hold only the slots of a kind the
         // mode declares.
         let kinds = &self.sections.slots;
@@ -1300,11 +1239,6 @@ impl<'a> LoadCheck<'a> {
                         at: at.clone(),
                         name: id.to_string(),
                     });
-                }
-                if actions[id].kind == ActionKind::Train
-                    && unit_type.section::<ProductionData>().is_none()
-                {
-                    return Err(LoadProblem::NoQueue(id.clone()));
                 }
             }
         }
@@ -1338,30 +1272,6 @@ impl<'a> LoadCheck<'a> {
                     at: Place::UnitType(name.clone()),
                 });
             }
-        }
-        Ok(())
-    }
-
-    /// The pools a unit type at `at` lists: none twice, and the life pool among them exactly
-    /// when it has `combat`: with it, it dies at zero life; without it, it would stay a target
-    /// at zero life forever.
-    fn unit_pools(
-        &self,
-        pools: &[DeclaredName],
-        combat: bool,
-        at: &Place,
-    ) -> Result<(), LoadProblem> {
-        for (place, name) in pools.iter().enumerate() {
-            if pools[..place].contains(name) {
-                return Err(LoadProblem::Repeated {
-                    at: at.clone(),
-                    name: name.to_string(),
-                });
-            }
-        }
-        let lives = (self.sections.combat.life.as_ref()).is_some_and(|life| pools.contains(life));
-        if lives && !combat {
-            return Err(LoadProblem::CombatMissing(at.clone()));
         }
         Ok(())
     }
@@ -1733,22 +1643,6 @@ fn delivery_holds(
         return fail(DeliveryProblem::Weapon);
     }
     Ok(())
-}
-
-/// Whether `unit_type`, a delivery type, is one and nothing more: of one section of a delivery
-/// type, beside its tags, params, state and `vision`, and no section of a unit that stands.
-fn delivery_only(unit_type: &UnitTypeData) -> bool {
-    let readers = Release::sections();
-    let delivers: Vec<&str> = readers.delivery_keys().collect();
-    let beside = [
-        TypeTagsData::KEY,
-        TypeParamsData::KEY,
-        TypeStateData::KEY,
-        VisionData::KEY,
-    ];
-    let mut keys = unit_type.sections().keys();
-    let delivered = keys.clone().filter(|key| delivers.contains(key)).count();
-    delivered == 1 && keys.all(|key| delivers.contains(&key) || beside.contains(&key))
 }
 
 /// Whether `names` holds `name`.

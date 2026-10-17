@@ -1,9 +1,0 @@
-use thiserror::Error;
-
-/// What is wrong with a unit type's box body.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
-pub enum BoxProblem {
-    /// The map is spatial: a box lies on the ground plane of a planar map.
-    #[error("a box lies on a planar map, and the map is spatial")]
-    Spatial,
-}

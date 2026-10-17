@@ -9,7 +9,6 @@ use campfire_values::{EngineTag, PackagePath, Stat};
 use thiserror::Error;
 
 use crate::error::ContentError;
-use crate::error::box_problem::BoxProblem;
 use crate::error::build_problem::BuildProblem;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
@@ -79,9 +78,6 @@ pub enum LoadProblem {
     /// A team of the manifest has no `[teams.<team>]` that names it.
     #[error("team \"{0}\" has no name")]
     UnnamedTeam(DeclaredName),
-    /// A unit type holds this train, and has no `production` section to queue it.
-    #[error("train \"{0}\" sits on a unit type with no queue")]
-    NoQueue(DeclaredName),
     /// Unit types place the action in slot kinds of other ranks.
     #[error("action \"{0}\" sits in slot kinds of other ranks")]
     ActionRanks(DeclaredName),
@@ -110,12 +106,6 @@ pub enum LoadProblem {
     /// A gather that does not hold.
     #[error(transparent)]
     Gather(GatherProblem),
-    /// A unit type's `supply` in a mode with no `[supply]`, which counts none.
-    #[error("{0}: a supply in a mode that counts none")]
-    SupplyUncounted(Place),
-    /// A unit type's box body that its type or its map does not let it have.
-    #[error("{at}: {problem}")]
-    BoxBody { at: Place, problem: BoxProblem },
     /// An action clamps its aim to its range, and aims at no point.
     #[error("action \"{0}\": only a point aim clamps to the range")]
     ClampAims(DeclaredName),
@@ -171,10 +161,6 @@ pub enum LoadProblem {
     /// The mode declares `combat` but no `[combat] life`.
     #[error("combat with no [combat] life")]
     NoLifePool,
-    /// A unit type at `at` has the life pool but no `combat` section, so it could reach zero
-    /// life and never die.
-    #[error("{0}: the life pool without combat")]
-    CombatMissing(Place),
     /// A projectile or an area type, or what delivers or makes one.
     #[error(transparent)]
     Delivery(DeliveryProblem),

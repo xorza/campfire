@@ -36,6 +36,7 @@ campfire-values.workspace = true
 
 bevy_ecs.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 campfire-projectiles = { workspace = true, features = ["internals"] }

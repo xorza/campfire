@@ -1,4 +1,4 @@
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Fact, SourceType};
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, Fact, NamesListError, SourceType};
 use campfire_math::Num;
 use campfire_script::{NameKind, UnknownName};
 use campfire_values::{NameId, Stat};
@@ -24,6 +24,23 @@ pub struct TypePools {
 impl Fact for TypePools {}
 
 impl TypePools {
+    /// The rule of every unit type's pools: none twice.
+    pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        for unit in cx.types() {
+            let Some(pools) = unit.data.section::<TypePoolsData>() else {
+                continue;
+            };
+            let repeated =
+                (pools.0.iter().enumerate()).find(|&(at, name)| pools.0[..at].contains(name));
+            if let Some((_, name)) = repeated {
+                let at = BookPlace::UnitType(unit.place());
+                let problem = NamesListError::Repeated(name.clone());
+                return Err(BookError::rule(unit.package, at, problem));
+            }
+        }
+        Ok(())
+    }
+
     /// The pools of each unit type that stands; an error for a pool the mode does not declare,
     /// or for a maximum the type's stats do not give or give no positive value of.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {

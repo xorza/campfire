@@ -1,3 +1,4 @@
+use campfire_common::DeclaredName;
 use thiserror::Error;
 
 /// Why the match's unit types or tags do not load. Packages are untrusted, so each is an expected
@@ -13,6 +14,22 @@ pub enum TypesError {
     /// Two unit types of one scope by one name, as an avatar named as one of the mode's types.
     #[error("unit type {0} twice")]
     Repeated(String),
+}
+
+/// Why a unit type breaks a rule of the units. Packages are untrusted, so each is an expected
+/// failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum UnitTypeError {
+    /// It holds a tag only the engine gives.
+    #[error("the tag {0}, which only the engine gives")]
+    EngineTag(DeclaredName),
+    /// A delivery type with no delivery's section, more than one, or a section no delivery type
+    /// holds.
+    #[error("a delivery type holds one delivery's section, and beside it only those of any type")]
+    NotDelivery,
+    /// A box body on a spatial map, where a box lies on the ground plane of a planar map.
+    #[error("a box lies on a planar map, and the map is spatial")]
+    BoxOnSpatial,
 }
 
 /// Why a map's ground does not load: its coarse cells do not fit its height grid. Packages are

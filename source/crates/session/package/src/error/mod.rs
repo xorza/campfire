@@ -11,7 +11,6 @@ use thiserror::Error;
 use crate::error::load_problem::LoadProblem;
 use crate::files::package_name::PackageName;
 
-pub(crate) mod box_problem;
 pub(crate) mod build_problem;
 pub(crate) mod delivery_problem;
 pub(crate) mod effect_problem;

@@ -22,7 +22,7 @@ pub struct UnitTypeCore {
 pub struct TypeTagsData(pub Vec<DeclaredName>);
 
 impl Section for TypeTagsData {
-    const TABLE: SectionTable = SectionTable::UnitType;
+    const TABLE: SectionTable = SectionTable::AnyType;
     const KEY: &'static str = "tags";
 }
 
@@ -32,7 +32,7 @@ impl Section for TypeTagsData {
 pub struct TypeParamsData(pub BTreeMap<DeclaredName, Scalar>);
 
 impl Section for TypeParamsData {
-    const TABLE: SectionTable = SectionTable::UnitType;
+    const TABLE: SectionTable = SectionTable::AnyType;
     const KEY: &'static str = "params";
 }
 
@@ -42,7 +42,7 @@ impl Section for TypeParamsData {
 pub struct TypeStateData(pub BTreeMap<DeclaredName, SyncedStateDecl>);
 
 impl Section for TypeStateData {
-    const TABLE: SectionTable = SectionTable::UnitType;
+    const TABLE: SectionTable = SectionTable::AnyType;
     const KEY: &'static str = "state";
 }
 

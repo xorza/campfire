@@ -288,6 +288,7 @@ impl Module for Stats {
         d.fact::<PoolNames>(PoolNames::build);
         d.book::<PoolBook>(PoolBook::build);
         d.fact::<TypePools>(TypePools::build);
+        d.rule(TypePools::rule);
         d.column::<StatsColumn, RowReads>(StatsColumn::fill_row);
         d.call_params::<StatsCall>();
         d.api(StatsApi::register);

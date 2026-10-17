@@ -32,6 +32,6 @@ impl DataSection for VisionData {
 }
 
 impl Section for VisionData {
-    const TABLE: SectionTable = SectionTable::UnitType;
+    const TABLE: SectionTable = SectionTable::AnyType;
     const KEY: &'static str = "vision";
 }

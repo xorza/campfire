@@ -2769,7 +2769,6 @@ dependencies = [
  "campfire-combat",
  "campfire-common",
  "campfire-declare",
- "campfire-geometry",
  "campfire-items",
  "campfire-math",
  "campfire-mode",
@@ -2777,7 +2776,6 @@ dependencies = [
  "campfire-orders",
  "campfire-package",
  "campfire-players",
- "campfire-production",
  "campfire-progression",
  "campfire-projectiles",
  "campfire-script",
@@ -2785,7 +2783,6 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
- "campfire-vision",
  "derive_more",
  "fluent-bundle",
  "fluent-syntax",
@@ -2848,6 +2845,7 @@ dependencies = [
  "campfire-values",
  "campfire-vision",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2890,6 +2888,7 @@ dependencies = [
  "campfire-units",
  "campfire-values",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]

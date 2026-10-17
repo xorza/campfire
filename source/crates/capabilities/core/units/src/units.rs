@@ -156,6 +156,7 @@ impl Module for Units {
         d.book::<UnitStateBook>(UnitTypes::build_state_book);
         d.book::<TypeOriginBook>(UnitTypes::build_origin_book);
         d.book::<TagBook>(UnitTypes::build_tag_book);
+        d.rule(Self::rule);
         d.book::<MapBook>(MapBook::build);
         d.book::<ScriptBook>(ScriptBook::build);
         d.column::<UnitsColumn, StateRowReads>(UnitsColumn::fill_state);

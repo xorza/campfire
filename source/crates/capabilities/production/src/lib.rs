@@ -67,7 +67,7 @@ pub use crate::builder::{BuildOrder, Builder};
 pub use crate::construction::Construction;
 pub use crate::construction::step::{Start, Step};
 pub use crate::drop_off_data::DropOffData;
-pub use crate::error::{PointPastBound, ProductionRefusal};
+pub use crate::error::{PointPastBound, ProductionDataError, ProductionRefusal};
 pub use crate::frame_point::FramePoint;
 pub use crate::gather_loop::GatherLoop;
 pub use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
@@ -172,6 +172,7 @@ impl Module for Production {
         d.book::<BuildBook>(BuildBook::build);
         d.book::<NodeBook>(NodeBook::build);
         d.book::<SupplyBook>(SupplyBook::build);
+        d.rule(Self::rule);
         d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
         d.book::<ByType<Builder>>(Builder::book);

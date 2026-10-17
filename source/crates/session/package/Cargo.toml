@@ -13,14 +13,12 @@ internals = [
     "campfire-combat/internals",
     "campfire-common/internals",
     "campfire-declare/internals",
-    "campfire-geometry/internals",
     "campfire-items/internals",
     "campfire-math/internals",
     "campfire-mode/internals",
     "campfire-navigation/internals",
     "campfire-orders/internals",
     "campfire-players/internals",
-    "campfire-production/internals",
     "campfire-progression/internals",
     "campfire-projectiles/internals",
     "campfire-script/internals",
@@ -28,7 +26,6 @@ internals = [
     "campfire-stats/internals",
     "campfire-units/internals",
     "campfire-values/internals",
-    "campfire-vision/internals",
 ]
 
 [dependencies]
@@ -39,14 +36,12 @@ campfire-codec.workspace = true
 campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
-campfire-geometry.workspace = true
 campfire-items.workspace = true
 campfire-math.workspace = true
 campfire-mode.workspace = true
 campfire-navigation.workspace = true
 campfire-orders.workspace = true
 campfire-players.workspace = true
-campfire-production.workspace = true
 campfire-progression.workspace = true
 campfire-projectiles.workspace = true
 campfire-script.workspace = true
@@ -54,7 +49,6 @@ campfire-sim.workspace = true
 campfire-stats.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
-campfire-vision.workspace = true
 
 derive_more.workspace = true
 fluent-bundle.workspace = true

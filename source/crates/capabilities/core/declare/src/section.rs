@@ -28,6 +28,8 @@ pub enum SectionTable {
     /// A unit type's key that makes it a delivery type, whose units only actions deliver and no
     /// map or train places.
     DeliveryType,
+    /// A unit type's key that a delivery type holds too, as its tags.
+    AnyType,
 }
 
 impl SectionTable {
@@ -35,7 +37,7 @@ impl SectionTable {
     #[must_use]
     pub(crate) const fn read_in(self) -> Self {
         match self {
-            Self::DeliveryType => Self::UnitType,
+            Self::DeliveryType | Self::AnyType => Self::UnitType,
             table => table,
         }
     }

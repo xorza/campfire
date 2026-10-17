@@ -74,6 +74,7 @@ mod units;
 mod units_api;
 mod units_call;
 mod units_column;
+mod units_rules;
 mod units_world;
 mod view_reader;
 
@@ -86,7 +87,7 @@ pub use crate::dead::Dead;
 pub use crate::destination::Destination;
 pub use crate::entity_filters::UnitFilter;
 pub use crate::entity_kinds::EntityKinds;
-pub use crate::error::{GroundError, GroundLoadError, MapPointError, TypesError};
+pub use crate::error::{GroundError, GroundLoadError, MapPointError, TypesError, UnitTypeError};
 pub use crate::facing::{Facing, Turn};
 pub use crate::forced_move::{Advanced, DashTo, ForcedMove, Goal};
 pub use crate::ground::{CellSplit, CoarseSpan, Ground};

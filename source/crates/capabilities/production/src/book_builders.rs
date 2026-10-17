@@ -14,6 +14,7 @@ use crate::Production;
 use crate::build_book::{BuildBook, NewBuild, PlacementCheck, Style};
 use crate::builder::Builder;
 use crate::drop_off_data::DropOffData;
+use crate::error::ProductionDataError;
 use crate::gatherer::Gatherer;
 use crate::mode_supply_data::ModeSupplyData;
 use crate::node::Node;
@@ -37,6 +38,35 @@ struct PackageAction<'d> {
 }
 
 impl Production {
+    /// The rule of every unit type: a supply only in a mode that counts supply, and a train in its
+    /// slots only with a queue to train in.
+    pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        let counted = cx.mode_section::<ModeSupplyData>().is_some();
+        for unit in cx.types() {
+            let fail = |problem| {
+                let at = BookPlace::UnitType(unit.place());
+                Err(BookError::rule(unit.package, at, problem))
+            };
+            if unit.data.section::<SupplyData>().is_some() && !counted {
+                return fail(ProductionDataError::SupplyUncounted);
+            }
+            if unit.data.section::<ProductionData>().is_some() {
+                continue;
+            }
+            let actions = cx.package(unit.package).content.get::<ActionsData>();
+            let slots = unit.data.section::<TypeSlotsData>().into_iter();
+            let mut slotted = slots.flat_map(|slots| slots.0.values()).flatten();
+            let trains = slotted.find(|id| {
+                let action = actions.and_then(|actions| actions.0.get(*id));
+                action.is_some_and(|action| action.kind == ActionKind::Train)
+            });
+            if let Some(id) = trains {
+                return fail(ProductionDataError::NoQueue(id.clone()));
+            }
+        }
+        Ok(())
+    }
+
     /// Tags each node type that stands `node`, and each drop-off type `drop_off`.
     #[expect(
         clippy::unnecessary_wraps,

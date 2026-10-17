@@ -40,6 +40,7 @@ campfire-vision.workspace = true
 
 bevy_ecs.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }

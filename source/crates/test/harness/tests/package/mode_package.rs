@@ -18,18 +18,19 @@ use campfire_mode::{ModeDataError, ModeError};
 use campfire_navigation::{MapProblem, NavigationDataError};
 use campfire_orders::AiError;
 use campfire_package::{
-    BoxProblem, BuildProblem, ContentError, DeliveryProblem, EffectProblem, GatherProblem,
-    LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName, PackageRef, Place,
-    ScriptProblem, Way,
+    BuildProblem, ContentError, DeliveryProblem, EffectProblem, GatherProblem, LoadError,
+    LoadProblem, LocaleProblem, ModePackages, PackageName, PackageRef, Place, ScriptProblem, Way,
 };
 use campfire_package_disk::PackageDir;
+use campfire_production::ProductionDataError;
 use campfire_progression::TrackError;
+use campfire_projectiles::ProjectileError;
 use campfire_script::internals::Undefined;
 use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{ModifierProblem, UnitStartError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{HeightGrid, TypesError};
+use campfire_units::{HeightGrid, TypesError, UnitTypeError};
 use campfire_values::{EngineEnum, Number, Scalar, TimeTooLarge};
 use campfire_vision::VisionDataError;
 
@@ -145,7 +146,13 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
         error.package,
         PackageRef::Name(PackageName::new(MODE).unwrap())
     );
-    let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotFaster(Place::UnitType(name))) if name == "caster_creep_bolt");
+    let at_caster = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &unit_type("caster_creep_bolt"),
+            &ProjectileError::NotFaster,
+        )
+    };
     assert!(at_caster(&error.problem), "{error:?}");
     // Along a line, the same speed loads: it chases no one.
     let edit = Edit::Set("units.grasping_wraps.projectile.speed", r#""5""#);
@@ -875,10 +882,9 @@ static DATA_FLAWS: &[Flaw] = &[
         ),
         "hero-husk",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::Avatar(_)))
-            )
+            rule_of(problem, |at, error: &UnitTypeError| {
+                matches!(at, Place::Avatar(_)) && *error == UnitTypeError::NotDelivery
+            })
         },
     ),
     flaw(
@@ -888,7 +894,13 @@ static DATA_FLAWS: &[Flaw] = &[
             "[units.tower_bolt]\npools = [\"health\"]\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "tower_bolt"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("tower_bolt"),
+                &UnitTypeError::NotDelivery,
+            )
+        },
     ),
     flaw(
         UNITS,
@@ -944,7 +956,7 @@ static DATA_FLAWS: &[Flaw] = &[
             "[units.eruption]\nprojectile = { speed = \"20\" }\n",
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "eruption"),
+        |problem| rule_at(problem, &unit_type("eruption"), &UnitTypeError::NotDelivery),
     ),
     flaw(
         VEIL,
@@ -975,25 +987,43 @@ static DATA_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Set("units.snow_owl.projectile.width", r#""0.5""#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("snow_owl"),
+                &ProjectileError::HitsNothing,
+            )
+        },
     ),
     flaw(
         RIME,
         Edit::Set("units.snow_owl.projectile.stop_on_hit", "true"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("snow_owl"),
+                &ProjectileError::HitsNothing,
+            )
+        },
     ),
     flaw(
         RIME,
         Edit::Set("units.snow_owl.projectile.once_per_cast", "true"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("snow_owl"),
+                &ProjectileError::HitsNothing,
+            )
+        },
     ),
     flaw(
         RIME,
         Edit::Set("units.snow_owl.projectile.homing", "true"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Homing(action)) if action == "snow_owl"),
     ),
     flaw(
         RIME,
@@ -2036,7 +2066,12 @@ static STAT_FLAWS: &[Flaw] = &[
             r#"pools = ["health", "mana", "mana"]"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Avatar(_), name } if name == "mana"),
+        |problem| {
+            rule_of(problem, |at, error: &NamesListError| {
+                let mana = NamesListError::Repeated(DeclaredName::new("mana").unwrap());
+                matches!(at, Place::Avatar(_)) && *error == mana
+            })
+        },
     ),
     flaw(
         HUSK,
@@ -2064,26 +2099,26 @@ static STAT_FLAWS: &[Flaw] = &[
         UNITS,
         Edit::Replace("combat = { on_death = \"stay\" }\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::CombatMissing(Place::UnitType(name)) if name == "inhibitor"),
+        |problem| rule_at(problem, &unit_type("inhibitor"), &UnitStartError::NoCombat),
     ),
     flaw(
         UNITS,
         Edit::Replace(r#""tower", "true_sight"]"#, r#""tower", "avatar"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::UnitType(name), tag } if tag.name() == "avatar" && name == "tower"),
+        |problem| {
+            let avatar = UnitTypeError::EngineTag(DeclaredName::new("avatar").unwrap());
+            rule_at(problem, &unit_type("tower"), &avatar)
+        },
     ),
     flaw(
         HUSK,
         Edit::Replace(r#"tags = ["tank"]"#, r#"tags = ["area"]"#),
         "hero-husk",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::EngineTag {
-                    at: Place::Avatar(_),
-                    tag
-                } if tag.name() == "area"
-            )
+            rule_of(problem, |at, error: &UnitTypeError| {
+                let area = UnitTypeError::EngineTag(DeclaredName::new("area").unwrap());
+                matches!(at, Place::Avatar(_)) && *error == area
+            })
         },
     ),
     flaw(
@@ -2243,7 +2278,13 @@ static STAT_FLAWS: &[Flaw] = &[
         GALE,
         Edit::Set("units.wind_bolt.passive", r#""wind_shield""#),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "wind_bolt"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("wind_bolt"),
+                &UnitTypeError::NotDelivery,
+            )
+        },
     ),
     // An aura's radius and a shield are never negative: as Gale's Fair Wind's value, as a rank
     // of the Wind Shield action's param its modifier reads, or as the modifier's own param.
@@ -2971,7 +3012,10 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::NoQueue(action) if action == "recruit"),
+        refused: |problem| {
+            let recruit = ProductionDataError::NoQueue(DeclaredName::new("recruit").unwrap());
+            rule_at(problem, &unit_type("tower"), &recruit)
+        },
     },
     // A box on a creep, which walks; on a ward, which an effect spawns; and a train of a tower,
     // which does not walk.
@@ -3073,7 +3117,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::SupplyUncounted(Place::UnitType(name)) if name == "tower"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("tower"),
+                &ProductionDataError::SupplyUncounted,
+            )
+        },
     },
     // A build aims at a point, within meters, of a unit type of its package with a box body;
     // its site starts with a share of its life above 0 when the type has the life pool; its
@@ -3686,7 +3736,11 @@ fn a_box_lies_only_on_a_planar_map() {
     let spatial = [(MAP, Edit::Create(&raised)), (UNITS, tower)];
     let error = load(&edited(spatial)).unwrap_err();
     assert!(
-        matches!(&*error.problem, LoadProblem::BoxBody { at: Place::UnitType(name), problem: BoxProblem::Spatial } if name == "tower"),
+        rule_at(
+            &error.problem,
+            &unit_type("tower"),
+            &UnitTypeError::BoxOnSpatial
+        ),
         "{error:?}"
     );
     // The raised map alone loads: the points it raised are its only change.

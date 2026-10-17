@@ -2,7 +2,7 @@ use std::any::{Any, TypeId};
 use std::borrow::Cow;
 use std::fmt;
 
-use crate::section::Section;
+use crate::section::{Section, SectionTable};
 
 /// The sections a data table gives, each read as its module's type.
 #[derive(Default)]
@@ -11,6 +11,8 @@ pub struct Sections(Vec<Box<dyn SectionValue>>);
 /// A section as the table holds it, whatever its type.
 pub(crate) trait SectionValue: Any + Send + Sync {
     fn key(&self) -> &'static str;
+
+    fn table(&self) -> SectionTable;
 
     fn as_any(&self) -> &dyn Any;
 
@@ -27,6 +29,10 @@ pub(crate) trait SectionValue: Any + Send + Sync {
 impl<S: Section> SectionValue for S {
     fn key(&self) -> &'static str {
         S::KEY
+    }
+
+    fn table(&self) -> SectionTable {
+        S::TABLE
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -68,6 +74,11 @@ impl Sections {
     /// Whether the table gives `S`.
     pub fn holds<S: Section>(&self) -> bool {
         self.get::<S>().is_some()
+    }
+
+    /// The tables of the sections it gives, in the order of their keys.
+    pub fn tables(&self) -> impl ExactSizeIterator<Item = SectionTable> + Clone {
+        self.0.iter().map(|section| section.table())
     }
 
     /// The keys of the sections it gives.

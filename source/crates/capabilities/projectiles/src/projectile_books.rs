@@ -1,12 +1,42 @@
 use campfire_actions::Flights;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType};
+use campfire_math::Num;
+use campfire_stats::MoveSpeedCap;
 use campfire_units::UnitTypes;
 
 use crate::Projectiles;
-use crate::projectile_data::ProjectileData;
+use crate::error::ProjectileError;
+use crate::projectile_data::{ProjectileData, ProjectileHits};
 use crate::projectile_spec::ProjectileSpec;
 
 impl Projectiles {
+    /// The rule of every projectile type: a homing one is faster than the mode's move speed cap,
+    /// and one that hits nothing neither homes, stops on a hit, hits once a cast, nor is wide on
+    /// a line, as a curve's width meets its target.
+    pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        let cap = cx.given::<MoveSpeedCap>().map_or(Num::MAX, |cap| cap.0);
+        for unit in cx.types() {
+            let Some(projectile) = unit.data.section::<ProjectileData>() else {
+                continue;
+            };
+            let fail = |problem| {
+                let at = BookPlace::UnitType(unit.place());
+                Err(BookError::rule(unit.package, at, problem))
+            };
+            if projectile.homing && projectile.speed <= cap {
+                return fail(ProjectileError::NotFaster);
+            }
+            let hits_aside = projectile.homing
+                || projectile.stop_on_hit
+                || projectile.once_per_cast
+                || (projectile.width > Num::ZERO && projectile.curve.is_none());
+            if projectile.hits == ProjectileHits::Nothing && hits_aside {
+                return fail(ProjectileError::HitsNothing);
+            }
+        }
+        Ok(())
+    }
+
     /// Tags each projectile type `projectile`.
     #[expect(
         clippy::unnecessary_wraps,
