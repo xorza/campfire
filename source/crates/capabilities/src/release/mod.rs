@@ -135,9 +135,8 @@ impl Release {
         }
         let rows = Self::rows();
         for capability in set.iter() {
-            let needs = rows
-                .needs(capability)
-                .ok_or(CapabilityError::NotBuilt(capability))?;
+            let needs = rows.needs(capability);
+            let needs = needs.expect("every capability has a module of the release");
             if let Some(&needs) = needs.iter().find(|&&needs| !set.contains(needs)) {
                 return Err(CapabilityError::Needs { capability, needs });
             }

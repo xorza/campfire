@@ -6,8 +6,8 @@ use campfire_navigation::{IndexedBody, NavigationColumn, PathEnd};
 use campfire_players::{PlayersCall, Seating};
 use campfire_script::{
     ApiBuilder, ApiError, ApiOwner, ApiVersion, ArgCtx, CapabilityRefusal, Checked, Ctx, DataTable,
-    Hook, MemberSpec, NameKind, RoleSet, ScriptList, ScriptPosition, ScriptText, ScriptTicks,
-    ScriptValue, StateType, StateValue, Status, TextArg, Unit,
+    Hook, MemberSpec, NameKind, PlannedCapability, RoleSet, ScriptList, ScriptPosition, ScriptText,
+    ScriptTicks, ScriptValue, StateType, StateValue, Status, TextArg, Unit,
 };
 use campfire_sim::{Capability, StableId};
 use campfire_units::{NewUnit, SpawnAt, Units};
@@ -80,7 +80,7 @@ impl ModeApi {
                     &[&["player", "id", "stage"]],
                     "sets the stage of `player`'s quest `id`",
                 )
-                .capability(Capability::Quests),
+                .planned_in(PlannedCapability::Quests),
             )
             .plan(
                 MemberSpec::call(
@@ -88,9 +88,9 @@ impl ModeApi {
                     &[&["player", "id"]],
                     "the stage of `player`'s quest `id`, `()` before it starts",
                 )
-                .capability(Capability::Quests),
+                .planned_in(PlannedCapability::Quests),
             )
-            .plan_hook(Hook::OnStageDone, Capability::Quests)
+            .plan_hook(Hook::OnStageDone, PlannedCapability::Quests)
             .shared_data(
                 DataTable::Mode,
                 &[

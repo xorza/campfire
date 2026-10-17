@@ -30,6 +30,7 @@ The engine has no genres. It has **capabilities**, each one mechanism; a package
 | `world` | planned | Large worlds | [World](world.md) |
 
 - **Built is what the release installs.** A test holds this table's status column equal to the release.
+- **A planned capability is the design's alone.** `Capability` holds only the capabilities of a module the release builds, as a manifest that names another fails as it reads and a command carries no index of one; a planned capability joins the enum with its module. Refused: variants for the planned capabilities, which every match, command and log encoded beside the built ones, and which only a load check refused.
 
 ## Relations
 

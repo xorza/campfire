@@ -646,7 +646,7 @@ Each change folds into its document when its batch lands. Each line names the de
 **4.5 Parts from data.** Touches `combat`, `stats`, `units`, `production`, `sim`, `state-types`.
 - Per-type predicates give `ClipShots`, `RecentAttackers` (with its entries bounded by the window), `StatusTags` and `SpawnPoint` (K-11, C-7).
 - `OnDeath` is read through the type's book, and a `Mortal` marker is required by `Life` (K-15).
-- `Capability` loses its unbuilt variants, and each module declares its `DataKind` rows (E-6).
+- Each module declares its `DataKind` rows (E-6). Waits for Q4 in `review-architecture_QUESTIONS.md`.
 - **Format:** the snapshot's version rises, because parts leave units that do not use them.
 
 ### Phase 5: core pipelines and contracts

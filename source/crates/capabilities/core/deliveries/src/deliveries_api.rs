@@ -1,4 +1,6 @@
-use campfire_script::{ApiBuilder, ApiOwner, ApiVersion, Hook, MemberSpec, ScriptValue, Status};
+use campfire_script::{
+    ApiBuilder, ApiOwner, ApiVersion, Hook, MemberSpec, PlannedCapability, ScriptValue, Status,
+};
 use campfire_sim::Capability;
 use campfire_units::HitHandle;
 
@@ -53,9 +55,9 @@ impl DeliveriesApi {
                 MemberSpec::field(
                     ApiOwner::Hit,
                     "part",
-                    "the body part a ray or a sweep struck, `()` with none",
-                )
-                .capability(Capability::Hitboxes),
+                "the body part a ray or a sweep struck, `()` with none",
+            )
+            .planned_in(PlannedCapability::Hitboxes),
             );
     }
 }

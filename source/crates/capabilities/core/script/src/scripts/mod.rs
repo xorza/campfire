@@ -23,6 +23,7 @@ pub(crate) mod member_kind;
 pub(crate) mod member_spec;
 pub(crate) mod name_kind;
 pub(crate) mod pending_calls;
+pub(crate) mod planned_capability;
 pub(crate) mod pool;
 pub(crate) mod role_set;
 pub(crate) mod script_api;

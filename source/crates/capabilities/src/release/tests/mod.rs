@@ -4,8 +4,8 @@ use std::num::NonZeroU64;
 use std::path::Path;
 
 use Capability::{
-    Abilities, Combat, Hitboxes, Items, Mode, Navigation, Orders, Production, Progression,
-    Projectiles, Quests, Stats, Vision,
+    Abilities, Combat, Items, Mode, Navigation, Orders, Production, Progression, Projectiles,
+    Stats, Vision,
 };
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::Schedules;
@@ -16,7 +16,7 @@ use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::PlayerResources;
-use campfire_script::{ScriptLimits, ScriptPools, View};
+use campfire_script::{PlannedCapability, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::internals::{CargoManifest, SourceFiles};
@@ -37,6 +37,15 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
     );
     assert!(set.contains(Orders) && !set.contains(Abilities));
     assert_eq!(Release::capability_set(&[]).unwrap().iter().count(), 0);
+    // Every capability a manifest may declare is a module's of the release.
+    let rows = Release::rows();
+    let unbuilt = Capability::ALL
+        .into_iter()
+        .filter(|&capability| capability != Mode);
+    let unbuilt: Vec<Capability> = unbuilt
+        .filter(|&capability| rows.needs(capability).is_none())
+        .collect();
+    assert_eq!(unbuilt, []);
     for (declared, error) in [
         (&[Combat, Mode][..], CapabilityError::DeclaresMode),
         (
@@ -47,9 +56,6 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
             },
         ),
         (&[Combat, Vision, Combat], CapabilityError::Repeated(Combat)),
-        // A capability the design plans, of no module this release builds.
-        (&[Stats, Quests], CapabilityError::NotBuilt(Quests)),
-        (&[Hitboxes], CapabilityError::NotBuilt(Hitboxes)),
         (
             &[Projectiles],
             CapabilityError::Needs {
@@ -170,33 +176,39 @@ const OVERVIEW: &str = concat!(
 #[test]
 fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_installs() {
     // Each row of the table names its capabilities in its first column and its status in the
-    // second. Every capability but `mode`, which every match has, is in it once.
+    // second. Every capability but `mode`, which every match has, is in it once, and built; a
+    // planned one is the design's alone, as the script API plans names with it.
     let overview = InputFile::read_text(Path::new(OVERVIEW), DOC_LEN).unwrap();
     let table = overview
         .lines()
         .skip_while(|line| !line.starts_with("| Capability | Status |"))
         .skip(2)
         .take_while(|line| line.starts_with('|'));
-    let (mut named, mut built) = (Vec::new(), Vec::new());
+    let (mut built, mut planned) = (Vec::new(), Vec::new());
     for row in table {
         let cells: Vec<&str> = row.split('|').map(str::trim).collect();
         let row_names = cells[1].split(", ").map(|name| name.trim_matches('`'));
-        named.extend(row_names.clone());
         match cells[2] {
             "built" => built.extend(row_names),
-            "planned" => {}
+            "planned" => planned.extend(row_names),
             status => panic!("{status:?} is no status, in {row}"),
         }
     }
-    named.sort_unstable();
     let mut every: Vec<&str> = Capability::ALL
         .into_iter()
         .filter(|&capability| capability != Mode)
         .map(Capability::name)
         .collect();
     every.sort_unstable();
-    assert_eq!(named, every);
     built.sort_unstable();
+    assert_eq!(built, every);
+    planned.sort_unstable();
+    let design = PlannedCapability::ALL
+        .into_iter()
+        .map(PlannedCapability::name);
+    let mut design: Vec<&str> = design.collect();
+    design.sort_unstable();
+    assert_eq!(planned, design);
     let mut installed: Vec<&str> = Release::rows()
         .0
         .iter()

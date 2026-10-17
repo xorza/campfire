@@ -31,3 +31,13 @@ Decisions that the plan in `review-architecture.md` cannot take alone. Each name
   2. **Numbers at run time.** The declarations walk gives each tag its number into `TagBook`, and each use reads it there. Cost: a resource read where a constant is now, in filters that run for each unit.
   3. **One list in `declare`.** An enum of every engine tag, whose discriminant is its number. Cost: a lower layer names each capability's tag, against "The core names no capability".
 - **Blocked:** nothing. The rest of 4.1 is done without it.
+
+## Q4. Batch 4.5, the data kinds: one enum, or rows each module declares
+
+- **Item:** 4.5, E-6, "each module declares its `DataKind` rows". `DataKind` in `state-types`, a base crate, is a closed enum of 18 kinds, and 11 of them name a capability's concept, as `Life`, `Inventory` and `Supply`. Each of the 74 state types states its kind as a constant, `const KIND: DataKind`, and the visibility tables and the server's filter read a kind as its index.
+- **Why it waits:** the choice is the one of Q3 for the engine tags. A kind that a module declares gets its number at run time or by hand, and a kind is what the filter of each sent component reads.
+- **Options:**
+  1. **Keep the closed enum (recommended).** The kinds stay one list in `state-types`, each with its doc, and the plan's bullet goes. Cost: a base crate names concepts of the capabilities above it, as E-6 says, and a new capability's kind edits the base crate.
+  2. **Rows with hand numbers.** Each module declares its kinds as constants, `DataKind::new(3, "inventory")`, and the release asserts that each number is its place in the declaration order, as `Release::engine_tags` does for the tags. Cost: the 74 state types and the visibility tables change, and the visibility format reads a kind by its name only.
+  3. **Rows numbered at run time.** The declarations walk numbers each kind, and each state type reads its kind's number through a resource. Cost: a read through a resource where a constant is now, in the filter of each sent component.
+- **Blocked:** the third bullet of 4.5 alone. Its first two bullets and the removal of the unbuilt capabilities do not wait for it.

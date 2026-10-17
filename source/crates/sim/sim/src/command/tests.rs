@@ -8,7 +8,7 @@ fn a_payload_is_exactly_a_list_of_commands() {
             body: b"ab",
         },
         Command {
-            capability: Capability::Character,
+            capability: Capability::Combat,
             body: b"",
         },
         Command {
@@ -21,9 +21,9 @@ fn a_payload_is_exactly_a_list_of_commands() {
         Command::payload(Capability::Orders, &[&b"x"[..], b"yz"]),
         [2, 5, 1, b'x', 5, 2, b'y', b'z']
     );
-    // 3 commands; each the capability's index, orders 5 and character 6, then the body's
-    // length and bytes.
-    assert_eq!(payload, [3, 5, 2, b'a', b'b', 6, 0, 5, 1, b'c']);
+    // 3 commands; each the capability's index, orders 5 and combat 0, then the body's length
+    // and bytes.
+    assert_eq!(payload, [3, 5, 2, b'a', b'b', 0, 0, 5, 1, b'c']);
     let decode = |bytes| {
         let mut read = Vec::new();
         Command::read(bytes, |command, _| read.push(command)).then_some(read)
@@ -35,9 +35,10 @@ fn a_payload_is_exactly_a_list_of_commands() {
     assert!(Command::read(&payload, |_, body| places.push(body)));
     assert_eq!(places, [3..5, 7..7, 9..10]);
 
-    // A flaw anywhere gives no command, not the ones before it: here no capability 12.
+    // A flaw anywhere gives no command, not the ones before it: here no capability 13, one past
+    // the last.
     let mut unknown = payload.clone();
-    unknown[6] = 12;
+    unknown[5] = u8::try_from(Capability::ALL.len()).unwrap();
     let flawed = [
         &payload[..payload.len() - 1],
         &[payload.as_slice(), &[0]].concat(),

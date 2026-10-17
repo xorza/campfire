@@ -5,6 +5,7 @@ use crate::scripts::api_owner::ApiOwner;
 use crate::scripts::applies::Applies;
 use crate::scripts::member_kind::MemberKind;
 use crate::scripts::name_kind::NameKind;
+use crate::scripts::planned_capability::PlannedCapability;
 use crate::scripts::role_set::RoleSet;
 
 /// A name of the script API as the code that binds it describes it: whose it is, what it is,
@@ -17,6 +18,9 @@ pub struct MemberSpec {
     pub kind: MemberKind,
     pub roles: RoleSet,
     pub capability: Option<Capability>,
+    /// The capability it is planned with, of no module the release builds; none for a name of a
+    /// built capability's, or the core's.
+    pub planned_in: Option<PlannedCapability>,
     /// Each form it is called in, by the names of its arguments, the receiver aside; none for a
     /// value, a field or an operator.
     pub forms: Forms,
@@ -97,6 +101,7 @@ impl MemberSpec {
             kind,
             roles: RoleSet::ALL,
             capability: None,
+            planned_in: None,
             forms,
             description,
             names: [None; Self::ARGS],
@@ -114,6 +119,12 @@ impl MemberSpec {
     /// The same, of `capability`.
     pub const fn capability(mut self, capability: Capability) -> Self {
         self.capability = Some(capability);
+        self
+    }
+
+    /// The same, planned with `planned`, a capability the release does not build.
+    pub const fn planned_in(mut self, planned: PlannedCapability) -> Self {
+        self.planned_in = Some(planned);
         self
     }
 

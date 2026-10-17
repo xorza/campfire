@@ -35,6 +35,7 @@ pub use crate::scripts::member_kind::MemberKind;
 pub use crate::scripts::member_spec::{ArgKinds, EnumArgs, Forms, MemberSpec, NameArgs};
 pub use crate::scripts::name_kind::NameKind;
 pub use crate::scripts::pending_calls::PendingCalls;
+pub use crate::scripts::planned_capability::PlannedCapability;
 pub use crate::scripts::pool::Pool;
 pub use crate::scripts::role_set::RoleSet;
 pub use crate::scripts::script_api::ScriptApi;

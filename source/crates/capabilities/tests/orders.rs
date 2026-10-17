@@ -445,7 +445,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     )
     .encode();
     let undeclared = Command::encode(&[Command {
-        capability: Capability::Character,
+        capability: Capability::Items,
         body: &order,
     }]);
     game.step_with(&[

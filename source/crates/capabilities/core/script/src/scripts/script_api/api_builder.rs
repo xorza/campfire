@@ -14,6 +14,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::member_kind::{GETTER, MemberKind};
 use crate::scripts::member_spec::MemberSpec;
+use crate::scripts::planned_capability::PlannedCapability;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_api::api_member::ApiMember;
@@ -238,16 +239,18 @@ impl<'a> ApiBuilder<'a> {
             hook,
             status,
             capability: self.capability,
+            planned_in: None,
         });
         self
     }
 
-    /// Records `hook` as planned, of `capability`, whose module does not bind yet.
-    pub fn plan_hook(&mut self, hook: Hook, capability: Capability) -> &mut Self {
+    /// Records `hook` as planned with `planned`, a capability the release does not build.
+    pub fn plan_hook(&mut self, hook: Hook, planned: PlannedCapability) -> &mut Self {
         self.api.record_hook(HookStatus {
             hook,
             status: Status::Planned,
-            capability: Some(capability),
+            capability: None,
+            planned_in: Some(planned),
         });
         self
     }

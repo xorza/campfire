@@ -6,6 +6,7 @@ use crate::scripts::api_owner::ApiOwner;
 use crate::scripts::data_table::DataTable;
 use crate::scripts::hook::Hook;
 use crate::scripts::member_kind::MemberKind;
+use crate::scripts::planned_capability::PlannedCapability;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_role::ScriptRole;
@@ -38,7 +39,7 @@ impl ApiReference<'_> {
                 names.join(", ")
             }
         };
-        let capability = ApiReference::capability;
+        let capability = ApiReference::owner;
         for owner in ApiOwner::ALL {
             let members = self
                 .0
@@ -76,7 +77,7 @@ impl ApiReference<'_> {
                     out,
                     "| `{}` | {form} |{roles} {} | {} | {} |",
                     spec.name,
-                    capability(spec.capability),
+                    capability(spec.capability, spec.planned_in),
                     member.status,
                     spec.description,
                 )?;
@@ -107,7 +108,7 @@ impl ApiReference<'_> {
                 hook.name(),
                 hook.param_names().join(", "),
                 hook.role().name(),
-                capability(status.capability),
+                capability(status.capability, status.planned_in),
                 status.status,
             )?;
         }
@@ -132,7 +133,7 @@ impl ApiReference<'_> {
                     out,
                     "| `{}` | {} | {} |",
                     field.name,
-                    ApiReference::capability(field.capability),
+                    ApiReference::owner(field.capability, None),
                     field.status
                 )?;
             }
@@ -140,8 +141,16 @@ impl ApiReference<'_> {
         Ok(())
     }
 
-    /// The name of `capability`, or `core` for none.
-    fn capability(capability: Option<Capability>) -> &'static str {
-        capability.map_or("core", Capability::name)
+    /// The name of `planned`, a capability the release does not build, else of `capability`,
+    /// or `core` for none.
+    const fn owner(
+        capability: Option<Capability>,
+        planned: Option<PlannedCapability>,
+    ) -> &'static str {
+        match (planned, capability) {
+            (Some(planned), _) => planned.name(),
+            (None, Some(capability)) => capability.name(),
+            (None, None) => "core",
+        }
     }
 }
