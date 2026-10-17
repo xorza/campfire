@@ -651,7 +651,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - **Goldens:** none. Data that a kind ignored without a word is now refused.
 
 **5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
-- A design document under `docs/design/` proposes the contracts, the new layer order with `stats` above `actions`, and the golden moves it expects, for the user to review before the batch is built (Q7).
+- The proposal is `docs/design/action-pipeline.md`; the batch waits for its review (Q10 in `review-architecture_QUESTIONS.md`).
 - One start and go-off pair in `actions` owns the checks and the times. Kinds plug in by a callback table (K-17).
 - The `Purse` contract, the living test and the passive hook are contracts in `units`, and `actions` drops `stats`. The needs-and-uses test covers core modules (C-3, E-5).
 - **Goldens:** they may move where the four loops differed. Each move is explained.
