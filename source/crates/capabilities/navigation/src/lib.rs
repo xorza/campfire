@@ -10,7 +10,6 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
@@ -20,8 +19,7 @@ use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, SimEdge, SimSet, Unpredicted};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Destination, LayerNames, MoveStep, SpawnHooks, UnitTracker,
-    UnitsSet,
+    BodyUnit, Dead, DeclaredTags, LayerNames, MoveStep, SpawnHooks, UnitTracker, UnitsSet,
 };
 
 use crate::navigation_column::RowReads;
@@ -248,14 +246,6 @@ impl Module for Navigation {
 }
 
 impl Navigation {
-    /// Sets the destination of the unit of `entity`, which walks, to `target`, leaving one that
-    /// does not change untouched.
-    pub fn go_to(world: &mut World, entity: Entity, target: Option<Vec3>) {
-        if let Some(mut destination) = world.get_mut::<Destination>(entity) {
-            destination.set_if_neq(Destination::to(target));
-        }
-    }
-
     /// Gives the match the map's pathing grid on the cells of `grid`, those the walls of its
     /// navigation book block, for the kinds of `walkers`, a static index for the widest of them,
     /// and a planner of routes on the grid; the static bodies fill the grid and the index from

@@ -71,3 +71,13 @@ Decisions that the plan in `review-architecture.md` cannot take alone. Each name
   1. **A proposal first (recommended).** A document under `docs/design/` gives the contracts (`Purse`, the living test, the passive hook, the kinds' callback table), the new layer order and the golden moves it expects, and the plan's 5.3 and C-1 follow it once reviewed.
   2. **Build it from the plan's target.** The batch takes each contract's shape as it goes, and the review comes with the diff. Cost: a layer flip of this size reviewed only after it is built.
 - **Blocked:** batch 5.3, and the first bullet of 5.1.
+
+## Q8. Batch 5.5, the standing-room contract: what navigation installs for production
+
+- **Item:** 5.5, R-31, "the standing-room query is a contract that navigation installs, and `production` drops `navigation`". The `Destination` write is done: `Destination::go_to` in `units`. Two reads remain. A train's spawn place asks `Navigation::open_cell`, which reads navigation's `PathingGrid`, `RoutePlanner` and `BodyIndex` from a `&World` (`production/src/trains.rs`). A build's `Placement`, a system param, reads navigation's `NavigationBook` walls and `BodyIndex` static bodies beside its own queries (`production/src/placement.rs`).
+- **Why it waits:** a contract of functions on a `&World` serves the train, but not the placement, which runs inside a system with no world of its own. The plan names no shape that serves both.
+- **Options:**
+  1. **The room data in `units` (recommended).** The static bodies' index and the walls become types of `units`, which navigation fills, as `Destination` is navigation's state kept there, and a `units` method answers "is this box free" and "the nearest cell a walker stands in". Cost: navigation's index and its walls move down a layer, with the pathing grid's open-cell query.
+  2. **A trait of `units` that navigation implements, read as a resource of boxed functions.** The placement takes the resource beside its queries, and the train takes it from the world. Cost: a call through a box for each placement test, and a contract of two shapes.
+  3. **Keep the dependency.** `production` keeps `navigation` for the two reads. Cost: R-31 stays in part.
+- **Blocked:** the rest of R-31.

@@ -6,11 +6,10 @@ use campfire_actions::{ActionBook, ActionKind, ActionSlots, Payer, SlotTimes};
 use campfire_declare::{ByType, RoleForm};
 use campfire_geometry::Placed;
 use campfire_math::Num;
-use campfire_navigation::Navigation;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, StatsWorld, UnitPools};
-use campfire_units::{Body, Dead, MapBook, Owner, SpawnAt, Spawner, StatusTags};
+use campfire_units::{Body, Dead, Destination, MapBook, Owner, SpawnAt, Spawner, StatusTags};
 use campfire_values::{Team, UnitTags};
 use campfire_vision::TeamSight;
 
@@ -102,10 +101,10 @@ impl Construction {
                 .expect("a build view is always valid")
                 .step(entity);
             match step {
-                Step::Walk(to) => Navigation::go_to(world, entity, Some(to)),
-                Step::Build => Navigation::go_to(world, entity, None),
+                Step::Walk(to) => Destination::go_to(world, entity, Some(to)),
+                Step::Build => Destination::go_to(world, entity, None),
                 Step::Take(site) => {
-                    Navigation::go_to(world, entity, None);
+                    Destination::go_to(world, entity, None);
                     let id = *world.get::<StableId>(entity).expect("a builder has an id");
                     let mut site_part = world.get_mut::<Site>(site).expect("a site to take");
                     site_part.hold(id);
@@ -115,7 +114,7 @@ impl Construction {
                     builder.set(None);
                 }
                 Step::Start(start) => {
-                    Navigation::go_to(world, entity, None);
+                    Destination::go_to(world, entity, None);
                     Self::spawn_site::<S>(world, entity, start, &mut paid);
                 }
             }

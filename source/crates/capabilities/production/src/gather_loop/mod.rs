@@ -5,7 +5,6 @@ use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{ActionBook, ActionSlots, KindSpec};
 use campfire_declare::RoleForm;
-use campfire_navigation::Navigation;
 use campfire_players::PlayersWorld;
 use campfire_sim::{
     EntityIndex, Keyed, Ordered, Position, Removals, SimTick, StableId, Unpredicted,
@@ -280,10 +279,10 @@ impl GatherLoop {
         let with = |step| Some(GatherOrder { step, ..order });
         match step {
             Step::Hold => {}
-            Step::Walk(to) => Navigation::go_to(world, entity, Some(to)),
-            Step::Stand => Navigation::go_to(world, entity, None),
+            Step::Walk(to) => Destination::go_to(world, entity, Some(to)),
+            Step::Stand => Destination::go_to(world, entity, None),
             Step::Stop => {
-                Navigation::go_to(world, entity, None);
+                Destination::go_to(world, entity, None);
                 set(world, None);
                 let left = LeftLoop {
                     worker: entity,
@@ -312,11 +311,11 @@ impl GatherLoop {
                 Self::leave(world, workers, left);
             }
             Step::Wait => {
-                Navigation::go_to(world, entity, None);
+                Destination::go_to(world, entity, None);
                 set(world, with(GatherStep::Waiting { since: now }));
             }
             Step::Take(node) => {
-                Navigation::go_to(world, entity, None);
+                Destination::go_to(world, entity, None);
                 let id = *world.get::<StableId>(entity).expect("a worker has an id");
                 if let Some(mut node) = Self::node_mut(world, node) {
                     node.hold(Some(id));
@@ -389,7 +388,7 @@ impl GatherLoop {
         order: GatherOrder,
         back: Option<NodeAt>,
     ) {
-        Navigation::go_to(world, entity, None);
+        Destination::go_to(world, entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
         if let Some(load) = gatherer.load().filter(|_| !F::PREDICTS) {
             let owner = *world

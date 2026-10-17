@@ -43,6 +43,14 @@ impl Destination {
         }
     }
 
+    /// Sets where the unit of `entity` walks, when it walks, to `target`, leaving a destination
+    /// that does not change untouched, as a capability's own loop walks its unit.
+    pub fn go_to(world: &mut World, entity: Entity, target: Option<Vec3>) {
+        if let Some(mut destination) = world.get_mut::<Self>(entity) {
+            destination.set_if_neq(Self::to(target));
+        }
+    }
+
     /// Whether a unit with `destination` gives up a walk to `target`: it cannot walk, or it
     /// stands, as it `arrived` short of `target`.
     pub fn gives_up(
