@@ -3,9 +3,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
 use campfire_common::PlayerSlot;
-use campfire_players::PlayerRows;
+use campfire_players::{Player, PlayerRows};
 use campfire_sim::{Removals, StableId};
-use campfire_units::{Dead, Owner, Player};
+use campfire_units::{Dead, Owner};
 use campfire_values::{ModifierId, Rank, Relation, TagSet, UnitTags};
 
 use crate::grants::{Grant, GrantFrom, Grants};

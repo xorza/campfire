@@ -25,7 +25,7 @@ impl EntityKinds {
 
     /// Whether `entity` of `world` is of one kind alone, as the restore check of each kind's
     /// state marker asks; a world with no declared kinds holds none to count.
-    pub(crate) fn alone(world: &World, entity: Entity) -> bool {
+    pub fn alone(world: &World, entity: Entity) -> bool {
         world
             .get_resource::<Self>()
             .is_none_or(|kinds| kinds.held(world.entity(entity)) == 1)
@@ -34,7 +34,7 @@ impl EntityKinds {
     /// The hook of each kind's marker: an entity is of one kind, so a second marker is a logic
     /// error. A restore puts in untrusted values, which its checks refuse with an error, and a
     /// world with no declared kinds, as a test's, holds none to count.
-    pub(crate) fn one(world: DeferredWorld<'_>, context: HookContext) {
+    pub fn one(world: DeferredWorld<'_>, context: HookContext) {
         if world.contains_resource::<Restoring>() {
             return;
         }

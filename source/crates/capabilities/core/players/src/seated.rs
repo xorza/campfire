@@ -3,9 +3,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
-use campfire_units::Player;
 use campfire_values::Team;
 use serde::{Deserialize, Serialize};
+
+use crate::player::Player;
 
 /// Marks a player whose slot a player or a bot held as the match started, on its entity, which
 /// spawns with it: a slot open then has none, so a mode places nothing for it, as Zero Hour places

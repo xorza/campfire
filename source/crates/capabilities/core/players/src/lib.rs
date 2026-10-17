@@ -7,9 +7,11 @@
 
 mod capability_action;
 mod held_out;
+mod match_entity;
 mod on_match;
 mod order_units;
 mod out_of_play;
+mod player;
 mod player_resources;
 mod player_rows;
 mod players;
@@ -23,9 +25,11 @@ mod tick_commands;
 
 pub use crate::capability_action::CapabilityAction;
 pub use crate::held_out::HeldOut;
+pub use crate::match_entity::MatchEntity;
 pub use crate::on_match::OnMatch;
 pub use crate::order_units::OrderUnits;
 pub use crate::out_of_play::OutOfPlay;
+pub use crate::player::Player;
 pub use crate::player_resources::PlayerResources;
 pub use crate::player_rows::{PlayerRows, PlayerRowsMut};
 pub use crate::players::Players;

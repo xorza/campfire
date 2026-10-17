@@ -20,10 +20,9 @@ use campfire_declare::{
     StateFields,
 };
 use campfire_math::Num;
+use campfire_players::Player;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Owner, Player, SpawnHooks, UnitSteps, UnitsSet,
-};
+use campfire_units::{BodyUnit, Dead, DeclaredTags, Owner, SpawnHooks, UnitSteps, UnitsSet};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
 use crate::application::{Adding, ApplyAt};

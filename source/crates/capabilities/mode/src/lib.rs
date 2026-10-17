@@ -19,13 +19,11 @@ use campfire_combat::{Weigh, Weighers};
 use campfire_common::{EnumAll, PlayerSlot};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_navigation::{ModeNavigationData, Navigation, NavigationBook, OnPath, PathWalker};
-use campfire_players::{Players, PlayersWorld, Seating, SlotStart};
+use campfire_players::{MatchEntity, Player, Players, PlayersWorld, Seating, SlotStart};
 use campfire_production::ProductionSet;
 use campfire_script::{CallError, Ctx, Hook, Pool, ScriptRole, ScriptText, View};
 use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick};
-use campfire_units::{
-    BodyForm, MatchEntity, Player, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone, UnitsSet,
-};
+use campfire_units::{BodyForm, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone, UnitsSet};
 use campfire_values::Relations;
 
 use crate::out_of_play_marks::OutOfPlayMarks;

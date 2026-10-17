@@ -4,10 +4,10 @@ use bevy_ecs::query::{Allow, With};
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
+use campfire_players::MatchEntity;
 use campfire_script::View;
 use campfire_sim::{SimComponent, Unpredicted};
 use campfire_state_types::{DataKind, Replication, SentOnce};
-use campfire_units::MatchEntity;
 use campfire_values::Team;
 use serde::{Deserialize, Serialize};
 

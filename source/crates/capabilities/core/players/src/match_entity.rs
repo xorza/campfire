@@ -4,9 +4,8 @@ use bevy_ecs::world::World;
 use campfire_declare::{EntityKind, KindAudience};
 use campfire_sim::{KindMarker, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_units::EntityKinds;
 use serde::{Deserialize, Serialize};
-
-use crate::entity_kinds::EntityKinds;
 
 /// The entity of the match, of the named id `StableId::MATCH`, which holds the match's state that
 /// clients receive (14-replication-audiences.md, The match and each player are entities).

@@ -2,8 +2,8 @@ use bevy_ecs::query::{Has, QueryState};
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_script::{CallError, CallPart, CallStart, Commit};
-use campfire_units::Player;
 
+use crate::player::Player;
 use crate::player_resources::PlayerResources;
 use crate::players_world::PlayersWorld;
 use crate::seated::{Seated, Seating};

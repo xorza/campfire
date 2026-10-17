@@ -31,7 +31,9 @@ use campfire_navigation::{
     MapNavigationData, MapPathsData, ModeNavigationData, NavigationBook, OnPath, PathData, PathEnd,
     Route, Walker, WalkerKinds,
 };
-use campfire_players::{OutOfPlay, PlayerResources, PlayersWorld, ResourcesData};
+use campfire_players::{
+    MatchEntity, OutOfPlay, Player, PlayerResources, PlayersWorld, ResourcesData,
+};
 use campfire_production::{ProductionData, Queued, TrainQueue};
 use campfire_progression::{
     Experience, ModeTracksData, Points, Progression, Thresholds, TrackData, TrackSet,
@@ -53,8 +55,7 @@ use campfire_stats::{
 };
 use campfire_units::{
     Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MapBook, MapPoint,
-    MatchEntity, MetricData, ModeTagsData, MoveStep, Owner, Player, SyncAll, SyncNone,
-    UnitTypeCore, Units, UnitsWorld,
+    MetricData, ModeTagsData, MoveStep, Owner, SyncAll, SyncNone, UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
     ActionId, DamageKind, EngineEnum, FilterData, MessageId, ModifierId, Names, Number,

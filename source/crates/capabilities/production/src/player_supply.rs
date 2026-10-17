@@ -4,9 +4,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Or};
 use bevy_ecs::system::{Local, Query, Res, SystemParam};
 use bevy_ecs::world::World;
+use campfire_players::Player;
 use campfire_sim::{Removals, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_units::{Dead, Owner, Player};
+use campfire_units::{Dead, Owner};
 use campfire_values::UnitType;
 use serde::{Deserialize, Serialize};
 

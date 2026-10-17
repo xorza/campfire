@@ -12,7 +12,7 @@ use campfire_script::{
     CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
     ScriptList, StatePlace, StateSchema, View, ViewApi,
 };
-use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
+use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
 
 use crate::arrived_short::ArrivedShort;
@@ -28,12 +28,10 @@ use crate::forced_move::ForcedMove;
 use crate::ground_data::GroundData;
 use crate::lifespan::Lifespan;
 use crate::map_book::{BoundsData, MapBook, MetricData};
-use crate::match_entity::MatchEntity;
 use crate::move_step::MoveStep;
 use crate::new_unit::NewUnit;
 use crate::new_unit_states::NewUnitStates;
 use crate::owner::Owner;
-use crate::player::Player;
 use crate::script_book::ScriptBook;
 use crate::spawn_hooks::SpawnHooks;
 use crate::spawn_point::SpawnPoint;
@@ -145,11 +143,9 @@ impl Module for Units {
         d.check::<Position>(Self::within_bounds);
         d.host::<Position, UnitEntity>();
         d.check::<Team>(Self::teams_known);
-        d.host::<Team, Either<UnitEntity, Player>>();
         d.check::<UnitType>(Self::types_known);
         d.host::<UnitType, UnitEntity>();
         d.check::<Relations>(Self::relations_known);
-        d.host::<Relations, MatchEntity>();
         d.require::<UnitEntity, Position>();
         d.require::<UnitEntity, Team>();
         // A forced move moves a unit that walks, in place of its step.

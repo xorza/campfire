@@ -17,9 +17,10 @@ use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
 };
+use campfire_players::Player;
 use campfire_sim::{Capability, SimSet};
 use campfire_stats::StatsSet;
-use campfire_units::{BodyUnit, Dead, Owner, Player, StatusTags, UnitTypes, UnitsSet};
+use campfire_units::{BodyUnit, Dead, Owner, StatusTags, UnitTypes, UnitsSet};
 use campfire_values::{Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 

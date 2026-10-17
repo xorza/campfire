@@ -6,9 +6,8 @@ use campfire_declare::{EntityKind, KindAudience};
 use campfire_script::View;
 use campfire_sim::{KindMarker, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
+use campfire_units::EntityKinds;
 use serde::{Deserialize, Serialize};
-
-use crate::entity_kinds::EntityKinds;
 
 /// The entity of a player slot, of the slot's named id, which holds the player's state that
 /// clients receive (14-replication-audiences.md, The match and each player are entities).

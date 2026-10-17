@@ -2,12 +2,14 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_declare::{Declarations, EntityParts, InstallCx, KindVisitor, Module, NoSet};
-use campfire_sim::{Breach, Capability, StableId};
-use campfire_units::{MatchEntity, Player, UnitsWorld};
-use campfire_values::Team;
+use campfire_sim::{Breach, Capability, Either, StableId};
+use campfire_units::{UnitEntity, UnitsWorld};
+use campfire_values::{Relations, Team};
 
 use crate::held_out::HeldOut;
+use crate::match_entity::MatchEntity;
 use crate::out_of_play::OutOfPlay;
+use crate::player::Player;
 use crate::player_resources::PlayerResources;
 use crate::players_call::PlayersCall;
 use crate::players_world::PlayersWorld;
@@ -37,6 +39,8 @@ impl Module for Players {
         d.component::<PlayerResources>();
         d.call_part::<PlayersCall>();
         d.require::<Player, Team>();
+        d.host::<Team, Either<UnitEntity, Player>>();
+        d.host::<Relations, MatchEntity>();
         d.check::<MatchEntity>(Self::match_spawned);
         d.part::<Player, PlayerResources>(|at| {
             Some(PlayerResources::new(at.world().declared_resources()))

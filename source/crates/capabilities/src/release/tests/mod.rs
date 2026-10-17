@@ -15,13 +15,13 @@ use campfire_common::SegmentSeed;
 use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
-use campfire_players::PlayerResources;
+use campfire_players::{Player, PlayerResources};
 use campfire_script::{PlannedCapability, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::internals::{CargoManifest, SourceFiles};
 use campfire_store::{DirEntries, EntryKind, InputFile};
-use campfire_units::{Player, UnitTypeCore};
+use campfire_units::UnitTypeCore;
 use campfire_values::Team;
 
 use super::*;

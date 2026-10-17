@@ -16,11 +16,12 @@ use bevy_replicon::shared::replication::visibility::VisibilityScope;
 use campfire_capabilities::Release;
 use campfire_common::PlayerSlot;
 use campfire_declare::CapabilitySet;
+use campfire_players::Player;
 use campfire_sim::SimResource;
 use campfire_state_types::{
     DataKind, Declared, Recipients, Replication, Sending, SendingWays, StateTypes,
 };
-use campfire_units::{Owner, Player};
+use campfire_units::Owner;
 use campfire_values::Team;
 
 use crate::sim_server::match_visibility::MatchVisibility;
