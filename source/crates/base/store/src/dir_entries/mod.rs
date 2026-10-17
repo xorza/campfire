@@ -3,13 +3,14 @@ use std::fs::{self, FileType};
 use std::io;
 use std::path::Path;
 
+use crate::durable_dir::DurableDir;
 use crate::input_file::error::ReadError;
 use crate::path_error::PathError;
 
 /// A directory's entries, sorted by their names' bytes, so a walk meets them in the same order
 /// on every OS, each with its kind as the entry itself is, a link not followed. No call asks
 /// whether a path exists: a caller lists the directory once, and every name it finds comes from
-/// one moment.
+/// one moment. A directory that `DurableDir::remove` is removing is gone from a listing.
 #[derive(Debug)]
 pub struct DirEntries;
 
@@ -51,11 +52,12 @@ impl DirEntries {
         let mut read = Vec::new();
         for entry in entries {
             let entry = entry.map_err(ReadError::Read)?;
+            let name = entry.file_name();
+            if DurableDir::is_tombstone(&name) {
+                continue;
+            }
             let kind = EntryKind::of(entry.file_type().map_err(ReadError::Read)?);
-            read.push(DirEntry {
-                name: entry.file_name(),
-                kind,
-            });
+            read.push(DirEntry { name, kind });
         }
         read.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         Ok(read)

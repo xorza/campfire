@@ -16,7 +16,7 @@ fn a_journal_rebuilds_the_log_it_followed() {
     assert_eq!(log.journal.as_ref().unwrap().len(), len(file.bytes().len()));
     drop(log);
     let journal = file.bytes();
-    let rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
+    let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
     assert_eq!(encoded(&rebuilt), bytes);
     // The header, a packet and a server input, the seal, the checkpoint's begin and its record,
     // a packet, the result.
@@ -36,36 +36,42 @@ fn a_journal_rebuilds_the_log_it_followed() {
     let all = records(&journal);
     for len in 1..all.len() {
         assert!(
-            SessionLog::from_journal(all[..len].iter().copied()).is_ok(),
+            SessionLog::from_journal(all[..len].iter().copied(), RELEASE).is_ok(),
             "{len}"
         );
     }
     // Cut after the checkpoint's begin: its segment starts, its record still to come.
-    let begun = SessionLog::from_journal(all[..5].iter().copied()).unwrap();
+    let begun = SessionLog::from_journal(all[..5].iter().copied(), RELEASE).unwrap();
     let pending = begun.begun_checkpoint().unwrap();
     assert_eq!((pending.segment, pending.tick), (1, Tick::new(1)));
     assert_eq!(begun.segment_starting(Tick::new(1)), Some(1));
     assert_eq!(begun.checkpoint_at(Tick::new(1)), None);
 
+    // Read by another release than its own, a journal is refused at its header, naming its
+    // release.
+    assert_eq!(
+        SessionLog::from_journal(all.iter().copied(), Version::new(0, 0, 9)).err(),
+        Some(JournalReplayError::OtherRelease(RELEASE))
+    );
     // A journal with no header; a seal after the result; a checkpoint's begin after the first
     // packet, before its tick is sealed; or a record past the header that the log refuses: the
     // packet again, whose first stamp, 0, goes back from its last, 1.
     assert_eq!(
-        SessionLog::from_journal(all[1..].iter().copied()).err(),
+        SessionLog::from_journal(all[1..].iter().copied(), RELEASE).err(),
         Some(JournalReplayError::NoHeader)
     );
     let ended = all.iter().copied().chain([all[3]]);
     assert_eq!(
-        SessionLog::from_journal(ended).err(),
+        SessionLog::from_journal(ended, RELEASE).err(),
         Some(JournalReplayError::AfterResult { record: 8 })
     );
     assert_eq!(
-        SessionLog::from_journal([all[0], all[1], all[4]]).err(),
+        SessionLog::from_journal([all[0], all[1], all[4]], RELEASE).err(),
         Some(JournalReplayError::CheckpointMidTick { record: 2 })
     );
     let again = [all[0], all[1], all[1]];
     assert_eq!(
-        SessionLog::from_journal(again).err(),
+        SessionLog::from_journal(again, RELEASE).err(),
         Some(JournalReplayError::Record {
             record: 2,
             error: LogError::Input {
@@ -110,7 +116,7 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     // The log the journal rebuilds, once it keeps the journal again, holds every chain durably.
     drop(log);
     let journal = file.bytes();
-    let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
+    let mut rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
     assert_eq!(rebuilt.durable_head(slot), None);
     rebuilt.resume_journal(MemorySink::new().boxed(), len(journal.len()));
     assert_eq!(rebuilt.durable_head(slot), Some(head));
@@ -149,7 +155,7 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
     assert_eq!(log.durable_head(slot), None);
     drop(log);
     let journal = file.bytes();
-    let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
+    let mut rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
     rebuilt.resume_journal(MemorySink::new().boxed(), len(journal.len()));
     assert_eq!(rebuilt.durable_head(slot), None);
 }

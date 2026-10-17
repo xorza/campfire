@@ -1,3 +1,4 @@
+use std::ffi::{OsStr, OsString};
 use std::fs;
 use std::io;
 use std::path::Path;
@@ -13,6 +14,10 @@ pub(crate) mod error;
 /// survives a crash. Each directory it makes is its owner's only.
 #[derive(Debug)]
 pub struct DurableDir;
+
+/// What starts the name a removal gives a directory before it removes what the directory holds,
+/// so a crash leaves it whole or gone, as Kafka renames a log's directory before it deletes it.
+const TOMBSTONE: &str = ".campfire-removed.";
 
 impl DurableDir {
     /// Makes the directory `path` when it is missing; one already there stays as it is.
@@ -72,14 +77,38 @@ impl DurableDir {
         rename().map_err(PathError::at(to))
     }
 
-    /// Removes the directory `path` and all it holds.
+    /// Removes the directory `path` and all it holds, at once as a crash sees it: it takes a
+    /// tombstone's name, which no listing shows, then goes. The tombstones a crash left in its
+    /// parent go first.
     pub fn remove(path: &Path) -> Result<(), PathError<DurableDirError>> {
         let remove = || {
             let parent = path.parent().ok_or(DurableDirError::NoParent)?;
-            fs::remove_dir_all(path).map_err(DurableDirError::Remove)?;
-            DurableName::sync_dir(parent).map_err(DurableDirError::SyncParent)
+            let name = path.file_name().ok_or(DurableDirError::NoParent)?;
+            Self::sweep(parent)?;
+            let mut tombstone = OsString::from(TOMBSTONE);
+            tombstone.push(name);
+            let tombstone = parent.join(tombstone);
+            DurableName::rename(path, &tombstone).map_err(DurableDirError::Remove)?;
+            DurableName::sync_dir(parent).map_err(DurableDirError::SyncParent)?;
+            fs::remove_dir_all(&tombstone).map_err(DurableDirError::Remove)
         };
         remove().map_err(PathError::at(path))
+    }
+
+    /// Whether `name` is a tombstone's, which a listing leaves out.
+    pub(crate) fn is_tombstone(name: &OsStr) -> bool {
+        name.as_encoded_bytes().starts_with(TOMBSTONE.as_bytes())
+    }
+
+    /// Removes each tombstone in `parent`.
+    fn sweep(parent: &Path) -> Result<(), DurableDirError> {
+        for entry in fs::read_dir(parent).map_err(DurableDirError::Remove)? {
+            let entry = entry.map_err(DurableDirError::Remove)?;
+            if Self::is_tombstone(&entry.file_name()) {
+                fs::remove_dir_all(entry.path()).map_err(DurableDirError::Remove)?;
+            }
+        }
+        Ok(())
     }
 }
 

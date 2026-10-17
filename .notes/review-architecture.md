@@ -640,13 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 3: boundaries
 
-**3.2 Journal integrity.** Touches `protocol` (journal), `net` (session directory), `store` (append writer, durable directory) and 10-sessions.md.
-- A read stops at the first bad frame, cuts there and logs `JournalCut` with the bytes it dropped (N-15, D33).
-- The private record holds the seed chain alone, and the terms come from the journal's header (N-8).
-- `AppendWriter` bounds what is not yet durable, and the owner checks a sync that is still running (N-16).
-- `DurableDir::remove` renames to a tombstone first (B-17).
-- **Format:** the private record's version rises.
-
 **3.3 Secrets and spellings.** Touches `net` (key file), `protocol` (signer, delegation), `common`, `values`, `store`, `math`.
 - An owned `ServerKey` and an `Arc<Signer>`. `Secret` is not `Copy` and is zeroed on drop (N-19).
 - The delegation's expiration has one decimal spelling (N-28).
@@ -1157,15 +1150,12 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-5 | Start and restore build the match through two paths and five parameter bags. The abort path writes server resources into a replay world. | `sim_server/mod.rs:258-496`, `session_dir/mod.rs:230-317` | Confirmed | 6.2 |
 | N-6 | Terms are checked up to three times, and the checked result is dropped | `session_rules/mod.rs:55-137`, `session/mod.rs:64-87`, `opening/mod.rs:67, 82` | Confirmed | 6.2 |
 | N-7 | The server's lifecycle is the set of resources that exist | `sim_server/mod.rs:151-233, 617-630` | Confirmed | 6.3 |
-| N-8 | A restore reads the private record's terms and runs the journal's, and compares neither | `session_dir/mod.rs:75-192`, `opening/mod.rs:70, 201` | Confirmed | 3.2 |
 | N-9 | Replicated entities get `Replicate`, `Rooms` and `PredictionTarget` after their spawn | `kind_shows.rs:86-112`, `viewer.rs:136-190` | Confirmed | 7.5 |
 | N-10 | Lightyear's default features add interpolation, and the server binary links the client stack | `Cargo.toml:186`, `net/src/lib.rs:108-122` | Confirmed | 12.2 |
 | N-11 | Every signature check and signing runs on the tick thread, one slot after another, with a syscall for each signature's aux randomness | `sim_server/mod.rs:503-583`, `signer.rs:81-105` | Plausible cost | 6.4 |
 | N-12 | A checkpoint due before the last one's record arrives waits on its fsync | `checkpoints/mod.rs:75-120` | Plausible | 6.4 |
 | N-13 | Each record is encoded two or three times, with a wake for each record | `session_log/mod.rs:557-770`, `journal_records.rs:250-255` | Confirmed | 6.4 |
 | N-14 | The server keeps the whole session in memory and publishes from it, against 10-sessions.md | `session_log/mod.rs:87-88`, `session_dir/mod.rs:178-220` | Confirmed drift | 6.4 |
-| N-15 | A journal read cuts at the first bad frame, with no log line, whatever follows | `journal_frames.rs:87-103`, `session_dir/mod.rs:187-194` | Confirmed | 3.2 |
-| N-16, B-15 | A hung sync is never reported, and `AppendWriter` buffers with no bound | `append_writer/mod.rs:130-200`, `journal_watch.rs:91-98` | Confirmed | 3.2 |
 | N-17 | `SessionLog` has 21 fields, a hidden replay mode and a signature mode | `session_log/mod.rs:77-120, 1137-1144` | Confirmed | 6.4 |
 | N-18 | A slot's controller has four types, and the link-to-slot fact three maps kept equal by hand | `slot_control.rs:30-40`, `controller.rs:184-193`, `log_carry.rs:227-273`, `door.rs:242-293` | Confirmed | 6.4 |
 | N-19, B-25 | The server's key and the segment seed are `Copy` values in several places, never erased, and `Secret` compares in variable time | `key_file/mod.rs:16-45`, `server_setup.rs:9-13`, `secret.rs:11-12` | Confirmed copies | 3.3 |
@@ -1222,7 +1212,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | B-13 | Two member lists for each named enum, and a linear search on each encode | `common-derive/src/lib.rs:47-105`, `named_enum.rs:19-44` | Confirmed | 12.1 |
 | B-14 | A 32-byte value displays as hex but serializes as 32 numbers in text formats | `value32/mod.rs:120-130` | Confirmed | 3.3 |
 | B-16 | `store` reads follow links, against 02 Storage | `input_file/mod.rs:130-146`, `secret_file/mod.rs:29` | Confirmed | 3.3 |
-| B-17 | `DurableDir::remove` is not atomic under a crash | `durable_dir/mod.rs:75-83` | Plausible | 3.2 |
 | B-20 | `quic` depends on `log` for `ErrorReport` alone | `quic/Cargo.toml`, `error_report/mod.rs` | Confirmed | 12.1 |
 | B-21 | Features the build does not use: `bevy_ecs` defaults, `reflect_auto_register`, Rhai's module system | `Cargo.toml:154, 165, 198` | Confirmed | 8.3, 12.2 |
 | B-22 | The forks are patched by branch, not by revision | `Cargo.toml:386-416` | Confirmed | 12.2 |

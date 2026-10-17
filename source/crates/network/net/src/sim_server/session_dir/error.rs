@@ -1,8 +1,7 @@
 use std::ffi::OsString;
 
 use campfire_codec::TaggedError;
-use campfire_common::Version;
-use campfire_protocol::{JournalReplayError, NotJournal};
+use campfire_protocol::{JournalReplayError, NotJournal, SessionId};
 use campfire_store::{AppendOpenError, DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
@@ -28,15 +27,18 @@ pub enum RestoreError {
     Read(#[source] PathError<ReadError>),
     #[error("the private record")]
     Private(#[source] TaggedError),
-    /// The session runs on another engine release than this one, which restores it.
-    #[error("the session runs on release {0}, which restores it")]
-    OtherRelease(Version),
     #[error("the journal file")]
     NotJournal(#[source] NotJournal),
     #[error("the journal")]
     Journal(#[source] PathError<AppendOpenError>),
     #[error(transparent)]
     Replay(JournalReplayError),
+    /// The journal's header names another session than the directory's name.
+    #[error("the journal is session {0}'s")]
+    OtherSession(SessionId),
+    /// The private record's seed chain is not the one the journal's terms commit to.
+    #[error("the private record's seed chain is not the one the terms commit to")]
+    OtherSeedChain,
 }
 
 /// Why an aborted session's log was not published.

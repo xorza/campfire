@@ -336,6 +336,6 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
 
     let records: Vec<&[u8]> = JournalFrames::new(&journal).unwrap().collect();
     assert_eq!(records.last().map(|record| record[0]), Some(7));
-    let rebuilt = SessionLog::from_journal(records).unwrap();
+    let rebuilt = SessionLog::from_journal(records, RELEASE).unwrap();
     assert_eq!(encoded(&rebuilt), saved);
 }

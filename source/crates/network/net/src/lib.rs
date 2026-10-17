@@ -35,6 +35,7 @@ pub use crate::events::input_message_unfit::InputMessageUnfit;
 pub use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 pub use crate::events::inputs_discarded::InputsDiscarded;
 pub use crate::events::join_refused::JoinRefused;
+pub use crate::events::journal_cut::JournalCut;
 pub use crate::events::journal_failed::JournalFailed;
 pub use crate::events::journal_sync_slow::JournalSyncSlow;
 pub use crate::events::link_lost::{LinkLossCause, LinkLost};

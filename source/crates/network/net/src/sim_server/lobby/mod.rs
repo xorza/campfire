@@ -189,9 +189,9 @@ impl Lobby {
         assert!(self.files.is_none(), "a session keeps one journal");
         let private = SessionPrivate {
             seed_chain: self.seed_chain,
-            terms: self.terms().clone(),
         };
-        let dir = SessionDir::create(data, &private).map_err(KeepFilesError::Dir)?;
+        let session = self.terms().session_id();
+        let dir = SessionDir::create(data, session, &private).map_err(KeepFilesError::Dir)?;
         self.files = Some(dir.start().map_err(KeepFilesError::Journal)?);
         Ok(())
     }

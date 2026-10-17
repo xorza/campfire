@@ -1,7 +1,7 @@
 //! The log's journal: the record of each thing the log takes, as it takes it, and the log
 //! rebuilt from them.
 
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{PlayerSlot, Tick, Version};
 
 use crate::journal::Journal;
 use crate::journal::journal_frames::JournalFrames;
@@ -68,10 +68,13 @@ impl LoggedResult {
 impl SessionLog {
     /// The log of the session whose journal holds `records`, in order, as the server took them:
     /// what the server had logged when it wrote the last. An error for a first record that is
-    /// not the header, a record after the result, a checkpoint's begin after an entry of its
-    /// tick, and a record that does not decode or that the log refuses.
+    /// not the header, a header of a release other than `release`, the one that reads it, whose
+    /// records are then not read, as their format is that release's, a record after the result,
+    /// a checkpoint's begin after an entry of its tick, and a record that does not decode or
+    /// that the log refuses.
     pub fn from_journal<'a>(
         records: impl IntoIterator<Item = &'a [u8]>,
+        release: Version,
     ) -> Result<Self, JournalReplayError> {
         let failed = |record, error| JournalReplayError::Record { record, error };
         let mut records = records.into_iter();
@@ -82,6 +85,9 @@ impl SessionLog {
         let header = file::take_header(&mut rest).map_err(|error| failed(0, error))?;
         if !rest.is_empty() {
             return Err(failed(0, LogError::Trailing));
+        }
+        if header.terms.release != release {
+            return Err(JournalReplayError::OtherRelease(header.terms.release));
         }
         let mut log = Self::new(header).map_err(|error| failed(0, LogError::Header(error)))?;
         let mut inputs = Vec::new();

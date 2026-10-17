@@ -103,7 +103,7 @@ fn run() -> Result<ExitCode, StartError> {
     };
     // A waiting session names its own map, which its restore, or its end, replays.
     let waiting = Opening::waiting(&data).map_err(no_session)?;
-    let journal = waiting.as_ref().map(|session| &session.private.terms.map);
+    let journal = waiting.as_ref().map(|session| &session.terms().map);
     let map = Opening::map(journal, map).map_err(no_session)?;
     let packages = PackageDir::new(&mode).mode_packages(map.as_ref())?;
     bots.check(&packages.unit_types())?;

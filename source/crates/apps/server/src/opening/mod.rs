@@ -58,8 +58,8 @@ pub(crate) struct RestoreWindow {
 impl Opening {
     /// What the server starts: `found`, the session to restore that `find` gave, or a new one,
     /// its directory, private record and journal made. An error for a session or a journal not
-    /// made, for a restored session whose terms the mode's rules do not admit, as a journal
-    /// another release wrote holds, and for one of other picks than the host asks.
+    /// made, for a restored session whose terms the mode's rules do not admit, and for one of
+    /// other picks than the host asks.
     pub(crate) fn of(
         found: Option<RestoredSession>,
         setup: OpeningSetup<'_>,
@@ -67,7 +67,7 @@ impl Opening {
         let rules = SessionRules::of(&setup.packages);
         let session = match found {
             Some(session) => {
-                let options = &session.private.terms.options;
+                let options = &session.terms().options;
                 Self::picks(&rules, options, &setup.options)?;
                 Opened::Restored(Box::new(PendingRestore {
                     session,
@@ -198,7 +198,7 @@ impl Opened {
     fn terms(&self) -> &SessionTerms {
         match self {
             Self::New(lobby) => lobby.terms(),
-            Self::Restored(restore) => &restore.session.log.header().terms,
+            Self::Restored(restore) => restore.session.terms(),
         }
     }
 }

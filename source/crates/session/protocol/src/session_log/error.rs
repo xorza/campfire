@@ -1,5 +1,5 @@
 use campfire_codec::BinaryError;
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{PlayerSlot, Tick, Version};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -283,6 +283,9 @@ pub enum JournalReplayError {
     /// The journal holds no record, or its first is not the header.
     #[error("the journal starts with no header")]
     NoHeader,
+    /// The header names the session's release, another than the one that reads it.
+    #[error("the session runs on release {0}, which reads its journal")]
+    OtherRelease(Version),
     /// The record of index `record`, from 0, comes after the result, which ends the session.
     #[error("journal record {record} comes after the session's result")]
     AfterResult { record: u64 },

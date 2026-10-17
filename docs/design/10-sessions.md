@@ -15,6 +15,7 @@ How a session outlives its server process, its players' links and its players.
 - **A burst after a stall stays below the max input delay.** One frame runs at most `max_delay − 1` ticks, so no on-time input becomes late; the rest is dropped and logged, as fixed-timestep loops do (Fiedler's *Fix Your Timestep*).
 - **Keys are plain key files.** A secret key is an `nsec` in a file only its owner may open; a file others may open is refused on every OS, as OpenSSH refuses a key with loose permissions. Encryption by NIP-49 comes with `identity`.
 - **A journal that fails ends the server.** A failed write or sync is never retried: Linux may drop the pages a failed fsync held, so a retry can succeed over lost data, as PostgreSQL's fsyncgate showed. The host's supervisor starts the server again, and the start restores the session; the server never restarts itself.
+- **A disk that stops is a journal that fails.** A write and its sync that run past two minutes, as long as Linux's hung task detector waits, or records that pile up past a bound while the disk falls behind, fail the journal as a failed sync does; a writer that waits on the disk forever, as PostgreSQL's does, keeps receipts back and memory growing with no report.
 - **The newest login wins.** A join of a main key whose slot has a live link ends the old link and seats the new one, as game servers do, so a player who comes back is never locked out by a link the server has not yet seen fail.
 
 ## Slots and controllers
@@ -24,6 +25,8 @@ How a session outlives its server process, its players' links and its players.
 
 ## Crash restore
 
+- **A journal is cut at its first bad frame.** A restore keeps the frames before the first torn or corrupt one, cuts the file there and logs what it dropped, as RocksDB's default `kPointInTimeRecovery`; refused: refusing the whole journal, which loses the session to one bad byte, and skipping bad frames, which replays a log with a hole in it.
+- **The terms are the journal's.** The private record holds the seed chain alone, and the journal's signed header is the one record of the terms; a restore refuses a seed chain the terms do not commit to, and a journal of another session than its directory's. Refused: the terms in both files, which a restore read from one and ran from the other.
 - **A restore window from the journal's last write.** A server back within it replays the session from its latest checkpoint; one back after it aborts the session and publishes its log.
 - **A stop is an exit, not a crash.** The first stop signal ends the frame, closes each link with `STOPPED` and deletes the port mapping; the session stays in its journal and restores on the next start.
 - **Clients back with full jitter.** A client whose link fails tries again after waits that double to 8 s, each drawn at random below its bound, as AWS's full jitter, so clients that lost one server do not all return in one instant.
@@ -35,7 +38,7 @@ How a session outlives its server process, its players' links and its players.
 
 ## Receipts
 
-- **A receipt names only what a crash cannot lose.** Only inputs whose journal records are synced count.
+- **A receipt names only what a crash cannot lose.** Only inputs whose journal records are synced count. It promises that they survive a crash, not a disk that corrupts them: a restore that cuts at a bad frame drops every input after it, receipted or not.
 
 ## Checkpoints
 

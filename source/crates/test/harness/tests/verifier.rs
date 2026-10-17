@@ -245,7 +245,8 @@ fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
     let bytes = encoded(fixed.game().session().log());
     drop(fixed);
     let file = scratch.read(&path);
-    let mut rebuilt = SessionLog::from_journal(JournalFrames::new(&file).unwrap()).unwrap();
+    let mut rebuilt =
+        SessionLog::from_journal(JournalFrames::new(&file).unwrap(), Version::ENGINE).unwrap();
     rebuilt.reveal_seed(FixedSession::seed(1));
     assert_eq!(encoded(&rebuilt), bytes);
 }

@@ -81,7 +81,7 @@ fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() 
         let step = match &failure {
             Some(AppendError::Write(error)) => (true, false, error.to_string()),
             Some(AppendError::Sync(error)) => (false, true, error.to_string()),
-            None => panic!("the failure is reported"),
+            other => panic!("the file's failure is reported: {other:?}"),
         };
         let message = if append {
             "append failed"
@@ -102,7 +102,11 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
     let slow_after = Duration::from_millis(200);
     let (sync, gate) = mpsc::channel();
     let (entered, in_sync) = mpsc::channel();
-    let writer = AppendWriter::start_slow_after("gated", GatedFile { gate, entered }, slow_after);
+    let bounds = AppendBounds {
+        slow_after,
+        ..AppendWriter::BOUNDS
+    };
+    let writer = AppendWriter::start_bounded("gated", GatedFile { gate, entered }, bounds);
     let watch = writer.watch();
     assert!(watch.settled());
     writer.append(|out| out.extend_from_slice(b"held"));
@@ -129,6 +133,47 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
     assert!(slow.took >= held, "{slow:?}");
     assert_eq!(watch.take_slow_sync(), None);
     drop(sync);
+}
+
+#[test]
+fn a_writer_fails_once_its_sync_hangs_or_its_records_wait_past_the_bound() {
+    // Hung past 100 ms, for a test that holds the sync 150 ms; the bound of the records that
+    // wait is 8 bytes, so only the second record of 5 bytes passes it.
+    let bounds = AppendBounds {
+        hung_after: Duration::from_millis(100),
+        max_behind: 8,
+        ..AppendWriter::BOUNDS
+    };
+    let held = Duration::from_millis(150);
+    for hung in [true, false] {
+        let (release, gate) = mpsc::channel();
+        let (entered, in_sync) = mpsc::channel();
+        let writer = AppendWriter::start_bounded("held", GatedFile { gate, entered }, bounds);
+        let watch = writer.watch();
+        writer.append(|out| out.extend_from_slice(b"held"));
+        in_sync.recv().unwrap();
+        if hung {
+            // Asked before the bound, the sync that runs is no failure yet.
+            assert!(watch.take_failure().is_none());
+            thread::sleep(held);
+        } else {
+            writer.append(|out| out.extend_from_slice(b"five!"));
+            assert!(watch.take_failure().is_none());
+            writer.append(|out| out.extend_from_slice(b"five!"));
+        }
+        let failure = watch.take_failure();
+        match (hung, &failure) {
+            (true, Some(AppendError::Hung { running })) => assert!(*running >= held, "{running:?}"),
+            (false, Some(AppendError::Behind { bytes: 10 })) => {}
+            _ => panic!("{hung}: {failure:?}"),
+        }
+        // Stopped, it takes no record more, and the sync that returns late fails it no more.
+        assert!(watch.settled());
+        writer.append(|_| unreachable!("a stopped writer takes no record"));
+        release.send(()).unwrap();
+        assert!(writer.close().is_none());
+        assert_eq!(watch.durable(), 1);
+    }
 }
 
 #[test]

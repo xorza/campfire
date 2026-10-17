@@ -112,7 +112,7 @@ SessionLog
 - **Limits.** The terms fix the max payload length and the max inputs per tick; a client that keeps them is never refused, and a refusal ends the connection.
 - **Applied tick.** An input applies at `max(stamp tick, next tick)` or later, a player's inputs filling each tick up to the max in chain order; one more than the max input delay after its stamp, or the max input lead ahead, is logged and not applied, so the chain stays whole. Inputs of one tick take effect in slot order, then seq order, so the host cannot choose who acts first.
 - **Acknowledgment.** For each packet the server sends the seq of its first input and each input's tick, as Gambetta's client-side prediction acknowledges each input.
-- **Receipts.** About once a second the server signs `{session id, slot, delegation id, tick, seq, head}` over `"campfire/receipt/v1" ‖ …` for each player whose synced seq advanced, so a receipt proves those inputs survive any crash ([Sessions](10-sessions.md)).
+- **Receipts.** About once a second the server signs `{session id, slot, delegation id, tick, seq, head}` over `"campfire/receipt/v1" ‖ …` for each player whose synced seq advanced, so a receipt proves those inputs survive any crash, though not a disk that corrupts the journal ([Sessions](10-sessions.md#receipts)).
 
 ## Verification
 
