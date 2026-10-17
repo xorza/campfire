@@ -215,8 +215,8 @@ fn replayed<'p>(
 struct FileJournal(AppendWriter);
 
 impl RecordSink for FileJournal {
-    fn append(&self, write: &mut dyn FnMut(&mut Vec<u8>)) {
-        self.0.append(write);
+    fn append(&self, records: u64, write: &mut dyn FnMut(&mut Vec<u8>)) {
+        self.0.append(records, write);
     }
 }
 
@@ -490,7 +490,8 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     // does not start it.
     let mut log = session.log();
     let to_bot = leave(AfterLeave::Bot);
-    log.serve(to_bot, &FixedSession::server_signer()).unwrap();
+    log.serve(to_bot, &FixedSession::server_signer(), None)
+        .unwrap();
     log.reveal_seed(FixedSession::seed(0));
     let refused = refusal(&log, &store());
     assert!(

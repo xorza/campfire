@@ -156,16 +156,16 @@ impl AppendWriter {
         }
     }
 
-    /// Appends the record `write` puts in the buffer it is given, at its end, for the worker;
-    /// nothing once the worker stopped at a failure. A record that takes the buffer past
-    /// `MAX_BEHIND` stops the writer.
-    pub fn append(&self, write: impl FnOnce(&mut Vec<u8>)) {
+    /// Appends the `records` records `write` puts in the buffer it is given, at its end, for the
+    /// worker, which one wake hands it; nothing once the worker stopped at a failure. Records that
+    /// take the buffer past `MAX_BEHIND` stop the writer.
+    pub fn append(&self, records: u64, write: impl FnOnce(&mut Vec<u8>)) {
         let mut pending = self.shared.pending.lock();
         if pending.stopped {
             return;
         }
         write(&mut pending.bytes);
-        pending.records += 1;
+        pending.records += records;
         let bytes = pending.bytes.len();
         if bytes > self.shared.bounds.max_behind {
             self.shared

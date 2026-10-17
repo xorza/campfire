@@ -151,7 +151,7 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
     let mut rewound = decoded.rewound();
     let mut applied = Vec::new();
     for tick in 0..ticks.get() {
-        applied.extend(rewound.seal_tick().map(|input| (input.stamp, tick)));
+        applied.extend(rewound.seal_tick(None).map(|input| (input.stamp, tick)));
     }
     assert_eq!(applied.len(), inputs, "{applied:?}");
     assert!(

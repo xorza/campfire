@@ -131,13 +131,23 @@ struct Sent<'a> {
 impl Sent<'_> {
     /// Records the packet into `log`, as the server does when it arrives.
     fn submit(&self, log: &mut SessionLog, applied: &mut Vec<Applied>) -> Result<(), InputError> {
+        self.submit_to(log, applied, None)
+    }
+
+    /// Records the packet into `log` as `submit` does, its record into `journal`.
+    fn submit_to(
+        &self,
+        log: &mut SessionLog,
+        applied: &mut Vec<Applied>,
+        journal: Option<&mut Journal>,
+    ) -> Result<(), InputError> {
         let inputs = self.inputs.iter().map(|input| (input.stamp, input.payload));
         let packet = PlayerPacket {
             slot: self.slot(),
             inputs,
             signature: &self.signature,
         };
-        log.record(packet, applied)
+        log.record(packet, applied, journal)
     }
 
     /// The slot of its first input, or slot 0 for a packet of none.
@@ -301,7 +311,7 @@ fn record_into(mut log: SessionLog, ticks: &[Vec<Sent<'_>>]) -> Result<Recorded,
 
 /// The applied inputs of the next tick, sealed now, as `(slot, payload)`.
 fn seal(log: &mut SessionLog) -> Vec<(u32, Vec<u8>)> {
-    log.seal_tick()
+    log.seal_tick(None)
         .map(|input| (input.slot.get(), input.payload.to_vec()))
         .collect()
 }
@@ -325,7 +335,7 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
             let payloads = packet.inputs.iter().map(|input| input.payload);
             outcomes.extend(payloads.zip(applied.iter().copied()));
         }
-        drop(log.seal_tick());
+        drop(log.seal_tick(None));
     }
     // Applied at max(stamp, next tick); late when the next tick is more than 2 ticks after the
     // stamp, early when the stamp is more than 2 ticks ahead; and a player's inputs fill each tick
@@ -557,7 +567,7 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     let mut log = bounded(70 + kept);
     sent[0].submit(&mut log, &mut applied).unwrap();
     assert_eq!(log.file_len, start + 70);
-    assert!(log.full());
+    assert!(log.full(None));
     assert_eq!(
         sent[1].submit(&mut log, &mut applied),
         Err(InputError::LogFull)
@@ -583,28 +593,30 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     );
     // A log full only once it takes a record of the most bytes and the end no more.
     let mut log = bounded(unit + kept);
-    assert!(!log.full());
+    assert!(!log.full(None));
     sent[0].submit(&mut log, &mut applied).unwrap();
-    assert!(log.full());
+    assert!(log.full(None));
 
     // The journal counts on its own: its frames past what the log holds.
     let mut log = new_log();
-    log.keep_journal(MemorySink::new().boxed());
-    let journal = log.journal.as_ref().unwrap().len();
-    log.bounds.journal = journal + 106 + kept - 1;
+    let mut journal = Journal::start(&log, MemorySink::new().boxed());
+    let before = journal.len();
+    log.bounds.journal = before + 106 + kept - 1;
     assert_eq!(
-        sent[0].submit(&mut log, &mut applied),
+        sent[0].submit_to(&mut log, &mut applied, Some(&mut journal)),
         Err(InputError::LogFull)
     );
     log.bounds.journal += 1;
-    sent[0].submit(&mut log, &mut applied).unwrap();
-    assert_eq!(log.journal.as_ref().unwrap().len(), journal + 106);
+    sent[0]
+        .submit_to(&mut log, &mut applied, Some(&mut journal))
+        .unwrap();
+    assert_eq!(journal.len(), before + 106);
 
     // Each seal takes a byte for the next tick's count of entries, and one more as the count
     // of the segment's ticks passes 127: 127 + 2 bytes in 128 seals.
     let mut log = new_log();
     for _ in 0..128 {
-        drop(log.seal_tick());
+        drop(log.seal_tick(None));
     }
     assert_eq!(log.file_len, start + 129);
     assert_eq!(len(encoded(&log).len()), start + 129);
@@ -612,11 +624,11 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     // segments stays a byte and whose own count of ticks takes one, leave a log of 2 bytes more
     // full within 2 + 9,842 + 5 × 9,842 bytes less one.
     let mut log = bounded(2 + 6 * unit - 1);
-    drop(log.seal_tick());
-    assert!(!log.full());
-    log.begin_checkpoint().unwrap();
+    drop(log.seal_tick(None));
+    assert!(!log.full(None));
+    log.begin_checkpoint(None).unwrap();
     assert_eq!(log.file_len, start + 2);
-    assert!(log.full());
+    assert!(log.full(None));
 }
 
 #[test]
@@ -990,7 +1002,7 @@ fn a_log_file_has_its_layout() {
         place,
     });
     serve(&mut log, disconnected).unwrap();
-    drop(log.seal_tick());
+    drop(log.seal_tick(None));
     log.reveal_seed(server_seed());
 
     let [first, second] = [0, 1].map(delegation);
@@ -1054,22 +1066,26 @@ fn a_log_file_has_its_layout() {
 /// and an input still due; 1 packet after it; the revealed seed; and the result.
 fn minimal() -> SessionLog {
     let mut log = new_log();
-    play_minimal(&mut log);
+    play_minimal(&mut log, None);
     log.reveal_seed(SEED_CHAIN.seed(1));
     log
 }
 
-/// Records into `log`, of `header()` and new, what `minimal` holds before its reveal.
-fn play_minimal(log: &mut SessionLog) {
+/// Records into `log`, of `header()` and new, what `minimal` holds before its reveal, each record
+/// into `journal` too, when one is given.
+fn play_minimal(log: &mut SessionLog, journal: Option<&mut Journal>) {
+    let mut journal = journal;
     let mut applied = Vec::new();
     let sent = resent(1, &[&[(0, b"a"), (1, b"b")], &[(1, b"c")]], 1);
-    sent[0].submit(log, &mut applied).unwrap();
+    sent[0]
+        .submit_to(log, &mut applied, journal.as_deref_mut())
+        .unwrap();
     let connected = ServerInput::Connected {
         slot: PlayerSlot::new(0),
     };
-    serve(log, connected).unwrap();
-    drop(log.seal_tick());
-    log.begin_checkpoint().unwrap();
+    serve_to(log, connected, journal.as_deref_mut()).unwrap();
+    drop(log.seal_tick(journal.as_deref_mut()));
+    log.begin_checkpoint(journal.as_deref_mut()).unwrap();
     let record = Checkpoint {
         segment: 1,
         tick: log.next_tick(),
@@ -1081,8 +1097,11 @@ fn play_minimal(log: &mut SessionLog) {
         session_id: session_id(),
         record: &record,
     });
-    log.record_checkpoint(record, &signature).unwrap();
-    sent[1].submit(log, &mut applied).unwrap();
+    log.record_checkpoint(record, &signature, journal.as_deref_mut())
+        .unwrap();
+    sent[1]
+        .submit_to(log, &mut applied, journal.as_deref_mut())
+        .unwrap();
     let result = SessionResult {
         tick: log.next_tick(),
         outcome: Outcome::Won { team: 1 },
@@ -1092,7 +1111,7 @@ fn play_minimal(log: &mut SessionLog) {
         session_id: session_id(),
         record: &result,
     });
-    log.record_result(result, &signature).unwrap();
+    log.record_result(result, &signature, journal).unwrap();
 }
 
 #[test]
@@ -1274,7 +1293,16 @@ fn mixed_log() -> SessionLog {
 /// `input` served into `log`, which signs it with the server key at its next place. A log file
 /// with it decodes, recording each server input with its signature, which `record_server` checks.
 fn serve(log: &mut SessionLog, input: ServerInput<'_>) -> Result<(), ServerInputError> {
-    log.serve(input, &TestKey::signer(TestKey::server()))
+    serve_to(log, input, None)
+}
+
+/// `input` served into `log` as `serve` does, its record into `journal`.
+fn serve_to(
+    log: &mut SessionLog,
+    input: ServerInput<'_>,
+    journal: Option<&mut Journal>,
+) -> Result<(), ServerInputError> {
+    log.serve(input, &TestKey::signer(TestKey::server()), journal)
 }
 
 /// A packet of `inputs`, `(stamp, payload)` each, that the session key of `key` signs on the chain
@@ -1391,7 +1419,7 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
         place: early,
     });
     assert_eq!(
-        log.record_server(input, &stale),
+        log.record_server(input, &stale, None),
         Err(ServerInputError::BadSignature)
     );
     // Player 0 renews their session key: the chain goes on, now signed by key 3, and their q,
@@ -1428,7 +1456,7 @@ fn two_ticks_played() -> (SessionLog, InputChain) {
         .unwrap();
     serve(&mut log, bot(1, b"x")).unwrap();
     serve(&mut log, ServerInput::Disconnected { slot: slot(0) }).unwrap();
-    drop(log.seal_tick());
+    drop(log.seal_tick(None));
     for payload in [b"y", b"z"] {
         serve(&mut log, bot(1, payload)).unwrap();
     }
@@ -1440,7 +1468,7 @@ fn two_ticks_played() -> (SessionLog, InputChain) {
     mixed_packet(&mut zero, &[(2, b"s")], 3)
         .submit(&mut log, &mut applied)
         .unwrap();
-    drop(log.seal_tick());
+    drop(log.seal_tick(None));
     (log, zero)
 }
 

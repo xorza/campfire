@@ -112,7 +112,7 @@ mod tests {
         let len = u64::try_from(first.len()).unwrap();
         let writer = AppendWriter::reopen("tail", &path, len).unwrap();
         let more = format!("{}\n{}\n", &started(2)[20..], started(3));
-        writer.append(|bytes| bytes.extend(more.as_bytes()));
+        writer.append(1, |bytes| bytes.extend(more.as_bytes()));
         writer.close();
         // Only the lines after the last read, the one finished among them.
         assert_eq!(tail.read::<MatchStarted>().unwrap(), [slot(2), slot(3)]);

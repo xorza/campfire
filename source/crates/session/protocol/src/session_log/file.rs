@@ -125,7 +125,7 @@ impl SessionLog {
             let ticks: u64 = take(&mut rest)?;
             for _ in 0..ticks {
                 log.record_logged(&mut rest, &mut inputs, &mut applied)?;
-                drop(log.seal_tick());
+                drop(log.seal_tick(None));
             }
         }
         log.record_logged(&mut rest, &mut inputs, &mut applied)?;
@@ -136,7 +136,7 @@ impl SessionLog {
             log.set_revealed(server_seed);
         }
         if let Some(LoggedResult { result, signature }) = take(&mut rest)? {
-            log.record_result(result, &signature)
+            log.record_result(result, &signature, None)
                 .map_err(LogError::Result)?;
         }
         if !rest.is_empty() {
@@ -247,7 +247,7 @@ impl SessionLog {
             inputs: inputs.iter().copied(),
             signature: &signature,
         };
-        self.record(packet, applied)
+        self.record(packet, applied, None)
             .map_err(|error| LogError::Input { tick, error })
     }
 
@@ -260,14 +260,14 @@ impl SessionLog {
         })?;
         *rest = taken.rest;
         let signature = take(rest)?;
-        self.record_server(taken.value, &signature)
+        self.record_server(taken.value, &signature, None)
             .map_err(|error| LogError::Server { tick, error })
     }
 
     /// Begins the checkpoint of segment `segment`, and records its record that `encode` wrote at
     /// the front of `rest`, with its signature.
     fn record_checkpoint_at(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
-        self.begin_checkpoint()
+        self.begin_checkpoint(None)
             .map_err(|error| LogError::Checkpoint { segment, error })?;
         self.record_done(rest, segment)
     }
@@ -281,7 +281,7 @@ impl SessionLog {
         })?;
         *rest = taken.rest;
         let signature = take(rest)?;
-        self.record_checkpoint(taken.value, &signature)
+        self.record_checkpoint(taken.value, &signature, None)
             .map_err(|error| LogError::Checkpoint { segment, error })
     }
 }

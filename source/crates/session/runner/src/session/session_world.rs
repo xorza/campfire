@@ -96,7 +96,8 @@ impl SessionWorld for World {
                 session.segment = segment;
             }
             let mut inputs = world.resource_mut::<TickInputs>();
-            for input in session.log.seal_tick() {
+            let session = &mut *session;
+            for input in session.log.seal_tick(session.journal.as_mut()) {
                 inputs.push(TickInput {
                     slot: input.slot,
                     payload: input.payload,

@@ -26,7 +26,7 @@ impl SessionJournal {
 }
 
 impl RecordSink for SessionJournal {
-    fn append(&self, write: &mut dyn FnMut(&mut Vec<u8>)) {
-        self.0.append(write);
+    fn append(&self, records: u64, write: &mut dyn FnMut(&mut Vec<u8>)) {
+        self.0.append(records, write);
     }
 }

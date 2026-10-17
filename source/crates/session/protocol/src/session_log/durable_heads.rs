@@ -7,7 +7,7 @@ use crate::session_log::durable_head::DurableHead;
 /// Where each slot's chain stands in the records the journal synced, by slot, and the journaled
 /// packets not known durable yet, in the order of their records.
 #[derive(Debug)]
-pub(super) struct DurableHeads {
+pub(crate) struct DurableHeads {
     heads: Vec<Option<DurableHead>>,
     journaled: VecDeque<Journaled>,
 }
@@ -22,7 +22,7 @@ struct Journaled {
 
 impl DurableHeads {
     /// No head of any of `slots` slots.
-    pub(super) fn new(slots: usize) -> Self {
+    pub(crate) fn new(slots: usize) -> Self {
         Self {
             heads: vec![None; slots],
             journaled: VecDeque::new(),
@@ -31,7 +31,7 @@ impl DurableHeads {
 
     /// Notes the packet of `slot` the journal holds as record `record`, which leaves its chain at
     /// `head`, once its record is synced.
-    pub(super) fn journaled(&mut self, record: u64, slot: PlayerSlot, head: DurableHead) {
+    pub(crate) fn journaled(&mut self, record: u64, slot: PlayerSlot, head: DurableHead) {
         debug_assert!(
             self.journaled
                 .back()
@@ -42,7 +42,7 @@ impl DurableHeads {
     }
 
     /// Notes where each chain stands once the journal's first `durable` records are synced.
-    pub(super) fn advance(&mut self, durable: u64) {
+    pub(crate) fn advance(&mut self, durable: u64) {
         while let Some(journaled) = self.journaled.front()
             && journaled.record < durable
         {
@@ -52,18 +52,25 @@ impl DurableHeads {
     }
 
     /// Where `slot`'s chain stands in the synced records.
-    pub(super) fn get(&self, slot: PlayerSlot) -> Option<DurableHead> {
+    pub(crate) fn get(&self, slot: PlayerSlot) -> Option<DurableHead> {
         self.heads.get(slot.index()).copied().flatten()
     }
 
     /// Sets where `slot`'s chain stands durably, as a journal read back from the disk holds it.
-    pub(super) fn set(&mut self, slot: PlayerSlot, head: Option<DurableHead>) {
+    pub(crate) fn set(&mut self, slot: PlayerSlot, head: Option<DurableHead>) {
         self.heads[slot.index()] = head;
+    }
+
+    /// Forgets where every chain stands durably, and every packet not synced yet: the log went
+    /// back to a save, where each chain stood before the packets the journal holds since.
+    pub(crate) fn clear(&mut self) {
+        self.heads.fill(None);
+        self.journaled.clear();
     }
 
     /// Forgets where `slot`'s chain stands durably, and its packets not synced yet: a player took
     /// the slot, renewed their delegation, or left it.
-    pub(super) fn forget(&mut self, slot: PlayerSlot) {
+    pub(crate) fn forget(&mut self, slot: PlayerSlot) {
         self.heads[slot.index()] = None;
         self.journaled.retain(|journaled| journaled.slot != slot);
     }

@@ -212,6 +212,7 @@ impl Plugin for SimServer {
         Viewer::follow_links(app);
         Viewer::follow_out_of_play(app);
         app.add_systems(Last, Dismissing::tell);
+        app.add_systems(Last, JournalWatch::flush.run_if(resource_exists::<Session>));
         app.add_systems(
             PostUpdate,
             (Dismissing::end, Offered::close_silent).after(LinkSystems::Send),
@@ -299,10 +300,10 @@ impl SimServer {
     /// gives that it ends there. A checkpoint still on its thread that is not written then is a
     /// fault, as the log can not be published.
     fn at_boundary(world: &mut World) {
-        let log = world.session().log();
-        let ends = if log.full() {
+        let session = world.session();
+        let ends = if session.log_full() {
             LogFilled {
-                tick: log.next_tick(),
+                tick: session.log().next_tick(),
             }
             .log();
             true

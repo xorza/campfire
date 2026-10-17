@@ -11,21 +11,20 @@ use crate::checkpoint::log_carry::{CarriedInput, CarriedSlot, LogCarry};
 use crate::control::{Control, Controller};
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
-use crate::journal::Journal;
 use crate::journal::journal_frames::{self, MAX_RECORD};
 use crate::main_key::MainKey;
 use crate::player_input::PlayerInput;
-use crate::server_input::{InputPlace, PlacedInput, ServerInput};
+use crate::server_input::{EncodedPlace, InputPlace, PlacedInput, ServerInput};
 use crate::server_seed::ServerSeed;
 use crate::server_seeds::ServerSeeds;
 use crate::session_id::SessionId;
 use crate::session_log::applied::Applied;
 use crate::session_log::durable_head::DurableHead;
-use crate::session_log::durable_heads::DurableHeads;
 use crate::session_log::error::{
     CheckpointError, HeaderError, InputError, LogError, LogLoadError, ResultError, ServerInputError,
 };
 use crate::session_log::input_schedule::InputSchedule;
+use crate::session_log::journal::Journal;
 use crate::session_log::log_entries::{LogEntries, Served};
 use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::player_packet::PlayerPacket;
@@ -42,10 +41,11 @@ use crate::verifier::Verifier;
 
 pub(crate) mod applied;
 pub(crate) mod durable_head;
-mod durable_heads;
+pub(crate) mod durable_heads;
 pub(crate) mod error;
 mod file;
 mod input_schedule;
+pub(crate) mod journal;
 mod journal_records;
 mod log_entries;
 pub(crate) mod paged_bytes;
@@ -82,8 +82,12 @@ pub struct SessionLog {
     /// Whether the log checks the signature of each record it takes, or trusts them, as it does
     /// while it decodes its own past again for a load.
     signatures: Signatures,
-    /// The scratch a server input's message is written into as the log signs it.
+    /// The scratch a record's signed message is written into.
     message: Vec<u8>,
+    /// The record the log takes now, its kind's byte then its body, encoded once: what its
+    /// file's count measures, what a server input's signature covers, and what its journal
+    /// frames (10-sessions.md, A record is encoded once).
+    record: Vec<u8>,
     /// What the log holds, as it was logged.
     entries: LogEntries,
     /// Who controls each slot.
@@ -113,10 +117,6 @@ pub struct SessionLog {
     unit: u64,
     /// The hash of the header's terms.
     session_id: SessionId,
-    /// Where each record the log takes goes as it takes it, once the server keeps one.
-    journal: Option<Journal>,
-    /// Where each slot's chain stands in the records the journal synced.
-    durable: DurableHeads,
 }
 
 /// The most bytes a log's file and its journal hold: `MAX_FILE_LEN` and `MAX_JOURNAL_LEN`, which
@@ -147,14 +147,6 @@ enum Signatures {
 struct Growth {
     file: u64,
     journal: u64,
-}
-
-/// What a server input that passes its checks does: the change of its slot's controller, and
-/// what it adds to the file and the journal.
-#[derive(Debug, Clone, Copy)]
-struct ServerAllowed {
-    change: Option<SlotChangeKind>,
-    growth: Growth,
 }
 
 /// The result and the server's signature over it, as the file holds them.
@@ -271,6 +263,7 @@ impl SessionLog {
             verifier: Verifier::new(),
             signatures: Signatures::Check,
             message: Vec::new(),
+            record: Vec::new(),
             server_since: 0,
             changes: Vec::new(),
             sealed_changes: 0..0,
@@ -279,8 +272,6 @@ impl SessionLog {
             file_len: 0,
             unit: largest + RECORD_SLACK,
             session_id,
-            journal: None,
-            durable: DurableHeads::new(slots_len),
         };
         // The tag and the header, then a byte each: one segment, of no tick, no entry since, and
         // neither the seed nor the result.
@@ -290,21 +281,22 @@ impl SessionLog {
         Ok(log)
     }
 
-    /// Whether the log may refuse its next entry: its file or its journal has no room for one
-    /// more record of the most bytes and the session's end after it. A log that refused an entry
-    /// is full. Its server ends the session at the boundary where it finds the log full, which the
-    /// room the log keeps lets it do.
-    pub fn full(&self) -> bool {
-        !self.has_room(Growth {
+    /// Whether the log may refuse its next entry: its file or `journal`, when its server keeps
+    /// one, has no room for one more record of the most bytes and the session's end after it. A
+    /// log that refused an entry is full. Its server ends the session at the boundary where it
+    /// finds the log full, which the room the log keeps lets it do.
+    pub fn full(&self, journal: Option<&Journal>) -> bool {
+        let growth = Growth {
             file: self.unit,
             journal: self.unit,
-        })
+        };
+        !self.has_room(growth, journal)
     }
 
-    /// Whether the file and the journal take `growth` and keep the room the session's end takes
+    /// Whether the file and `journal` take `growth` and keep the room the session's end takes
     /// after it, as `kept` counts it. A decode of the file, which records a checkpoint's record as
     /// its segment starts, then takes every entry the log took.
-    fn has_room(&self, growth: Growth) -> bool {
+    fn has_room(&self, growth: Growth, journal: Option<&Journal>) -> bool {
         let kept = self.kept();
         let fits = |len: u64, more: u64, bound: u64| {
             len.checked_add(more)
@@ -312,9 +304,7 @@ impl SessionLog {
                 .is_some_and(|len| len <= bound)
         };
         fits(self.file_len, growth.file, self.bounds.file())
-            && self
-                .journal
-                .as_ref()
+            && journal
                 .is_none_or(|journal| fits(journal.len(), growth.journal, self.bounds.journal()))
     }
 
@@ -324,32 +314,35 @@ impl SessionLog {
         self.unit * (END_RECORDS + len(self.segments.begun_count()))
     }
 
-    /// What an entry of `body` bytes adds: to the file, its kind's byte, its body, and the
-    /// growth of the count of the entries since the last tick; to the journal, its frame, its
-    /// kind's byte and its body.
-    fn entry_growth(&self, body: u64) -> Growth {
+    /// What the entry `record` holds adds: to the file, its kind's byte, its body, and the
+    /// growth of the count of the entries since the last tick; to the journal, its frame and its
+    /// record.
+    fn entry_growth(&self) -> Growth {
         let since = u64::from(self.entries.since_sealed());
+        let record = len(self.record.len());
         Growth {
-            file: 1 + body + varint_len(since + 1) - varint_len(since),
-            journal: len(journal_frames::FRAME_OVERHEAD) + 1 + body,
+            file: record + varint_len(since + 1) - varint_len(since),
+            journal: len(journal_frames::FRAME_OVERHEAD) + record,
         }
     }
 
-    /// Notes the entry the log took last, of `growth`, in the file's length, and writes it into
-    /// the journal when the log keeps one.
-    fn took_entry(&mut self, growth: Growth) {
+    /// Notes the entry the log took last, of `growth`, in the file's length, and frames its
+    /// record into `journal`, when its server keeps one.
+    fn took_entry(&mut self, growth: Growth, journal: Option<&mut Journal>) {
         self.file_len += growth.file;
         debug_assert!(
             self.file_len <= self.bounds.file(),
             "the file stays within its bound"
         );
-        let before = self.journal.as_ref().map(Journal::len);
-        self.journal_last_entry();
-        debug_assert_eq!(
-            self.journal.as_ref().map(Journal::len),
-            before.map(|before| before + growth.journal),
-            "an entry's record adds what the log counted"
-        );
+        if let Some(journal) = journal {
+            let before = journal.len();
+            journal.append(&self.record);
+            debug_assert_eq!(
+                journal.len(),
+                before + growth.journal,
+                "an entry's record adds what the log counted"
+            );
+        }
     }
 
     pub const fn header(&self) -> &SessionHeader {
@@ -505,6 +498,7 @@ impl SessionLog {
         &mut self,
         packet: PlayerPacket<'_, I>,
         applied: &mut Vec<Applied>,
+        journal: Option<&mut Journal>,
     ) -> Result<(), InputError>
     where
         I: IntoIterator<Item = (Tick, &'a [u8])>,
@@ -554,15 +548,16 @@ impl SessionLog {
         if stamps.total > ticks.saturating_mul(u64::from(terms.inputs.max_per_tick)) {
             return Err(InputError::AheadOfTime);
         }
-        self.message.clear();
+        self.record.clear();
+        self.record.push(journal_records::JOURNAL_PACKET);
         let written = PlayerPacket {
             slot,
             inputs: inputs.clone(),
             signature,
         };
-        file::write_packet(&mut self.message, written);
-        let growth = self.entry_growth(len(self.message.len()));
-        if !self.has_room(growth) {
+        file::write_packet(&mut self.record, written);
+        let growth = self.entry_growth();
+        if !self.has_room(growth, journal.as_deref()) {
             return Err(InputError::LogFull);
         }
         for (stamp, payload) in inputs.clone() {
@@ -593,14 +588,16 @@ impl SessionLog {
         }
         let end = self.entries.inputs_len();
         self.entries.push_packet(start..end, *signature);
-        self.took_entry(growth);
-        if let Some(journal) = &self.journal {
+        let mut journal = journal;
+        self.took_entry(growth, journal.as_deref_mut());
+        if let Some(journal) = journal {
             let head = DurableHead {
                 delegation: *self.entries.delegation(delegation).id(),
                 seq: chain.next_seq() - 1,
                 head: chain.head(),
             };
-            self.durable.journaled(journal.written() - 1, slot, head);
+            let record = journal.written() - 1;
+            journal.durable_mut().journaled(record, slot, head);
         }
         Ok(())
     }
@@ -696,22 +693,21 @@ impl SessionLog {
         &mut self,
         input: ServerInput<'_>,
         signature: &Signature,
+        journal: Option<&mut Journal>,
     ) -> Result<(), ServerInputError> {
-        let allowed = self.server_allowed(&input)?;
-        let place = self.next_place();
-        let server_key = &self.header.terms.server_key;
-        let id = self.session_id;
-        let placed = PlacedInput {
-            input: &input,
-            session_id: id,
-            place,
+        let change = self.server_change(&input)?;
+        let placed = EncodedPlace {
+            session_id: self.session_id,
+            place: self.next_place(),
+            input: &self.record[1..],
         };
-        let server_key = *server_key;
-        if !self.checks(signature, &server_key, &placed) {
+        let server_key = self.header.terms.server_key;
+        if !(self.signatures == Signatures::Trust
+            || self.verifier.verifies(signature, &server_key, &placed))
+        {
             return Err(ServerInputError::BadSignature);
         }
-        self.log_server(input, allowed, signature);
-        Ok(())
+        self.log_server(input, change, signature, journal)
     }
 
     /// Logs a server input as `record_server` does, signed here by `server`, of the terms'
@@ -721,22 +717,29 @@ impl SessionLog {
         &mut self,
         input: ServerInput<'_>,
         server: &Signer,
+        journal: Option<&mut Journal>,
     ) -> Result<(), ServerInputError> {
         self.debug_server(server);
-        let server_key = self.header.terms.server_key;
-        let allowed = self.server_allowed(&input)?;
-        let placed = PlacedInput {
-            input: &input,
+        let change = self.server_change(&input)?;
+        let placed = EncodedPlace {
             session_id: self.session_id,
             place: self.next_place(),
+            input: &self.record[1..],
         };
         let signature = server.sign_with(&placed, &mut self.message);
         debug_assert!(
-            self.verifier.verifies(&signature, &server_key, &placed),
-            "a signature the log made verifies"
+            {
+                let whole = PlacedInput {
+                    input: &input,
+                    session_id: self.session_id,
+                    place: self.next_place(),
+                };
+                let server_key = self.header.terms.server_key;
+                self.verifier.verifies(&signature, &server_key, &whole)
+            },
+            "a signature the log made over a server input's encoding is one over the input"
         );
-        self.log_server(input, allowed, &signature);
-        Ok(())
+        self.log_server(input, change, &signature, journal)
     }
 
     /// Whether `signature` is `key`'s over `record`, or trusted as the log's own past.
@@ -758,29 +761,33 @@ impl SessionLog {
         );
     }
 
-    /// What `input` does, when `change_of` allows it and the file and the journal have room for
-    /// it with its signature.
-    fn server_allowed(
+    /// What `input` does to its slot's controller, when `change_of` allows it, its record, its
+    /// kind's byte and its encoding, written into the log's record.
+    fn server_change(
         &mut self,
         input: &ServerInput<'_>,
-    ) -> Result<ServerAllowed, ServerInputError> {
+    ) -> Result<Option<SlotChangeKind>, ServerInputError> {
         let change = self.change_of(input)?;
-        self.message.clear();
-        input.encode(&mut self.message);
-        let growth = self.entry_growth(len(self.message.len()) + Signature::ENCODED_LEN);
-        if !self.has_room(growth) {
-            return Err(ServerInputError::LogFull);
-        }
-        Ok(ServerAllowed { change, growth })
+        self.record.clear();
+        self.record.push(journal_records::JOURNAL_SERVER);
+        input.encode(&mut self.record);
+        Ok(change)
     }
 
-    /// Logs a server input `server_allowed` let through, with its `signature`.
+    /// Logs a server input whose record `server_change` wrote, with its `signature`, when the
+    /// file and `journal` have room for it.
     fn log_server(
         &mut self,
         input: ServerInput<'_>,
-        allowed: ServerAllowed,
+        change: Option<SlotChangeKind>,
         signature: &Signature,
-    ) {
+        journal: Option<&mut Journal>,
+    ) -> Result<(), ServerInputError> {
+        put(&mut self.record, signature);
+        let growth = self.entry_growth();
+        if !self.has_room(growth, journal.as_deref()) {
+            return Err(ServerInputError::LogFull);
+        }
         debug_assert!(
             self.to_replay.is_empty(),
             "a log that replays takes no input"
@@ -803,7 +810,6 @@ impl SessionLog {
                 let index = self.entries.push_delegation(delegation);
                 self.control.join(slot, index, chain);
                 self.schedule.forget(slot);
-                self.durable.forget(slot);
                 Served::Join {
                     slot,
                     delegation: index,
@@ -814,7 +820,6 @@ impl SessionLog {
             ServerInput::Renew { delegation, .. } => {
                 let index = self.entries.push_delegation(delegation);
                 self.control.renew(slot, index);
-                self.durable.forget(slot);
                 Served::Renew {
                     slot,
                     delegation: index,
@@ -825,7 +830,6 @@ impl SessionLog {
             } => {
                 self.control.leave(slot, becomes, &self.entries);
                 self.schedule.forget(slot);
-                self.durable.forget(slot);
                 Served::Leave {
                     slot,
                     reason,
@@ -835,7 +839,7 @@ impl SessionLog {
             ServerInput::Connected { .. } => Served::Connected { slot },
             ServerInput::Disconnected { .. } => Served::Disconnected { slot },
         };
-        if let Some(kind) = allowed.change {
+        if let Some(kind) = change {
             self.changes.push(SlotChange {
                 tick: next,
                 slot,
@@ -844,7 +848,17 @@ impl SessionLog {
         }
         self.entries.push_server(served, *signature);
         self.server_since += 1;
-        self.took_entry(allowed.growth);
+        let mut journal = journal;
+        self.took_entry(growth, journal.as_deref_mut());
+        if let Some(journal) = journal {
+            match served {
+                Served::Join { .. } | Served::Renew { .. } | Served::Leave { .. } => {
+                    journal.durable_mut().forget(slot);
+                }
+                Served::Bot { .. } | Served::Connected { .. } | Served::Disconnected { .. } => {}
+            }
+        }
+        Ok(())
     }
 
     /// Ends the last segment at the boundary before the next tick, and starts the next there, as
@@ -853,7 +867,10 @@ impl SessionLog {
     /// after the records of the checkpoints begun before it. The last segment must hold a tick. The segment,
     /// the tick, and the log's own state there, which the record must carry. A checkpoint comes
     /// at a tick boundary, before any entry of the tick after it.
-    pub fn begin_checkpoint(&mut self) -> Result<CheckpointBegun, CheckpointError> {
+    pub fn begin_checkpoint(
+        &mut self,
+        journal: Option<&mut Journal>,
+    ) -> Result<CheckpointBegun, CheckpointError> {
         debug_assert!(
             self.to_replay.is_empty(),
             "a log that replays begins no checkpoint"
@@ -879,9 +896,9 @@ impl SessionLog {
             carry: self.carry(),
         };
         self.segments.begin(begun.clone());
-        if let Some(journal) = &mut self.journal {
-            self.segments.last_start().journal_begun(journal, number);
-        }
+        self.record.clear();
+        journal_records::write_begun(&mut self.record, number, tick);
+        self.journal_record(journal);
         Ok(begun)
     }
 
@@ -894,6 +911,7 @@ impl SessionLog {
         &mut self,
         record: Checkpoint,
         signature: &Signature,
+        journal: Option<&mut Journal>,
     ) -> Result<(), CheckpointError> {
         self.segments
             .oldest_begun()
@@ -908,7 +926,7 @@ impl SessionLog {
         if !self.checks(signature, &server_key, &signed) {
             return Err(CheckpointError::BadSignature);
         }
-        self.take_checkpoint(record, signature)
+        self.take_checkpoint(record, signature, journal)
     }
 
     /// Logs `record` as `record_checkpoint` does, signed here by `server`, of the terms' server
@@ -917,6 +935,7 @@ impl SessionLog {
         &mut self,
         record: Checkpoint,
         server: &Signer,
+        journal: Option<&mut Journal>,
     ) -> Result<(), CheckpointError> {
         self.debug_server(server);
         let signature = server.sign_with(
@@ -926,7 +945,7 @@ impl SessionLog {
             },
             &mut self.message,
         );
-        self.take_checkpoint(record, &signature)
+        self.take_checkpoint(record, &signature, journal)
     }
 
     /// Logs `record`, whose `signature` is the server's, as the record of the oldest checkpoint
@@ -935,6 +954,7 @@ impl SessionLog {
         &mut self,
         record: Checkpoint,
         signature: &Signature,
+        journal: Option<&mut Journal>,
     ) -> Result<(), CheckpointError> {
         let begun = self
             .segments
@@ -949,20 +969,18 @@ impl SessionLog {
         if record.carry != begun.carry {
             return Err(CheckpointError::Carry);
         }
-        self.message.clear();
-        record.encode(&mut self.message);
-        self.file_len += len(self.message.len()) + Signature::ENCODED_LEN;
-        debug_assert!(
-            self.file_len <= self.bounds.file(),
-            "a checkpoint has its room"
-        );
         let logged = LoggedCheckpoint {
             record,
             signature: *signature,
         };
-        if let Some(journal) = &mut self.journal {
-            logged.journal(journal);
-        }
+        self.record.clear();
+        logged.write(&mut self.record);
+        self.file_len += len(self.record.len()) - 1;
+        debug_assert!(
+            self.file_len <= self.bounds.file(),
+            "a checkpoint has its room"
+        );
+        self.journal_record(journal);
         self.segments.record(logged);
         Ok(())
     }
@@ -1006,6 +1024,7 @@ impl SessionLog {
         &mut self,
         result: SessionResult,
         signature: &Signature,
+        journal: Option<&mut Journal>,
     ) -> Result<(), ResultError> {
         let server_key = &self.header.terms.server_key;
         let id = self.session_id;
@@ -1017,7 +1036,7 @@ impl SessionLog {
         if !self.checks(signature, &server_key, &signed) {
             return Err(ResultError::BadSignature);
         }
-        self.take_result(result, signature)
+        self.take_result(result, signature, journal)
     }
 
     /// Ends the session with `result` as `record_result` does, signed here by `server`, of the
@@ -1026,6 +1045,7 @@ impl SessionLog {
         &mut self,
         result: SessionResult,
         server: &Signer,
+        journal: Option<&mut Journal>,
     ) -> Result<(), ResultError> {
         self.debug_server(server);
         let signature = server.sign_with(
@@ -1035,7 +1055,7 @@ impl SessionLog {
             },
             &mut self.message,
         );
-        self.take_result(result, &signature)
+        self.take_result(result, &signature, journal)
     }
 
     /// Ends the session with `result`, whose `signature` is the server's.
@@ -1043,6 +1063,7 @@ impl SessionLog {
         &mut self,
         result: SessionResult,
         signature: &Signature,
+        journal: Option<&mut Journal>,
     ) -> Result<(), ResultError> {
         debug_assert!(
             self.to_replay.is_empty(),
@@ -1056,21 +1077,23 @@ impl SessionLog {
             result,
             signature: *signature,
         };
-        if let Some(journal) = &mut self.journal {
-            logged.journal(journal);
-        }
-        self.result = Some(logged);
-        self.message.clear();
-        put(&mut self.message, &self.result);
-        self.file_len += len(self.message.len()) - 1;
+        self.record.clear();
+        journal_records::write_result(&mut self.record, &logged);
+        // The file's option of the result takes the record's body in place of its none's byte.
+        self.file_len += len(self.record.len()) - 1;
         debug_assert!(self.file_len <= self.bounds.file(), "the end has its room");
+        self.journal_record(journal);
+        self.result = Some(logged);
         Ok(())
     }
 
     /// Closes the next tick to new entries and gives the inputs applied in it, by slot, then in
     /// the order logged; `sealed_changes` then gives the changes of a slot's controller in it.
-    pub fn seal_tick(&mut self) -> impl ExactSizeIterator<Item = PlayerInput<'_>> {
-        self.seal();
+    pub fn seal_tick(
+        &mut self,
+        journal: Option<&mut Journal>,
+    ) -> impl ExactSizeIterator<Item = PlayerInput<'_>> {
+        self.seal(journal);
         self.schedule
             .due()
             .iter()
@@ -1081,12 +1104,12 @@ impl SessionLog {
     /// checkpoint's snapshot starts at `tick`.
     pub fn seal_until(&mut self, tick: Tick) {
         while self.next_tick() < tick {
-            self.seal();
+            self.seal(None);
         }
     }
 
     /// Closes the next tick to new entries, and has the schedule give the inputs applied in it.
-    fn seal(&mut self) {
+    fn seal(&mut self, journal: Option<&mut Journal>) {
         let tick = self.next_tick();
         if self.to_replay.is_empty() {
             // The segment's count of ticks grows, and the next tick's count of entries, 0,
@@ -1094,9 +1117,9 @@ impl SessionLog {
             let ticks = tick.get() - self.segments.last_start().tick.get();
             self.file_len += varint_len(ticks + 1) - varint_len(ticks) + 1;
             debug_assert!(self.file_len <= self.bounds.file(), "a seal has its room");
-            if let Some(journal) = &mut self.journal {
-                journal_records::sealed(journal);
-            }
+            self.record.clear();
+            self.record.push(journal_records::JOURNAL_SEALED);
+            self.journal_record(journal);
         }
         let replayed = usize::try_from(tick.get()).expect("tick fits usize");
         let end = match self.to_replay.get(replayed) {
@@ -1146,7 +1169,11 @@ impl SessionLog {
     /// its seed. The journal logs the load, so a log rebuilt from it is the log loaded. An error
     /// when the log holds no checkpoint that starts the segment, and when its journal has no room
     /// for the load's record.
-    pub fn load(&mut self, segment: u32) -> Result<(), LogLoadError> {
+    pub fn load(
+        &mut self,
+        segment: u32,
+        journal: Option<&mut Journal>,
+    ) -> Result<(), LogLoadError> {
         debug_assert!(
             self.to_replay.is_empty(),
             "a log that replays loads nothing"
@@ -1162,20 +1189,29 @@ impl SessionLog {
             file: 0,
             journal: len(journal_frames::FRAME_OVERHEAD) + 1 + varint_len(u64::from(segment)),
         };
-        if !self.has_room(record) {
+        if !self.has_room(record, journal.as_deref()) {
             return Err(LogLoadError::LogFull);
         }
         let mut bytes = Vec::new();
         self.encode_through(at(segment), &mut bytes);
         let mut loaded = Self::decode_within(&bytes, self.bounds, Signatures::Trust)
             .expect("the log's own past decodes");
-        if let Some(mut journal) = self.journal.take() {
-            journal_records::loaded(&mut journal, segment);
-            loaded.journal = Some(journal);
+        loaded.record.clear();
+        journal_records::write_loaded(&mut loaded.record, segment);
+        if let Some(journal) = journal {
+            journal.append(&loaded.record);
+            journal.durable_mut().clear();
         }
         loaded.loaded = true;
         *self = loaded;
         Ok(())
+    }
+
+    /// Frames the record the log wrote last into `journal`, when its server keeps one.
+    fn journal_record(&self, journal: Option<&mut Journal>) {
+        if let Some(journal) = journal {
+            journal.append(&self.record);
+        }
     }
 }
 
@@ -1236,7 +1272,7 @@ pub(crate) mod internals {
         /// it.
         pub fn fill(&mut self) {
             self.bounds.file = self.file_len + self.unit + self.kept() - 1;
-            debug_assert!(self.full(), "the log is full");
+            debug_assert!(self.full(None), "the log is full");
         }
     }
 }

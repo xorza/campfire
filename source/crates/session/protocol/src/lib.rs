@@ -81,6 +81,7 @@ pub use crate::session_log::error::{
     CheckpointError, HeaderError, InputError, JournalReplayError, LogError, LogLoadError,
     ResultError, SeedError, ServerInputError,
 };
+pub use crate::session_log::journal::Journal;
 pub use crate::session_log::player_packet::PlayerPacket;
 pub use crate::session_log::session_header::SessionHeader;
 pub use crate::session_private::SessionPrivate;

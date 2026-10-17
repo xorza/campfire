@@ -8,9 +8,9 @@ use campfire_common::{AfterLeave, Tick, Ticks};
 use campfire_mode::{Mode, SavesData};
 use campfire_players::Seating;
 use campfire_protocol::{
-    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, LogLoadError, PlayerPacket,
-    RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog, SessionResult,
-    Signer, SlotStart, SnapshotFingerprint,
+    Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal, LogLoadError,
+    PlayerPacket, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog,
+    SessionResult, Signer, SlotStart, SnapshotFingerprint,
 };
 use campfire_sim::{SimWorld, TickRate};
 
@@ -47,6 +47,9 @@ pub struct Session {
     autosave: Option<Ticks>,
     /// The server's signer, which signs what the session logs; none on a verifier.
     signer: Option<Arc<Signer>>,
+    /// The journal the server's log takes each record into, once the server keeps one; none on
+    /// a verifier (10-sessions.md, The journal belongs to the server's session).
+    journal: Option<Journal>,
     /// The log's terms as the mode's rules checked them, once for the session.
     checked: CheckedTerms,
 }
@@ -107,6 +110,7 @@ impl Session {
             saves,
             autosave,
             signer,
+            journal: None,
             checked,
         })
     }
@@ -150,7 +154,7 @@ impl Session {
         I: IntoIterator<Item = (Tick, &'a [u8])>,
         I::IntoIter: Clone,
     {
-        self.log.record(packet, applied)
+        self.log.record(packet, applied, self.journal.as_mut())
     }
 
     /// Logs a server input before the next tick, signed in the log by the server at the place it
@@ -160,7 +164,7 @@ impl Session {
         self.check_rules(&input)?;
         let server = Self::server(self.signer.as_deref());
         self.log
-            .serve(input, server)
+            .serve(input, server, self.journal.as_mut())
             .map_err(ServerInputRefused::Log)
     }
 
@@ -185,7 +189,7 @@ impl Session {
     /// Goes back to the save that starts segment `segment`; see `SessionLog::load`. The match's
     /// world is then stale: a new one resumes from the save.
     pub fn load(&mut self, segment: u32) -> Result<(), LogLoadError> {
-        self.log.load(segment)
+        self.log.load(segment, self.journal.as_mut())
     }
 
     /// Who may ask for a save, and the mode's autosaves, as its `[saves]` says.
@@ -198,26 +202,41 @@ impl Session {
         self.rules.after_leave()
     }
 
-    /// See `SessionLog::advance_durable`.
-    pub fn advance_durable(&mut self, durable: u64) {
-        self.log.advance_durable(durable);
-    }
-
-    /// Keeps `sink` as the journal of the session's log, a new one: see
-    /// `SessionLog::keep_journal`.
+    /// Keeps `sink` as the journal of the session's log, a new one, given the records of what
+    /// the log holds: see `Journal::start`.
     pub fn keep_journal(&mut self, sink: Box<dyn RecordSink>) {
-        self.log.keep_journal(sink);
+        assert!(self.journal.is_none(), "a session keeps one journal");
+        self.journal = Some(Journal::start(&self.log, sink));
     }
 
     /// Keeps `sink` as the journal of the session's log, of `len` bytes, which holds every
-    /// record of it; see `SessionLog::resume_journal`.
+    /// record of it; see `Journal::resume`.
     pub fn resume_journal(&mut self, sink: Box<dyn RecordSink>, len: u64) {
-        self.log.resume_journal(sink, len);
+        assert!(self.journal.is_none(), "a session keeps one journal");
+        self.journal = Some(Journal::resume(&self.log, sink, len));
     }
 
-    /// Closes the journal of the session's log: see `SessionLog::close_journal`.
+    /// The journal of the session's log, once the server keeps one.
+    pub const fn journal(&self) -> Option<&Journal> {
+        self.journal.as_ref()
+    }
+
+    /// The journal of the session's log, once the server keeps one.
+    pub const fn journal_mut(&mut self) -> Option<&mut Journal> {
+        self.journal.as_mut()
+    }
+
+    /// Closes the journal of the session's log, its drop handing its sink what it holds before
+    /// the sink ends, as a session that ends does before its log is published: the session keeps
+    /// no journal after.
     pub fn close_journal(&mut self) {
-        self.log.close_journal();
+        self.journal = None;
+    }
+
+    /// Whether the log may refuse its next entry, its journal's room counted; see
+    /// `SessionLog::full`.
+    pub fn log_full(&self) -> bool {
+        self.log.full(self.journal.as_ref())
     }
 
     /// Begins a checkpoint at the boundary before the next tick, which starts the segment after
@@ -232,7 +251,7 @@ impl Session {
             return Err(CheckpointBeginError::PastSeeds);
         }
         self.log
-            .begin_checkpoint()
+            .begin_checkpoint(self.journal.as_mut())
             .map_err(CheckpointBeginError::Log)
     }
 
@@ -240,13 +259,14 @@ impl Session {
     /// `SessionLog::serve_checkpoint`.
     pub fn record_checkpoint(&mut self, record: Checkpoint) -> Result<(), CheckpointError> {
         let server = Self::server(self.signer.as_deref());
-        self.log.serve_checkpoint(record, server)
+        self.log
+            .serve_checkpoint(record, server, self.journal.as_mut())
     }
 
     /// Logs the result, signed in the log by the server; see `SessionLog::serve_result`.
     pub fn record_result(&mut self, result: SessionResult) -> Result<(), ResultError> {
         let server = Self::server(self.signer.as_deref());
-        self.log.serve_result(result, server)
+        self.log.serve_result(result, server, self.journal.as_mut())
     }
 
     /// Publishes the log by adding the server seed of its last segment, which reveals every
@@ -373,7 +393,7 @@ pub(crate) mod internals {
                 checked,
                 ..
             } = session;
-            log.load(at.segment).map_err(ResumeError::Load)?;
+            log.load(at.segment, None).map_err(ResumeError::Load)?;
             let source = SessionSource {
                 log: log.rewound(),
                 seeds,

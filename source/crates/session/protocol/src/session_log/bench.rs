@@ -106,7 +106,7 @@ impl TickPackets {
                 inputs: [(Tick::ZERO, PAYLOAD)],
                 signature,
             };
-            log.record(packet, &mut applied)
+            log.record(packet, &mut applied, None)
                 .expect("the bench's packet holds");
         }
     }

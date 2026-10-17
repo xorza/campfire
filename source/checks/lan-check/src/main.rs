@@ -209,7 +209,7 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<LoggedInput>,
     let mut inputs = Vec::new();
     while log.next_tick() < ticks {
         let tick = log.next_tick();
-        inputs.extend(log.seal_tick().map(|input| LoggedInput {
+        inputs.extend(log.seal_tick(None).map(|input| LoggedInput {
             slot: input.slot,
             stamp: input.stamp,
             tick,

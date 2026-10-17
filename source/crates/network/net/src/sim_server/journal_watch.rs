@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::Res;
+use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_log::LogEvent;
 use campfire_runner::Session;
@@ -44,6 +44,14 @@ impl JournalWatch {
             .and_then(|journal| journal.0.take_failure());
         if let Some(error) = failure {
             world.resource_mut::<Faults>().report(Fault::Journal(error));
+        }
+    }
+
+    /// Hands the journal's sink the records the session's log took this frame, as one append,
+    /// so its writer wakes once for each frame (10-sessions.md, A record is encoded once).
+    pub(crate) fn flush(mut session: ResMut<'_, Session>) {
+        if let Some(journal) = session.journal_mut() {
+            journal.flush();
         }
     }
 

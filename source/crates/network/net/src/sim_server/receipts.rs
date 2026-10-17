@@ -48,15 +48,22 @@ impl Receipts {
             return;
         }
         receipts.next = now + INTERVAL;
-        if let Some(journal) = journal {
-            session.advance_durable(journal.0.durable());
-        }
+        let Some(durable) = journal.map(|journal| journal.0.durable()) else {
+            return;
+        };
+        session
+            .journal_mut()
+            .expect("a session with a journal's watch keeps its journal")
+            .advance_durable(durable);
         let signer = session
             .signer()
             .expect("a server's session holds its signer");
         let log = session.log();
+        let journal = session
+            .journal()
+            .expect("a session with a journal's watch keeps its journal");
         for (slot, seat) in seats.iter() {
-            let (Some(link), Some(head)) = (seat.link, log.durable_head(slot)) else {
+            let (Some(link), Some(head)) = (seat.link, journal.durable_head(slot)) else {
                 continue;
             };
             let given = &mut receipts.given[slot.index()];

@@ -90,7 +90,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     // The checkpoint at tick 2 starts segment 1 as it begins, its record still to come; y still
     // applies in tick 2, and the log runs on. The record comes after tick 2.
     let record = checkpoint(&log, 3);
-    let begun = log.begin_checkpoint().unwrap();
+    let begun = log.begin_checkpoint(None).unwrap();
     assert_eq!(
         begun,
         CheckpointBegun {
@@ -106,8 +106,12 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     assert_eq!(log.segment_starting(Tick::new(1)), None);
     assert_eq!(log.checkpoint_at(Tick::new(2)), None);
     assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
-    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
-        .unwrap();
+    log.record_checkpoint(
+        record.clone(),
+        &signed_by(&record, &TestKey::server()),
+        None,
+    )
+    .unwrap();
     assert_eq!(log.begun_checkpoint(), None);
     assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));
     assert_eq!(log.checkpoint_at(Tick::new(1)), None);
@@ -124,7 +128,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
         session_id: session_id(),
         record: &ended,
     });
-    log.record_result(ended, &signature).unwrap();
+    log.record_result(ended, &signature, None).unwrap();
     log.reveal_seed(SEED_CHAIN.seed(1));
     assert_eq!(
         log.revealed_seeds().unwrap().seed(0).cloned(),
@@ -171,37 +175,38 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
     // end a segment of no tick.
     let sign = |record: &Checkpoint| signed_by(record, &TestKey::server());
     assert_eq!(
-        log.record_checkpoint(record.clone(), &sign(&record)),
+        log.record_checkpoint(record.clone(), &sign(&record), None),
         Err(CheckpointError::NotBegun)
     );
-    log.begin_checkpoint().unwrap();
-    assert_eq!(log.begin_checkpoint(), Err(CheckpointError::Empty));
+    log.begin_checkpoint(None).unwrap();
+    assert_eq!(log.begin_checkpoint(None), Err(CheckpointError::Empty));
     for (record, key, error) in flawed {
         let signature = signed_by(&record, &key);
-        assert_eq!(log.record_checkpoint(record, &signature), Err(error));
+        assert_eq!(log.record_checkpoint(record, &signature, None), Err(error));
         assert_eq!(log.checkpoint_at(Tick::new(2)), None);
     }
     // A second checkpoint begins a tick later, before the first's record: the records come in
     // the order of their begins, and the latest begun is the one at the boundary.
     assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
     let second = checkpoint(&log, 4);
-    let begun = log.begin_checkpoint().unwrap();
+    let begun = log.begin_checkpoint(None).unwrap();
     assert_eq!((begun.segment, begun.tick), (2, Tick::new(3)));
     assert_eq!(log.begun_checkpoint(), Some(&begun));
     // A journal kept from here holds both begins, and the records as they come.
     let file = MemorySink::new();
-    log.keep_journal(file.boxed());
+    let mut journal = Journal::start(&log, file.boxed());
     assert_eq!(
-        log.record_checkpoint(second.clone(), &sign(&second)),
+        log.record_checkpoint(second.clone(), &sign(&second), Some(&mut journal)),
         Err(CheckpointError::Segment)
     );
-    log.record_checkpoint(record.clone(), &sign(&record))
+    log.record_checkpoint(record.clone(), &sign(&record), Some(&mut journal))
         .unwrap();
     assert_eq!(log.begun_checkpoint(), Some(&begun));
-    log.record_checkpoint(second.clone(), &sign(&second))
+    log.record_checkpoint(second.clone(), &sign(&second), Some(&mut journal))
         .unwrap();
     assert_eq!(log.begun_checkpoint(), None);
     assert_eq!(log.checkpoints().collect::<Vec<_>>(), [&record, &second]);
+    drop(journal);
     let journal = file.bytes();
     let rebuilt = SessionLog::from_journal(JournalFrames::new(&journal).unwrap(), RELEASE).unwrap();
     assert_eq!(
@@ -209,7 +214,7 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
         [&record, &second]
     );
     // Once taken, a third checkpoint at the same tick would end a segment of no tick.
-    assert_eq!(log.begin_checkpoint(), Err(CheckpointError::Empty));
+    assert_eq!(log.begin_checkpoint(None), Err(CheckpointError::Empty));
 
     // A result signed by another key, or at another tick than the next.
     let ended = result(&log, Outcome::Draw);
@@ -218,7 +223,7 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
         record: &ended,
     });
     assert_eq!(
-        log.record_result(ended, &forged),
+        log.record_result(ended, &forged, None),
         Err(ResultError::BadSignature)
     );
     let early = SessionResult {
@@ -229,7 +234,10 @@ fn a_checkpoint_or_a_result_the_log_does_not_hold_is_refused() {
         session_id: session_id(),
         record: &early,
     });
-    assert_eq!(log.record_result(early, &signature), Err(ResultError::Tick));
+    assert_eq!(
+        log.record_result(early, &signature, None),
+        Err(ResultError::Tick)
+    );
     assert_eq!(log.result(), None);
 }
 
@@ -239,9 +247,13 @@ fn flawed_segments_in_a_log_file_are_refused() {
     // another key, or revealing the first segment's seed, it does not.
     let mut log = two_ticks();
     let record = checkpoint(&log, 3);
-    log.begin_checkpoint().unwrap();
-    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
-        .unwrap();
+    log.begin_checkpoint(None).unwrap();
+    log.record_checkpoint(
+        record.clone(),
+        &signed_by(&record, &TestKey::server()),
+        None,
+    )
+    .unwrap();
     log.reveal_seed(SEED_CHAIN.seed(1));
     let valid = encoded(&log);
     assert!(SessionLog::decode(&valid).is_ok());
@@ -296,9 +308,13 @@ fn flawed_segments_in_a_log_file_are_refused() {
 fn revealing_an_earlier_segments_seed_is_a_bug() {
     let mut log = two_ticks();
     let record = checkpoint(&log, 3);
-    log.begin_checkpoint().unwrap();
-    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
-        .unwrap();
+    log.begin_checkpoint(None).unwrap();
+    log.record_checkpoint(
+        record.clone(),
+        &signed_by(&record, &TestKey::server()),
+        None,
+    )
+    .unwrap();
     log.reveal_seed(SEED_CHAIN.seed(0));
 }
 
@@ -307,60 +323,69 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     // A save at tick 2, segment 1, then tick 2 runs y, and player 0 sends z for tick 3.
     let mut log = two_ticks();
     let file = MemorySink::new();
-    log.keep_journal(file.boxed());
+    let mut journal = Journal::start(&log, file.boxed());
     let record = checkpoint(&log, 3);
-    log.begin_checkpoint().unwrap();
-    log.record_checkpoint(record.clone(), &signed_by(&record, &TestKey::server()))
+    log.begin_checkpoint(Some(&mut journal)).unwrap();
+    let signature = signed_by(&record, &TestKey::server());
+    log.record_checkpoint(record.clone(), &signature, Some(&mut journal))
         .unwrap();
     let saved = encoded(&log);
-    assert_eq!(seal(&mut log), [(1, b"y".to_vec())]);
+    let sealed: Vec<_> = log
+        .seal_tick(Some(&mut journal))
+        .map(|input| (input.slot.get(), input.payload.to_vec()))
+        .collect();
+    assert_eq!(sealed, [(1, b"y".to_vec())]);
     let mut applied = Vec::new();
     resent(0, &[&[(3, b"z")]], 0)[0]
-        .submit(&mut log, &mut applied)
+        .submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
 
     // Segment 0 starts from no checkpoint, and segment 2 is none of the log's.
     for segment in [0, 2] {
-        assert_eq!(log.load(segment), Err(LogLoadError::NoCheckpoint));
+        assert_eq!(
+            log.load(segment, Some(&mut journal)),
+            Err(LogLoadError::NoCheckpoint)
+        );
     }
     // The load's record, 4 + 1 + 1 + 32 = 38 bytes framed, needs its room and the end's in the
     // journal.
-    let journal = log.journal.as_ref().unwrap().len();
-    log.bounds.journal = journal + 38 + 4 * log.unit - 1;
-    assert_eq!(log.load(1), Err(LogLoadError::LogFull));
+    let start = journal.len();
+    log.bounds.journal = start + 38 + 4 * log.unit - 1;
+    assert_eq!(log.load(1, Some(&mut journal)), Err(LogLoadError::LogFull));
     log.bounds.journal += 1;
     // The load of segment 1: the log is the one saved, at tick 2 again, its y due again there
     // and z gone; and the journal rebuilds the log loaded.
-    log.load(1).unwrap();
-    assert_eq!(log.journal.as_ref().unwrap().len(), journal + 38);
+    log.load(1, Some(&mut journal)).unwrap();
+    assert_eq!(journal.len(), start + 38);
     log.bounds = Bounds::MAX;
     assert_eq!(encoded(&log), saved);
     assert_eq!((log.next_tick(), log.segment()), (Tick::new(2), 1));
     assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));
     assert_eq!(log.carry(), record.carry);
-    let journal = file.bytes();
+    journal.flush();
+    let loaded = file.bytes();
 
-    // The log counts its journal's records on past the load: z again, in the record after the
-    // load's, is durable once the records through it are.
-    let written = JournalFrames::new(&journal).unwrap().count();
-    let written = u64::try_from(written).unwrap();
+    // The journal counts its records on past the load: z again, in the record after the load's,
+    // is durable once the records through it are.
+    let written = journal.written();
     resent(0, &[&[(3, b"z")]], 0)[0]
-        .submit(&mut log, &mut applied)
+        .submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
     let slot = PlayerSlot::new(0);
-    log.advance_durable(written);
-    assert_eq!(log.durable_head(slot), None);
-    log.advance_durable(written + 1);
+    journal.advance_durable(written);
+    assert_eq!(journal.durable_head(slot), None);
+    journal.advance_durable(written + 1);
     let Some(Controller::Player { chain, .. }) = log.controller(slot) else {
         panic!("player 0 controls slot 0");
     };
     assert_eq!(
-        log.durable_head(slot).map(|head| (head.seq, head.head)),
+        journal.durable_head(slot).map(|head| (head.seq, head.head)),
         Some((chain.next_seq() - 1, chain.head()))
     );
     drop(log);
+    drop(journal);
 
-    let records: Vec<&[u8]> = JournalFrames::new(&journal).unwrap().collect();
+    let records: Vec<&[u8]> = JournalFrames::new(&loaded).unwrap().collect();
     assert_eq!(records.last().map(|record| record[0]), Some(7));
     let rebuilt = SessionLog::from_journal(records, RELEASE).unwrap();
     assert_eq!(encoded(&rebuilt), saved);
