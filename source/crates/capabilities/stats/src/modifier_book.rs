@@ -9,7 +9,7 @@ use campfire_script::{
     UnknownName,
 };
 use campfire_sim::TickRate;
-use campfire_units::{ScriptBook, StatId, StatusTags, UnitTypes};
+use campfire_units::{ModifierNames, ScriptBook, StatId, StatusTags, UnitTypes};
 use campfire_values::{ActionId, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet};
 
 use crate::application::{Adding, Application, ApplyAt, NewInstance};
@@ -387,6 +387,13 @@ impl ModifierBook {
                 })?;
         }
         Ok(book)
+    }
+}
+
+impl ModifierBook {
+    /// The names of its modifiers, the fact an action's load resolves them by.
+    pub(crate) fn names_fact(cx: &BookCx<'_>) -> Result<ModifierNames, BookError> {
+        Ok(ModifierNames(Arc::clone(&cx.book::<Self>()?.names)))
     }
 }
 

@@ -7,7 +7,7 @@ use campfire_declare::{Book, BookCx, BookError, BookPlace};
 use campfire_math::{Num, Rounding};
 use campfire_script::{MatchNames, NameKind, UnknownName};
 use campfire_sim::TickRate;
-use campfire_units::{MoveStep, StatId, TurnStep, UnitSteps};
+use campfire_units::{MoveStep, StatId, StatNames, TurnStep, UnitSteps};
 use campfire_values::{EngineStat, NameId, Names, PackageIndex, Stat, UnitType};
 
 use crate::mode_stats_data::ModeStatsData;
@@ -286,6 +286,13 @@ impl StatBook {
             }
         }
         Ok(steps)
+    }
+}
+
+impl StatBook {
+    /// The names of its stats, the fact an action's load resolves them by.
+    pub(crate) fn names_fact(cx: &BookCx<'_>) -> Result<StatNames, BookError> {
+        Ok(StatNames(Arc::clone(&cx.book::<Self>()?.names)))
     }
 }
 

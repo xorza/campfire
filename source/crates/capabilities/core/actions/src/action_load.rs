@@ -4,10 +4,8 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, NameKind, UnknownName};
-use campfire_stats::{
-    ModifierBook, ModifierParamTable, ParamBook, ParamTable, ParamTables, StatBook,
-};
-use campfire_units::{PoolId, PoolNames, ScriptBook, StatId, UnitTypes};
+use campfire_stats::{ModifierBook, ModifierParamTable, ParamBook, ParamTable, ParamTables};
+use campfire_units::{ModifierNames, PoolId, PoolNames, ScriptBook, StatId, StatNames, UnitTypes};
 use campfire_values::{
     ActionId, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, Stat, Tag, TrackId,
     TypeScope, UnitType,
@@ -101,7 +99,7 @@ impl ActionLoad {
             },
         );
         let run = self.params.push(&data.params, |stat| {
-            let found = names.stats.and_then(|stats| stats.named(stat));
+            let found = names.stats.and_then(|stats| stats.named(stat.name()));
             found.ok_or_else(|| {
                 BookError::unknown(index, at(), UnknownName::new(NameKind::Stat, stat))
             })
@@ -173,12 +171,12 @@ struct Loaded<'d> {
 struct LoadNames<'c> {
     cx: &'c BookCx<'c>,
     scripts: &'c ScriptBook,
-    stats: Option<&'c StatBook>,
+    stats: Option<&'c Names<StatId>>,
     pools: Option<&'c Names<PoolId>>,
     resources: Option<&'c ResourceBook>,
     damage_kinds: Option<&'c DamageKindBook>,
     types: &'c UnitTypes,
-    modifiers: Option<&'c ModifierBook>,
+    modifiers: Option<&'c Names<ModifierId>>,
     tracks: Option<&'c TrackNames>,
     flights: Option<&'c Flights>,
 }
@@ -188,12 +186,14 @@ impl<'c> LoadNames<'c> {
         Ok(Self {
             cx,
             scripts: cx.book::<ScriptBook>()?,
-            stats: cx.book_if::<StatBook>()?,
+            stats: cx.fact_if::<StatNames>()?.map(|stats| &*stats.0),
             pools: cx.fact_if::<PoolNames>()?.map(|pools| &*pools.0),
             resources: cx.book_if::<ResourceBook>()?,
             damage_kinds: cx.book_if::<DamageKindBook>()?,
             types: cx.fact::<UnitTypes>()?,
-            modifiers: cx.book_if::<ModifierBook>()?,
+            modifiers: cx
+                .fact_if::<ModifierNames>()?
+                .map(|modifiers| &*modifiers.0),
             tracks: cx.fact_if::<TrackNames>()?,
             flights: cx.fact_if::<Flights>()?,
         })
@@ -224,7 +224,7 @@ struct PackageNames<'n, 'c> {
 
 impl ActionNames for PackageNames<'_, '_> {
     fn stat(&self, stat: &Stat) -> Result<StatId, UnknownName> {
-        let found = self.names.stats.and_then(|stats| stats.named(stat));
+        let found = self.names.stats.and_then(|stats| stats.named(stat.name()));
         found.ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
     }
 
@@ -260,8 +260,7 @@ impl ActionNames for PackageNames<'_, '_> {
         name: &DeclaredName,
     ) -> Result<ModifierId, UnknownName> {
         let modifiers = self.names.modifiers;
-        let modifier =
-            modifiers.and_then(|modifiers| modifiers.names().named((package, name.as_str())));
+        let modifier = modifiers.and_then(|modifiers| modifiers.named((package, name.as_str())));
         modifier.ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
     }
 

@@ -23,8 +23,8 @@ use campfire_math::Num;
 use campfire_players::Player;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Due, Owner, PoolId, PoolNames, SpawnHooks, UnitGrid, UnitSteps,
-    UnitsSet,
+    BodyUnit, Dead, DeclaredTags, Due, ModifierNames, Owner, PoolId, PoolNames, SpawnHooks,
+    StatNames, UnitGrid, UnitSteps, UnitsSet,
 };
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
@@ -280,10 +280,12 @@ impl Module for Stats {
         d.extend::<StateFields>(ModifiersData::state_fields);
         d.extend::<DeclaredTags>(ModifiersData::granted_tags);
         d.book::<ModifierBook>(ModifierBook::build);
+        d.fact::<ModifierNames>(ModifierBook::names_fact);
         d.fact::<ModifierParamTable>(ModifierParamTable::build);
         d.fact::<StatGraph>(StatGraph::build);
         d.rule(StatGraph::rule);
         d.book::<StatBook>(StatBook::build);
+        d.fact::<StatNames>(StatBook::names_fact);
         d.fact::<UnitSteps>(StatBook::unit_steps);
         d.fact::<PoolNames>(ModePoolsData::names);
         d.rule(ModePoolsData::rule);
