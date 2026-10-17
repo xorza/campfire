@@ -551,7 +551,6 @@ All lists return living units unless their name says `all` (S-15). The renames c
 | | `ServerDir::waiting()` returns every unpublished session (N-21) | |
 | | One QUIC endpoint for each process, which routes each connection to its match by SNI or ALPN (A6, Multithreading) | |
 | | Serial Lightyear passes for each match, or a scope executor for each match (N-22) | |
-| | A root span for each match (N-23) | Phase 6 |
 | | A runner that wakes on the next tick's deadline or on a datagram (N-24) | |
 | | Books built once for each package fingerprint and rate, and shared ASTs (E-23, S-22) | Phases 4 and 9 |
 | | A host owns the matches, and a match's fault ends only that match | Decision D37 |
