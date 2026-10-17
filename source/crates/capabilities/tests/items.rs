@@ -1,15 +1,16 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
+use std::sync::Arc;
 
 use bevy_ecs::system::{Query, RunSystemOnce};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionData, ActionSlots, ActionTarget, Actions, DoesData, EffectData, EffectTo, HealFields,
-    SlotKind, SlotTimes, Targeting, UseGroup,
+    ActionData, ActionSlots, ActionTarget, Actions, EffectData, EffectTo, SlotKind, SlotTimes,
+    Targeting, UseGroup,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order};
-use campfire_combat::OnDeath;
+use campfire_combat::{HealEffectData, OnDeath};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_declare::MatchFacts;
 use campfire_items::*;
@@ -78,7 +79,7 @@ impl Carrier {
         Stats::load_modifier(game, PackageIndex::MODE, "might", &might, None);
         let might = Stats::modifier(game, PackageIndex::MODE, "might").unwrap();
         let heal = EffectData {
-            does: DoesData::Heal(HealFields {
+            does: Arc::new(HealEffectData {
                 amount: Number::Value(Scalar::Int(50)),
             }),
             to: EffectTo::Source,

@@ -1,6 +1,4 @@
-use campfire_actions::{
-    ActionsData, DeliveryData, DoesData, LaunchFields, ModifierAppliers, Targeting, Way,
-};
+use campfire_actions::{ActionsData, DeliveryData, ModifierAppliers, Targeting, Way};
 use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, TypePlace};
 use campfire_script::{NameKind, UnknownName};
@@ -43,8 +41,8 @@ impl Areas {
         Ok(())
     }
 
-    /// The rule of every action's area delivery and launches: each of a unit type of the area
-    /// section, and a delivery aimed at other than along a direction. A type the package does not
+    /// The rule of every action's area delivery: of a unit type of the area section, aimed at
+    /// other than along a direction; a launch's type is its effect's rule. A type the package does not
     /// have is the actions' problem.
     pub(crate) fn deliveries_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         for (package, source) in cx.packages() {
@@ -67,11 +65,7 @@ impl Areas {
                     Some(DeliveryData::Area { unit_type }) => Some(unit_type),
                     Some(DeliveryData::Projectile { .. }) | None => None,
                 };
-                let launched = action.effects().filter_map(|effect| match &effect.does {
-                    DoesData::Launch(LaunchFields { area, .. }) => Some(area),
-                    _ => None,
-                });
-                if let Some(name) = delivered.into_iter().chain(launched).find(not_area) {
+                if let Some(name) = delivered.filter(not_area) {
                     return fail(AreaDeliveryError::NotArea(name.clone()));
                 }
                 if delivered.is_some() && action.targeting == Targeting::Direction {

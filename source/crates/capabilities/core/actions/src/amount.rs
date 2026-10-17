@@ -1,5 +1,7 @@
+use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_script::{Frame, UnknownName};
+use campfire_sim::TickRate;
 use campfire_stats::StatsCall;
 use campfire_values::Number;
 
@@ -16,7 +18,7 @@ pub enum Amount {
 impl Amount {
     /// `number`, which its effect list's book holds a sim number, its param resolved by
     /// `names`; an error for a param its action does not declare.
-    pub fn of(number: &Number, names: &impl EffectNames) -> Result<Self, UnknownName> {
+    pub fn of(number: &Number, names: &dyn EffectNames) -> Result<Self, UnknownName> {
         Ok(match number {
             Number::Value(value) => Self::Value(
                 value
@@ -37,5 +39,14 @@ impl Amount {
                 .expect("an effect list's book holds each param it reads a number")
                 .max(Num::ZERO),
         }
+    }
+
+    /// Its value in `frame` as a duration in milliseconds, in ticks of `rate`: whole, as the load
+    /// checks every duration, so its floor is exact.
+    pub fn duration(self, frame: &Frame, rate: TickRate) -> Ticks {
+        let ms = self.number(frame).floor();
+        let ms = u64::try_from(ms).expect("a duration's book holds it not negative");
+        rate.duration(ms)
+            .expect("a duration's book holds it within a u32 of milliseconds")
     }
 }

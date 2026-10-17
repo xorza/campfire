@@ -5,3 +5,4 @@ rhai dependency
 audit dependencies and dev-dependecies
 session log human readable
 why network depends on script
+what is deny_unknown_fields

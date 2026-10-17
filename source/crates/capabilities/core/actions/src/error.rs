@@ -7,10 +7,11 @@ use campfire_values::TimeTooLarge;
 use derive_more::Display;
 use thiserror::Error;
 
-use crate::action_data::error::{ActionField, EffectRule};
+use crate::action_data::error::ActionField;
 use crate::action_data_field::ActionDataField;
 use crate::action_kind::{ActionKind, MeteredKind};
 use crate::list_hook::ListHook;
+use crate::listed_effect::error::{EffectError, EffectRule};
 
 /// Why an action's data makes no action of a match: a rule of the load's checks that its data
 /// breaks, which the action's book holds as it builds. Packages are untrusted, so each is an
@@ -113,6 +114,15 @@ pub enum ActionError {
     Problem(#[from] ActionProblem),
     #[error(transparent)]
     Unknown(#[from] UnknownName),
+}
+
+impl From<EffectError> for ActionError {
+    fn from(error: EffectError) -> Self {
+        match error {
+            EffectError::Rule { list, rule } => Self::Problem(ActionProblem::Effect { list, rule }),
+            EffectError::Unknown(name) => Self::Unknown(name),
+        }
+    }
 }
 
 impl From<TimeTooLarge> for ActionError {

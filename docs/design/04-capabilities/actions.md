@@ -63,7 +63,7 @@
 - **Data and scripts queue the same effects.** An effect list queues in order as a script's calls do, before the hook of the same name, in one call, so a failed hook applies neither.
 - **A purge spares what is held.** A purge ends the applications of modifiers that grant a tag, but not an instance a passive, an aura, an area or a player holds, as Dota 2's dispels never remove passives or auras.
 - **A launched area chains in data.** An area an effect lands runs its own lists, and may launch again, so a chain in data is as deep as its nesting; a projectile has no launch effect, as data knows no aim for it.
-- **Each capability registers its effects,** so a mode of weapons alone runs them too, and the load refuses a planned effect.
+- **Each capability registers its effects.** A listed effect is a type of the module that registers its data key, read as a trait object of `actions` that gives the core what it checks, its numbers, its duration, its modifier, the lists it holds and its own rules, and resolves into the module's own type, which queues the same effect value as the module's `ctx` call; so a mode of weapons alone runs them too, the reference lists each key under its module, and the load refuses a planned effect. As Bevy's type registry reads a scene's components and the Gameplay Ability System's effects are classes of their modules. Refused: closed enums of every capability's effects in `actions`, which named each capability; one enum of their data with each capability's resolve, which still named their data; and a resolved effect in each capability's book by index behind a table of callbacks, a second book and a lookup for what one call through the trait object does.
 
 ## Network
 

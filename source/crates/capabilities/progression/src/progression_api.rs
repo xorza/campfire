@@ -5,7 +5,6 @@ use campfire_script::{
 };
 use campfire_values::TrackId;
 
-use crate::error::ProgressionRefusal;
 use crate::progression_column::ProgressionColumn;
 use crate::progression_effect::ProgressionEffect;
 use crate::track_data::TrackData;
@@ -82,17 +81,7 @@ impl ProgressionApi {
 
     /// Queues `amount`, not negative, of experience on `track` of `unit`, which has it.
     fn add_xp(ctx: &Ctx, unit: &Unit, track: TrackId, amount: Num) -> Checked<()> {
-        let view = ctx.view();
-        if amount < Num::ZERO {
-            return Err(ProgressionRefusal::NegativeXp.fail().into());
-        }
-        if !ProgressionColumn::has(view, unit.id, track) {
-            return Err(ProgressionRefusal::NoTrack.fail().into());
-        }
-        ctx.queue(ProgressionEffect::AddXp {
-            id: unit.id,
-            track,
-            amount,
-        })
+        let effect = ProgressionEffect::add_xp(ctx.view(), unit.id, track, amount);
+        ctx.queue(effect.map_err(CapabilityRefusal::fail)?)
     }
 }

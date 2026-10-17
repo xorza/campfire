@@ -2231,6 +2231,7 @@ dependencies = [
  "bevy_ecs",
  "campfire-actions",
  "campfire-areas",
+ "campfire-codec",
  "campfire-common",
  "campfire-declare",
  "campfire-deliveries",

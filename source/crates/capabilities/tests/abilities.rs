@@ -9,18 +9,18 @@ use campfire_abilities::*;
 use campfire_actions::{
     ActionBook, ActionData, ActionDataField, ActionError, ActionField, ActionKind, ActionProblem,
     ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, ChannelData, ChargeUpData,
-    ChargesData, ClipData, CostTarget, DamageFields, DeliveryData, DoesData, EffectData, EffectTo,
-    FromData, InProgress, KindData, KindError, LaunchFields, ModifierFields, MoveData, OrderPhase,
-    PurgeFields, RangeField, RestoreFields, SlotAim, SlotKind, SlotKindBook, SlotKindData,
-    SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting, TimedSlots, Toggle, XpFields,
+    ChargesData, ClipData, CostTarget, DeliveryData, EffectData, EffectTo, FromData, InProgress,
+    KindData, KindError, LaunchLists, ListedEffect, ModifierEffectData, OrderPhase,
+    PurgeEffectData, RangeField, RestoreEffectData, SlotAim, SlotKind, SlotKindBook, SlotKindData,
+    SlotKinds, SlotRanks, SlotTimes, SlotsMut, Started, Targeting, TimedSlots, Toggle,
 };
-use campfire_areas::{Area, AreaData, AreaInsideData, Areas};
+use campfire_areas::{Area, AreaData, AreaInsideData, Areas, LaunchEffectData};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order, Release};
 use campfire_combat::internals::Armed;
 use campfire_combat::{
-    Combat, CombatBook, CombatRefusal, Damage, DamageCause, DamagePass, OnDeath, PassEntry,
-    RecentAttackers,
+    Combat, CombatBook, CombatRefusal, Damage, DamageCause, DamageEffectData, DamagePass, OnDeath,
+    PassEntry, RecentAttackers,
 };
 use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_declare::Book;
@@ -28,12 +28,12 @@ use campfire_deliveries::DashDelivering;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_mode::Mode;
-use campfire_navigation::{Navigation, NavigationRefusal};
+use campfire_navigation::{MoveEffectData, Navigation, NavigationRefusal};
 use campfire_orders::{AiData, Orders, OrdersAction};
 use campfire_players::{Players, PlayersWorld};
 use campfire_progression::{
     Experience, Points, Progression, ProgressionAction, ProgressionRefusal, Thresholds, TrackData,
-    TrackSet,
+    TrackSet, XpEffectData,
 };
 use campfire_projectiles::{Projectile, ProjectileData, Projectiles, ProjectilesRefusal};
 use campfire_script::internals::{FailedCall, FailureKind};
@@ -539,16 +539,16 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     // delivery: as the dash ends, its `on_end` list deals its caster 1, and its hook deals the
     // dash's target the meters it went and ten times how far from where it began it ended, when
     // no projectile or area delivered it and its last step went somewhere.
-    let knock_back = MoveData::KnockBack {
+    let knock_back = MoveEffectData::KnockBack {
         from: EffectTo::Source,
         distance: int(3),
         ms: int(100),
     };
-    let dash = MoveData::Dash {
+    let dash = MoveEffectData::Dash {
         to: EffectTo::Reached,
         speed: int(30),
     };
-    let damage = DoesData::Damage(DamageFields {
+    let damage = Arc::new(DamageEffectData {
         amount: int(1),
         kind: DeclaredName::new("true").unwrap(),
     });
@@ -558,8 +558,8 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
             Num::int(10),
         )))),
         on_resolve: vec![
-            effect(DoesData::Move(knock_back), EffectTo::Reached),
-            effect(DoesData::Move(dash), EffectTo::Source),
+            effect(Arc::new(knock_back), EffectTo::Reached),
+            effect(Arc::new(dash), EffectTo::Source),
         ],
         on_end: vec![effect(damage, EffectTo::Source)],
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
@@ -2259,7 +2259,7 @@ fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
     };
     let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
     Units::seal_tags(&mut game, &effects);
-    let purge = DoesData::Purge(PurgeFields {
+    let purge = Arc::new(PurgeEffectData {
         tag: DeclaredName::new("stunned").unwrap(),
     });
     let data = ActionData {
@@ -2363,7 +2363,7 @@ fn with_valor(more: &[Capability]) -> (Match, TrackId) {
 }
 
 /// `effecting` to `to`.
-const fn effect(effecting: DoesData, to: EffectTo) -> EffectData {
+const fn effect(effecting: Arc<dyn ListedEffect>, to: EffectTo) -> EffectData {
     EffectData {
         does: effecting,
         to,
@@ -2371,16 +2371,16 @@ const fn effect(effecting: DoesData, to: EffectTo) -> EffectData {
 }
 
 /// 10 experience on `valor`.
-fn valor_xp() -> DoesData {
-    DoesData::Xp(XpFields {
+fn valor_xp() -> Arc<dyn ListedEffect> {
+    Arc::new(XpEffectData {
         track: DeclaredName::new("valor").unwrap(),
         amount: int(10),
     })
 }
 
 /// The `damage` param as true damage.
-fn true_damage() -> DoesData {
-    DoesData::Damage(DamageFields {
+fn true_damage() -> Arc<dyn ListedEffect> {
+    Arc::new(DamageEffectData {
         amount: param("damage"),
         kind: DeclaredName::new("true").unwrap(),
     })
@@ -2930,14 +2930,14 @@ fn sapper(ranged: bool) -> ActionData {
         ]),
         on_hit: vec![
             effect(
-                DoesData::Modifier(ModifierFields {
+                Arc::new(ModifierEffectData {
                     id: DeclaredName::new("mark").unwrap(),
                     duration_ms: None,
                 }),
                 EffectTo::Reached,
             ),
             effect(
-                DoesData::Damage(DamageFields {
+                Arc::new(DamageEffectData {
                     amount: param("bite"),
                     kind: DeclaredName::new("true").unwrap(),
                 }),
@@ -3034,19 +3034,18 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
 }
 
 /// `damage` true damage of `amount`.
-fn true_of(amount: Number) -> DoesData {
-    DoesData::Damage(DamageFields {
+fn true_of(amount: Number) -> Arc<dyn ListedEffect> {
+    Arc::new(DamageEffectData {
         amount,
         kind: DeclaredName::new("true").unwrap(),
     })
 }
 
 /// A launch of `area` with its lists `on_hit` and `on_end`.
-fn launch(area: &str, on_hit: Vec<EffectData>, on_end: Vec<EffectData>) -> DoesData {
-    DoesData::Launch(LaunchFields {
+fn launch(area: &str, on_hit: Vec<EffectData>, on_end: Vec<EffectData>) -> Arc<dyn ListedEffect> {
+    Arc::new(LaunchEffectData {
         area: DeclaredName::new(area).unwrap(),
-        on_hit,
-        on_end,
+        lists: LaunchLists { on_hit, on_end },
     })
 }
 
@@ -3737,21 +3736,21 @@ fn fan_of_frost() -> ActionData {
         }),
         on_hit: vec![
             effect(
-                DoesData::Damage(DamageFields {
+                Arc::new(DamageEffectData {
                     amount: param("damage"),
                     kind: DeclaredName::new("physical").unwrap(),
                 }),
                 EffectTo::Reached,
             ),
             effect(
-                DoesData::Modifier(ModifierFields {
+                Arc::new(ModifierEffectData {
                     id: DeclaredName::new("chilled").unwrap(),
                     duration_ms: None,
                 }),
                 EffectTo::Reached,
             ),
             effect(
-                DoesData::Restore(RestoreFields {
+                Arc::new(RestoreEffectData {
                     pool: DeclaredName::new("mana").unwrap(),
                     amount: int(2),
                 }),

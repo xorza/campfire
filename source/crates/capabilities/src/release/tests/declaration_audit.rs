@@ -14,14 +14,13 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
-use campfire_actions::{
-    ActionSlots, CapabilityDoesSpec, CastSpends, DeliveryShape, EffectQueues, QueueListed,
-};
+use campfire_actions::{ActionSlots, CastSpends, DeliveryShape};
 use campfire_combat::ClipShots;
 use campfire_common::EnumAll;
 use campfire_declare::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section, SetPlace,
+    KindSpawn, KindVisitor, Listed, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section,
+    SetPlace,
 };
 use campfire_deliveries::Deliverers;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
@@ -375,6 +374,8 @@ impl Declarations for DeclarationAudit {
 
     fn section<S: Section>(&mut self) {}
 
+    fn listed<L: Listed>(&mut self) {}
+
     fn sets<S: ModuleSet>(&mut self) {
         for &set in S::ALL {
             self.sets.push(DeclaredSet { set: set.intern() });
@@ -636,13 +637,12 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.column::<VisionColumn, &Undeclared>(reads_undeclared);
     audit.server_part::<UnitEntity, Undeclared>();
     // A callback the areas own, twice, in a registry no module calls.
-    let queue: QueueListed = |_, _, _, _, _| Ok(());
-    audit.callback::<EffectQueues>(Capability::Areas, queue);
-    audit.callback::<EffectQueues>(Capability::Areas, queue);
+    audit.callback::<Deliverers>(Capability::Areas, |_, _, _, _| {});
+    audit.callback::<Deliverers>(Capability::Areas, |_, _, _, _| {});
     // Sets declared twice.
     audit.sets::<StraySet>();
     audit.sets::<StraySet>();
-    let queues = type_name::<EffectQueues>();
+    let queues = type_name::<Deliverers>();
     let stray = type_name::<Stray>();
     let player = type_name::<Player>();
     let unit = type_name::<UnitEntity>();
@@ -683,8 +683,8 @@ fn each_rule_names_the_declaration_that_breaks_it() {
 
 #[test]
 fn each_key_a_caller_asks_for_has_its_callback() {
-    // A listed effect queues in the capability it names; each kind of delivery sets out by its
-    // capability's callback; and a cast spends what items keep of a slot.
+    // Each kind of delivery sets out by its capability's callback, and a cast spends what items
+    // keep of a slot.
     let mut audit = DeclarationAudit::default();
     Release::declare(Release::capabilities(), &mut audit);
     let declared = |registry: &str, key: String| {
@@ -693,10 +693,6 @@ fn each_key_a_caller_asks_for_has_its_callback() {
             .iter()
             .any(|callback| callback.registry.name == registry && callback.key == key)
     };
-    for does in CapabilityDoesSpec::one_of_each() {
-        let key = format!("{:?}", does.capability());
-        assert!(declared(type_name::<EffectQueues>(), key), "{does:?}");
-    }
     for capability in DeliveryShape::CAPABILITIES {
         assert!(declared(
             type_name::<Deliverers>(),

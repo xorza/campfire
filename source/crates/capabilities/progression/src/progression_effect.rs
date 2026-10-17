@@ -1,7 +1,6 @@
 use bevy_ecs::world::World;
-use campfire_actions::CapabilityDoesSpec;
 use campfire_math::Num;
-use campfire_script::{CallError, CapabilityRefusal, Effect, Frame, View};
+use campfire_script::{Effect, Frame, View};
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
 use campfire_units::LevelRaised;
@@ -26,27 +25,21 @@ pub enum ProgressionEffect {
 }
 
 impl ProgressionEffect {
-    /// Queues the listed `does`, experience, to `id` in `frame`; a unit `view` does not hold,
-    /// or that does not have the track, fails the call, as `ctx.add_xp` does.
-    pub(crate) fn queue_listed(
-        does: CapabilityDoesSpec,
-        id: StableId,
-        _: Option<StableId>,
-        frame: &mut Frame,
+    /// Experience of `amount` to `id` on `track`, which `ctx.add_xp` and a listed `xp` queue
+    /// alike: refused when it is negative, or when `view` holds no unit `id` with the track.
+    pub(crate) fn add_xp(
         view: &View,
-    ) -> Result<(), CallError> {
-        let CapabilityDoesSpec::Xp { track, amount } = does else {
-            unreachable!("progression queues only its own listed effects")
-        };
-        if !ProgressionColumn::has(view, id, track) {
-            return Err(CallError::Api(ProgressionRefusal::NoTrack.refused()));
+        id: StableId,
+        track: TrackId,
+        amount: Num,
+    ) -> Result<Self, ProgressionRefusal> {
+        if amount < Num::ZERO {
+            return Err(ProgressionRefusal::NegativeXp);
         }
-        frame.queue(Self::AddXp {
-            id,
-            track,
-            amount: amount.number(frame),
-        });
-        Ok(())
+        if !ProgressionColumn::has(view, id, track) {
+            return Err(ProgressionRefusal::NoTrack);
+        }
+        Ok(Self::AddXp { id, track, amount })
     }
 }
 

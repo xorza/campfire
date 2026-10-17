@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use serde::de::Error as DeError;
 use thiserror::Error;
 use toml::de;
@@ -53,6 +55,14 @@ impl TomlError {
     /// The error as another reader's of the format, written whole: TOML's error has no source.
     pub fn into_de<E: DeError>(self) -> E {
         E::custom(self.0.to_string().trim_end())
+    }
+}
+
+/// The error of a read that a type's own code makes of a kept value, as a registry's read of the
+/// value at a key.
+impl DeError for TomlError {
+    fn custom<T: Display>(message: T) -> Self {
+        Self(de::Error::custom(message))
     }
 }
 

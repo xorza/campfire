@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionSlots, CapabilityDoesSpec};
+use campfire_actions::{ActionBook, ActionSlots};
 use campfire_math::Num;
-use campfire_script::{CallError, Effect, Frame, View};
+use campfire_script::{Effect, Frame};
 use campfire_sim::{EntityIndex, StableId};
 use campfire_stats::{Life, UnitStats};
 use campfire_units::UnitsWorld;
@@ -28,36 +28,6 @@ pub enum CombatEffect {
     AttackHit { unit: StableId },
     /// `unit`'s life taken whole, so it dies as the next Die stage finds it, with no killer.
     Kill { unit: StableId },
-}
-
-impl CombatEffect {
-    /// Queues the listed `does`, a damage or a heal, to `unit` in `frame`.
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "its signature is the one every capability's listed effects queue by"
-    )]
-    pub(crate) fn queue_listed(
-        does: CapabilityDoesSpec,
-        id: StableId,
-        _: Option<StableId>,
-        frame: &mut Frame,
-        _: &View,
-    ) -> Result<(), CallError> {
-        let effect = match does {
-            CapabilityDoesSpec::Damage { amount, kind } => Self::Damage {
-                unit: id,
-                amount: amount.number(frame),
-                kind,
-            },
-            CapabilityDoesSpec::Heal { amount } => Self::Heal {
-                unit: id,
-                amount: amount.number(frame),
-            },
-            _ => unreachable!("combat queues only its own listed effects"),
-        };
-        frame.queue(effect);
-        Ok(())
-    }
 }
 
 /// From the call's acting unit and its ability, at its depth of the chain of combat events.

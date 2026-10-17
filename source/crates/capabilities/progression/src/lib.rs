@@ -7,7 +7,7 @@
 )]
 
 use bevy_ecs::schedule::SystemSet;
-use campfire_actions::{ActionsSet, EffectQueues, TrackNames};
+use campfire_actions::{ActionsSet, TrackNames};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_sim::Capability;
@@ -31,6 +31,7 @@ mod track_book;
 mod track_data;
 mod track_set;
 mod type_tracks_data;
+mod xp_effect_data;
 
 pub use crate::error::{ProgressionRefusal, TrackError};
 pub use crate::experience::{Experience, Raised, TrackXp};
@@ -47,6 +48,7 @@ pub use crate::track_book::TrackBook;
 pub use crate::track_data::{Thresholds, TrackData};
 pub use crate::track_set::TrackSet;
 pub use crate::type_tracks_data::TypeTracksData;
+pub use crate::xp_effect_data::XpEffectData;
 
 /// The `progression` capability: experience on tracks, the levels it reaches, and the ranks
 /// units learn for the points their levels give.
@@ -82,7 +84,7 @@ impl Module for Progression {
         d.component::<Experience>();
         d.component::<Points>();
         d.resource::<LevelUps>();
-        d.callback::<EffectQueues>(Capability::Progression, ProgressionEffect::queue_listed);
+        d.listed::<XpEffectData>();
         d.book::<TrackBook>(TrackBook::build);
         d.rule(Self::levels_rule);
         d.fact::<TrackNames>(Self::track_names);

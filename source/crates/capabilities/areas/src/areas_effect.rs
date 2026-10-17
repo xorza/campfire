@@ -1,8 +1,7 @@
 use bevy_ecs::world::World;
-use campfire_actions::CapabilityDoesSpec;
 use campfire_deliveries::Delivering;
 use campfire_math::Vec3;
-use campfire_script::{CallError, Effect, Frame, View};
+use campfire_script::{Effect, Frame};
 use campfire_sim::StableId;
 use campfire_units::MapBook;
 use campfire_values::UnitType;
@@ -17,50 +16,6 @@ pub struct AreasEffect {
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
     pub pos: Vec3,
-}
-
-impl AreasEffect {
-    /// Queues the listed `does`, a launch, in `frame`: an area of its type, of the call's action
-    /// at its rank from its acting unit, which runs the launch's lists, where `unit` stands as
-    /// `view` reads it; none when `unit` is gone.
-    #[expect(
-        clippy::unnecessary_wraps,
-        reason = "its signature is the one every capability's listed effects queue by"
-    )]
-    pub(crate) fn queue_listed(
-        does: CapabilityDoesSpec,
-        id: StableId,
-        _: Option<StableId>,
-        frame: &mut Frame,
-        view: &View,
-    ) -> Result<(), CallError> {
-        let CapabilityDoesSpec::Launch { area, launch } = does else {
-            unreachable!("areas queue only their own listed effects")
-        };
-        let (Some(source), Some(action)) = (frame.acting(), frame.action()) else {
-            unreachable!("a list runs for its action's acting unit")
-        };
-        // A unit gone, as a source despawned while its delivery flew, has no place: its area
-        // lands nothing, as one whose source is gone does.
-        let Some(row) = view.row(id) else {
-            return Ok(());
-        };
-        let pos = row.pos;
-        let by = Delivering {
-            source,
-            action,
-            rank: frame.rank(),
-            start: frame.start(),
-            launch: Some(launch),
-        };
-        frame.queue(Self {
-            id: None,
-            by,
-            unit_type: area,
-            pos,
-        });
-        Ok(())
-    }
 }
 
 impl Effect for AreasEffect {

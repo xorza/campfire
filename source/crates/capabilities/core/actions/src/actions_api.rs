@@ -1,10 +1,13 @@
 use campfire_math::Num;
-use campfire_script::{ApiBuilder, ApiError, ApiOwner, Checked, MemberSpec, ScriptValue, Unit};
+use campfire_script::{
+    ApiBuilder, ApiError, ApiOwner, Checked, DataTable, MemberSpec, ScriptValue, Unit,
+};
 use campfire_sim::Capability;
 
 use crate::action_data_field::ActionDataField;
 use crate::actions_column::ActionsColumn;
-use crate::effect_data::{EffectData, PlannedEffect};
+use crate::listed_effect::effect_data::EffectData;
+use crate::planned_effect::PlannedEffect;
 
 /// The script API of the action pipeline: what a unit's actions give it, and the fields of an
 /// action's data that every kind reads.
@@ -31,8 +34,9 @@ impl ActionsApi {
             },
         )
         .action_fields(ActionDataField::of(None))
-        .data::<EffectData>(
-            &EffectData::KEYS,
+        .shared_data(
+            DataTable::Effect,
+            &[EffectData::TO],
             &PlannedEffect::ALL.map(PlannedEffect::name),
         );
     }

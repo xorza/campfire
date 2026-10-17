@@ -3,9 +3,9 @@ use std::borrow::Cow;
 use serde::Deserializer;
 use serde::de::DeserializeSeed;
 
+use crate::section::section_readers::{SectionReaders, TableRead};
+use crate::section::sections::Sections;
 use crate::section::{Section, SectionTable};
-use crate::section_readers::{SectionReaders, TableRead};
-use crate::sections::Sections;
 
 /// A unit type as its data file gives it: each key a section of the module that reads it, and
 /// whether a section makes it a delivery type.

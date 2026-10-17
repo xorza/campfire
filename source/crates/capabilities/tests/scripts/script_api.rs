@@ -6,7 +6,9 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::{env, fmt};
 
-use campfire_actions::{ActionData, DeliveryData, EffectData, RequiresData, SlotKindData};
+use campfire_actions::{
+    ActionData, DeliveryData, EffectData, ListedEffects, PlannedEffect, RequiresData, SlotKindData,
+};
 use campfire_areas::{AreaData, AreaInsideData};
 use campfire_capabilities::Release;
 use campfire_combat::{CombatData, LeechData, ModeCombatData, TurretData};
@@ -423,6 +425,14 @@ fn the_data_fields_are_the_schemas() {
     mode.sort_unstable();
     let mut unit_type: Vec<&str> = sections.keys(SectionTable::UnitType).collect();
     unit_type.sort_unstable();
+    // An action's lists and an effect's members read with the release's readers, past serde.
+    let (action_table, mut action) = table::<ActionData>();
+    action.extend(ActionData::LISTS);
+    action.sort_unstable();
+    let mut effect: Vec<&str> = sections.listed_keys::<ListedEffects>().collect();
+    effect.extend(PlannedEffect::ALL.map(PlannedEffect::name));
+    effect.push(EffectData::TO);
+    effect.sort_unstable();
     let tables = [
         (DataTable::Mode, mode),
         (DataTable::UnitType, unit_type),
@@ -436,8 +446,8 @@ fn the_data_fields_are_the_schemas() {
         table::<TeamData>(),
         table::<PlayersData>(),
         table::<SavesData>(),
-        table::<ActionData>(),
-        table::<EffectData>(),
+        (action_table, action),
+        (DataTable::Effect, effect),
         table::<DeliveryData>(),
         table::<ProjectileData>(),
         table::<AreaData>(),

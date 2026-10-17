@@ -44,7 +44,6 @@ mod actions_data;
 mod actions_effect;
 mod amount;
 mod build_start;
-mod capability_does_spec;
 mod cast_spends;
 mod caster;
 mod channel_call;
@@ -54,11 +53,8 @@ mod cost_target;
 mod damage_kind_book;
 mod delivery;
 mod delivery_data;
-mod does_spec;
-mod effect_data;
 mod effect_list_book;
 mod effect_names;
-mod effect_queues;
 mod error;
 mod fan;
 mod flights;
@@ -69,18 +65,23 @@ mod kind_data;
 mod kind_spec;
 mod launch_id;
 mod list_hook;
+mod listed_effect;
 mod lists_of;
 mod loadout_ranks;
 mod modifier_appliers;
+mod modifier_effect_data;
 mod modifier_ways;
 mod payer;
 mod placement_data;
+mod planned_effect;
+mod purge_effect_data;
 mod purse;
 mod range_field;
 mod rank_fields;
 mod rank_values;
 mod reached;
 mod requires_data;
+mod restore_effect_data;
 mod shot_damage;
 mod shots;
 mod slot_aim;
@@ -89,6 +90,7 @@ mod slot_kind;
 mod slot_kind_book;
 mod slot_kind_data;
 mod slot_kinds;
+mod spawn_effect_data;
 mod targeting;
 mod targets;
 mod track_names;
@@ -99,7 +101,7 @@ mod weapon;
 pub use crate::action::{Action, Aim, Passive};
 pub use crate::action_book::{ActionBook, PackageAction};
 pub use crate::action_call::{ActionCall, ResolvedCast, Started};
-pub use crate::action_data::error::{ActionField, EffectRule};
+pub use crate::action_data::error::ActionField;
 pub use crate::action_data::{
     ActionData, ChannelData, ChargeUpData, ChargesData, ClipData, PitchData, ScatterData,
     SplashData, Toggle,
@@ -119,7 +121,6 @@ pub use crate::actions_column::{ActionsColumn, SlotRow};
 pub use crate::actions_data::ActionsData;
 pub use crate::amount::Amount;
 pub use crate::build_start::BuildStart;
-pub use crate::capability_does_spec::CapabilityDoesSpec;
 pub use crate::cast_spends::CastSpends;
 pub use crate::caster::Caster;
 pub use crate::channel_call::{ChannelCall, ChannelStep};
@@ -129,13 +130,8 @@ pub use crate::cost_target::CostTarget;
 pub use crate::damage_kind_book::DamageKindBook;
 pub use crate::delivery::{Delivery, DeliveryShape, ProjectileFlight};
 pub use crate::delivery_data::DeliveryData;
-pub use crate::effect_data::{
-    DamageFields, DoesData, EffectData, EffectTo, HealFields, LaunchFields, ModifierFields,
-    MoveData, PlannedEffect, PurgeFields, RestoreFields, SpawnFields, XpFields,
-};
 pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
-pub use crate::effect_queues::{EffectQueues, QueueListed};
 pub use crate::error::{
     ActionError, ActionProblem, AppliedError, KindError, SlotError, SlotKindsError, Way,
 };
@@ -147,12 +143,21 @@ pub use crate::kind_data::{FromData, KindData};
 pub use crate::kind_spec::KindSpec;
 pub use crate::launch_id::LaunchId;
 pub use crate::list_hook::ListHook;
+pub use crate::listed_effect::effect_data::{EffectData, LaunchLists};
+pub use crate::listed_effect::error::{EffectError, EffectRule};
+pub use crate::listed_effect::listed_spec::{EffectTo, ListedAt, ListedSpec};
+pub use crate::listed_effect::{
+    EffectEq, EffectResolveCx, EffectRuleCx, ListedEffect, ListedEffects, RuleAt,
+};
 pub use crate::lists_of::{ListsOf, ReachHook};
 pub use crate::loadout_ranks::LoadoutRanks;
 pub use crate::modifier_appliers::ModifierAppliers;
+pub use crate::modifier_effect_data::ModifierEffectData;
 pub use crate::modifier_ways::ModifierWays;
 pub use crate::payer::Payer;
 pub use crate::placement_data::{PlacementData, PlacementRule};
+pub use crate::planned_effect::PlannedEffect;
+pub use crate::purge_effect_data::PurgeEffectData;
 pub use crate::purse::Purse;
 pub use crate::range_field::RangeField;
 pub use crate::rank_fields::{
@@ -161,6 +166,7 @@ pub use crate::rank_fields::{
 pub use crate::rank_values::{ChannelRule, ChargeRule, ClipRule, LoadedRanks, RankValues};
 pub use crate::reached::Reached;
 pub use crate::requires_data::RequiresData;
+pub use crate::restore_effect_data::RestoreEffectData;
 pub use crate::shot_damage::ShotDamage;
 pub use crate::shots::{Shot, Shots};
 pub use crate::slot_aim::SlotAim;
@@ -169,6 +175,7 @@ pub use crate::slot_kind::SlotKind;
 pub use crate::slot_kind_book::SlotKindBook;
 pub use crate::slot_kind_data::{SlotKindData, SlotRanks};
 pub use crate::slot_kinds::SlotKinds;
+pub use crate::spawn_effect_data::SpawnEffectData;
 pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
 pub use crate::track_names::TrackNames;
@@ -300,7 +307,10 @@ impl Module for Actions {
         d.book::<ParamBook>(ActionLoad::param_book);
         d.book::<EffectListBook>(ActionLoad::effects);
         d.book::<SlotKindBook>(SlotKindBook::build);
-        d.calls::<EffectQueues>();
+        d.listed::<ModifierEffectData>();
+        d.listed::<PurgeEffectData>();
+        d.listed::<RestoreEffectData>();
+        d.listed::<SpawnEffectData>();
         d.column::<ActionsColumn, RowReads>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
         d.book::<ByType<ActionSlots>>(ActionSlots::book);

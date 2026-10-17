@@ -138,7 +138,7 @@ impl fmt::Debug for Sections {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use crate::section::Section;
-    use crate::sections::Sections;
+    use crate::section::sections::Sections;
 
     impl Sections {
         /// Its section `S`, which a test changes in place, if the table gives it.

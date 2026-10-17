@@ -2,11 +2,10 @@ use std::num::NonZeroI64;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::{CapabilityDoesSpec, EffectTo};
 use campfire_common::{Tick, Ticks};
 use campfire_deliveries::{DashDelivering, Teleported};
 use campfire_math::{Num, Rounding, Vec3};
-use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, ScriptLasting, View};
+use campfire_script::{ApiError, CapabilityRefusal, Effect, Frame, ScriptLasting, View};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, MapBook};
 use campfire_values::DashDelivery;
@@ -95,37 +94,6 @@ impl NavigationEffect {
     pub(crate) fn teleport(view: &View, id: StableId, to: Vec3) -> Result<Self, ApiError> {
         Self::walker(view, id)?;
         Ok(Self::Teleport { id, to })
-    }
-
-    /// Queues a listed forced move of `id`, whose other unit is the acting unit or `reached`,
-    /// the unit the list reached, by the rules of the script's calls.
-    pub(crate) fn queue_listed(
-        does: CapabilityDoesSpec,
-        id: StableId,
-        reached: Option<StableId>,
-        frame: &mut Frame,
-        view: &View,
-    ) -> Result<(), CallError> {
-        let acting = frame.acting();
-        let other = |to: EffectTo| match to {
-            EffectTo::Reached => Ok(reached.expect(
-                "the load lets a move name the reached unit only in a list that reaches one",
-            )),
-            EffectTo::Source => acting.ok_or(ApiError::NoActingUnit),
-        };
-        let effect = match does {
-            CapabilityDoesSpec::Dash { to, speed } => other(to)
-                .and_then(|to| Self::dash(view, frame, id, DashTo::Unit(to), speed.number(frame))),
-            CapabilityDoesSpec::KnockBack { from, distance, ms } => other(from).and_then(|from| {
-                let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
-                // Whole, as the load checked, so the floor is exact.
-                let lasting = ScriptLasting::of(view.rate(), ms.number(frame).floor())?;
-                Self::knock_back(view, id, from, distance.number(frame), lasting)
-            }),
-            _ => unreachable!("navigation queues only its own listed effects"),
-        };
-        frame.queue(effect.map_err(CallError::Api)?);
-        Ok(())
     }
 
     /// Fails unless `id` walks: only a walker moves.

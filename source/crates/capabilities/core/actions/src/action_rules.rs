@@ -9,22 +9,22 @@ use campfire_players::ResourceBook;
 use campfire_script::{NameKind, ScriptRole, UnknownName};
 use campfire_sim::Capability;
 use campfire_stats::{ModifiersData, PassiveData, PoolNames};
-use campfire_units::CollisionData;
 use campfire_values::{EngineTag, Names, PackageIndex};
 
 use crate::Actions;
 use crate::action_data::ActionData;
-use crate::action_data::error::EffectRule;
 use crate::action_kind::ActionKind;
 use crate::actions_data::ActionsData;
 use crate::cost_target::CostTarget;
 use crate::delivery_data::DeliveryData;
-use crate::effect_data::{
-    DoesData, EffectData, EffectTo, LaunchFields, MoveData, PurgeFields, SpawnFields,
-};
 use crate::error::{ActionProblem, AppliedError, KindError, SlotError};
 use crate::kind_data::KindData;
 use crate::list_hook::ListHook;
+use crate::listed_effect::effect_data::EffectData;
+use crate::listed_effect::effect_data::LaunchLists;
+use crate::listed_effect::error::EffectRule;
+use crate::listed_effect::listed_spec::EffectTo;
+use crate::listed_effect::{EffectRuleCx, RuleAt};
 use crate::slot_kinds::SlotKinds;
 use crate::targeting::Targeting;
 use crate::type_slots_data::TypeSlotsData;
@@ -337,9 +337,8 @@ impl ActionAt<'_, '_> {
     }
 
     /// The list `effects`, which runs before `list` and reaches a unit when `reaches`: each effect
-    /// of a capability the mode declares, to a unit the list reaches; a purge of no engine's tag;
-    /// a launch of an area type of its package, whose `on_hit` reaches a unit and whose `on_end`
-    /// does not; and a spawn of a type of its package that stands, of no box body.
+    /// of a capability the mode declares, to a unit the list reaches, unless it takes the point an
+    /// `on_resolve` aimed at a point reached, and each effect's own rules.
     fn effect_list(
         self,
         action: &ActionData,
@@ -347,62 +346,73 @@ impl ActionAt<'_, '_> {
         effects: &[EffectData],
         reaches: bool,
     ) -> Result<(), BookError> {
-        let fail = |rule| Err(self.problem(ActionProblem::Effect { list, rule }));
         // An `on_resolve` aimed at a point reaches no unit, and a spawn there takes the point.
         let aims_point = list == ListHook::OnResolve
             && matches!(action.targeting, Targeting::Point | Targeting::Direction);
+        let cx = ListRules {
+            at: self,
+            action,
+            list,
+            reaches,
+        };
         for effect in effects {
-            let placed = aims_point && matches!(effect.does, DoesData::Spawn(SpawnFields { .. }));
+            let placed = aims_point && effect.does.takes_point();
             if effect.to == EffectTo::Reached && !reaches && !placed {
-                return fail(EffectRule::NoUnit);
+                return Err(cx.fail(EffectRule::NoUnit));
             }
-            match &effect.does {
-                DoesData::Planned(_) => {}
-                DoesData::Damage(_) | DoesData::Heal(_) | DoesData::Restore(_) => {
-                    self.require(Capability::Combat)?;
-                }
-                DoesData::Modifier(_) => self.require(Capability::Stats)?,
-                DoesData::Xp(_) => self.require(Capability::Progression)?,
-                DoesData::Purge(PurgeFields { tag }) => {
-                    self.require(Capability::Stats)?;
-                    if EngineTag::named(self.cx.source().engine_tags, tag.as_str()).is_some() {
-                        return fail(EffectRule::EngineTag(tag.clone()));
-                    }
-                }
-                DoesData::Move(moves) => {
-                    self.require(Capability::Navigation)?;
-                    let other = match moves {
-                        MoveData::Dash { to, .. } => to,
-                        MoveData::KnockBack { from, .. } => from,
-                    };
-                    if *other == EffectTo::Reached && !reaches {
-                        return fail(EffectRule::NoUnit);
-                    }
-                }
-                DoesData::Launch(LaunchFields {
-                    area,
-                    on_hit,
-                    on_end,
-                }) => {
-                    self.require(Capability::Areas)?;
-                    if !self.units.contains_key(area) {
-                        return Err(self.unknown(NameKind::UnitType, area));
-                    }
-                    self.effect_list(action, ListHook::OnHit, on_hit, true)?;
-                    self.effect_list(action, ListHook::OnEnd, on_end, false)?;
-                }
-                DoesData::Spawn(SpawnFields { unit_type, .. }) => {
-                    let spawned = self.units.get(unit_type).filter(|unit| !unit.delivers());
-                    let Some(spawned) = spawned else {
-                        return Err(self.unknown(NameKind::UnitType, unit_type));
-                    };
-                    let collision = spawned.section::<CollisionData>();
-                    if collision.is_some_and(|collision| collision.form.is_box()) {
-                        return fail(EffectRule::SpawnBox);
-                    }
-                }
+            if let Some(capability) = effect.does.needs() {
+                self.require(capability)?;
             }
+            effect.does.rule(&cx)?;
         }
         Ok(())
+    }
+}
+
+/// What the rules of a listed effect read: its action, in its package, and its list, `list`,
+/// which reaches a unit when `reaches`.
+#[derive(Debug, Clone, Copy)]
+struct ListRules<'c, 'a> {
+    at: ActionAt<'c, 'a>,
+    action: &'c ActionData,
+    list: ListHook,
+    reaches: bool,
+}
+
+impl EffectRuleCx for ListRules<'_, '_> {
+    fn reaches(&self) -> bool {
+        self.reaches
+    }
+
+    fn package_type(&self, name: &DeclaredName) -> Option<&UnitTypeData> {
+        self.at.units.get(name)
+    }
+
+    fn engine_tag(&self, tag: &DeclaredName) -> bool {
+        EngineTag::named(self.at.cx.source().engine_tags, tag.as_str()).is_some()
+    }
+
+    fn fail(&self, rule: EffectRule) -> BookError {
+        self.at.problem(ActionProblem::Effect {
+            list: self.list,
+            rule,
+        })
+    }
+
+    fn unknown(&self, of: NameKind, name: &DeclaredName) -> BookError {
+        self.at.unknown(of, name)
+    }
+
+    fn at(&self) -> RuleAt {
+        RuleAt {
+            package: self.at.package,
+            place: self.at.place(),
+        }
+    }
+
+    fn lists(&self, lists: &LaunchLists) -> Result<(), BookError> {
+        let (at, action) = (self.at, self.action);
+        at.effect_list(action, ListHook::OnHit, &lists.on_hit, true)?;
+        at.effect_list(action, ListHook::OnEnd, &lists.on_end, false)
     }
 }

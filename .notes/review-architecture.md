@@ -133,7 +133,7 @@ The fourteen root causes of the first review merge into ten. Each names its find
 
 | # | Cause | Findings |
 | --- | --- | --- |
-| C1 | The core and the session layer name every capability | C-1, C-2, C-3, C-4, C-5, E-3, E-5, E-6, E-11, S-5, S-7, S-8, S-11, K-19, R-20, R-22, R-31, N-26, N-27 |
+| C1 | The core and the session layer name every capability | C-1, C-3, C-4, C-5, E-3, E-5, E-6, E-11, S-5, S-7, S-8, S-11, K-19, R-20, R-22, R-31, N-26, N-27 |
 | C2 | The install runs before the load | E-9, E-10, E-12, E-13, E-14, K-11, K-12, C-7, K-15 |
 | C3 | A pass visits the population, not what is due or changed | K-13, C-15, C-17, R-4, R-5, R-6, R-7, R-12, R-30, S-24, E-17, A-10, K-21 |
 | C4 | Match facts live in non-send or exclusive state | B-1, E-4, E-7, E-8, C-12, C-13, K-20, N-4 |
@@ -220,11 +220,11 @@ Each section gives the target shape of one system, the findings it removes, and 
 ### 4.2 Core capabilities: pipelines and contracts
 
 **Today:**
-- **Closed lists in `actions`:** `KindSpec` names `Attack(Weapon)`, `Train`, `Build` and `Gather`. `ActionData` has 41 optional fields, with a hand table of the fields that each kind takes. `CapabilityDoesSpec` lists other capabilities' effects. `Shots` and `ShotHits` are core scratch with `pub` `Vec` fields.
+- **Closed lists in `actions`:** `KindSpec` names `Attack(Weapon)`, `Train`, `Build` and `Gather`. `ActionData` has 41 optional fields, with a hand table of the fields that each kind takes. `Shots` and `ShotHits` are core scratch with `pub` `Vec` fields.
 - **Concepts in the wrong crate:** `ForcedMove` carries an action's delivery. `Player` and `MatchEntity` live in `units`. `orders` writes navigation's and production's parts. `production` needs `navigation` for a `Destination` write and two room queries.
 
 **Target:**
-- **Kinds.** `ActionData` holds the common fields and a `kind` section. Each kind's section is its capability's own `Deserialize` type with `deny_unknown_fields`, registered through a parser table keyed by kind name. The registration works as `EffectQueues` already does for effects.
+- **Kinds.** `ActionData` holds the common fields and a `kind` section. Each kind's section is its capability's own `Deserialize` type with `deny_unknown_fields`, registered through a parser table keyed by kind name. The registration works as the listed effects' does, each a module's type by its data key.
   - The hand table goes. What a kind takes is its section's struct, and what it needs is that struct's fields that are not `Option`.
   - `Weapon`, `Scatter` and `Pitch` move to combat. `GatherSpec`, `BuildStart`, `RequiresData`, `ConstructData` and `PlacementData` move to production. `RankValues` keeps only what every kind has. A kind's own rank values live in its section, and the costs for each rank are a `Range` into the action's buffer (C-19).
   - `ActionRange::Meters` holds a `Distance` (C-20).
@@ -650,9 +650,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `ActionData` holds the common fields and a `kind` section of the capability's own type. The hand table goes. `Weapon`, `Scatter` and `Pitch` move to combat, and the build and gather types move to production (C-1). Done after 5.3: the core's reach check reads a weapon's pitch, and its slot times a weapon's period, which combat gives once the kinds plug in through 5.3's callbacks.
 - **Goldens:** none. Data that a kind ignored without a word is now refused.
 
-**5.2 One effect registry.** Touches `actions`, `combat`, `stats`, `progression`, `areas`, `navigation`, `script`.
-- Each capability declares an effect once, with its data key, script name and argument types. The data list and the `ctx` call come from that declaration (C-2, S-8). Each listed effect is a `Box<dyn ListedEffect>` of `actions` with the four reads the core needs and its resolve; each capability registers its parser by data key, its `ctx` call builds the same value, and its resolved effects live in its own book by index. `Section` reads gain the release's readers (Q6).
-
 **5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
 - A design document under `docs/design/` proposes the contracts, the new layer order with `stats` above `actions`, and the golden moves it expects, for the user to review before the batch is built (Q7).
 - One start and go-off pair in `actions` owns the checks and the times. Kinds plug in by a callback table (K-17).
@@ -741,6 +738,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - Typed returned names and scoped comparisons (S-4).
 - Field lists from serde (S-6).
 - One `Status` shape and version checks for each name (S-27).
+- A listed effect's `ctx` call comes from its declaration, its script name and argument types beside its data key (S-8).
 
 **8.2 Typed hooks and one call policy.** Touches `script`, `mode`, `combat`, `deliveries`, `abilities`, `orders`, `stats`.
 - `HookSpec`, recorded by the runner's module (S-5).
@@ -974,7 +972,7 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
 | C-1 | Action kinds are a closed enum and a flat `ActionData` of 41 fields, with a hand table of the fields for each kind, and `expect`s that package data can reach | `kind_spec.rs:11-18`, `action_data/mod.rs:36-131`, `action_data_field.rs:16-58`, `kind_data.rs:48-79` | Confirmed | 5.1 |
-| C-2, S-8 | Listed effects are a closed core enum of other capabilities' effects, and data effects and script calls are two vocabularies | `capability_does_spec.rs:11-55`, `effect_data.rs:15-42` | Confirmed | 5.2 |
+| S-8 | A listed effect's data key and its `ctx` call are two declarations, with two names | `listed_effect/mod.rs`, each `*_api.rs` | Confirmed | 8.1 |
 | C-3 | Costs, targets and passives tie the action pipeline to `stats`, and a target must have `Life` | `holds.rs:7-9`, `targets.rs:11, 85-90`, `purse.rs:2` | Confirmed | 5.3 |
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
 | C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |

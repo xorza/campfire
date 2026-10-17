@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU16, NonZeroU32};
 use std::slice;
 
+use campfire_codec::{TomlError, TomlTable};
 use campfire_common::DeclaredName;
+use campfire_declare::SectionReaders;
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
@@ -15,15 +17,16 @@ use campfire_values::{
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::action_data::error::{ActionField, EffectRule};
+use crate::action_data::error::ActionField;
 use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
 use crate::build_start::BuildStart;
 use crate::construct_data::ConstructData;
 use crate::cost_target::CostTarget;
 use crate::delivery_data::DeliveryData;
-use crate::effect_data::EffectData;
 use crate::list_hook::ListHook;
+use crate::listed_effect::effect_data::EffectData;
+use crate::listed_effect::error::EffectRule;
 use crate::placement_data::PlacementData;
 use crate::range_field::RangeField;
 use crate::rank_fields::{RankChannel, RankCharges, RankClip, RankFields, RankToggle, TogglePer};
@@ -114,14 +117,16 @@ pub struct ActionData {
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,
-    /// The effects of its resolve, which queue before its script's `on_resolve`.
-    #[serde(default)]
+    /// The effects of its resolve, which queue before its script's `on_resolve`. Its lists read
+    /// with the release's readers, as `ActionsData` reads them, so serde's read of an action
+    /// refuses them.
+    #[serde(skip)]
     pub on_resolve: Vec<EffectData>,
     /// The effects of each hit of its delivery, which queue before `on_hit`.
-    #[serde(default)]
+    #[serde(skip)]
     pub on_hit: Vec<EffectData>,
     /// The effects of its delivery's end, which queue before `on_end`.
-    #[serde(default)]
+    #[serde(skip)]
     pub on_end: Vec<EffectData>,
 }
 
@@ -595,6 +600,9 @@ impl ActionData {
             .chain(effects)
     }
 
+    /// The keys of its effect lists.
+    pub const LISTS: [&'static str; 3] = ["on_resolve", "on_hit", "on_end"];
+
     /// Its effect lists, each with the hook it runs before: `on_resolve`, `on_hit`, `on_end`.
     pub const fn effect_lists(&self) -> [(ListHook, &[EffectData]); 3] {
         [
@@ -604,8 +612,7 @@ impl ActionData {
         ]
     }
 
-    /// Every effect of its lists, and of the lists a launch holds, however deep.
-    /// Its effects, each of its lists' and of the lists they launch.
+    /// Every effect of its lists, and of the lists an effect holds, however deep.
     pub fn effects(&self) -> impl Iterator<Item = &EffectData> + '_ {
         let mut found = Vec::new();
         let mut open: Vec<&EffectData> = self
@@ -615,10 +622,28 @@ impl ActionData {
             .chain(&self.on_end)
             .collect();
         while let Some(effect) = open.pop() {
-            open.extend(effect.does.nested());
+            if let Some(lists) = effect.does.lists() {
+                open.extend(lists.on_hit.iter().chain(&lists.on_end));
+            }
             found.push(effect);
         }
         found.into_iter()
+    }
+
+    /// The action `table` gives, its lists each read with the release's `readers`.
+    pub(crate) fn read(mut table: TomlTable, readers: &SectionReaders) -> Result<Self, TomlError> {
+        let mut list = |key| {
+            table
+                .take_value(key)
+                .map_or(Ok(Vec::new()), |list| EffectData::read_list(list, readers))
+        };
+        let [on_resolve, on_hit, on_end] = Self::LISTS.map(&mut list);
+        Ok(Self {
+            on_resolve: on_resolve?,
+            on_hit: on_hit?,
+            on_end: on_end?,
+            ..table.read()?
+        })
     }
 
     /// The filter its data names: its targeting's.

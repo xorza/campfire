@@ -2,17 +2,18 @@
 
 use std::fmt::Write;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use campfire_actions::{
-    ActionDataField, ActionField, ActionKind, ActionProblem, AppliedError, DoesData, EffectData,
-    EffectRule, EffectTo, HealFields, LaunchFields, ListHook, MeteredKind, PlannedEffect,
-    PurgeFields, SlotError, Way,
+    ActionDataField, ActionField, ActionKind, ActionProblem, AppliedError, EffectData, EffectRule,
+    EffectTo, LaunchLists, ListHook, ListedEffect, MeteredKind, PlannedEffect, PurgeEffectData,
+    SlotError, Way,
 };
-use campfire_areas::AreaDeliveryError;
+use campfire_areas::{AreaDeliveryError, LaunchEffectData};
 use campfire_capabilities::{CapabilityError, Release};
 use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
-use campfire_combat::CombatDataError;
+use campfire_combat::{CombatDataError, HealEffectData};
 use campfire_common::{DeclaredName, MapName};
 use campfire_declare::{BookPlace, NamesListError, TypePlace};
 use campfire_geometry::Metric;
@@ -370,7 +371,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
     let heal = EffectData {
-        does: DoesData::Heal(HealFields {
+        does: Arc::new(HealEffectData {
             amount: Number::Value(Scalar::Int(1)),
         }),
         to: EffectTo::Source,
@@ -387,7 +388,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         .iter()
         .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
-    let purge = DoesData::Purge(PurgeFields {
+    let purge: Arc<dyn ListedEffect> = Arc::new(PurgeEffectData {
         tag: DeclaredName::new("slowed").unwrap(),
     });
     assert_eq!(
@@ -447,10 +448,9 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
         .iter()
         .find(|dependent| dependent.package.header.name == "hero-cinder")
         .unwrap();
-    let launch = DoesData::Launch(LaunchFields {
+    let launch: Arc<dyn ListedEffect> = Arc::new(LaunchEffectData {
         area: DeclaredName::new("eruption").unwrap(),
-        on_hit: Vec::new(),
-        on_end: Vec::new(),
+        lists: LaunchLists::default(),
     });
     let on_hit = &cinder.content.actions()["attack"].on_hit;
     assert_eq!(

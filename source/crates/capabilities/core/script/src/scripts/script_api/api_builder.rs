@@ -272,8 +272,15 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records the fields of `table`, the mode's or a unit type's, which many modules share, that
-    /// the release reads, `runs`, and those it plans: the module's own.
+    /// Records `key`, a member of an open set of `table` that the module registers, as a field
+    /// of `table` the release reads.
+    pub fn listed(&mut self, table: DataTable, key: &'static str) -> &mut Self {
+        self.api.record_data(table, &[key], &[], self.capability);
+        self
+    }
+
+    /// Records the fields of `table`, the mode's, a unit type's or an effect's, which many
+    /// modules share, that the release reads, `runs`, and those it plans: the module's own.
     pub fn shared_data(
         &mut self,
         table: DataTable,
@@ -281,7 +288,10 @@ impl<'a> ApiBuilder<'a> {
         planned: &[&'static str],
     ) -> &mut Self {
         assert!(
-            matches!(table, DataTable::Mode | DataTable::UnitType),
+            matches!(
+                table,
+                DataTable::Mode | DataTable::UnitType | DataTable::Effect
+            ),
             "{table:?} is one module's, which `data` records by its type"
         );
         self.api.record_data(table, runs, planned, self.capability);

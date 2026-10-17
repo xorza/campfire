@@ -11,9 +11,7 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{
-    Action, ActionBook, ActionSlots, ActionsSet, DamageKindBook, EffectQueues, TogglePer,
-};
+use campfire_actions::{Action, ActionBook, ActionSlots, ActionsSet, DamageKindBook, TogglePer};
 use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
@@ -40,11 +38,13 @@ mod combat_data;
 mod combat_effect;
 mod combat_event;
 mod damage;
+mod damage_effect_data;
 mod damage_handle;
 mod damage_pass;
 mod dying;
 mod error;
 mod heal;
+mod heal_effect_data;
 mod heal_handle;
 mod held_hits;
 mod kept;
@@ -70,11 +70,13 @@ pub use crate::combat_data::CombatData;
 pub use crate::combat_effect::CombatEffect;
 pub use crate::combat_event::CombatEvent;
 pub use crate::damage::{Damage, DamageCause};
+pub use crate::damage_effect_data::DamageEffectData;
 pub use crate::damage_handle::DamageHandle;
 pub use crate::damage_pass::DamagePass;
 pub use crate::dying::Dying;
 pub use crate::error::{CombatDataError, CombatRefusal};
 pub use crate::heal::{Heal, HealCause};
+pub use crate::heal_effect_data::HealEffectData;
 pub use crate::heal_handle::HealHandle;
 pub use crate::kept::Kept;
 pub use crate::mode_combat_data::{LeechData, ModeCombatData};
@@ -174,7 +176,8 @@ impl Module for Combat {
         d.book::<CombatBook>(CombatBook::build);
         d.rule(Self::rule);
         d.rule(Self::attacks_rule);
-        d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
+        d.listed::<DamageEffectData>();
+        d.listed::<HealEffectData>();
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();
         d.column::<CombatColumn, RowReads>(CombatColumn::fill_row);

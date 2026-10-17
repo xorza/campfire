@@ -7,7 +7,7 @@ use campfire_values::{EngineTag, PackageIndex, PackagePath, TypeScope, UnitType}
 
 use crate::capability_set::CapabilitySet;
 use crate::error::TypePlace;
-use crate::sections::Sections;
+use crate::section::sections::Sections;
 use crate::unit_type_data::UnitTypeData;
 
 /// What a match's books are built from, which the package load checked: the match's tick rate and

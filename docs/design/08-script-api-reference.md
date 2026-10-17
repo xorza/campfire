@@ -431,18 +431,18 @@ Each enum's module holds its members, and the function `named`, which gives the 
 
 | Field | Capability | Status |
 | --- | --- | --- |
-| `damage` | core | since 1.0 |
-| `heal` | core | since 1.0 |
-| `restore` | core | since 1.0 |
 | `modifier` | core | since 1.0 |
-| `xp` | core | since 1.0 |
 | `purge` | core | since 1.0 |
-| `launch` | core | since 1.0 |
-| `move` | core | since 1.0 |
+| `restore` | core | since 1.0 |
 | `spawn` | core | since 1.0 |
 | `to` | core | since 1.0 |
 | `loot` | core | planned |
 | `noise` | core | planned |
+| `xp` | progression | since 1.0 |
+| `damage` | combat | since 1.0 |
+| `heal` | combat | since 1.0 |
+| `move` | navigation | since 1.0 |
+| `launch` | areas | since 1.0 |
 
 ### An action's `delivery`
 

@@ -418,8 +418,8 @@ mod tests {
     use super::*;
     use crate::book_source::{Given, ScriptAt};
     use crate::capability_set::CapabilitySet;
-    use crate::section_readers::SectionReaders;
-    use crate::sections::Sections;
+    use crate::section::section_readers::SectionReaders;
+    use crate::section::sections::Sections;
     use crate::unit_type_data::UnitTypeData;
 
     /// A book of a test, of a count.

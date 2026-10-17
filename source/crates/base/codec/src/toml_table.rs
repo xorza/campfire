@@ -27,6 +27,11 @@ impl TomlTable {
         Some(T::deserialize(value).map_err(TomlError::from))
     }
 
+    /// The value of `key`, taken out of it and kept whole; none when it holds no `key`.
+    pub fn take_value(&mut self, key: &str) -> Option<TomlValue> {
+        self.0.remove(key).map(TomlValue)
+    }
+
     /// The values of `keys` it holds, taken out of it into a table of their own.
     #[must_use]
     pub fn take_keys<'k>(&mut self, keys: impl IntoIterator<Item = &'k str>) -> Self {
@@ -35,6 +40,13 @@ impl TomlTable {
                 .filter_map(|key| self.0.remove_entry(key))
                 .collect(),
         )
+    }
+
+    /// Its keys and their values kept whole, in the order of the keys.
+    pub fn into_entries(self) -> impl ExactSizeIterator<Item = (String, TomlValue)> {
+        self.0
+            .into_iter()
+            .map(|(key, value)| (key, TomlValue(value)))
     }
 
     /// Puts `value` at `key`, in place of the value it holds there.
@@ -67,8 +79,14 @@ mod tests {
         assert_eq!(table.keys().collect::<Vec<_>>(), ["cell", "name", "step"]);
         assert_eq!(table.take::<String>("name").unwrap().unwrap(), "grid");
         assert!(table.take::<String>("name").is_none());
+        assert!(table.clone().take_value("step").is_some());
+        assert!(table.take_value("name").is_none());
         assert!(table.take::<String>("cell").unwrap().is_err());
         // `cell` went with its failed read; `step` and the absent `none` split off.
+        let kept: Vec<_> = table.clone().into_entries().collect();
+        assert_eq!(kept.len(), 1);
+        assert_eq!(kept[0].0, "step");
+        assert_eq!(kept[0].1.clone().read::<i64>().unwrap(), 5);
         let split = table.take_keys(["step", "none"]);
         assert_eq!(
             split.read::<BTreeMap<String, i64>>().unwrap(),

@@ -11,8 +11,8 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, BuildFn, BuiltBooks, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations,
-    EntityKind, EntityParts, ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, ModuleSet,
-    OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
+    EntityKind, EntityParts, ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, Listed,
+    ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, Ctx, RowReads, ViewColumn};
 use campfire_sim::{
@@ -152,6 +152,8 @@ impl Declarations for Installer<'_> {
     }
 
     fn section<S: Section>(&mut self) {}
+
+    fn listed<L: Listed>(&mut self) {}
 
     fn sets<S: ModuleSet>(&mut self) {
         for &set in S::ALL {

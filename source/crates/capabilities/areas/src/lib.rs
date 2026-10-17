@@ -12,7 +12,7 @@
 
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, ActionsSet, EffectQueues, ModifierAppliers};
+use campfire_actions::{ActionTarget, ActionsSet, ModifierAppliers};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
@@ -34,6 +34,7 @@ mod area_trigger;
 mod areas_api;
 mod areas_effect;
 mod error;
+mod launch_effect_data;
 
 pub use crate::area::Area;
 pub use crate::area_data::{AreaData, AreaInsideData};
@@ -46,6 +47,7 @@ pub use crate::area_trigger::AreaTrigger;
 pub use crate::areas_api::AreasApi;
 pub use crate::areas_effect::AreasEffect;
 pub use crate::error::{AreaDeliveryError, AreaError};
+pub use crate::launch_effect_data::LaunchEffectData;
 
 /// The `areas` capability: area units, which actions deliver. It needs stats, whose modifiers an
 /// area holds on the units inside it.
@@ -95,7 +97,7 @@ impl Module for Areas {
         d.state::<DeliveryEntity, AreaTrigger>();
         d.scratch::<AreaLaunches>();
         d.callback::<Deliverers>(Capability::Areas, Self::deliver);
-        d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);
+        d.listed::<LaunchEffectData>();
         d.extend::<UnitTypes>(Self::tag_types);
         d.book::<ByType<AreaSpec>>(AreaSpec::book);
         d.rule(Self::deliveries_rule);

@@ -10,7 +10,7 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section,
+    KindSpawn, KindVisitor, Listed, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section,
     SectionReaders,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
@@ -65,6 +65,10 @@ impl Declarations for SectionList {
 
     fn section<S: Section>(&mut self) {
         self.readers.add::<S>(self.module);
+    }
+
+    fn listed<L: Listed>(&mut self) {
+        self.readers.add_listed::<L>();
     }
 
     fn sets<S: ModuleSet>(&mut self) {}

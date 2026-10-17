@@ -23,7 +23,7 @@ use crate::one_shot::OneShot;
 use crate::report::Report;
 use crate::role::Role;
 use crate::scratch::Scratch;
-use crate::section::Section;
+use crate::section::{Listed, Section};
 
 /// How a column `C` of the script view fills from the parts `D` of each unit.
 pub type ColumnFill<D, C> = for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_, C>);
@@ -66,6 +66,9 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
 
     /// `S`, a section of a data table that the module reads, by its key.
     fn section<S: Section>(&mut self);
+
+    /// `L`, a member of an open set that the module reads, by its key.
+    fn listed<L: Listed>(&mut self);
 
     /// `S`, the module's system sets, each with its place and its order.
     fn sets<S: ModuleSet>(&mut self);

@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-codec/internals",
     "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-geometry/internals",
@@ -20,6 +21,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
 campfire-geometry.workspace = true
