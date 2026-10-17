@@ -4,10 +4,8 @@ use bevy_ecs::world::World;
 use campfire_declare::PerType;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_units::UnitEntity;
+use campfire_units::{BuildTarget, UnitEntity};
 use serde::{Deserialize, Serialize};
-
-use crate::build_target::BuildTarget;
 
 /// A unit that builds, as one whose slots hold a build: its build order, none while it has none.
 /// Any other order ends it.

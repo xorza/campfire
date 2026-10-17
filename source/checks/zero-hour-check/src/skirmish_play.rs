@@ -10,12 +10,12 @@ use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
 use campfire_players::{OrderUnits, PlayersWorld, ResourcesData};
-use campfire_production::{BuildTarget, Site, TrainQueue};
+use campfire_production::{Site, TrainQueue};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputRules, SlotPlan};
 use campfire_sim::StableId;
 use campfire_stats::Life;
-use campfire_units::UnitsWorld;
+use campfire_units::{BuildTarget, UnitsWorld};
 use campfire_values::{Names, ResourceId};
 
 use crate::failure::Failure;

@@ -1,8 +1,8 @@
 use campfire_actions::ActionTarget;
 use campfire_math::Num;
 use campfire_players::CapabilityAction;
-use campfire_production::BuildTarget;
 use campfire_sim::{Capability, StableId};
+use campfire_units::BuildTarget;
 use serde::{Deserialize, Serialize};
 
 /// What an order of `orders` tells each of its units to do, as the unit's own order.

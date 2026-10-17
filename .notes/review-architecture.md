@@ -133,7 +133,7 @@ The fourteen root causes of the first review merge into ten. Each names its find
 
 | # | Cause | Findings |
 | --- | --- | --- |
-| C1 | The core and the session layer name every capability | C-1, C-3, C-4, C-5, E-3, E-5, E-6, E-11, S-5, S-7, S-8, S-11, K-19, R-20, R-22, R-31, N-26, N-27 |
+| C1 | The core and the session layer name every capability | C-1, C-3, C-4, C-5, E-3, E-5, E-6, E-11, S-5, S-7, S-8, S-11, K-19, R-22, R-31, N-26, N-27 |
 | C2 | The install runs before the load | E-9, E-10, E-12, E-13, E-14, K-11, K-12, C-7, K-15 |
 | C3 | A pass visits the population, not what is due or changed | K-13, C-15, C-17, R-4, R-5, R-6, R-7, R-12, R-30, S-24, E-17, A-10, K-21 |
 | C4 | Match facts live in non-send or exclusive state | B-1, E-4, E-7, E-8, C-12, C-13, K-20, N-4 |
@@ -657,8 +657,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - **Goldens:** they may move where the four loops differed. Each move is explained.
 
 **5.5 Contracts in `units`.** Touches `units`, `players`, `orders`, `navigation`, `production`, `interaction`, `items`, `net`, `visibility`, `vision`, `combat`.
-- `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20). `units` gets `UnitOrdered { entity, order }` with an order kind of its own, and `BuildTarget` moves to `units`; orders triggers it for each order it gives, production sets or clears its loops in its observer, and interaction fills or checks the use slot in its. The command protocol stays (Q9).
-- The static bodies' index and the walls become types of `units`, which navigation fills, and `units` methods answer "is this box free" and "the nearest cell a walker stands in", so `production` drops `navigation` (R-31, Q8).
+- `production` drops `navigation`: the room data and the open-cell query (R-31). Q8's design costs more than it measured; the step waits for Q11 in `review-architecture_QUESTIONS.md`.
 
 ### Phase 6: `Send` data and the server frame
 
@@ -1056,7 +1055,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | R-17 | Production and navigation fire no script hooks | `hook.rs:10-35` | Confirmed | 9.4 |
 | R-18 | No repair, no consumed builder, no build on a unit, no terrain rules, no grid snap | `build_book.rs:36-40`, `placement.rs:59-62` | Confirmed | Backlog |
 | R-19 | No attack-move, patrol, hold or auto-acquire, and the MOBA leash is a native order | `unit_order.rs:18-161`, `thinking.rs:91-98` | Confirmed | Backlog (D19) |
-| R-20 | `orders` ends other orders by writing navigation's and production's parts | `unit_order.rs:56-233` | Confirmed | 5.5 |
 | R-21 | Path walking is split over three crates and walks one way only | `path_walker.rs`, `destinations.rs:19-57`, `spawn_group.rs:23-48` | Confirmed | 9.4 |
 | R-23 | Sight is fixed state for each type, not a stat | `sight.rs:16-55` | Confirmed | Backlog |
 | R-24 | One point for each level of one track, on units only | `points.rs:18-45` | Confirmed | Backlog |

@@ -8,11 +8,14 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, NoSet};
 use campfire_sim::{Breach, Capability};
 use campfire_values::UnitType;
 
+use crate::use_orders::UseOrders;
+
 mod error;
 mod interaction_api;
 mod interaction_books;
 mod interaction_rules;
 mod use_data;
+mod use_orders;
 mod use_slot;
 mod use_spec;
 mod uses_data;
@@ -73,9 +76,10 @@ impl Module for Interaction {
         d.rule(Self::rule);
         d.check::<ActionSlots>(Self::users_hold_their_slot);
         d.api(InteractionApi::register);
+        d.observer(UseOrders::ordered);
     }
 
-    /// Adds nothing to the schedule: the `use` order of `orders` fills a use slot, and the
+    /// Adds nothing to the schedule: a `use` order fills a use slot as it is given, and the
     /// abilities' casts run it.
     fn install(_: &mut InstallCx<'_, Self::Set>) {}
 }

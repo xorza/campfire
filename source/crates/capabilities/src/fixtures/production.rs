@@ -5,10 +5,10 @@ use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersAction;
-use campfire_production::{BuildTarget, Production};
+use campfire_production::Production;
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_units::{BodyForm, Owner, SeenBy};
+use campfire_units::{BodyForm, BuildTarget, Owner, SeenBy};
 use campfire_values::{Team, TeamSet, UnitType};
 
 use crate::fixtures::navigation::NavigationFixtures;

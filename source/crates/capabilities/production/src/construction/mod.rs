@@ -9,13 +9,14 @@ use campfire_math::Num;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, StatsWorld, UnitPools};
-use campfire_units::{Body, Dead, Destination, MapBook, Owner, SpawnAt, Spawner, StatusTags};
+use campfire_units::{
+    Body, BuildTarget, Dead, Destination, MapBook, Owner, SpawnAt, Spawner, StatusTags,
+};
 use campfire_values::{Team, UnitTags};
 use campfire_vision::TeamSight;
 
 use crate::Production;
 use crate::build_book::{BuildBook, Style};
-use crate::build_target::BuildTarget;
 use crate::builder::{BuildOrder, Builder};
 use crate::construction::build_view::{BuildPlace, BuildView};
 use crate::construction::building_at::BuildingAt;

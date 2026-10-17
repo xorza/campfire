@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_script::{Effect, Frame};
 use campfire_sim::SimWorld;
-use campfire_units::MapBook;
+use campfire_units::{MapBook, UnitOrdered};
 
 use crate::resetting::Resetting;
 use crate::unit_order::{OrderedUnit, UnitOrder};
@@ -28,9 +28,10 @@ impl Effect for OrdersEffect {
         let parts = unit
             .get_components_mut::<OrderedUnit>()
             .expect("an ordered unit stands");
-        self.0.give(parts, &bounds, now);
+        let order = self.0.give(parts, &bounds, now);
         if self.0 == UnitOrder::Reset {
             unit.insert(Resetting);
         }
+        world.trigger(UnitOrdered { entity, order });
     }
 }

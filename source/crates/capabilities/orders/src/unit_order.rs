@@ -1,16 +1,12 @@
-use bevy_ecs::change_detection::{DetectChangesMut, Mut};
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::QueryData;
-use campfire_actions::{ActionProgress, ActionSlots, ActionTarget, SlotTimes, SlotsMut};
+use campfire_actions::{ActionProgress, ActionTarget};
 use campfire_common::Tick;
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Party, PathWalker, Progress, Route, RouteAsk};
-use campfire_production::{
-    BuildOrder, BuildTarget, Builder, GatherOrder, GatherStep, Gatherer, NodeAt,
-};
 use campfire_sim::{Position, StableId};
-use campfire_units::{Destination, SpawnPoint};
-use campfire_values::ActionId;
+use campfire_units::{BuildTarget, Destination, OrderKind, SpawnPoint};
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
 /// bot's input, or an order an AI call queued for the unit that thinks.
@@ -39,60 +35,47 @@ pub enum UnitOrder {
     /// Gather with the gather in `slot` at `target`, a node, or a drop-off for the load it
     /// carries, off any path; the loop walks the unit.
     Gather { slot: u8, target: StableId },
-    /// Use the object `target` with the use slot `slot`, filled with `action`, the object's, unless
-    /// it holds it already, as `Slot` starts an action.
-    Use {
-        slot: u8,
-        action: ActionId,
-        target: StableId,
-    },
+    /// Use the object `target`, which `interaction` starts in the use slot the object's users
+    /// give the unit, as `Slot` starts an action.
+    Use { target: StableId },
 }
 
 /// The parts of a unit that an order reads and changes: where it stands and where it spawned, its
-/// actions and their times, the path it walks, where it walks to, its route there, and its build
-/// and gather orders.
+/// actions' progress, the path it walks, where it walks to, and its route there.
 #[derive(Debug, QueryData)]
 #[query_data(mutable, derive(Debug))]
 pub struct OrderedUnit {
     pub pos: &'static Position,
     pub(crate) spawn: Option<&'static SpawnPoint>,
-    pub(crate) slots: Option<&'static mut ActionSlots>,
-    pub(crate) times: Option<&'static mut SlotTimes>,
     pub(crate) underway: Option<&'static mut ActionProgress>,
     pub(crate) walker: Option<&'static mut PathWalker>,
     pub(crate) destination: Option<&'static mut Destination>,
     pub(crate) route: Option<&'static mut Route>,
     pub(crate) progress: Option<&'static mut Progress>,
-    pub(crate) builder: Option<&'static mut Builder>,
-    pub(crate) gatherer: Option<&'static mut Gatherer>,
 }
 
 impl UnitOrder {
     /// Gives the order, which its source checked, to `unit`, within `bounds`, in `now`: every order
-    /// of every source is given here. A move or a reset drops the unit's target and leaves its path
-    /// until it is told to follow it again; a move's point clamps to the bounds, and a slot's point
-    /// to the ground within them, at the unit's height. A group's move asks for its route at once,
-    /// as one of its party. An attack on another target cancels one in its windup; a slot's cast or
-    /// train replaces an action not resolved yet, or releases the charge of its own slot; a use
-    /// fills its slot afresh with its object's action, unless it holds it, and then starts as a
-    /// slot's cast. A stop ends what is under way, with nothing spent, drops the target and the
-    /// destination, and leaves the path; a queue of trains stays. A build becomes the unit's build
-    /// order, its point taken into the bounds, and a gather its gather loop, each dropping the
-    /// target and the destination; every other order ends both. Every order cuts a channel and ends
-    /// a cast that walks in range, with its walk, and an attack cancels a charge.
-    pub fn give(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) {
+    /// of every source is given here, and what it asks of the capabilities that keep the unit's
+    /// loops is the kind it gives back, which its caller triggers as `UnitOrdered`. A move or a
+    /// reset drops the unit's target and leaves its path until it is told to follow it again; a
+    /// move's point clamps to the bounds, and a slot's point to the ground within them, at the
+    /// unit's height. A group's move asks for its route at once, as one of its party. An attack
+    /// on another target cancels one in its windup; a slot's cast or train replaces an action not
+    /// resolved yet, or releases the charge of its own slot. A stop ends what is under way, with
+    /// nothing spent, drops the target and the destination, and leaves the path; a queue of trains
+    /// stays. A build, its point taken into the bounds, and a gather drop the target and the
+    /// destination. Every order cuts a channel and ends a cast that walks in range, with its
+    /// walk, and an attack cancels a charge.
+    pub fn give(self, unit: OrderedUnitItem<'_, '_>, bounds: &Bounds, now: Tick) -> OrderKind {
         let OrderedUnitItem {
             pos: &at,
             spawn,
-            mut slots,
-            times,
             mut underway,
             walker,
             mut destination,
             route,
             progress,
-            mut builder,
-            mut gatherer,
         } = unit;
         if let Some(underway) = &mut underway {
             underway.cut_channel();
@@ -103,7 +86,7 @@ impl UnitOrder {
                 }
             }
         }
-        self.set_loops(builder.as_mut(), gatherer.as_mut(), bounds, at.get());
+        let kind = self.kind(bounds, at.get());
         let ground = |x, z| bounds.ground_point([x, z], at.get());
         let to = match self {
             Self::Attack { target } => {
@@ -111,7 +94,7 @@ impl UnitOrder {
                     underway.cancel_charge();
                     underway.set_attack_target(Some(target));
                 }
-                return;
+                return kind;
             }
             Self::Slot { slot, target } => {
                 let target = match target {
@@ -121,29 +104,9 @@ impl UnitOrder {
                 if let Some(underway) = &mut underway {
                     underway.order(slot, target);
                 }
-                return;
+                return kind;
             }
-            Self::Use {
-                slot,
-                action,
-                target,
-            } => {
-                let slots = slots.as_mut().expect("a user has slots");
-                let underway = underway
-                    .as_mut()
-                    .expect("a user's slots have their progress");
-                if slots.slot(slot).and_then(|held| held.action) != Some(action) {
-                    let mut times = times.expect("a user's slots have times");
-                    let mut unit = SlotsMut {
-                        slots,
-                        times: &mut times,
-                        progress: underway,
-                    };
-                    unit.fill(slot, Some(action));
-                }
-                underway.order(slot, ActionTarget::Unit(target));
-                return;
-            }
+            Self::Use { .. } => return kind,
             Self::FollowPath => {
                 if let Some(underway) = &mut underway {
                     underway.set_attack_target(None);
@@ -151,7 +114,7 @@ impl UnitOrder {
                 if let Some(mut walker) = walker {
                     walker.rejoin();
                 }
-                return;
+                return kind;
             }
             Self::Move { x, z, .. } => Some(ground(x, z)),
             Self::Reset => Some(
@@ -187,19 +150,13 @@ impl UnitOrder {
             };
             route.ask(ask, &mut progress);
         }
+        kind
     }
 
-    /// Sets the unit's build order and gather loop: a build's, its point taken into the bounds,
-    /// or a gather's, aimed at the node as the unit stands at `pos`; any other order ends both.
-    /// A unit with neither keeps its parts untouched.
-    fn set_loops(
-        self,
-        builder: Option<&mut Mut<'_, Builder>>,
-        gatherer: Option<&mut Mut<'_, Gatherer>>,
-        bounds: &Bounds,
-        pos: Vec3,
-    ) {
-        let build = match self {
+    /// What the order asks of the capabilities that keep the unit's loops: a build's, its point
+    /// taken into `bounds`, a gather's, aimed at its node from `pos`, a use's, or any other's.
+    fn kind(self, bounds: &Bounds, pos: Vec3) -> OrderKind {
+        match self {
             Self::Build { slot, target } => {
                 let target = match target {
                     BuildTarget::Point { x, z, angle } => {
@@ -208,27 +165,20 @@ impl UnitOrder {
                     }
                     site @ BuildTarget::Site(_) => site,
                 };
-                Some(BuildOrder { slot, target })
+                OrderKind::Build { slot, target }
             }
-            _ => None,
-        };
-        if let Some(builder) = builder
-            && (build.is_some() || builder.order().is_some())
-        {
-            builder.set(build);
-        }
-        let gather = match self {
-            Self::Gather { slot, target } => Some(GatherOrder {
+            Self::Gather { slot, target } => OrderKind::Gather {
                 slot,
-                node: NodeAt { node: target, pos },
-                step: GatherStep::Ordered,
-            }),
-            _ => None,
-        };
-        if let Some(gatherer) = gatherer
-            && (gather.is_some() || gatherer.order().is_some())
-        {
-            gatherer.set(gather);
+                node: target,
+                from: pos,
+            },
+            Self::Use { target } => OrderKind::Use { target },
+            Self::Move { .. }
+            | Self::Attack { .. }
+            | Self::Slot { .. }
+            | Self::FollowPath
+            | Self::Reset
+            | Self::Stop => OrderKind::Other,
         }
     }
 }

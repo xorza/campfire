@@ -496,6 +496,8 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "StaticBodies::state_removed",
             "Flying::lose_teleported",
             "Flying::lose_died",
+            "ProductionOrders::ordered",
+            "UseOrders::ordered",
         ]
     );
     // The parts whose removals a module reads, which reach it as the tick ages them.

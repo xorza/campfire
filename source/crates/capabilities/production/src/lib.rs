@@ -29,7 +29,6 @@ use crate::production_column::RowReads;
 
 mod book_builders;
 mod build_book;
-mod build_target;
 mod builder;
 mod construction;
 mod drop_off_data;
@@ -63,7 +62,6 @@ mod train_queue;
 mod trains;
 
 pub use crate::build_book::{BuildBook, BuildSpec, NewBuild, PlacementCheck, Style};
-pub use crate::build_target::BuildTarget;
 pub use crate::builder::{BuildOrder, Builder};
 pub use crate::construction::Construction;
 pub use crate::construction::step::{Start, Step};
@@ -141,6 +139,7 @@ impl Module for Production {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ProductionData>();
+        d.observer(ProductionOrders::ordered);
         d.section::<SupplyData>();
         d.section::<NodeData>();
         d.section::<DropOffData>();
@@ -301,7 +300,6 @@ pub mod internals {
     use campfire_values::UnitType;
 
     use crate::Production;
-    use crate::build_target::BuildTarget;
     use crate::builder::Builder;
     use crate::gatherer::{GatherStep, Gatherer};
     use crate::mode_supply_data::ModeSupplyData;
@@ -309,6 +307,7 @@ pub mod internals {
     use crate::supply_book::SupplyBook;
     use crate::supply_cost_book::SupplyCostBook;
     use crate::supply_data::SupplyData;
+    use campfire_units::BuildTarget;
 
     impl Production {
         /// Counts supply, up to `max`, with each type's `supplies`, and the trains the book holds.

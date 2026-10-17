@@ -1,14 +1,17 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Has;
+use bevy_ecs::observer::On;
+use bevy_ecs::query::{Allow, Has};
 use bevy_ecs::system::{Commands, Local, Query, Res};
 use campfire_players::{PlayerResources, PlayerRowsMut, ResourceAmount, TickCommands};
-use campfire_sim::{EntityIndex, SimTick};
-use campfire_units::{Dead, MapBook, Owner};
+use campfire_sim::{EntityIndex, SimTick, Unpredicted};
+use campfire_units::{Dead, MapBook, OrderKind, Owner, UnitOrdered};
 use campfire_values::Team;
 use campfire_vision::{ByVision, SeenTargets, TeamSight};
 
 use crate::build_book::BuildBook;
+use crate::builder::{BuildOrder, Builder};
+use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
 use crate::production_action::ProductionAction;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
@@ -20,6 +23,40 @@ use crate::train_queue::TrainQueue;
 pub struct ProductionOrders;
 
 impl ProductionOrders {
+    /// The observer that sets a unit's build order and gather loop as an order is given: a
+    /// build's or a gather's sets its own and ends the other, and any other order ends both. A
+    /// unit with neither keeps its parts untouched.
+    pub(super) fn ordered(
+        ordered: On<'_, '_, UnitOrdered>,
+        mut units: Query<'_, '_, (Option<&mut Builder>, Option<&mut Gatherer>), Allow<Unpredicted>>,
+    ) {
+        let Ok((builder, gatherer)) = units.get_mut(ordered.entity) else {
+            return;
+        };
+        let (build, gather) = match ordered.order {
+            OrderKind::Build { slot, target } => (Some(BuildOrder { slot, target }), None),
+            OrderKind::Gather { slot, node, from } => {
+                let gather = GatherOrder {
+                    slot,
+                    node: NodeAt { node, pos: from },
+                    step: GatherStep::Ordered,
+                };
+                (None, Some(gather))
+            }
+            OrderKind::Use { .. } | OrderKind::Other => (None, None),
+        };
+        if let Some(mut builder) = builder
+            && (build.is_some() || builder.order().is_some())
+        {
+            builder.set(build);
+        }
+        if let Some(mut gatherer) = gatherer
+            && (gather.is_some() || gatherer.order().is_some())
+        {
+            gatherer.set(gather);
+        }
+    }
+
     /// Applies each cancel of the tick, in input order, to each of its units by stable id that
     /// its player controls: a cancel of a train to a unit with a train queue, dead or not, a
     /// cancel of a build to a living site, as a dead one refunds nothing. A cancel of a train

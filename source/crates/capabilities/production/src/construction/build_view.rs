@@ -9,12 +9,11 @@ use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPoolsReadOnly};
-use campfire_units::{ArrivedShort, Body, Dead, Destination, MapBook, Owner};
+use campfire_units::{ArrivedShort, Body, BuildTarget, Dead, Destination, MapBook, Owner};
 use campfire_values::{Relation, Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::build_book::{BuildBook, Building, Style};
-use crate::build_target::BuildTarget;
 use crate::builder::{BuildOrder, Builder};
 use crate::construction::step::{Start, Step};
 use crate::holdings::Holdings;

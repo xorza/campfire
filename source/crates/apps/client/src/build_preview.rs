@@ -25,8 +25,9 @@ use campfire_capabilities::Order;
 use campfire_math::{Num, Vec3 as SimVec3};
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
-use campfire_production::{BuildBook, BuildTarget, Placement};
+use campfire_production::{BuildBook, Placement};
 use campfire_sim::{EntityIndex, Position, Unpredicted};
+use campfire_units::BuildTarget;
 use campfire_values::Team;
 use campfire_vision::ByHolding;
 

@@ -77,11 +77,7 @@ pub struct Orders;
 impl Module for Orders {
     const CAPABILITY: Option<Capability> = Some(Capability::Orders);
     const NEEDS: &'static [Capability] = &[Capability::Navigation, Capability::Stats];
-    const USES: &'static [Capability] = &[
-        Capability::Production,
-        Capability::Vision,
-        Capability::Interaction,
-    ];
+    const USES: &'static [Capability] = &[Capability::Vision];
     type Set = OrdersSet;
 
     fn declare<D: Declarations>(d: &mut D) {

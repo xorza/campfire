@@ -1,16 +1,14 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, Without};
 use bevy_ecs::resource::Resource;
-use bevy_ecs::system::{Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget, Targets};
 use campfire_declare::{Role, Scratch};
-use campfire_interaction::{UnitUse, Using};
 use campfire_math::Vec3;
 use campfire_navigation::{GroupBox, Party, PartyKey};
 use campfire_players::TickCommands;
-use campfire_production::BuildTarget;
 use campfire_sim::{EntityIndex, Position, SimTick};
-use campfire_units::{Dead, Destination, MapBook, Owner};
+use campfire_units::{BuildTarget, Dead, Destination, MapBook, Owner, UnitOrdered};
 use campfire_values::Team;
 use campfire_vision::{SeenTargets, TeamSight};
 
@@ -49,15 +47,15 @@ impl UnitOrders {
     /// resets, is dropped, and so are a move of a unit with nowhere to walk, an attack on a unit
     /// that is not a living enemy or that none of its weapons selects, a slot's action of a kind
     /// other than a cast, a train or a gather, a gather at no unit, a build of a slot that holds
-    /// none, a use by a unit with no use slot or that the object's users do not select, and an
-    /// order whose unit target its player's vision group does not see: a client can send
-    /// anything. A move to two units or more that walk moves them as
+    /// none, and an order whose unit target its player's vision group does not see: a client can
+    /// send anything. A use goes on to `interaction`, which drops one by a unit with no use slot
+    /// or that the object's users do not select. A move to two units or more that walk moves them as
     /// a group: each walks to its own goal by the group's box, as one party, the order's.
     pub(super) fn check_player_orders<S: TeamSight>(
         (tick, map, index): (Res<'_, SimTick>, Res<'_, MapBook>, Res<'_, EntityIndex>),
         mut orders: TickCommands<'_, '_, OrdersAction>,
         book: Res<'_, ActionBook>,
-        (targets, visible, using): (Targets<'_, '_>, SeenTargets<'_, '_, S>, Using<'_, '_>),
+        (targets, visible): (Targets<'_, '_>, SeenTargets<'_, '_, S>),
         units: Query<'_, '_, Commanded, (Without<Dead>, Without<Resetting>)>,
         mut checked: ResMut<'_, PlayerOrders>,
         mut movers: Local<'_, Vec<Mover>>,
@@ -146,14 +144,9 @@ impl UnitOrders {
                         (kind == Some(ActionKind::Build) && !hidden)
                             .then_some(UnitOrder::Build { slot, target })
                     }
-                    OrdersAction::Use { target } => using
-                        .of(entity, target)
-                        .filter(|_| sees(target))
-                        .map(|UnitUse { slot, action }| UnitOrder::Use {
-                            slot,
-                            action,
-                            target,
-                        }),
+                    OrdersAction::Use { target } => {
+                        sees(target).then_some(UnitOrder::Use { target })
+                    }
                     OrdersAction::Stop => Some(UnitOrder::Stop),
                     OrdersAction::Move { .. } => unreachable!("a move was checked as a group"),
                 };
@@ -162,19 +155,21 @@ impl UnitOrders {
         });
     }
 
-    /// Applies the tick's checked player orders, in input order, each as every order applies; a
-    /// player orders no reset.
+    /// Applies the tick's checked player orders, in input order, each as every order applies, and
+    /// triggers each as `UnitOrdered`, in the same order; a player orders no reset.
     pub(super) fn apply_player_orders(
         tick: Res<'_, SimTick>,
         map: Res<'_, MapBook>,
         mut checked: ResMut<'_, PlayerOrders>,
         mut units: Query<'_, '_, OrderedUnit>,
+        mut commands: Commands<'_, '_>,
     ) {
         let now = tick.start();
         for (entity, order) in checked.0.drain(..) {
             debug_assert_ne!(order, UnitOrder::Reset, "a player orders no reset");
             let parts = units.get_mut(entity).expect("a checked order's unit");
-            order.give(parts, &map.bounds, now);
+            let order = order.give(parts, &map.bounds, now);
+            commands.trigger(UnitOrdered { entity, order });
         }
     }
 }
