@@ -2,7 +2,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Without};
 use bevy_ecs::system::{Query, Res, ResMut, SystemParam};
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionSlots, ActionTarget, BuildStart, Purse, SlotAim, SlotTimes,
+    ActionBook, ActionCheck, ActionSlots, ActionTarget, BuildStart, Caster, Purse, SlotAim,
+    SlotTimes,
 };
 use campfire_geometry::{Metric, Placed, Shape};
 use campfire_math::{Num, Vec3};
@@ -10,7 +11,7 @@ use campfire_players::{PlayerResources, PlayerRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPoolsReadOnly};
 use campfire_units::{ArrivedShort, Body, BuildTarget, Dead, Destination, MapBook, Owner};
-use campfire_values::{Relation, Team, UnitTags, UnitType};
+use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::build_book::{BuildBook, Building, Style};
@@ -134,7 +135,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     /// The start of the build at a point of the builder of `entity`'s `order`, when it passes
     /// its action's checks, its requirements, by the holdings, and its placement.
     pub(super) fn start(&mut self, entity: Entity, order: BuildOrder) -> Option<Start> {
-        let (_, _, &from, _, &team, owner, slots, times, pools, ..) =
+        let (_, _, &from, _, &team, owner, slots, times, pools, .., tags) =
             self.builders.get(entity).ok()?;
         let BuildTarget::Point { angle, .. } = order.target else {
             return None;
@@ -154,15 +155,17 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             target: ActionTarget::Point(placed.pos),
         };
         let no_target = |_| Relation::Friendly;
-        let checked = times.checked_action(ActionCheck {
+        let check = ActionCheck {
             book: &self.book,
             now: self.tick.start(),
+            caster: Caster::of(tags, Motion::Own, None),
             slots,
             purse,
             aim,
             relation: no_target,
             living: |_| None,
-        })?;
+        };
+        let checked = times.start(check, None)?.checked;
         let met = self
             .holdings
             .meet(owner, modifiers, self.requirements.of(checked.id));
@@ -175,6 +178,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             angle,
             cost: checked.values.cost,
             cooldown: checked.values.cooldown,
+            charges: checked.values.charges,
             rank: checked.rank,
         })
     }

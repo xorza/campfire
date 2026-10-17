@@ -2,7 +2,7 @@ use campfire_values::{Block, Motion, UnitTags};
 
 use crate::action_book::ActionBook;
 use crate::action_slots::ActionSlot;
-use crate::use_group::UseGroup;
+use crate::action_slots::use_group::UseGroup;
 
 /// What keeps a unit from its actions: its tags, how it moves, and the use group of its slots.
 #[derive(Debug, Clone, Copy)]

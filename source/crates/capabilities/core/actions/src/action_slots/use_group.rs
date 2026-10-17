@@ -30,19 +30,18 @@ impl UseGroup {
         self.0
     }
 
-    /// The group a tag blocks of the action in `slot`, a cast's or a use's, of a unit with `used`,
-    /// as `book` gives its kind: `use` for a slot of its use group, whatever its action's kind,
-    /// and for a use, else `cast`.
+    /// The group a tag blocks of the action in `slot`, of a unit with `used`, as `book` gives its
+    /// kind: `use` for a slot of its use group, whatever its action's kind, else its kind's block,
+    /// and `cast` for a slot that holds no action.
     pub fn group(used: Option<&Self>, slot: ActionSlot, book: &ActionBook) -> Block {
+        if used.is_some_and(|used| used.0 == slot.kind) {
+            return Block::Use;
+        }
         let kind = slot
             .action
             .and_then(|id| book.get(id))
             .map(|action| action.kind.kind());
-        if used.is_some_and(|used| used.0 == slot.kind) || kind == Some(ActionKind::Use) {
-            Block::Use
-        } else {
-            Block::Cast
-        }
+        kind.map_or(Block::Cast, ActionKind::block)
     }
 }
 

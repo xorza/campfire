@@ -9,6 +9,7 @@
 
 ## The pipeline
 
+- **Each kind calls the shared steps.** `actions` gives one start step, the checks of the slot, its readiness and charges, the purse and the target, the clamp of a point into range and the reach, and one commit step, the spend of the cooldown, a charge and a toggle, beside `Payer` for the cost; each kind's own system calls them in its own order and at its own moment, as an ability's `ActivateAbility` calls `CommitAbility` in Unreal's Gameplay Ability System: a train and a build at their start, an attack at its strike, a cast as it resolves. Refused: a callback table that one core system walks for every kind, which takes the whole world for each candidate unit and changes the kinds' order within a tick.
 - **All or nothing at delivery.** At delivery the checks run again, without the range; the cost, the cooldown and every effect the action queued apply together, or, when a check or the script fails, none of them, the failure recorded.
 - **An interruption spends nothing.** A tag that blocks the action's group, or a new order, interrupts the windup back to its order with nothing spent.
 - **A target an action does not take is ignored,** so a client may always send the unit under the cursor.

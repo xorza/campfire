@@ -43,7 +43,6 @@ mod actions_effect;
 mod amount;
 mod build_start;
 mod cast_spends;
-mod caster;
 mod channel_call;
 mod checked_action;
 mod construct_data;
@@ -88,7 +87,6 @@ mod targeting;
 mod targets;
 mod track_names;
 mod type_slots_data;
-mod use_group;
 mod weapon;
 
 pub use crate::action::{Action, Aim, Passive};
@@ -107,8 +105,12 @@ pub use crate::action_parts::ActionParts;
 pub use crate::action_range::ActionRange;
 pub use crate::action_ranks::ActionRanks;
 pub use crate::action_slots::action_progress::ActionProgress;
-pub use crate::action_slots::slot_times::{ActionCheck, SlotCharges, SlotTime, SlotTimes};
+pub use crate::action_slots::caster::Caster;
+pub use crate::action_slots::slot_times::{
+    ActionCheck, SlotCharges, SlotCommit, SlotTime, SlotTimes, StartChecked, StartFrom,
+};
 pub use crate::action_slots::timed_slots::TimedSlots;
+pub use crate::action_slots::use_group::UseGroup;
 pub use crate::action_slots::{ActionSlot, ActionSlots, SlotsMut};
 pub use crate::action_target::ActionTarget;
 pub use crate::actions_column::{ActionsColumn, SlotRow};
@@ -116,7 +118,6 @@ pub use crate::actions_data::ActionsData;
 pub use crate::amount::Amount;
 pub use crate::build_start::BuildStart;
 pub use crate::cast_spends::CastSpends;
-pub use crate::caster::Caster;
 pub use crate::channel_call::{ChannelCall, ChannelStep};
 pub use crate::checked_action::CheckedAction;
 pub use crate::construct_data::ConstructData;
@@ -167,7 +168,6 @@ pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
 pub use crate::track_names::TrackNames;
 pub use crate::type_slots_data::TypeSlotsData;
-pub use crate::use_group::UseGroup;
 pub use crate::weapon::{Pitch, Scatter, Source, Weapon};
 
 /// The core's actions: every action a match loads, and the slots units hold them in.

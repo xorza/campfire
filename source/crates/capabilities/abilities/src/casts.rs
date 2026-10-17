@@ -8,7 +8,7 @@ use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
     ActionBook, ActionCall, ActionCheck, ActionKind, ActionProgress, ActionSlots, CastSpends,
     Caster, EffectListBook, InProgress, ListCall, ListHook, ListsOf, OrderPhase, Purse,
-    ResolvedCast, SlotTimes, Targets, UseGroup,
+    ResolvedCast, SlotCommit, SlotTimes, StartChecked, StartFrom, Targets, UseGroup,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
@@ -169,26 +169,26 @@ impl Casts {
             }
             let purse = Purse::of(pools.of(life), resources.of(owner));
             let relation = |other| targets.relation(team, other);
-            let shape = Body::shape_of(body);
-            let checked = times
-                .checked_action(ActionCheck {
-                    book: &book,
-                    now,
-                    slots,
-                    purse,
-                    aim,
-                    relation,
-                    living: |id| targets.living(id),
-                })
-                .map(|mut checked| {
-                    checked.clamp(position.get(), shape, &targets);
-                    checked
-                });
-            let Some(checked) = checked else {
+            let from = StartFrom {
+                pos: position.get(),
+                body,
+                targets: &targets,
+            };
+            let check = ActionCheck {
+                book: &book,
+                now,
+                caster: Caster::of(tags, Motion::of(forced), used),
+                slots,
+                purse,
+                aim,
+                relation,
+                living: |id| targets.living(id),
+            };
+            let Some(StartChecked { checked, reached }) = times.start(check, Some(from)) else {
                 Self::drop_cast(&mut progress, destination.as_mut(), arrived, approached);
                 continue;
             };
-            if !checked.in_range(position.get(), body, &targets) {
+            if !reached {
                 match (destination.is_some(), checked.aimed_at(&targets)) {
                     (true, Some(to)) => {
                         Self::walk(destination.as_mut(), arrived, Some(to));
@@ -337,25 +337,25 @@ impl Casts {
             let purse = Purse::of(pools.of(life), resources.of(owner));
             let living = |id| targets.living(id);
             let relation = |other| targets.relation(team, other);
-            let resolved = times
-                .checked_action(ActionCheck {
-                    book: &book,
-                    now,
-                    slots,
-                    purse,
+            let check = ActionCheck {
+                book: &book,
+                now,
+                caster: Caster::of(tags, Motion::of(forced), used),
+                slots,
+                purse,
+                aim: casting,
+                relation,
+                living,
+            };
+            let resolved = times.start(check, None).map(|started| {
+                started.checked.resolved(ActionCall {
                     aim: casting,
-                    relation,
-                    living,
+                    start,
                 })
-                .map(|checked| {
-                    checked.resolved(ActionCall {
-                        aim: casting,
-                        start,
-                    })
-                });
+            });
             progress.finish_cast(slots, now, resolved.as_ref());
             if let Some(resolved) = &resolved {
-                times.spend_cast(resolved, now, second);
+                times.commit(SlotCommit::cast(resolved, now, second));
             }
         }
     }
@@ -396,7 +396,7 @@ impl Casts {
             world
                 .get_mut::<SlotTimes>(entity)
                 .expect("a caster has slot times")
-                .spend_cast(resolved, now, second);
+                .commit(SlotCommit::cast(resolved, now, second));
             CastSpends::spend(world, entity, resolved.call.aim.slot);
         }
     }
@@ -488,15 +488,21 @@ impl Casts {
         let purse = Purse::of(pools, world.owner_resources(owner));
         let living = |id| view.living(id);
         let relation = |other| view.relation(team, other);
-        let checked = times.checked_action(ActionCheck {
+        let check = ActionCheck {
             book,
             now,
+            caster: Caster::of(
+                unit.get::<UnitTags>(),
+                Motion::of(unit.contains::<ForcedMove>()),
+                unit.get::<UseGroup>(),
+            ),
             slots,
             purse,
             aim: casting,
             relation,
             living,
-        })?;
+        };
+        let checked = times.start(check, None)?.checked;
         let target = Abilities::target(view, casting.target);
         let package = checked.action.package;
         let call = CallStart {

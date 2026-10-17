@@ -4,8 +4,8 @@ use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionKind, ActionProgress, ActionSlots, KindSpec, Payer, Purse,
-    SlotTimes,
+    ActionBook, ActionCheck, ActionKind, ActionProgress, ActionSlots, Caster, KindSpec, Payer,
+    Purse, SlotCommit, SlotTimes, StartChecked,
 };
 use campfire_declare::{ByType, RoleForm};
 use campfire_math::{Num, Vec3};
@@ -15,7 +15,7 @@ use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
 use campfire_units::{
     Body, Dead, Destination, Facing, MapBook, OpenCellAsk, OpenCellRun, Owner, SpawnAt, Spawner,
 };
-use campfire_values::{Relation, Team, UnitTags, UnitType};
+use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
 
 use crate::frame_point::FramePoint;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
@@ -133,22 +133,23 @@ impl Trains {
                 .ordered(slots, &book, ActionKind::Train)
                 .expect("an ordered train");
             progress.stop();
-            if tags.is_some_and(|tags| tags.properties.blocks(ActionKind::Train.block())) {
-                continue;
-            }
             let purse = Purse::of(pools.read(), resources.of(held_by));
             let owner = held_by.map(|owner| owner.slot());
             let no_target = |_| Relation::Friendly;
-            let checked = times.checked_action(ActionCheck {
-                book: &book,
-                now,
-                slots,
-                purse,
-                aim: ordered,
-                relation: no_target,
-                living: |_| None,
-            });
-            let Some(checked) = checked else {
+            let started = times.start(
+                ActionCheck {
+                    book: &book,
+                    now,
+                    caster: Caster::of(tags, Motion::Own, None),
+                    slots,
+                    purse,
+                    aim: ordered,
+                    relation: no_target,
+                    living: |_| None,
+                },
+                None,
+            );
+            let Some(StartChecked { checked, .. }) = started else {
                 continue;
             };
             let capacity = producers.get(unit_type).map(|production| production.queue);
@@ -180,7 +181,13 @@ impl Trains {
                 time: values.windup,
                 paid: u8::try_from(paid.len()).expect("a cost names at most a mode's resources"),
             };
-            times.cool_down(ordered.slot, now.after(values.cooldown));
+            times.commit(SlotCommit {
+                slot: ordered.slot,
+                now,
+                ready_at: now.after(values.cooldown),
+                charges: values.charges,
+                toggle: None,
+            });
             queue.push(queued, paid, now);
             if let Some(owner) = counts {
                 supply.reserve(owner, cost);

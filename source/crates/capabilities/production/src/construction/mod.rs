@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, QueryState, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
 use bevy_ecs::world::{EntityMut, World};
-use campfire_actions::{ActionBook, ActionKind, ActionSlots, Payer, SlotTimes};
+use campfire_actions::{ActionBook, ActionKind, ActionSlots, Payer, SlotCommit, SlotTimes};
 use campfire_declare::{ByType, RoleForm};
 use campfire_geometry::Placed;
 use campfire_math::Num;
@@ -180,7 +180,13 @@ impl Construction {
         let mut times = world
             .get_mut::<SlotTimes>(entity)
             .expect("a builder has slot times");
-        times.cool_down(order.slot, now.after(start.cooldown));
+        times.commit(SlotCommit {
+            slot: order.slot,
+            now,
+            ready_at: now.after(start.cooldown),
+            charges: start.charges,
+            toggle: None,
+        });
         // The site is the server's, which a client predicts no spawn of: the order ends, so the
         // build starts once, and the server's, turned to the site, comes back by replication.
         if F::PREDICTS {

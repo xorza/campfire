@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCheck, ActionProgress, ActionSlots, ActionTarget, Caster, InProgress, Payer,
-    Purse, Reached, Shot, ShotDamage, Shots, SlotAim, SlotTimes, Targets,
+    Purse, Reached, Shot, ShotDamage, Shots, SlotAim, SlotCommit, SlotTimes, StartFrom, Targets,
 };
 use campfire_common::Tick;
 use campfire_declare::{ByType, RoleForm};
@@ -238,18 +238,25 @@ impl Attacks {
                     };
                     let purse = Purse::of(pools.of(life), resources.of(owner));
                     let relation = |other| targets.relation(team, other);
+                    let from = StartFrom {
+                        pos: position.get(),
+                        body,
+                        targets: &targets,
+                    };
+                    let check = ActionCheck {
+                        book: &book,
+                        now,
+                        caster: Caster::of(tags, Motion::of(forced), None),
+                        slots,
+                        purse,
+                        aim,
+                        relation,
+                        living: |id| targets.living(id),
+                    };
                     let started = times
-                        .checked_action(ActionCheck {
-                            book: &book,
-                            now,
-                            slots,
-                            purse,
-                            aim,
-                            relation,
-                            living: |id| targets.living(id),
-                        })
-                        .filter(|checked| checked.in_range(position.get(), body, &targets))
-                        .map(|checked| now.after(checked.values.windup));
+                        .start(check, Some(from))
+                        .filter(|started| started.reached)
+                        .map(|started| now.after(started.checked.values.windup));
                     if let Some(resolves_at) = started {
                         progress.start_attack(slot, resolves_at);
                     }
@@ -447,7 +454,13 @@ impl Attacks {
                 Some(clip) if reloads => clip.reload,
                 _ => period,
             };
-            times.cool_down(wielded.slot, started.after(ready));
+            times.commit(SlotCommit {
+                slot: wielded.slot,
+                now,
+                ready_at: started.after(ready),
+                charges: values.charges,
+                toggle: None,
+            });
             progress.stop();
             if F::PREDICTS {
                 continue;

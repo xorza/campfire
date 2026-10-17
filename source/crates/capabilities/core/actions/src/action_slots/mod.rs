@@ -23,8 +23,10 @@ use crate::slot_kind_book::SlotKindBook;
 use crate::type_slots_data::TypeSlotsData;
 
 pub(crate) mod action_progress;
+pub(crate) mod caster;
 pub(crate) mod slot_times;
 pub(crate) mod timed_slots;
+pub(crate) mod use_group;
 
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank,
 /// whose times its `SlotTimes` holds, and what it has under way its `ActionProgress`.
