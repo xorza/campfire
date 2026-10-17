@@ -168,11 +168,37 @@ impl DataSection for ModeData {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use campfire_declare::{Section, SectionTable};
+    use std::collections::BTreeMap;
+
+    use campfire_declare::{Section, SectionTable, Sections};
+    use campfire_values::MessageId;
+    use campfire_visibility::ModeVisibility;
 
     use crate::mode_data::ModeData;
+    use crate::players_data::PlayersData;
+    use crate::saves_data::SavesData;
 
     impl ModeData {
+        /// The data of a mode of the name `name` and nothing more: no team, input, state, param or
+        /// section.
+        pub fn named(name: MessageId) -> Self {
+            Self {
+                name,
+                choices: BTreeMap::new(),
+                inputs: BTreeMap::new(),
+                state_version: None,
+                state: BTreeMap::new(),
+                params: BTreeMap::new(),
+                options: BTreeMap::new(),
+                teams: BTreeMap::new(),
+                relations: Vec::new(),
+                players: PlayersData::default(),
+                saves: SavesData::default(),
+                visibility: ModeVisibility::default(),
+                sections: Sections::default(),
+            }
+        }
+
         /// It with `section` too, in place of one of its type.
         #[must_use]
         pub fn with<S: Section>(self, section: S) -> Self {

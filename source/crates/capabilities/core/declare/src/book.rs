@@ -9,7 +9,7 @@ use crate::role::Role;
 /// Package data a module reads, which its builder makes from the packages before the match is
 /// built, and which the build puts in as its owner declares it, before its owner installs. The
 /// module that declares it is its owner, which the install knows.
-pub trait Book: Resource + Default {
+pub trait Book: Resource + Sized {
     /// Whether only a match that runs scripts reads it, so a client holds none.
     const SCRIPTS_ONLY: bool;
 

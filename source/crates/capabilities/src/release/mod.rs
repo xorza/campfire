@@ -321,7 +321,7 @@ impl Release {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use std::any::TypeId;
-    use std::collections::BTreeSet;
+    use std::collections::{BTreeMap, BTreeSet};
     use std::fmt::Debug;
     use std::num::NonZeroU64;
 
@@ -329,21 +329,25 @@ pub(crate) mod internals {
     use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
-    use campfire_declare::{BuiltBooks, CapabilitySet, InstallFacts, MatchFacts};
-    use campfire_mode::{Mode, ModeInputs, ModeLoad, ModeMap, ModeSetup, ModeUnits};
-    use campfire_navigation::WalkerKinds;
+    use campfire_declare::{
+        BuiltBooks, CapabilitySet, InstallFacts, MatchFacts, Sections, SourceKind, SourcePackage,
+    };
+    use campfire_geometry::Bounds;
+    use campfire_math::Num;
+    use campfire_mode::{MapData, Mode, ModeData, ModeInputs, ModeSetup};
     use campfire_script::{ScriptApi, ScriptHost};
+    use campfire_sim::TickRate;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         Capability, EntityIndex, SimResource, SimWorld, SimWorldBuilder, SnapshotError, StableId,
         StateCopy, StateRegistry,
     };
     use campfire_state_types::{Replication, StateTypes};
-    use campfire_units::{EntityKinds, UnitTypeBook, UnitTypes, Units, UnitsWorld};
-    use campfire_values::{Names, Relations};
+    use campfire_units::{EntityKinds, ScriptBook, UnitTypes, Units, UnitsWorld};
+    use campfire_values::{MessageId, Speed};
 
     use crate::books::Books;
-    use crate::books::every_book::EveryBook;
+    use crate::books::book_input::BookInput;
     use crate::fixtures::units::UnitsFixtures;
     use crate::release::Release;
     use crate::release::client_holds::ClientHolds;
@@ -383,35 +387,37 @@ pub(crate) mod internals {
     }
 
     impl Release {
-        /// The books of a match of no packages, as a test's or a bench's starts from: every book
-        /// a module declares, empty, but the unit types, the engine's tags alone, which a test
-        /// declares its types into; no names, and no map.
-        pub fn empty_books() -> Books {
-            let mut every = EveryBook(BuiltBooks::default());
-            Self::declare(Self::capabilities(), &mut every);
-            let EveryBook(mut built) = every;
-            built
-                .take::<UnitTypeBook>()
-                .expect("the core declares the unit types");
-            built.add(UnitTypes::new(Self::engine_tags()).into_book());
-            let map = ModeMap {
-                teams: Names::default(),
-                relations: Relations::default(),
-                placed: Vec::new(),
-                markers: Vec::new(),
+        /// The books of a match at `rate` of an empty mode package alone, as a test's or a bench's
+        /// starts from: each built from a mode of no data, on a planar map of the world's bounds,
+        /// with no team, stat or script; but the unit types, the engine's tags alone, open as
+        /// `UnitTypes::open_in` puts them.
+        pub fn empty_books(rate: TickRate) -> Books {
+            let data = ModeData::named(MessageId::new("mode").unwrap());
+            let (units, content) = (BTreeMap::new(), Sections::default());
+            let mode = SourcePackage {
+                name: "mode",
+                kind: SourceKind::Mode,
+                units: &units,
+                content: &content,
+                scripts: Vec::new(),
             };
-            Books {
-                built,
-                spawn_tags: Box::default(),
-                inputs: ModeInputs {
-                    units: ModeUnits::default(),
-                    load: ModeLoad {
-                        map,
-                        walkers: WalkerKinds::default(),
-                        loadout_ranks: 0,
-                    },
-                },
-            }
+            let input = BookInput {
+                data: &data,
+                map: &MapData::planar(Bounds::WORLD),
+                heights: None,
+                teams: &[],
+                max_move_speed: Speed::new(Num::MAX).unwrap(),
+                set: Self::capabilities(),
+                engine_tags: &Self::engine_tags(),
+                tag_names: &[],
+                packages: vec![mode],
+                scripts: &ScriptBook::default(),
+                rate,
+                stat_order: &[],
+            };
+            let mut books = Self::books(&input).expect("a mode of no data builds");
+            UnitTypes::new(Self::engine_tags()).open_in(&mut books.built);
+            books
         }
 
         /// Installs the mode's scripted part into `world`, a match a test built with no mode and

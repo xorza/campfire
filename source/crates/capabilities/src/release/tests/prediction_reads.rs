@@ -84,7 +84,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     Release::build(
         &mut world,
         spec(Role::Client).unbuilt(),
-        Release::empty_books(),
+        Release::empty_books(rate),
         rules,
     );
     let unpredicted = world.register_component::<Unpredicted>();
@@ -156,7 +156,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
     Release::build(
         &mut server,
         spec(Role::Rules),
-        Release::empty_books(),
+        Release::empty_books(rate),
         MatchKind::Rules,
     );
     let (client, server) = (system_names(&mut world), server_only(&server));

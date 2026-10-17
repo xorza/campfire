@@ -57,7 +57,7 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     assert!(ModifierBook::held(&client) && ParamBook::held(&client));
     // The build puts each book the match holds, its builder's, before its owner installs, and
     // drops the rest: a match of stats holds the stat book built, and no combat book.
-    let mut books = Release::empty_books();
+    let mut books = Release::empty_books(Match::TEST_RATE);
     let rules = BTreeMap::from([(Stat::named("armor").unwrap(), StatRule::default())]);
     books.built.take::<StatBook>().unwrap();
     books.built.add(StatBook::new(&rules, Num::ONE));
@@ -68,14 +68,14 @@ fn a_book_goes_in_only_for_its_owner_and_the_scripts_it_needs() {
     // and not declared are each a logic error.
     let said = panic_of(|| CombatBook::default().load_into(&mut game));
     assert!(said.ends_with("is declared by its owner"), "{said}");
-    let mut missing = Release::empty_books();
+    let mut missing = Release::empty_books(Match::TEST_RATE);
     missing.built.take::<ModifierBook>().unwrap();
     let said = panic_of(|| drop(stats_match(missing)));
     assert!(
         said.ends_with("ModifierBook is declared and built"),
         "{said}"
     );
-    let mut stray = Release::empty_books();
+    let mut stray = Release::empty_books(Match::TEST_RATE);
     stray.built.add(StrayBook);
     let said = panic_of(|| drop(stats_match(stray)));
     assert!(said.starts_with("each built book is declared"), "{said}");

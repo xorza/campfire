@@ -21,7 +21,7 @@ use crate::stats_data::StatsData;
 /// The stats of a match: each the mode declares, in order, with its rule, and each unit type's
 /// value at level 1 and gain a level; with the move speed cap the engine's formulas take.
 /// Package data, not state.
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug)]
 pub struct StatBook {
     /// The stats' names, by id; shared with the script view, which names them to scripts.
     names: Arc<Names<StatId>>,

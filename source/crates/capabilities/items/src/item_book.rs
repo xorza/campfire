@@ -13,7 +13,7 @@ use crate::item_id::ItemId;
 /// The mode's item types, by id: package data, not state. A full stack of each costs what an
 /// amount holds, and each costs at least its components. A clone shares the items, as a write
 /// that reads them holds them.
-#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
 pub struct ItemBook(Arc<Items>);
 
 /// The items of an `ItemBook`.

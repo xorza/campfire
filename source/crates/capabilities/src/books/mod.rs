@@ -16,8 +16,6 @@ use campfire_values::{EngineTag, UnitType};
 
 pub(crate) mod book_cells;
 pub(crate) mod book_input;
-#[cfg(feature = "internals")]
-pub(crate) mod every_book;
 pub(crate) mod leftover_books;
 pub(crate) mod package_content;
 pub(crate) mod units_seed;

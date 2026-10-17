@@ -162,19 +162,6 @@ impl UnitTypes {
         &self.tags
     }
 
-    /// The book of the names and params of the types and tags so far, as the release puts in
-    /// before a match's books load.
-    pub fn into_book(self) -> UnitTypeBook {
-        let book = UnitTypeBook::new(
-            self.tags.clone(),
-            Arc::clone(&self.types),
-            Arc::clone(&self.params),
-        );
-        #[cfg(feature = "internals")]
-        let book = book.loading(self);
-        book
-    }
-
     /// The match's unit types and tags: the release's engine tags, then every tag the packages
     /// name, then each package's types, in the order `cx` numbers them, an avatar's tagged
     /// `avatar`; an error for a type its scope names already, or past the most types or tags a
@@ -311,6 +298,41 @@ impl UnitTypes {
             states: self.state_book(),
             origins: self.origins,
             types: UnitTypeBook::new(self.tags, self.types, self.params),
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::sync::Arc;
+
+    use campfire_declare::BuiltBooks;
+
+    use crate::tag_book::TagBook;
+    use crate::unit_type_book::UnitTypeBook;
+    use crate::unit_types::UnitTypes;
+
+    impl UnitTypes {
+        /// The book of the names and params of the types and tags so far, which keeps them, so a
+        /// test loads more of them one at a time.
+        pub(crate) fn into_book(self) -> UnitTypeBook {
+            let book = UnitTypeBook::new(
+                self.tags.clone(),
+                Arc::clone(&self.types),
+                Arc::clone(&self.params),
+            );
+            book.loading(self)
+        }
+
+        /// Puts them in `built` in place of the books a match's sealed types give: their book,
+        /// open for a test to load its types into, and so no tag yet, as their seal gives them.
+        pub fn open_in(self, built: &mut BuiltBooks) {
+            built
+                .take::<UnitTypeBook>()
+                .expect("the core declares the unit types");
+            built.take::<TagBook>().expect("the core declares the tags");
+            built.add(self.into_book());
+            built.add(TagBook::new(0, [], []));
         }
     }
 }

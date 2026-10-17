@@ -845,7 +845,11 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
         };
         let spec = MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets))
             .set(Release::capability_set(declared).unwrap());
-        let world = Match::new(spec, Release::empty_books(), MatchKind::Rules);
+        let world = Match::new(
+            spec,
+            Release::empty_books(Match::TEST_RATE),
+            MatchKind::Rules,
+        );
         let schedules = world.resource::<Schedules>();
         let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();
         let names: Vec<String> = systems
