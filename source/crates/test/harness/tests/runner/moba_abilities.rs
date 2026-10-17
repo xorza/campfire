@@ -16,6 +16,7 @@ use campfire_areas::Area;
 use campfire_capabilities::{Match, Order, PackageContent};
 use campfire_combat::Combat;
 use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_deliveries::DashDelivering;
 use campfire_harness::Arena;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
@@ -982,6 +983,12 @@ fn forced(game: &Match, id: StableId) -> (Num, Option<ForcedMove>) {
     (x, game.get::<ForcedMove>(entity).copied())
 }
 
+/// Whether the unit `id`'s dash delivers an action.
+fn delivering(game: &Match, id: StableId) -> bool {
+    let entity = game.entity_of(id).unwrap();
+    game.get::<DashDelivering>(entity).is_some()
+}
+
 #[test]
 fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it() {
     let arena = arena();
@@ -1001,13 +1008,7 @@ fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it(
     let (x, dash) = forced(&game, veil);
     let step = Num::int(22) / 30;
     assert_eq!((x, health(&arena, &game, enemy)), (step * 6, 500));
-    assert!(matches!(
-        dash,
-        Some(ForcedMove::Dash {
-            delivers: Some(_),
-            ..
-        })
-    ));
+    assert!(matches!(dash, Some(ForcedMove::Dash { .. })) && delivering(&game, veil));
     arena.step(&mut game);
     assert_eq!(forced(&game, veil), (Num::int(5), None));
     assert_eq!(health(&arena, &game, enemy), 400);
@@ -1044,12 +1045,16 @@ fn husks_grasping_wraps_pulls_him_to_the_enemy_hit_and_its_pull_delivers_nothing
     for tick in 1..=40 {
         arena.step(&mut game);
         if pulled.is_none() && forced(&game, husk).1.is_some() {
-            pulled = Some((tick, forced(&game, husk).1.unwrap()));
+            pulled = Some((
+                tick,
+                forced(&game, husk).1.unwrap(),
+                delivering(&game, husk),
+            ));
         }
     }
-    let (tick, pull) = pulled.unwrap();
+    let (tick, pull, delivers) = pulled.unwrap();
     assert_eq!(tick, 14);
-    assert!(matches!(pull, ForcedMove::Dash { delivers: None, .. }));
+    assert!(matches!(pull, ForcedMove::Dash { .. }) && !delivers);
     // The pull ends with the bodies touching, Husk on 4 m, and the enemy took the hit alone.
     assert_eq!(forced(&game, husk), (Num::int(4), None));
     assert_eq!(health(&arena, &game, enemy), 420);

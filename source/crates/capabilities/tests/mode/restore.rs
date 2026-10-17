@@ -2,6 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
 use campfire_actions::{ActionProgress, SlotCharges, SlotTimes, TimedSlots};
 use campfire_common::Tick;
+use campfire_deliveries::DashDelivering;
 use campfire_navigation::{Party, PartyKey, Progress, RouteAsk};
 use campfire_orders::NextThink;
 use campfire_production::{Gatherer, NodeAt};
@@ -580,13 +581,17 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
     for (point, holds) in [(at, true), (past, false)] {
         let destination = Destination::to(Some(point));
         assert_eq!(destination.check(&game, grunt), holds, "{point:?}");
-        let dash = |to, start| ForcedMove::Dash {
-            to,
+        let dash = ForcedMove::Dash {
+            to: DashTo::Point(point),
             step: Num::ONE,
-            delivers: Some(DashDelivery::new(id, ActionId::new(0), Rank::FIRST, start)),
         };
-        assert_eq!(dash(DashTo::Point(point), None).check(&game, grunt), holds);
-        let started = dash(DashTo::Unit(id), Some(start(point)));
+        assert_eq!(dash.check(&game, grunt), holds);
+        let started = DashDelivering::new(DashDelivery {
+            source: id,
+            action: ActionId::new(0),
+            rank: Rank::FIRST,
+            start: Some(start(point)),
+        });
         assert_eq!(started.check(&game, grunt), holds);
         let mut route = game.get::<Route>(grunt).unwrap().clone();
         let tick = Tick::new(0);

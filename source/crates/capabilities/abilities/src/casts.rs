@@ -474,16 +474,12 @@ impl Casts {
         let package = checked.action.package;
         let call = CallStart {
             start: Some(start),
-            dash_delivers: checked
-                .action
-                .delivery
-                .is_none()
-                .then_some(DashDelivery::new(
-                    caster.id,
-                    checked.id,
-                    checked.rank,
-                    Some(start),
-                )),
+            dash_delivers: checked.action.delivery.is_none().then_some(DashDelivery {
+                source: caster.id,
+                action: checked.id,
+                rank: checked.rank,
+                start: Some(start),
+            }),
             ..CallStart::cast(checked.id, checked.rank, caster.id, package, now)
         };
         let owner = owner.map(|owner| owner.slot());

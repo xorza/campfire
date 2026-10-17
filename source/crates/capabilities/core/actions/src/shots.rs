@@ -8,9 +8,10 @@ use crate::action_target::ActionTarget;
 use crate::shot_damage::ShotDamage;
 
 /// The projectiles the tick's ranged attacks fire, delivery requests that `projectiles` launches
-/// in `Phase::Fire`. Not state: it empties within the tick.
+/// in `Phase::Fire`, in the order they were fired, which no reader changes. Not state: it empties
+/// within the tick.
 #[derive(Resource, Debug, Default)]
-pub struct Shots(pub Vec<Shot>);
+pub struct Shots(Vec<Shot>);
 
 /// The projectile of a ranged attack: of `unit_type`, from `source` at `from`, at `target`, a
 /// unit or, for a shot that scatters, a point of the ground, with its `damage`.
@@ -21,6 +22,18 @@ pub struct Shot {
     pub target: ActionTarget,
     pub unit_type: UnitType,
     pub damage: ShotDamage,
+}
+
+impl Shots {
+    /// Adds `shot`, fired after every shot it holds.
+    pub fn fire(&mut self, shot: Shot) {
+        self.0.push(shot);
+    }
+
+    /// Takes every shot, in the order they were fired.
+    pub fn drain(&mut self) -> impl Iterator<Item = Shot> + '_ {
+        self.0.drain(..)
+    }
 }
 
 impl Scratch for Shots {

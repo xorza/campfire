@@ -654,18 +654,16 @@ Each change folds into its document when its batch lands. Each line names the de
 - **Goldens:** none. Data that a kind ignored without a word is now refused.
 
 **5.2 One effect registry.** Touches `actions`, `combat`, `stats`, `progression`, `areas`, `navigation`, `script`.
-- Each capability declares an effect once, with its data key, script name and argument types. The data list and the `ctx` call come from that declaration (C-2, S-8).
+- Each capability declares an effect once, with its data key, script name and argument types. The data list and the `ctx` call come from that declaration (C-2, S-8). Waits for Q6 in `review-architecture_QUESTIONS.md`.
 
 **5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
+- Waits for Q7 in `review-architecture_QUESTIONS.md`.
 - One start and go-off pair in `actions` owns the checks and the times. Kinds plug in by a callback table (K-17).
 - The `Purse` contract, the living test and the passive hook are contracts in `units`, and `actions` drops `stats`. The needs-and-uses test covers core modules (C-3, E-5).
 - **Goldens:** they may move where the four loops differed. Each move is explained.
 
 **5.4 One delivery report.** Touches `deliveries`, `projectiles`, `combat`, `units`, `values`, `navigation`.
 - One `Delivered` record, so combat answers the attack payload from the hooks' queue (K-18).
-- `Shots` gets `fire` and `drain` (C-4). The module and the scratch split, and delivery callbacks are keyed by capability (C-5).
-- `ForcedMove` keeps only the movement, and `DashDelivering` comes in its bundle (C-6).
-- The doc "It builds on combat" is fixed (RW 20).
 
 **5.5 Contracts in `units`.** Touches `units`, `players`, `orders`, `navigation`, `production`, `interaction`, `items`, `net`, `visibility`, `vision`, `combat`.
 - `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20).
@@ -991,9 +989,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-1 | Action kinds are a closed enum and a flat `ActionData` of 41 fields, with a hand table of the fields for each kind, and `expect`s that package data can reach | `kind_spec.rs:11-18`, `action_data/mod.rs:36-131`, `action_data_field.rs:16-58`, `kind_data.rs:48-79` | Confirmed | 5.1 |
 | C-2, S-8 | Listed effects are a closed core enum of other capabilities' effects, and data effects and script calls are two vocabularies | `capability_does_spec.rs:11-55`, `effect_data.rs:15-42` | Confirmed | 5.2 |
 | C-3 | Costs, targets and passives tie the action pipeline to `stats`, and a target must have `Life` | `holds.rs:7-9`, `targets.rs:11, 85-90`, `purse.rs:2` | Confirmed | 5.3 |
-| C-4 | `Shots` and `ShotHits` are core scratch with `pub` `Vec` fields, so any crate can reorder them | `shots.rs:12`, `shot_hits.rs:13` | Confirmed | 5.4 |
-| C-5 | `deliveries` keys its callbacks to two capabilities, and its module type is also its scratch | `deliverers.rs:16-36`, `deliveries/src/lib.rs:31-35` | Confirmed | 5.4 |
-| C-6 | `ForcedMove` carries an action's delivery, and `DashDelivery` restates `Delivering` | `forced_move.rs:22-26`, `dash_delivery.rs:12-19`, `delivering.rs:11-17` | Confirmed | 5.4 |
 | C-7 | `StatusTags` and `SpawnPoint` sit on every body unit, though one capability uses each | `units.rs:159-161` | Confirmed | 4.5 |
 | C-8 | `Player` and `MatchEntity` are named `players.*` but live in `units` | `player.rs:16-48`, `match_entity.rs:13-35` | Confirmed | 5.5 |
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |

@@ -52,3 +52,22 @@ Decisions that the plan in `review-architecture.md` cannot take alone. Each name
   1. **Keep the three as they are (recommended).** `ClipShots` stays with `ActionSlots`, `RecentAttackers` with a type that can die, and `SpawnPoint` on every unit placed at a spawn, and the bullet goes. Cost: an empty `ClipShots` and a `SpawnPoint` on units that never read them.
   2. **Predicates with their paths.** A grant of slots that adds a clip weapon inserts `ClipShots`; the script API caps a `recent_attackers` window, and the entries are bounded by the cap and the assist window; a book of the types that keep their spawn, which combat's respawn and the orders' AI extend, gives `SpawnPoint`. Cost: a change of the script API's `recent_attackers`, a structural change at such a grant, and a book that two capabilities extend for one part.
 - **Blocked:** the first bullet of 4.5 alone.
+
+## Q6. Batch 5.2, one effect registry: how an open set of effects reads and resolves
+
+- **Item:** 5.2, C-2 and S-8, "each capability declares an effect once, with its data key, script name and argument types". Today `DoesData` and `CapabilityDoesSpec` are closed enums in `actions` (`effect_data.rs`, `capability_does_spec.rs`), and the core reads each effect for four things: its numbers, for the params' checks; its duration, for the whole-millisecond rule; the modifiers it names, for the ways that apply them; and the lists it holds, as a launch's `on_hit` and `on_end`.
+- **Why it waits:** an open set needs a type for an effect the core does not know, and a place for its resolved form, and the plan names neither. A list reads inside `[actions]`, a section that today reads with no registry, so either choice also gives a section the release's readers as it reads.
+- **Options:**
+  1. **A trait object for each effect (recommended).** `actions` defines `trait ListedEffect` with the four reads and `resolve`, and a list holds `Box<dyn ListedEffect>`, as `Problem` holds a module's error; each capability registers its parser by data key, and its `ctx` call builds the same value. A resolved effect is the capability's own, in a book of its own by index, which its `EffectQueues` callback reads. Cost: a box per listed effect at the load, and `Section` reads gain the release's readers.
+  2. **One enum of data, each capability's resolve.** `DoesData` stays a closed enum of data, and only the resolved specs and the queues move to the capabilities. Cost: the core still names each capability's effect data, so C-2 stays in part.
+  3. **Wait for 8.1.** The `ctx` calls come from the declarations only once forms carry types (8.1), so 5.2 waits until then. Cost: 5.2 moves after Phase 8.
+- **Blocked:** batch 5.2 alone.
+
+## Q7. Batch 5.3, one action pipeline: a slice of its own, with its proposal first
+
+- **Item:** 5.3, K-17, C-3 and E-5, and with it the first bullet of 5.1 (C-1), which needs 5.3's callbacks before `Weapon` leaves the core.
+- **Why it waits:** the batch flips a layer. With `actions` free of `stats`, `stats` sits above `actions`, so the modifier ways that 4.4 put in `actions` (`modifier_ways.rs`, `modifier_appliers.rs`) move to `stats`, and every pool cost, stat read, param table and level that `actions` takes from `stats` today (26 imports) goes through a contract in `units`. The four loops (`attacks.rs` 520 lines, `casts.rs` 500, the trains, the builds and the gathers) become one start and go-off pair, and the goldens may move. The plan states the target, not the contracts' shapes, and AGENTS.md asks a slice of this size for a proposal that the user reviews before it is built.
+- **Options:**
+  1. **A proposal first (recommended).** A document under `docs/design/` gives the contracts (`Purse`, the living test, the passive hook, the kinds' callback table), the new layer order and the golden moves it expects, and the plan's 5.3 and C-1 follow it once reviewed.
+  2. **Build it from the plan's target.** The batch takes each contract's shape as it goes, and the review comes with the diff. Cost: a layer flip of this size reviewed only after it is built.
+- **Blocked:** batch 5.3, and the first bullet of 5.1.

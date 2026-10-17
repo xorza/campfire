@@ -18,7 +18,7 @@ use campfire_actions::{
 };
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
-use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
+use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, SimWorld, StableId};
@@ -54,7 +54,8 @@ pub use crate::projectiles_api::ProjectilesApi;
 pub use crate::struck_units::{Struck, StruckUnits};
 
 /// The `projectiles` capability: projectile units, which ranged attacks fire and actions
-/// deliver. It builds on combat, which a match installs too.
+/// deliver. It builds on stats, whose life tells a unit from a projectile and whose move speed cap
+/// a homing projectile outruns; combat's attacks fire it when a match has both.
 #[derive(Debug)]
 pub struct Projectiles;
 
@@ -94,7 +95,7 @@ impl Module for Projectiles {
         d.component::<FlightState>();
         d.resource::<StruckUnits>();
         d.scratch::<Launches>();
-        d.callback::<Deliverers>(DeliveryKind::Projectile, Self::deliver);
+        d.callback::<Deliverers>(Capability::Projectiles, Self::deliver);
         d.require::<Projectile, FlightState>();
         d.observer(Flying::lose_teleported);
         d.extend::<UnitTypes>(Self::tag_types);

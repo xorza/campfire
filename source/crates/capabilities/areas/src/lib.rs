@@ -15,7 +15,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionTarget, ActionsSet, EffectQueues, ModifierAppliers};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
-use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
+use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
 use campfire_sim::{Capability, SimSet, StableId};
 use campfire_stats::StatsSet;
@@ -94,7 +94,7 @@ impl Module for Areas {
         d.component::<AreaTrigger>();
         d.state::<DeliveryEntity, AreaTrigger>();
         d.scratch::<AreaLaunches>();
-        d.callback::<Deliverers>(DeliveryKind::Area, Self::deliver);
+        d.callback::<Deliverers>(Capability::Areas, Self::deliver);
         d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);
         d.extend::<UnitTypes>(Self::tag_types);
         d.book::<ByType<AreaSpec>>(AreaSpec::book);

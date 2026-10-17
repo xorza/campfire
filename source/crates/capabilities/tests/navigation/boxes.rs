@@ -163,7 +163,6 @@ fn a_dash_at_a_box_ends_touching_it() {
         ForcedMove::Dash {
             to: DashTo::Unit(building),
             step: Num::ONE,
-            delivers: None,
         },
     );
     let mut path = Vec::new();

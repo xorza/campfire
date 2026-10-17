@@ -2,6 +2,7 @@ use bevy_ecs::change_detection::{DetectChanges, DetectChangesMut, Mut};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, If, Local, ParamSet, Query, Res, ResMut};
+use campfire_deliveries::DashDelivering;
 use campfire_sim::{Keyed, Ordered, Position, StableId, TickRate, Unpredicted};
 use campfire_units::{
     ArrivedShort, Body, Dead, Destination, Facing, ForcedMove, MapBook, MoveStep, TurnStep,
@@ -129,7 +130,9 @@ impl Walking {
         mut commands: Commands<'_, '_>,
     ) {
         for entity in &mut forced {
-            commands.entity(entity).remove::<ForcedMove>();
+            commands
+                .entity(entity)
+                .remove::<(ForcedMove, DashDelivering)>();
         }
         for (mut destination, mut route, mut progress) in &mut units {
             if destination.get().is_some() {

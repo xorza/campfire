@@ -14,14 +14,16 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
+use campfire_actions::{
+    ActionSlots, CapabilityDoesSpec, CastSpends, DeliveryShape, EffectQueues, QueueListed,
+};
 use campfire_combat::ClipShots;
 use campfire_common::EnumAll;
 use campfire_declare::{
     Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
     KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section, SetPlace,
 };
-use campfire_deliveries::{Deliverers, DeliveryKind};
+use campfire_deliveries::Deliverers;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_production::{Gatherer, PlayerSupply, Site, TrainQueue};
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
@@ -692,8 +694,11 @@ fn each_key_a_caller_asks_for_has_its_callback() {
         let key = format!("{:?}", does.capability());
         assert!(declared(type_name::<EffectQueues>(), key), "{does:?}");
     }
-    for kind in DeliveryKind::ALL {
-        assert!(declared(type_name::<Deliverers>(), format!("{kind:?}")));
+    for capability in DeliveryShape::CAPABILITIES {
+        assert!(declared(
+            type_name::<Deliverers>(),
+            format!("{capability:?}")
+        ));
     }
     assert!(declared(type_name::<CastSpends>(), format!("{:?}", ())));
 }

@@ -8,8 +8,8 @@ use campfire_script::{CallStart, HookCall, Pool, ScriptValue, ScriptsWorld};
 use campfire_sim::{SimTick, SimWorld};
 use campfire_units::{HitHandle, Owner};
 
-use crate::Deliveries;
 use crate::delivered::Delivered;
+use crate::delivery_queue::DeliveryQueue;
 
 /// The hooks of the tick's delivery hits and ends, and the despawn of the delivery units that
 /// ended.
@@ -20,7 +20,7 @@ impl DeliveryHooks {
     /// Despawns the delivery units that ended this tick, in a match that runs no scripts, whose
     /// hits and ends run no hook or list.
     pub(super) fn end(world: &mut World, mut ended: Local<'_, Vec<Entity>>) {
-        let mut deliveries = world.resource_mut::<Deliveries>();
+        let mut deliveries = world.resource_mut::<DeliveryQueue>();
         deliveries.delivered.clear();
         ended.clear();
         ended.append(&mut deliveries.ended);
@@ -34,7 +34,7 @@ impl DeliveryHooks {
         world: &mut World,
         (mut due, mut ended): (Local<'_, Vec<Delivered>>, Local<'_, Vec<Entity>>),
     ) {
-        let mut deliveries = world.resource_mut::<Deliveries>();
+        let mut deliveries = world.resource_mut::<DeliveryQueue>();
         due.clear();
         due.append(&mut deliveries.delivered);
         ended.clear();

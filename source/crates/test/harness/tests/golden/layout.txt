@@ -1,4 +1,4 @@
-data_version 31
+data_version 32
 actions.progress 24b230688d34435b
 actions.slot_times 776040a47152d129
 actions.slots 8792f8e9f8e71af6
@@ -12,6 +12,7 @@ combat.next_damage 22be8d9e036e2753
 combat.recent_attackers 58e017c445524785
 combat.respawn b1604652186dcd98
 combat.turret_angle b9124b2821c13b2d
+deliveries.dash_delivering 084c5a93b4d94762
 items.inventory 632c105c9e56cebf
 mode.choices c36f705c3f6b53e9
 mode.match_end c04adfc1d93b84d1
@@ -59,7 +60,7 @@ units.body_unit 6f07fc05a6a4e4ce
 units.dead 6f07fc05a6a4e4ce
 units.destination eae5b12e211c77d3
 units.facing 23383379c1ff56bf
-units.forced_move 4e5bb34e1c1bd6b7
+units.forced_move 458dbf94019e351b
 units.lifespan 5597d043d0e0b825
 units.move_step bb8f372426e16cd8
 units.owner 2ee569390c477063

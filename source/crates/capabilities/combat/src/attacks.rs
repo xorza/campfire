@@ -86,7 +86,7 @@ impl Attacks {
             reach,
             damage: shot,
             hit,
-        } in hits.0.drain(..)
+        } in hits.drain()
         {
             let damage = |target| Damage {
                 source: Some(source),
@@ -455,7 +455,7 @@ impl Attacks {
                             [draws.fraction(), draws.fraction()]
                         })
                     });
-                fired.0.push(Shot {
+                fired.fire(Shot {
                     source,
                     from: from.get(),
                     target: scattered.map_or(ActionTarget::Unit(target), ActionTarget::Point),

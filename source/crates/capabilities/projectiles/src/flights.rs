@@ -3,7 +3,7 @@ use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
 use campfire_actions::{Reached, ShotHit, ShotHits, Targets};
-use campfire_deliveries::{Delivered, Deliveries, Delivering};
+use campfire_deliveries::{Delivered, Delivering, DeliveryQueue};
 use campfire_geometry::{BodyGrid, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_script::Filters;
@@ -22,7 +22,7 @@ use crate::struck_units::{Struck, StruckUnits};
 #[derive(Debug)]
 pub(crate) struct Flights<'a> {
     pub(crate) hits: &'a mut ShotHits,
-    pub(crate) deliveries: &'a mut Deliveries,
+    pub(crate) deliveries: &'a mut DeliveryQueue,
     pub(crate) struck: &'a mut StruckUnits,
     /// The units near, when a line or a curve flies.
     pub(crate) grid: Option<&'a BodyGrid<Entity>>,
@@ -407,7 +407,7 @@ impl Flights<'_> {
         let Fired { projectile, team } = fired;
         let source = projectile.source();
         match projectile.payload() {
-            Payload::Attack(damage) => self.hits.0.push(ShotHit {
+            Payload::Attack(damage) => self.hits.hit(ShotHit {
                 source,
                 team,
                 reach,

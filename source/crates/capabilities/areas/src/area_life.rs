@@ -5,7 +5,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{Reached, Targets};
 use campfire_common::Ticks;
 use campfire_declare::ByType;
-use campfire_deliveries::{Delivered, Deliveries, DeliverySpawner, NewDelivery};
+use campfire_deliveries::{Delivered, DeliveryQueue, DeliverySpawner, NewDelivery};
 use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
@@ -31,7 +31,7 @@ impl AreaLife {
     pub(super) fn trigger(
         targets: Targets<'_, '_>,
         (specs, tick): (Res<'_, ByType<AreaSpec>>, Res<'_, SimTick>),
-        mut deliveries: ResMut<'_, Deliveries>,
+        mut deliveries: ResMut<'_, DeliveryQueue>,
         mut commands: Commands<'_, '_>,
         areas: Query<
             '_,

@@ -4,7 +4,7 @@ use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::{ShotHits, Targets};
 use campfire_declare::ByType;
-use campfire_deliveries::{Deliveries, Teleported};
+use campfire_deliveries::{DeliveryQueue, Teleported};
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, StableId};
 use campfire_stats::Life;
@@ -43,7 +43,7 @@ impl Flying {
         specs: Res<'_, ByType<ProjectileSpec>>,
         (mut hits, mut deliveries, mut struck): (
             ResMut<'_, ShotHits>,
-            ResMut<'_, Deliveries>,
+            ResMut<'_, DeliveryQueue>,
             ResMut<'_, StruckUnits>,
         ),
         mut projectiles: Query<

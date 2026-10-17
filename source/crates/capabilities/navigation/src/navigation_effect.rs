@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_actions::{CapabilityDoesSpec, EffectTo};
 use campfire_common::{Tick, Ticks};
-use campfire_deliveries::Teleported;
+use campfire_deliveries::{DashDelivering, Teleported};
 use campfire_math::{Num, Rounding, Vec3};
 use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, ScriptLasting, View};
 use campfire_sim::{Position, SimWorld, StableId};
@@ -141,7 +141,7 @@ impl NavigationEffect {
     pub(super) fn put(world: &mut World, entity: Entity, pos: Vec3, now: Tick) {
         let mut moved = world.entity_mut(entity);
         *moved.get_mut::<Position>().expect("a unit has a place") = Position::from(pos);
-        moved.remove::<ForcedMove>();
+        moved.remove::<(ForcedMove, DashDelivering)>();
         if let Ok((destination, mut route, mut progress)) =
             moved.get_components_mut::<(&Destination, &mut Route, &mut Progress)>()
         {
@@ -166,7 +166,15 @@ impl Effect for NavigationEffect {
         let forced = match self {
             Self::Dash {
                 to, step, delivers, ..
-            } => ForcedMove::Dash { to, step, delivers },
+            } => {
+                let forced = ForcedMove::Dash { to, step };
+                let mut moved = world.entity_mut(entity);
+                match delivers {
+                    Some(delivers) => moved.insert((forced, DashDelivering::new(delivers))),
+                    None => moved.insert(forced).remove::<DashDelivering>(),
+                };
+                return;
+            }
             Self::KnockBack {
                 from,
                 distance,
@@ -184,7 +192,10 @@ impl Effect for NavigationEffect {
                 return;
             }
         };
-        world.entity_mut(entity).insert(forced);
+        world
+            .entity_mut(entity)
+            .insert(forced)
+            .remove::<DashDelivering>();
     }
 }
 

@@ -1,3 +1,4 @@
+use campfire_sim::Capability;
 use campfire_values::UnitType;
 
 use crate::fan::Fan;
@@ -14,6 +15,19 @@ pub struct Delivery {
 pub enum DeliveryShape {
     Projectile { fan: Fan, flight: ProjectileFlight },
     Area,
+}
+
+impl DeliveryShape {
+    /// The capability of each shape, in the order of the shapes.
+    pub const CAPABILITIES: [Capability; 2] = [Capability::Projectiles, Capability::Areas];
+
+    /// The capability that delivers it.
+    pub const fn capability(self) -> Capability {
+        match self {
+            Self::Projectile { .. } => Self::CAPABILITIES[0],
+            Self::Area => Self::CAPABILITIES[1],
+        }
+    }
 }
 
 /// How a projectile type flies: along a line, which a script launches along a direction, or at a

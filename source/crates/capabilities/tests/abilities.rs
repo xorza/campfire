@@ -24,6 +24,7 @@ use campfire_combat::{
 };
 use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick, Ticks};
 use campfire_declare::Book;
+use campfire_deliveries::DashDelivering;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_mode::Mode;
@@ -623,18 +624,18 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     game.run_until(80);
     Abilities::cast(&mut game, caster, ActionTarget::Unit(far));
     let dashing = game.part::<ForcedMove>(caster);
-    assert!(matches!(
-        dashing,
-        ForcedMove::Dash {
-            delivers: Some(_),
-            ..
-        }
-    ));
+    assert!(matches!(dashing, ForcedMove::Dash { .. }));
+    assert!(game.try_part::<DashDelivering>(caster).is_some());
     let cut = ForcedMove::KnockBack {
         to: Vec3::ZERO,
         left: 2,
     };
-    game.insert_parts(caster, cut);
+    // A knock back takes the place of the dash, and its delivery with it, as navigation's effect
+    // puts one.
+    let entity = game.unit_entity(caster);
+    game.entity_mut(entity)
+        .insert(cut)
+        .remove::<DashDelivering>();
     game.run_until(120);
     assert_eq!(game.part::<Position>(caster).x, Num::ZERO);
     assert_eq!(

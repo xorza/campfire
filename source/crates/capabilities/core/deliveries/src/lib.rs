@@ -2,53 +2,38 @@
 // in none (09-determinism-core.md, One step: an `i128`, rounded once).
 #![warn(clippy::float_arithmetic)]
 
-use bevy_ecs::entity::Entity;
-use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ActionsSet, Reached};
+use campfire_actions::{ActionBook, ActionsSet};
 use campfire_common::EnumAll;
-use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Role, Scratch, SetPlace};
-use campfire_math::Vec3;
-use campfire_sim::{Breach, Capability, StableId};
-use campfire_units::ForcedMove;
-use campfire_values::{DashDelivery, Hit};
+use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_sim::{Breach, Capability};
+use campfire_units::{BodyUnit, ForcedMove};
 
 use crate::deliveries_api::DeliveriesApi;
 use crate::delivery_hooks::DeliveryHooks;
 
+mod dash_delivering;
 mod delivered;
 mod deliverers;
 mod deliveries_api;
 mod delivering;
 mod delivery_hooks;
+mod delivery_queue;
 mod delivery_spawner;
 mod teleported;
 
+pub use crate::dash_delivering::DashDelivering;
 pub use crate::delivered::Delivered;
-pub use crate::deliverers::{Deliverers, DeliveryKind};
+pub use crate::deliverers::Deliverers;
 pub use crate::delivering::{Delivering, Launcher};
+pub use crate::delivery_queue::{DashEnd, DeliveryQueue};
 pub use crate::delivery_spawner::{DeliverySpawner, NewDelivery};
 pub use crate::teleported::Teleported;
 
-/// The hits and ends of this tick's deliveries whose action's hooks run, in the order they
-/// happened; and the delivery units that ended, which despawn once the hooks ran, so a hook still
-/// reads its delivery. Not state: it empties within the tick.
-#[derive(Resource, Debug, Default)]
-pub struct Deliveries {
-    delivered: Vec<Delivered>,
-    ended: Vec<Entity>,
-}
-
-/// The end of a dash that delivers `dash`, aimed at `target` if a unit, whose unit stands at
-/// `pos` after a last step in `direction`.
-#[derive(Debug, Clone, Copy)]
-pub struct DashEnd {
-    pub dash: DashDelivery,
-    pub target: Option<StableId>,
-    pub pos: Vec3,
-    pub direction: Option<Vec3>,
-}
+/// The deliveries' module: the hooks that what they reached runs.
+#[derive(Debug)]
+pub struct Deliveries;
 
 /// The steps of `deliveries`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
@@ -75,8 +60,11 @@ impl Module for Deliveries {
     type Set = DeliverySet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.scratch::<Self>();
-        d.check::<ForcedMove>(Self::dashes_known);
+        d.scratch::<DeliveryQueue>();
+        d.component::<DashDelivering>();
+        d.state::<BodyUnit, DashDelivering>();
+        d.require::<DashDelivering, ForcedMove>();
+        d.check::<DashDelivering>(Self::dashes_known);
         d.api(DeliveriesApi::register);
     }
 
@@ -92,70 +80,20 @@ impl Module for Deliveries {
 }
 
 impl Deliveries {
-    /// Records `delivered`, a delivery that reached what it reached this tick.
-    pub fn deliver(&mut self, delivered: Delivered) {
-        self.delivered.push(delivered);
-    }
-
-    /// Records that the delivery unit `entity` ended this tick, so it despawns.
-    pub fn end(&mut self, entity: Entity) {
-        self.ended.push(entity);
-    }
-
-    /// Records `end`, the end of a dash that delivers an action: an end with no delivery unit,
-    /// after the meters the dash went, whose hooks are its action's.
-    pub fn end_dash(&mut self, end: DashEnd) {
-        let DashEnd {
-            dash,
-            target,
-            pos,
-            direction,
-        } = end;
-        let by = Delivering {
-            source: dash.source,
-            action: dash.action,
-            rank: dash.rank,
-            start: dash.start,
-            launch: None,
-        };
-        let hit = Hit {
-            delivery: None,
-            target,
-            pos,
-            distance: dash.dashed,
-            direction,
-        };
-        self.delivered.push(Delivered {
-            by,
-            reach: Reached::End,
-            hit,
-        });
-    }
-
-    /// The restore check of each dash that delivers an action: its action at its rank is in the
-    /// book, whose hooks the dash's end runs.
+    /// The restore check of each dash that delivers an action: its unit dashes, and its action
+    /// at its rank is in the book, whose hooks the dash's end runs.
     fn dashes_known(world: &World) -> Result<(), Breach> {
         let book = world.resource::<ActionBook>();
         Breach::first(world, |entity| {
-            let Some(ForcedMove::Dash {
-                delivers: Some(dash),
-                ..
-            }) = world.get::<ForcedMove>(entity)
-            else {
+            let Some(dash) = world.get::<DashDelivering>(entity) else {
                 return false;
             };
-            !book.ranked(dash.action, dash.rank)
+            let dashes = matches!(
+                world.get::<ForcedMove>(entity),
+                Some(ForcedMove::Dash { .. })
+            );
+            !dashes || !book.ranked(dash.by.action, dash.by.rank)
         })
-    }
-}
-
-impl Scratch for Deliveries {
-    fn installed(_: &Role) -> Option<Self> {
-        Some(Self::default())
-    }
-
-    fn is_clear(&self) -> bool {
-        self.delivered.is_empty() && self.ended.is_empty()
     }
 }
 
@@ -169,15 +107,9 @@ pub mod internals {
     use campfire_values::UnitType;
 
     use crate::Deliveries;
-    use crate::delivered::Delivered;
     use crate::delivery_spawner::{DeliverySpawner, NewDelivery};
 
     impl Deliveries {
-        /// The deliveries recorded this tick, to change as a test sets them.
-        pub const fn delivered_mut(&mut self) -> &mut Vec<Delivered> {
-            &mut self.delivered
-        }
-
         /// Spawns a delivery of `unit_type` for `source` at `pos`, with `parts`, which make it
         /// one, as an action's delivery spawns: its stable id.
         pub fn spawn_of<B: Bundle>(
