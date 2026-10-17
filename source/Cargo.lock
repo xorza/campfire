@@ -2827,7 +2827,6 @@ dependencies = [
  "campfire-declare",
  "campfire-geometry",
  "campfire-math",
- "campfire-navigation",
  "campfire-players",
  "campfire-production",
  "campfire-script",

@@ -34,6 +34,7 @@
 - **A seen enemy blocks, a friendly or hidden one moves out.** A placement fails where its box overlaps a wall, a static body, or a walker of a team not friendly to the builder's that the builder's group sees. A refusal for a hidden walker would tell the builder it is there, so a hidden enemy is moved out as a friendly walker is, at the cost that a player may move a hidden enemy by building on it.
 - **A walker in the box goes to the nearest free cell,** as a teleport places a unit: collision would push a walker caught between the new box and another static body from one into the other every tick.
 - **Near and away rules.** A build may need to stand near a unit, as a Protoss pylon's field, or away from one, as a town hall keeps from minerals.
+- **Production asks navigation through units.** A placement reads the walls from `units`' book of them, which navigation builds from its map section, and tests the static bodies through the unit grid; a trained unit's free cell comes from a one-shot system `units` declares and navigation registers. Refused: production depending on navigation for two reads, and the pathing grid's static index and ring search moved down into `units`, which would hold navigation's pathing types (R-31).
 
 ## Gathering
 
