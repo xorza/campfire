@@ -129,9 +129,9 @@ impl LoadError {
 
 #[cfg(test)]
 mod tests {
+    use campfire_actions::ActionProblem;
     use campfire_common::DeclaredName;
     use campfire_declare::{BookError, BookPlace, Problem};
-    use campfire_stats::ModifierProblem;
     use campfire_values::PackageIndex;
 
     use super::*;
@@ -151,7 +151,7 @@ mod tests {
     }
 
     /// The problem of a module's rule that `error` gives.
-    fn rule(error: ModifierProblem) -> Problem {
+    fn rule(error: ActionProblem) -> Problem {
         match BookError::rule(PackageIndex::MODE, BookPlace::Map, error) {
             BookError::Rule { problem, .. } => problem,
             other => panic!("a rule's error, not {other:?}"),
@@ -169,15 +169,15 @@ mod tests {
             (
                 LoadProblem::Rule {
                     at: Place::Entry {
-                        table: "modifiers",
+                        table: "actions",
                         name: DeclaredName::new("haste").unwrap(),
                     },
-                    problem: rule(ModifierProblem::Time),
+                    problem: rule(ActionProblem::SlottedRanks),
                 },
                 &[
                     "package hero",
-                    "[modifiers.haste]",
-                    "a time negative or too large to count in ticks",
+                    "[actions.haste]",
+                    "placed in slot kinds of different ranks",
                 ][..],
             ),
             (

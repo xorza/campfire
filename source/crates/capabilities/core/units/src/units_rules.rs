@@ -1,14 +1,28 @@
-use campfire_declare::{BookCx, BookError, BookPlace, SectionTable};
+use campfire_declare::{BookCx, BookError, BookPlace, SectionTable, StateFields};
 use campfire_geometry::Metric;
 use campfire_values::EngineTag;
 
 use crate::collision_data::CollisionData;
 use crate::error::UnitTypeError;
 use crate::map_book::MetricData;
-use crate::unit_type_core::TypeTagsData;
+use crate::unit_type_core::{TypeStateData, TypeTagsData};
 use crate::units::Units;
 
 impl Units {
+    /// Adds the state fields of every unit type, an avatar's among them.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn state_fields(cx: &BookCx<'_>, fields: &mut StateFields) -> Result<(), BookError> {
+        for unit in cx.types() {
+            if let Some(state) = unit.data.section::<TypeStateData>() {
+                fields.extend(state.0.keys());
+            }
+        }
+        Ok(())
+    }
+
     /// The rule of every unit type: it holds no tag only the engine gives; a delivery type holds
     /// one delivery's section and, beside it, only sections any type holds; and a box body lies
     /// on a planar map.

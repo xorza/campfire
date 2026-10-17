@@ -1,7 +1,7 @@
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamesListError, Section, Sections};
 use campfire_geometry::{Grid, Polygon};
 use campfire_math::{Num, Vec3};
-use campfire_units::{BodyForm, Layer, LayerNames, MapBook, MapPoint, MoveStep};
+use campfire_units::{BodyForm, DeclaredTags, Layer, LayerNames, MapBook, MapPoint, MoveStep};
 use campfire_values::{Names, NamesError, PackageIndex};
 
 use crate::Navigation;
@@ -23,6 +23,17 @@ impl Navigation {
             let problem = NavigationDataError::NoPathingGrid;
             return Err(BookError::rule(PackageIndex::MODE, at, problem));
         }
+        Ok(())
+    }
+
+    /// Adds the names of the mode's layers, each a tag.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn layer_tags(cx: &BookCx<'_>, tags: &mut DeclaredTags) -> Result<(), BookError> {
+        let data = cx.mode_section::<ModeNavigationData>().into_iter();
+        tags.extend(data.flat_map(|data| &data.layers));
         Ok(())
     }
 

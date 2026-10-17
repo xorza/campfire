@@ -1,15 +1,13 @@
-use std::collections::BTreeSet;
 use std::iter;
 use std::sync::Arc;
 
 use campfire_capabilities::{BookInput, Books, PackageContent, PackageScript, Release};
-use campfire_common::{DeclaredName, MapName, PackageFingerprint};
+use campfire_common::{MapName, PackageFingerprint};
 use campfire_declare::{ScriptAt, SourceKind, SourcePackage};
 use campfire_mode::{MapData, ModeData};
-use campfire_navigation::ModeNavigationData;
 use campfire_script::{ScriptHost, ScriptId, ScriptUses};
 use campfire_sim::TickRate;
-use campfire_units::{HeightGrid, ModeTagsData, ScriptBook, TypeTagsData};
+use campfire_units::{HeightGrid, ScriptBook};
 use campfire_values::{EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
@@ -53,8 +51,6 @@ pub struct ModePackages {
     scripts: ScriptBook,
     /// What each script uses of the data, in the same order.
     uses: ScriptUses,
-    /// Every tag its packages name but the engine's, in the order a match declares them.
-    tag_names: Vec<DeclaredName>,
 }
 
 impl ModePackages {
@@ -131,8 +127,9 @@ impl ModePackages {
     /// The names of its unit types, each in its scope, as a match's books number them.
     pub fn unit_types(&self) -> Arc<Names<UnitType>> {
         let engine_tags = Release::engine_tags();
-        let types = Books::unit_types(&engine_tags, self.tag_names(), &self.book_packages());
-        Arc::clone(types.expect("the load declared every type").types())
+        let input = self.book_input(TickRate::new(self.manifest.tick_hz.fastest()), &engine_tags);
+        let types = Release::unit_types(&input).expect("the load declared every type");
+        Arc::clone(types.types())
     }
 
     /// Every script of its packages, in the order a match compiles them, which numbers each at
@@ -187,7 +184,6 @@ impl ModePackages {
             max_move_speed: self.manifest.max_move_speed,
             set: self.manifest.capabilities,
             engine_tags,
-            tag_names: &self.tag_names,
             packages: self.book_packages(),
             scripts: &self.scripts,
             script_uses: &self.uses,
@@ -256,53 +252,6 @@ impl ModePackages {
     /// The map's height grid, when it has one.
     pub const fn heights(&self) -> Option<&HeightGrid> {
         self.heights.as_ref()
-    }
-
-    /// Every tag its packages name but the engine's, each once, sorted: the tags of its unit
-    /// types, its avatars' and its dependencies' delivery types, the names of its layers, those
-    /// its and its dependencies' modifiers grant, and those of its `[tags]` and their
-    /// immunities. A match declares them in this order after the engine's, so it numbers them
-    /// the same however it loads.
-    pub fn tag_names(&self) -> &[DeclaredName] {
-        &self.tag_names
-    }
-
-    /// The tag names of a mode of `mode`'s data and content, and of `dependencies`; see
-    /// `tag_names`.
-    fn collect_tag_names(
-        mode: (&ModeData, &PackageContent),
-        dependencies: &[Dependent],
-    ) -> Vec<DeclaredName> {
-        let (data, content) = mode;
-        let mode_tags = data.section_or_default::<ModeTagsData>();
-        let navigation = data.section_or_default::<ModeNavigationData>();
-        let engine = Release::engine_tags();
-        let contents =
-            iter::once(content).chain(dependencies.iter().map(|dependent| &dependent.content));
-        let modifiers = contents
-            .clone()
-            .flat_map(|content| content.modifiers().values())
-            .flat_map(|modifier| &modifier.tags);
-        let avatars = dependencies
-            .iter()
-            .filter_map(|dependent| match &dependent.kind {
-                DependentKind::Avatar(avatar) => Some(&avatar.unit),
-                DependentKind::Loadout | DependentKind::Rules => None,
-            });
-        let types = contents
-            .flat_map(|content| content.units.values())
-            .chain(avatars)
-            .filter_map(|unit_type| unit_type.section::<TypeTagsData>())
-            .flat_map(|tags| &tags.0);
-        let declared =
-            (mode_tags.0.iter()).flat_map(|(name, tag)| [name].into_iter().chain(&tag.immune));
-        let names: BTreeSet<&DeclaredName> = modifiers
-            .chain(types)
-            .chain(declared)
-            .chain(&navigation.layers)
-            .filter(|name| EngineTag::named(&engine, name.as_str()).is_none())
-            .collect();
-        names.into_iter().cloned().collect()
     }
 
     /// The packages it depends on, in the order of their names in its manifest.
@@ -381,7 +330,6 @@ impl ModePackages {
         let dependents = dependencies.iter().map(|dependent| &dependent.package);
         let scripts = Self::read_hooks(iter::once(&mode).chain(dependents.clone()));
         let uses = Self::read_uses(iter::once(&mode).chain(dependents));
-        let tag_names = Self::collect_tag_names((&data, &content), &dependencies);
         let packages = Self {
             mode,
             manifest,
@@ -394,7 +342,6 @@ impl ModePackages {
             dependencies,
             scripts,
             uses,
-            tag_names,
         };
         LoadCheck::run(&packages, &api)?;
         Ok(packages)
@@ -415,4 +362,25 @@ fn maps_of(index: &FileIndex) -> Result<Vec<MapName>, LoadProblem> {
         })
         .map(|name| MapName::parse(name).ok_or_else(|| LoadProblem::MapDirName(name.to_owned())))
         .collect()
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_capabilities::Release;
+    use campfire_sim::TickRate;
+
+    use crate::mode_packages::ModePackages;
+
+    impl ModePackages {
+        /// Every tag its packages name but the engine's, in the order a match declares them,
+        /// after the engine's.
+        pub fn tag_names(&self) -> Vec<String> {
+            let engine_tags = Release::engine_tags();
+            let rate = TickRate::new(self.manifest.tick_hz.fastest());
+            let types = Release::unit_types(&self.book_input(rate, &engine_tags));
+            let types = types.expect("the load declared every tag");
+            let names = types.tags().names().texts().skip(engine_tags.len());
+            names.map(str::to_owned).collect()
+        }
+    }
 }

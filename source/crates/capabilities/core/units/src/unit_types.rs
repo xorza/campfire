@@ -11,6 +11,7 @@ use campfire_values::{
 
 use crate::avatar::Avatar;
 use crate::body_form::BodyForm;
+use crate::declared_tags::DeclaredTags;
 use crate::error::TypesError;
 use crate::layer::Layer;
 use crate::layer_names::LayerNames;
@@ -170,7 +171,7 @@ impl UnitTypes {
         let source = cx.source();
         let fail = |error| BookError::rule(PackageIndex::MODE, BookPlace::Types, error);
         let mut types = Self::new(source.engine_tags.iter().copied());
-        for name in source.tag_names {
+        for name in cx.fact::<DeclaredTags>()?.of_packages(source.engine_tags) {
             types.declare(name.as_str()).map_err(fail)?;
         }
         for (index, package) in cx.packages() {

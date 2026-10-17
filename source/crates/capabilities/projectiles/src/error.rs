@@ -15,6 +15,9 @@ pub enum ProjectileError {
     /// on a line, as only one that hits can.
     #[error("a projectile that hits nothing neither homes, stops, hits once a cast nor is wide")]
     HitsNothing,
+    /// It gives `gravity`, which the script API plans and the release does not read yet.
+    #[error("gravity is planned, and the release does not read it yet")]
+    Gravity,
 }
 
 /// Why an action's projectile delivery breaks a rule of the projectiles. Packages are untrusted,

@@ -13,7 +13,9 @@ use campfire_actions::{
     ActionProgress, ActionSlots, ActionsSet, CastSpends, SlotClaims, SlotTimes, SlotsMut, UseGroup,
 };
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declare::{
+    ByType, Declarations, InstallCx, Module, ModuleSet, NamedMessages, SetPlace,
+};
 use campfire_sim::{Capability, SimSet};
 use campfire_units::BodyUnit;
 
@@ -102,6 +104,7 @@ impl Module for Items {
         d.book::<ByType<UseGroup>>(Inventory::groups);
         d.extend::<ByType<ActionSlots>>(Self::inventory_slots);
         d.extend::<SlotClaims>(Self::claim_slots);
+        d.extend::<NamedMessages>(Self::named_messages);
         d.rule(Self::rule);
         d.part::<BodyUnit, Inventory>(|at| at.of_type::<Inventory>().cloned());
         d.part::<BodyUnit, UseGroup>(|at| at.of_type::<UseGroup>().copied());

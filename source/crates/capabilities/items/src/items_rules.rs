@@ -3,7 +3,7 @@ use std::num::NonZeroUsize;
 
 use campfire_actions::{ActionKind, ActionsData, SlotClaim, SlotClaims};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Section, TypePlace};
+use campfire_declare::{BookCx, BookError, BookPlace, NamedMessages, Section, TypePlace};
 use campfire_players::ResourceBook;
 use campfire_sim::Capability;
 use campfire_stats::PassiveData;
@@ -17,6 +17,26 @@ use crate::items_data::ItemsData;
 use crate::shop_data::ShopData;
 
 impl Items {
+    /// Adds the name of each item type of the mode, a message of the mode's package.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn named_messages(
+        cx: &BookCx<'_>,
+        messages: &mut NamedMessages,
+    ) -> Result<(), BookError> {
+        let items = cx.package(PackageIndex::MODE).content.get::<ItemsData>();
+        for (id, item) in items.into_iter().flat_map(|items| &items.0) {
+            let at = BookPlace::Entry {
+                table: ItemsData::KEY,
+                name: id.clone(),
+            };
+            messages.name(PackageIndex::MODE, at, &item.name);
+        }
+        Ok(())
+    }
+
     /// Claims the slots of each inventory, of its slot kind, as its items fill them.
     #[expect(
         clippy::unnecessary_wraps,

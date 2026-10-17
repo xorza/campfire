@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
+use campfire_declare::{BookCx, BookError, BookPlace, Fact, NamedScripts, ScriptParams, Section};
 use campfire_math::Num;
-use campfire_script::{NameKind, ParamProblem, ScriptUses, UnknownName};
+use campfire_script::{NameKind, ParamProblem, ScriptRole, ScriptUses, UnknownName};
 use campfire_sim::TickRate;
 use campfire_stats::{EdgeError, ModifierData, ModifiersData, StatGraph};
 use campfire_values::{PackageIndex, Param};
@@ -64,16 +64,33 @@ impl ModifierWays {
         })
     }
 
-    /// The params that the actions of `actions`, the package's at `package`, that apply its
-    /// modifier `id` give it: what its script may read beside its own.
-    pub fn given_params<'m>(
-        &self,
-        package: PackageIndex,
-        id: &str,
-        actions: &'m BTreeMap<DeclaredName, ActionData>,
-    ) -> impl Iterator<Item = &'m DeclaredName> {
-        let by = self.actions_of(package, id, actions);
-        by.flat_map(|(_, action)| action.params.keys())
+    /// Adds the script of each package's modifier, which serves the modifier and reads its own
+    /// params and those the actions that apply it give.
+    pub(crate) fn named_scripts(
+        cx: &BookCx<'_>,
+        scripts: &mut NamedScripts,
+    ) -> Result<(), BookError> {
+        let ways = cx.fact::<Self>()?;
+        let no_actions = BTreeMap::new();
+        for (package, source) in cx.packages() {
+            let Some(modifiers) = source.content.get::<ModifiersData>() else {
+                continue;
+            };
+            let actions = source.content.get::<ActionsData>();
+            let actions = actions.map_or(&no_actions, |actions| &actions.0);
+            for (id, modifier) in &modifiers.0 {
+                let Some(script) = &modifier.script else {
+                    continue;
+                };
+                let by = ways.actions_of(package, id.as_str(), actions);
+                let given = by.flat_map(|(_, action)| action.params.keys());
+                let readable: BTreeSet<&DeclaredName> =
+                    modifier.params.keys().chain(given).collect();
+                let params = ScriptParams::Named(readable.into_iter().cloned().collect());
+                scripts.name(package, script, ScriptRole::Modifier, params);
+            }
+        }
+        Ok(())
     }
 
     /// The rule of every package's modifiers as their ways apply them: each param a modifier

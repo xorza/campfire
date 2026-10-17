@@ -643,9 +643,6 @@ Each change folds into its document when its batch lands. Each line names the de
 **4.1 Books before the install.** Touches the release, `declare`, `values` (engine tags).
 - `declare` assigns engine tag numbers in declaration order (RW 20). Waits for Q3 in `review-architecture_QUESTIONS.md`.
 
-**4.4 Data checks declared with their modules.** Touches `package` and each capability.
-- `d.check` returns the module's own error inside a `LoadProblem` case of `declare`. `package` keeps only the checks across packages and drops its capability dependencies (B-18).
-
 **4.5 Parts from data.** Touches `combat`, `stats`, `units`, `production`, `sim`, `state-types`.
 - Per-type predicates give `ClipShots`, `RecentAttackers` (with its entries bounded by the window), `StatusTags` and `SpawnPoint` (K-11, C-7).
 - `OnDeath` is read through the type's book, and a `Mortal` marker is required by `Life` (K-15).
@@ -1127,7 +1124,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-24 | A 2 ms frame loop runs every Lightyear system 500 times a second for each match | `net_protocol/mod.rs:73-76`, `apps/server/src/main.rs:193` | Plausible | 11.2 |
 | N-25 | Small allocations for each message on the network paths | `offering.rs:259-263`, `input_ack.rs:18-27`, `chain_history/mod.rs:45-52` | Confirmed | 6.5 |
 | N-26, B-19 | `net` depends on `combat` for a log line and on `vision` for interest | `sim_server/mod.rs:16, 654-665`, `team_rooms.rs:4`, `kind_shows.rs:13` | Confirmed | 5.5 |
-| N-27, B-18 | Every capability's data rules live in `package`'s one load check, so `package` depends on five capability crates | `load_check.rs` (2,237 lines), `error/load_problem.rs:1-12` | Confirmed | 4.4 |
 | N-29 | A test's per-tick hash runs in the production schedule, and an error variant names the wrong fingerprint | `sim_server/mod.rs:224, 473-476`, `session/error.rs:37` | Confirmed | 6.2 |
 
 ### The client, the importer and the checks

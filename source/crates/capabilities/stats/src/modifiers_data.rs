@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Section, SectionTable};
+use campfire_declare::{BookCx, BookError, BookPlace, Section, SectionTable, StateFields};
 use campfire_script::{NameKind, UnknownName};
+use campfire_units::DeclaredTags;
 use campfire_values::EngineTag;
 use serde::Deserialize;
 
@@ -20,6 +21,42 @@ impl Section for ModifiersData {
 }
 
 impl ModifiersData {
+    /// Adds the tags every package's modifiers grant.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn granted_tags(cx: &BookCx<'_>, tags: &mut DeclaredTags) -> Result<(), BookError> {
+        for (_, source) in cx.packages() {
+            let modifiers = source.content.get::<Self>();
+            for modifier in modifiers
+                .into_iter()
+                .flat_map(|modifiers| modifiers.0.values())
+            {
+                tags.extend(&modifier.tags);
+            }
+        }
+        Ok(())
+    }
+
+    /// Adds the state fields of every package's modifiers.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn state_fields(cx: &BookCx<'_>, fields: &mut StateFields) -> Result<(), BookError> {
+        for (_, source) in cx.packages() {
+            let modifiers = source.content.get::<Self>();
+            for modifier in modifiers
+                .into_iter()
+                .flat_map(|modifiers| modifiers.0.values())
+            {
+                fields.extend(modifier.state.keys());
+            }
+        }
+        Ok(())
+    }
+
     /// The rule of every package's modifiers: each grants no tag only the engine gives, and an
     /// aura's modifier is one of its package's, through which the ways that apply it pass on.
     pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {

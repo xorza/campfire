@@ -51,7 +51,6 @@ impl TestPackage<'_> {
             max_move_speed: Speed::new(Num::MAX).unwrap(),
             set: Release::capabilities(),
             engine_tags: &Release::engine_tags(),
-            tag_names: &[],
             packages: vec![mode],
             scripts: &ScriptBook::default(),
             script_uses: &ScriptUses::default(),

@@ -483,7 +483,6 @@ mod tests {
             rate: TickRate::new(NonZeroU32::MIN),
             set: CapabilitySet::CORE,
             engine_tags: &[],
-            tag_names: &[],
             mode: &none,
             map: &none,
             packages: Vec::new(),
@@ -594,7 +593,6 @@ mod tests {
             rate: TickRate::new(NonZeroU32::MIN),
             set: CapabilitySet::CORE,
             engine_tags: &[],
-            tag_names: &[],
             mode: &none,
             map: &none,
             packages: vec![

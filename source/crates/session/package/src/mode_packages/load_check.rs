@@ -1,38 +1,32 @@
-use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_actions::{ActionData, ActionKind, ActionsData};
-use campfire_capabilities::{LoadNames, Release};
+use campfire_actions::{ActionData, ActionKind};
+use campfire_capabilities::{LoadNames, PackageContent, Release};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookError, BookPlace, Section, SectionReaders, SectionTable, TypePlace};
-use campfire_items::ItemsData;
-use campfire_mode::ModeData;
-use campfire_orders::AiData;
-use campfire_projectiles::ProjectileData;
+use campfire_declare::{
+    BookError, BookPlace, ScriptParams, SectionReaders, SectionTable, TypePlace,
+};
 use campfire_script::{
     ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind, ScriptApi,
     ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, UnknownName,
 };
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::{ModeStatsData, ModifierData};
-use campfire_units::TypeStateData;
-use campfire_values::{FilterData, MessageId, PackageIndex, PackagePath, Stat};
+use campfire_values::{FilterData, MessageId, PackageIndex, PackagePath};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
-use crate::files::mode_script::ModeScript;
 use crate::mode_packages::ModePackages;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
 
 /// The checks at package load (08-script-api.md, Checks at package load), over a mode and every
-/// package it depends on: data matches its schema (the reads checked that), every per-rank array
-/// has an entry for each rank, every script is named by data and defines only hooks of its roles,
-/// and every capability, `ctx` name, modifier, param, stat, filter and damage kind a script or data
-/// names exists for the mode. And every homing projectile is faster than the mode's move speed cap.
+/// package it depends on: each section is of a capability the mode declares, the modules' rules
+/// of their data hold, every script is named by data and defines only hooks of its roles, every
+/// name a script uses is one the mode has, and every message data names is one its package's own
+/// language gives.
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
@@ -40,36 +34,15 @@ pub(crate) struct LoadCheck<'a> {
     names: &'a LoadNames,
     /// The script API of the release, which every name a script uses must be of.
     api: &'a ScriptApi,
-    /// Every field a script may name after `.state`: those of the mode's state, and of every
-    /// modifier's and unit type's of its packages, as a script's handle has no type the load
-    /// knows.
-    state_fields: BTreeSet<&'a str>,
-    /// The mode's sections the checks read, each as a mode that does not give it reads it.
-    sections: ModeSections<'a>,
-}
-
-/// The mode's sections the checks read, each as a mode that does not give it reads it.
-#[derive(Debug)]
-struct ModeSections<'a> {
-    stats: Cow<'a, ModeStatsData>,
-}
-
-impl<'a> ModeSections<'a> {
-    fn of(data: &'a ModeData) -> Self {
-        Self {
-            stats: data.section_or_default(),
-        }
-    }
 }
 
 /// The facts one package's checks share.
 #[derive(Debug)]
 struct PackageNames<'a> {
     package: &'a Package,
+    content: &'a PackageContent,
     /// What data says of each script it names.
     scripts: BTreeMap<&'a PackagePath, ScriptUse<'a>>,
-    modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
-    actions: &'a BTreeMap<DeclaredName, ActionData>,
 }
 
 /// What data says of a script: the roles it serves, and the params its `ctx.p` may read.
@@ -95,8 +68,6 @@ impl<'a> LoadCheck<'a> {
             packages,
             names: &names,
             api,
-            state_fields: LoadCheck::state_fields(packages),
-            sections: ModeSections::of(&packages.data),
         };
         check.mode().map_err(fail)?;
         check.planned_data().map_err(fail)?;
@@ -117,30 +88,52 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode package: its unit types' sections, its map, its modifiers and its scripts.
+    /// The mode package: the names players see of it, and what its data names.
     fn mode(&self) -> Result<(), LoadProblem> {
-        let packages = self.packages;
-        let data = &packages.data;
-        let content = &packages.content;
-        let units = &content.units;
         self.names()?;
-        let mut names = PackageNames::new(&packages.mode, content.modifiers(), content.actions());
-        let mode_params: BTreeSet<&str> = data.param_names().map(DeclaredName::as_str).collect();
-        if let ModeScript::Own(path) = &packages.script {
-            names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
-        }
-        for unit_type in units.values() {
-            if let Some(orders) = unit_type.section::<AiData>() {
-                names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
+        self.package(self.packages.mode())
+    }
+
+    /// What the data of the package at `view` names: each message, of its own language's file,
+    /// and each script, which serves its roles and reads the params they give; and its scripts.
+    fn package(&self, view: PackageView<'a>) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let of_package = |package: PackageIndex| package == view.index;
+        for named in self.names.messages() {
+            if of_package(named.package) {
+                let at = book_place(packages, view.index, named.at.clone());
+                message(view.package, &named.message, &at)?;
             }
         }
-        self.actions(content.actions(), &mut names)?;
-        self.modifiers(PackageIndex::MODE, &mut names);
+        let mut names = PackageNames::new(view.package, view.content);
+        let mode_params: Vec<&str> = packages
+            .data
+            .param_names()
+            .map(DeclaredName::as_str)
+            .collect();
+        if packages.runs_script_of(view) {
+            let path = packages.script.path();
+            names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
+        }
+        for named in self.names.scripts() {
+            if !of_package(named.package) {
+                continue;
+            }
+            match &named.params {
+                ScriptParams::Named(params) => {
+                    let params = params.iter().map(DeclaredName::as_str);
+                    names.serve(&named.path, named.role, params);
+                }
+                ScriptParams::Mode => {
+                    names.serve(&named.path, named.role, mode_params.iter().copied());
+                }
+            }
+        }
         self.scripts(&names)
     }
 
-    /// The names players see of the mode, each team of its manifest, each choice and each item
-    /// type: each is a message its own language's file gives, and every team has one.
+    /// The names players see of the mode, each team of its manifest and each choice: each is a
+    /// message its own language's file gives, and every team has one.
     fn names(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let (data, mode) = (&packages.data, &packages.mode);
@@ -165,16 +158,6 @@ impl<'a> LoadCheck<'a> {
         }
         for (id, choice) in &data.choices {
             message(mode, &choice.name, &Place::Choice(id.clone()))?;
-        }
-        for (id, item) in packages.content.items() {
-            message(
-                mode,
-                &item.name,
-                &Place::Entry {
-                    table: ItemsData::KEY,
-                    name: id.clone(),
-                },
-            )?;
         }
         Ok(())
     }
@@ -207,8 +190,7 @@ impl<'a> LoadCheck<'a> {
         dependent: &'a Dependent,
     ) -> Result<(), LoadProblem> {
         let package = &dependent.package;
-        let content = &dependent.content;
-        let (actions, modifiers) = (content.actions(), content.modifiers());
+        let actions = dependent.content.actions();
         match &dependent.kind {
             DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(package.header.name.clone());
@@ -218,68 +200,7 @@ impl<'a> LoadCheck<'a> {
             DependentKind::Loadout => named(actions)?,
             DependentKind::Rules => {}
         }
-        let mut names = PackageNames::new(package, modifiers, actions);
-        let data = &self.packages.data;
-        let mode_params: BTreeSet<&str> = data.param_names().map(DeclaredName::as_str).collect();
-        if let ModeScript::Rules {
-            package: name,
-            path,
-        } = &self.packages.script
-            && *name == package.header.name
-        {
-            names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
-        }
-        for unit_type in content.units.values() {
-            if let Some(orders) = unit_type.section::<AiData>() {
-                names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
-            }
-        }
-        self.actions(actions, &mut names)?;
-        self.modifiers(view.index, &mut names);
-        self.scripts(&names)
-    }
-
-    /// A package's `actions`: the name of each a message of the package, and the roles of their
-    /// scripts in `names`, each with the params it may read.
-    fn actions(
-        &self,
-        actions: &'a BTreeMap<DeclaredName, ActionData>,
-        names: &mut PackageNames<'a>,
-    ) -> Result<(), LoadProblem> {
-        for (id, action) in actions {
-            let at = Place::Entry {
-                table: ActionsData::KEY,
-                name: id.clone(),
-            };
-            if let Some(name) = &action.name {
-                message(names.package, name, &at)?;
-            }
-            if let Some(script) = &action.script {
-                names.serve(
-                    script,
-                    ScriptRole::Action,
-                    action.params.keys().map(DeclaredName::as_str),
-                );
-            }
-        }
-        Ok(())
-    }
-
-    /// The roles of the package's modifiers' scripts in `names`, each with the params it may
-    /// read: its modifier's own, and those the actions that apply the modifier give, of the
-    /// package at `package`.
-    fn modifiers(&self, package: PackageIndex, names: &mut PackageNames<'a>) {
-        for (id, modifier) in names.modifiers {
-            if let Some(script) = &modifier.script {
-                let given = self.names.given_params(package, id);
-                let readable = modifier.params.keys().chain(given);
-                names.serve(
-                    script,
-                    ScriptRole::Modifier,
-                    readable.map(DeclaredName::as_str),
-                );
-            }
-        }
+        self.package(view)
     }
 
     /// Every script of the package: named by data, its hooks those of its roles, and every name
@@ -362,11 +283,11 @@ impl<'a> LoadCheck<'a> {
             for named in &facts.names {
                 self.script_name(named, names, path)?;
             }
-            if let Some(field) = facts
-                .state_fields
-                .iter()
-                .find(|field| !self.state_fields.contains(field.as_str()))
-            {
+            let declared = |field: &&String| {
+                self.packages.data.state.contains_key(field.as_str())
+                    || self.names.state_fields().has(field)
+            };
+            if let Some(field) = facts.state_fields.iter().find(|field| !declared(field)) {
                 return Err(fail(ScriptProblem::UnknownState(field.clone())));
             }
         }
@@ -400,31 +321,6 @@ impl<'a> LoadCheck<'a> {
             }
         }
         Ok(())
-    }
-
-    /// Every state field the match's packages declare: the mode's, and every modifier's and unit
-    /// type's, avatars among them.
-    fn state_fields(packages: &'a ModePackages) -> BTreeSet<&'a str> {
-        let mut fields: BTreeSet<&str> = packages
-            .data
-            .state
-            .keys()
-            .map(DeclaredName::as_str)
-            .collect();
-        for view in packages.packages() {
-            let content = view.content;
-            let modifiers =
-                (content.modifiers().values()).flat_map(|modifier| modifier.state.keys());
-            let avatar = match view.kind {
-                ViewKind::Avatar(avatar) => Some(&avatar.unit),
-                ViewKind::Mode | ViewKind::Loadout | ViewKind::Rules => None,
-            };
-            let units = content.units.values().chain(avatar);
-            let units = units.filter_map(|unit| unit.section::<TypeStateData>());
-            let units = units.flat_map(|state| state.0.keys());
-            fields.extend(modifiers.chain(units).map(DeclaredName::as_str));
-        }
-        fields
     }
 
     /// The hook `function` defines, if its name is a hook's: one of `roles` that runs, with the
@@ -521,20 +417,15 @@ impl<'a> LoadCheck<'a> {
         let known = match self.names.has(named.kind, name) {
             Some(known) => known,
             None => match named.kind {
-                NameKind::Modifier => package.modifiers.contains_key(name),
-                NameKind::Ability => package.actions.contains_key(name),
+                NameKind::Modifier => package.content.modifiers().contains_key(name),
+                NameKind::Ability => package.content.actions().contains_key(name),
                 NameKind::Message => package.package.text.gives(name),
                 NameKind::Param => package
                     .scripts
                     .get(path)
                     .is_some_and(|script| script.params.contains(name)),
                 NameKind::Filter => return self.filter_text(name, &at),
-                NameKind::Stat => {
-                    let stat = Stat::named(name).ok_or_else(unknown)?;
-                    return self.stats_declared([&stat], &at);
-                }
                 NameKind::Choice => declares(data.choices.keys(), name),
-                NameKind::Item => packages.content.items().contains_key(name),
                 kind => unreachable!("the load's names hold every {kind}"),
             },
         };
@@ -620,8 +511,8 @@ impl<'a> LoadCheck<'a> {
         })
     }
 
-    /// No data gives a field the script API plans: the mode's `state_version`, or a projectile
-    /// type's `gravity` in any package. An action's planned effects fail the action's own checks.
+    /// No data gives a field the script API plans: the mode's `state_version`. A projectile's
+    /// `gravity` and an action's planned effects fail the rules of their modules.
     fn planned_data(&self) -> Result<(), LoadProblem> {
         let planned = |table: DataTable, field: &str| {
             self.api.data().iter().any(|held| {
@@ -635,38 +526,7 @@ impl<'a> LoadCheck<'a> {
                 at: Place::Mode,
             });
         }
-        let units = packages
-            .packages()
-            .flat_map(|view| view.content.units.iter());
-        for (name, unit_type) in units {
-            let falls = (unit_type.section::<ProjectileData>())
-                .is_some_and(|projectile| projectile.gravity.is_some());
-            if falls && planned(DataTable::Projectile, "gravity") {
-                return Err(LoadProblem::Planned {
-                    field: "gravity",
-                    at: Place::UnitType(name.clone()),
-                });
-            }
-        }
         Ok(())
-    }
-
-    /// Every stat in `stats` is one the mode declares.
-    fn stats_declared<'s>(
-        &self,
-        stats: impl IntoIterator<Item = &'s Stat>,
-        at: &Place,
-    ) -> Result<(), LoadProblem> {
-        let declared = &self.sections.stats.0;
-        let unknown = stats.into_iter().find(|stat| !declared.contains_key(stat));
-        match unknown {
-            Some(name) => Err(LoadProblem::Unknown {
-                of: NameKind::Stat,
-                at: at.clone(),
-                name: name.to_string(),
-            }),
-            None => Ok(()),
-        }
     }
 
     fn require(&self, capability: Capability, at: &Place) -> Result<(), LoadProblem> {
@@ -782,16 +642,11 @@ fn book_place(packages: &ModePackages, package: PackageIndex, at: BookPlace) -> 
 }
 
 impl<'a> PackageNames<'a> {
-    const fn new(
-        package: &'a Package,
-        modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
-        actions: &'a BTreeMap<DeclaredName, ActionData>,
-    ) -> Self {
+    const fn new(package: &'a Package, content: &'a PackageContent) -> Self {
         PackageNames {
             package,
+            content,
             scripts: BTreeMap::new(),
-            modifiers,
-            actions,
         }
     }
 

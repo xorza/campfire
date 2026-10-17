@@ -1,9 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Section, SourceKind, UnitTypeData};
+use campfire_declare::{
+    BookCx, BookError, BookPlace, NamedMessages, NamedScripts, ScriptParams, Section, SourceKind,
+    UnitTypeData,
+};
 use campfire_players::ResourceBook;
-use campfire_script::{NameKind, UnknownName};
+use campfire_script::{NameKind, ScriptRole, UnknownName};
 use campfire_sim::Capability;
 use campfire_stats::{ModifiersData, PassiveData, PoolNames};
 use campfire_units::CollisionData;
@@ -37,6 +40,51 @@ struct ActionAt<'c, 'a> {
 }
 
 impl Actions {
+    /// Adds the script of each package's action, which serves the action and reads its params.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn named_scripts(
+        cx: &BookCx<'_>,
+        scripts: &mut NamedScripts,
+    ) -> Result<(), BookError> {
+        for (package, source) in cx.packages() {
+            let actions = source.content.get::<ActionsData>();
+            for action in actions.into_iter().flat_map(|actions| actions.0.values()) {
+                if let Some(script) = &action.script {
+                    let params = ScriptParams::Named(action.params.keys().cloned().collect());
+                    scripts.name(package, script, ScriptRole::Action, params);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Adds the name of each package's action that gives one, a message of its package.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn named_messages(
+        cx: &BookCx<'_>,
+        messages: &mut NamedMessages,
+    ) -> Result<(), BookError> {
+        for (package, source) in cx.packages() {
+            let actions = source.content.get::<ActionsData>();
+            for (id, action) in actions.into_iter().flat_map(|actions| &actions.0) {
+                if let Some(name) = &action.name {
+                    let at = BookPlace::Entry {
+                        table: ActionsData::KEY,
+                        name: id.clone(),
+                    };
+                    messages.name(package, at, name);
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The rule of the passives: a modifier is the passive of one owner of its package at most,
     /// of its unit types by `passive` and its actions by `passive_modifier`, as two would share
     /// its hold.

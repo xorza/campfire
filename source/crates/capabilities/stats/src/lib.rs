@@ -17,10 +17,13 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
+    StateFields,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{BodyUnit, Dead, Owner, Player, SpawnHooks, UnitSteps, UnitsSet};
+use campfire_units::{
+    BodyUnit, Dead, DeclaredTags, Owner, Player, SpawnHooks, UnitSteps, UnitsSet,
+};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
 use crate::application::{Adding, ApplyAt};
@@ -281,6 +284,8 @@ impl Module for Stats {
         d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
         d.non_send::<ModifierEvents>(|world, role| Some(ModifierEvents::install(world, role)));
         d.rule(ModifiersData::rule);
+        d.extend::<StateFields>(ModifiersData::state_fields);
+        d.extend::<DeclaredTags>(ModifiersData::granted_tags);
         d.book::<ModifierBook>(ModifierBook::build);
         d.fact::<ModifierParamTable>(ModifierParamTable::build);
         d.fact::<StatGraph>(StatGraph::build);

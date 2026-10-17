@@ -1,4 +1,3 @@
-use campfire_common::DeclaredName;
 use campfire_declare::{CapabilitySet, ScriptAt, SourcePackage};
 use campfire_mode::{MapData, ModeData, TeamManifest};
 use campfire_script::ScriptUses;
@@ -22,8 +21,6 @@ pub struct BookInput<'a> {
     pub set: CapabilitySet,
     /// The release's engine tags, the first tags of every match.
     pub engine_tags: &'a [EngineTag],
-    /// Every tag the packages name but the engine's, in the order a match declares them.
-    pub tag_names: &'a [DeclaredName],
     /// The mode's package, then each dependency's.
     pub packages: Vec<SourcePackage<'a>>,
     pub scripts: &'a ScriptBook,

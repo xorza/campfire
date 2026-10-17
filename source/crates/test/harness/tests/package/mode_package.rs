@@ -2112,7 +2112,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "speed = \"12\", homing = true, gravity = \"9.8\"",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Planned { field: "gravity", at: Place::UnitType(name) } if name == "tower_bolt"),
+        |problem| rule_at(problem, &unit_type("tower_bolt"), &ProjectileError::Gravity),
     ),
     flaw(
         LASH_OUT,

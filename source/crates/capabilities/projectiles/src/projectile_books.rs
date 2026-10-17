@@ -24,6 +24,9 @@ impl Projectiles {
                 let at = BookPlace::UnitType(unit.place());
                 Err(BookError::rule(unit.package, at, problem))
             };
+            if projectile.gravity.is_some() {
+                return fail(ProjectileError::Gravity);
+            }
             if projectile.homing && projectile.speed <= cap {
                 return fail(ProjectileError::NotFaster);
             }

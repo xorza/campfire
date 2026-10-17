@@ -20,7 +20,8 @@ use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, SimEdge, SimSet, Unpredicted};
 use campfire_units::{
-    BodyUnit, Dead, Destination, LayerNames, MoveStep, SpawnHooks, UnitTracker, UnitsSet,
+    BodyUnit, Dead, DeclaredTags, Destination, LayerNames, MoveStep, SpawnHooks, UnitTracker,
+    UnitsSet,
 };
 
 use crate::navigation_column::RowReads;
@@ -196,6 +197,7 @@ impl Module for Navigation {
         d.callback::<EffectQueues>(Capability::Navigation, NavigationEffect::queue_listed);
         d.book::<ByType<Walker>>(Walker::book);
         d.fact::<LayerNames>(Self::layer_names);
+        d.extend::<DeclaredTags>(Self::layer_tags);
         d.book::<NavigationBook>(NavigationBook::build);
         d.rule(Self::pathing_rule);
         d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);

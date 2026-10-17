@@ -1,6 +1,6 @@
 use campfire_actions::{ModifierAppliers, Way};
 use campfire_common::Ticks;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, PerType};
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamedScripts, PerType, ScriptParams};
 use campfire_script::{Hook, ScriptId, ScriptRole};
 use campfire_sim::TickRate;
 use campfire_units::ScriptBook;
@@ -46,6 +46,23 @@ impl Ai {
         for unit in cx.standing() {
             if let Some(orders) = unit.data.section::<AiData>() {
                 appliers.script(cx, unit.package, &orders.ai, &Way::NoAction)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Adds the AI script of each unit type, which serves the AI and reads the mode's params.
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "a book's builder and an extension take the build's signature"
+    )]
+    pub(crate) fn named_scripts(
+        cx: &BookCx<'_>,
+        scripts: &mut NamedScripts,
+    ) -> Result<(), BookError> {
+        for unit in cx.types() {
+            if let Some(orders) = unit.data.section::<AiData>() {
+                scripts.name(unit.package, &orders.ai, ScriptRole::Ai, ScriptParams::Mode);
             }
         }
         Ok(())

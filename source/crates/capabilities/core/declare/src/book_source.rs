@@ -19,7 +19,6 @@ pub struct BookSource<'a> {
     pub rate: TickRate,
     pub set: CapabilitySet,
     pub engine_tags: &'a [EngineTag],
-    pub tag_names: &'a [DeclaredName],
     pub mode: &'a Sections,
     pub map: &'a Sections,
     /// The mode's package, then each dependency's.

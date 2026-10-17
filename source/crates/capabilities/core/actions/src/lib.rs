@@ -12,7 +12,9 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_declare::{
+    ByType, Declarations, InstallCx, Module, ModuleSet, NamedMessages, NamedScripts, SetPlace,
+};
 use campfire_sim::{Capability, SimSet, Unpredicted};
 use campfire_stats::{ParamBook, StatGraph, StatsSet};
 use campfire_units::{BodyUnit, UnitsSet};
@@ -315,6 +317,9 @@ impl Module for Actions {
         d.rule(Self::passives_rule);
         d.rule(ModifierWays::rule);
         d.extend::<StatGraph>(ModifierWays::stat_edges);
+        d.extend::<NamedScripts>(Self::named_scripts);
+        d.extend::<NamedScripts>(ModifierWays::named_scripts);
+        d.extend::<NamedMessages>(Self::named_messages);
         d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
         d.part::<BodyUnit, ActionProgress>(|at| {

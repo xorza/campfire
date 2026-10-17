@@ -428,7 +428,6 @@ pub(crate) mod internals {
                 max_move_speed: Speed::new(Num::MAX).unwrap(),
                 set: Self::capabilities(),
                 engine_tags: &Self::engine_tags(),
-                tag_names: &[],
                 packages: vec![mode],
                 scripts: &ScriptBook::default(),
                 script_uses: &ScriptUses::default(),

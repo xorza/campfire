@@ -1,16 +1,8 @@
 //! What a match is built from: each package's content, as the load reads it, and the books a
 //! match reads, built from it with no world.
 
-use std::num::NonZeroU32;
-
-use campfire_common::DeclaredName;
-use campfire_declare::{
-    BookCx, BookError, BookSource, BuiltBooks, CapabilitySet, Given, Sections, SourcePackage,
-};
+use campfire_declare::BuiltBooks;
 use campfire_mode::ModeInputs;
-use campfire_sim::TickRate;
-use campfire_units::UnitTypes;
-use campfire_values::EngineTag;
 
 pub(crate) mod book_cells;
 pub(crate) mod book_input;
@@ -28,32 +20,6 @@ pub(crate) mod units_seed;
 pub struct Books {
     pub(crate) built: BuiltBooks,
     pub(crate) inputs: ModeInputs,
-}
-
-impl Books {
-    /// The unit types of `packages`, the mode's then each dependency's, and the tags of the
-    /// match: `engine_tags`, the release's, then `tag_names`, then those the types name, in the
-    /// order their ids follow; an error for a type its scope names already, or past the most
-    /// types or tags a match holds. The tables a check of the packages resolves their names by.
-    pub fn unit_types(
-        engine_tags: &[EngineTag],
-        tag_names: &[DeclaredName],
-        packages: &[SourcePackage<'_>],
-    ) -> Result<UnitTypes, BookError> {
-        let none = Sections::default();
-        let source = BookSource {
-            rate: TickRate::new(NonZeroU32::MIN),
-            set: CapabilitySet::CORE,
-            engine_tags,
-            tag_names,
-            mode: &none,
-            map: &none,
-            packages: packages.to_vec(),
-            mode_script: None,
-            given: Given::default(),
-        };
-        UnitTypes::build(&BookCx::new(source))
-    }
 }
 
 #[cfg(feature = "internals")]

@@ -5,7 +5,9 @@ use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, SetPlace};
+use campfire_declare::{
+    ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, SetPlace, StateFields,
+};
 use campfire_script::{
     CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
     ScriptList, StatePlace, StateSchema, View, ViewApi,
@@ -19,6 +21,7 @@ use crate::body::Body;
 use crate::body_form::BodyForm;
 use crate::collision_data::CollisionData;
 use crate::dead::Dead;
+use crate::declared_tags::DeclaredTags;
 use crate::destination::Destination;
 use crate::facing::Facing;
 use crate::forced_move::ForcedMove;
@@ -99,6 +102,7 @@ impl Module for Units {
         d.section::<TypeTagsData>();
         d.section::<TypeParamsData>();
         d.section::<TypeStateData>();
+        d.extend::<StateFields>(Self::state_fields);
         d.section::<CollisionData>();
         d.section::<ModeTagsData>();
         d.section::<MetricData>();
@@ -150,6 +154,7 @@ impl Module for Units {
         d.require::<UnitEntity, Team>();
         // A forced move moves a unit that walks, in place of its step.
         d.require::<ForcedMove, MoveStep>();
+        d.fact::<DeclaredTags>(DeclaredTags::build);
         d.fact::<UnitTypes>(UnitTypes::build);
         d.extend::<UnitTypes>(UnitTypes::tag_bodies);
         d.book::<UnitTypeBook>(UnitTypes::build_type_book);

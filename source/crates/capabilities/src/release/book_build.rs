@@ -3,6 +3,7 @@ use campfire_declare::{BookCx, BookError, BookSource, ByType, Given};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeTeams, ModeUnits};
 use campfire_navigation::{Walker, WalkerKinds};
 use campfire_stats::MoveSpeedCap;
+use campfire_units::UnitTypes;
 
 use crate::books::Books;
 use crate::books::book_cells::{BookCells, CellWalk};
@@ -43,6 +44,15 @@ impl Release {
         })
     }
 
+    /// The unit types and the tags of `input`'s match, numbered as its books number them; an
+    /// error for a type its scope names already, or past the most types or tags a match holds.
+    pub fn unit_types(input: &BookInput<'_>) -> Result<UnitTypes, BookError> {
+        Self::with_cx(input, |mut cx| {
+            let types = cx.take_fact::<UnitTypes>()?;
+            Ok(types.expect("the core declares the unit types"))
+        })
+    }
+
     /// Checks every rule of `input`'s data that a module of its match declares, as the package
     /// load does before it builds the books (02-engine-core.md, A module checks the rules of its
     /// own data), and gives the names its scripts may name; an error for the first rule the data
@@ -76,7 +86,6 @@ impl Release {
             rate: input.rate,
             set: input.set,
             engine_tags: input.engine_tags,
-            tag_names: input.tag_names,
             mode: &input.data.sections,
             map: input.map.sections(),
             packages: input.packages.clone(),
