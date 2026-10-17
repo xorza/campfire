@@ -384,7 +384,7 @@ impl ShopRead {
 
     /// The nearest shop unit whose buyers select `unit`.
     fn nearest(game: &mut Match, unit: StableId) -> Option<StableId> {
-        let read = move |mut shopping: Shopping<'_, '_>| shopping.nearest_for(unit);
+        let read = move |shopping: Shopping<'_, '_>| shopping.nearest_for(unit);
         game.run_system_once(read).unwrap()
     }
 

@@ -9,9 +9,12 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{StableId, TickRate};
 use campfire_values::{ActionId, Relation, Tag, Team};
 
+use crate::scripts::error::ApiError;
+use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
+use crate::scripts::view::filter_texts::FilterTexts;
 use crate::scripts::view::living_unit::LivingUnit;
 use crate::scripts::view::match_names::MatchNames;
 use crate::scripts::view::target_index::{TargetIndex, TargetQuery};
@@ -22,6 +25,7 @@ use crate::scripts::view::view_names::ViewNames;
 use crate::scripts::view::view_rows::ViewRows;
 
 pub(crate) mod filter;
+pub(crate) mod filter_texts;
 pub(crate) mod filters;
 pub(crate) mod kept_rows;
 pub(crate) mod living_unit;
@@ -54,6 +58,8 @@ struct ViewParts {
     names_at: Cell<Option<u64>>,
     rows: RefCell<ViewRows>,
     targets: RefCell<TargetIndex>,
+    /// The filters scripts gave as text, as the names resolve them.
+    filters: RefCell<FilterTexts>,
     /// What reads a world's units into the rows, which the module that holds the units gives.
     read: fn(&mut World),
 }
@@ -68,6 +74,7 @@ impl View {
             names_at: Cell::new(None),
             rows: RefCell::default(),
             targets: RefCell::default(),
+            filters: RefCell::default(),
             read,
         }))
     }
@@ -103,8 +110,16 @@ impl View {
         };
         if self.0.names_at.get() != Some(names.revision()) {
             *self.0.names.borrow_mut() = ViewNames::of(names);
+            self.0.filters.borrow_mut().clear();
             self.0.names_at.set(Some(names.revision()));
         }
+    }
+
+    /// The filter `text` names, with its tags among the match's, resolved once for each text a
+    /// script gives again.
+    pub fn filter(&self, text: &ScriptText) -> Result<Filter, ApiError> {
+        let names = self.names();
+        self.0.filters.borrow_mut().filter(text, names.tags())
     }
 
     /// The map's bounds, as the units were read.

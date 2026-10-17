@@ -20,6 +20,8 @@ impl CallPart for UnitsCall {
     /// After the effects, so a unit an effect spawns takes the call's writes to it.
     const COMMITS: Commit = Commit::AfterEffects;
 
+    fn begin_batch(&mut self, _: &World) {}
+
     fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
         self.writes.clear();
         Ok(())

@@ -4,6 +4,7 @@ use bevy_ecs::lifecycle::{Insert, Remove};
 use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut, SystemChangeTick, SystemParam};
+use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_declare::Cache;
 use campfire_sim::Unpredicted;
@@ -295,7 +296,7 @@ impl Holdings {
 }
 
 impl Cache for Holdings {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
 }
@@ -303,7 +304,6 @@ impl Cache for Holdings {
 #[cfg(test)]
 mod tests {
     use bevy_ecs::system::SystemState;
-    use bevy_ecs::world::World;
     use campfire_actions::ByAction;
     use campfire_declare::ByType;
 

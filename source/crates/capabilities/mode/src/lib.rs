@@ -651,17 +651,17 @@ pub mod internals {
             match role {
                 ScriptRole::Mode => {
                     let start = CallStart::mode(ScriptRole::Mode, now);
-                    ctx.frame().begin(world, start).unwrap();
+                    ctx.frame().begin_alone(world, start).unwrap();
                 }
                 ScriptRole::Ai => ctx
                     .frame()
-                    .begin(world, CallStart::think(actor, now))
+                    .begin_alone(world, CallStart::think(actor, now))
                     .unwrap(),
                 ScriptRole::Action => {
                     let strike = Actions::named(world, PackageIndex::MODE, "strike").unwrap();
                     let start =
                         CallStart::cast(strike, Rank::FIRST, actor, PackageIndex::MODE, now);
-                    ctx.frame().begin(world, start).unwrap();
+                    ctx.frame().begin_alone(world, start).unwrap();
                 }
                 ScriptRole::Modifier => {
                     let blessing = Stats::modifier(world, PackageIndex::MODE, "blessing").unwrap();
@@ -669,7 +669,7 @@ pub mod internals {
                         acting: Some(actor),
                         ..CallStart::hook(blessing, PackageIndex::MODE, 1, now)
                     };
-                    ctx.frame().begin(world, start).unwrap();
+                    ctx.frame().begin_alone(world, start).unwrap();
                 }
             }
             let handle = ctx.view().unit(id).unwrap();

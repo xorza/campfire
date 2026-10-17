@@ -26,7 +26,9 @@ pub struct ScriptCall {
 impl CallPart for ScriptCall {
     const COMMITS: Commit = Commit::AfterEffects;
 
-    fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
+    /// The tick's draws, which change only as a tick starts (02-engine-core.md, A batch's calls
+    /// share what no call changes).
+    fn begin_batch(&mut self, world: &World) {
         let rng = world.resource::<SimRng>();
         if !self
             .opener
@@ -36,6 +38,15 @@ impl CallPart for ScriptCall {
             self.open.clear();
             self.opener = Some(rng.opener());
         }
+    }
+
+    fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
+        debug_assert!(
+            self.opener
+                .as_ref()
+                .is_some_and(|opener| opener.is_current(world.resource::<SimRng>())),
+            "a call's batch opened the tick's draws"
+        );
         self.drawer = start.acting;
         Ok(())
     }

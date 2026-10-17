@@ -15,6 +15,7 @@ impl ScriptsWorld for World {
     fn script_batch<T>(&mut self, calls: impl FnOnce(&mut ScriptBatch<'_>) -> T) -> T {
         let ctx = self.non_send::<Ctx>().clone();
         ctx.view().read(self);
+        ctx.frame().begin_batch(self);
         let mut host = self
             .remove_non_send::<ScriptHost>()
             .expect("the core runs scripts");

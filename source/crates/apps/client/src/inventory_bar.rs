@@ -141,7 +141,7 @@ impl InventoryBar {
         click: On<'_, '_, Pointer<Click>>,
         slots: Query<'_, '_, &BarSlot>,
         own: OwnPlayer<'_, '_>,
-        mut shopping: Shopping<'_, '_>,
+        shopping: Shopping<'_, '_>,
         mut orders: ResMut<'_, PendingOrders>,
     ) {
         if click.button != PointerButton::Secondary {

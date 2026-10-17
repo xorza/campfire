@@ -109,10 +109,15 @@ impl Frame {
         self.ids.allocate()
     }
 
+    /// Starts a batch of calls in `world`, every part readied for it.
+    pub(crate) fn begin_batch(&mut self, world: &World) {
+        self.parts.begin_batch(world);
+    }
+
     /// Starts the call `start` in `world`, every part readied for it; a part that fails to ready,
     /// as a param that overflows at the call's rank, fails the call, and so does one at
     /// `ScriptLimits::CHAIN_DEPTH` of a chain of combat events, which the pass must end.
-    pub fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
+    pub(crate) fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
         if start.depth >= ScriptLimits::CHAIN_DEPTH {
             return Err(CallError::Api(ApiError::ChainTooDeep));
         }
@@ -176,13 +181,22 @@ impl Frame {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use bevy_ecs::world::World;
     use campfire_common::Tick;
 
     use crate::scripts::call_start::CallStart;
+    use crate::scripts::error::CallError;
     use crate::scripts::frame::Frame;
     use crate::scripts::script_role::ScriptRole;
 
     impl Frame {
+        /// Starts the call `start` in `world` alone, as a test's probe makes one: in a batch of
+        /// its own, as `Frame::begin` says.
+        pub fn begin_alone(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
+            self.begin_batch(world);
+            self.begin(world, start)
+        }
+
         /// A frame whose mode call runs in tick `now`, as a test applies an effect in: it reads
         /// no world.
         pub fn in_tick(now: Tick) -> Self {

@@ -40,6 +40,9 @@ impl PlayersCall {
 impl CallPart for PlayersCall {
     const COMMITS: Commit = Commit::AfterEffects;
 
+    /// None: an earlier call's effects of the batch change what the players hold.
+    fn begin_batch(&mut self, _: &World) {}
+
     fn begin(&mut self, world: &World, _: &CallStart) -> Result<(), CallError> {
         self.written = false;
         let players = self.players.get_or_insert_with(|| {

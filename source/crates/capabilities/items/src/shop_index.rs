@@ -4,6 +4,7 @@ use bevy_ecs::observer::On;
 use bevy_ecs::query::Allow;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
+use bevy_ecs::world::World;
 use campfire_declare::{ByType, Cache};
 use campfire_sim::{StableId, Unpredicted};
 use campfire_values::UnitType;
@@ -11,14 +12,12 @@ use campfire_values::UnitType;
 use crate::shop::Shop;
 
 /// The units whose type has a shop, living or dead, by stable id, as a search for the nearest
-/// shop visits them: its observers add each one as its type comes, and drop it as its type goes,
-/// as each spawn, restore and replication inserts a unit's type, which never changes in place.
-/// The first search takes every such unit the world holds, as the observers install after a
-/// test's first units spawn. Derived, never state.
+/// shop visits them: the install takes each one its world holds, and its observers then add each
+/// one as its type comes, and drop it as its type goes, as each spawn, restore and replication
+/// inserts a unit's type, which never changes in place. Derived, never state.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct ShopIndex {
     units: Vec<ShopUnit>,
-    taken: bool,
 }
 
 /// A unit whose type has a shop.
@@ -28,46 +27,25 @@ struct ShopUnit {
     entity: Entity,
 }
 
-/// Each unit's stable id and type, as the index reads them, a client's held units among them.
-pub(crate) type TypedUnits<'w, 's> =
-    Query<'w, 's, (Entity, &'static StableId, &'static UnitType), Allow<Unpredicted>>;
-
 impl ShopIndex {
-    /// Takes every unit of `units` whose type `shops` gives a shop, once.
-    pub(crate) fn take(&mut self, units: &TypedUnits<'_, '_>, shops: &ByType<Shop>) {
-        if self.taken {
-            return;
-        }
-        self.units.clear();
-        self.units.extend(
-            units
-                .iter()
-                .filter(|&(.., &unit_type)| shops.get(unit_type).is_some())
-                .map(|(entity, &id, _)| ShopUnit { id, entity }),
-        );
-        self.units.sort_unstable_by_key(|unit| unit.id);
-        self.taken = true;
-    }
-
     /// Each unit whose type has a shop, by stable id.
     pub(crate) fn entities(&self) -> impl ExactSizeIterator<Item = Entity> + '_ {
-        debug_assert!(self.taken, "a search takes the shop units first");
         self.units.iter().map(|unit| unit.entity)
     }
 
     /// Adds a unit whose type, inserted, has a shop.
     pub(crate) fn typed(
         inserted: On<'_, '_, Insert, UnitType>,
-        units: TypedUnits<'_, '_>,
+        units: Query<'_, '_, (&StableId, &UnitType), Allow<Unpredicted>>,
         shops: Res<'_, ByType<Shop>>,
         mut index: ResMut<'_, Self>,
     ) {
         let entity = inserted.entity;
         index.units.retain(|unit| unit.entity != entity);
-        let Ok((_, &id, &unit_type)) = units.get(entity) else {
+        let Ok((&id, &unit_type)) = units.get(entity) else {
             return;
         };
-        if index.taken && shops.get(unit_type).is_some() {
+        if shops.get(unit_type).is_some() {
             let at = index.units.partition_point(|unit| unit.id < id);
             index.units.insert(at, ShopUnit { id, entity });
         }
@@ -81,7 +59,21 @@ impl ShopIndex {
 }
 
 impl Cache for ShopIndex {
-    fn installed() -> Option<Self> {
-        Some(Self::default())
+    /// Each unit of `world` whose type has a shop, as a test's units spawn before its install.
+    fn installed(world: &World) -> Option<Self> {
+        let mut index = Self::default();
+        let shops = world.get_resource::<ByType<Shop>>();
+        let units =
+            world.try_query_filtered::<(Entity, &StableId, &UnitType), Allow<Unpredicted>>();
+        if let (Some(shops), Some(mut units)) = (shops, units) {
+            index.units.extend(
+                units
+                    .iter(world)
+                    .filter(|&(.., &unit_type)| shops.get(unit_type).is_some())
+                    .map(|(entity, &id, _)| ShopUnit { id, entity }),
+            );
+            index.units.sort_unstable_by_key(|unit| unit.id);
+        }
+        Some(index)
     }
 }

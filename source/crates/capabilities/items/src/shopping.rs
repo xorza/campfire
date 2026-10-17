@@ -1,5 +1,5 @@
 use bevy_ecs::query::{Allow, Has, Without};
-use bevy_ecs::system::{Query, Res, ResMut, SystemParam};
+use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_declare::ByType;
 use campfire_geometry::Placed;
 use campfire_math::Vec3;
@@ -12,7 +12,7 @@ use crate::inventory::{Inventory, Purchase};
 use crate::item_book::ItemBook;
 use crate::item_id::ItemId;
 use crate::shop::{Buyer, Shop};
-use crate::shop_index::{ShopIndex, TypedUnits};
+use crate::shop_index::ShopIndex;
 
 /// The shops as a trade and a client's shop panel read them: the shop of a living shop unit,
 /// whether it serves a unit now, and what an item costs a carrier there. A client reads the units
@@ -26,8 +26,7 @@ pub struct Shopping<'w, 's> {
     map: Res<'w, MapBook>,
     shop_units: ShopUnits<'w, 's>,
     visitors: Visitors<'w, 's>,
-    shop_index: ResMut<'w, ShopIndex>,
-    typed: TypedUnits<'w, 's>,
+    shop_index: Res<'w, ShopIndex>,
 }
 
 /// A living shop unit's stable id, type, team, place and body.
@@ -105,8 +104,7 @@ impl Shopping<'_, '_> {
     /// The nearest living shop unit whose buyers select the unit `unit`, in its reach or not:
     /// by the distance from the unit to the nearest point of the shop's body, the lower stable id
     /// on a tie, as a shop panel shows it. It visits only the units whose type has a shop.
-    pub fn nearest_for(&mut self, unit: StableId) -> Option<StableId> {
-        self.shop_index.take(&self.typed, &self.shops);
+    pub fn nearest_for(&self, unit: StableId) -> Option<StableId> {
         let visitor = self.visitor(unit)?;
         let relations = self.relations.get();
         let shop_units = self.shop_index.entities();

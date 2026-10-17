@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Vec3};
@@ -36,7 +37,7 @@ pub(crate) struct Covering {
 /// Built again from the match's units, its reveals and its map: a Vision stage fills it, and a
 /// fog that holds no stage's sight, as a restored match's, is filled as a tick starts.
 impl Cache for Fog {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
 }

@@ -5,7 +5,7 @@
 - **A carried item is an inventory entry, not a unit.** Its type, stack and uses, as League of Legends keeps an item in a slot; an item on the ground is a unit, planned with world items.
 - **An item has a name.** An item type's `name` is a message id of its package's locale, as an avatar's is, and the load checks each locale holds it.
 - **Shops are units.** A unit type's `shop` makes its units shops, as Warcraft III's shops and couriers are units; a shop is its type's data, not state.
-- **A shop search visits the shop units.** The search for the nearest shop that a client's panel makes each frame visits an index of the units whose type has a shop, which observers of a unit's type keep, as a type is inserted on every spawn, restore and replication and never changes in place. Refused: a scan of every living unit at each search.
+- **A shop search visits the shop units.** The search for the nearest shop that a client's panel makes each frame visits an index of the units whose type has a shop: the install takes those its world holds, and observers of a unit's type keep it, as a type is inserted on every spawn, restore and replication and never changes in place, so its readers take it as `Res`. Refused: a scan of every living unit at each search, and a take by the first search, which made every reader hold `ResMut` (02-engine-core.md, A shared index refreshes in its own system).
 - **A sale returns an exact share.** A shop's sale share is a decimal of at most nine digits kept exactly, so 70 % of 300 is 210.
 - **A recipe gives back its components.** A buy pays the cost less the components the unit holds, which it gives up, as League of Legends' and Dota 2's recipes do.
 

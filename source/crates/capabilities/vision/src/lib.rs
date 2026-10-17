@@ -197,7 +197,7 @@ pub mod internals {
                 Some(actor) => CallStart::think(actor, now),
                 None => CallStart::mode(ScriptRole::Mode, now),
             };
-            ctx.frame().begin(world, start).unwrap();
+            ctx.frame().begin_alone(world, start).unwrap();
             let at = ctx.view().unit(at).unwrap();
             let source = format!("fn probe(ctx, at) {{ ctx.reveal(at.pos, {radius}, {ms}) }}");
             let returned = {

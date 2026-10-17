@@ -33,11 +33,15 @@ pub struct StatsCall {
 impl CallPart for StatsCall {
     const COMMITS: Commit = Commit::AfterEffects;
 
-    fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
+    /// The book of params, which the load and the mode give, not a call.
+    fn begin_batch(&mut self, world: &World) {
         let params = world.resource::<ParamBook>();
         if !params.same(&self.params) {
             self.params = params.clone();
         }
+    }
+
+    fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         self.action = start.action;
         self.modifier = start.modifier;
         let unshared = self.handles.drain(..).filter(ModifierHandle::unshared);

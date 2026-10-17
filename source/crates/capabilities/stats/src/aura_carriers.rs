@@ -3,6 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Allow;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
+use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_sim::{Removals, Unpredicted};
 
@@ -16,7 +17,7 @@ use crate::modifiers::Modifiers;
 pub(crate) struct AuraCarriers(Vec<Entity>);
 
 impl Cache for AuraCarriers {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
 }

@@ -18,6 +18,10 @@ pub trait CallPart: Any + fmt::Debug {
     /// When `commit` writes: before the call's effects apply, or after them.
     const COMMITS: Commit;
 
+    /// Readies it for a batch of calls in `world`: what every call of the batch reads alike, as
+    /// the tick's draws and the books, which no call's effects change.
+    fn begin_batch(&mut self, world: &World);
+
     /// Readies it for the call `start`, which runs in `world`; an error fails the call.
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError>;
 
@@ -48,12 +52,17 @@ pub trait CallParams: CallPart {
 
 /// A part of any type, as the frame holds it.
 trait AnyPart: Slot + fmt::Debug {
+    fn begin_batch(&mut self, world: &World);
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError>;
     fn commit(&mut self, world: &mut World);
     fn commits(&self) -> Commit;
 }
 
 impl<P: CallPart> AnyPart for P {
+    fn begin_batch(&mut self, world: &World) {
+        CallPart::begin_batch(self, world);
+    }
+
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         CallPart::begin(self, world, start)
     }
@@ -109,6 +118,13 @@ impl CallParts {
     /// The part of type `P`, to change, when one was added.
     pub(crate) fn get_mut<P: CallPart>(&mut self) -> Option<&mut P> {
         self.parts.get_mut()
+    }
+
+    /// Readies every part for a batch of calls in `world`.
+    pub(crate) fn begin_batch(&mut self, world: &World) {
+        for part in self.parts.iter_mut() {
+            part.begin_batch(world);
+        }
     }
 
     /// Readies every part for the call `start` in `world`, in order; the first error fails it.
@@ -168,6 +184,8 @@ mod tests {
     impl CallPart for ModeParams {
         const COMMITS: Commit = Commit::AfterEffects;
 
+        fn begin_batch(&mut self, _: &World) {}
+
         fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
             Ok(())
         }
@@ -222,6 +240,8 @@ mod tests {
 
     impl CallPart for Plain {
         const COMMITS: Commit = Commit::BeforeEffects;
+
+        fn begin_batch(&mut self, _: &World) {}
 
         fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
             Ok(())

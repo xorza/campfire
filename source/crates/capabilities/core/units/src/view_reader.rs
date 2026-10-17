@@ -343,7 +343,7 @@ impl ViewReader {
 
 /// Every role reads its view's rows, from none kept.
 impl Cache for ViewReader {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
 }

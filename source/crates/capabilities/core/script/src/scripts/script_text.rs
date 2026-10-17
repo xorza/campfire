@@ -11,6 +11,11 @@ impl ScriptText {
         self.0.as_str()
     }
 
+    /// Whether `other` is this very text, shared, not only one of the same letters.
+    pub(crate) fn same(&self, other: &Self) -> bool {
+        self.0.ptr_eq(&other.0)
+    }
+
     pub(super) const fn of_engine(text: ImmutableString) -> Self {
         Self(text)
     }

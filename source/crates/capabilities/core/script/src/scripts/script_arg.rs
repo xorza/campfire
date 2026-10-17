@@ -209,7 +209,7 @@ impl TextArg for Filter {
     const NAMES: NameKind = NameKind::Filter;
 
     fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Self> {
-        let filter = Self::parse(&text, ctx.get().view().names().tags());
+        let filter = ctx.get().view().filter(&text);
         Ok(filter.map_err(ApiError::fail)?)
     }
 }

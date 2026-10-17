@@ -168,7 +168,7 @@ impl Declarations for Installer<'_> {
     }
 
     fn cache<R: Cache>(&mut self) {
-        if let Some(cache) = R::installed() {
+        if let Some(cache) = R::installed(self.world) {
             self.world.insert_resource(cache);
         }
     }

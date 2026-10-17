@@ -3,6 +3,7 @@ use std::mem;
 use std::ops::{ControlFlow, Range};
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_geometry::{
     BodyBox, CellLevels, Grid, MAX_BOUND, Placed, RowDirectory, RowEntries, Shape,
@@ -475,7 +476,7 @@ impl Buckets {
 
 /// Over the world's whole bound.
 impl Cache for BodyIndex {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         Some(Self::new(MAX_BOUND))
     }
 }

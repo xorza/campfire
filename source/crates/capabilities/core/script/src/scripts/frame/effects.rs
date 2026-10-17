@@ -134,6 +134,8 @@ mod tests {
     impl CallPart for Early {
         const COMMITS: Commit = Commit::BeforeEffects;
 
+        fn begin_batch(&mut self, _: &World) {}
+
         fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
             Ok(())
         }
@@ -145,6 +147,8 @@ mod tests {
 
     impl CallPart for Late {
         const COMMITS: Commit = Commit::AfterEffects;
+
+        fn begin_batch(&mut self, _: &World) {}
 
         fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
             Ok(())

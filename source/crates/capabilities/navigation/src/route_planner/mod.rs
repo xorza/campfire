@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_geometry::Grid;
 use campfire_math::Vec3;
@@ -556,7 +557,7 @@ impl RoutePlanner {
 
 /// The map's install builds it, of the map's walkers.
 impl Cache for RoutePlanner {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         None
     }
 }

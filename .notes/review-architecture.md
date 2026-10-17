@@ -646,9 +646,8 @@ Each change folds into its document when its batch lands. Each line names the de
 - **Goldens:** they may move where the order of visits was by `Entity`. Each move is explained.
 
 **7.2 Caches that follow deltas.** Touches `production`, `units` (view reader), `players`, `combat`, `items`, `script`.
-- Call parts copy on first use, and literal names resolve once for each call site (S-24).
-- `Single` for the match entity and a dense player table (C-14).
-- The damage pass reads through a cached `SystemState`, and a heard event shares one handle (K-21).
+- `Single` for the match entity and a dense player table (C-14). Waits for Q19 in `review-architecture_QUESTIONS.md`.
+- The damage pass reads through a cached `SystemState` (K-21). Waits for Q19 in `review-architecture_QUESTIONS.md`.
 
 **7.3 Navigation and gathering passes.** Touches `navigation` and `production`.
 - `RouteMut`, so the report passes go, and `RouteAsks` (R-6).
@@ -915,7 +914,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
 | C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |
 | C-14 | The match entity and the players are found through the `BTreeMap` index on each call | `on_match.rs:18-25`, `player_rows.rs:25-59`, `targets.rs:49-51` | Confirmed. The cost needs a bench. | 7.2 |
-| S-24 | Each call copies the mode state and every player's resources and resolves its literal names again. | `scripts_world.rs:15-17`, `mode_call.rs:194-208` | Plausible: needs a bench | 7.2 |
 | C-17 | `want_passives` scans every unit in four sets, and `end_lifespans` scans every lifespan in each tick | `actions/src/lib.rs:242-250`, `unit_ticks.rs:31-42` | Confirmed | 7.1 |
 | C-18 | Slots, times and progress are three components that stay in step only by index, and each `zip` truncates silently | `action_slots/mod.rs:30-33`, `slot_times.rs:234-354` | Confirmed | 7.4 |
 | C-22 | Six geometry predicates answer one question with four names, three result types and both boundary rules | `metric.rs:58-117`, `placed/mod.rs:30-35`, `body_box/mod.rs:143-152` | Confirmed | 12.1 |
@@ -968,7 +966,7 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | K-13 | About twenty passes scan every unit in each tick to find timers that are due | `volley.rs:27-49`, `attacks.rs:145-253`, `modifier_ends.rs:16-24`, `casts.rs:55-228`, `area_life.rs:329-334` | Confirmed scans. The cost is plausible. | 7.1 |
 | K-16 | An area's `inside` and an aura do one job in two shapes, and disagree on neutrals and lifeless units | `area_spec.rs:94-101`, `area_holds.rs:47-58`, `held_pass.rs:131-139` | Confirmed | Backlog |
 | K-20 | The scripted passes' hook state is non-send | `modifier_hooks.rs:46-50` | Confirmed shape | 11.1 |
-| K-21 | The damage pass reads each unit through world lookups, a heard event allocates a handle for each listener, and `NextDamage` drops its buffer | `damage_pass.rs:213-429`, `modifier_hooks.rs:78-159` | Plausible | 7.2 |
+| K-21 | The damage pass reads each unit through world lookups | `damage_pass.rs:213-429`, `modifier_hooks.rs:78-159` | Plausible | 7.2 |
 | K-23 | An item's cost may name several resources, and a shop takes one | `item_data.rs:18`, `item_book.rs:107-112`, `load_check.rs:1384-1407` | Confirmed | Backlog (D16) |
 | K-24 | `Pools` is a fixed 256-byte array for each unit | `pools.rs:22`, `meter.rs:7-13` | Plausible sizes | Backlog |
 | K-25 | Small items: `ModifierBook` cloned past the borrow checker, a `clear` with no caller, a hand-spelled `Changed` scan, mixed argument names | `damage_pass.rs:348`, `pass_queue.rs:329`, `toggles.rs:44-54`, `combat_api.rs:205-232` | Confirmed | 12.3 |

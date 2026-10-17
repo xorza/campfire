@@ -18,3 +18,16 @@ A push only at the places that set a time misses all three, and an attack or a c
 | C. Change detection feeds the index | Each consuming pass reads `Changed<T>` on the part that holds its time, as `DueRun` does now, and pushes those units. | It never misses a write, but it reads the change tick of every unit in each tick (about 1 ns for each unit). That is still a scan, which K-13 asks to remove, but with no logic for each unit. |
 
 **Blocked.** 7.1 waits for this answer. 7.4 (`SiteProgress` and the route cursor as their own parts) changes the same parts, so it waits too.
+
+## Q19: Do the index lookups of C-14 and K-21 stay as they are (7.2)?
+
+**Background.** The plan asks for `Single` for the match entity and a dense table of the players by slot (C-14), and for a cached `SystemState` in the damage pass (K-21). Both findings said that the cost needs a measurement first. A profile of the 3v3's mean tick (`docs/research/server-tick-profile.md`) shows no lookup of the entity index's B-tree on its own, each under 0.5 % of the samples. The damage pass's own reads of the units are 0.13 % of the samples.
+
+**Options.**
+
+| Option | What it does | Cost |
+| --- | --- | --- |
+| A. Drop both (recommended) | The lookups stay. The plan loses the two steps, and the profile is the record of why. | None now. A larger match could make them show, and a new profile would find it. |
+| B. Do both | `OnMatch` reads the match entity through `Single`, a resource holds each player's entity by slot, and the damage pass keeps a `SystemState`. | About a day of work across `players`, `actions`, `combat` and every reader of `OnMatch` and `PlayerRows`, for no measured gain. `Single` skips a system while the match entity is missing. |
+
+**Blocked.** Only these two steps of 7.2.

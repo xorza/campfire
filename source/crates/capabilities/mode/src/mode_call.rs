@@ -45,6 +45,9 @@ impl CallPart for ModeCall {
     /// Before the effects, as an effect may read the mode's state and the choices.
     const COMMITS: Commit = Commit::BeforeEffects;
 
+    /// None: an earlier call of the batch changes the mode's state and the choices.
+    fn begin_batch(&mut self, _: &World) {}
+
     /// A mode call reads the mode's state, the choices and the match's end as `world` holds
     /// them.
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {

@@ -3,6 +3,7 @@ use bevy_ecs::query::With;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs};
 use bevy_ecs::system::{Res, ResMut, ScheduleSystem, SystemParam};
+use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_geometry::{BodyGrid, Indexed, Placed};
 
@@ -40,7 +41,7 @@ impl TrackedUnits for GridUnits {
 }
 
 impl Cache for UnitGrid {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
 }
