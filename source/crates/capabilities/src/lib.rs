@@ -25,6 +25,7 @@ mod release;
 
 pub use crate::books::Books;
 pub use crate::books::book_input::BookInput;
+pub use crate::books::load_names::LoadNames;
 pub use crate::books::package_content::{ContentSeed, PackageContent};
 pub use crate::order::{Action, Order};
 pub use crate::release::Release;

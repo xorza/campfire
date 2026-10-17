@@ -721,10 +721,18 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     }
     // The mode's books, each loaded as the install loads it.
     let data = &files.data;
-    let mode_names = ModeNames::of(data).unwrap();
+    let pool_data = data.section_or_default::<ModePoolsData>();
+    let pool_names: Arc<Names<PoolId>> =
+        Arc::new(pool_data.0.keys().map(DeclaredName::as_str).collect());
+    let navigation_data = data.section_or_default::<ModeNavigationData>();
+    let layers: Names<Layer> = navigation_data
+        .layers
+        .iter()
+        .map(DeclaredName::as_str)
+        .collect();
     let sections = files.map.sections();
     let ground = MapBook::of(sections, None).unwrap();
-    let navigation = NavigationBook::of(&ground, sections, Some(&mode_names.layers)).unwrap();
+    let navigation = NavigationBook::of(&ground, sections, Some(&layers)).unwrap();
     let vision = VisionBook::of(&ground, sections, files.teams.len()).unwrap();
     let map = {
         let view = game.non_send::<View>();
@@ -741,15 +749,13 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     let stat = |stat: &Stat| stats.named(stat).ok_or_else(|| stat.clone());
     // The test mode names no life pool: the one the test match binds stays.
     let combat_data = data.section_or_default::<ModeCombatData>();
-    let life = combat_data.life_pool(&mode_names.pools).unwrap();
+    let life = combat_data.life_pool(&pool_names).unwrap();
     let life = life.or_else(|| game.resource::<PoolBook>().life());
-    let pools = Arc::clone(&mode_names.pools);
-    let pool_data = data.section_or_default::<ModePoolsData>();
-    let pools = PoolBook::new(&pool_data.0, pools, life, |_, held| stat(held)).unwrap();
+    let pools = PoolBook::new(&pool_data.0, pool_names, life, |_, held| stat(held)).unwrap();
     let combat = CombatBook::new(&combat_data, RATE, stat).unwrap();
     Units::change_types(game, |_, unit_types| {
         let bodies = types.iter().map(|unit| (unit.unit_type, unit.body));
-        unit_types.tag_layers(&mode_names.layers, bodies);
+        unit_types.tag_layers(&layers, bodies);
     });
     Units::seal_types(game, &data.section_or_default::<ModeTagsData>().0);
     stats.load_into(game);
@@ -766,8 +772,11 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     {
         let view = game.non_send::<View>();
         let mut names = view.names_mut();
-        names.set_table(mode_names.damage_kinds);
-        names.set_table(mode_names.resources);
+        let kinds = combat_data.damage_kinds.iter().map(DeclaredName::as_str);
+        names.set_table(Arc::new(kinds.collect::<Names<DamageKind>>()));
+        let resources = data.section_or_default::<ResourcesData>();
+        let resources = resources.0.iter().map(DeclaredName::as_str);
+        names.set_table(Arc::new(resources.collect::<Names<ResourceId>>()));
     }
     let kinds: WalkerKinds = walkers.values().copied().collect();
     assert_eq!(kinds, WalkerKinds::from([Walker::of_form(None).unwrap()]));

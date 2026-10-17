@@ -645,7 +645,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 **4.4 Data checks declared with their modules.** Touches `package` and each capability.
 - `d.check` returns the module's own error inside a `LoadProblem` case of `declare`. `package` keeps only the checks across packages and drops its capability dependencies (B-18).
-- The load check's name tables come from the modules' own name facts, as the books' build makes them, and `ModeNames` goes; a book error's module problem maps to its load problem in the module, not in `package`'s hand list of problem types.
 
 **4.5 Parts from data.** Touches `combat`, `stats`, `units`, `production`, `sim`, `state-types`.
 - Per-type predicates give `ClipShots`, `RecentAttackers` (with its entries bounded by the window), `StatusTags` and `SpawnPoint` (K-11, C-7).

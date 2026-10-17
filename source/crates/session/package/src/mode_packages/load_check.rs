@@ -3,8 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionData, ActionKind, ActionsData};
 use campfire_areas::AreaData;
-use campfire_capabilities::Release;
-use campfire_combat::ModeCombatData;
+use campfire_capabilities::{LoadNames, Release};
 use campfire_common::DeclaredName;
 use campfire_declare::{
     BookError, BookPlace, Section, SectionReaders, SectionTable, TypePlace, UnitTypeData,
@@ -12,7 +11,6 @@ use campfire_declare::{
 use campfire_items::ItemsData;
 use campfire_math::Num;
 use campfire_mode::ModeData;
-use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
 use campfire_projectiles::ProjectileData;
 use campfire_script::{
@@ -33,7 +31,6 @@ use crate::error::script_problem::ScriptProblem;
 use crate::error::way::Way;
 use crate::files::mode_script::ModeScript;
 use crate::mode_packages::ModePackages;
-use crate::mode_packages::name_tables::{NameTables, TableKind};
 use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
@@ -46,8 +43,8 @@ use crate::package_view::{PackageView, ViewKind};
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
-    /// The names the mode's packages declare, each kind in its table.
-    names: NameTables,
+    /// The names the mode's packages declare, each kind as its owner builds it.
+    names: LoadNames,
     /// The release's engine tags, which no package gives.
     engine: Vec<EngineTag>,
     /// The script API of the release, which every name a script uses must be of.
@@ -60,23 +57,17 @@ pub(crate) struct LoadCheck<'a> {
     state_fields: BTreeSet<&'a str>,
     /// The mode's sections the checks read, each as a mode that does not give it reads it.
     sections: ModeSections<'a>,
-    /// The sections of every module of the release, each with the capability of its module.
-    readers: SectionReaders,
 }
 
 /// The mode's sections the checks read, each as a mode that does not give it reads it.
 #[derive(Debug)]
 struct ModeSections<'a> {
-    combat: Cow<'a, ModeCombatData>,
-    navigation: Cow<'a, ModeNavigationData>,
     stats: Cow<'a, ModeStatsData>,
 }
 
 impl<'a> ModeSections<'a> {
     fn of(data: &'a ModeData) -> Self {
         Self {
-            combat: data.section_or_default(),
-            navigation: data.section_or_default(),
             stats: data.section_or_default(),
         }
     }
@@ -123,28 +114,26 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<Vec<StatId>, LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
-        let engine = Release::engine_tags();
-        let names = NameTables::of(packages);
-        let check = LoadCheck {
-            packages,
-            names: names.map_err(|error| book_error(packages, error))?,
-            engine,
-            api,
-            rate: TickRate::new(manifest.tick_hz.fastest()),
-            state_fields: LoadCheck::state_fields(packages),
-            sections: ModeSections::of(&packages.data),
-            readers: Release::sections(),
-        };
-        check.sections_owned()?;
+        Self::sections_owned(packages, &Release::sections())?;
         let stat_order = packages
             .stat_graph()?
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
-        let engine_tags = Release::engine_tags();
-        let input = packages.book_input(check.rate, &stat_order, &engine_tags);
+        let engine = Release::engine_tags();
+        let rate = TickRate::new(manifest.tick_hz.fastest());
+        let input = packages.book_input(rate, &stat_order, &engine);
         // The modules' rules of their data come first, so a script that names what a broken rule
         // leaves out shows the rule.
-        Release::check_rules(&input).map_err(|error| book_error(packages, error))?;
+        let names = Release::check_rules(&input).map_err(|error| book_error(packages, error))?;
+        let check = LoadCheck {
+            packages,
+            names,
+            engine: engine.clone(),
+            api,
+            rate,
+            state_fields: LoadCheck::state_fields(packages),
+            sections: ModeSections::of(&packages.data),
+        };
         check.mode().map_err(fail)?;
         check.planned_data().map_err(fail)?;
         check.loadout()?;
@@ -749,43 +738,25 @@ impl<'a> LoadCheck<'a> {
         let packages = self.packages;
         let data = &packages.data;
         let name = named.name.as_str();
-        let table = |kind| self.names.has(kind, name);
-        let known = match named.kind {
-            NameKind::Modifier => return modifier_exists(package.modifiers, name, &at),
-            NameKind::Ability => package.actions.contains_key(name),
-            NameKind::Message => package.package.text.gives(name),
-            NameKind::Param => package
-                .scripts
-                .get(path)
-                .is_some_and(|script| script.params.contains(name)),
-            NameKind::Filter => return self.filter_text(name, &at),
-            NameKind::Stat => {
-                let stat = Stat::named(name).ok_or_else(unknown)?;
-                return self.stats_declared([&stat], &at);
-            }
-            NameKind::Choice => declares(data.choices.keys(), name),
-            NameKind::Item => packages.content.items().contains_key(name),
-            NameKind::Armor => self.sections.combat.armors.contains_key(name),
-            NameKind::Cost => self.names.cost_target(name).is_some(),
-            NameKind::MarkerTag => {
-                let spawns = declares(self.sections.navigation.spawn_tags.iter(), name);
-                spawns
-                    || packages
-                        .map
-                        .markers
-                        .iter()
-                        .any(|marker| declares(marker.tags.iter(), name))
-            }
-            NameKind::Resource => table(TableKind::Resource),
-            NameKind::Pool => table(TableKind::Pool),
-            NameKind::DamageKind => table(TableKind::DamageKind),
-            NameKind::Track => table(TableKind::Track),
-            NameKind::SlotKind => table(TableKind::SlotKind),
-            NameKind::Layer => table(TableKind::Layer),
-            NameKind::Tag => table(TableKind::Tag),
-            NameKind::Team => table(TableKind::Team),
-            NameKind::Path => table(TableKind::Path),
-            NameKind::UnitType => table(TableKind::UnitType),
+        let known = match self.names.has(named.kind, name) {
+            Some(known) => known,
+            None => match named.kind {
+                NameKind::Modifier => return modifier_exists(package.modifiers, name, &at),
+                NameKind::Ability => package.actions.contains_key(name),
+                NameKind::Message => package.package.text.gives(name),
+                NameKind::Param => package
+                    .scripts
+                    .get(path)
+                    .is_some_and(|script| script.params.contains(name)),
+                NameKind::Filter => return self.filter_text(name, &at),
+                NameKind::Stat => {
+                    let stat = Stat::named(name).ok_or_else(unknown)?;
+                    return self.stats_declared([&stat], &at);
+                }
+                NameKind::Choice => declares(data.choices.keys(), name),
+                NameKind::Item => packages.content.items().contains_key(name),
+                kind => unreachable!("the load's names hold every {kind}"),
+            },
         };
         if known { Ok(()) } else { Err(unknown()) }
     }
@@ -793,24 +764,38 @@ impl<'a> LoadCheck<'a> {
     /// Each section of the packages' data is of a capability the mode declares, as a match builds
     /// the books of a section and checks its rules only for the module that registers it: of the
     /// mode's data, of its map, and of each package's content and unit types.
-    fn sections_owned(&self) -> Result<(), LoadError> {
-        let packages = self.packages;
+    fn sections_owned(packages: &ModePackages, readers: &SectionReaders) -> Result<(), LoadError> {
         let undeclared =
             |(key, capability), at: fn(&'static str) -> Place| LoadProblem::Undeclared {
                 capability,
                 at: at(key),
             };
-        let mode = self.undeclared(SectionTable::Mode, packages.data.sections.keys());
+        let mode = Self::undeclared(
+            packages,
+            readers,
+            SectionTable::Mode,
+            packages.data.sections.keys(),
+        );
         let mode = mode.map(|found| undeclared(found, Place::Section));
         let map = || {
-            let map = self.undeclared(SectionTable::Map, packages.map.sections().keys());
+            let map = Self::undeclared(
+                packages,
+                readers,
+                SectionTable::Map,
+                packages.map.sections().keys(),
+            );
             map.map(|found| undeclared(found, Place::MapSection))
         };
         if let Some(problem) = mode.or_else(map) {
             return Err(LoadError::of(&packages.manifest.header.name, problem));
         }
         for view in packages.packages() {
-            let content = self.undeclared(SectionTable::Package, view.content.sections.keys());
+            let content = Self::undeclared(
+                packages,
+                readers,
+                SectionTable::Package,
+                view.content.sections.keys(),
+            );
             let content = content.map(|found| undeclared(found, Place::Section));
             let avatar = match view.kind {
                 ViewKind::Avatar(avatar) => Some((
@@ -823,8 +808,12 @@ impl<'a> LoadCheck<'a> {
             let mut units = units.map(|(name, unit)| (Place::UnitType(name.clone()), unit));
             let unit = || {
                 units.by_ref().chain(avatar).find_map(|(at, unit)| {
-                    let (_, capability) =
-                        self.undeclared(SectionTable::UnitType, unit.sections().keys())?;
+                    let (_, capability) = Self::undeclared(
+                        packages,
+                        readers,
+                        SectionTable::UnitType,
+                        unit.sections().keys(),
+                    )?;
                     Some(LoadProblem::Undeclared { capability, at })
                 })
             };
@@ -838,13 +827,14 @@ impl<'a> LoadCheck<'a> {
     /// The first of `keys`, sections of `table`, whose module is of a capability the mode does not
     /// declare, with that capability.
     fn undeclared(
-        &self,
+        packages: &ModePackages,
+        readers: &SectionReaders,
         table: SectionTable,
         keys: impl IntoIterator<Item = &'static str>,
     ) -> Option<(&'static str, Capability)> {
-        let declared = &self.packages.manifest.capabilities;
+        let declared = &packages.manifest.capabilities;
         keys.into_iter().find_map(|key| {
-            let owner = self.readers.owner(table, key);
+            let owner = readers.owner(table, key);
             let capability = owner.filter(|&capability| !declared.contains(capability))?;
             Some((key, capability))
         })
@@ -945,7 +935,7 @@ impl<'a> LoadCheck<'a> {
         if filter
             .tags
             .iter()
-            .all(|tag| self.names.has(TableKind::Tag, tag.name.as_str()))
+            .all(|tag| self.names.has(NameKind::Tag, tag.name.as_str()) == Some(true))
         {
             return Ok(());
         }

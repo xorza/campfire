@@ -4,27 +4,6 @@ use campfire_sim::Capability;
 use campfire_values::Scalar;
 use thiserror::Error;
 
-/// A list of the mode's names, as its data gives it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModeList {
-    Pools,
-    Resources,
-    DamageKinds,
-    Layers,
-}
-
-/// Why a list of the mode's names does not load. Packages are untrusted, so each is an expected
-/// failure.
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum ModeNamesError {
-    /// More names than the ids of their kind count.
-    #[error("more {0:?} than a match holds")]
-    TooMany(ModeList),
-    /// A name twice.
-    #[error("{list:?}: {name} twice")]
-    Repeated { list: ModeList, name: DeclaredName },
-}
-
 /// Why the mode's own data breaks a rule of the mode. Packages are untrusted, so each is an
 /// expected failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]

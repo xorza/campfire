@@ -56,7 +56,6 @@ mod mode_input;
 mod mode_inputs;
 mod mode_load;
 mod mode_map;
-mod mode_names;
 mod mode_schema;
 mod mode_setup;
 mod mode_spec;
@@ -86,9 +85,7 @@ mod unanswered_slot_events;
 pub use crate::calls::Calls;
 pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choices::Choices;
-pub use crate::error::{
-    ModeDataError, ModeError, ModeList, ModeNamesError, ModeRefusal, OptionValueError, PickError,
-};
+pub use crate::error::{ModeDataError, ModeError, ModeRefusal, OptionValueError, PickError};
 pub use crate::game_map::GameMap;
 pub use crate::loadout_setup::LoadoutSetup;
 pub use crate::map_data::{MapData, MapSeed, MarkerData, PlacedUnitData};
@@ -105,7 +102,6 @@ pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
 pub use crate::mode_load::ModeLoad;
 pub use crate::mode_map::{MapInput, ModeMap};
-pub use crate::mode_names::ModeNames;
 pub use crate::mode_setup::ModeSetup;
 pub use crate::mode_spec::{MapStart, ModeSpec, SpecLoad};
 pub use crate::mode_state::{ModeState, ModeSync};

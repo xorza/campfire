@@ -15,6 +15,7 @@ use campfire_values::EngineTag;
 pub(crate) mod book_cells;
 pub(crate) mod book_input;
 pub(crate) mod leftover_books;
+pub(crate) mod load_names;
 pub(crate) mod package_content;
 #[cfg(test)]
 pub(crate) mod test_package;

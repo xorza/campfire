@@ -7,6 +7,7 @@ use campfire_stats::{MoveSpeedCap, StatOrder};
 use crate::books::Books;
 use crate::books::book_cells::BookCells;
 use crate::books::book_input::BookInput;
+use crate::books::load_names::LoadNames;
 use crate::release::Release;
 
 impl Release {
@@ -44,9 +45,13 @@ impl Release {
 
     /// Checks every rule of `input`'s data that a module of its match declares, as the package
     /// load does before it builds the books (02-engine-core.md, A module checks the rules of its
-    /// own data); an error for the first rule the data breaks.
-    pub fn check_rules(input: &BookInput<'_>) -> Result<(), BookError> {
-        Self::with_cx(input, |cx| cx.check_all())
+    /// own data), and gives the names its scripts may name; an error for the first rule the data
+    /// breaks, or for a list of names its book refuses.
+    pub fn check_rules(input: &BookInput<'_>) -> Result<LoadNames, BookError> {
+        Self::with_cx(input, |mut cx| {
+            cx.check_all()?;
+            LoadNames::of(&mut cx)
+        })
     }
 
     /// What `run` gives of the build of `input`'s books, every book and fact of its match's

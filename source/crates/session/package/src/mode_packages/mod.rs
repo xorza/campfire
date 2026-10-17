@@ -32,7 +32,6 @@ use crate::package_files::PackageFiles;
 use crate::package_view::{PackageView, ViewKind};
 
 mod load_check;
-mod name_tables;
 
 const MODE_DATA: &str = "data/mode.toml";
 const UNITS_DATA: &str = "data/units.toml";
