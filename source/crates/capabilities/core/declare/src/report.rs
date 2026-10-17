@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_script::{ScriptBudgets, ScriptPrints};
+use campfire_script::{ScriptBudgets, ScriptFailures, ScriptPrints};
 
 use crate::role::Role;
 
@@ -21,6 +21,14 @@ impl Report for ScriptBudgets {
 
 /// What the scripts printed in the last tick, which a match that runs scripts alone holds.
 impl Report for ScriptPrints {
+    fn installed(role: &Role) -> Option<Self> {
+        role.scripts().then(Self::default)
+    }
+}
+
+/// The script calls of the last tick that failed, which a match that runs scripts alone holds;
+/// empty again as the next tick starts.
+impl Report for ScriptFailures {
     fn installed(role: &Role) -> Option<Self> {
         role.scripts().then(Self::default)
     }

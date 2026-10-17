@@ -38,7 +38,7 @@ use campfire_production::{ProductionData, Queued, TrainQueue};
 use campfire_progression::{
     Experience, ModeTracksData, Points, Progression, Thresholds, TrackData, TrackSet,
 };
-use campfire_script::internals::FailureKind;
+use campfire_script::FailureKind;
 use campfire_script::{
     ApiError, CallError, NameKind, ParamProblem, Pool, ScriptBudgets, ScriptFailures, ScriptId,
     ScriptLimits, ScriptPools, ScriptRole, StateDecl, StateDefault, StateType, StateValue, SyncTo,

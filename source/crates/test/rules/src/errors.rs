@@ -3,11 +3,13 @@ use campfire_store::internals::{SourceFile, SourceFiles};
 use crate::workspace::source;
 
 /// The lines that write an error's message alone and pass: Rhai's `EvalAltResult` has no source,
-/// so its message is all of it; and clap writes its value parser's error into its own message,
-/// which `Logging::command_line` logs as the usage error.
-const ALONE: [&str; 2] = [
+/// so its message is all of it; clap writes its value parser's error into its own message, which
+/// `Logging::command_line` logs as the usage error; and a script failure's text keeps each error
+/// of its chain's message apart, its source the rest of the chain, which its report writes.
+const ALONE: [&str; 3] = [
     "_ => ScriptError::Runtime(error.to_string()),",
     "error!(error = %error, \"the command line is refused\");",
+    "message: error.to_string(),",
 ];
 
 /// The lines of `code` that write an error with its message alone, the workspace binding each

@@ -388,7 +388,7 @@ pub mod internals {
     use campfire_math::{Num, Vec3};
     use campfire_navigation::{PathEnd, PathWalker};
     use campfire_players::Seating;
-    use campfire_script::internals::FailureKind;
+    use campfire_script::FailureKind;
     use campfire_script::{
         CallError, CallStart, Ctx, ScriptFailures, ScriptRole, ScriptValue, StateValue, View,
     };
@@ -634,7 +634,7 @@ pub mod internals {
 
         /// The kind of each of the tick's failed calls.
         pub fn failures(world: &World) -> Vec<FailureKind> {
-            let failures = world.non_send::<ScriptFailures>().calls();
+            let failures = world.resource::<ScriptFailures>().calls();
             failures.into_iter().map(|failure| failure.kind).collect()
         }
 

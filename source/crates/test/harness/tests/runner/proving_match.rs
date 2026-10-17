@@ -93,7 +93,7 @@ fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
 /// entity is of a kind.
 fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
     let world = fixed.game();
-    let failures = world.non_send::<ScriptFailures>();
+    let failures = world.resource::<ScriptFailures>();
     assert!(
         failures.get().is_empty(),
         "tick {tick}: {:?}",

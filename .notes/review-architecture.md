@@ -664,7 +664,6 @@ Each change folds into its document when its batch lands. Each line names the de
 **6.1 Data out of non-send resources.** Touches `units`, `script`, `mode`, `combat`, `stats`.
 - A `Names` book (E-7, S-21).
 - `Spawner` becomes associated functions, with the spawnable types a load check and a client's spawn refused by another guard than the resource's absence (R-11).
-- `ScriptFailures` keeps a `Send` summary.
 - Scripted passes split into a plain collect and an exclusive script run (K-20).
 - `UnitGrid` is rebuilt by its own system, and its readers take `Res` (C-13).
 

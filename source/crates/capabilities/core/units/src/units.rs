@@ -136,6 +136,7 @@ impl Module for Units {
         d.scratch::<NewUnitStates>();
         d.report::<ScriptBudgets>();
         d.report::<ScriptPrints>();
+        d.report::<ScriptFailures>();
         d.on_insert::<UnitType>(TagBook::give_tags);
         d.cache::<UnitGrid>();
         d.cache::<UnitTracker<GridUnits>>();
@@ -296,7 +297,6 @@ impl Units {
             world.non_send::<Ctx>().tag(&mut host);
             Some(host)
         });
-        d.non_send::<ScriptFailures>(|_, role| role.scripts().then(ScriptFailures::default));
     }
 }
 

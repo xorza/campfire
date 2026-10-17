@@ -26,7 +26,7 @@ pub use crate::scripts::ctx_fn::{CtxFn, Fallible, GetFn, MethodFn, Plain, WithCt
 pub use crate::scripts::data_section::DataSection;
 pub use crate::scripts::data_table::DataTable;
 pub use crate::scripts::error::{
-    ApiError, CallError, Checked, CtxMisuse, ParamProblem, Refusal, UnknownName,
+    ApiError, CallError, Checked, CtxMisuse, FailureKind, ParamProblem, Refusal, UnknownName,
 };
 pub use crate::scripts::frame::Frame;
 pub use crate::scripts::frame::effects::{Effect, Effects};
@@ -55,7 +55,7 @@ pub use crate::scripts::script_cut::ScriptCut;
 pub use crate::scripts::script_facts::{
     CtxUse, EnumPath, EnumString, MemberUse, ScriptFacts, ScriptFunction, ScriptName,
 };
-pub use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
+pub use crate::scripts::script_failures::{FailureText, ScriptFailure, ScriptFailures};
 pub use crate::scripts::script_fn::ScriptFn;
 pub use crate::scripts::script_lasting::ScriptLasting;
 pub use crate::scripts::script_limits::ScriptLimits;
@@ -98,7 +98,6 @@ pub use crate::scripts::view_api::ViewApi;
 pub mod internals {
     pub use crate::script_host::error::internals::Undefined;
     pub use crate::script_host::internals::BoundFunction;
-    pub use crate::scripts::error::internals::FailureKind;
     pub use crate::scripts::script_failures::internals::FailedCall;
     #[expect(
         clippy::module_name_repetitions,

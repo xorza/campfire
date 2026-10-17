@@ -128,7 +128,7 @@ impl Thinking {
                     Ok(_) => now.after(period),
                     Err(CallError::PoolSpent) => since,
                     Err(error) => {
-                        batch.record(Some(id), Hook::OnThink, error);
+                        batch.record(Some(id), Hook::OnThink, &error);
                         now.after(period)
                     }
                 };

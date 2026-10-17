@@ -110,7 +110,7 @@ impl Arena {
         let mut kept = game
             .remove_non_send::<ArenaFailures>()
             .expect("an arena keeps its failures");
-        kept.0.extend(game.non_send_mut::<ScriptFailures>().drain());
+        kept.0.extend(game.resource_mut::<ScriptFailures>().drain());
         game.insert_non_send(kept);
     }
 

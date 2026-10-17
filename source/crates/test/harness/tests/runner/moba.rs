@@ -17,7 +17,7 @@ use campfire_values::{Names, ResourceId, TrackId};
 pub(crate) fn run_to(fixed: &mut FixedMatch, end: u64) {
     while now(fixed.game()) < end {
         fixed.game_mut().run_tick_alone();
-        let failures = fixed.game().non_send::<ScriptFailures>();
+        let failures = fixed.game().resource::<ScriptFailures>();
         assert!(failures.get().is_empty(), "{:?}", failures.get());
     }
 }

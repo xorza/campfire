@@ -171,7 +171,7 @@ fn busy(game: &Match, user: StableId) -> bool {
 }
 
 fn failed(game: &Match) -> Vec<FailedCall> {
-    game.non_send::<ScriptFailures>().calls()
+    game.resource::<ScriptFailures>().calls()
 }
 
 #[test]

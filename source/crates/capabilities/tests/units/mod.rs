@@ -15,7 +15,7 @@ use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::OnPath;
-use campfire_script::internals::FailureKind;
+use campfire_script::FailureKind;
 use campfire_script::{
     ApiError, CapabilityRefusal, NameKind, NumError, ScriptLimits, ScriptList, ScriptPools,
     ScriptValue, Unit, View,

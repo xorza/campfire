@@ -36,7 +36,8 @@ use campfire_progression::{
     TrackSet, XpEffectData,
 };
 use campfire_projectiles::{Projectile, ProjectileData, Projectiles, ProjectilesRefusal};
-use campfire_script::internals::{FailedCall, FailureKind};
+use campfire_script::FailureKind;
+use campfire_script::internals::FailedCall;
 use campfire_script::{
     ApiError, CapabilityRefusal, Hook, NameKind, NumError, Pool, ScriptBudgets, ScriptLimits,
     ScriptPools, StateDecl, StateDefault, StateType, StateValue, SyncTo, SyncedStateDecl,

@@ -4,7 +4,6 @@ use campfire_codec::Binary;
 use campfire_combat::Kept;
 use campfire_common::Tick;
 use campfire_progression::LevelUps;
-use campfire_script::ScriptError;
 
 use super::*;
 
@@ -36,22 +35,9 @@ fn on_mode_input(ctx, player, name, value) {
             (1, input("phase", "")),
         ],
     );
-    let failures = game.non_send::<ScriptFailures>();
-    let errors: Vec<_> = failures
-        .get()
-        .iter()
-        .map(|failure| &failure.error)
-        .collect();
-    assert!(
-        matches!(
-            errors[..],
-            [
-                CallError::Script(ScriptError::CallLimit),
-                CallError::PoolSpent
-            ]
-        ),
-        "{errors:?}"
-    );
+    let failures = game.resource::<ScriptFailures>();
+    let errors: Vec<_> = failures.get().iter().map(|failure| failure.kind).collect();
+    assert_eq!(errors, [FailureKind::CallLimit, FailureKind::PoolSpent]);
     assert_eq!(inputs(&game), StateValue::Int(1));
     // Every pool starts full in the next tick.
     Mode::tick_inputs(&mut game, &[(0, input("phase", ""))]);

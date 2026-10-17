@@ -181,7 +181,7 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
         record.tick(fixed.game_mut());
         watch.tick(fixed.game(), tick);
         let game = fixed.game();
-        let failures = game.non_send::<ScriptFailures>();
+        let failures = game.resource::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
             "tick {tick}: {:?}",

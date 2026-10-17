@@ -115,7 +115,7 @@ impl SessionWorld for World {
         });
         let tick = self.resource::<SimTick>().start();
         self.run_schedule(SimUpdate);
-        if let Some(failures) = self.get_non_send::<ScriptFailures>() {
+        if let Some(failures) = self.get_resource::<ScriptFailures>() {
             for failure in failures.get() {
                 ScriptCallFailed {
                     tick,

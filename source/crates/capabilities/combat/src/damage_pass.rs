@@ -160,7 +160,7 @@ impl DamagePass {
                         (Some(weigh), Some(batch)) => match (weigh.heal)(batch, heal) {
                             Some(Ok(amount)) => amount,
                             Some(Err(error)) => {
-                                batch.record(Some(heal.target), Hook::CalcHeal, error);
+                                batch.record(Some(heal.target), Hook::CalcHeal, &error);
                                 heal.amount
                             }
                             None => heal.amount,
@@ -182,7 +182,7 @@ impl DamagePass {
                 (Some(weigh), Some(batch)) => match (weigh.damage)(batch, damage) {
                     Some(Ok(amount)) => amount,
                     Some(Err(error)) => {
-                        batch.record(Some(damage.target), Hook::CalcDamage, error);
+                        batch.record(Some(damage.target), Hook::CalcDamage, &error);
                         damage.amount
                     }
                     None => damage.amount,

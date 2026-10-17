@@ -3,7 +3,7 @@ use campfire_values::EngineEnum;
 use rhai::EvalAltResult;
 use thiserror::Error;
 
-use crate::script_host::error::{Raised, ScriptError};
+use crate::script_host::error::{NumError, Raised, ScriptError};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_limits::ScriptLimits;
 
@@ -189,6 +189,23 @@ impl CallError {
         };
         refused.map_or(Self::Script(error), CallError::Api)
     }
+
+    /// What it is, its raised value read once.
+    pub fn kind(&self) -> FailureKind {
+        match self {
+            Self::Api(api) => FailureKind::Api(*api),
+            Self::Script(ScriptError::Compile(_)) => FailureKind::Compile,
+            Self::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
+            Self::PoolSpent => FailureKind::PoolSpent,
+            Self::Script(ScriptError::TickBudget) => {
+                unreachable!("a spent budget is a spent pool")
+            }
+            Self::Script(ScriptError::Raised(raised)) => {
+                FailureKind::Raised(raised.get::<NumError>())
+            }
+            Self::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
+        }
+    }
 }
 
 impl ApiError {
@@ -198,38 +215,14 @@ impl ApiError {
     }
 }
 
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::script_host::error::{NumError, ScriptError};
-    use crate::scripts::error::{ApiError, CallError};
-
-    /// What a failed call's error is, without what Rhai reported, so a test compares it: of what
-    /// a script raised, the `NumError`, none for another value.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum FailureKind {
-        Api(ApiError),
-        Compile,
-        CallLimit,
-        PoolSpent,
-        Raised(Option<NumError>),
-        Runtime,
-    }
-
-    impl CallError {
-        pub fn kind(&self) -> FailureKind {
-            match self {
-                Self::Api(api) => FailureKind::Api(*api),
-                Self::Script(ScriptError::Compile(_)) => FailureKind::Compile,
-                Self::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
-                Self::PoolSpent => FailureKind::PoolSpent,
-                Self::Script(ScriptError::TickBudget) => {
-                    unreachable!("a spent budget is a spent pool")
-                }
-                Self::Script(ScriptError::Raised(raised)) => {
-                    FailureKind::Raised(raised.get::<NumError>())
-                }
-                Self::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
-            }
-        }
-    }
+/// What a failed call's error is, without what Rhai reported, so a host and a test tell it
+/// apart: of what a script raised, the `NumError`, none for another value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureKind {
+    Api(ApiError),
+    Compile,
+    CallLimit,
+    PoolSpent,
+    Raised(Option<NumError>),
+    Runtime,
 }

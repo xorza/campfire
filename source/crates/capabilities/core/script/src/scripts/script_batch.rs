@@ -65,7 +65,7 @@ impl ScriptBatch<'_> {
         body: impl FnOnce(&mut ScriptBatch<'_>) -> Result<(), CallError>,
     ) {
         if let Err(error) = self.run(start, body) {
-            self.record(id, hook, error);
+            self.record(id, hook, &error);
         }
     }
 
@@ -91,9 +91,9 @@ impl ScriptBatch<'_> {
     }
 
     /// Records that a call of `hook`, for `id` if any, failed with `error`.
-    pub fn record(&mut self, id: Option<StableId>, hook: Hook, error: CallError) {
+    pub fn record(&mut self, id: Option<StableId>, hook: Hook, error: &CallError) {
         self.world
-            .non_send_mut::<ScriptFailures>()
+            .resource_mut::<ScriptFailures>()
             .record(id, hook, error);
     }
 

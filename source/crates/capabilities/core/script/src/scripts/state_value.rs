@@ -101,9 +101,9 @@ impl StateValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internals::FailureKind;
     use crate::script_host::error::ScriptError;
     use crate::scripts::error::CallError;
+    use crate::scripts::error::FailureKind;
 
     #[test]
     fn a_value_takes_its_fields_type_and_an_integer_past_a_num_fails_as_the_number_apis() {

@@ -22,10 +22,9 @@ use campfire_navigation::{
 };
 use campfire_orders::*;
 use campfire_players::{OutOfPlay, Players, PlayersWorld};
-use campfire_script::internals::FailureKind;
 use campfire_script::{
-    ApiError, CallError, CapabilityRefusal, Filter, Hook, ScriptError, ScriptFailures,
-    ScriptLimits, ScriptPools, TagNames,
+    ApiError, CapabilityRefusal, FailureKind, Filter, Hook, ScriptFailures, ScriptLimits,
+    ScriptPools, TagNames,
 };
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
@@ -860,16 +859,16 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
 
     // It thinks in tick 0: the order for its ally fails the call, which changes nothing.
     game.step_with(&[]);
-    let failures = game.non_send::<ScriptFailures>().get();
+    let failures = game.resource::<ScriptFailures>().get();
     assert_eq!(failures.len(), 1);
     assert_eq!(
         (failures[0].id, failures[0].hook),
         (Some(thinker), Hook::OnThink)
     );
-    assert!(matches!(
-        failures[0].error,
-        CallError::Api(api) if api == OrdersRefusal::OtherUnit.refused()
-    ));
+    assert_eq!(
+        failures[0].kind,
+        FailureKind::Api(OrdersRefusal::OtherUnit.refused())
+    );
     assert_eq!(
         game.part::<ActionProgress>(ally).attack_target(),
         Some(enemy)
@@ -881,7 +880,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     assert_eq!(homing.get(), 3);
     game.run_until(homing.get());
     game.step_with(&[]);
-    assert!(game.non_send::<ScriptFailures>().get().is_empty());
+    assert!(game.resource::<ScriptFailures>().get().is_empty());
     assert!(game.try_part::<Resetting>(homing).is_some());
 
     // An attack order needs a learned weapon whose filter selects the target. Units 4 and 5 order
@@ -906,14 +905,14 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         game.part::<ActionProgress>(hostile).attack_target(),
         Some(enemy)
     );
-    assert!(game.non_send::<ScriptFailures>().get().is_empty());
+    assert!(game.resource::<ScriptFailures>().get().is_empty());
     game.step_with(&[]);
-    let failures = game.non_send::<ScriptFailures>().get();
+    let failures = game.resource::<ScriptFailures>().get();
     assert_eq!(failures.len(), 1);
-    assert!(matches!(
-        (failures[0].id, &failures[0].error),
-        (Some(unit), CallError::Api(ApiError::NoAttack)) if unit == friendly
-    ));
+    assert_eq!(
+        (failures[0].id, failures[0].kind),
+        (Some(friendly), FailureKind::Api(ApiError::NoAttack))
+    );
     assert_eq!(game.part::<ActionProgress>(friendly).attack_target(), None);
     // A reset of another unit fails as the unit's own does not: of a delivery, which holds no
     // spawn place, as of any.
@@ -961,7 +960,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     let mut seen = Vec::new();
     for _ in 0..3 {
         game.step_with(&[]);
-        let failures = game.non_send::<ScriptFailures>().get();
+        let failures = game.resource::<ScriptFailures>().get();
         let failed: Vec<_> = failures.iter().map(|failure| failure.id).collect();
         seen.push((failed, next(&game, first), next(&game, second)));
     }
@@ -973,11 +972,8 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
             (vec![Some(first)], Some(3), Some(2)),
         ]
     );
-    for failure in game.non_send::<ScriptFailures>().get() {
-        assert!(matches!(
-            failure.error,
-            CallError::Script(ScriptError::CallLimit)
-        ));
+    for failure in game.resource::<ScriptFailures>().get() {
+        assert_eq!(failure.kind, FailureKind::CallLimit);
     }
     // A restored unit is due at most its period, here 1 tick, after the tick the match runs
     // next, as a think sets its next a period on; a later tick, which would keep its AI from

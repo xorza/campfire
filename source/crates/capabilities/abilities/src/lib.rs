@@ -207,7 +207,7 @@ pub mod internals {
         }
 
         pub fn failed_calls(world: &World) -> Vec<FailedCall> {
-            world.non_send::<ScriptFailures>().calls()
+            world.resource::<ScriptFailures>().calls()
         }
 
         /// Gives `id` the modifier `name` from itself.

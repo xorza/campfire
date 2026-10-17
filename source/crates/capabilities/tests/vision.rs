@@ -4,7 +4,7 @@ use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_math::Num;
 use campfire_mode::Mode;
-use campfire_script::internals::FailureKind;
+use campfire_script::FailureKind;
 use campfire_script::{ApiError, ScriptLimits, ScriptPools, Unit};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};

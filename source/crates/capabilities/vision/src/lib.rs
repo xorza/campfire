@@ -125,7 +125,7 @@ pub mod internals {
     use campfire_declare::Book;
     use campfire_geometry::{Bounds, Grid, Polygon};
     use campfire_math::Num;
-    use campfire_script::internals::FailureKind;
+    use campfire_script::FailureKind;
     use campfire_script::{Budget, CallError, CallStart, Ctx, ScriptHost, ScriptRole};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimTick, StableId};

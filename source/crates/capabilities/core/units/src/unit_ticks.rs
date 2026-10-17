@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::{Commands, NonSend, NonSendMut, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, NonSend, Query, Res, ResMut};
 use campfire_script::{ScriptBudgets, ScriptFailures, ScriptHost, ScriptPrints};
 use campfire_sim::SimTick;
 
@@ -15,7 +15,7 @@ impl UnitTicks {
     /// Fills every pool, and clears the failures the last tick recorded, as each tick starts.
     pub(super) fn begin_tick(
         mut budgets: ResMut<'_, ScriptBudgets>,
-        mut failures: NonSendMut<'_, ScriptFailures>,
+        mut failures: ResMut<'_, ScriptFailures>,
     ) {
         budgets.refill();
         failures.clear();

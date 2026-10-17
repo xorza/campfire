@@ -79,7 +79,7 @@ impl ModeHooks {
                 let pool = Pool::Player(input.slot);
                 if let ControlFlow::Break(error) = call.answer(None, pool, Hook::OnModeInput, args)
                 {
-                    call.batch.record(None, Hook::OnModeInput, error);
+                    call.batch.record(None, Hook::OnModeInput, &error);
                 }
             }
         });

@@ -79,7 +79,7 @@ impl Calls<'_, '_> {
             Ok(()) => ControlFlow::Continue(()),
             Err(CallError::PoolSpent) => ControlFlow::Break(CallError::PoolSpent),
             Err(error) => {
-                self.batch.record(id, hook, error);
+                self.batch.record(id, hook, &error);
                 ControlFlow::Continue(())
             }
         }

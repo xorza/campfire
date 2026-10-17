@@ -128,7 +128,7 @@ mod scripted_match {
                     .collect();
             }
             let world = fixed.game();
-            let failures = world.non_send::<ScriptFailures>();
+            let failures = world.resource::<ScriptFailures>();
             assert!(
                 failures.get().is_empty(),
                 "tick {tick}: {:?}",

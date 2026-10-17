@@ -109,7 +109,7 @@ impl Golden {
                 }
             }
         }
-        if let Some(failures) = game.get_non_send::<ScriptFailures>() {
+        if let Some(failures) = game.get_resource::<ScriptFailures>() {
             for failure in failures.get() {
                 let id = failure.id.map_or(u64::MAX, StableId::get);
                 bytes.extend_from_slice(&id.to_le_bytes());

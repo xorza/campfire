@@ -353,7 +353,7 @@ impl Casts {
                     Some(prepared.resolved)
                 }
                 Err(error) => {
-                    batch.record(Some(caster), Hook::OnResolve, error);
+                    batch.record(Some(caster), Hook::OnResolve, &error);
                     None
                 }
             }
