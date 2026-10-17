@@ -57,7 +57,7 @@ impl<'a> Installing<'a> {
         };
         let mut installer = Installer::new(parts, self.facts);
         Declaring::new(self.facts.facts.set, Scripts::Visited, &mut installer).declare::<M>();
-        M::install(&mut InstallCx::new(schedule, self.facts, world));
+        M::install(&mut InstallCx::<M::Set>::new(schedule, self.facts, world));
     }
 }
 

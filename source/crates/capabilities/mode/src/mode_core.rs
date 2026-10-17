@@ -1,4 +1,4 @@
-use campfire_declare::{Declarations, InstallCx, Module};
+use campfire_declare::{Declarations, InstallCx, Module, NoSet};
 use campfire_sim::Capability;
 
 use crate::match_end::MatchEnd;
@@ -13,11 +13,12 @@ impl Module for ModeCore {
     const CAPABILITY: Option<Capability> = Some(Capability::Mode);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.component::<MatchEnd>();
         d.stages_run_if(MatchEnd::running);
     }
 
-    fn install(_: &mut InstallCx<'_>) {}
+    fn install(_: &mut InstallCx<'_, Self::Set>) {}
 }

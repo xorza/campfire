@@ -11,15 +11,15 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionSlots, EffectQueues};
+use campfire_actions::{ActionSlots, ActionsSet, EffectQueues};
 use campfire_common::EnumAll;
 use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
 };
 use campfire_math::RngStream;
-use campfire_sim::Capability;
-use campfire_stats::Life;
-use campfire_units::{BodyUnit, Dead, SpawnPoint};
+use campfire_sim::{Capability, SimSet};
+use campfire_stats::{Life, StatsSet};
+use campfire_units::{BodyUnit, Dead, SpawnPoint, UnitsSet};
 
 use crate::combat_column::RowReads;
 use crate::held_hits::HeldHits;
@@ -100,7 +100,7 @@ pub struct Combat;
 
 /// Combat's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum CombatSet {
+pub enum CombatSet {
     /// Dead units whose respawn is due come back, before any input of the tick can reach
     /// them.
     Respawn,
@@ -122,20 +122,20 @@ pub(crate) enum CombatSet {
 }
 
 impl ModuleSet for CombatSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Combat);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Respawn => Phase::Begin,
-            Self::Attack => Phase::Attack,
-            Self::Hits => Phase::Hits,
-            Self::Pay => Phase::Pay,
-            Self::Strike => Phase::Strike,
-            Self::Damage => Phase::Damage,
-            Self::Die => Phase::Die,
-            Self::Despawn => Phase::End,
-        })
+        match self {
+            Self::Respawn => SetPlace::at(UnitsSet::Begin),
+            Self::Attack => SetPlace::at(ActionsSet::WindUp),
+            Self::Hits => SetPlace::at(ActionsSet::Hit),
+            Self::Pay => SetPlace::at(ActionsSet::Pay),
+            Self::Strike => SetPlace::at(ActionsSet::Strike),
+            Self::Damage => SetPlace::stage(SimSet::Resolve).before(ActionsSet::Resolve),
+            Self::Die => (SetPlace::stage(SimSet::Resolve).after(StatsSet::GrantAtResolve))
+                .before(StatsSet::ClearDead),
+            Self::Despawn => SetPlace::at(UnitsSet::End),
+        }
     }
 }
 
@@ -143,9 +143,9 @@ impl Module for Combat {
     const CAPABILITY: Option<Capability> = Some(Capability::Combat);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = CombatSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<CombatSet>();
         d.component::<TurretAngle>();
         d.book::<ByType<Turret>>();
         d.part::<BodyUnit, TurretAngle>(|at| at.of_type::<Turret>().map(|_| TurretAngle::REST));
@@ -190,46 +190,45 @@ impl Module for Combat {
     /// and its toggles' pay are the server's: a predicting client deals no damage, as its pools
     /// and its deaths come from the server, despawns no unit, forgets no attacker it never held,
     /// and pays no toggle; it predicts a respawn that is due.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems((
-            Aiming::aim
-                .before(Attacks::start_attacks)
-                .in_set(CombatSet::Attack),
-            Attacks::start_attacks.in_set(CombatSet::Attack),
-            Dying::respawn.in_set(CombatSet::Respawn),
-        ));
-        cx.server((
-            Attacks::take_hits.in_set(CombatSet::Hits),
-            DamagePass::run.in_set(CombatSet::Damage),
-            Dying::die.in_set(CombatSet::Die),
-        ));
-        cx.systems(Volley::collect.in_set(CombatSet::Pay));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.add(
+            CombatSet::Attack,
+            (
+                Aiming::aim.before(Attacks::start_attacks),
+                Attacks::start_attacks,
+            ),
+        );
+        cx.add(CombatSet::Respawn, Dying::respawn);
+        cx.server(CombatSet::Hits, Attacks::take_hits);
+        cx.server(CombatSet::Damage, DamagePass::run);
+        cx.server(CombatSet::Die, Dying::die);
+        cx.add(CombatSet::Pay, Volley::collect);
         cx.by_role(
+            CombatSet::Strike,
             (
                 Attacks::attack_events.run_if(Volley::any),
                 Attacks::strike::<ServerForm>,
             )
-                .chain()
-                .in_set(CombatSet::Strike),
+                .chain(),
             (
                 Attacks::attack_events.run_if(Volley::any),
                 Attacks::strike::<ClientForm>,
             )
-                .chain()
-                .in_set(CombatSet::Strike),
+                .chain(),
         );
-        cx.server((
-            Attacks::pay_attack_toggles
-                .after(Volley::collect)
-                .in_set(CombatSet::Pay),
-            Dying::forget_attackers
-                .before(Dying::respawn)
-                .in_set(CombatSet::Respawn),
-            Dying::despawn_dead.in_set(CombatSet::Despawn),
-            Attacks::land_held
-                .before(Attacks::take_hits)
-                .in_set(CombatSet::Hits),
-        ));
+        cx.server(
+            CombatSet::Pay,
+            Attacks::pay_attack_toggles.after(Volley::collect),
+        );
+        cx.server(
+            CombatSet::Respawn,
+            Dying::forget_attackers.before(Dying::respawn),
+        );
+        cx.server(CombatSet::Despawn, Dying::despawn_dead);
+        cx.server(
+            CombatSet::Hits,
+            Attacks::land_held.before(Attacks::take_hits),
+        );
     }
 }
 

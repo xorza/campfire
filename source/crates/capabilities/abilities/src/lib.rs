@@ -11,9 +11,9 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionTarget, CastSpends};
+use campfire_actions::{ActionTarget, ActionsSet, CastSpends};
 use campfire_common::{EnumAll, Ticks};
-use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::Deliverers;
 use campfire_script::{ScriptValue, View};
 use campfire_sim::{Capability, TickRate};
@@ -38,7 +38,7 @@ pub struct Abilities;
 
 /// The steps of `abilities`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum AbilitiesSet {
+pub enum AbilitiesSet {
     /// Before the holds follow: toggles pay their seconds or turn off.
     Toggles,
     /// The due casts start.
@@ -48,14 +48,13 @@ pub(crate) enum AbilitiesSet {
 }
 
 impl ModuleSet for AbilitiesSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Toggles => Phase::Toggles,
-            Self::StartCasts => Phase::Start,
-            Self::Resolve => Phase::CastResolve,
+        SetPlace::at(match self {
+            Self::Toggles => ActionsSet::Toggle,
+            Self::StartCasts => ActionsSet::Start,
+            Self::Resolve => ActionsSet::Cast,
         })
     }
 }
@@ -64,9 +63,9 @@ impl Module for Abilities {
     const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = AbilitiesSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<AbilitiesSet>();
         d.calls::<Deliverers>();
         d.calls::<CastSpends>();
         d.api(AbilitiesApi::register);
@@ -79,19 +78,17 @@ impl Module for Abilities {
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
     /// only cools down, as the server's does. On the server, each toggle that is on pays its cost
     /// each second, as the toggle's cost is the server's.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems(Casts::start_casts.in_set(AbilitiesSet::StartCasts));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.add(AbilitiesSet::StartCasts, Casts::start_casts);
         cx.unscripted(
-            (Casts::predict_casts, Channels::predict_channels)
-                .chain()
-                .in_set(AbilitiesSet::Resolve),
+            AbilitiesSet::Resolve,
+            (Casts::predict_casts, Channels::predict_channels).chain(),
         );
         cx.scripted(
-            (Casts::resolve_casts, Channels::run_channels)
-                .chain()
-                .in_set(AbilitiesSet::Resolve),
+            AbilitiesSet::Resolve,
+            (Casts::resolve_casts, Channels::run_channels).chain(),
         );
-        cx.server(Toggles::run_toggles.in_set(AbilitiesSet::Toggles));
+        cx.server(AbilitiesSet::Toggles, Toggles::run_toggles);
     }
 }
 

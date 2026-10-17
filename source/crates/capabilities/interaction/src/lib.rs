@@ -4,7 +4,7 @@
 
 use bevy_ecs::world::World;
 use campfire_actions::ActionSlots;
-use campfire_declare::{ByType, Declarations, InstallCx, Module};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, NoSet};
 use campfire_sim::{Breach, Capability};
 use campfire_values::UnitType;
 
@@ -57,6 +57,7 @@ impl Module for Interaction {
     const CAPABILITY: Option<Capability> = Some(Capability::Interaction);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.book::<ByType<UseSpec>>();
@@ -67,5 +68,5 @@ impl Module for Interaction {
 
     /// Adds nothing to the schedule: the `use` order of `orders` fills a use slot, and the
     /// abilities' casts run it.
-    fn install(_: &mut InstallCx<'_>) {}
+    fn install(_: &mut InstallCx<'_, Self::Set>) {}
 }

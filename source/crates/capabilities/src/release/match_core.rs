@@ -1,4 +1,4 @@
-use campfire_declare::{Declarations, InstallCx, MatchFacts, Module};
+use campfire_declare::{Declarations, InstallCx, MatchFacts, Module, NoSet};
 use campfire_sim::{Capability, SimWorldBuilder};
 
 /// What a match's build puts in itself before any module installs: the sim's world, and the
@@ -11,6 +11,7 @@ impl Module for MatchCore {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
         SimWorldBuilder::own_resources(d);
@@ -18,5 +19,5 @@ impl Module for MatchCore {
     }
 
     /// Adds no system: the sim's schedule holds its own.
-    fn install(_: &mut InstallCx<'_>) {}
+    fn install(_: &mut InstallCx<'_, Self::Set>) {}
 }

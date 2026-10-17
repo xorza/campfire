@@ -1,5 +1,6 @@
 use std::any::TypeId;
 use std::fmt;
+use std::marker::PhantomData;
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::ScheduleSystem;
@@ -10,17 +11,20 @@ use campfire_sim::Capability;
 use crate::book::Book;
 use crate::callbacks::Callbacks;
 use crate::match_facts::MatchFacts;
+use crate::module_set::ModuleSet;
 use crate::role::Role;
 use crate::server_only::ServerOnly;
 
-/// What a module's install reads and changes: the match's schedule, which it adds its systems to,
-/// each by the role it serves, what it knows of the match, and the books its declarations put in,
-/// whose facts decide which systems it adds (02-engine-core.md, Books before the install). All
-/// else a module adds is a declaration, which the installer puts in.
-pub struct InstallCx<'a> {
+/// What the install of a module whose sets are `S` reads and changes: the match's schedule, which
+/// it adds its systems to, each in a set of its own and by the role it serves, what it knows of the match,
+/// and the books its declarations put in, whose facts decide which systems it adds
+/// (02-engine-core.md, Books before the install). All else a module adds is a declaration, which
+/// the installer puts in.
+pub struct InstallCx<'a, S> {
     schedule: &'a mut Schedule,
     facts: &'a InstallFacts<'a>,
     world: &'a World,
+    sets: PhantomData<fn() -> S>,
 }
 
 /// What an install knows of its match: its facts, the registries of callbacks its modules call or
@@ -32,7 +36,7 @@ pub struct InstallFacts<'a> {
     pub mode_script: Option<ScriptId>,
 }
 
-impl<'a> InstallCx<'a> {
+impl<'a, S: ModuleSet> InstallCx<'a, S> {
     pub const fn new(
         schedule: &'a mut Schedule,
         facts: &'a InstallFacts<'a>,
@@ -42,6 +46,7 @@ impl<'a> InstallCx<'a> {
             schedule,
             facts,
             world,
+            sets: PhantomData,
         }
     }
 
@@ -69,60 +74,55 @@ impl<'a> InstallCx<'a> {
         self.facts.called.contains(&TypeId::of::<C>())
     }
 
-    /// Adds `systems` to every match, a server's and a client's alike.
-    pub fn systems<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
-        self.schedule.add_systems(systems);
+    /// Adds `systems`, in the module's `set`, to every match, a server's and a client's alike.
+    pub fn add<M>(&mut self, set: S, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
+        self.schedule.add_systems(systems.in_set(set));
     }
 
-    /// Adds `systems`, which compute the server's own state, to a server's match, in `ServerOnly`
-    /// besides their own sets; a client's install leaves them out.
-    pub fn server<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
+    /// Adds `systems`, in the module's `set`, which compute the server's own state, to a server's
+    /// match, in `ServerOnly` besides; a client's install leaves them out.
+    pub fn server<M>(&mut self, set: S, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
         if self.role().computes_state() {
-            self.schedule.add_systems(systems.in_set(ServerOnly));
+            self.schedule
+                .add_systems(systems.in_set(set).in_set(ServerOnly));
         }
     }
 
-    /// Adds `systems`, which call scripts, to a match that runs them, a server's within its
-    /// budgets.
-    pub fn scripted<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
+    /// Adds `systems`, in the module's `set`, which call scripts, to a match that runs them, a
+    /// server's within its budgets.
+    pub fn scripted<M>(&mut self, set: S, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
         if self.role().scripts() {
-            self.schedule.add_systems(systems);
+            self.schedule.add_systems(systems.in_set(set));
         }
     }
 
-    /// Adds `systems`, which stand in for what scripts do, to a match that runs none: a client's,
-    /// or one of the rules alone.
-    pub fn unscripted<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
+    /// Adds `systems`, in the module's `set`, which stand in for what scripts do, to a match that
+    /// runs none: a client's, or one of the rules alone.
+    pub fn unscripted<M>(&mut self, set: S, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
         if !self.role().scripts() {
-            self.schedule.add_systems(systems);
+            self.schedule.add_systems(systems.in_set(set));
         }
     }
 
-    /// Adds `systems` to a predicting client's match alone: what it predicts of what the server
-    /// computes.
-    pub fn predicting<M>(&mut self, systems: impl IntoScheduleConfigs<ScheduleSystem, M>) {
-        if matches!(self.role(), Role::Client) {
-            self.schedule.add_systems(systems);
-        }
-    }
-
-    /// Adds `server` to a server's match and `client` to a predicting client's: two forms of the
-    /// same systems, as a system of a `RoleForm` takes, or one that tests what a team sees by the
-    /// server's vision or by the units a client holds, as it holds only those its team sees.
+    /// Adds `server`, in the module's `set`, to a server's match and `client` to a predicting
+    /// client's: two forms of the same systems, as a system of a `RoleForm` takes, or one that
+    /// tests what a team sees by the server's vision or by the units a client holds, as it holds
+    /// only those its team sees.
     pub fn by_role<M, N>(
         &mut self,
+        set: S,
         server: impl IntoScheduleConfigs<ScheduleSystem, M>,
         client: impl IntoScheduleConfigs<ScheduleSystem, N>,
     ) {
         if self.role().computes_state() {
-            self.schedule.add_systems(server);
+            self.schedule.add_systems(server.in_set(set));
         } else {
-            self.schedule.add_systems(client);
+            self.schedule.add_systems(client.in_set(set));
         }
     }
 }
 
-impl fmt::Debug for InstallCx<'_> {
+impl<S> fmt::Debug for InstallCx<'_, S> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("InstallCx")
             .field("facts", &self.facts)

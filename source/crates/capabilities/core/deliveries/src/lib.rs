@@ -4,13 +4,11 @@
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, Reached};
+use campfire_actions::{ActionBook, ActionsSet, Reached};
 use campfire_common::EnumAll;
-use campfire_declare::{
-    Declarations, InstallCx, Module, ModuleSet, Phase, Role, Scratch, SetPlace,
-};
+use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Role, Scratch, SetPlace};
 use campfire_math::Vec3;
 use campfire_sim::{Breach, Capability, StableId};
 use campfire_units::ForcedMove;
@@ -54,20 +52,19 @@ pub struct DashEnd {
 
 /// The steps of `deliveries`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum DeliverySet {
+pub enum DeliverySet {
     /// What the deliveries reached runs their actions' hooks, and the deliveries that ended
     /// run theirs.
     Deliver,
 }
 
 impl ModuleSet for DeliverySet {
-    const CAPABILITY: Option<Capability> = None;
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Deliver => Phase::Deliver,
-        })
+        match self {
+            Self::Deliver => SetPlace::at(ActionsSet::Deliver),
+        }
     }
 }
 
@@ -75,9 +72,9 @@ impl Module for Deliveries {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = DeliverySet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<DeliverySet>();
         d.scratch::<Self>();
         d.check::<ForcedMove>(Self::dashes_known);
         d.api(DeliveriesApi::register);
@@ -85,12 +82,12 @@ impl Module for Deliveries {
 
     /// Adds the deliveries' hooks to a match whose modules call for them, as a module that sets a
     /// delivery out or calls one does: in `Phase::Deliver`, after the deliveries move.
-    fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
         if !cx.calls_for::<Deliverers>() {
             return;
         }
-        cx.scripted(DeliveryHooks::deliver.in_set(DeliverySet::Deliver));
-        cx.unscripted(DeliveryHooks::end.in_set(DeliverySet::Deliver));
+        cx.scripted(DeliverySet::Deliver, DeliveryHooks::deliver);
+        cx.unscripted(DeliverySet::Deliver, DeliveryHooks::end);
     }
 }
 

@@ -23,9 +23,10 @@ impl<'a, D: Declarations> Declaring<'a, D> {
         Declaring { set, scripts, d }
     }
 
-    /// Visits the declarations of `M`, after the mark of its start.
+    /// Visits the declarations of `M`, after the mark of its start and its sets.
     pub(super) fn declare<M: Module>(&mut self) {
         self.d.module(M::CAPABILITY);
+        self.d.sets::<M::Set>();
         M::declare(self.d);
     }
 }

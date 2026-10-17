@@ -2430,7 +2430,6 @@ name = "campfire-declare"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
- "campfire-common",
  "campfire-declare",
  "campfire-math",
  "campfire-script",

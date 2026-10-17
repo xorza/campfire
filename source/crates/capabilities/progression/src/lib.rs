@@ -6,10 +6,10 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::EffectQueues;
+use bevy_ecs::schedule::SystemSet;
+use campfire_actions::{ActionsSet, EffectQueues};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_sim::Capability;
 use campfire_units::BodyUnit;
 
@@ -50,19 +50,18 @@ pub struct Progression;
 
 /// The steps of `progression`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum ProgressionSet {
+pub enum ProgressionSet {
     /// The tick's learn orders learn their ranks.
     Commands,
 }
 
 impl ModuleSet for ProgressionSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Commands => Phase::Learn,
-        })
+        match self {
+            Self::Commands => SetPlace::at(ActionsSet::Learn),
+        }
     }
 }
 
@@ -70,9 +69,9 @@ impl Module for Progression {
     const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = ProgressionSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<ProgressionSet>();
         d.component::<Experience>();
         d.component::<Points>();
         d.resource::<LevelUps>();
@@ -97,8 +96,8 @@ impl Module for Progression {
 
     /// Adds progression to a match: in Inputs, the tick's learn orders learn their ranks. Its
     /// effects queue through its callback.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems(LearnOrders::learn_ranks.in_set(ProgressionSet::Commands));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.add(ProgressionSet::Commands, LearnOrders::learn_ranks);
     }
 }
 

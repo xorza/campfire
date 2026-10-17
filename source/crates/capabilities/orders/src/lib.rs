@@ -12,9 +12,10 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
+use campfire_actions::ActionsSet;
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_sim::Capability;
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_sim::{Capability, SimSet};
 use campfire_units::BodyUnit;
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
@@ -45,7 +46,7 @@ pub use crate::unit_order::{OrderedUnit, UnitOrder};
 
 /// The steps of `orders`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum OrdersSet {
+pub enum OrdersSet {
     /// The tick's orders become each unit's current order.
     Orders,
     /// Units follow their paths and chase their targets, before attacks start.
@@ -55,15 +56,14 @@ pub(crate) enum OrdersSet {
 }
 
 impl ModuleSet for OrdersSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Orders);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Orders => Phase::Order,
-            Self::Chase => Phase::Chase,
-            Self::Think => Phase::Think,
-        })
+        match self {
+            Self::Orders => SetPlace::at(ActionsSet::Order),
+            Self::Chase => SetPlace::at(ActionsSet::Chase),
+            Self::Think => SetPlace::stage(SimSet::Think),
+        }
     }
 }
 
@@ -80,9 +80,9 @@ impl Module for Orders {
         Capability::Vision,
         Capability::Interaction,
     ];
+    type Set = OrdersSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<OrdersSet>();
         d.component::<NextThink>();
         d.part::<BodyUnit, NextThink>(|at| at.of_type::<Ai>().map(|_| NextThink::FIRST));
         d.component::<Resetting>();
@@ -99,20 +99,19 @@ impl Module for Orders {
     /// and on stats. Without the core's scripts, as on a client, no unit thinks. An order's
     /// targets are checked as the server's vision sees them, or, on a predicting client, as the
     /// units it holds.
-    fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
         cx.by_role(
+            OrdersSet::Orders,
             Self::check_orders::<ByVision>(),
             Self::check_orders::<ByHolding>(),
         );
-        cx.systems(
-            (Destinations::follow_paths, Destinations::chase)
-                .chain()
-                .in_set(OrdersSet::Chase),
+        cx.add(
+            OrdersSet::Chase,
+            (Destinations::follow_paths, Destinations::chase).chain(),
         );
         cx.scripted(
-            (Thinking::end_dead_resets, Thinking::think)
-                .chain()
-                .in_set(OrdersSet::Think),
+            OrdersSet::Think,
+            (Thinking::end_dead_resets, Thinking::think).chain(),
         );
     }
 }
@@ -126,7 +125,6 @@ impl Orders {
             OrderInputs::apply_player_orders,
         )
             .chain()
-            .in_set(OrdersSet::Orders)
     }
 }
 

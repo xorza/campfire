@@ -146,14 +146,8 @@ impl Declarations for Installer<'_> {
     }
 
     fn sets<S: ModuleSet>(&mut self) {
-        assert_eq!(
-            S::CAPABILITY,
-            self.capability,
-            "the sets of {} are their owner's to declare",
-            type_name::<S>()
-        );
         for &set in S::ALL {
-            self.schedule.configure_sets(set.in_set(set.place().set()));
+            set.place().configure(set, self.schedule);
         }
     }
 

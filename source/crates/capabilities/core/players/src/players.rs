@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_declare::{Declarations, EntityParts, InstallCx, KindVisitor, Module};
+use campfire_declare::{Declarations, EntityParts, InstallCx, KindVisitor, Module, NoSet};
 use campfire_sim::{Breach, Capability, StableId};
 use campfire_units::{MatchEntity, Player, UnitsWorld};
 use campfire_values::Team;
@@ -21,6 +21,7 @@ impl Module for Players {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
         Self::kinds(d);
@@ -38,7 +39,7 @@ impl Module for Players {
         });
     }
 
-    fn install(_: &mut InstallCx<'_>) {}
+    fn install(_: &mut InstallCx<'_, Self::Set>) {}
 }
 
 impl Players {

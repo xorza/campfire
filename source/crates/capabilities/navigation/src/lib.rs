@@ -15,11 +15,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_actions::EffectQueues;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, SimEdge, SimSet, Unpredicted};
-use campfire_units::{BodyUnit, Dead, Destination, MoveStep, SpawnHooks, UnitTracker};
+use campfire_units::{BodyUnit, Dead, Destination, MoveStep, SpawnHooks, UnitTracker, UnitsSet};
 
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
@@ -94,7 +94,7 @@ pub use crate::walls::Walls;
 
 /// Navigation's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum NavigationSet {
+pub enum NavigationSet {
     /// The static index and the pathing grid take the static bodies as the tick starts.
     TrackStatics,
     /// Units route and move.
@@ -140,17 +140,16 @@ impl NavigationSet {
 }
 
 impl ModuleSet for NavigationSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::TrackStatics => SetPlace::Phase(Phase::Begin),
-            Self::Move => SetPlace::Phase(Phase::Move),
-            Self::Collide => SetPlace::Phase(Phase::Collide),
-            Self::Bounds => SetPlace::Gap(SimEdge::After(SimSet::Collide)),
-            Self::TrackEnd => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
-            Self::Report(edge) => SetPlace::Gap(edge),
+            Self::TrackStatics => SetPlace::at(UnitsSet::Begin),
+            Self::Move => SetPlace::stage(SimSet::Move),
+            Self::Collide => SetPlace::stage(SimSet::Collide),
+            Self::Bounds => SetPlace::gap(SimEdge::After(SimSet::Collide)),
+            Self::TrackEnd => SetPlace::gap(SimEdge::After(SimSet::Vision)),
+            Self::Report(edge) => SetPlace::gap(edge),
         }
     }
 }
@@ -164,9 +163,9 @@ impl Module for Navigation {
     const CAPABILITY: Option<Capability> = Some(Capability::Navigation);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = NavigationSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<NavigationSet>();
         d.removals::<Dead>();
         d.removals::<Unpredicted>();
         d.callback::<SpawnHooks>(Capability::Navigation, Self::make_room);
@@ -199,9 +198,13 @@ impl Module for Navigation {
     /// routes to their destinations, straight lines until the map gives a pathing grid, then the
     /// forced moves move theirs; in Collide, overlapping living bodies part; after Collide, each
     /// unit that walks stands within the bounds again.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems((
-            StaticTracking::track_static_bodies.in_set(NavigationSet::TrackStatics),
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.add(
+            NavigationSet::TrackStatics,
+            StaticTracking::track_static_bodies,
+        );
+        cx.add(
+            NavigationSet::Move,
             (
                 Walking::forget_dead,
                 Routing::route_units,
@@ -210,19 +213,21 @@ impl Module for Navigation {
                 Walking::move_units,
                 ForcedMoves::force_units,
             )
-                .chain()
-                .in_set(NavigationSet::Move),
-            (StaticTracking::track_static_bodies, Walking::collide)
-                .chain()
-                .in_set(NavigationSet::Collide),
-            Walking::keep_in_bounds.in_set(NavigationSet::Bounds),
+                .chain(),
+        );
+        cx.add(
+            NavigationSet::Collide,
+            (StaticTracking::track_static_bodies, Walking::collide).chain(),
+        );
+        cx.add(NavigationSet::Bounds, Walking::keep_in_bounds);
+        cx.add(
+            NavigationSet::TrackEnd,
             StaticTracking::track_static_bodies
-                .in_set(NavigationSet::TrackEnd)
                 .before(NavigationSet::Report(SimEdge::After(SimSet::Vision))),
-        ));
+        );
         for set in NavigationSet::ALL {
             if let NavigationSet::Report(_) = set {
-                cx.systems(Walking::report_short.in_set(set));
+                cx.add(set, Walking::report_short);
             }
         }
     }

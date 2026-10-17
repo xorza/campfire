@@ -10,13 +10,14 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionRange, ActionTarget, Aim, Delivery, DeliveryShape, ProjectileFlight,
+    ActionBook, ActionRange, ActionTarget, ActionsSet, Aim, Delivery, DeliveryShape,
+    ProjectileFlight,
 };
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
@@ -58,7 +59,7 @@ pub struct Projectiles;
 
 /// The steps of `projectiles`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum ProjectilesSet {
+pub enum ProjectilesSet {
     /// Projectiles fly a step, and their hits and ends run their actions' hooks.
     Fly,
     /// The ranged attacks and the actions that fire take their shots.
@@ -68,14 +69,13 @@ pub(crate) enum ProjectilesSet {
 }
 
 impl ModuleSet for ProjectilesSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Fly => Phase::Fly,
-            Self::TakeShots => Phase::Fire,
-            Self::Launch => Phase::Launch,
+        SetPlace::at(match self {
+            Self::Fly => ActionsSet::Travel,
+            Self::TakeShots => ActionsSet::Fire,
+            Self::Launch => ActionsSet::Launch,
         })
     }
 }
@@ -84,10 +84,10 @@ impl Module for Projectiles {
     const CAPABILITY: Option<Capability> = Some(Capability::Projectiles);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = ProjectilesSet;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.engine_tags(&[Self::TAG]);
-        d.sets::<ProjectilesSet>();
         d.component::<Projectile>();
         d.component::<FlightState>();
         d.resource::<StruckUnits>();
@@ -104,12 +104,10 @@ impl Module for Projectiles {
     /// and casts resolve, the tick's launches take off, and fly from the next tick. A teleport
     /// makes each projectile that homes on its unit lose it. A predicting client predicts no
     /// delivery, so it takes no shot, launches none and flies none.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.server((
-            Launching::take_shots.in_set(ProjectilesSet::TakeShots),
-            Launching::launch.in_set(ProjectilesSet::Launch),
-            Flying::fly.in_set(ProjectilesSet::Fly),
-        ));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.server(ProjectilesSet::TakeShots, Launching::take_shots);
+        cx.server(ProjectilesSet::Launch, Launching::launch);
+        cx.server(ProjectilesSet::Fly, Flying::fly);
     }
 }
 

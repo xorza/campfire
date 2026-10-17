@@ -10,14 +10,15 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, EffectQueues};
+use campfire_actions::{ActionTarget, ActionsSet, EffectQueues};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_math::Vec3;
-use campfire_sim::{Capability, StableId};
+use campfire_sim::{Capability, SimSet, StableId};
+use campfire_stats::StatsSet;
 use campfire_units::DeliveryEntity;
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
@@ -52,7 +53,7 @@ pub struct Areas;
 
 /// The steps of `areas`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum AreasSet {
+pub enum AreasSet {
     /// Areas trigger and end.
     Trigger,
     /// The areas the tick's actions deliver land.
@@ -65,16 +66,17 @@ pub(crate) enum AreasSet {
 }
 
 impl ModuleSet for AreasSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Areas);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Trigger => Phase::Trigger,
-            Self::Land => Phase::Land,
-            Self::LandAtResolve => Phase::Resolve,
-            Self::HoldInside => Phase::HoldInside,
-        })
+        match self {
+            Self::Trigger => SetPlace::at(ActionsSet::Trigger),
+            Self::Land => SetPlace::at(ActionsSet::Land),
+            Self::LandAtResolve => SetPlace::at(ActionsSet::Resolve),
+            Self::HoldInside => {
+                (SetPlace::stage(SimSet::Resolve).after(StatsSet::ClearDead)).before(StatsSet::Hold)
+            }
+        }
     }
 }
 
@@ -82,9 +84,9 @@ impl Module for Areas {
     const CAPABILITY: Option<Capability> = Some(Capability::Areas);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = AreasSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<AreasSet>();
         d.engine_tags(&[Self::TAG]);
         d.component::<Area>();
         d.component::<AreaTrigger>();
@@ -102,13 +104,11 @@ impl Module for Areas {
     /// land, and then, before stats hold their modifiers, each area lists those it holds on the
     /// units inside. A launch queues as an effect of `areas`. A predicting client predicts no
     /// delivery, so it lands none and triggers none.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.server((
-            AreaLife::trigger.in_set(AreasSet::Trigger),
-            AreaLife::land.in_set(AreasSet::Land),
-            AreaLife::land.in_set(AreasSet::LandAtResolve),
-        ));
-        cx.systems(AreaHolds::hold_inside.in_set(AreasSet::HoldInside));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.server(AreasSet::Trigger, AreaLife::trigger);
+        cx.server(AreasSet::Land, AreaLife::land);
+        cx.server(AreasSet::LandAtResolve, AreaLife::land);
+        cx.add(AreasSet::HoldInside, AreaHolds::hold_inside);
     }
 }
 

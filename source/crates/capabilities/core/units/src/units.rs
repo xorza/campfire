@@ -1,13 +1,11 @@
 use bevy_ecs::change_detection::CheckChangeTicks;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::observer::On;
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_common::EnumAll;
-use campfire_declare::{
-    ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, Phase, SetPlace,
-};
+use campfire_declare::{ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, SetPlace};
 use campfire_script::{
     CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
     ScriptList, StatePlace, StateSchema, View, ViewApi,
@@ -52,26 +50,26 @@ use crate::units_call::UnitsCall;
 use crate::units_column::{StateRowReads, UnitsColumn};
 use crate::view_reader::ViewReader;
 
-/// The core's steps.
+/// The core's steps, the first and the last of each tick, which every module's start and end of
+/// the tick sit at.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum UnitsSet {
-    /// Every pool starts full, and the last tick's failures clear.
-    BeginTick,
-    /// The units whose lifespan ended despawn.
-    EndLifespans,
+pub enum UnitsSet {
+    /// The tick begins: every pool starts full, and the last tick's failures clear.
+    Begin,
+    /// The tick ends: the units whose lifespan ended despawn.
+    End,
     /// The script states of units that never spawned are dropped.
     DropUnspawned,
 }
 
 impl ModuleSet for UnitsSet {
-    const CAPABILITY: Option<Capability> = None;
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::BeginTick => SetPlace::Phase(Phase::Begin),
-            Self::EndLifespans => SetPlace::Phase(Phase::End),
-            Self::DropUnspawned => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
+            Self::Begin => SetPlace::stage(SimSet::Inputs),
+            Self::End => SetPlace::stage(SimSet::Vision),
+            Self::DropUnspawned => SetPlace::gap(SimEdge::After(SimSet::Vision)),
         }
     }
 }
@@ -86,10 +84,10 @@ impl Module for Units {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = UnitsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
         Self::runtime(d);
-        d.sets::<UnitsSet>();
         d.calls::<SpawnHooks>();
         d.engine_tags(&[Avatar::TAG, Dead::TAG]);
         Self::kinds(d);
@@ -175,12 +173,10 @@ impl Module for Units {
     /// Adds the core to a match: the grid of its body units, empty, which its readers build. With
     /// scripts, in Inputs, every pool starts full and the last tick's failures clear, and as the
     /// tick ends, its writes to units that never spawned drop.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.scripted((
-            UnitTicks::begin_tick.in_set(UnitsSet::BeginTick),
-            UnitTicks::end_lifespans.in_set(UnitsSet::EndLifespans),
-            UnitTicks::drop_unspawned_states.in_set(UnitsSet::DropUnspawned),
-        ));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.scripted(UnitsSet::Begin, UnitTicks::begin_tick);
+        cx.scripted(UnitsSet::End, UnitTicks::end_lifespans);
+        cx.scripted(UnitsSet::DropUnspawned, UnitTicks::drop_unspawned_states);
     }
 }
 

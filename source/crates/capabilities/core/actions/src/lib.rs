@@ -12,10 +12,10 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_sim::{Capability, Unpredicted};
-use campfire_stats::ParamBook;
-use campfire_units::BodyUnit;
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_sim::{Capability, SimSet, Unpredicted};
+use campfire_stats::{ParamBook, StatsSet};
+use campfire_units::{BodyUnit, UnitsSet};
 
 use crate::actions_api::ActionsApi;
 use crate::actions_column::RowReads;
@@ -155,29 +155,56 @@ pub use crate::weapon::{Pitch, Scatter, Source, Weapon};
 #[derive(Debug)]
 pub struct Actions;
 
-/// The steps of the action pipeline. Each capability that acts puts its own steps in the
-/// phases between them.
+/// The steps of the action pipeline, in each stage in the order listed, which each capability
+/// that acts puts its own sets at: the steps' order is the order of every capability's part of
+/// an action (02-engine-core.md, Sets order against the steps of the modules they build on).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum ActionsSet {
+pub enum ActionsSet {
+    /// After the tick begins: toggled actions pay for the tick.
+    Toggle,
+    /// The tick's commands learn ranks.
+    Learn,
+    /// The tick's commands queue and cancel what units make.
+    Queue,
+    /// The tick's commands buy, sell and swap what units carry.
+    Trade,
+    /// The tick's commands order units.
+    Order,
+    /// Once the tick's orders and expiries are in: passives and holds push their grants.
+    HoldAtInputs,
+    /// Units chase their targets.
+    Chase,
+    /// Attacks wind up.
+    WindUp,
     /// After attacks start: what each unit was ordered starts, each kind's orders by the
     /// capability that runs the kind.
     Start,
+    /// The deliveries in flight travel.
+    Travel,
+    /// The tick's hits land.
+    Hit,
+    /// The deliveries due trigger.
+    Trigger,
     /// Once the deliveries flew and triggered: their hits and ends run their actions' hooks.
     Deliver,
+    /// The actions going off pay their toggles.
+    Pay,
+    /// Once the attacks going off paid their toggles and before they strike: holds push the
+    /// grants of the toggles an unpaid cost turned off.
+    HoldAtStrike,
+    /// The attacks going off strike, once the grants of the strike apply.
+    Strike,
     /// Once the attacks going off struck: the tick's shots become launches.
     Fire,
+    /// The due casts resolve.
+    Cast,
     /// Once the due casts resolved: the tick's launches take off.
     Launch,
-    /// The tick's areas land.
+    /// The tick's areas land, before the modifiers' intervals come.
     Land,
     /// Once the tick's damage is dealt and before units die: what the damage launched lands,
     /// and the sources push what the tick spent.
     Resolve,
-    /// Once the tick's orders and expiries are in: passives and holds push their grants.
-    HoldAtInputs,
-    /// Once the attacks going off paid their toggles and before they strike: holds push the
-    /// grants of the toggles an unpaid cost turned off.
-    HoldAtStrike,
     /// Once the tick's damage is dealt and before units die: passives and holds push their
     /// grants.
     HoldAtResolve,
@@ -186,22 +213,43 @@ pub(crate) enum ActionsSet {
 }
 
 impl ModuleSet for ActionsSet {
-    const CAPABILITY: Option<Capability> = None;
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Start => Phase::Start,
-            Self::Deliver => Phase::Deliver,
-            Self::Fire => Phase::Fire,
-            Self::Launch => Phase::Launch,
-            Self::Land => Phase::Land,
-            Self::Resolve => Phase::Resolve,
-            Self::HoldAtInputs => Phase::HoldAtInputs,
-            Self::HoldAtStrike => Phase::HoldAtStrike,
-            Self::HoldAtResolve => Phase::HoldAtResolve,
-            Self::HoldAtEnd => Phase::HoldAtEnd,
-        })
+        let stage = SetPlace::stage;
+        match self {
+            Self::Toggle => stage(SimSet::Inputs).after(UnitsSet::Begin),
+            Self::Learn => stage(SimSet::Inputs).after(Self::Toggle),
+            Self::Queue => stage(SimSet::Inputs).after(Self::Learn),
+            Self::Trade => stage(SimSet::Inputs).after(Self::Queue),
+            Self::Order => stage(SimSet::Inputs).after(Self::Trade),
+            Self::HoldAtInputs => {
+                (stage(SimSet::Inputs).after(Self::Order)).before(StatsSet::GrantAtInputs)
+            }
+            Self::Chase => stage(SimSet::Act),
+            Self::WindUp => stage(SimSet::Act).after(Self::Chase),
+            Self::Start => stage(SimSet::Act).after(Self::WindUp),
+            Self::Travel => stage(SimSet::Hit),
+            Self::Hit => stage(SimSet::Hit).after(Self::Travel),
+            Self::Trigger => stage(SimSet::Hit).after(Self::Hit),
+            Self::Deliver => stage(SimSet::Hit).after(Self::Trigger),
+            Self::Pay => stage(SimSet::Hit).after(Self::Deliver),
+            Self::HoldAtStrike => {
+                (stage(SimSet::Hit).after(Self::Pay)).before(StatsSet::GrantAtStrike)
+            }
+            Self::Strike => {
+                (stage(SimSet::Hit).after(Self::HoldAtStrike)).after(StatsSet::GrantAtStrike)
+            }
+            Self::Fire => stage(SimSet::Hit).after(Self::Strike),
+            Self::Cast => stage(SimSet::Hit).after(Self::Fire),
+            Self::Launch => stage(SimSet::Hit).after(Self::Cast),
+            Self::Land => (stage(SimSet::Hit).after(Self::Launch)).before(StatsSet::Interval),
+            Self::Resolve => stage(SimSet::Resolve),
+            Self::HoldAtResolve => {
+                (stage(SimSet::Resolve).after(Self::Resolve)).before(StatsSet::GrantAtResolve)
+            }
+            Self::HoldAtEnd => stage(SimSet::Vision).before(StatsSet::GrantAtEnd),
+        }
     }
 }
 
@@ -209,9 +257,9 @@ impl Module for Actions {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = ActionsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<ActionsSet>();
         d.removals::<Unpredicted>();
         d.component::<ActionSlots>();
         d.component::<ActionProgress>();
@@ -240,17 +288,20 @@ impl Module for Actions {
     /// of every action: its charges as each tick starts, which a cast of any match draws; and,
     /// in a match with stats, whose modifiers a passive is, its passives then and as each stage
     /// that changes ranks or cooldowns ends. The start of an action is the abilities'.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems(Holds::hold_charges.in_set(ActionsSet::HoldAtInputs));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.add(ActionsSet::HoldAtInputs, Holds::hold_charges);
         if cx.has(Capability::Stats) {
-            cx.systems((
-                Holds::want_passives
-                    .after(Holds::hold_charges)
-                    .in_set(ActionsSet::HoldAtInputs),
-                Holds::want_passives.in_set(ActionsSet::HoldAtStrike),
-                Holds::want_passives.in_set(ActionsSet::HoldAtResolve),
-                Holds::want_passives.in_set(ActionsSet::HoldAtEnd),
-            ));
+            cx.add(
+                ActionsSet::HoldAtInputs,
+                Holds::want_passives.after(Holds::hold_charges),
+            );
+            for set in [
+                ActionsSet::HoldAtStrike,
+                ActionsSet::HoldAtResolve,
+                ActionsSet::HoldAtEnd,
+            ] {
+                cx.add(set, Holds::want_passives);
+            }
         }
     }
 }

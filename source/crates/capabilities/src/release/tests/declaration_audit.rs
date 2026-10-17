@@ -19,14 +19,15 @@ use campfire_combat::ClipShots;
 use campfire_common::EnumAll;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Phase, Report, Role, Scratch, SetPlace,
+    ModuleSet, OneShot, Report, Role, Scratch, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_production::{Gatherer, PlayerSupply, Site, TrainQueue};
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
 use campfire_sim::{
-    Breach, Capability, HostRule, OnAny, OwnResources, SimComponent, SimResource, Unpredicted,
+    Breach, Capability, HostRule, OnAny, OwnResources, SimComponent, SimResource, SimSet,
+    Unpredicted,
 };
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
@@ -83,13 +84,10 @@ struct DeclaredCallback {
     declared_by: Option<Capability>,
 }
 
-/// A system set as declared: its set, the capability its type names, and the capability of the
-/// module that declares it.
+/// A system set as declared.
 #[derive(Debug)]
 struct DeclaredSet {
     set: InternedSystemSet,
-    owner: Option<Capability>,
-    declared_by: Option<Capability>,
 }
 
 /// Every declaration of the modules it visits.
@@ -253,15 +251,12 @@ impl DeclarationAudit {
         problems
     }
 
-    /// Each system set declared twice or by another module than its own.
+    /// Each system set declared twice: a module's sets are its own by its type.
     fn set_problems(&self, problems: &mut Vec<String>) {
         for (at, declared) in self.sets.iter().enumerate() {
             let set = declared.set;
             if self.sets[..at].iter().any(|other| other.set == set) {
                 problems.push(format!("the set {set:?} is declared twice"));
-            }
-            if declared.owner != declared.declared_by {
-                problems.push(format!("the set {set:?} is declared by another module"));
             }
         }
     }
@@ -371,11 +366,7 @@ impl Declarations for DeclarationAudit {
 
     fn sets<S: ModuleSet>(&mut self) {
         for &set in S::ALL {
-            self.sets.push(DeclaredSet {
-                set: set.intern(),
-                owner: S::CAPABILITY,
-                declared_by: self.capability,
-            });
+            self.sets.push(DeclaredSet { set: set.intern() });
         }
     }
 
@@ -588,7 +579,7 @@ impl Book for StrayBook {
     fn share(&self, _: &View) {}
 }
 
-/// Sets the stats own.
+/// Sets of no module, which the test declares twice.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
 enum StraySet {
     Early,
@@ -596,13 +587,12 @@ enum StraySet {
 }
 
 impl ModuleSet for StraySet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Early => Phase::Begin,
-            Self::Late => Phase::Fire,
+        SetPlace::stage(match self {
+            Self::Early => SimSet::Inputs,
+            Self::Late => SimSet::Hit,
         })
     }
 }
@@ -612,7 +602,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     // One module of the combat capability: a state type on no kind, declared twice, needed by a
     // unit though it is a part that sits nowhere, checked, and put on players; a book the stats
     // own; a kind's part, a unit's, needing a type no module declares; a unit's server part, of a
-    // type no module declares; and the stats' sets.
+    // type no module declares; and sets declared twice.
     let mut audit = DeclarationAudit::default();
     audit.module(None);
     audit.kind::<BodyUnit>();
@@ -636,7 +626,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     let queue: QueueListed = |_, _, _, _, _| Ok(());
     audit.callback::<EffectQueues>(Capability::Areas, queue);
     audit.callback::<EffectQueues>(Capability::Areas, queue);
-    // Sets the stats own, twice.
+    // Sets declared twice.
     audit.sets::<StraySet>();
     audit.sets::<StraySet>();
     let queues = type_name::<EffectQueues>();
@@ -665,12 +655,8 @@ fn each_rule_names_the_declaration_that_breaks_it() {
             format!("the callback Areas of {queues} is declared by another module"),
             format!("the callback Areas of {queues} is declared twice"),
             format!("{queues} has a callback no module calls"),
-            "the set Early is declared by another module".to_owned(),
-            "the set Late is declared by another module".to_owned(),
             "the set Early is declared twice".to_owned(),
-            "the set Early is declared by another module".to_owned(),
             "the set Late is declared twice".to_owned(),
-            "the set Late is declared by another module".to_owned(),
         ]
     );
     // A `host` declaration puts the stray on a declared kind.

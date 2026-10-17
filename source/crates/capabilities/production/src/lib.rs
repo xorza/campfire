@@ -12,12 +12,14 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, ScheduleConfigs, SystemSet};
 use bevy_ecs::system::ScheduleSystem;
+use campfire_actions::ActionsSet;
 use campfire_common::EnumAll;
 use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
 };
-use campfire_sim::Capability;
-use campfire_units::{BodyUnit, Dead, Owner, Player};
+use campfire_sim::{Capability, SimSet};
+use campfire_stats::StatsSet;
+use campfire_units::{BodyUnit, Dead, Owner, Player, UnitsSet};
 use campfire_values::{Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
@@ -97,7 +99,7 @@ pub struct Production;
 
 /// The steps of `production`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum ProductionSet {
+pub enum ProductionSet {
     /// The tick's orders cancel trains and builds, and set rally points.
     Commands,
     /// The build orders that changed are checked, after the orders apply.
@@ -111,17 +113,17 @@ pub(crate) enum ProductionSet {
 }
 
 impl ModuleSet for ProductionSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Production);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Commands => Phase::Produce,
-            Self::CheckBuilds => Phase::CheckBuilds,
-            Self::Start => Phase::StartBuilds,
-            Self::Finish => Phase::Finish,
-            Self::Supply => Phase::End,
-        })
+        let inputs = || SetPlace::stage(SimSet::Inputs);
+        match self {
+            Self::Commands => SetPlace::at(ActionsSet::Queue),
+            Self::CheckBuilds => inputs().after(StatsSet::GrantAtInputs),
+            Self::Start => SetPlace::stage(SimSet::Act).after(ActionsSet::Start),
+            Self::Finish => SetPlace::stage(SimSet::Mode),
+            Self::Supply => SetPlace::at(UnitsSet::End),
+        }
     }
 }
 
@@ -133,9 +135,9 @@ impl Module for Production {
         Capability::Stats,
         Capability::Vision,
     ];
+    type Set = ProductionSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<ProductionSet>();
         d.removals::<Dead>();
         d.removals::<Gatherer>();
         d.removals::<Owner>();
@@ -191,38 +193,43 @@ impl Module for Production {
     /// server's vision sees, or, on a predicting client, the units it holds. On the server, a
     /// player spawns with its supply, which the refresh writes in place; a client receives its own
     /// player's.
-    fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
         cx.by_role(
-            ProductionOrders::apply_cancels::<ByVision>.in_set(ProductionSet::Commands),
-            ProductionOrders::apply_cancels::<ByHolding>.in_set(ProductionSet::Commands),
+            ProductionSet::Commands,
+            ProductionOrders::apply_cancels::<ByVision>,
+            ProductionOrders::apply_cancels::<ByHolding>,
         );
-        cx.server(ProductionOrders::set_rallies.in_set(ProductionSet::Commands));
+        cx.server(ProductionSet::Commands, ProductionOrders::set_rallies);
         cx.server(
-            PlayerSupply::refresh
-                .run_if(SupplyBook::counts)
-                .in_set(ProductionSet::Supply),
+            ProductionSet::Supply,
+            PlayerSupply::refresh.run_if(SupplyBook::counts),
         );
         // A build places a box, which only navigation tests for room, and a worker walks.
         if !cx.has(Capability::Navigation) {
             cx.by_role(
-                (Trains::start_trains::<ServerForm>, Holdings::forget_read)
-                    .chain()
-                    .in_set(ProductionSet::Start),
-                (Trains::start_trains::<ClientForm>, Holdings::forget_read)
-                    .chain()
-                    .in_set(ProductionSet::Start),
+                ProductionSet::Start,
+                (Trains::start_trains::<ServerForm>, Holdings::forget_read).chain(),
+                (Trains::start_trains::<ClientForm>, Holdings::forget_read).chain(),
             );
-            cx.server(Trains::finish_trains.in_set(ProductionSet::Finish));
+            cx.server(ProductionSet::Finish, Trains::finish_trains);
             return;
         }
-        cx.by_role(Self::builds::<ByVision>(), Self::builds::<ByHolding>());
-        cx.systems(Construction::progress_sites.in_set(ProductionSet::Finish));
-        cx.server(
-            Trains::finish_trains
-                .after(Construction::progress_sites)
-                .in_set(ProductionSet::Finish),
+        cx.by_role(
+            ProductionSet::CheckBuilds,
+            Self::check_builds::<ByVision>(),
+            Self::check_builds::<ByHolding>(),
         );
-        cx.server(GatherLoop::despawn_empty_nodes.in_set(ProductionSet::Supply));
+        cx.by_role(
+            ProductionSet::Start,
+            Self::start_builds::<ByVision>(),
+            Self::start_builds::<ByHolding>(),
+        );
+        cx.add(ProductionSet::Finish, Construction::progress_sites);
+        cx.server(
+            ProductionSet::Finish,
+            Trains::finish_trains.after(Construction::progress_sites),
+        );
+        cx.server(ProductionSet::Supply, GatherLoop::despawn_empty_nodes);
     }
 }
 
@@ -246,25 +253,25 @@ impl Production {
     pub const GATHERING: EngineTag =
         EngineTag::new(7, "gathering", TagProperties::NONE.with_passes());
 
-    /// The systems that check build and gather orders and start the trains, the builds and the
-    /// workers' loops, each placement testing the units `S` sees.
-    fn builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
+    /// The checks of build and gather orders, each placement testing the units `S` sees.
+    fn check_builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
+        (Construction::check_builds::<S>, GatherLoop::check_gathers)
+            .chain()
+            .into_configs()
+    }
+
+    /// The starts of the trains, the builds and the gathers, for the sight of `S`.
+    fn start_builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
         (
-            (Construction::check_builds::<S>, GatherLoop::check_gathers)
-                .chain()
-                .in_set(ProductionSet::CheckBuilds),
-            (
-                Trains::start_trains::<S>,
-                Construction::forget_dead_builds,
-                Construction::start_builds::<S>,
-                GatherLoop::forget_dead_gathers,
-                GatherLoop::run::<S>,
-                GatherLoop::tag_gatherers,
-                Holdings::forget_read,
-            )
-                .chain()
-                .in_set(ProductionSet::Start),
+            Trains::start_trains::<S>,
+            Construction::forget_dead_builds,
+            Construction::start_builds::<S>,
+            GatherLoop::forget_dead_gathers,
+            GatherLoop::run::<S>,
+            GatherLoop::tag_gatherers,
+            Holdings::forget_read,
         )
+            .chain()
             .into_configs()
     }
 }

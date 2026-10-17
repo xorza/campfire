@@ -16,11 +16,11 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{BodyUnit, Dead, Owner, Player, SpawnHooks};
+use campfire_units::{BodyUnit, Dead, Owner, Player, SpawnHooks, UnitsSet};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
 use crate::application::{Adding, ApplyAt};
@@ -212,20 +212,19 @@ impl StatsSet {
 }
 
 impl ModuleSet for StatsSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
+        let stage = SetPlace::stage;
         match self {
-            Self::Expire | Self::Regenerate => SetPlace::Phase(Phase::Begin),
-            Self::GrantAtInputs => SetPlace::Phase(Phase::GrantAtInputs),
-            Self::GrantAtStrike => SetPlace::Phase(Phase::GrantAtStrike),
-            Self::Interval => SetPlace::Phase(Phase::Interval),
-            Self::GrantAtResolve => SetPlace::Phase(Phase::GrantAtResolve),
-            Self::GrantAtEnd => SetPlace::Phase(Phase::GrantAtEnd),
-            Self::ClearDead => SetPlace::Phase(Phase::ClearDead),
-            Self::Hold => SetPlace::Phase(Phase::HoldModifiers),
-            Self::Refresh(edge) => SetPlace::Gap(edge),
+            Self::Expire | Self::Regenerate => SetPlace::at(UnitsSet::Begin),
+            Self::GrantAtInputs => stage(SimSet::Inputs).after(UnitsSet::Begin),
+            Self::GrantAtStrike | Self::Interval => stage(SimSet::Hit),
+            Self::GrantAtResolve => stage(SimSet::Resolve),
+            Self::ClearDead => stage(SimSet::Resolve).after(Self::GrantAtResolve),
+            Self::Hold => stage(SimSet::Resolve).after(Self::ClearDead),
+            Self::GrantAtEnd => stage(SimSet::Vision).before(UnitsSet::End),
+            Self::Refresh(edge) => SetPlace::gap(edge),
         }
     }
 }
@@ -234,9 +233,9 @@ impl Module for Stats {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = StatsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<StatsSet>();
         d.removals::<Dead>();
         d.removals::<Modifiers>();
         d.removals::<Owner>();
@@ -274,30 +273,30 @@ impl Module for Stats {
     /// starts, the living units' pools regenerate. The grants the sources push apply as each
     /// tick starts, before attacks strike, before units die and as the tick ends. With no stat
     /// book, as before a mode loads one, nothing changes.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems((
-            ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
-            Refresh::regenerate.in_set(StatsSet::Regenerate),
-            GrantPass::run.in_set(StatsSet::GrantAtInputs),
-            GrantPass::run.in_set(StatsSet::GrantAtStrike),
-            (PlayerGrants::want, GrantPass::run)
-                .chain()
-                .in_set(StatsSet::GrantAtResolve),
-            GrantPass::run.in_set(StatsSet::GrantAtEnd),
-            ModifierEnds::clear_dead_modifiers.in_set(StatsSet::ClearDead),
-            ModifierIntervals::run_intervals.in_set(StatsSet::Interval),
-        ));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.add(StatsSet::Expire, ModifierEnds::expire_modifiers);
+        cx.add(StatsSet::Regenerate, Refresh::regenerate);
+        for set in [
+            StatsSet::GrantAtInputs,
+            StatsSet::GrantAtStrike,
+            StatsSet::GrantAtEnd,
+        ] {
+            cx.add(set, GrantPass::run);
+        }
+        cx.add(
+            StatsSet::GrantAtResolve,
+            (PlayerGrants::want, GrantPass::run).chain(),
+        );
+        cx.add(StatsSet::ClearDead, ModifierEnds::clear_dead_modifiers);
+        cx.add(StatsSet::Interval, ModifierIntervals::run_intervals);
         cx.by_role(
-            (AuraCarriers::track, HeldPass::run::<ServerForm>)
-                .chain()
-                .in_set(StatsSet::Hold),
-            (AuraCarriers::track, HeldPass::run::<ClientForm>)
-                .chain()
-                .in_set(StatsSet::Hold),
+            StatsSet::Hold,
+            (AuraCarriers::track, HeldPass::run::<ServerForm>).chain(),
+            (AuraCarriers::track, HeldPass::run::<ClientForm>).chain(),
         );
         for set in StatsSet::ALL {
             if let StatsSet::Refresh(_) = set {
-                cx.systems(Refresh::run.in_set(set));
+                cx.add(set, Refresh::run);
             }
         }
     }

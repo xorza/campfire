@@ -2,11 +2,13 @@ use campfire_sim::Capability;
 
 use crate::declarations::Declarations;
 use crate::install_cx::InstallCx;
+use crate::module_set::ModuleSet;
 
 /// A module of the engine, the core's or a capability's: what it adds to a match but its
-/// systems, declared once, which every consumer of `Declarations` reads, and the install of its
-/// systems. The release's one list visits the modules in the order they install.
-pub trait Module {
+/// systems, declared once, which every consumer of `Declarations` reads, its system sets, and the
+/// install of its systems, each in one of them. The release's one list visits the modules in the
+/// order they install.
+pub trait Module: Sized {
     /// The capability it is; none for the core's.
     const CAPABILITY: Option<Capability>;
     /// The capabilities it builds on, which install before it and which a match that declares it
@@ -15,11 +17,14 @@ pub trait Module {
     /// The capabilities it reads when the match has them, and runs without. With `NEEDS`, its
     /// crate's dependencies on other capabilities, which a release test holds equal.
     const USES: &'static [Capability];
+    /// Its system sets, each with its place, which every system it installs sits in; `NoSet` for
+    /// a module of no system.
+    type Set: ModuleSet;
 
     fn declare<D: Declarations>(d: &mut D);
 
     /// Adds its systems to a match, after its declarations.
-    fn install(cx: &mut InstallCx<'_>);
+    fn install(cx: &mut InstallCx<'_, Self::Set>);
 }
 
 /// What visits the release's list of modules, each by its type: a module every match of its

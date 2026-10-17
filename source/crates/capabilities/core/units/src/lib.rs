@@ -122,7 +122,7 @@ pub use crate::unit_tracker::{TrackedUnit, TrackedUnits, Tracking, UnitTracker};
 pub use crate::unit_type_book::UnitTypeBook;
 pub use crate::unit_type_core::UnitTypeCore;
 pub use crate::unit_types::{UnitTypeBooks, UnitTypes};
-pub use crate::units::Units;
+pub use crate::units::{Units, UnitsSet};
 pub use crate::units_api::UnitsApi;
 pub use crate::units_call::UnitsCall;
 pub use crate::units_world::UnitsWorld;

@@ -14,16 +14,17 @@ use std::sync::Arc;
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionSlots, ActionsSet};
 use campfire_combat::{Weigh, Weighers};
 use campfire_common::{EnumAll, PlayerSlot};
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_navigation::{NavigationBook, OnPath, PathWalker};
 use campfire_players::{Players, PlayersWorld, Seating, SlotStart};
+use campfire_production::ProductionSet;
 use campfire_script::{CallError, Ctx, Hook, Pool, ScriptRole, ScriptText, View};
-use campfire_sim::{Breach, Capability, IdAllocator, SimTick};
+use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick};
 use campfire_units::{
-    BodyForm, MatchEntity, Player, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone,
+    BodyForm, MatchEntity, Player, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone, UnitsSet,
 };
 use campfire_values::Relations;
 
@@ -138,7 +139,7 @@ pub struct Mode;
 
 /// The mode's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum ModeSet {
+pub enum ModeSet {
     /// The tick's mode inputs run its script, once the tick started and before any order.
     Inputs,
     /// Once the trains spawned: the slots' events, the due timers, the deaths and the level
@@ -149,15 +150,16 @@ pub(crate) enum ModeSet {
 }
 
 impl ModuleSet for ModeSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Mode);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Inputs => Phase::ModeInputs,
-            Self::Hooks => Phase::ModeHooks,
-            Self::OutOfPlay => Phase::End,
-        })
+        match self {
+            Self::Inputs => {
+                (SetPlace::stage(SimSet::Inputs).after(UnitsSet::Begin)).before(ActionsSet::Toggle)
+            }
+            Self::Hooks => SetPlace::stage(SimSet::Mode).after(ProductionSet::Finish),
+            Self::OutOfPlay => SetPlace::at(UnitsSet::End),
+        }
     }
 }
 
@@ -172,6 +174,7 @@ impl Module for Mode {
         Capability::Stats,
         Capability::Vision,
     ];
+    type Set = ModeSet;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.callback::<Weighers>(
@@ -181,7 +184,6 @@ impl Module for Mode {
                 heal: Calls::weigh_heal,
             },
         );
-        d.sets::<ModeSet>();
         d.component::<ModeState<SyncNone>>();
         d.component::<ModeState<SyncAll>>();
         d.resource::<Choices>();
@@ -215,7 +217,7 @@ impl Module for Mode {
     /// `on_level_up`, or clear in a mode without it. Each hook's system installs only in a mode
     /// whose script defines its hook, a fact of the load; `Mode::load` gives them the mode they
     /// run.
-    fn install(cx: &mut InstallCx<'_>) {
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
         let scripts = cx.book::<ScriptBook>();
         let hooks = scripts
             .expect("a match that runs its mode holds its scripts' hooks")
@@ -223,45 +225,29 @@ impl Module for Mode {
         let defines = |hook| hooks.contains(hook);
         let timers = (ModeHooks::run_timers, ModeHooks::fire_timers);
         if defines(Hook::OnModeInput) {
-            cx.systems(ModeHooks::mode_inputs.in_set(ModeSet::Inputs));
+            cx.add(ModeSet::Inputs, ModeHooks::mode_inputs);
         }
         if defines(Hook::OnPlayerJoin) || defines(Hook::OnPlayerLeave) {
-            cx.systems(
-                ModeHooks::slot_events
-                    .before(timers.0)
-                    .before(timers.1)
-                    .in_set(ModeSet::Hooks),
-            );
+            let slot_events = ModeHooks::slot_events.before(timers.0).before(timers.1);
+            cx.add(ModeSet::Hooks, slot_events);
         }
         if defines(Hook::OnTimer) {
-            cx.systems(timers.0.in_set(ModeSet::Hooks));
+            cx.add(ModeSet::Hooks, timers.0);
         } else {
-            cx.systems(timers.1.in_set(ModeSet::Hooks));
+            cx.add(ModeSet::Hooks, timers.1);
         }
         if defines(Hook::OnUnitDied) {
-            cx.systems(
-                ModeHooks::unit_deaths
-                    .after(timers.0)
-                    .after(timers.1)
-                    .in_set(ModeSet::Hooks),
-            );
+            let deaths = ModeHooks::unit_deaths.after(timers.0).after(timers.1);
+            cx.add(ModeSet::Hooks, deaths);
         }
-        cx.systems(OutOfPlayMarks::refresh.in_set(ModeSet::OutOfPlay));
+        cx.add(ModeSet::OutOfPlay, OutOfPlayMarks::refresh);
         if cx.has(Capability::Progression) {
             if defines(Hook::OnLevelUp) {
-                cx.systems(
-                    (ModeHooks::level_ups.after(ModeHooks::unit_deaths))
-                        .after(timers.0)
-                        .after(timers.1)
-                        .in_set(ModeSet::Hooks),
-                );
+                let level_ups = ModeHooks::level_ups.after(ModeHooks::unit_deaths);
+                cx.add(ModeSet::Hooks, level_ups.after(timers.0).after(timers.1));
             } else {
-                cx.systems(
-                    (ModeHooks::clear_level_ups.after(ModeHooks::unit_deaths))
-                        .after(timers.0)
-                        .after(timers.1)
-                        .in_set(ModeSet::Hooks),
-                );
+                let cleared = ModeHooks::clear_level_ups.after(ModeHooks::unit_deaths);
+                cx.add(ModeSet::Hooks, cleared.after(timers.0).after(timers.1));
             }
         }
     }

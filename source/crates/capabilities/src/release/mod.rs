@@ -6,7 +6,7 @@ use campfire_actions::Actions;
 use campfire_areas::Areas;
 use campfire_combat::Combat;
 use campfire_declare::{
-    CapabilitySet, Declarations, InstallFacts, KindVisitor, MatchFacts, ModuleVisitor, Phase, Role,
+    CapabilitySet, Declarations, InstallFacts, KindVisitor, MatchFacts, ModuleVisitor, Role,
 };
 use campfire_deliveries::Deliveries;
 use campfire_interaction::Interaction;
@@ -220,9 +220,6 @@ impl Release {
         };
         let parts = sim.parts();
         parts.world.insert_resource(facts.clone());
-        for phase in Phase::ALL {
-            phase.configure(parts.schedule);
-        }
         let mode_script = match &kind {
             MatchKind::Mode(start) => Some(start.setup.script),
             MatchKind::Rules | MatchKind::Predicting => None,

@@ -643,11 +643,6 @@ Each change folds into its document when its batch lands. Each line names the de
 **4.1 Books before the install.** Touches the release, `declare`, `values` (engine tags).
 - `declare` assigns engine tag numbers in declaration order (RW 20). Waits for Q3 in `review-architecture_QUESTIONS.md`.
 
-**4.2 Sets ordered by anchors.** Touches `declare`, every capability's `ModuleSet`, and 02-engine-core.md.
-- `Module::Set` becomes an associated type, and `InstallCx<'_, M>::add` takes it (E-15).
-- `Phase` goes. Each set orders against anchors of the modules it needs (E-3).
-- **Goldens:** they may move where an order between unrelated sets changes, and each move is explained.
-
 **4.3 Books, sections and map sections declared with their builders.** Touches the top crate's books, `declare`, `mode` (the map), `vision`, `production`, `stats`, `combat`, `abilities`, each capability, and the test fixtures.
 - `d.book::<B>()` with its builder, and a unit-type section and a map section that each module registers by name. `BookParts`, the `built.add` list and `UnitTypeData`'s closed table go (E-11, K-19, R-22).
 - `Book: Default` goes: a test fixture gives its data to the builders before its match builds, as `Release::empty_books` gives every book empty now (E-12, from 4.1).
@@ -987,7 +982,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
 | E-2 | A `Restoring` world flag switches hooks into a trusting mode that each hook must remember | `restoring.rs:1-7`, `entity_kinds.rs:38`, `level.rs:59` | Confirmed | 7.5 |
-| E-3 | `Phase` names 44 steps of named capabilities and chains them into one total order | `declare/src/phase.rs:10-81` | Confirmed | 4.2 |
 | E-4 | About 90 functions take `&mut World`, so the tick is bound to one thread whatever the executor | `damage_pass.rs:103-124`, `attacks.rs:262`, `trains.rs:194` | Confirmed | 11.1 |
 | E-5 | The core `actions` module depends on `stats`, and the release test of needs skips core modules | `actions/Cargo.toml:31`, `release/tests/mod.rs:311-321` | Confirmed | 5.3 |
 | E-6 | `Capability` names five capabilities with no module, and `DataKind` names capability concepts in the lowest layers | `sim/src/capability.rs:12-31`, `data_kind.rs:9-48` | Confirmed | 4.5 |
@@ -995,7 +989,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | E-8, C-12, R-11 | `MatchMode`, `Spawner`, `ViewReader` and `CombatHooks` are non-send with no script handle in them. `Spawner` holds an `Rc<[bool]>` for one `debug_assert!`. | `mode/src/lib.rs:192-208`, `spawner.rs:19-22, 50`, `view_reader.rs:27-41`, `combat_hooks.rs:12-26` | Confirmed | 6.1 |
 | E-10, E-12, K-12 | Books are `Default`, the vision grid, the supply's count and feature passes are run conditions or passes with nothing to do, as the fixtures load their data after the build | `declare/src/book.rs`, `vision/src/lib.rs:108-116`, `production/src/lib.rs:200-204`, `refresh.rs:225-245` | Confirmed | 4.3 |
 | E-11, K-19 | The books, the unit-type sections and their resolvers are hand lists in the top crate, and every book is built for every mode | `book_parts.rs:24-73`, `book_builder.rs:189-322`, `unit_type_data.rs:20-61` | Confirmed | 4.3 |
-| E-15 | A system's set is not held by a type | `install_cx.rs:258-308`, `module.rs:69-83` | Confirmed | 4.2 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
 | E-18 | A restore moves each entity once for each state type it holds | `state_registry/mod.rs:400-424, 662-684` | Confirmed | 7.5 |
 | E-19 | `StateRegistry` is a type list, a codec, a change tracker and a mode switch | `state_registry/mod.rs:57-64` | Confirmed | 7.7 |
