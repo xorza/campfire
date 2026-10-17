@@ -39,6 +39,10 @@ pub enum ScriptProblem {
     /// It makes a function pointer: a closure, an anonymous function or a call of `Fn`.
     #[error("makes a function pointer: a closure, an anonymous function or Fn")]
     FunctionPointer,
+    /// It holds statements outside its functions, which no call runs (08-script-api.md, A script
+    /// is its functions).
+    #[error("holds statements outside its functions, which no call runs")]
+    TopLevel,
     /// It uses `ctx` other than the script API's convention allows (08-script-api.md, `ctx` stays
     /// visible), so the load checks cannot see every use of it.
     #[error(transparent)]

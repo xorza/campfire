@@ -132,7 +132,10 @@ fn on_timer(ctx, name, data) {
 fn on_mode_input(ctx, player, name, value) {
     if name == "probe" {
         ctx.end(value);
-        ctx.end(value);
+        if ctx.ended {
+            ctx.state.count += 10;
+        }
+        ctx.end(());
     } else if name == "hero" {
         ctx.end(value);
     } else {
@@ -140,14 +143,20 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
+    // The first end of a call names the result; `ctx.ended` reads true from then on, and a second
+    // end does nothing, so the call's other effects apply: team a wins in tick 0, the count takes
+    // its 10, and the timer, of a stage past the end, counts nothing.
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    // A second end in the same call fails the call, which ends nothing; so does a team the mode
-    // does not have. The timer fires at the end of ticks 0 and 1.
     Mode::tick_inputs(&mut game, &[(0, input("probe", "a"))]);
-    assert_eq!(
-        Mode::failures(&game),
-        [FailureKind::Api(ModeRefusal::Ended.refused())]
-    );
+    assert!(Mode::failures(&game).is_empty());
+    let end = MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(0)));
+    assert_eq!(game.match_end(), Some(end));
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(10));
+
+    // A team the mode does not have fails the call, which ends nothing. The timer fires at the
+    // end of ticks 0 and 1.
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    Mode::tick_inputs(&mut game, &[]);
     Mode::tick_inputs(&mut game, &[(0, input("hero", "z"))]);
     assert_eq!(
         Mode::failures(&game),

@@ -43,6 +43,7 @@ The rules of the script API. Every name, with its roles, capability and status, 
 ## Checks at package load
 
 - **A misspelling fails the load.** Every name a script or data file gives exists: ids, params, stats, tags, teams, paths, layers, filters, damage kinds and marker tags; a misspelled hook is an error, not a hook that never runs; every script compiles in strict variables mode.
+- **A script is its functions.** The load refuses statements outside a script's functions, which no call would run, and the engine refuses `try` and `catch`, so no script swallows a refusal of the API that the failure list exists to show; `throw` stays, as it fails its call as a refusal does. Roblox's `pcall` takes the other choice.
 - **`ctx` stays visible.** Every value of `ctx` is a variable named `ctx`, and no script makes a function pointer, as a closure that captured `ctx` would hide it from the checks.
 - **Every time counts at the fastest rate.** Each time and think period counts in ticks at the fastest rate the manifest allows, so it counts at every rate a session may choose, and a match start fails only on its terms.
 - **Every modifier application gives its params,** at every rank it applies at.

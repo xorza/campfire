@@ -114,7 +114,9 @@ impl ScriptHost {
             .set_max_modules(0)
             .set_strict_variables(true)
             .set_max_operations(per_call.get())
-            .disable_symbol("eval");
+            .disable_symbol("eval")
+            .disable_symbol("try")
+            .disable_symbol("catch");
         if cfg!(debug_assertions) {
             engine
                 .on_print(|text| debug!(text, "script print"))

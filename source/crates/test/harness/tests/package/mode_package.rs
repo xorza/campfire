@@ -1405,6 +1405,41 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(error), .. } if error.undefined() == Some(Undefined::Module("Path"))),
     ),
+    // No script holds statements outside its functions, and none tries to catch a refusal.
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            "fn on_resolve(ctx, caster, target) {",
+            "let radius = 3;\nfn on_resolve(ctx, caster, target) {",
+        ),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Script {
+                    problem: ScriptProblem::TopLevel,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            r#"        ctx.damage(unit, ctx.p.damage, "magic");"#,
+            r#"        try { ctx.damage(unit, ctx.p.damage, "magic"); } catch { }"#,
+        ),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Script {
+                    problem: ScriptProblem::Compile(_),
+                    ..
+                }
+            )
+        },
+    ),
     // No script makes a function pointer: a closure, an anonymous function that captures
     // nothing, or `Fn`.
     flaw(

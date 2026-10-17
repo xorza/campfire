@@ -640,12 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 2: confirmed bugs
 
-**2.3 Script call bugs.** Touches `stats`, `mode` and `script`.
-- The `remove` description promises modifiers only. Phase 8 renames it (S-1).
-- `ctx.result` reads the match's result. A second end is a no-op. The two modes drop their `ended` state field (S-12).
-- `try`, `catch` and `throw` are disabled, and the load refuses top-level statements (S-26).
-- **Goldens:** package fingerprints move for the two modes' scripts.
-
 **2.4 Client picking and ground.** Touches the client.
 - Picking takes an analytic ray test against each drawing's `Shape` (A-2).
 - One function adds the drawn ground only on a planar map (A-12).
@@ -849,6 +843,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - The fixed rules move to `packages/zero-hour/data/rules.toml`, and the importer writes only what the install gives (A-16).
 - The engine types derive `Serialize`, and the importer builds them (A-17, RW 18).
 - The import ends with the engine's load (A-18).
+- Zero Hour's `mode.rhai` reads `ctx.ended` in place of its `ended` state field, which the rules data then drops (S-12).
 - `ZeroHourRules` and passes in the style of a compiler (A-19).
 - One `ImportLoss` enum (A-20).
 - **Goldens:** the Zero Hour fingerprint moves.
@@ -1089,7 +1084,7 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
-| S-1 | `ctx.remove` binds modifiers only, though its text promises projectiles and areas | `stats_api.rs:107-114` | Checked | 2.3, 8.5 |
+| S-1 | `ctx.remove` binds modifiers only, though its text promises projectiles and areas | `stats_api.rs:107-114` | Checked. Its text now promises modifiers only. | 8.5 |
 | S-3 | The load checks a call's name and role, not its argument count or types. `unit.params` names are unchecked. | `script_facts/mod.rs:63-67, 253-263`, `member_spec.rs:20-22` | Confirmed | 8.1 |
 | S-4 | Names that the API returns are compared as strings that no check reads, and some drop their package scope | `view/mod.rs:199-204`, `damage_handle.rs:70-75` | Confirmed | 8.1 |
 | S-5 | The hook contract is a hand-kept core enum, and call sites pass untyped tuples | `hook.rs:9-135`, `script_batch.rs:84-99` | Confirmed | 8.2 |
@@ -1098,7 +1093,7 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | S-9 | A match runs one rules script, so a rules package and a mode's script cannot both answer one event | `mode_packages/mod.rs:164-186` | Confirmed | 8.4 |
 | S-10 | Victory, kill bounty and XP share are written again in each mode's Rhai, with a scan for each death | `packages/zero-hour/scripts/mode.rhai:39-70`, `3v3/scripts/mode.rhai:99-231` | Confirmed | 9.3 |
 | S-11 | The mode's event queues are written four times by hand and name combat's and progression's types | `mode_hooks.rs:96-276` | Confirmed | 8.2 |
-| S-12 | A second `ctx.end` fails the whole call, and no read of the result exists | `mode_api.rs:351-355, 482-491` | Confirmed | 2.3, 8.5 |
+| S-12 | A second `ctx.end` fails the whole call, and no read of the result exists | `mode_api.rs:351-355, 482-491` | Confirmed. A second end now does nothing, `ctx.ended` reads the end, and the 3v3 dropped its `ended` state; Zero Hour's script keeps its guard until 9.2. | 8.5, 9.2 |
 | S-13 | Players and teams have no handles, and `set_relation`, `set_out` and `add_resource` have no reads. `add_resource` can drive gold below zero. | `mode_api.rs:128-411`, `production_api.rs:48-63` | Confirmed | 8.5 |
 | S-14 | `enemy_team` assumes two teams | `mode_api.rs:176-190` | Confirmed | 8.5 |
 | S-15 | List queries differ in whether they include the dead | `mode_api.rs:788-792`, `view/mod.rs:155-169` | Confirmed | 8.5 |
@@ -1111,7 +1106,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | S-22 | Each load binds the whole API to parse, and each match and restore binds again and compiles from source | `mode_packages/mod.rs:145-160, 376-377`, `match_build/mod.rs:52-55` | Confirmed. The cost is plausible. | 8.3 |
 | S-23 | Each `Num`, vector and handle in Rhai is two heap allocations, and handles carry an `Rc<View>` | rhai `dynamic.rs:98`, `view/unit.rs:8-13` | Plausible | 8.3 |
 | S-25 | The choice of pool and the policy for a spent pool are decided at about eight call sites | `delivery_hooks.rs:81-91`, `modifier_hooks.rs:213-222`, `thinking.rs:117-133` | Confirmed | 8.2 |
-| S-26 | `try` and `catch` can swallow API refusals, and top-level statements never run | `script_host/mod.rs:220-231, 313-319` | Confirmed | 2.3 |
 | S-27 | The builder records "runs or planned" four ways, and nothing compares a name's `since` with a package's `api` | `api_builder.rs:184-302` | Confirmed | 8.1 |
 | S-28 | The ban on function pointers also forbids lambdas that capture nothing | `script_facts/mod.rs:135-191` | Plausible | 8.3 |
 | S-29, A-14 | Presentation scripts are designed as current, with no role, no host and no planned entry | `03-game-scripting.md:7-8, 20, 44`, `script_role.rs:287-294` | Confirmed | 10.3 |

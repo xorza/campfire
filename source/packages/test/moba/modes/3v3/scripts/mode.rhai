@@ -214,12 +214,11 @@ fn calc_damage(ctx, d) {
 
 // A core's fall ends the match, its enemy the winner while the enemy's core stands, else a draw,
 // as when both fall in one tick. Each death of a tick is heard after all of them, so the first
-// core heard ends the match, and the state `ended` keeps the other from a second `ctx.end`.
+// core heard ends the match, and `ctx.ended` passes over the other.
 fn core_fell(ctx, core) {
-    if ctx.state.ended {
+    if ctx.ended {
         return;
     }
-    ctx.state.ended = true;
     let enemy = ctx.enemy_team(core.team);
     for other in ctx.units_tagged("core") {
         if other.alive && other.team == enemy {

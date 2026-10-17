@@ -122,7 +122,7 @@ impl StatsApi {
             call(
                 "remove",
                 &[&["handle"]],
-                "ends the modifier, projectile or area at once",
+                "ends the modifier of `handle` at once",
             ),
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(StatsEffect::removing(&handle)),
         )

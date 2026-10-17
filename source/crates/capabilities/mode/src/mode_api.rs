@@ -151,6 +151,14 @@ impl ModeApi {
             },
         )
         .call(
+            MemberSpec::value(
+                "ended",
+                "whether the match ended, before the call or by its `ctx.end`",
+            )
+            .roles(RoleSet::MODE),
+            |ctx: &mut Ctx| -> Checked<bool> { Ok(ModeCall::of(&ctx.frame()).ended) },
+        )
+        .call(
             MemberSpec::mode_call("team_of", &[&["player"]], "the name of `player`'s team"),
             |ctx: &mut Ctx, slot: PlayerSlot| -> Checked<ScriptText> {
                 let book = ctx.mode_spec_or_fail()?;
@@ -351,7 +359,7 @@ impl ModeApi {
         let end = MemberSpec::mode_call(
             "end",
             &[&["team"], &["()"]],
-            "ends the match, once: `team` wins, `()` is a draw",
+            "ends the match: `team` wins, `()` is a draw; a call once it ended does nothing",
         );
         api.call(
             MemberSpec::mode_call(
@@ -483,7 +491,7 @@ impl ModeApi {
         let mut frame = ctx.write()?;
         let call = ModeCall::of_mut(&mut frame);
         if call.ended {
-            return Err(ModeRefusal::Ended.fail().into());
+            return Ok(());
         }
         call.ended = true;
         frame.queue(ModeEffect::End(result));

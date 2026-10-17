@@ -42,6 +42,8 @@ pub struct ScriptFacts {
     pub enum_paths: Vec<EnumPath>,
     /// Whether it makes a function pointer: a closure, an anonymous function or a call of `Fn`.
     pub function_pointer: bool,
+    /// Whether it holds statements outside its functions, which no call runs.
+    pub top_level: bool,
     /// Each field or method it reads on a value other than `ctx`, a call of no namespace that is
     /// not its own and gives `ctx` no first argument among them, but the names after a member
     /// that leads to data; and the keys of its object-map literals.
@@ -136,6 +138,7 @@ impl ScriptFacts {
             .functions
             .iter()
             .any(|function| function.name.starts_with(ANONYMOUS));
+        facts.top_level = !ast.statements().is_empty();
         ast.walk(&mut |path: &[ASTNode<'_>]| {
             match path.last() {
                 Some(ASTNode::Expr(Expr::Map(map, _))) => {

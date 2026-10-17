@@ -140,8 +140,6 @@ pub enum ModeRefusal {
     ChoiceCount,
     /// A value of a unique choice another player chose.
     ChoiceTaken,
-    /// A second end of a match.
-    Ended,
     /// An ability to learn that is at its last rank already.
     MaxRank,
     /// A slot the unit has no ability in.
@@ -187,7 +185,6 @@ impl CapabilityRefusal for ModeRefusal {
         match self {
             Self::ChoiceCount => "count of values is not the choice's",
             Self::ChoiceTaken => "value is another player's choice",
-            Self::Ended => "the match has ended",
             Self::MaxRank => "ability is at its last rank",
             Self::NoAbilitySlot => "unit has no ability in that slot",
             Self::NoEnemyTeam => "team has no one enemy team",

@@ -612,6 +612,9 @@ impl<'a> LoadCheck<'a> {
             if facts.function_pointer {
                 return Err(fail(ScriptProblem::FunctionPointer));
             }
+            if facts.top_level {
+                return Err(fail(ScriptProblem::TopLevel));
+            }
             if let Some(found) = &facts.ctx_misuse {
                 return Err(misuse(found.clone()));
             }
