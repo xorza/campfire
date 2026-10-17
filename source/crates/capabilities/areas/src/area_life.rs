@@ -48,10 +48,10 @@ impl AreaLife {
                 Option<&AreaTrigger>,
             ),
         >,
-        (mut order, mut reached, mut near): (
+        (mut order, mut reached, near): (
             Local<'_, Ordered>,
             Local<'_, Vec<StableId>>,
-            UnitsNear<'_, '_>,
+            UnitsNear<'_>,
         ),
     ) {
         let now = tick.start();

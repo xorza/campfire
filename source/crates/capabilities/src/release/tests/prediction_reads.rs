@@ -181,14 +181,21 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_projectiles::flying::Flying::fly",
         "campfire_projectiles::launching::Launching::launch",
         "campfire_projectiles::launching::Launching::take_shots",
+        // The refresh of the unit grid before the area trigger, the hits and the flight.
+        "campfire_units::unit_grid::UnitGrid::refresh",
+        "campfire_units::unit_grid::UnitGrid::refresh",
+        "campfire_units::unit_grid::UnitGrid::refresh",
         "campfire_vision::seeing::Seeing::refill",
         "campfire_vision::seeing::Seeing::see",
     ];
     assert_eq!(server, own);
-    for name in &server {
+    // The grid's refresh runs before each of its readers, a client's among them.
+    let refresh = "campfire_units::unit_grid::UnitGrid::refresh";
+    for name in server.iter().filter(|name| *name != refresh) {
         let name = name.replace("campfire_capabilities::", "");
         assert!(!client.contains(&name), "{name}");
     }
+    assert!(client.iter().any(|name| name == refresh));
     unbounded.sort();
     unbounded.dedup();
     assert_eq!(unbounded, Vec::<String>::new());

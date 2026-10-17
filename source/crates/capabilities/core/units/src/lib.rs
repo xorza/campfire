@@ -129,7 +129,7 @@ pub use crate::unit_core::UnitCore;
 pub use crate::unit_entity::UnitEntity;
 pub use crate::unit_entity::body_unit::BodyUnit;
 pub use crate::unit_entity::delivery_entity::DeliveryEntity;
-pub use crate::unit_grid::{GridUnits, UnitGrid, UnitsNear};
+pub use crate::unit_grid::{GridBuild, GridUnits, UnitGrid, UnitsNear};
 pub use crate::unit_ordered::{OrderKind, UnitOrdered};
 pub use crate::unit_state::{StateSync, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitState};
 pub use crate::unit_state_book::UnitStateBook;

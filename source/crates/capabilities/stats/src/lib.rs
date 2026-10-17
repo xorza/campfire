@@ -22,7 +22,9 @@ use campfire_declare::{
 use campfire_math::Num;
 use campfire_players::Player;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{BodyUnit, Dead, DeclaredTags, Owner, SpawnHooks, UnitSteps, UnitsSet};
+use campfire_units::{
+    BodyUnit, Dead, DeclaredTags, Owner, SpawnHooks, UnitGrid, UnitSteps, UnitsSet,
+};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
 use crate::application::{Adding, ApplyAt};
@@ -343,8 +345,16 @@ impl Module for Stats {
         }
         cx.by_role(
             StatsSet::Hold,
-            (AuraCarriers::track, HeldPass::run::<ServerForm>).chain(),
-            (AuraCarriers::track, HeldPass::run::<ClientForm>).chain(),
+            (
+                AuraCarriers::track,
+                UnitGrid::before_reading(HeldPass::run::<ServerForm>),
+            )
+                .chain(),
+            (
+                AuraCarriers::track,
+                UnitGrid::before_reading(HeldPass::run::<ClientForm>),
+            )
+                .chain(),
         );
         for set in StatsSet::ALL {
             if let StatsSet::Refresh(_) = set {

@@ -74,7 +74,7 @@ impl Flying {
             Local<'_, Vec<(Num, StableId)>>,
             Local<'_, Vec<StableId>>,
         ),
-        mut near: UnitsNear<'_, '_>,
+        near: UnitsNear<'_>,
     ) {
         flying.clear();
         // Only a line and a curve meet the units near.

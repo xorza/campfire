@@ -19,7 +19,7 @@ use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
 use campfire_sim::{Capability, SimSet, StableId};
 use campfire_stats::StatsSet;
-use campfire_units::{DeliveryEntity, UnitTypes};
+use campfire_units::{DeliveryEntity, UnitGrid, UnitTypes};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
 mod area;
@@ -112,10 +112,16 @@ impl Module for Areas {
     /// units inside. A launch queues as an effect of `areas`. A predicting client predicts no
     /// delivery, so it lands none and triggers none.
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
-        cx.server(AreasSet::Trigger, AreaLife::trigger);
+        cx.server(
+            AreasSet::Trigger,
+            UnitGrid::before_reading(AreaLife::trigger),
+        );
         cx.server(AreasSet::Land, AreaLife::land);
         cx.server(AreasSet::LandAtResolve, AreaLife::land);
-        cx.add(AreasSet::HoldInside, AreaHolds::hold_inside);
+        cx.add(
+            AreasSet::HoldInside,
+            UnitGrid::before_reading(AreaHolds::hold_inside),
+        );
     }
 }
 

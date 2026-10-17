@@ -26,7 +26,7 @@ pub struct Placement<'w, 's, S: TeamSight> {
     map: Res<'w, MapBook>,
     vision: Option<Res<'w, VisionBook>>,
     fog: Option<Res<'w, Fog>>,
-    near: UnitsNear<'w, 's>,
+    near: UnitsNear<'w>,
     units: Query<'w, 's, PlacedUnit<S>, (Without<Dead>, Allow<Unpredicted>)>,
 }
 
@@ -78,7 +78,7 @@ impl<S: TeamSight> Placement<'_, '_, S> {
             ..
         } = self;
         let relations = relations.get();
-        let mut seen = SeenNear::<S> { near, units, team };
+        let seen = SeenNear::<S> { near, units, team };
         let blocked = seen.any(pos, boxed.bound(), |unit| {
             let Some(other) = unit
                 .body
@@ -126,7 +126,7 @@ struct NearUnit<'a> {
 /// its team does not see, and none visits a unit far off.
 #[derive(Debug)]
 struct SeenNear<'p, 'w, 's, S: TeamSight> {
-    near: &'p mut UnitsNear<'w, 's>,
+    near: &'p UnitsNear<'w>,
     units: &'p Query<'w, 's, PlacedUnit<S>, (Without<Dead>, Allow<Unpredicted>)>,
     team: Team,
 }
@@ -134,7 +134,7 @@ struct SeenNear<'p, 'w, 's, S: TeamSight> {
 impl<S: TeamSight> SeenNear<'_, '_, '_, S> {
     /// Whether `found` holds of a living unit whose bound comes within `reach` of `pos`, that
     /// the team sees, of a match with no vision every unit.
-    fn any(&mut self, pos: Vec3, reach: Num, mut found: impl FnMut(NearUnit<'_>) -> bool) -> bool {
+    fn any(&self, pos: Vec3, reach: Num, mut found: impl FnMut(NearUnit<'_>) -> bool) -> bool {
         let (units, team) = (self.units, self.team);
         let mut any = false;
         self.near.current().visit_near(pos, reach, |indexed| {

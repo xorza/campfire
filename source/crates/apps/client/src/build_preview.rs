@@ -27,7 +27,7 @@ use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
 use campfire_production::{BuildBook, Placement};
 use campfire_sim::{EntityIndex, Position, Unpredicted};
-use campfire_units::BuildTarget;
+use campfire_units::{BuildTarget, UnitGrid};
 use campfire_values::Team;
 use campfire_vision::ByHolding;
 
@@ -84,7 +84,13 @@ impl Plugin for BuildPreview {
             Update,
             (
                 Self::show,
-                (Self::follow, Self::judge, Self::tint, Self::click)
+                (
+                    Self::follow,
+                    UnitGrid::refresh,
+                    Self::judge,
+                    Self::tint,
+                    Self::click,
+                )
                     .chain()
                     .run_if(resource_exists::<Placing>),
             )
@@ -359,6 +365,7 @@ mod tests {
                 fit: Fit::Clear,
             };
             let ghost = game.spawn(ghost).id();
+            game.run_system_once(UnitGrid::refresh).unwrap();
             game.run_system_once(BuildPreview::judge).unwrap();
             let fit = game.get::<Ghost>(ghost).unwrap().fit;
             game.despawn(ghost);

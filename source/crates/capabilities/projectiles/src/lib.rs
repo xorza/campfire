@@ -22,7 +22,7 @@ use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, SimWorld, StableId};
-use campfire_units::{Body, MapBook, UnitTypes};
+use campfire_units::{Body, MapBook, UnitGrid, UnitTypes};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
 mod curve;
@@ -115,7 +115,7 @@ impl Module for Projectiles {
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
         cx.server(ProjectilesSet::TakeShots, Launching::take_shots);
         cx.server(ProjectilesSet::Launch, Launching::launch);
-        cx.server(ProjectilesSet::Fly, Flying::fly);
+        cx.server(ProjectilesSet::Fly, UnitGrid::before_reading(Flying::fly));
     }
 }
 

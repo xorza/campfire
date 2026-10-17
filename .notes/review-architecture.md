@@ -136,7 +136,7 @@ The fourteen root causes of the first review merge into ten. Each names its find
 | C1 | The core and the session layer name every capability | C-1, C-3, C-4, C-5, E-3, E-5, E-6, E-11, S-5, S-7, S-8, S-11, K-19, R-22, R-31, N-26, N-27 |
 | C2 | The install runs before the load | E-9, E-10, E-12, E-13, E-14, K-11, K-12, C-7, K-15 |
 | C3 | A pass visits the population, not what is due or changed | K-13, C-15, C-17, R-4, R-5, R-6, R-7, R-12, R-30, S-24, E-17, A-10, K-21 |
-| C4 | Match facts live in non-send or exclusive state | B-1, E-4, E-7, E-8, C-12, C-13, K-20, N-4 |
+| C4 | Match facts live in non-send or exclusive state | B-1, E-4, E-7, K-20, N-4 |
 | C5 | Tick facts depend on the host's frames, and the executor fixes an undeclared order | E-1, E-2, E-16, N-3, N-7 |
 | C6 | An entity does not spawn whole, and no part chooses its storage | C-9, C-11, E-18, E-22, N-9, A-6, A-8, B-24 |
 | C7 | Rules of one game are fixed in Rust, and a rules package can hold no data | K-5 to K-10, K-23, R-8, R-9, R-13 to R-19, R-23 to R-25, C-23, C-24, S-9, S-10, S-14, A-3, A-4, A-5, A-16 |
@@ -665,7 +665,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - A `Names` book (E-7, S-21).
 - `Spawner` becomes associated functions, with the spawnable types a load check and a client's spawn refused by another guard than the resource's absence (R-11).
 - Scripted passes split into a plain collect and an exclusive script run (K-20).
-- `UnitGrid` is rebuilt by its own system, and its readers take `Res` (C-13).
 
 **6.2 One server match.** Touches `net` (sim server, lobby, session directory), `runner` (session, session rules), `package`, `apps/server`.
 - `MatchRun::begin` from `MatchSource::{New, Restored}` builds one `ServerMatch` (N-5).
@@ -974,7 +973,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-3 | Costs, targets and passives tie the action pipeline to `stats`, and a target must have `Life` | `holds.rs:7-9`, `targets.rs:11, 85-90`, `purse.rs:2` | Confirmed | 5.3 |
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
 | C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |
-| C-13 | Each `UnitsNear` reader holds `ResMut`, because the first reader rebuilds the grid | `unit_grid.rs:25-58` | Confirmed | 6.1 |
 | C-14 | The match entity and the players are found through the `BTreeMap` index on each call | `on_match.rs:18-25`, `player_rows.rs:25-59`, `targets.rs:49-51` | Confirmed. The cost needs a bench. | 7.2 |
 | C-15, S-24 | The script view walks and copies every entity for each script batch. Each call copies the mode state and every player's resources and resolves its literal names again. | `view_reader.rs:136-180`, `scripts_world.rs:15-17`, `mode_call.rs:194-208` | Plausible: needs a bench | 7.2 |
 | C-17 | `want_passives` scans every unit in four sets, and `end_lifespans` scans every lifespan in each tick | `actions/src/lib.rs:242-250`, `unit_ticks.rs:31-42` | Confirmed | 7.1 |

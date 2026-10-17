@@ -10,7 +10,7 @@ use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
 use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, StatsWorld, UnitPools};
 use campfire_units::{
-    Body, BuildTarget, Dead, Destination, MapBook, Owner, SpawnAt, Spawner, StatusTags,
+    Body, BuildTarget, Dead, Destination, GridBuild, MapBook, Owner, SpawnAt, Spawner, StatusTags,
 };
 use campfire_values::{Team, UnitTags};
 use campfire_vision::TeamSight;
@@ -78,11 +78,15 @@ impl Construction {
     /// stand in; its life starts at `start_life` of its maximum, rounded down, at least the least
     /// amount above 0. Each build sees the sites the builds before it placed. An `alone` build's
     /// order then ends; another's builds its site. On a predicting client, a build that starts
-    /// spawns nothing, and its order ends until the server's comes back.
+    /// spawns nothing, and its order ends until the server's comes back. The unit grid is built
+    /// again before each build, as one may have spawned a site.
     pub(crate) fn start_builds<S: TeamSight>(
         world: &mut World,
         builders: &mut QueryState<(Entity, &StableId, &Builder), Without<Dead>>,
-        view: &mut SystemState<BuildView<'_, '_, S>>,
+        (view, grid): (
+            &mut SystemState<BuildView<'_, '_, S>>,
+            &mut SystemState<GridBuild<'_, '_>>,
+        ),
         (mut order, mut paid): (Local<'_, Ordered>, Local<'_, Vec<ResourceAmount>>),
     ) {
         let ordered = builders
@@ -97,6 +101,10 @@ impl Construction {
             .expect("a build view is always valid")
             .read_holdings();
         for &Keyed { entity, .. } in due {
+            // A site the build before spawned stands in the grid this build's placement reads.
+            grid.get_mut(world)
+                .expect("a grid build is always valid")
+                .refresh();
             let step = view
                 .get_mut(world)
                 .expect("a build view is always valid")

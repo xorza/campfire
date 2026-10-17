@@ -77,7 +77,7 @@ impl Attacks {
         (tick, book): (Res<'_, SimTick>, Res<'_, ActionBook>),
         (deliveries, mut queue): (Res<'_, DeliveryQueue>, ResMut<'_, PassQueue>),
         targets: Targets<'_, '_>,
-        mut near: UnitsNear<'_, '_>,
+        near: UnitsNear<'_>,
         mut splashed: Local<'_, Vec<StableId>>,
     ) {
         let now = tick.start();

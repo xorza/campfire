@@ -91,7 +91,7 @@ impl HeldPass {
         carriers: HeldCarriers<'_, '_>,
         unseen: UnseenSources<'_, '_>,
         mut held: Local<'_, Vec<Held>>,
-        mut near: UnitsNear<'_, '_>,
+        near: UnitsNear<'_>,
         auras: Res<'_, AuraCarriers>,
     ) {
         let StatBooks {

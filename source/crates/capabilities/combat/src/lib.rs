@@ -19,7 +19,7 @@ use campfire_declare::{
 use campfire_math::RngStream;
 use campfire_sim::{Capability, SimSet};
 use campfire_stats::{Life, LifePool, StatsSet, TypePools};
-use campfire_units::{BodyUnit, Dead, Deaths, SpawnPoint, UnitsSet};
+use campfire_units::{BodyUnit, Dead, Deaths, SpawnPoint, UnitGrid, UnitsSet};
 
 use crate::combat_column::RowReads;
 use crate::held_hits::HeldHits;
@@ -220,7 +220,10 @@ impl Module for Combat {
         }
         cx.add(CombatSet::Attack, Attacks::start_attacks);
         cx.add(CombatSet::Respawn, Dying::respawn);
-        cx.server(CombatSet::Hits, Attacks::take_hits);
+        cx.server(
+            CombatSet::Hits,
+            UnitGrid::before_reading(Attacks::take_hits),
+        );
         cx.server(CombatSet::Damage, DamagePass::run);
         cx.server(CombatSet::Die, Dying::die);
         cx.add(CombatSet::Pay, Volley::collect);

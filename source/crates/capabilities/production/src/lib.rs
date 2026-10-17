@@ -20,7 +20,7 @@ use campfire_declare::{
 use campfire_players::Player;
 use campfire_sim::{Capability, SimSet};
 use campfire_stats::StatsSet;
-use campfire_units::{BodyUnit, Dead, Owner, StatusTags, UnitTypes, UnitsSet};
+use campfire_units::{BodyUnit, Dead, Owner, StatusTags, UnitGrid, UnitTypes, UnitsSet};
 use campfire_values::{Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
@@ -267,9 +267,9 @@ impl Production {
 
     /// The checks of build and gather orders, each placement testing the units `S` sees.
     fn check_builds<S: TeamSight>() -> ScheduleConfigs<ScheduleSystem> {
-        (Construction::check_builds::<S>, GatherLoop::check_gathers)
-            .chain()
-            .into_configs()
+        UnitGrid::before_reading(
+            (Construction::check_builds::<S>, GatherLoop::check_gathers).chain(),
+        )
     }
 
     /// The starts of the trains, the builds and the gathers, for the sight of `S`.
