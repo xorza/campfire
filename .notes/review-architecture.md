@@ -646,7 +646,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - **Goldens:** they may move where the order of visits was by `Entity`. Each move is explained.
 
 **7.2 Caches that follow deltas.** Touches `production`, `units` (view reader), `players`, `combat`, `items`, `script`.
-- The script view merges deltas and reads once for each phase that runs scripts (C-15). Call parts copy on first use, and literal names resolve once for each call site (S-24).
+- Call parts copy on first use, and literal names resolve once for each call site (S-24).
 - `Single` for the match entity and a dense player table (C-14).
 - The damage pass reads through a cached `SystemState`, and a heard event shares one handle (K-21).
 - A shop index (RW 20).
@@ -916,7 +916,7 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
 | C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |
 | C-14 | The match entity and the players are found through the `BTreeMap` index on each call | `on_match.rs:18-25`, `player_rows.rs:25-59`, `targets.rs:49-51` | Confirmed. The cost needs a bench. | 7.2 |
-| C-15, S-24 | The script view walks and copies every entity for each script batch. Each call copies the mode state and every player's resources and resolves its literal names again. | `view_reader.rs:136-180`, `scripts_world.rs:15-17`, `mode_call.rs:194-208` | Plausible: needs a bench | 7.2 |
+| S-24 | Each call copies the mode state and every player's resources and resolves its literal names again. | `scripts_world.rs:15-17`, `mode_call.rs:194-208` | Plausible: needs a bench | 7.2 |
 | C-17 | `want_passives` scans every unit in four sets, and `end_lifespans` scans every lifespan in each tick | `actions/src/lib.rs:242-250`, `unit_ticks.rs:31-42` | Confirmed | 7.1 |
 | C-18 | Slots, times and progress are three components that stay in step only by index, and each `zip` truncates silently | `action_slots/mod.rs:30-33`, `slot_times.rs:234-354` | Confirmed | 7.4 |
 | C-22 | Six geometry predicates answer one question with four names, three result types and both boundary rules | `metric.rs:58-117`, `placed/mod.rs:30-35`, `body_box/mod.rs:143-152` | Confirmed | 12.1 |

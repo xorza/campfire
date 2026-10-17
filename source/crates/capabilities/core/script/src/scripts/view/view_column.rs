@@ -23,9 +23,13 @@ pub trait ViewColumn: Any + fmt::Debug {
 
 /// A column of any type, as the view holds it: what the view does with every column's rows.
 trait AnyColumn: Slot + fmt::Debug {
-    /// Starts a read of `world`: the rows it holds become those it keeps from, and it holds none.
+    /// Takes what its rows derive from besides the units' parts, as a read of `world` starts.
     /// Whether every row must be filled again.
-    fn start(&mut self, world: &World) -> bool;
+    fn begin(&mut self, world: &World) -> bool;
+
+    /// Starts a read that changes rows: the rows it holds become those it keeps from, and it
+    /// holds none.
+    fn start_rows(&mut self);
 
     /// Adds the rows `rows` of the read before, unchanged.
     fn keep(&mut self, rows: Range<usize>);
@@ -38,9 +42,12 @@ trait AnyColumn: Slot + fmt::Debug {
 }
 
 impl<C: ViewColumn> AnyColumn for C {
-    fn start(&mut self, world: &World) -> bool {
+    fn begin(&mut self, world: &World) -> bool {
+        ViewColumn::begin(self, world)
+    }
+
+    fn start_rows(&mut self) {
         self.kept_mut().begin();
-        self.begin(world)
     }
 
     fn keep(&mut self, rows: Range<usize>) {
@@ -85,9 +92,16 @@ impl ViewColumns {
         self.0.typed_mut(at)
     }
 
-    /// Starts a read of `world` in the column at `at`. Whether every row must be filled again.
-    pub fn start(&mut self, at: usize, world: &World) -> bool {
-        self.0.at_mut(at).start(world)
+    /// Takes what the column at `at` derives from besides the units' parts, as a read of `world`
+    /// starts. Whether every row must be filled again.
+    pub fn begin(&mut self, at: usize, world: &World) -> bool {
+        self.0.at_mut(at).begin(world)
+    }
+
+    /// Starts a read that changes rows in the column at `at`: its rows become those it keeps
+    /// from, and it holds none.
+    pub fn start_rows(&mut self, at: usize) {
+        self.0.at_mut(at).start_rows();
     }
 
     /// Adds the rows `rows` of the read before to the column at `at`, unchanged.

@@ -56,9 +56,9 @@ impl<D: RowReads, C: ViewColumn> fmt::Debug for RowSource<D, C> {
 
 /// A row source of any parts, as the view holds them.
 pub(crate) trait FillRow: fmt::Debug + Send + Sync {
-    /// Starts a read of `world`: brings its queries up to the archetypes, starts its column's
-    /// read, and marks for `source` each unit whose parts changed since its last read. Whether
-    /// every row must be filled again, as the column asks.
+    /// Starts a read of `world`: brings its queries up to the archetypes, takes what its column
+    /// derives from besides the units' parts, and marks for `source` each unit whose parts
+    /// changed since its last read. Whether every row must be filled again, as the column asks.
     fn begin(
         &mut self,
         world: &World,
@@ -66,6 +66,9 @@ pub(crate) trait FillRow: fmt::Debug + Send + Sync {
         source: usize,
         marks: &mut RowMarks,
     ) -> bool;
+
+    /// Starts its column's rows, as a read that changes rows goes on.
+    fn start_rows(&self, columns: &mut ViewColumns);
 
     /// Fills the row of `entity` of `world` into `row` and its column.
     fn fill(&self, world: &World, entity: Entity, row: &mut UnitRow, columns: &mut ViewColumns);
@@ -87,7 +90,11 @@ impl<D: RowReads, C: ViewColumn> FillRow for RowSource<D, C> {
         for entity in &changed {
             marks.mark(entity, source);
         }
-        columns.start(self.column, world)
+        columns.begin(self.column, world)
+    }
+
+    fn start_rows(&self, columns: &mut ViewColumns) {
+        columns.start_rows(self.column);
     }
 
     fn fill(&self, world: &World, entity: Entity, row: &mut UnitRow, columns: &mut ViewColumns) {
