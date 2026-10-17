@@ -91,9 +91,7 @@ impl NavigationFixtures for Navigation {
     fn walker_type(world: &mut World) -> UnitType {
         Units::type_named(world, "walker").unwrap_or_else(|| {
             let core = UnitTypeCore::default();
-            let walker = Units::load_type(world, TypeScope::Mode, "walker", &core);
-            Mode::load_test_units(world);
-            walker
+            Units::load_type(world, TypeScope::Mode, "walker", &core)
         })
     }
 

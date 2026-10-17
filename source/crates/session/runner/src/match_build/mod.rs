@@ -88,7 +88,7 @@ pub(crate) mod internals {
     use campfire_capabilities::{Match, MatchKind, Release};
     use campfire_common::SegmentSeed;
     use campfire_log::internals::LogCheck;
-    use campfire_mode::{Mode, OptionPicks};
+    use campfire_mode::OptionPicks;
     use campfire_package::ModePackages;
     use campfire_players::Players;
     use campfire_sim::TickRate;
@@ -122,11 +122,9 @@ pub(crate) mod internals {
             let spec = Self::spec(packages, SegmentSeed::ZERO, rate, players);
             let mut books = packages.books(rate);
             books.replace(vision);
-            let units = books.mode_units().clone();
             let mut game = Match::new(spec, books, MatchKind::Rules).with_log(log);
             Release::compile(&mut game, &packages.scripts());
             Players::start_without_mode(&mut game, [], 0);
-            Mode::load_units(&mut game, &units);
             game
         }
 

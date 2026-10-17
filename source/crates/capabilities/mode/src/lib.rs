@@ -183,7 +183,6 @@ impl Module for Mode {
         d.resource::<UnansweredSlotEvents>();
         d.report::<SaveAsked>();
         d.loaded::<MatchMode>();
-        d.loaded::<Spawner>();
         d.check::<Player>(Self::players_spawned);
         d.part::<MatchEntity, Relations>(|at| {
             Some(at.world().resource::<MatchMode>().relations.clone())
@@ -281,7 +280,6 @@ impl Mode {
             placed,
             relations,
         };
-        Self::load_units(world, &units);
         let load = SpecLoad {
             start,
             units,
@@ -313,12 +311,6 @@ impl Mode {
         Breach::of_match(seated)
     }
 
-    /// Loads the spawner of `units`, the mode's unit types, into `world`: from then on, the mode
-    /// and each capability spawn a unit of a type the mode spawns through it.
-    pub fn load_units(world: &mut World, units: &ModeUnits) {
-        world.insert_resource(units.spawner());
-    }
-
     /// Starts the match, before its first tick: the players spawn, each slot held or open as
     /// `seatings` gives it, one for each slot in order; the map's placed units spawn, on their
     /// paths and walking them as they name; then `on_match_start` runs. A timer it sets counts
@@ -340,7 +332,6 @@ impl Mode {
                 seating,
             }),
         );
-        let spawner = world.resource::<Spawner>().clone();
         for placed in &book.placed {
             let at = SpawnAt {
                 id: world.resource_mut::<IdAllocator>().allocate(),
@@ -351,16 +342,16 @@ impl Mode {
                 angle: placed.angle,
             };
             match placed.path {
-                None => spawner.spawn(world, at, ()),
+                None => Spawner::spawn(world, at, ()),
                 Some(PlacedPath { path, from: None }) => {
-                    spawner.spawn(world, at, OnPath::new(path))
+                    Spawner::spawn(world, at, OnPath::new(path))
                 }
                 Some(PlacedPath {
                     path,
                     from: Some(from),
                 }) => {
                     let walker = (OnPath::new(path), PathWalker::start(from, at.id));
-                    spawner.spawn(world, at, walker)
+                    Spawner::spawn(world, at, walker)
                 }
             };
         }
@@ -402,14 +393,13 @@ pub mod internals {
     use campfire_stats::{
         Application, Life, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats,
     };
-    use campfire_units::{Owner, SpawnAt, Spawner, UnitTypeBook, Units};
+    use campfire_units::{Owner, SpawnAt, Spawner, Units};
     use campfire_values::{NameId, PackageIndex, Rank, Stat, TagSet, Team, UnitType};
 
     use crate::Mode;
     use crate::match_mode::MatchMode;
     use crate::mode_ctx::ModeCtx;
     use crate::mode_input::{InputValue, ModeInput};
-    use crate::mode_units::ModeUnits;
     use crate::mode_world::ModeWorld;
 
     impl Mode {
@@ -447,29 +437,16 @@ pub mod internals {
                 pos,
                 angle,
             };
-            let spawner = Self::test_spawner(world)
-                .expect("the mode loaded its unit types before a unit spawns");
-            spawner.spawn(world, at, parts);
+            Spawner::place_any(world, at, parts);
             id
         }
     }
-
-    /// The spawner the fixtures of a world built as a client's place units through, apart from
-    /// the world's `Spawner`: a client holds none, as no client installs the mode, so a system
-    /// that spawns on a client fails its test as it fails the client.
-    #[derive(Debug)]
-    struct FixtureSpawner(Spawner);
-
-    /// On a world built as a client's, whose fixtures keep their spawner apart.
-    #[derive(Debug)]
-    struct ClientFixtures;
 
     impl Mode {
         /// Spawns a unit of the mode's type `unit_type` at `pos` on `team`, of the next stable
         /// id, with `parts`, as the mode's own spawns do, once the match loaded its types: the
         /// first spawn seals their tags, with no effect for a tag, as a mode's load does once
-        /// its packages load, and loads the spawner of `load_test_units` when the test loaded
-        /// none.
+        /// its packages load. On a client's match too, as the server would send the unit.
         pub fn spawn(
             world: &mut World,
             unit_type: UnitType,
@@ -490,9 +467,6 @@ pub mod internals {
             parts: impl Bundle,
         ) -> StableId {
             Units::seal_once(world);
-            if Self::test_spawner(world).is_none() {
-                Self::load_test_units(world);
-            }
             Self::spawn_at(world, unit_type, pos.into(), angle, team, parts)
         }
 
@@ -505,39 +479,6 @@ pub mod internals {
         pub fn slots(world: &World) -> usize {
             let players = world.resource::<MatchMode>().teams.players();
             usize::try_from(players).expect("slots fit usize")
-        }
-
-        /// Loads the spawner of every unit type the match loaded so far, which applies no
-        /// passive, as a mode's load gives its own: a fixture that loads types loads it again. A
-        /// world built as a client's keeps it apart, as its fixtures' alone.
-        pub fn load_test_units(world: &mut World) {
-            let count = world.resource::<UnitTypeBook>().count();
-            let types = (0..count)
-                .map(|index| UnitType::new(u16::try_from(index).expect("unit types fit u16")));
-            let units = ModeUnits {
-                unit_types: types.collect(),
-                ..ModeUnits::default()
-            };
-            if world.get_non_send::<ClientFixtures>().is_some() {
-                world.insert_non_send(FixtureSpawner(units.spawner()));
-            } else {
-                Self::load_units(world, &units);
-            }
-        }
-
-        /// Marks `world`, built as a client's, so its fixtures keep their spawner apart and the
-        /// world holds no `Spawner`, as a client's holds none.
-        pub fn keep_no_spawner(world: &mut World) {
-            world.insert_non_send(ClientFixtures);
-        }
-
-        /// The spawner the fixtures place units through: the world's, or, on a world built as a
-        /// client's, their own; none before a test loads one.
-        pub fn test_spawner(world: &World) -> Option<Spawner> {
-            match world.get_non_send::<FixtureSpawner>() {
-                Some(FixtureSpawner(spawner)) => Some(spawner.clone()),
-                None => world.get_resource::<Spawner>().cloned(),
-            }
         }
 
         /// Spawns a unit of the mode's type `name`, as `spawn` does.

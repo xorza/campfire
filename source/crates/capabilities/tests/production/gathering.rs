@@ -55,7 +55,6 @@ impl Mine {
         Units::give_type(game, worker, BodyForm::circle(Num::HALF).unwrap());
         Units::give_type(game, worker, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, worker, Gatherer::default());
-        Mode::load_test_units(game);
         Self {
             gather,
             mineral,

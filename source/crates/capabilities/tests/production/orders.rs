@@ -218,8 +218,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         angle: Num::int(90),
     };
     let slots = TimedSlots::new(ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]));
-    let spawner = Mode::test_spawner(&game).expect("the shop loaded its spawner");
-    spawner.spawn(&mut game, at, (slots, TrainQueue::default()));
+    Spawner::place_any(&mut game, at, (slots, TrainQueue::default()));
     let cases = [
         (None, Some(halves(0, -6))),
         (Some(point(8, 0)), Some(halves(16, 0))),

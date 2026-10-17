@@ -662,7 +662,6 @@ Each change folds into its document when its batch lands. Each line names the de
 ### Phase 6: `Send` data and the server frame
 
 **6.1 Data out of non-send resources.** Touches `units`, `script`, `mode`, `combat`, `stats`.
-- `Spawner` becomes associated functions, with the spawnable types a load check and a client's spawn refused by another guard than the resource's absence (R-11).
 - Scripted passes split into a plain collect and an exclusive script run (K-20).
 
 **6.2 One server match.** Touches `net` (sim server, lobby, session directory), `runner` (session, session rules), `package`, `apps/server`.
@@ -953,7 +952,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | E-2 | A `Restoring` world flag switches hooks into a trusting mode that each hook must remember | `restoring.rs:1-7`, `entity_kinds.rs:38`, `level.rs:59` | Confirmed | 7.5 |
 | E-4 | About 90 functions take `&mut World`, so the tick is bound to one thread whatever the executor | `damage_pass.rs:103-124`, `attacks.rs:262`, `trains.rs:194` | Confirmed | 11.1 |
 | E-5 | The core `actions` module depends on `stats`, and the release test of needs skips core modules | `actions/Cargo.toml:31`, `release/tests/mod.rs:311-321` | Confirmed | 5.3 |
-| R-11 | `Spawner` holds the spawnable types for one `debug_assert!` | `spawner.rs:19-22, 50` | Confirmed | 6.1 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
 | E-18 | A restore moves each entity once for each state type it holds | `state_registry/mod.rs:400-424, 662-684` | Confirmed | 7.5 |
 | E-19 | `StateRegistry` is a type list, a codec, a change tracker and a mode switch | `state_registry/mod.rs:57-64` | Confirmed | 7.7 |

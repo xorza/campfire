@@ -79,7 +79,6 @@ pub(crate) mod internals {
     use campfire_common::{DeclaredName, SegmentSeed};
     use campfire_declare::{Book, Role};
     use campfire_log::internals::LogCheck;
-    use campfire_mode::Mode;
     use campfire_players::Players;
     use campfire_script::ScriptPools;
     use campfire_sim::{Capability, TickRate};
@@ -169,7 +168,6 @@ pub(crate) mod internals {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
             let spec = MatchSpec::new(SegmentSeed::ZERO, Self::TEST_RATE, Role::Client).set(set);
             let mut started = Self::test_of(spec);
-            Mode::keep_no_spawner(&mut started);
             Players::start_without_mode(&mut started, [], 0);
             started
         }

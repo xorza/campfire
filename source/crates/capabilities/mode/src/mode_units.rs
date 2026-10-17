@@ -1,6 +1,5 @@
 use campfire_actions::{ActionBook, ActionsData};
 use campfire_declare::{BookCx, BookError, Fact, SourceKind};
-use campfire_units::Spawner;
 use campfire_values::{Names, UnitType};
 
 use crate::loadout_setup::LoadoutSetup;
@@ -43,10 +42,5 @@ impl ModeUnits {
             }
         }
         Ok(units)
-    }
-
-    /// The spawner of the mode's unit types.
-    pub(crate) fn spawner(&self) -> Spawner {
-        Spawner::new(self.unit_types.iter().copied())
     }
 }

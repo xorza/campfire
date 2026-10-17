@@ -205,7 +205,6 @@ impl Trains {
         if due.is_empty() {
             return;
         }
-        let spawner = world.resource::<Spawner>().clone();
         for &Keyed { entity, .. } in due {
             while let Some(head) = world
                 .get::<TrainQueue>(entity)
@@ -229,7 +228,7 @@ impl Trains {
                     owner,
                     angle: Num::ZERO,
                 };
-                let trained = spawner.spawn(world, at, ());
+                let trained = Spawner::spawn(world, at, ());
                 let gathers = Self::gather_at_rally(world, entity, trained);
                 if gathers.is_none()
                     && let Some(to) = places.rally

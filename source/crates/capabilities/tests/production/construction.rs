@@ -119,7 +119,6 @@ impl Yard {
         Units::give_type(game, builder, BodyForm::circle(Num::HALF).unwrap());
         Units::give_type(game, builder, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, builder, Builder::default());
-        Mode::load_test_units(game);
         Self { build, builder }
     }
 

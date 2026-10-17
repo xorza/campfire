@@ -95,7 +95,6 @@ impl Shop {
         );
         Self::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
         Self::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
-        Mode::load_test_units(game);
         let gold = ResourceId::new(0);
         Self {
             grunt,
@@ -154,8 +153,7 @@ impl Shop {
             owner,
             angle: Num::ZERO,
         };
-        let spawner = Mode::test_spawner(game).expect("the shop loaded its spawner");
-        spawner.spawn(game, at, (slots, queue));
+        Spawner::place_any(game, at, (slots, queue));
     }
 
     /// Each grunt trained so far, in order: the team and position of the producer it came from,

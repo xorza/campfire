@@ -102,16 +102,15 @@ impl Effect for ModeEffect {
                 world.entity_mut(entity).insert(MatchEnd::new(tick, result));
             }
             Self::SpawnUnit { at, grants } => {
-                let spawner = world.resource::<Spawner>().clone();
                 if grants.is_empty() {
-                    spawner.spawn(world, at, ());
+                    Spawner::spawn(world, at, ());
                 } else {
                     let book = world.get_resource::<ByType<ActionSlots>>();
                     let slots = book
                         .and_then(|book| book.get(at.unit_type))
                         .cloned()
                         .unwrap_or_else(|| ActionSlots::new([]));
-                    spawner.spawn(world, at, granted(slots, &grants));
+                    Spawner::spawn(world, at, granted(slots, &grants));
                 }
             }
             Self::SpawnGroup(group) => group.spawn(world),
