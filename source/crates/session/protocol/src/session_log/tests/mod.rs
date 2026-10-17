@@ -18,7 +18,7 @@ use crate::journal::tests::MemorySink;
 use crate::seed_chain::SeedChain;
 use crate::server_input::LeaveReason;
 use crate::server_input::error::ServerInputDecodeError;
-use crate::session_log::error::JournalReplayError;
+use crate::session_log::error::{JournalReplayError, PublishError};
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY};
 use crate::session_log::log_replay::LogReplay;
 use crate::session_result::{Outcome, SessionResult};
@@ -157,6 +157,18 @@ impl Sent<'_> {
             .first()
             .map_or(PlayerSlot::new(0), |input| input.slot)
     }
+}
+
+/// The file the journal `file` publishes, with the server seed of its log's second segment.
+fn published_from(file: &[u8]) -> Result<Vec<u8>, PublishError> {
+    let mut out = Vec::new();
+    let mut walk = |visit: &mut dyn FnMut(&[u8])| {
+        for record in JournalFrames::new(file).unwrap() {
+            visit(record);
+        }
+    };
+    SessionLog::publish(&mut walk, &SEED_CHAIN.seed(1), &mut out)?;
+    Ok(out)
 }
 
 /// A new log of `header()`.

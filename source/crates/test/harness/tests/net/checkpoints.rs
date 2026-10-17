@@ -77,10 +77,18 @@ fn snapshots(scratch: &Scratch, local: &InProcessMatch) -> PathBuf {
 /// its state hash, and the replay from tick 0 meets each checkpoint's hash and the result.
 fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
     local.server_mut().world_mut().end_session().unwrap();
-    let file =
-        SessionDir::publish(local.server().world().resource::<ServerDir>(), log(local)).unwrap();
-    let published =
-        SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
+    local.server_mut().world_mut().session_mut().close_journal();
+    let held = log(local);
+    let revealed = held.revealed_seeds().unwrap();
+    let last = revealed.seed(held.segment()).unwrap().clone();
+    let (id, mut encoded) = (held.session_id(), Vec::new());
+    held.encode(&mut encoded);
+    let data = local.server().world().resource::<ServerDir>();
+    let file = SessionDir::publish(data, id, &last).unwrap();
+    // The journal publishes the file the log in memory writes.
+    let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
+    assert_eq!(bytes, encoded);
+    let published = SessionLog::decode(&bytes).unwrap();
     let mut replay = Replay::of(published, local.packages()).unwrap();
     let records: Vec<_> = replay
         .game()

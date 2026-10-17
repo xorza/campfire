@@ -382,8 +382,12 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
         journal.durable_head(slot).map(|head| (head.seq, head.head)),
         Some((chain.next_seq() - 1, chain.head()))
     );
+    // The journal publishes the log loaded and gone on: z once, after the load.
+    log.reveal_seed(SEED_CHAIN.seed(1));
+    let held = encoded(&log);
     drop(log);
     drop(journal);
+    assert_eq!(published_from(&file.bytes()), Ok(held));
 
     let records: Vec<&[u8]> = JournalFrames::new(&loaded).unwrap().collect();
     assert_eq!(records.last().map(|record| record[0]), Some(7));

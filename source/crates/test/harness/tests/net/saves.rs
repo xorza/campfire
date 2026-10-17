@@ -17,7 +17,7 @@ use campfire_net::{
     ServerDir, SessionDir, SimServerWorld,
 };
 use campfire_protocol::{InputRules, JournalFrames, SeedChain, SessionLog};
-use campfire_runner::{Replay, Session};
+use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_sim::{SimWorld, TickRate};
 use campfire_store::InputFile;
 use campfire_store::internals::Scratch;
@@ -165,10 +165,18 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
 
     // The published log holds the segment before the save and the one after it, and verifies.
     local.server_mut().world_mut().end_session().unwrap();
-    let file =
-        SessionDir::publish(local.server().world().resource::<ServerDir>(), log(&local)).unwrap();
-    let published =
-        SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
+    local.server_mut().world_mut().session_mut().close_journal();
+    let held = log(&local);
+    let revealed = held.revealed_seeds().unwrap();
+    let last = revealed.seed(held.segment()).unwrap().clone();
+    let (id, mut encoded) = (held.session_id(), Vec::new());
+    held.encode(&mut encoded);
+    let data = local.server().world().resource::<ServerDir>();
+    let file = SessionDir::publish(data, id, &last).unwrap();
+    // The journal publishes the file the log in memory writes.
+    let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
+    assert_eq!(bytes, encoded);
+    let published = SessionLog::decode(&bytes).unwrap();
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&save]);
     let mut replay = Replay::of(published, local.packages()).unwrap();
     assert_eq!(replay.run(), Ok(()));

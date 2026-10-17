@@ -59,7 +59,7 @@ pub use crate::entropy::Entropy;
 pub use crate::input_chain::{InputChain, SignedHead};
 pub use crate::input_hash::{InputHash, InputHashMeaning};
 pub use crate::input_rules::InputRules;
-pub use crate::journal::error::NotJournal;
+pub use crate::journal::error::{JournalStreamError, NotJournal};
 pub use crate::journal::journal_frames::JournalFrames;
 pub use crate::journal::record_sink::RecordSink;
 pub use crate::main_key::{MainKey, MainKeyMeaning};
@@ -79,11 +79,12 @@ pub use crate::session_log::applied::Applied;
 pub use crate::session_log::durable_head::DurableHead;
 pub use crate::session_log::error::{
     CheckpointError, HeaderError, InputError, JournalReplayError, LogError, LogLoadError,
-    ResultError, SeedError, ServerInputError,
+    PublishError, ResultError, SeedError, ServerInputError,
 };
 pub use crate::session_log::journal::Journal;
 pub use crate::session_log::log_replay::LogReplay;
 pub use crate::session_log::player_packet::PlayerPacket;
+pub use crate::session_log::publish::JournalWalk;
 pub use crate::session_log::session_header::SessionHeader;
 pub use crate::session_private::SessionPrivate;
 pub use crate::session_result::{Outcome, SessionResult};

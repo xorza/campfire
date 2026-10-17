@@ -158,3 +158,26 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
     let resumed = Journal::resume(&rebuilt, MemorySink::new().boxed(), len(journal.len()));
     assert_eq!(resumed.durable_head(slot), None);
 }
+
+#[test]
+fn a_journal_publishes_the_file_its_log_writes() {
+    // Two segments, the second of a packet after its checkpoint, and the result.
+    let mut log = new_log();
+    let file = MemorySink::new();
+    let mut journal = Journal::start(&log, file.boxed());
+    play_minimal(&mut log, Some(&mut journal));
+    drop(journal);
+    log.reveal_seed(SEED_CHAIN.seed(1));
+    assert_eq!(published_from(&file.bytes()), Ok(encoded(&log)));
+
+    // A journal of no record, and one whose last checkpoint has no record yet, publish nothing.
+    let empty = MemorySink::new().bytes();
+    assert_eq!(published_from(&empty), Err(PublishError::NoHeader));
+    let mut log = new_log();
+    let file = MemorySink::new();
+    let mut journal = Journal::start(&log, file.boxed());
+    drop(log.seal_tick(Some(&mut journal)));
+    log.begin_checkpoint(Some(&mut journal)).unwrap();
+    drop(journal);
+    assert_eq!(published_from(&file.bytes()), Err(PublishError::Begun));
+}

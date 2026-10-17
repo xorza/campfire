@@ -300,3 +300,18 @@ pub enum JournalReplayError {
         error: LogError,
     },
 }
+
+/// Why a journal does not publish its log. The server writes only records its log took, so each
+/// is a fault of the journal's bytes, past the checks of its frames.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum PublishError {
+    /// The journal holds no header.
+    #[error("the journal holds no header")]
+    NoHeader,
+    /// A checkpoint the journal begins has no record, so the log is not whole.
+    #[error("a checkpoint the journal begins has no record")]
+    Begun,
+    /// The record of index `at`, from 0, is of no kind, or does not read.
+    #[error("journal record {at} does not read")]
+    Record { at: u64 },
+}

@@ -9,7 +9,7 @@ use campfire_common::Version;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::{
-    JournalFrames, SessionId, SessionLog, SessionPrivate, SessionTerms, Signer,
+    JournalFrames, ServerSeed, SessionId, SessionLog, SessionPrivate, SessionTerms, Signer,
 };
 use campfire_runner::{
     CheckedTerms, ResumeAt, Session, SessionRules, SessionSource, SessionWorld, StartError,
@@ -233,12 +233,42 @@ impl SessionDir {
         DurableDir::remove(&self.path)
     }
 
-    /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
-    pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, PublishError> {
-        DurableDir::create(&data.layout().logs_dir())?;
-        let file = data.layout().published_log(log.session_id());
+    /// Publishes the log of `session`, which its journal under `data` holds whole, with the
+    /// server seed `revealed` of its last segment, in `data`, written durably: the file the
+    /// journal publishes in two streaming reads (10-sessions.md, A published log is written from
+    /// the journal); the file's path.
+    pub fn publish(
+        data: &ServerDir,
+        session: SessionId,
+        revealed: &ServerSeed,
+    ) -> Result<PathBuf, PublishError> {
+        let dir = Self {
+            session,
+            path: data.layout().session_dir(session),
+        };
+        let journal = dir.journal();
+        let mut failed = None;
+        let mut walk = |visit: &mut dyn FnMut(&[u8])| {
+            if failed.is_some() {
+                return;
+            }
+            let streamed = InputFile::stream(&journal)
+                .map_err(PublishError::Read)
+                .and_then(|stream| {
+                    JournalFrames::stream(stream, visit).map_err(PublishError::Journal)
+                });
+            if let Err(error) = streamed {
+                failed = Some(error);
+            }
+        };
         let mut bytes = Vec::new();
-        log.encode(&mut bytes);
+        let published = SessionLog::publish(&mut walk, revealed, &mut bytes);
+        if let Some(error) = failed {
+            return Err(error);
+        }
+        published?;
+        DurableDir::create(&data.layout().logs_dir())?;
+        let file = data.layout().published_log(session);
         DurableFile::write(&file, &bytes)?;
         Ok(file)
     }
@@ -374,8 +404,14 @@ impl RestoredSession {
                 .expect("the server's own result holds");
         }
         world.session_mut().reveal_seed();
+        world.session_mut().close_journal();
         let log = world.resource::<Session>().log();
-        let file = SessionDir::publish(data, log).map_err(AbortError::Publish)?;
+        let revealed = log.revealed_seeds().expect("the seed is revealed");
+        let last = revealed
+            .seed(log.segment())
+            .expect("the seeds reach the last segment");
+        let file =
+            SessionDir::publish(data, log.session_id(), last).map_err(AbortError::Publish)?;
         SessionAborted {
             session: log.session_id(),
             file: file.clone(),

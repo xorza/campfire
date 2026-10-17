@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::journal::error::NotJournal;
+use crate::journal::error::{JournalStreamError, NotJournal};
 use crate::journal::journal_frames::{self, JournalFrames, MAX_RECORD};
 use crate::journal::record_sink::RecordSink;
 
@@ -71,10 +71,18 @@ pub(crate) fn journal_of_records() -> Vec<u8> {
     bytes
 }
 
-/// The records a read of `bytes` gives, and where it stops.
+/// The records a read of `bytes` gives, and where it stops; a stream of the bytes gives the same
+/// records.
 fn read(bytes: &[u8]) -> Option<(Vec<&[u8]>, usize)> {
-    let mut frames = JournalFrames::new(bytes).ok()?;
-    let records = frames.by_ref().collect();
+    let Ok(mut frames) = JournalFrames::new(bytes) else {
+        let streamed = JournalFrames::stream(bytes, &mut |_| {});
+        assert!(matches!(streamed, Err(JournalStreamError::NotJournal(_))));
+        return None;
+    };
+    let records: Vec<&[u8]> = frames.by_ref().collect();
+    let mut streamed = Vec::new();
+    JournalFrames::stream(bytes, &mut |record| streamed.push(record.to_vec())).unwrap();
+    assert_eq!(streamed, records);
     Some((records, frames.whole()))
 }
 

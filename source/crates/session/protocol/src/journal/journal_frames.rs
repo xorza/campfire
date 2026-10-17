@@ -1,6 +1,8 @@
 use campfire_common::{DomainHasher, HashDomain, Meaning, Value32};
 
-use crate::journal::error::NotJournal;
+use std::io::{self, Read};
+
+use crate::journal::error::{JournalStreamError, NotJournal};
 
 /// Starts the hash of every frame, so no other BLAKE3 use can produce one.
 const FRAME_DOMAIN: HashDomain<FrameHash> = HashDomain::new("campfire/journal-frame/v1");
@@ -50,6 +52,50 @@ impl<'a> JournalFrames<'a> {
     /// to cut the journal to.
     pub const fn whole(&self) -> usize {
         self.at
+    }
+
+    /// Reads the whole frames of the journal `reader` gives, in order, one at a time, and gives
+    /// each record to `visit`, as the iterator reads them from bytes in memory: the read stops at
+    /// the first frame that is short, too long, or whose hash fails. The memory it takes is one
+    /// record's. An error for a reader that fails, and `NotJournal` for bytes that do not start
+    /// with the journal's tag.
+    pub fn stream(
+        mut reader: impl Read,
+        visit: &mut dyn FnMut(&[u8]),
+    ) -> Result<(), JournalStreamError> {
+        let mut tag = [0; Self::TAG.len()];
+        if !read_whole(&mut reader, &mut tag)? || tag != *Self::TAG {
+            return Err(NotJournal.into());
+        }
+        let mut record = Vec::new();
+        loop {
+            let mut len = [0; LEN_BYTES];
+            if !read_whole(&mut reader, &mut len)? {
+                return Ok(());
+            }
+            let len = usize::try_from(u32::from_le_bytes(len)).expect("u32 fits usize");
+            if len > MAX_RECORD {
+                return Ok(());
+            }
+            record.resize(len + HASH_BYTES, 0);
+            if !read_whole(&mut reader, &mut record)? {
+                return Ok(());
+            }
+            let (body, written) = record.split_at(len);
+            if written != hash(body).as_bytes() {
+                return Ok(());
+            }
+            visit(body);
+        }
+    }
+}
+
+/// Fills `buffer` from `reader`; whether it held that many bytes, none when it ends before.
+fn read_whole(reader: &mut impl Read, buffer: &mut [u8]) -> Result<bool, JournalStreamError> {
+    match reader.read_exact(buffer) {
+        Ok(()) => Ok(true),
+        Err(error) if error.kind() == io::ErrorKind::UnexpectedEof => Ok(false),
+        Err(error) => Err(JournalStreamError::Read(error)),
     }
 }
 

@@ -51,6 +51,7 @@ pub(crate) mod log_replay;
 pub(crate) mod paged_bytes;
 pub(crate) mod paged_vec;
 pub(crate) mod player_packet;
+pub(crate) mod publish;
 mod segments;
 pub(crate) mod session_header;
 mod slot_control;

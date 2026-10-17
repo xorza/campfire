@@ -157,11 +157,17 @@ impl SimServerWorld for World {
         if let Some(exit) = Faults::apply(self) {
             return Some(exit);
         }
-        let session = self.resource::<Session>();
-        let id = session.log().session_id();
+        let log = self.resource::<Session>().log();
+        let id = log.session_id();
+        let revealed = log
+            .revealed_seeds()
+            .expect("a session that ends reveals its seed");
+        let last = revealed
+            .seed(log.segment())
+            .expect("the seeds reach the last segment");
         let hash = self.state_hash();
         let data = self.resource::<ServerDir>();
-        Some(match SessionDir::publish(data, session.log()) {
+        Some(match SessionDir::publish(data, id, last) {
             Ok(file) => {
                 SessionWritten {
                     session: id,

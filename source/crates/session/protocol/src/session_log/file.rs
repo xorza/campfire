@@ -26,7 +26,7 @@ use crate::slot_start::SlotStart;
 pub(super) const LOG_TAG: &[u8] = b"campfire/session-log/v6";
 /// The bytes that start a player's packet and a server input in the file.
 pub(super) const PACKET_ENTRY: u8 = 0;
-const SERVER_ENTRY: u8 = 1;
+pub(super) const SERVER_ENTRY: u8 = 1;
 
 impl SessionLog {
     /// Writes the log file into `out`, which is cleared first: the tag, then in postcard the
