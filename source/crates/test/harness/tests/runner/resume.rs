@@ -97,7 +97,7 @@ impl Checkpointed {
         );
         let ticks = u64::try_from(self.hashes.len()).unwrap();
         for (checkpoint, snapshot) in (0..).zip(&self.snapshots) {
-            let log = SessionLog::decode(&self.log).unwrap().rewound();
+            let log = SessionLog::decode(&self.log).unwrap();
             let segment = checkpoint + 1;
             let source = SessionSource::check(UncheckedSource {
                 log,
@@ -189,7 +189,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     let mut bytes = Vec::new();
     fixed.game().session().log().encode(&mut bytes);
     let resume = |segment, snapshot: &[u8]| {
-        let log = SessionLog::decode(&bytes).unwrap().rewound();
+        let log = SessionLog::decode(&bytes).unwrap();
         let source = SessionSource::check(UncheckedSource {
             log,
             seeds: FixedSession::seeds(),

@@ -82,6 +82,7 @@ pub use crate::session_log::error::{
     ResultError, SeedError, ServerInputError,
 };
 pub use crate::session_log::journal::Journal;
+pub use crate::session_log::log_replay::LogReplay;
 pub use crate::session_log::player_packet::PlayerPacket;
 pub use crate::session_log::session_header::SessionHeader;
 pub use crate::session_private::SessionPrivate;

@@ -25,10 +25,6 @@ impl<T> PagedVec<T> {
         self.len
     }
 
-    pub(crate) const fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
     pub(crate) fn push(&mut self, item: T) {
         if self.len.is_multiple_of(PAGE) {
             self.pages.push(Vec::with_capacity(PAGE));
@@ -76,7 +72,7 @@ mod tests {
     fn a_push_never_moves_the_items_before_it() {
         // Two pages and one item: 4096 + 4096 + 1; the first item stays where it was put.
         let mut list = PagedVec::default();
-        assert!(list.is_empty());
+        assert_eq!(list.len(), 0);
         list.push(0_u32);
         let first = ptr::from_ref(&list[0]);
         for value in 1..=2 * 4096 {

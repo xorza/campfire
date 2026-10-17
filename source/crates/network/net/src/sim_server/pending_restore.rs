@@ -86,7 +86,7 @@ impl PendingRestore {
         match ServerMatch::begin(world, begin) {
             Ok(()) => {
                 ServerPhase::go(world, ServerPhase::Running);
-                let tick = world.resource::<Session>().log().next_tick();
+                let tick = world.resource::<Session>().next_tick();
                 SessionRestored { session: id, tick }.log();
             }
             Err(error) => {

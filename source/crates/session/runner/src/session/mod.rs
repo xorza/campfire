@@ -9,8 +9,8 @@ use campfire_mode::{Mode, SavesData};
 use campfire_players::Seating;
 use campfire_protocol::{
     Applied, Checkpoint, CheckpointBegun, CheckpointError, InputError, Journal, LogLoadError,
-    PlayerPacket, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds, SessionLog,
-    SessionResult, Signer, SlotStart, SnapshotFingerprint,
+    LogReplay, PlayerPacket, RecordSink, ResultError, SeedError, ServerInput, ServerSeeds,
+    SessionLog, SessionResult, Signer, SlotStart, SnapshotFingerprint,
 };
 use campfire_sim::{SimWorld, TickRate};
 
@@ -50,6 +50,10 @@ pub struct Session {
     /// The journal the server's log takes each record into, once the server keeps one; none on
     /// a verifier (10-sessions.md, The journal belongs to the server's session).
     journal: Option<Journal>,
+    /// The replay of the log's sealed ticks, while the session runs them again: a verifier's,
+    /// a restore's or a load's; none once it reached the log's next tick
+    /// (10-sessions.md, The replay is a cursor the session owns).
+    replay: Option<LogReplay>,
     /// The log's terms as the mode's rules checked them, once for the session.
     checked: CheckedTerms,
 }
@@ -105,14 +109,33 @@ impl Session {
         Ok(Self {
             seeds,
             segment,
-            log,
             rules,
             saves,
             autosave,
             signer,
             journal: None,
+            replay: LogReplay::of(&log),
+            log,
             checked,
         })
+    }
+
+    /// The tick the session runs next: its replay's, while one runs, else the log's.
+    pub fn next_tick(&self) -> Tick {
+        self.replay
+            .as_ref()
+            .map_or_else(|| self.log.next_tick(), LogReplay::next_tick)
+    }
+
+    /// Drops the replay once it reached the log's next tick, from where the session runs live.
+    pub(crate) fn end_replay(&mut self) {
+        if self
+            .replay
+            .as_ref()
+            .is_some_and(|replay| replay.done(&self.log))
+        {
+            self.replay = None;
+        }
     }
 
     /// The log's terms as the mode's rules checked them, once for the session.
@@ -306,22 +329,22 @@ impl Session {
     /// change of a slot's controller the log holds, as a published log replayed does, breaks the
     /// mode's `[players]`, or when the packages do not load into the match.
     pub fn start(world: &mut World, source: SessionSource<'_>) -> Result<(), StartError> {
+        let session = Self::build(world, source, 0)?;
         assert_eq!(
-            source.log.next_tick(),
+            session.next_tick(),
             Tick::new(0),
             "a session starts before its first tick"
         );
-        let session = Self::build(world, source, 0)?;
         Mode::start(world, &session.seatings()).map_err(StartError::MatchStart)?;
         world.insert_resource(session);
         Ok(())
     }
 
-    /// Prepares the world, a new one, for the match of `source`, its log rewound to replay its
-    /// ticks, from the checkpoint `at`, as a restore does: builds the match as `Session::start`
-    /// does, but starts no mode, as the state is the checkpoint's snapshot; and seals the log's
-    /// ticks before the checkpoint without running them, so the next tick the session runs is
-    /// the checkpoint's. An error as `Session::start` gives one, and when the log holds no such
+    /// Prepares the world, a new one, for the match of `source`, its log's ticks to replay, from
+    /// the checkpoint `at`, as a restore does: builds the match as `Session::start` does, but
+    /// starts no mode, as the state is the checkpoint's snapshot; and seals the log's ticks before
+    /// the checkpoint without running them, so the next tick the session runs is the
+    /// checkpoint's. An error as `Session::start` gives one, and when the log holds no such
     /// checkpoint, when the snapshot is not the one the checkpoint fingerprints, when it does not
     /// restore, or restores to another state hash than the checkpoint's.
     pub fn resume(
@@ -329,11 +352,6 @@ impl Session {
         source: SessionSource<'_>,
         at: ResumeAt<'_>,
     ) -> Result<(), ResumeError> {
-        assert_eq!(
-            source.log.next_tick(),
-            Tick::new(0),
-            "a resumed log replays from its first tick"
-        );
         let record = source
             .log
             .checkpoints()
@@ -342,7 +360,10 @@ impl Session {
             .clone();
         let mut session = Self::build(world, source, at.segment).map_err(ResumeError::Start)?;
         Self::restore_checked(world, &record, at.snapshot).map_err(ResumeError::Snapshot)?;
-        session.log.seal_until(record.tick);
+        if let Some(replay) = &mut session.replay {
+            replay.seal_until(&session.log, record.tick);
+        }
+        session.end_replay();
         world.insert_resource(session);
         Ok(())
     }
@@ -395,7 +416,7 @@ pub(crate) mod internals {
             } = session;
             log.load(at.segment, None).map_err(ResumeError::Load)?;
             let source = SessionSource {
-                log: log.rewound(),
+                log,
                 seeds,
                 packages,
                 checked,

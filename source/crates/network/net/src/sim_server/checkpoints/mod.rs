@@ -159,7 +159,7 @@ impl Checkpoints {
         snapshots: &SnapshotDir,
     ) -> Result<(), SnapshotWriteError> {
         let session = world.resource::<Session>();
-        let next = session.log().next_tick();
+        let next = session.next_tick();
         if session
             .log()
             .begun_checkpoint()

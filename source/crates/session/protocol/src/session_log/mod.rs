@@ -26,7 +26,6 @@ use crate::session_log::error::{
 use crate::session_log::input_schedule::InputSchedule;
 use crate::session_log::journal::Journal;
 use crate::session_log::log_entries::{LogEntries, Served};
-use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::segments::{LoggedCheckpoint, Segments};
 use crate::session_log::session_header::SessionHeader;
@@ -48,6 +47,7 @@ mod input_schedule;
 pub(crate) mod journal;
 mod journal_records;
 mod log_entries;
+pub(crate) mod log_replay;
 pub(crate) mod paged_bytes;
 pub(crate) mod paged_vec;
 pub(crate) mod player_packet;
@@ -72,7 +72,7 @@ const END_RECORDS: u64 = 4;
 /// for a slot the player controls. A checkpoint ends a segment and starts the next, whose seed
 /// the sim draws from, and a result ends the session. The server records entries as they arrive;
 /// decoding a published log records them again, which checks every chain link and signature, and
-/// a verifier then replays the decoded log's ticks with `rewound`.
+/// a verifier then replays the decoded log's ticks through a `LogReplay`.
 #[derive(Debug)]
 pub struct SessionLog {
     header: SessionHeader,
@@ -106,8 +106,6 @@ pub struct SessionLog {
     changes: Vec<SlotChange>,
     /// The changes of the tick last sealed.
     sealed_changes: Range<usize>,
-    /// While a rewound log replays, the tick ends it had; empty otherwise.
-    to_replay: PagedVec<u32>,
     /// The most bytes the log's file and its journal hold.
     bounds: Bounds,
     /// The bytes `encode` writes now.
@@ -267,7 +265,6 @@ impl SessionLog {
             server_since: 0,
             changes: Vec::new(),
             sealed_changes: 0..0,
-            to_replay: PagedVec::default(),
             bounds,
             file_len: 0,
             unit: largest + RECORD_SLACK,
@@ -436,29 +433,17 @@ impl SessionLog {
     /// The last stamp of the inputs `slot`'s player sent since it joined, below which the log
     /// refuses the next; none before its first, or for a slot the session does not have.
     pub fn last_stamp(&self, slot: PlayerSlot) -> Option<Tick> {
-        self.debug_at_end();
         self.control.last_stamp(slot)
     }
 
     /// Who controls `slot` now; none for a slot the session does not have.
     pub fn controller(&self, slot: PlayerSlot) -> Option<Controller<'_>> {
-        self.debug_at_end();
         self.control.controller(slot, &self.entries)
     }
 
     /// The main key of the player who left `slot` last, while no player took it since.
     pub fn leaver(&self, slot: PlayerSlot) -> Option<MainKey> {
-        self.debug_at_end();
         self.control.leaver(slot)
-    }
-
-    /// Checks that the log does not replay: its slots' control is that of its end, which a tick
-    /// the replay reaches does not have.
-    fn debug_at_end(&self) {
-        debug_assert!(
-            self.to_replay.is_empty(),
-            "a log that replays holds its slots' control at its end alone"
-        );
     }
 
     /// How many slots the session has.
@@ -513,10 +498,6 @@ impl SessionLog {
         if inputs.clone().next().is_none() {
             return Err(InputError::EmptyPacket);
         }
-        debug_assert!(
-            self.to_replay.is_empty(),
-            "a log that replays takes no input"
-        );
         debug_assert!(self.result.is_none(), "a session that ended takes no input");
         let terms = &self.header.terms;
         let state = *self.control.get(slot).ok_or(InputError::UnknownPlayer)?;
@@ -788,10 +769,6 @@ impl SessionLog {
         if !self.has_room(growth, journal.as_deref()) {
             return Err(ServerInputError::LogFull);
         }
-        debug_assert!(
-            self.to_replay.is_empty(),
-            "a log that replays takes no input"
-        );
         debug_assert!(self.result.is_none(), "a session that ended takes no input");
         let slot = input.slot();
         let next = self.next_tick();
@@ -871,10 +848,6 @@ impl SessionLog {
         &mut self,
         journal: Option<&mut Journal>,
     ) -> Result<CheckpointBegun, CheckpointError> {
-        debug_assert!(
-            self.to_replay.is_empty(),
-            "a log that replays begins no checkpoint"
-        );
         assert!(
             self.result.is_none(),
             "a session that ended takes no checkpoint"
@@ -988,7 +961,6 @@ impl SessionLog {
     /// The log's own state at the boundary before the next tick, as a checkpoint there carries
     /// it.
     fn carry(&self) -> LogCarry {
-        self.debug_at_end();
         let slots = (0..)
             .map(PlayerSlot::new)
             .zip(self.control.iter())
@@ -1065,10 +1037,6 @@ impl SessionLog {
         signature: &Signature,
         journal: Option<&mut Journal>,
     ) -> Result<(), ResultError> {
-        debug_assert!(
-            self.to_replay.is_empty(),
-            "a log that replays takes no result"
-        );
         assert!(self.result.is_none(), "a session ends once");
         if result.tick != self.next_tick() {
             return Err(ResultError::Tick);
@@ -1100,67 +1068,23 @@ impl SessionLog {
             .map(|&index| self.entries.input(index))
     }
 
-    /// Seals each tick before `tick`, the log's own state only, as a replay does that a
-    /// checkpoint's snapshot starts at `tick`.
-    pub fn seal_until(&mut self, tick: Tick) {
-        while self.next_tick() < tick {
-            self.seal(None);
-        }
-    }
-
     /// Closes the next tick to new entries, and has the schedule give the inputs applied in it.
     fn seal(&mut self, journal: Option<&mut Journal>) {
         let tick = self.next_tick();
-        if self.to_replay.is_empty() {
-            // The segment's count of ticks grows, and the next tick's count of entries, 0,
-            // takes a byte.
-            let ticks = tick.get() - self.segments.last_start().tick.get();
-            self.file_len += varint_len(ticks + 1) - varint_len(ticks) + 1;
-            debug_assert!(self.file_len <= self.bounds.file(), "a seal has its room");
-            self.record.clear();
-            self.record.push(journal_records::JOURNAL_SEALED);
-            self.journal_record(journal);
-        }
-        let replayed = usize::try_from(tick.get()).expect("tick fits usize");
-        let end = match self.to_replay.get(replayed) {
-            Some(&end) => {
-                for at in self.entries.sealed_end()..end {
-                    self.schedule.replay(&self.entries, at, tick);
-                }
-                end
-            }
-            None => self.entries.len(),
-        };
-        self.entries.seal(end);
+        // The segment's count of ticks grows, and the next tick's count of entries, 0, takes a
+        // byte.
+        let ticks = tick.get() - self.segments.last_start().tick.get();
+        self.file_len += varint_len(ticks + 1) - varint_len(ticks) + 1;
+        debug_assert!(self.file_len <= self.bounds.file(), "a seal has its room");
+        self.record.clear();
+        self.record.push(journal_records::JOURNAL_SEALED);
+        self.journal_record(journal);
+        self.entries.seal(self.entries.len());
         self.server_since = 0;
-        if !self.to_replay.is_empty() && self.entries.next_tick().get() == len(self.to_replay.len())
-        {
-            // Caught up: the entries logged after the last tick wait again, as they did.
-            self.to_replay = PagedVec::default();
-            let next = self.next_tick();
-            for at in end..self.entries.len() {
-                if self.schedule.replay(&self.entries, at, next) {
-                    self.server_since += 1;
-                }
-            }
-        }
         let first = self.changes.partition_point(|change| change.tick < tick);
         let after = self.changes.partition_point(|change| change.tick <= tick);
         self.sealed_changes = first..after;
         self.schedule.seal(tick);
-    }
-
-    /// This log with its ticks unsealed, to replay them: sealing each again gives the inputs it
-    /// applied, from what the log holds, with no check done twice. Once the last is sealed, the
-    /// log is as it was. A log that replays takes no entry.
-    #[must_use]
-    pub fn rewound(mut self) -> Self {
-        if self.entries.next_tick().get() == 0 {
-            return self;
-        }
-        self.to_replay = self.entries.take_tick_ends();
-        self.schedule.reset();
-        self
     }
 
     /// Goes back to the boundary where segment `segment` starts, its checkpoint's, as a load of
@@ -1174,10 +1098,6 @@ impl SessionLog {
         segment: u32,
         journal: Option<&mut Journal>,
     ) -> Result<(), LogLoadError> {
-        debug_assert!(
-            self.to_replay.is_empty(),
-            "a log that replays loads nothing"
-        );
         if self
             .segments
             .get(segment)

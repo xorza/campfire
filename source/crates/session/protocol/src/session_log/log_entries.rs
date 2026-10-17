@@ -1,4 +1,3 @@
-use std::mem;
 use std::ops::Range;
 
 use campfire_common::{AfterLeave, PlayerSlot, Tick};
@@ -126,12 +125,6 @@ impl LogEntries {
     pub(super) fn seal(&mut self, end: u32) {
         debug_assert!(end <= self.len(), "a tick ends within the entries");
         self.tick_ends.push(end);
-    }
-
-    /// Its tick ends, which a rewound log replays, and none from then on: the log seals each
-    /// again as its replay reaches it.
-    pub(super) fn take_tick_ends(&mut self) -> PagedVec<u32> {
-        mem::take(&mut self.tick_ends)
     }
 
     pub(super) fn entry(&self, index: u32) -> Entry {

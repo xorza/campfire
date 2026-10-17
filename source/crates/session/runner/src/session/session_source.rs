@@ -6,7 +6,7 @@ use campfire_protocol::{ServerSeeds, SessionLog, Signer};
 use crate::session_rules::error::TermsError;
 use crate::session_rules::{CheckedTerms, SessionRules};
 
-/// What a session's match is built from: its log, rewound to replay its ticks, the seeds its
+/// What a session's match is built from: its log, whose sealed ticks the session replays, the seeds its
 /// server draws from, the packages of its mode, the log's terms as the mode's rules checked them,
 /// once for the session, and the signer of the server that signs what the session logs, none on
 /// a verifier, which only records a published log again.

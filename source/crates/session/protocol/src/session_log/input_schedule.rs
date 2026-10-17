@@ -117,35 +117,22 @@ impl InputSchedule {
         due
     }
 
-    /// The schedule of no input, its spills afresh, as a replay starts it.
-    pub(super) fn reset(&mut self) {
-        self.pending.clear();
-        self.due.clear();
-        self.spills.fill(Spill::default());
-    }
-
     /// Queues again what the logged entry `at` of `entries` scheduled before `next`, as a replay
-    /// does; whether it is a server input.
-    pub(super) fn replay(&mut self, entries: &LogEntries, at: u32, next: Tick) -> bool {
+    /// does.
+    pub(super) fn replay(&mut self, entries: &LogEntries, at: u32, next: Tick) {
         match entries.entry(at) {
             Entry::Packet(packet) => {
                 for index in entries.packet(packet).inputs.clone() {
                     self.schedule(entries, index, next);
                 }
-                false
             }
-            Entry::Server(server) => {
-                match entries.server(server).served {
-                    Served::Bot { input } => {
-                        self.schedule(entries, input, next);
-                    }
-                    Served::Join { slot, .. } | Served::Leave { slot, .. } => self.forget(slot),
-                    Served::Renew { .. }
-                    | Served::Connected { .. }
-                    | Served::Disconnected { .. } => {}
+            Entry::Server(server) => match entries.server(server).served {
+                Served::Bot { input } => {
+                    self.schedule(entries, input, next);
                 }
-                true
-            }
+                Served::Join { slot, .. } | Served::Leave { slot, .. } => self.forget(slot),
+                Served::Renew { .. } | Served::Connected { .. } | Served::Disconnected { .. } => {}
+            },
         }
     }
 }

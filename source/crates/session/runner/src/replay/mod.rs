@@ -42,7 +42,7 @@ impl<'p> Replay<'p> {
         Ok(Replay {
             game: Session::start_match(
                 SessionSource::check(UncheckedSource {
-                    log: published.rewound(),
+                    log: published,
                     seeds,
                     packages,
                     signer: None,
@@ -63,9 +63,9 @@ impl<'p> Replay<'p> {
     /// Runs every tick the log holds after those that ran, as `run` does, and gives `ran` the
     /// world after each.
     pub fn run_each(&mut self, mut ran: impl FnMut(&World)) -> Result<(), ReplayError> {
-        let start = self.game.session().log().next_tick();
+        let start = self.game.session().next_tick();
         self.game.replay_to(self.ticks, |world| {
-            if world.session().log().next_tick() > start {
+            if world.session().next_tick() > start {
                 ran(world);
             }
             Replay::check_checkpoint(world)
@@ -76,7 +76,7 @@ impl<'p> Replay<'p> {
     /// Whether the state of `world` at its boundary is the one the checkpoint there, if the log
     /// holds one, records.
     fn check_checkpoint(world: &World) -> Result<(), ReplayError> {
-        let next = world.session().log().next_tick();
+        let next = world.session().next_tick();
         let Some(record) = world.session().log().checkpoint_at(next) else {
             return Ok(());
         };
@@ -143,7 +143,7 @@ pub(crate) mod internals {
         /// a segment starts is not the one its checkpoint records, or the result does not hold.
         pub fn run_tick(&mut self) -> Result<bool, ReplayError> {
             Replay::check_checkpoint(&self.game)?;
-            if self.game.session().log().next_tick() == self.ticks {
+            if self.game.session().next_tick() == self.ticks {
                 self.game.check_result().map_err(ReplayError::Result)?;
                 return Ok(false);
             }

@@ -9,7 +9,7 @@ use campfire_harness::{End, HashTrail, InProcessMatch, LinkLayout, LinkModel, Ma
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::TickHashes;
 use campfire_orders::OrdersAction;
-use campfire_protocol::SessionLog;
+use campfire_protocol::{LogReplay, SessionLog};
 use campfire_runner::{Replay, Session};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_stats::Pools;
@@ -147,11 +147,11 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
     let mut file = Vec::new();
     server.resource::<Session>().log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
-    let ticks = decoded.next_tick();
-    let mut rewound = decoded.rewound();
+    let mut replay = LogReplay::of(&decoded).unwrap();
     let mut applied = Vec::new();
-    for tick in 0..ticks.get() {
-        applied.extend(rewound.seal_tick(None).map(|input| (input.stamp, tick)));
+    while !replay.done(&decoded) {
+        let tick = replay.next_tick().get();
+        applied.extend(replay.seal_tick(&decoded).map(|input| (input.stamp, tick)));
     }
     assert_eq!(applied.len(), inputs, "{applied:?}");
     assert!(
@@ -160,7 +160,10 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
             .all(|&(stamp, tick)| stamp == Tick::new(tick)),
         "{applied:?}"
     );
-    assert_eq!(live.totals().len(), usize::try_from(ticks.get()).unwrap());
+    assert_eq!(
+        live.totals().len(),
+        usize::try_from(decoded.next_tick().get()).unwrap()
+    );
     let decoded = SessionLog::decode(&file).unwrap();
     let mut replay = Replay::of(decoded, local.packages()).unwrap();
     let replayed = HashTrail::of_replay(&mut replay);

@@ -305,7 +305,7 @@ impl RestoredSession {
             )
             .map_err(MatchBeginError::ReadSnapshot)?;
             let source = SessionSource {
-                log: log.rewound(),
+                log,
                 seeds,
                 packages,
                 checked,
@@ -318,7 +318,7 @@ impl RestoredSession {
             Session::resume(world, source, at).map_err(MatchBeginError::Resume)?;
         } else {
             let source = SessionSource {
-                log: log.rewound(),
+                log,
                 seeds,
                 packages,
                 checked,
@@ -331,9 +331,9 @@ impl RestoredSession {
             journal,
             JournalFrom::End { len: journal_len },
         );
-        let resumed = world.session().log().next_tick();
+        let resumed = world.session().next_tick();
         world.replay_to(ticks, |world| {
-            if world.session().log().next_tick() > resumed {
+            if world.session().next_tick() > resumed {
                 after_tick(world);
             }
             Checkpoints::take_again(world, &snapshots).map_err(MatchBeginError::WriteSnapshot)

@@ -20,6 +20,7 @@ use crate::server_input::LeaveReason;
 use crate::server_input::error::ServerInputDecodeError;
 use crate::session_log::error::JournalReplayError;
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY};
+use crate::session_log::log_replay::LogReplay;
 use crate::session_result::{Outcome, SessionResult};
 use crate::session_terms::SessionTerms;
 use crate::slot_plan::SlotPlan;
@@ -316,11 +317,20 @@ fn seal(log: &mut SessionLog) -> Vec<(u32, Vec<u8>)> {
         .collect()
 }
 
-/// `log` rewound and replayed to its last sealed tick: each tick's applied inputs, and the log.
+/// `log`'s sealed ticks replayed through a `LogReplay`, to its last: each tick's applied inputs,
+/// and the log.
 fn replayed(log: SessionLog) -> Recorded {
-    let ticks = log.next_tick();
-    let mut log = log.rewound();
-    let applied = (0..ticks.get()).map(|_| seal(&mut log)).collect();
+    let mut applied = Vec::new();
+    if let Some(mut replay) = LogReplay::of(&log) {
+        while !replay.done(&log) {
+            let sealed = replay.seal_tick(&log);
+            applied.push(
+                sealed
+                    .map(|input| (input.slot.get(), input.payload.to_vec()))
+                    .collect(),
+            );
+        }
+    }
     Recorded { log, applied }
 }
 
@@ -366,22 +376,21 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
 }
 
 #[test]
-fn a_rewound_log_replays_the_same_ticks_and_ends_as_it_was() {
+fn a_replay_seals_the_same_ticks_and_leaves_the_log_as_it_was() {
     let log = published();
     let bytes = encoded(&log);
     let Recorded { mut log, applied } = replayed(log);
     assert_eq!(applied, script_applied());
-    // Caught up, the log is as it was: the same file, and the inputs held for later ticks, and
-    // the tail, wait to apply.
+    // The replay leaves the log as it was: the same file, and the inputs held for later ticks,
+    // and the tail, wait to apply.
     assert_eq!(encoded(&log), bytes);
     assert_eq!(
         [seal(&mut log), seal(&mut log), seal(&mut log)].to_vec(),
         tail_applied()
     );
 
-    // A log with no sealed tick rewinds to itself.
-    let empty = new_log().rewound();
-    assert_eq!(empty.next_tick(), Tick::new(0));
+    // A log with no sealed tick has no replay: its next tick runs live.
+    assert!(LogReplay::of(&new_log()).is_none());
 }
 
 /// A change to the sent packets, and the first packet it makes the log refuse.

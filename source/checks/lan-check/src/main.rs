@@ -32,7 +32,7 @@ use campfire_log::{ErrorReport, Logging};
 use campfire_net::{
     ClientLayout, LinkLost, Listening, ServerLayout, SessionWritten, TicksCaughtUp,
 };
-use campfire_protocol::SessionLog;
+use campfire_protocol::{LogReplay, SessionLog};
 use campfire_store::{DurableFile, InputFile, RunDir};
 use campfire_verifier::Verified;
 use tracing::{error, info};
@@ -204,12 +204,13 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<LoggedInput>,
     let path = host_layout(dir, SessionKind::Lan).published_log(written.session);
     let bytes = InputFile::read(&path, SessionLog::MAX_FILE_LEN).map_err(CheckError::Read)?;
     let published = SessionLog::decode(&bytes).map_err(CheckError::SessionLog)?;
-    let ticks = published.next_tick();
-    let mut log = published.rewound();
     let mut inputs = Vec::new();
-    while log.next_tick() < ticks {
-        let tick = log.next_tick();
-        inputs.extend(log.seal_tick(None).map(|input| LoggedInput {
+    let Some(mut replay) = LogReplay::of(&published) else {
+        return Ok(inputs);
+    };
+    while !replay.done(&published) {
+        let tick = replay.next_tick();
+        inputs.extend(replay.seal_tick(&published).map(|input| LoggedInput {
             slot: input.slot,
             stamp: input.stamp,
             tick,

@@ -274,7 +274,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     assert!(matches!(
         Session::start_match(
             SessionSource::check(UncheckedSource {
-                log: SessionLog::decode(&encoded(log)).unwrap().rewound(),
+                log: SessionLog::decode(&encoded(log)).unwrap(),
                 seeds: first,
                 packages: &packages(),
                 signer: None,
