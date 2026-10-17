@@ -1,10 +1,9 @@
-use std::cell::RefCell;
-
 use campfire_math::{Num, Vec3};
 use rhai::{EvalAltResult, INT, ImmutableString};
 
 use super::*;
 use crate::script_host::error::{NumError, Raised};
+use crate::script_host::script_prints::ScriptPrint;
 
 const PER_CALL: NonZeroU64 = NonZeroU64::new(1000).unwrap();
 
@@ -171,12 +170,38 @@ fn only_what_scripts_need_is_there() {
             matches!(&failed, Some(ScriptError::Runtime(text)) if text.to_string() == error);
         assert!(pinned, "{body}: {failed:?}");
     }
-    // What scripts do need: loops over arrays and ranges, maps, strings, and `print`, which
-    // writes only in debug builds.
+    // What scripts do need: loops over arrays and ranges, maps, strings, and `print` and
+    // `debug`, which a debug build alone records.
     let body = r#"let total = 0; for x in [1, 2, 3] { total += x; } for i in 0..4 { total += i; }
-        let m = #{ a: 5 }; print("quiet");
+        let m = #{ a: 5 }; print("quiet"); debug(m.a);
         if "enemies" == "enemies" { total + m.a } else { 0 }"#;
     assert_eq!(run(&mut host, body).unwrap().as_int().unwrap(), 17);
+    let mut report = ScriptPrints::default();
+    host.take_prints(Tick::new(4), &mut report);
+    // `debug` stands on the body's second line, after 8 spaces, `let m = #{ a: 5 }; ` (19) and
+    // `print("quiet"); ` (16): column 8 + 19 + 16 + 1 = 44.
+    let printed = [
+        ScriptPrint {
+            kind: PrintKind::Print,
+            text: "quiet",
+        },
+        ScriptPrint {
+            kind: PrintKind::Debug {
+                line: Some(2),
+                column: Some(44),
+            },
+            text: "5",
+        },
+    ];
+    let expected: &[_] = if cfg!(debug_assertions) {
+        &printed
+    } else {
+        &[]
+    };
+    assert_eq!(report.iter().collect::<Vec<_>>(), expected);
+    assert_eq!(report.tick(), Tick::new(4));
+    host.take_prints(Tick::new(5), &mut report);
+    assert!(report.is_empty(), "a take moves each print once");
     assert_eq!(hashing::get_hashing_seed(), &Some(HASHING_SEED));
 
     // A script's functions, each by its name and its number of parameters, and its place.

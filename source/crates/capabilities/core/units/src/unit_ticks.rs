@@ -1,13 +1,13 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::system::{Commands, NonSendMut, Query, Res, ResMut};
-use campfire_script::{ScriptBudgets, ScriptFailures};
+use bevy_ecs::system::{Commands, NonSend, NonSendMut, Query, Res, ResMut};
+use campfire_script::{ScriptBudgets, ScriptFailures, ScriptHost, ScriptPrints};
 use campfire_sim::SimTick;
 
 use crate::lifespan::Lifespan;
 use crate::new_unit_states::NewUnitStates;
 
 /// The core's systems that bound each tick: what a tick used cleared as it starts, the timed
-/// lives that end with it, and the writes it left to units that never spawned.
+/// lives that end with it, the writes it left to units that never spawned, and its prints.
 #[derive(Debug)]
 pub(crate) struct UnitTicks;
 
@@ -25,6 +25,15 @@ impl UnitTicks {
     /// a unit takes its writes as it spawns within the tick.
     pub(super) fn drop_unspawned_states(mut new_states: ResMut<'_, NewUnitStates>) {
         new_states.clear();
+    }
+
+    /// Moves what the scripts printed into the report, as each tick ends, after its last call.
+    pub(super) fn report_prints(
+        tick: Res<'_, SimTick>,
+        host: NonSend<'_, ScriptHost>,
+        mut prints: ResMut<'_, ScriptPrints>,
+    ) {
+        host.take_prints(tick.start(), &mut prints);
     }
 
     /// Despawns each unit whose timed life ends with this tick, at its end, as the dead despawn: it

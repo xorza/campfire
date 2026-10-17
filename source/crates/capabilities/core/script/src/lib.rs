@@ -11,6 +11,7 @@ mod scripts;
 
 pub use crate::script_host::budget::Budget;
 pub use crate::script_host::error::{NumError, Raised, ScriptError};
+pub use crate::script_host::script_prints::{PrintKind, ScriptPrint, ScriptPrints};
 pub use crate::script_host::{ScriptHost, ScriptId};
 pub use crate::scripts::api_owner::ApiOwner;
 pub use crate::scripts::api_version::ApiVersion;

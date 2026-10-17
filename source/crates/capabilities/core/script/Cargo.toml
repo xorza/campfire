@@ -27,7 +27,6 @@ derive_more.workspace = true
 rhai.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
 campfire-codec = { workspace = true, features = ["internals"] }

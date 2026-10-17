@@ -2720,6 +2720,7 @@ dependencies = [
  "campfire-protocol",
  "campfire-quic",
  "campfire-runner",
+ "campfire-script",
  "campfire-sim",
  "campfire-state-types",
  "campfire-store",
@@ -2990,7 +2991,6 @@ dependencies = [
  "rhai",
  "serde",
  "thiserror 2.0.21",
- "tracing",
 ]
 
 [[package]]

@@ -10,7 +10,7 @@ use campfire_declare::{
 };
 use campfire_script::{
     CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
-    ScriptList, StatePlace, StateSchema, View, ViewApi,
+    ScriptList, ScriptPrints, StatePlace, StateSchema, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
@@ -65,8 +65,9 @@ pub enum UnitsSet {
     Begin,
     /// The tick ends: the units whose lifespan ended despawn.
     End,
-    /// The script states of units that never spawned are dropped.
-    DropUnspawned,
+    /// The tick closes: the script states of units that never spawned are dropped, and what the
+    /// scripts printed reaches its report.
+    Close,
 }
 
 impl ModuleSet for UnitsSet {
@@ -76,7 +77,7 @@ impl ModuleSet for UnitsSet {
         match self {
             Self::Begin => SetPlace::stage(SimSet::Inputs),
             Self::End => SetPlace::stage(SimSet::Vision),
-            Self::DropUnspawned => SetPlace::gap(SimEdge::After(SimSet::Vision)),
+            Self::Close => SetPlace::gap(SimEdge::After(SimSet::Vision)),
         }
     }
 }
@@ -134,6 +135,7 @@ impl Module for Units {
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
         d.report::<ScriptBudgets>();
+        d.report::<ScriptPrints>();
         d.on_insert::<UnitType>(TagBook::give_tags);
         d.cache::<UnitGrid>();
         d.cache::<UnitTracker<GridUnits>>();
@@ -193,7 +195,10 @@ impl Module for Units {
     fn install(cx: &mut InstallCx<'_, Self::Set>) {
         cx.scripted(UnitsSet::Begin, UnitTicks::begin_tick);
         cx.scripted(UnitsSet::End, UnitTicks::end_lifespans);
-        cx.scripted(UnitsSet::DropUnspawned, UnitTicks::drop_unspawned_states);
+        cx.scripted(
+            UnitsSet::Close,
+            (UnitTicks::drop_unspawned_states, UnitTicks::report_prints),
+        );
     }
 }
 

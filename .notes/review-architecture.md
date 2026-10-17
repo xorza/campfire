@@ -640,9 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 3: the sim's bans
 
-**3.4 A script's print.** Touches `script`, `net`, `apps/server`, `apps/client`, `rules`.
-- The script host writes each `print` and `debug` into a `Messages<ScriptPrinted>`, which the server and the client read and log, so the sim logs nothing and the rules test loses its one exception (B-3, Q2).
-
 ### Phase 4: declarations own what a module adds
 
 

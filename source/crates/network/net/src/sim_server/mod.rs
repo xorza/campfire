@@ -25,6 +25,7 @@ use campfire_protocol::{
 };
 use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError};
+use campfire_script::ScriptPrints;
 use campfire_sim::{SimTick, SimWorld, TickRate};
 use campfire_units::Deaths;
 use campfire_visibility::Visibility;
@@ -44,6 +45,7 @@ use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 use crate::events::log_filled::LogFilled;
 use crate::events::match_ended::MatchEnded;
 use crate::events::save_refused::SaveRefused;
+use crate::events::script_printed::ScriptPrinted;
 use crate::events::server_frame::ServerFrame;
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
@@ -226,6 +228,7 @@ impl Plugin for SimServer {
                 // Right after the tick, before any entry of the next.
                 Self::at_boundary,
                 report_deaths,
+                report_prints,
                 report_end,
             )
                 .chain()
@@ -662,6 +665,20 @@ fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
     }
     for death in deaths.iter() {
         UnitDied::of(ran, &death).log();
+    }
+}
+
+/// Logs what the scripts printed in the tick just run.
+fn report_prints(tick: Res<'_, SimTick>, prints: Option<Res<'_, ScriptPrints>>) {
+    let Some(prints) = prints else {
+        return;
+    };
+    let ran = Tick::new(tick.start().get() - 1);
+    if prints.tick() != ran {
+        return;
+    }
+    for print in prints.iter() {
+        ScriptPrinted::of(ran, print).log();
     }
 }
 

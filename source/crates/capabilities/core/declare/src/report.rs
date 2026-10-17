@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_script::ScriptBudgets;
+use campfire_script::{ScriptBudgets, ScriptPrints};
 
 use crate::role::Role;
 
@@ -16,5 +16,12 @@ pub trait Report: Resource + Sized {
 impl Report for ScriptBudgets {
     fn installed(role: &Role) -> Option<Self> {
         role.pools().map(Self::full)
+    }
+}
+
+/// What the scripts printed in the last tick, which a match that runs scripts alone holds.
+impl Report for ScriptPrints {
+    fn installed(role: &Role) -> Option<Self> {
+        role.scripts().then(Self::default)
     }
 }

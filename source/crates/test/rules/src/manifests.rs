@@ -115,16 +115,14 @@ const NO_SIM_DEPENDENCY: [&str; 4] = ["campfire-log", "campfire-store", "log", "
 fn the_sim_reads_no_file_and_logs_nothing_and_the_protocol_reads_no_file() {
     // Each crate of the workspace the release's required dependencies reach, the release among
     // them, requires none of the crates that read files or log, so a match runs the same on a
-    // server, a client and a verifier, and its tick waits for no disk; but `campfire-script`,
-    // whose debug build passes a script's print to `tracing`. An optional dependency is a test
-    // build's.
+    // server, a client and a verifier, and its tick waits for no disk. An optional dependency is
+    // a test build's.
     let manifests = manifests();
     let reached = sim_closure(&manifests);
     let mut found = Vec::new();
     for (name, manifest) in manifests.iter().filter(|(name, _)| reached.contains(name)) {
         for other in required_dependencies(manifest) {
-            let excepted = name == "campfire-script" && other == "tracing";
-            if NO_SIM_DEPENDENCY.contains(&other) && !excepted {
+            if NO_SIM_DEPENDENCY.contains(&other) {
                 found.push(format!("{name} requires {other}"));
             }
         }
