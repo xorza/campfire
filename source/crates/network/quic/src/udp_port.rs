@@ -157,15 +157,18 @@ mod tests {
         let port = UdpPort::bind((Ipv4Addr::LOCALHOST, 0).into()).unwrap();
         let mut events = Events::new();
         let woke = |events: &Events| events.iter().any(|event| event.key == WAKE);
-        // Two wakes before a wait: it ends at once on the wake, and takes both.
+        // Two wakes before a wait: it ends at once on the wake, and takes every one that came. A
+        // loopback datagram may reach its socket a moment after its send, as on macOS, so the
+        // second ends the wait after at most; then a wait of no time finds nothing.
         port.wake();
         port.wake();
         port.wait(&mut events, None).unwrap();
         assert!(woke(&events));
-        // None since: a wait of no time finds nothing. A wake then ends a wait, which waits for
-        // it: a loopback datagram may reach its socket a moment after its send, as on macOS.
+        port.wait(&mut events, Some(Duration::from_millis(100)))
+            .unwrap();
         port.wait(&mut events, Some(Duration::ZERO)).unwrap();
         assert!(!woke(&events));
+        // A wake then ends a wait, which waits for it.
         port.wake();
         port.wait(&mut events, Some(Duration::from_secs(5)))
             .unwrap();
