@@ -346,7 +346,6 @@ Each section gives the target shape of one system, the findings it removes, and 
 - **One running match.**
   - `MatchRun::begin(world, MatchSource::{New, Restored})` builds one `ServerMatch` value. It owns the door, seats, receipts, checkpoints, journal watch, clock and bot driver, and is inserted once (N-5).
   - `Session` owns its signer (`None` on a verifier), so `serve`, `record_checkpoint` and `record_result` need no second resource. The door, the checkpoints, the receipts and the bot driver become ordinary systems, and only `run_sim_tick` stays exclusive (N-4).
-  - `ModePackages` holds its `SessionRules` and a `SessionPlan` (players, saves, autosave), built at the load (N-20).
 - **A declared frame.**
   - The server's frame is chained sets: `Intake → Door → SessionUpkeep → Receipts → Boundary`. They build with `ambiguity_detection: Error`, and Lightyear's sets are marked where they touch only their own components (N-3).
   - `ServerPhase { Lobby, Restoring, Running, Ended, Reloading }` is a Bevy `States` enum. `OnEnter(Running)` builds `ServerMatch` (N-7).
@@ -663,7 +662,6 @@ Each change folds into its document when its batch lands. Each line names the de
 **6.2 One server match.** Touches `net` (sim server, lobby, session directory), `runner` (session, session rules), `package`, `apps/server`.
 - `MatchRun::begin` from `MatchSource::{New, Restored}` builds one `ServerMatch` (N-5).
 - The frame's systems become ordinary systems: the door, the checkpoints and the bot driver; `Session` owns its signer already (N-4).
-- `ModePackages` holds `SessionRules` and a `SessionPlan` (N-20).
 
 **6.3 A declared server frame.** Touches `net` and 02-engine-core.md.
 - Chained sets with `ambiguity_detection: Error` (N-3).
@@ -1070,7 +1068,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-14 | The server keeps the whole session in memory and publishes from it, against 10-sessions.md | `session_log/mod.rs:87-88`, `session_dir/mod.rs:178-220` | Confirmed drift | 6.4 |
 | N-17 | `SessionLog` has 21 fields, a hidden replay mode and a signature mode | `session_log/mod.rs:77-120, 1137-1144` | Confirmed | 6.4 |
 | N-18 | A slot's controller has four types, and the link-to-slot fact three maps kept equal by hand | `slot_control.rs:30-40`, `controller.rs:184-193`, `log_carry.rs:227-273`, `door.rs:242-293` | Confirmed | 6.4 |
-| N-20 | Package facts are copied into the session, and every caller builds the session rules again | `session/mod.rs:34-93`, `session_rules/mod.rs:55-65` | Confirmed | 6.2 |
 | N-21 | A data directory holds one unpublished session | `session_dir/mod.rs:111-145` | Confirmed | 11.2 |
 | N-22 | All apps in a process share the global compute pool, whose scope runs other apps' tasks | `sim_server_plugins.rs:27`, `bevy_tasks task_pool.rs:310-330` | Plausible | 11.2 |
 | N-23 | No log line names its session | `events/input_logged.rs:19-27` | Confirmed | 6.3 |

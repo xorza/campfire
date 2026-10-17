@@ -1,4 +1,4 @@
-use campfire_common::Ticks;
+use campfire_common::{MapName, PackageFingerprint, Ticks};
 use campfire_mode::PickError;
 use campfire_protocol::SeedChain;
 use campfire_test_packages::TestMode;

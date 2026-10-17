@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::{ChannelBinding, PlayerSlot, Tick};
+use campfire_package::ModePackages;
 use campfire_protocol::{
     ConnectAnswer, Delegation, DelegationId, DelegationTerms, InputChain, InputRules,
     SeedContribution, SessionId, SessionTerms, SignedReceipt, Signer, Verifier,
@@ -94,13 +95,13 @@ pub enum Loss {
 }
 
 /// What answers the server's offer: the player's identity, which signs the delegation, the server
-/// they mean to reach, whether they play or watch, and the rules of the mode the client holds.
+/// they mean to reach, whether they play or watch, and the packages of the mode the client holds.
 #[derive(Debug)]
 pub(crate) struct Joining {
     pub(crate) main: Arc<Signer>,
     pub(crate) server: ServerPin,
     pub(crate) role: JoinRole,
-    pub(crate) rules: SessionRules,
+    pub(crate) packages: Arc<ModePackages>,
 }
 
 /// What the player's join fixed: the session its signatures name, and the terms' limits on its
@@ -628,8 +629,7 @@ impl Joining {
         if terms.server_key != self.server.key {
             return Err(TermsMismatch::OtherServer);
         }
-        let visibility = self
-            .rules
+        let visibility = SessionRules::of(&self.packages)
             .check(terms)
             .map_err(TermsMismatch::Terms)?
             .visibility;

@@ -17,9 +17,9 @@ const TICK_HZ: NonZeroU32 = NonZeroU32::new(30).unwrap();
 
 type Change = fn(&mut SessionTerms);
 
-/// The rules of the lane mode, which runs at 30 Hz only.
-fn lane_rules() -> SessionRules {
-    SessionRules::of(&TestMode::Lane.packages())
+/// The packages of the lane mode, which runs at 30 Hz only.
+fn lane() -> ModePackages {
+    TestMode::Lane.packages()
 }
 
 /// The x-only key of `TestKey::of(secret)`.
@@ -42,7 +42,7 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
         main: Arc::new(Signer::new(TestKey::of(1), Entropy::Fixed(6))),
         server,
         role: JoinRole::Play,
-        rules: lane_rules(),
+        packages: Arc::new(lane()),
     })
 }
 
@@ -53,7 +53,8 @@ fn signer() -> Signer {
 
 /// Terms the client can play, with `change` applied.
 fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
-    let rules = lane_rules();
+    let packages = lane();
+    let rules = SessionRules::of(&packages);
     let mut terms = rules
         .terms(HostChoices {
             server_key: x_only(8),

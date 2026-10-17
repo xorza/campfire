@@ -204,7 +204,7 @@ impl Plugin for SimClient {
             main: Arc::clone(&self.main),
             server: self.server,
             role: self.role,
-            rules: SessionRules::of(packages),
+            packages: Arc::clone(packages),
         }));
         world.init_resource::<SentInputs>();
         if let Some(data) = &self.data {

@@ -75,8 +75,8 @@ impl Opening {
             .map_err(OpeningError::Terms)?;
             let visibility = restore.checked().visibility;
             let rules = SessionRules::of(&restore.packages);
-            Self::picks(&rules, &restore.session.terms().options, &setup.options)?;
-            Self::visibility(&rules, &visibility, &setup.host)?;
+            Self::picks(rules, &restore.session.terms().options, &setup.options)?;
+            Self::visibility(rules, &visibility, &setup.host)?;
             (Opened::Restored(Box::new(restore)), visibility)
         } else {
             let lobby = Self::open(setup)?;
@@ -142,7 +142,7 @@ impl Opening {
     /// `journal`'s, the picks a waiting session's terms hold, which it restores with, as its map
     /// is checked (10-sessions.md, A pick is given by its value).
     fn picks(
-        rules: &SessionRules,
+        rules: SessionRules<'_>,
         journal: &[u8],
         asked: &[OptionValue],
     ) -> Result<(), OpeningError> {
@@ -160,7 +160,7 @@ impl Opening {
     /// spectators, and they do not give `journal`, the visibility a waiting session's terms hold,
     /// which it restores with, as its picks are checked.
     fn visibility(
-        rules: &SessionRules,
+        rules: SessionRules<'_>,
         journal: &Visibility,
         asked: &HostVisibility,
     ) -> Result<(), OpeningError> {
@@ -258,27 +258,29 @@ mod tests {
 
     #[test]
     fn a_waiting_sessions_picks_are_kept_and_others_asked_are_refused() {
-        let rules = SessionRules::of(&TestMode::Skirmish.packages());
+        let packages = TestMode::Skirmish.packages();
+        let rules = SessionRules::of(&packages);
         let asked = |values: &[&str]| -> Vec<OptionValue> {
             values.iter().map(|value| value.parse().unwrap()).collect()
         };
         // A session of the skirmish's 5,000, its second value, waits: no pick asked, and its
         // own, restore it; the default asked, a value of none, and a value it lacks, are refused.
-        assert!(Opening::picks(&rules, &[1], &[]).is_ok());
-        assert!(Opening::picks(&rules, &[1], &asked(&["start_money=5000"])).is_ok());
+        assert!(Opening::picks(rules, &[1], &[]).is_ok());
+        assert!(Opening::picks(rules, &[1], &asked(&["start_money=5000"])).is_ok());
         assert!(matches!(
-            Opening::picks(&rules, &[1], &asked(&["start_money=100"])),
+            Opening::picks(rules, &[1], &asked(&["start_money=100"])),
             Err(OpeningError::OtherPicks)
         ));
         assert!(matches!(
-            Opening::picks(&rules, &[1], &asked(&["start_money=7"])),
+            Opening::picks(rules, &[1], &asked(&["start_money=7"])),
             Err(OpeningError::Options(_))
         ));
     }
 
     #[test]
     fn a_waiting_sessions_visibility_is_kept_and_another_asked_is_refused() {
-        let rules = SessionRules::of(&TestMode::Skirmish.packages());
+        let packages = TestMode::Skirmish.packages();
+        let rules = SessionRules::of(&packages);
         let hosted = |settings: &[&str], max_spectators| HostVisibility {
             settings: settings
                 .iter()
@@ -291,20 +293,20 @@ mod tests {
         // another most of spectators, or another fog of theirs, is refused.
         let own = hosted(&["spectators=all"], 2);
         let journal = session(&own);
-        assert!(Opening::visibility(&rules, &journal, &HostVisibility::default()).is_ok());
-        assert!(Opening::visibility(&rules, &journal, &own).is_ok());
+        assert!(Opening::visibility(rules, &journal, &HostVisibility::default()).is_ok());
+        assert!(Opening::visibility(rules, &journal, &own).is_ok());
         for other in [
             hosted(&["spectators=all"], 3),
             hosted(&["spectators=teams"], 2),
         ] {
             assert!(matches!(
-                Opening::visibility(&rules, &journal, &other),
+                Opening::visibility(rules, &journal, &other),
                 Err(OpeningError::OtherVisibility)
             ));
         }
         // A setting the mode does not leave the host is refused as the visibility asked.
         assert!(matches!(
-            Opening::visibility(&rules, &journal, &hosted(&["inventory=allies"], 2)),
+            Opening::visibility(rules, &journal, &hosted(&["inventory=allies"], 2)),
             Err(OpeningError::Visibility(_))
         ));
     }
