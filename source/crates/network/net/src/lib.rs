@@ -95,7 +95,7 @@ pub use crate::sim_server::session_dir::error::{
 pub use crate::sim_server::session_dir::{Publisher, RestoredSession, SessionDir, SessionFiles};
 pub use crate::sim_server::session_journal::SessionJournal;
 pub use crate::sim_server::sim_server_plugins::SimServerPlugins;
-pub use crate::sim_server::sim_server_world::{SimServerWorld, StopRequest};
+pub use crate::sim_server::sim_server_world::{SessionOpening, SimServerWorld, StopRequest};
 pub use crate::sim_server::slot_bot_file::SlotBotFile;
 pub use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 pub use crate::sim_server::snapshot_dir::SnapshotDir;

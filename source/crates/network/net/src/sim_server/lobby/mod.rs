@@ -24,6 +24,7 @@ use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, O
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_match::{MatchBegin, MatchSource, NewMatch, ServerMatch};
+use crate::sim_server::server_phase::ServerPhase;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{SessionDir, SessionFiles};
 use crate::sim_server::spectators::Spectators;
@@ -304,6 +305,7 @@ impl Lobby {
             checked: lobby.checked,
         };
         ServerMatch::begin(world, begin).expect("the lobby's terms come from its own packages");
+        ServerPhase::go(world, ServerPhase::Running);
         world.start_spectators();
     }
 

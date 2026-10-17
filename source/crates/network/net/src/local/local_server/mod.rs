@@ -40,7 +40,7 @@ use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{Publisher, SessionDir};
 use crate::sim_server::sim_server_plugins::SimServerPlugins;
-use crate::sim_server::sim_server_world::{SimServerWorld, StopRequest};
+use crate::sim_server::sim_server_world::{SessionOpening, SimServerWorld, StopRequest};
 
 pub(crate) mod error;
 
@@ -173,7 +173,8 @@ impl LocalServer {
         };
         let worker = Worker::start("local server", move || {
             let mut app = runs.app(server_io, dir);
-            app.insert_resource(lobby);
+            app.world_mut()
+                .open_session(SessionOpening::New(Box::new(lobby)));
             runs.run(app);
         });
         Ok(Self {
@@ -289,7 +290,8 @@ impl Runs {
             bots: self.bots.clone(),
         })
         .expect("the packages that ran the session admit its terms");
-        app.insert_resource(restore);
+        app.world_mut()
+            .open_session(SessionOpening::Restored(Box::new(restore)));
         self.relinks.give(client_io);
         Ok(app)
     }
@@ -313,10 +315,7 @@ impl Runs {
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
         app.insert_resource(Restart(Arc::clone(&self.restart)));
-        app.add_systems(
-            Update,
-            LocalServer::watch.after(ServerFrameSystems::Receipts),
-        );
+        app.add_systems(Update, LocalServer::watch.after(ServerFrameSystems::Saves));
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server = app.world_mut().spawn((RawServer, Linked)).id();
         let address = SocketAddr::from(([127, 0, 0, 1], 1));

@@ -11,6 +11,7 @@ use tracing::error;
 use crate::events::session_restored::SessionRestored;
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_match::{MatchBegin, MatchSource, ServerMatch};
+use crate::sim_server::server_phase::ServerPhase;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::RestoredSession;
 
@@ -84,6 +85,7 @@ impl PendingRestore {
         };
         match ServerMatch::begin(world, begin) {
             Ok(()) => {
+                ServerPhase::go(world, ServerPhase::Running);
                 let tick = world.resource::<Session>().log().next_tick();
                 SessionRestored { session: id, tick }.log();
             }

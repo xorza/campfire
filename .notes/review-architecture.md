@@ -343,8 +343,6 @@ Each section gives the target shape of one system, the findings it removes, and 
   - Each registered message type declares its largest encoding in `net_protocol`. The fork's channel refuses a fragment count past that bound before it allocates, grows its buffer as fragments arrive, caps the half-built messages for each channel and link, and expires them on reliable channels too (N-1).
   - A link carries only the join channel, with a window of one, until it joins. The other channels come with `Joined`, and a message on them before then closes the link (N-2).
   - 05-protocol-spec.md states the bounds.
-- **A declared frame.**
-  - `ServerPhase { Lobby, Restoring, Running, Ended, Reloading }` is a Bevy `States` enum. `OnEnter(Running)` builds `ServerMatch` (N-7).
 - **The session log.**
   - A replay is a `LogReplay` cursor that borrows the log.
   - The signature policy is a parameter of the decode.
@@ -655,7 +653,6 @@ Each change folds into its document when its batch lands. Each line names the de
 ### Phase 6: `Send` data and the server frame
 
 **6.3 A declared server frame.** Touches `net` and 02-engine-core.md.
-- `ServerPhase` as a `States` enum (N-7).
 - A root span for each session (N-23).
 
 **6.4 The session log.** Touches `protocol` (session log, journal, controller, carry) and `net` (seats, player link, checkpoints).
@@ -1046,7 +1043,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | --- | --- | --- | --- | --- |
 | N-1 | A fragment count from the peer sizes an allocation before any check | `lightyear transport/channel/fragments/receive.rs:137-147` at `54e6be2` | Checked | 1.1 |
 | N-2 | A link that did not join uses every channel with no budget | `net_protocol/mod.rs:96-117`, `offering.rs:40, 176-193` | Confirmed | 1.1 |
-| N-7 | The server's lifecycle is the set of resources that exist | `sim_server/mod.rs:151-233, 617-630` | Confirmed | 6.3 |
 | N-9 | Replicated entities get `Replicate`, `Rooms` and `PredictionTarget` after their spawn | `kind_shows.rs:86-112`, `viewer.rs:136-190` | Confirmed | 7.5 |
 | N-10 | Lightyear's default features add interpolation, and the server binary links the client stack | `Cargo.toml:186`, `net/src/lib.rs:108-122` | Confirmed | 12.2 |
 | N-11 | Every signature check and signing runs on the tick thread, one slot after another, with a syscall for each signature's aux randomness | `sim_server/mod.rs:503-583`, `signer.rs:81-105` | Plausible cost | 6.4 |

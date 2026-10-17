@@ -1,5 +1,6 @@
 use std::num::{NonZeroU8, NonZeroU32};
 
+use bevy_state::state::{NextState, State};
 use campfire_common::ExitStatus;
 use campfire_mode::OptionPicks;
 use campfire_protocol::internals::TestKey;
@@ -37,6 +38,8 @@ fn a_failed_journal_ends_the_server_with_its_exit_code() {
     let journal = SessionJournal(AppendWriter::failing_sync("journal"));
     let mut world = World::new();
     world.init_resource::<Faults>();
+    world.insert_resource(State::new(ServerPhase::Lobby));
+    world.init_resource::<NextState<ServerPhase>>();
     world.insert_resource(JournalWatch(journal.watch()));
     assert_eq!(world.exit_due(StopRequest::NotAsked), None);
     log.keep_journal(Box::new(journal));

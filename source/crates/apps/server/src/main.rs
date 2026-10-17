@@ -28,8 +28,8 @@ use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent, Logging};
 use campfire_net::{
     Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, Publisher,
-    RestoredSession, ServerDir, ServerFrameSystems, ServerSetup, SimServerPlugins, SimServerWorld,
-    StopRequest, exit_code,
+    RestoredSession, ServerDir, ServerFrameSystems, ServerSetup, SessionOpening, SimServerPlugins,
+    SimServerWorld, StopRequest, exit_code,
 };
 use campfire_package_disk::PackageDir;
 use campfire_quic::{AddressLimit, LinkTimes, PortMap, ServerSocket};
@@ -41,7 +41,7 @@ use tracing::{error, info};
 use crate::args::{Args, CommandLine};
 use crate::error::StartError;
 use crate::opening::error::OpeningError;
-use crate::opening::{Opened, Opening, OpeningSetup, RestoreWindow};
+use crate::opening::{Opening, OpeningSetup, RestoreWindow};
 
 mod args;
 mod error;
@@ -193,10 +193,7 @@ fn server_app(
         },
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    match opening.session {
-        Opened::New(lobby) => app.insert_resource(*lobby),
-        Opened::Restored(restore) => app.insert_resource(*restore),
-    };
+    app.world_mut().open_session(opening.session);
     app.insert_resource(data);
     app.add_observer(
         move |added: On<'_, '_, Add, Linked>, servers: Query<'_, '_, (), With<RawServer>>| {
@@ -213,7 +210,7 @@ fn server_app(
             }
         })
             .chain()
-            .after(ServerFrameSystems::Receipts),
+            .after(ServerFrameSystems::Saves),
     );
     app
 }
@@ -223,7 +220,7 @@ fn server_app(
 /// now, for a new session, that it opened, of the mode `mode`.
 fn announce(opening: &Opening, mode: &Path, address: SocketAddr, tls_key: TlsKey) -> Listening {
     let terms = opening.terms();
-    if let Opened::New(_) = opening.session {
+    if let SessionOpening::New(_) = opening.session {
         info!(
             session = %terms.session_id(),
             %address,

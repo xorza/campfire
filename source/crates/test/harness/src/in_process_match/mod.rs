@@ -22,8 +22,8 @@ use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
     ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
     MatchClock, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir, ServerPin,
-    ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld, SlotBot,
-    UncheckedRestore,
+    ServerSetup, SessionDir, SessionOpening, SessionTimes, SimClient, SimServerPlugins,
+    SimServerWorld, SlotBot, UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
@@ -507,7 +507,9 @@ impl InProcessMatch {
             bots: self.server_bots(),
         })
         .unwrap();
-        server.world_mut().insert_resource(restore);
+        server
+            .world_mut()
+            .open_session(SessionOpening::Restored(Box::new(restore)));
         server.update();
         assert!(
             server.world().contains_resource::<MatchClock>(),
@@ -559,7 +561,9 @@ impl InProcessMatch {
         if let Some(data) = self.server.world().get_resource::<ServerDir>() {
             lobby.keep_files(data).unwrap();
         }
-        self.server.world_mut().insert_resource(lobby);
+        self.server
+            .world_mut()
+            .open_session(SessionOpening::New(Box::new(lobby)));
         for _ in 0..CONNECT_FRAMES {
             let playing = |client: &App| {
                 client

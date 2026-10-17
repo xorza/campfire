@@ -6,7 +6,7 @@ use campfire_common::MapName;
 use campfire_mode::{OptionPicks, OptionValue};
 use campfire_net::{
     Lobby, LobbyOpening, PendingRestore, Publisher, RestoredSession, ServerBots, ServerDir,
-    ServerSetup, SessionDir, UncheckedRestore,
+    ServerSetup, SessionDir, SessionOpening, UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::SessionTerms;
@@ -21,17 +21,8 @@ pub(crate) mod error;
 /// of that session.
 #[derive(Debug)]
 pub(crate) struct Opening {
-    pub(crate) session: Opened,
+    pub(crate) session: SessionOpening,
     seats: NonZeroU32,
-}
-
-/// The session a server starts: a new one, open to its players, or the one a stop ended, to
-/// restore. A session past the restore window, or one that ended, has its log published
-/// instead, and a new one opens.
-#[derive(Debug)]
-pub(crate) enum Opened {
-    New(Box<Lobby>),
-    Restored(Box<PendingRestore>),
 }
 
 /// What `Opening::of` needs.
@@ -77,11 +68,11 @@ impl Opening {
             let rules = SessionRules::of(&restore.packages);
             Self::picks(rules, &restore.session.terms().options, &setup.options)?;
             Self::visibility(rules, &visibility, &setup.host)?;
-            (Opened::Restored(Box::new(restore)), visibility)
+            (SessionOpening::Restored(Box::new(restore)), visibility)
         } else {
             let lobby = Self::open(setup)?;
             let visibility = lobby.checked().visibility;
-            (Opened::New(Box::new(lobby)), visibility)
+            (SessionOpening::New(Box::new(lobby)), visibility)
         };
         let terms = session.terms();
         let slots = u32::try_from(terms.slots.len()).expect("a session's slots fit u32");
@@ -99,10 +90,7 @@ impl Opening {
 
     /// The setup of the server that starts it.
     pub(crate) fn server(&self) -> &ServerSetup {
-        match &self.session {
-            Opened::New(lobby) => lobby.server(),
-            Opened::Restored(restore) => &restore.server,
-        }
+        self.session.server()
     }
 
     /// The seats of the session it starts: its slots and the most spectators it admits, which no
@@ -215,16 +203,6 @@ impl RestoreWindow {
     fn holds(self, modified: SystemTime) -> bool {
         let idle = self.now.duration_since(modified).unwrap_or_default();
         idle <= self.length
-    }
-}
-
-impl Opened {
-    /// The session's terms.
-    fn terms(&self) -> &SessionTerms {
-        match self {
-            Self::New(lobby) => lobby.terms(),
-            Self::Restored(restore) => restore.session.terms(),
-        }
     }
 }
 

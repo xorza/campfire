@@ -12,6 +12,8 @@ use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use bevy_state::app::AppExtStates;
+use bevy_state::condition::in_state;
 use bevy_time::{Real, Time, Virtual};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_declare::CapabilitySet;
@@ -63,6 +65,7 @@ use crate::sim_server::offering::{Dismissing, Offered, Offering};
 use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
+use crate::sim_server::server_phase::ServerPhase;
 use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
@@ -87,6 +90,7 @@ pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_layout;
 pub(crate) mod server_match;
+pub(crate) mod server_phase;
 pub(crate) mod server_setup;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
@@ -136,6 +140,7 @@ impl Plugin for SimServer {
             },
         );
         app.init_resource::<Faults>();
+        app.init_state::<ServerPhase>();
         app.configure_sets(
             Update,
             (
@@ -143,6 +148,7 @@ impl Plugin for SimServer {
                 ServerFrameSystems::Door,
                 ServerFrameSystems::SessionUpkeep,
                 ServerFrameSystems::Receipts,
+                ServerFrameSystems::Saves,
             )
                 .chain()
                 .after(InterpolationSystems::All),
@@ -150,7 +156,7 @@ impl Plugin for SimServer {
         app.add_systems(
             Update,
             (
-                PendingRestore::run.run_if(resource_exists::<PendingRestore>),
+                PendingRestore::run.run_if(in_state(ServerPhase::Restoring)),
                 Spectators::choose_teams,
             )
                 .chain()
@@ -165,7 +171,7 @@ impl Plugin for SimServer {
                 Lobby::start_when_full,
             )
                 .chain()
-                .run_if(resource_exists::<Lobby>)
+                .run_if(in_state(ServerPhase::Lobby))
                 .in_set(ServerFrameSystems::Door),
         );
         // Each system that logs checks that the session runs as it starts, as another system of
@@ -175,16 +181,13 @@ impl Plugin for SimServer {
             (Offering::offer_links::<Door>, Door::take_joins, Door::watch)
                 .chain()
                 .after(Lobby::start_when_full)
-                .distributive_run_if(resource_exists::<Door>)
+                .distributive_run_if(in_state(ServerPhase::Running))
                 .distributive_run_if(session_running)
                 .in_set(ServerFrameSystems::Door),
         );
         app.add_systems(
             Update,
             (
-                Self::take_save_commands
-                    .run_if(resource_exists::<Door>)
-                    .run_if(session_running),
                 Checkpoints::finish.run_if(resource_exists::<Checkpoints>),
                 JournalWatch::warn_slow.run_if(resource_exists::<JournalWatch>),
             )
@@ -194,9 +197,16 @@ impl Plugin for SimServer {
         app.add_systems(
             Update,
             Receipts::give
-                .run_if(resource_exists::<Receipts>)
+                .run_if(in_state(ServerPhase::Running))
                 .run_if(session_running)
                 .in_set(ServerFrameSystems::Receipts),
+        );
+        app.add_systems(
+            Update,
+            Self::take_save_commands
+                .run_if(in_state(ServerPhase::Running))
+                .run_if(session_running)
+                .in_set(ServerFrameSystems::Saves),
         );
         app.add_observer(Spectators::leave);
         Viewer::follow_links(app);
@@ -216,7 +226,7 @@ impl Plugin for SimServer {
                 report_catch_up.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
                 report_dropped_time.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
             )
-                .distributive_run_if(resource_exists::<MatchClock>)
+                .distributive_run_if(in_state(ServerPhase::Running))
                 .distributive_run_if(session_running),
         );
         app.add_systems(
@@ -241,7 +251,12 @@ impl Plugin for SimServer {
                 .before(Self::at_boundary)
                 .in_set(SimTickSystems),
         );
-        app.configure_sets(FixedUpdate, SimTickSystems.run_if(sim_tick_due));
+        app.configure_sets(
+            FixedUpdate,
+            SimTickSystems
+                .run_if(in_state(ServerPhase::Running))
+                .run_if(sim_tick_due),
+        );
         app.configure_sets(
             FixedUpdate,
             Shows
@@ -255,25 +270,21 @@ impl Plugin for SimServer {
 /// The steps of the server's frame in `Update`, in their order, after Lightyear's: what comes in
 /// from outside the session, a restore waiting or a spectator's choice; the door, which seats
 /// players, before the match in the lobby and after it at the door; the session's upkeep, its
-/// saves, checkpoints and journal; and the receipts of what the journal made durable. An app's
-/// own system of `Update` goes after them.
+/// checkpoints and journal; the receipts of what the journal made durable; and the players'
+/// save commands, last, as a load ends the run. An app's own system of `Update` goes after them.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ServerFrameSystems {
     Intake,
     Door,
     SessionUpkeep,
     Receipts,
+    Saves,
 }
 
 /// The systems of a fixed tick that runs a sim tick, whose condition is checked once, before the
 /// first of them, so the tick runs whole even when it ends the session.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct SimTickSystems;
-
-/// The session went back to a save: its server starts again on its data, which restores the
-/// match from it.
-#[derive(Resource, Debug)]
-struct Reload;
 
 /// The save commands' links, each with its player.
 type SaveLinks = QueryState<(
@@ -449,20 +460,21 @@ fn report_dropped_time(real: Res<'_, Time<Real>>, virtual_time: Res<'_, Time<Vir
     }
 }
 
-/// The match has started and its session has not ended, so this fixed tick runs a sim tick.
+/// The running match's clock has reached its first tick and its session has not ended, so this
+/// fixed tick runs a sim tick. A condition's parameters are checked whatever the conditions
+/// before it give, so a phase without a match reads none.
 fn sim_tick_due(
     timeline: Res<'_, LocalTimeline>,
     clock: Option<Res<'_, MatchClock>>,
     session: Option<Res<'_, Session>>,
-    reload: Option<Res<'_, Reload>>,
 ) -> bool {
-    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some())
-        && session_running(session, reload)
+    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some()) && session_running(session)
 }
 
-/// The session has started, has not ended, and has not gone back to a save.
-fn session_running(session: Option<Res<'_, Session>>, reload: Option<Res<'_, Reload>>) -> bool {
-    reload.is_none() && session.is_some_and(|session| session.log().result().is_none())
+/// The running match's session has not ended, which it may within a frame; none before the
+/// match begins.
+fn session_running(session: Option<Res<'_, Session>>) -> bool {
+    session.is_some_and(|session| session.log().result().is_none())
 }
 
 fn run_sim_tick(world: &mut World) {

@@ -1,0 +1,38 @@
+use bevy_ecs::world::World;
+use bevy_state::state::{NextState, State, States};
+
+/// Where the server's session is in its life, as Bevy's states hold it, so a system of one
+/// phase names it in its run condition. A phase changes at the next state transition, in the
+/// next frame; a session that ends within a frame stops its systems at once by its log's
+/// result.
+#[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub(crate) enum ServerPhase {
+    /// No session yet: the app opens one, as `SimServerWorld::open_session` does.
+    #[default]
+    Opening,
+    /// The lobby is open, and players join it.
+    Lobby,
+    /// A session a stop ended waits to restore in the next frame.
+    Restoring,
+    /// The match runs.
+    Running,
+    /// The session went back to a save: its server starts again on its data, which restores
+    /// the match from it.
+    Reloading,
+}
+
+impl ServerPhase {
+    /// The phase of `world`'s server as of now: the one a change made in this frame goes to,
+    /// before the next transition applies it.
+    pub(crate) fn now(world: &World) -> Self {
+        match world.resource::<NextState<Self>>() {
+            NextState::Pending(next) | NextState::PendingIfNeq(next) => *next,
+            NextState::Unchanged => *world.resource::<State<Self>>().get(),
+        }
+    }
+
+    /// Goes to `phase` at the next transition.
+    pub(crate) fn go(world: &mut World, phase: Self) {
+        world.resource_mut::<NextState<Self>>().set(phase);
+    }
+}

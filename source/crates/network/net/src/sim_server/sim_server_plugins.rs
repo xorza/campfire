@@ -96,7 +96,7 @@ mod tests {
         app.init_resource::<Ran>();
         app.add_systems(First, record)
             .add_systems(PreUpdate, record)
-            .add_systems(Update, record.after(ServerFrameSystems::Receipts))
+            .add_systems(Update, record.after(ServerFrameSystems::Saves))
             .add_systems(PostUpdate, record)
             .add_systems(Last, record);
         app.finish();
