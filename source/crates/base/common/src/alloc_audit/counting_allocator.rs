@@ -14,9 +14,11 @@ use backtrace::Backtrace;
 use crate::alloc_audit::alloc_trace::AllocTrace;
 
 /// The allocator of a crate's `tests/alloc` binary: `System`, which counts each allocation and
-/// reallocation of every thread of the process inside an open window, and keeps its backtrace,
-/// so a fixture's workers count as its own thread does. A window is the process's, as nextest
-/// runs each test in a process of its own; a thread's excluded part is that thread's alone.
+/// reallocation of every thread of the process but its main one inside an open window, and keeps
+/// its backtrace, so a fixture's workers count as its own thread does. A window is the process's,
+/// as nextest runs each test in a process of its own; a thread's excluded part is that thread's
+/// alone. The main thread is libtest's harness, which runs the test on a thread of its own and
+/// allocates as it first waits for it, at a time no window can foresee.
 #[derive(Debug)]
 pub struct CountingAllocator;
 
@@ -35,9 +37,13 @@ static IN_WINDOW: AtomicBool = AtomicBool::new(false);
 static ALLOCS: AtomicU64 = AtomicU64::new(0);
 static BYTES: AtomicU64 = AtomicU64::new(0);
 static TRACES: Mutex<Vec<AllocTrace>> = Mutex::new(Vec::new());
+/// Whether the process allocated yet: its first allocation is its main thread's, as no other
+/// thread runs before the runtime starts it.
+static ALLOCATED: AtomicBool = AtomicBool::new(false);
 
 thread_local! {
     static EXCLUDED: Cell<bool> = const { Cell::new(false) };
+    static MAIN: Cell<bool> = const { Cell::new(false) };
     /// Set while the thread keeps a backtrace, or holds the traces' lock, whose own allocations
     /// the allocator does not count.
     static CAPTURING: Cell<bool> = const { Cell::new(false) };
@@ -72,6 +78,10 @@ impl CountingAllocator {
             !EXCLUDED.get(),
             "an allocation window opened inside an excluded part"
         );
+        assert!(
+            !MAIN.get(),
+            "an allocation window opened on the process's main thread, which it does not count"
+        );
         Self::traces(Vec::clear);
         let allocs = ALLOCS.load(Ordering::Acquire);
         let bytes = BYTES.load(Ordering::Acquire);
@@ -98,11 +108,15 @@ impl CountingAllocator {
     }
 
     fn track(size: usize) {
+        if !ALLOCATED.load(Ordering::Relaxed) && !ALLOCATED.swap(true, Ordering::AcqRel) {
+            MAIN.set(true);
+        }
         // A panicking thread's allocations are its unwinding's, not the work a window measures.
         // Skipping them also keeps the allocator out of `dbghelp` under a panic hook that is in
         // it already, where two panicking threads deadlock on Windows.
         if !IN_WINDOW.load(Ordering::Acquire)
             || EXCLUDED.get()
+            || MAIN.get()
             || CAPTURING.get()
             || thread::panicking()
         {
