@@ -638,14 +638,6 @@ Each change folds into its document when its batch lands. Each line names the de
   3. A link carries only the join channel, with a window of one, until it joins (N-2).
 - **Format:** the network protocol's version rises.
 
-### Phase 3: boundaries
-
-**3.4 Tests that can fail.** Touches `rules`, `log`, `common` (allocation audit), the release tests and the harness.
-- `LogCheck` and the allocation audit become global for each process (B-2).
-- The layers come from `cargo metadata`, with one manifest reader. Tests hold that no crate of the sim's closure has `store`, `tracing` or `log`, and that `protocol` has no `store` (B-3, B-4).
-- A test holds the float ban in every crate of the sim's closure. The attribute becomes `warn` with a comment that says why, and the re-levelled `iter_over_hash_type` goes (B-5, D48).
-- The ambiguity check without sync points runs for every role of every workspace mode (E-16).
-
 ### Phase 4: declarations own what a module adds
 
 **4.1 Books before the install.** Touches the release, `declare`, `sim`, `runner` (match build), `mode`, and each capability's install.
@@ -1010,7 +1002,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | E-13 | The script budgets are kept twice, and the spend for each tick is an undeclared resource | `role.rs:23, 46-51`, `script_budgets.rs:7-48` | Confirmed | 4.1 |
 | E-14 | Resources that the sim and the release insert are listed again by hand for the audit | `sim_world_builder.rs:53-67`, `resource_audit.rs:81-88` | Confirmed | 4.1 |
 | E-15 | A system's set is not held by a type | `install_cx.rs:258-308`, `module.rs:69-83` | Confirmed | 4.2 |
-| E-16 | The ambiguity check without sync points covers one mode in one role | `match_build/mod.rs:121-133` | Confirmed coverage. A hidden pair is plausible. | 3.4 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
 | E-18 | A restore moves each entity once for each state type it holds | `state_registry/mod.rs:400-424, 662-684` | Confirmed | 7.5 |
 | E-19 | `StateRegistry` is a type list, a codec, a change tracker and a mode switch | `state_registry/mod.rs:57-64` | Confirmed | 7.7 |
@@ -1189,10 +1180,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
-| B-2 | `LogCheck` and the allocation audit see only the test's own thread | `json_layer.rs:56-121`, `counting_allocator.rs:13-38` | Confirmed | 3.4 |
-| B-3 | `LAYERS` restates the graph and refuses nothing that Cargo allows. No test holds "the sim has no `store`" or "the sim logs nothing". | `release/tests/mod.rs:208-301` | Confirmed | 3.4 |
-| B-4 | Two hand-written manifest parsers, one of which misses dependencies with no error | `rules/src/workspace.rs:14-157`, `release/tests/mod.rs:247-265` | Confirmed | 3.4 |
-| B-5 | 34 crate roots add `#![deny]` lints off the list, and no test holds the float ban | `math/src/lib.rs:5` and others | Confirmed | 3.4 (D48) |
 | B-6 | The profiles add `overflow-checks` to the user's block | `Cargo.toml:238-254` | Confirmed | 12.3 (D45) |
 | B-7 | PLAN.md is empty, the open batches live in a review file, and the toolchain pin cites a missing step | `PLAN.md`, `rust-toolchain.toml:1-4` | Confirmed | First step, 12.3 |
 | B-8 | `checked_step_toward` divides by a length that was already rounded | `vec3/mod.rs:172-200` | Confirmed path | 12.1 |

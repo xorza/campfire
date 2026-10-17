@@ -63,7 +63,8 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `payments` | planned | Pools, hold invoices, wallet budgets |
 
 - **A crate for each module.** Each module is a crate, `campfire-<module>`, as Bevy's are, so Cargo checks every import against the graph. A test holds the table above equal to the workspace.
-- **Layers.** Each crate depends only on lower layers, and no two crates of one layer depend on each other; `LAYERS` lists each capability crate's layer, and a test refuses a layer that is not one above its highest dependency.
+- **Layers.** Each crate depends only on lower layers, and no two crates of one layer depend on each other; a capability crate's layer is one above its highest dependency's, read from the manifests, so no table restates the graph, and one reader of the manifests serves every rule. Refused: a hand-kept list of layers, which can only agree with what Cargo already allows, and `cargo metadata`, which a test would spawn to read the graph the manifests already give.
+- **The sim reads no file and logs nothing.** No crate a match runs on requires `store`, `log` or `tracing`, and `protocol` does not require `store`, so a match runs the same on a server, a client and a verifier, and a tick waits for no disk; a `rules` test walks the release's required dependencies. A debug build's script print through `tracing` is the one exception, and waits for its decision.
 - **A pure sim.** `sim` takes state and inputs and gives the next state: no files, packages or signatures. No crate of the deterministic core depends on `store`, and `store` depends on no engine crate.
 - **`common` holds only shared plain values.** A type enters `common` only when two crates that do not depend on each other both name it, with construction, parsing, display and serde alone.
 - **A name stays beside its member.** An enum derives `NamedEnum`, each member named by its identifier in snake case, as serde's `rename_all` names it, or by its own `#[name = "…"]`, and data and serde read it by those names alone. Not strum, whose names and serde's are two attributes that can drift; not a declarative macro, whose body rustfmt and the IDE read as opaque.
@@ -203,12 +204,12 @@ Each rule has a test that fails when it breaks, as a rule only review holds drif
 - **Two goldens.** The state golden pins each tick's state hash and moves with the layout; the behaviour golden pins a digest of each tick's units, deaths and resources, and does not.
 - **One scripted match for each mode.** A new rule of a mode joins its scripted match, the one test exempt from the 1 s bound; the suite keeps 30 s.
 - **nextest.** A process per test, as libtest cannot end a stuck test; a test is slow past 1 s, and no profile stops at the first failure.
-- **Allocation audits.** A crate's `tests/alloc` counts each hot path's allocations a frame at a time, zero unless a fixture names each one it allows.
+- **Allocation audits.** A crate's `tests/alloc` counts each hot path's allocations a frame at a time, zero unless a fixture names each one it allows. A window counts every thread of the process, as nextest runs each test in a process of its own, so a fixture's workers count too; a thread's excluded part is its own. Refused: a window of the test's thread alone, which passes a worker that allocates.
 - **One test feature.** What only tests and benches build is behind `internals` and one gate; `#[cfg(test)]` holds a crate's own test modules alone, and every test build turns `internals` on.
 - **The archetype shuffle.** A test moves every unit to a new archetype before each tick and checks both goldens, so no order depends on archetypes.
 - **The work record.** A redesign records the instruction count of the proving match and the 3v3; a stage that makes either worse by more than 10 % says why.
 - **The real binaries on localhost.** The LAN check runs the shipped server and clients over QUIC and checks their logs with the verifier.
-- **Warnings fail tests.** A fixture that runs a match holds a `LogCheck`, and each warning no test takes fails it, as rustc's tests and pytest's `-W error` do.
+- **Warnings fail tests.** A fixture that runs a match holds a `LogCheck`, and each warning no test takes fails it, as rustc's tests and pytest's `-W error` do. The check is the process's subscriber, so a warning of a worker thread counts as the test's own.
 - **Typed log events.** An event a tool reads back is a `LogEvent` with a round-trip test; `sim` and `capabilities` log nothing, and report through resources.
 
 ## Benches

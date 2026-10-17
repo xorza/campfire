@@ -19,7 +19,7 @@ use campfire_players::PlayerResources;
 use campfire_script::{ScriptBudgets, ScriptLimits, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
-use campfire_store::internals::SourceFiles;
+use campfire_store::internals::{CargoManifest, SourceFiles};
 use campfire_store::{DirEntries, EntryKind, InputFile};
 use campfire_units::{Player, UnitTypeCore};
 use campfire_values::Team;
@@ -205,102 +205,89 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
     assert_eq!(built, installed);
 }
 
-/// Each capability crate's folder under this crate's and its layer, lowest first: a crate
-/// depends only on crates of lower layers, and a capability needs only capabilities of lower
-/// layers, as the structural rules ask (02-engine-core.md, Layers). This crate sits above them all.
-const LAYERS: [(&str, u8); 23] = [
-    ("core/geometry", 0),
-    ("core/state-types", 0),
-    ("core/values", 1),
-    ("core/visibility", 1),
-    ("core/script", 2),
-    ("core/declare", 3),
-    ("core/units", 4),
-    ("core/players", 5),
-    ("stats", 6),
-    ("vision", 6),
-    ("core/actions", 7),
-    ("combat", 8),
-    ("core/deliveries", 8),
-    ("interaction", 8),
-    ("items", 8),
-    ("progression", 8),
-    ("abilities", 9),
-    ("areas", 9),
-    ("navigation", 9),
-    ("projectiles", 9),
-    ("production", 10),
-    ("mode", 11),
-    ("orders", 11),
-];
+/// The capability crates under this crate's folder, each by its folder, as `core/units`, with the
+/// capability crates it depends on, by name, as its manifest lists them: the graph the layers
+/// come from (02-engine-core.md, Layers). This crate sits above them all.
+#[derive(Debug)]
+struct CapabilityCrates(Vec<CapabilityCrate>);
 
-/// The layer of the capability crate `name`, by the last part of its folder.
-fn layer(name: &str) -> Option<u8> {
-    let found = LAYERS
-        .iter()
-        .find(|(folder, _)| folder.rsplit('/').next() == Some(name));
-    found.map(|&(_, layer)| layer)
+/// A capability crate and the capability crates it depends on.
+#[derive(Debug)]
+struct CapabilityCrate {
+    folder: String,
+    depends: Vec<String>,
 }
 
-const MANIFEST_LEN: usize = 1 << 16;
+impl CapabilityCrates {
+    /// Each folder under this crate's, or under its `core`, that holds a manifest.
+    fn read() -> Self {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut folders = Vec::new();
+        for parent in ["", "core/"] {
+            for entry in DirEntries::read(&root.join(parent)).unwrap() {
+                let folder = format!("{parent}{}", entry.name.to_str().unwrap());
+                let held = DirEntries::read(&root.join(&folder)).ok();
+                let manifest = held
+                    .is_some_and(|entries| entries.iter().any(|inner| inner.name == "Cargo.toml"));
+                if entry.kind == EntryKind::Dir && manifest {
+                    folders.push(folder);
+                }
+            }
+        }
+        folders.sort_unstable();
+        let name = |folder: &str| folder.rsplit('/').next().unwrap().to_owned();
+        let names: Vec<String> = folders.iter().map(|folder| name(folder)).collect();
+        let crates = folders
+            .into_iter()
+            .map(|folder| {
+                let manifest = CargoManifest::read(&root.join(&folder));
+                let depends = CargoManifest::dependencies(&manifest)
+                    .into_iter()
+                    .filter_map(|dependency| dependency.strip_prefix("campfire-"))
+                    .filter(|dependency| names.iter().any(|name| name == dependency))
+                    .map(str::to_owned)
+                    .collect();
+                CapabilityCrate { folder, depends }
+            })
+            .collect();
+        Self(crates)
+    }
 
-/// The `campfire-<name>` crates among the dependencies of the crate in `folder` that `LAYERS`
-/// lists, by `<name>`, in the manifest's order.
-fn layered_dependencies(folder: &str) -> Vec<String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let path = root.join(folder).join("Cargo.toml");
-    let manifest = InputFile::read_text(&path, MANIFEST_LEN).unwrap();
-    let dependencies = manifest
-        .split("\n[")
-        .find_map(|section| section.strip_prefix("dependencies]\n"))
-        .expect("a capability crate has dependencies");
-    dependencies
-        .lines()
-        .filter_map(|line| line.strip_prefix("campfire-"))
-        .map(|name| &name[..name.find(['.', ' ']).unwrap()])
-        .filter(|name| layer(name).is_some())
-        .map(str::to_owned)
-        .collect()
+    /// The crate whose folder ends in `name`.
+    fn named(&self, name: &str) -> Option<&CapabilityCrate> {
+        self.0
+            .iter()
+            .find(|krate| krate.folder.rsplit('/').next() == Some(name))
+    }
+
+    /// The layer of the crate `name`: 0 for one that depends on no capability crate, else one
+    /// above its highest dependency's, so a crate depends only on crates of lower layers.
+    fn layer(&self, name: &str) -> Option<u8> {
+        let krate = self.named(name)?;
+        let below = krate.depends.iter().map(|dependency| {
+            self.layer(dependency)
+                .expect("a capability crate's dependency is one")
+        });
+        Some(below.map(|layer| layer + 1).max().unwrap_or(0))
+    }
 }
 
 #[test]
-fn each_capability_crate_is_listed_one_layer_above_its_highest_dependency() {
-    // Every crate under this one, a folder with a manifest, has its layer, and each layer is
-    // one above its highest dependency's, 0 for none: so no crate depends on one of its own
-    // layer or above, and no layer is higher than its dependencies make it.
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut crates = Vec::new();
-    for parent in ["", "core/"] {
-        for entry in DirEntries::read(&root.join(parent)).unwrap() {
-            let folder = format!("{parent}{}", entry.name.to_str().unwrap());
-            let manifest = root.join(&folder).join("Cargo.toml");
-            if entry.kind == EntryKind::Dir
-                && InputFile::read_if_present(&manifest, MANIFEST_LEN)
-                    .unwrap()
-                    .is_some()
-            {
-                crates.push(folder);
-            }
-        }
-    }
-    crates.sort_unstable();
-    let mut listed: Vec<&str> = LAYERS.iter().map(|&(folder, _)| folder).collect();
-    listed.sort_unstable();
-    assert_eq!(crates, listed);
-    assert!(layered_dependencies("mode").contains(&"stats".to_owned()));
-    let misplaced: Vec<String> = LAYERS
-        .iter()
-        .filter_map(|&(folder, own)| {
-            let derived = layered_dependencies(folder)
-                .iter()
-                .map(|name| layer(name).expect("a layered dependency") + 1)
-                .max()
-                .unwrap_or(0);
-            (derived != own)
-                .then(|| format!("{folder}: {own}, where its dependencies give {derived}"))
-        })
-        .collect();
-    assert_eq!(misplaced, Vec::<String>::new());
+fn the_layers_follow_the_capability_crates_manifests() {
+    // The reader sees each crate and its dependencies: the lowest crates depend on none, and
+    // the mode builds on stats, whose layer is below its own.
+    let crates = CapabilityCrates::read();
+    assert!(crates.0.len() > 20, "{crates:?}");
+    assert_eq!(crates.layer("geometry"), Some(0));
+    assert!(
+        crates
+            .named("mode")
+            .unwrap()
+            .depends
+            .contains(&"stats".to_owned())
+    );
+    assert!(crates.layer("stats") < crates.layer("mode"));
+    assert_eq!(crates.layer("release"), None);
 }
 
 /// Each capability of the release's list, with what it needs and what it uses: the mode's as
@@ -323,23 +310,22 @@ impl ModuleVisitor for Edges {
 
 #[test]
 fn a_capabilitys_crate_depends_on_exactly_what_it_needs_or_uses() {
+    let crates = CapabilityCrates::read();
     let mut rows = Edges::default();
     Release::modules(&mut rows);
     let mut found = Vec::new();
     for (capability, needs, uses) in rows.0 {
         let name = capability.name();
-        let folder = LAYERS
-            .iter()
-            .map(|&(folder, _)| folder)
-            .find(|folder| folder.rsplit('/').next() == Some(name))
-            .expect("each capability of the release is a crate of `LAYERS`");
-        let mut depends: Vec<String> = layered_dependencies(folder)
-            .into_iter()
+        let krate = crates
+            .named(name)
+            .expect("each capability of the release is a crate");
+        let mut depends: Vec<String> = (krate.depends.iter())
             .filter(|dependency| {
                 Capability::ALL
                     .iter()
-                    .any(|other| other.name() == dependency)
+                    .any(|other| other.name() == dependency.as_str())
             })
+            .cloned()
             .collect();
         depends.sort();
         let mut edges: Vec<String> = needs
@@ -372,7 +358,9 @@ fn production(dir: &Path, visit: &mut impl FnMut(&str, &str)) {
 /// modules' own.
 fn capability_sources(visit: &mut impl FnMut(&str, &str)) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    for folder in LAYERS.iter().map(|&(folder, _)| folder).chain([""]) {
+    let crates = CapabilityCrates::read();
+    let folders = crates.0.iter().map(|krate| krate.folder.as_str());
+    for folder in folders.chain([""]) {
         let module = match folder.rsplit('/').next().unwrap() {
             "" => None,
             name => Some(name.replace('-', "_")),
@@ -391,9 +379,11 @@ fn capability_sources(visit: &mut impl FnMut(&str, &str)) {
 fn each_capability_installs_after_the_lower_layers_it_builds_on() {
     // The table's install order, its needs and the layers are three facts of one order: a
     // capability builds only on capabilities of lower layers, installed before it.
+    let crates = CapabilityCrates::read();
     let mut installed = Vec::new();
     for row in Release::rows().0 {
-        let own = layer(row.capability.name()).expect("an installed capability is a crate");
+        let own =
+            (crates.layer(row.capability.name())).expect("an installed capability is a crate");
         for &need in row.needs {
             assert!(
                 installed.contains(&need),
@@ -401,7 +391,7 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
                 row.capability
             );
             assert!(
-                layer(need.name()) < Some(own),
+                crates.layer(need.name()) < Some(own),
                 "{need:?} below {:?}",
                 row.capability
             );

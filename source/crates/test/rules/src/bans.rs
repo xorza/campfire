@@ -1,4 +1,6 @@
-use crate::workspace::{read, source, sources};
+use campfire_store::internals::CargoManifest;
+
+use crate::workspace::{crates, manifests, read, sim_closure, source, sources};
 
 /// A proxy crate: the one crate that makes the calls of its group of `clippy.toml`'s bans, through
 /// an `expect` of the lints at its crate root alone, and gives every other crate what it needs
@@ -524,4 +526,34 @@ fn no_tick_reads_removals_that_age_with_the_app() {
         "}\n",
     );
     assert_eq!(app_removals(sample), [2]);
+}
+
+/// The line of a crate's root that bans floats from the sim, as clippy's `float_arithmetic` is
+/// in no group the workspace turns on (09-determinism-core.md, One step: an `i128`, rounded once).
+const FLOAT_BAN: &str = "#![warn(clippy::float_arithmetic)]";
+
+#[test]
+fn each_crate_a_match_runs_on_bans_floats() {
+    // A proc-macro crate's code runs in the compiler, not in a match.
+    let reached = sim_closure(&manifests());
+    let mut checked = 0;
+    let mut missing = Vec::new();
+    for krate in crates()
+        .iter()
+        .filter(|krate| reached.contains(&krate.name))
+    {
+        checked += 1;
+        let proc_macro =
+            CargoManifest::section(&krate.manifest, "lib").any(|line| line == "proc-macro = true");
+        if proc_macro {
+            continue;
+        }
+        let root = source().join(&krate.path).join("src/lib.rs");
+        let text = read(root.to_str().unwrap());
+        if !text.lines().any(|line| line == FLOAT_BAN) {
+            missing.push(krate.name.clone());
+        }
+    }
+    assert_eq!(missing, Vec::<String>::new());
+    assert_eq!(checked, reached.len());
 }

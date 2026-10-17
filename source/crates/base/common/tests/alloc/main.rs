@@ -1,6 +1,6 @@
 //! The allocation audit's own checks, which every crate's `tests/alloc` suite relies on without
-//! checking: exact counts, silence outside a window and in its excluded parts, no count from
-//! another thread or from the audit's own bookkeeping, a thread left clean by a panicking body,
+//! checking: exact counts, every thread's among them, silence outside a window, in a thread's
+//! excluded parts and in the audit's own bookkeeping, a window left closed by a panicking body,
 //! and a budget that fails on the frame past it.
 
 use std::hint::{self, black_box};
@@ -57,24 +57,36 @@ fn a_window_counts_what_it_allocates_and_nothing_outside_it_or_its_excluded_part
 }
 
 #[test]
-fn another_threads_allocations_are_not_counted() {
-    // The worker starts before the window, as a start allocates on the caller; an atomic flag,
-    // which never allocates, starts its 1,000 allocations inside it.
+fn another_threads_allocations_are_counted_and_its_excluded_part_is_its_own() {
+    // The worker starts before the window, as a start allocates on the caller and on the new
+    // thread, which keeps a copy of its name, and says it runs; an atomic flag, which never
+    // allocates, starts its 1,000 allocations inside it, and 7 more in a part it excludes, which
+    // the test's thread does not.
     let go = Arc::new(AtomicBool::new(false));
-    let start = Arc::clone(&go);
+    let running = Arc::new(AtomicBool::new(false));
+    let (start, runs) = (Arc::clone(&go), Arc::clone(&running));
     let worker = Worker::start("alloc-sibling", move || {
+        runs.store(true, Ordering::Release);
         while !start.load(Ordering::Acquire) {
             hint::spin_loop();
         }
         for _ in 0..1_000 {
             one_alloc();
         }
+        CountingAllocator::excluded(|| {
+            for _ in 0..7 {
+                one_alloc();
+            }
+        });
     });
+    while !running.load(Ordering::Acquire) {
+        hint::spin_loop();
+    }
     let window = CountingAllocator::window(|| {
         go.store(true, Ordering::Release);
         drop(worker);
     });
-    assert_eq!(window.allocs, 0);
+    assert_eq!((window.allocs, window.bytes), (1_000, 1_000 * 8));
 }
 
 #[test]

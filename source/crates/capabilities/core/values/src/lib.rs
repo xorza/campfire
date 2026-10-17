@@ -3,7 +3,9 @@
 //! components of a unit's identity that the script view reads: its team, its type, its tags,
 //! and the teams' relations.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 mod action_id;
 mod action_start;

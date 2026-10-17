@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::panic;
 
-use campfire_store::internals::SourceFile;
+use campfire_store::internals::{CargoManifest, SourceFile};
 
 use crate::bans::{PROXIES, foreign_names};
 use crate::workspace::{
-    Crate, crate_dependencies, crates, dependencies, dependency, holder, manifests, read, section,
+    Crate, crate_dependencies, crates, holder, manifests, read, required_dependencies, sim_closure,
     source, sources,
 };
 
@@ -107,6 +107,36 @@ fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
     assert_eq!(built, crates);
 }
 
+/// The crates a sim's match runs on and whose code may read files or log: `store`, the one home
+/// of files and threads, and the logs.
+const NO_SIM_DEPENDENCY: [&str; 4] = ["campfire-log", "campfire-store", "log", "tracing"];
+
+#[test]
+fn the_sim_reads_no_file_and_logs_nothing_and_the_protocol_reads_no_file() {
+    // Each crate of the workspace the release's required dependencies reach, the release among
+    // them, requires none of the crates that read files or log, so a match runs the same on a
+    // server, a client and a verifier, and its tick waits for no disk; but `campfire-script`,
+    // whose debug build passes a script's print to `tracing`. An optional dependency is a test
+    // build's.
+    let manifests = manifests();
+    let reached = sim_closure(&manifests);
+    let mut found = Vec::new();
+    for (name, manifest) in manifests.iter().filter(|(name, _)| reached.contains(name)) {
+        for other in required_dependencies(manifest) {
+            let excepted = name == "campfire-script" && other == "tracing";
+            if NO_SIM_DEPENDENCY.contains(&other) && !excepted {
+                found.push(format!("{name} requires {other}"));
+            }
+        }
+    }
+    found.sort_unstable();
+    assert_eq!(found, Vec::<String>::new());
+    assert!(reached.contains("campfire-sim") && reached.contains("campfire-script"));
+    assert!(!reached.contains("campfire-store"));
+    // The protocol writes a log into a sink, which `net` gives over `store`.
+    assert!(!crate_dependencies("session/protocol").contains(&"campfire-store".to_owned()));
+}
+
 #[test]
 fn each_crates_folder_is_its_package_name_without_the_prefix() {
     let misnamed: Vec<String> = crates()
@@ -136,7 +166,8 @@ const TOP_TEST_CRATE: &str = "campfire-harness";
 
 /// The entries of `manifest`'s `internals` feature.
 fn internals_entries(manifest: &str) -> Vec<&str> {
-    let lines = section(manifest, "features").skip_while(|line| !line.starts_with("internals"));
+    let lines = CargoManifest::section(manifest, "features")
+        .skip_while(|line| !line.starts_with("internals"));
     let mut entries = Vec::new();
     for line in lines {
         let list = line.trim_start_matches("internals = [");
@@ -166,7 +197,9 @@ fn dependency_closures(manifests: &[(String, String)]) -> BTreeMap<&str, BTreeSe
                     .iter()
                     .find(|(crate_name, _)| crate_name == at)
                     .expect("a closure walks the workspace's crates");
-                for other in section(manifest, "dependencies").map(dependency) {
+                for other in
+                    CargoManifest::section(manifest, "dependencies").map(CargoManifest::dependency)
+                {
                     if workspace(other) && found.insert(other) {
                         next.push(other);
                     }
@@ -190,7 +223,8 @@ fn dependency_closures(manifests: &[(String, String)]) -> BTreeMap<&str, BTreeSe
 fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
     let closures = dependency_closures(manifests);
     let has = |manifest: &str, feature: &str| {
-        section(manifest, "features").any(|line| line.starts_with(&format!("{feature} = ")))
+        CargoManifest::section(manifest, "features")
+            .any(|line| line.starts_with(&format!("{feature} = ")))
     };
     let with_internals = |other: &str| {
         manifests
@@ -204,9 +238,9 @@ fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
         }
         let own = has(manifest, "internals");
         let entries = internals_entries(manifest);
-        let dependencies: Vec<&str> = section(manifest, "dependencies").collect();
+        let dependencies: Vec<&str> = CargoManifest::section(manifest, "dependencies").collect();
         for line in &dependencies {
-            let other = dependency(line);
+            let other = CargoManifest::dependency(line);
             let passed = line.contains(r#""internals""#)
                 || entries.contains(&format!("{other}/internals").as_str())
                 || entries.contains(&format!("{other}?/internals").as_str());
@@ -214,13 +248,15 @@ fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
                 problems.push(format!("{name}'s internals leaves {other}'s off"));
             }
         }
-        for line in section(manifest, "dev-dependencies") {
-            let other = dependency(line);
+        for line in CargoManifest::section(manifest, "dev-dependencies") {
+            let other = CargoManifest::dependency(line);
             if with_internals(other) && !line.contains(r#""internals""#) {
                 problems.push(format!("{name} dev-depends on {other} with no internals"));
             }
             let workspace = manifests.iter().any(|(crate_name, _)| crate_name == other);
-            let depends = dependencies.iter().any(|line| dependency(line) == other);
+            let depends = dependencies
+                .iter()
+                .any(|line| CargoManifest::dependency(line) == other);
             let within = workspace && closures[other].is_subset(&closures[name.as_str()]);
             let allowed = other == name
                 || TEST_INFRASTRUCTURE.contains(&other)
@@ -236,8 +272,8 @@ fn internals_problems(manifests: &[(String, String)]) -> Vec<String> {
                 ));
             }
         }
-        let itself = section(manifest, "dev-dependencies")
-            .any(|line| dependency(line) == name && line.contains(r#""internals""#));
+        let itself = CargoManifest::section(manifest, "dev-dependencies")
+            .any(|line| CargoManifest::dependency(line) == name && line.contains(r#""internals""#));
         if has(manifest, "internals") && !itself {
             problems.push(format!("{name} dev-depends on itself with no internals"));
         }
@@ -256,10 +292,10 @@ fn internals_on(manifests: &[(String, String)], name: &str) -> Vec<String> {
             .map(|(_, manifest)| manifest.as_str())
     };
     let own = manifest(name).unwrap();
-    let mut on: Vec<String> = section(own, "dependencies")
-        .chain(section(own, "dev-dependencies"))
+    let mut on: Vec<String> = CargoManifest::section(own, "dependencies")
+        .chain(CargoManifest::section(own, "dev-dependencies"))
         .filter(|line| line.contains(r#""internals""#))
-        .map(|line| dependency(line).to_owned())
+        .map(|line| CargoManifest::dependency(line).to_owned())
         .collect();
     let mut at = 0;
     while let Some(next) = on.get(at) {
@@ -430,9 +466,9 @@ fn the_internals_rule_names_each_crate_that_breaks_it() {
 /// The required dependencies of `manifest` that `production`, its crate's production code, names
 /// nowhere: a dependency that only code a gate holds uses is optional, and `internals` turns it on.
 fn unnamed_dependencies<'a>(manifest: &'a str, production: &str) -> Vec<&'a str> {
-    section(manifest, "dependencies")
+    CargoManifest::section(manifest, "dependencies")
         .filter(|line| !line.contains("optional = true"))
-        .map(dependency)
+        .map(CargoManifest::dependency)
         .filter(|name| !production.contains(&format!("{}::", name.replace('-', "_"))))
         .collect()
 }
@@ -461,9 +497,9 @@ fn code_by_crate(crates: &[Crate], view: fn(&SourceFile) -> Option<String>) -> V
 /// nowhere: one that only its tests name is a dev-dependency, as cargo's `unused_dependencies`
 /// counts a use by the crate's integration tests.
 fn tests_only_optional<'a>(manifest: &'a str, library: &str) -> Vec<&'a str> {
-    section(manifest, "dependencies")
+    CargoManifest::section(manifest, "dependencies")
         .filter(|line| line.contains("optional = true"))
-        .map(dependency)
+        .map(CargoManifest::dependency)
         .filter(|name| !library.contains(&format!("{}::", name.replace('-', "_"))))
         .collect()
 }
@@ -496,7 +532,7 @@ fn a_required_dependency_is_named_by_production_code() {
 /// unifies a dependency's features over the build.
 fn unifying_internals(crates: &[Crate]) -> BTreeSet<&str> {
     fn required(krate: &Crate) -> Vec<&str> {
-        section(&krate.manifest, "dependencies")
+        CargoManifest::section(&krate.manifest, "dependencies")
             .filter(|line| !line.contains("optional = true"))
             .collect()
     }
@@ -516,7 +552,7 @@ fn unifying_internals(crates: &[Crate]) -> BTreeSet<&str> {
             .filter(|krate| {
                 required(krate)
                     .iter()
-                    .any(|line| found.contains(dependency(line)))
+                    .any(|line| found.contains(CargoManifest::dependency(line)))
             })
             .map(|krate| krate.name.as_str())
             .collect();
@@ -565,12 +601,12 @@ fn needless_internals<'a>(
     crates: &[Crate],
     gating: &BTreeSet<&str>,
 ) -> Vec<&'a str> {
-    let dependencies: Vec<&str> = section(&krate.manifest, "dependencies")
-        .map(dependency)
+    let dependencies: Vec<&str> = CargoManifest::section(&krate.manifest, "dependencies")
+        .map(CargoManifest::dependency)
         .collect();
-    section(&krate.manifest, "dev-dependencies")
+    CargoManifest::section(&krate.manifest, "dev-dependencies")
         .filter(|line| line.contains(r#""internals""#))
-        .map(dependency)
+        .map(CargoManifest::dependency)
         .filter(|&other| other != krate.name && dependencies.contains(&other))
         .filter(|other| crates.iter().any(|known| known.name == *other) && !gating.contains(other))
         .collect()
@@ -722,20 +758,7 @@ fn an_optional_dependency_is_named_by_library_code() {
 }
 
 #[test]
-fn the_dependency_and_name_checks_fail_on_what_breaks_them() {
-    // A manifest's dependencies, a target's among them, and not its dev-dependencies or its
-    // features; a section the reader does not know fails it. The target's condition is spelled
-    // in parts, so this file names no OS.
-    let manifest = concat!(
-        "[package]\nname = \"x\"\n\n[features]\ni = [\"dep:t\"]\n\n[dependencies]\n",
-        "a.workspace = true\nt = { workspace = true, optional = true }\n\n",
-        "[target.'cfg(",
-        "un",
-        "ix)'.dependencies]\nl.workspace = true\n\n[dev-dependencies]\nd.workspace = true\n"
-    );
-    assert_eq!(dependencies(manifest), ["a", "t", "l"]);
-    let dotted = panic::catch_unwind(|| dependencies("[dependencies.a]\nversion = \"1\"\n"));
-    assert!(dotted.is_err());
+fn the_name_checks_fail_on_what_breaks_them() {
     // A proxy's source that names another proxy's call or one of no proxy's, but not its own.
     let [store, codec, _] = &PROXIES;
     let text = "use std::fs::File;\nlet map: HashMap<u8, u8>;\nlet n = 1;";

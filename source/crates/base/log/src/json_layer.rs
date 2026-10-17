@@ -19,20 +19,12 @@ where
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    #![expect(
-        clippy::disallowed_types,
-        reason = "tracing's default subscriber is the thread's own, so the check its fixtures share is too"
-    )]
-
-    use std::cell::RefCell;
     use std::fmt::Debug;
     use std::io::{self, Write};
     use std::mem;
-    use std::rc::{Rc, Weak};
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, OnceLock, PoisonError, Weak};
     use std::thread;
 
-    use tracing::dispatcher::DefaultGuard;
     use tracing::level_filters::LevelFilter;
     use tracing::subscriber;
     use tracing_subscriber::Layer;
@@ -53,36 +45,39 @@ pub(crate) mod internals {
         assert_eq!(read.as_ref().ok(), Some(event), "{}: {read:?}", lines[0]);
     }
 
-    thread_local! {
-        /// The check the fixtures of the thread share, while one of them holds it.
-        static SHARED: RefCell<Weak<Kept>> = const { RefCell::new(Weak::new()) };
-    }
+    /// The lines the process's subscriber keeps, once a check installed it: statics, as tracing's
+    /// global subscriber takes no state of the test that holds it.
+    static LINES: OnceLock<Arc<Mutex<Vec<u8>>>> = OnceLock::new();
 
-    /// The events at Warn and Error that the code a test runs logs on its thread, records of the
-    /// `log` crate among them. A test takes those it causes; when the thread's last check drops,
-    /// each event left fails the test, as the LAN check fails a match that logs one.
+    /// The check the process's fixtures share, while one of them holds it.
+    static SHARED: Mutex<Weak<Kept>> = Mutex::new(Weak::new());
+
+    /// The events at Warn and Error that the code a test runs logs on any thread of its process,
+    /// records of the `log` crate among them, as nextest runs each test in a process of its own.
+    /// A test takes those it causes; when the process's last check drops, each event left fails
+    /// the test, as the LAN check fails a match that logs one.
     #[derive(Debug)]
-    pub struct LogCheck(Rc<Kept>);
+    pub struct LogCheck(Arc<Kept>);
 
-    /// The thread's subscriber, and the events it kept, as JSON lines.
+    /// The events the process's subscriber kept, as JSON lines.
     #[derive(Debug)]
     struct Kept {
         lines: Arc<Mutex<Vec<u8>>>,
-        _subscriber: DefaultGuard,
     }
 
     impl LogCheck {
-        /// The thread's check: the one its fixtures share, or a new one, which becomes the
-        /// thread's subscriber.
+        /// The process's check: the one its fixtures share, or a new one; the first makes the
+        /// process's subscriber.
         pub fn start() -> Self {
-            SHARED.with(|shared| {
-                let held = shared.borrow().upgrade();
-                Self(held.unwrap_or_else(|| {
-                    let kept = Rc::new(Kept::install());
-                    *shared.borrow_mut() = Rc::downgrade(&kept);
-                    kept
-                }))
-            })
+            let mut shared = SHARED.lock().unwrap_or_else(PoisonError::into_inner);
+            if let Some(held) = shared.upgrade() {
+                return Self(held);
+            }
+            let kept = Arc::new(Kept {
+                lines: Arc::clone(LINES.get_or_init(Kept::install)),
+            });
+            *shared = Arc::downgrade(&kept);
+            Self(kept)
         }
 
         /// Removes the kept events of `E`, and reads them, in the order they came.
@@ -105,19 +100,20 @@ pub(crate) mod internals {
     }
 
     impl Kept {
-        /// Makes the thread's subscriber one that keeps its events at Warn and Error, with no
-        /// time, so a failure names the same lines in every run.
-        fn install() -> Self {
+        /// Makes the process's subscriber one that keeps its events at Warn and Error, with no
+        /// time, so a failure names the same lines in every run; its lines.
+        fn install() -> Arc<Mutex<Vec<u8>>> {
             let lines = Arc::new(Mutex::new(Vec::new()));
             let writer = {
                 let lines = Arc::clone(&lines);
                 move || Captured(Arc::clone(&lines))
             };
             let layer = json(writer).without_time().with_filter(LevelFilter::WARN);
-            Self {
-                lines,
-                _subscriber: tracing_subscriber::registry().with(layer).set_default(),
-            }
+            tracing_subscriber::registry()
+                .with(layer)
+                .try_init()
+                .expect("a process's subscriber is a check's alone");
+            lines
         }
     }
 

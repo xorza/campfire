@@ -1,6 +1,7 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
-use campfire_store::internals::{SourceFile, SourceFiles};
+use campfire_store::internals::{CargoManifest, SourceFile, SourceFiles};
 use campfire_store::{DirEntries, DirEntry, EntryKind, InputFile};
 
 /// The most bytes a test reads of a file of the workspace's own: far past any it holds.
@@ -9,43 +10,6 @@ const FILE_LEN: usize = 1 << 20;
 /// The text of the workspace's file at `path`.
 pub(crate) fn read(path: &str) -> String {
     InputFile::read_text(Path::new(path), FILE_LEN).unwrap()
-}
-
-/// The names of the crates the manifest `manifest` depends on, its target-specific dependencies
-/// among them, in the order it lists them. Read by hand, as the crate has no TOML parser: only the
-/// known sections may appear, so a dependency in another form, such as `[dependencies.name]` or a
-/// dotted key before the first section, fails instead of passing unseen.
-pub(crate) fn dependencies(manifest: &str) -> Vec<&str> {
-    let mut section = "";
-    let mut names = Vec::new();
-    for line in manifest.lines().map(str::trim) {
-        if line.is_empty() || line.starts_with('#') {
-            continue;
-        }
-        if let Some(header) = line.strip_prefix('[') {
-            section = header.strip_suffix(']').unwrap();
-            let target =
-                section.starts_with("target.'cfg(") && section.ends_with(")'.dependencies");
-            let known = [
-                "package",
-                "features",
-                "dependencies",
-                "dev-dependencies",
-                "[test]",
-                "lints",
-            ];
-            assert!(known.contains(&section) || target, "section [{section}]");
-            if target {
-                section = "dependencies";
-            }
-        } else {
-            assert!(!section.is_empty(), "{line:?} before the first section");
-            if section == "dependencies" {
-                names.push(dependency(line));
-            }
-        }
-    }
-    names
 }
 
 /// The workspace's `source/` folder, three levels over this crate's manifest: `crates/test/rules`.
@@ -63,12 +27,42 @@ pub(crate) fn crate_dependencies(dir: &str) -> Vec<String> {
             .to_str()
             .unwrap(),
     );
-    let mut names: Vec<String> = dependencies(&manifest)
+    let mut names: Vec<String> = CargoManifest::dependencies(&manifest)
         .into_iter()
         .map(str::to_owned)
         .collect();
     names.sort_unstable();
     names
+}
+
+/// The dependencies of `manifest` its build requires, not those a feature turns on.
+pub(crate) fn required_dependencies(manifest: &str) -> Vec<&str> {
+    CargoManifest::section(manifest, "dependencies")
+        .filter(|line| !line.contains("optional = true"))
+        .map(CargoManifest::dependency)
+        .collect()
+}
+
+/// The crates of the workspace a match runs on, by name: the release and each crate of the
+/// workspace its required dependencies reach, of `manifests`, the workspace's.
+pub(crate) fn sim_closure(manifests: &[(String, String)]) -> BTreeSet<String> {
+    let manifest = |name: &str| {
+        let (_, manifest) = (manifests.iter())
+            .find(|(crate_name, _)| crate_name == name)
+            .expect("a walk reaches the workspace's crates");
+        manifest
+    };
+    let workspace = |name: &str| manifests.iter().any(|(crate_name, _)| crate_name == name);
+    let mut reached = BTreeSet::from(["campfire-capabilities".to_owned()]);
+    let mut next = vec!["campfire-capabilities".to_owned()];
+    while let Some(at) = next.pop() {
+        for other in required_dependencies(manifest(&at)) {
+            if workspace(other) && reached.insert(other.to_owned()) {
+                next.push(other.to_owned());
+            }
+        }
+    }
+    reached
 }
 
 /// A crate of the workspace: its folder's name, its package's name, and its manifest's text.
@@ -104,7 +98,7 @@ pub(crate) fn crates() -> Vec<Crate> {
             found.push(Crate {
                 folder: dir.file_name().unwrap().to_str().unwrap().to_owned(),
                 path: path.join("/"),
-                name: package_name(&manifest).to_owned(),
+                name: CargoManifest::package_name(&manifest).to_owned(),
                 manifest,
             });
         }
@@ -127,33 +121,6 @@ pub(crate) fn manifests() -> Vec<(String, String)> {
         .into_iter()
         .map(|krate| (krate.name, krate.manifest))
         .collect()
-}
-
-/// The package's name the manifest `manifest` gives.
-fn package_name(manifest: &str) -> &str {
-    let line = section(manifest, "package")
-        .find(|line| line.starts_with("name ") || line.starts_with("name="))
-        .expect("a manifest names its package");
-    line.split('"')
-        .nth(1)
-        .expect("a package's name is a string")
-}
-
-/// The lines of `manifest`'s section `[name]`, past its header.
-pub(crate) fn section<'a>(manifest: &'a str, name: &str) -> impl Iterator<Item = &'a str> {
-    let header = format!("[{name}]");
-    manifest
-        .lines()
-        .map(str::trim)
-        .skip_while(move |line| *line != header)
-        .skip(1)
-        .take_while(|line| !line.starts_with('['))
-        .filter(|line| !line.is_empty() && !line.starts_with('#'))
-}
-
-/// The crate a line of a manifest's dependencies names.
-pub(crate) fn dependency(line: &str) -> &str {
-    line.split(['.', ' ', '=']).next().unwrap()
 }
 
 /// Each Rust source file of the workspace's crates and checks, by its path under `source/`,

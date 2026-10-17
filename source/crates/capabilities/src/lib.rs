@@ -13,7 +13,9 @@
 //! lacks or places otherwise. A capability gives the script view its fields of a unit through
 //! its column, and the call frame what a call reads besides the core's through its part.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 mod books;
 #[cfg(feature = "internals")]

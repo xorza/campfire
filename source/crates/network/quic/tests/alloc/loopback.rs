@@ -14,6 +14,11 @@ use zeroize::Zeroizing;
 /// The longest a fixture waits for loopback, inside a test's bound of 1 s.
 const PATIENCE: Duration = Duration::from_millis(800);
 
+/// The most packets `quinn-proto` 0.11.19 sends before its first key update, which it draws from
+/// 10..1000 so that a peer that cannot update fails early, and which allocates the next keys. The
+/// next one comes at the cipher's confidentiality limit, millions of packets later.
+pub(crate) const FIRST_KEY_UPDATE: usize = 1_000;
+
 /// Every packet a fixture sends: the largest a link carries on QUIC's minimum path, static, so
 /// its sender allocates nothing to send it.
 pub(crate) static PACKET: [u8; LINK_MIN_MTU] = [0xa5; LINK_MIN_MTU];
