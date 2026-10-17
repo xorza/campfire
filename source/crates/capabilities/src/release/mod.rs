@@ -1,12 +1,15 @@
 use std::any::TypeId;
+use std::collections::BTreeMap;
 
 use bevy_ecs::world::World;
 use campfire_abilities::Abilities;
 use campfire_actions::Actions;
 use campfire_areas::Areas;
 use campfire_combat::Combat;
+use campfire_common::DeclaredName;
 use campfire_declare::{
     CapabilitySet, Declarations, InstallFacts, KindVisitor, MatchFacts, ModuleVisitor, Role,
+    SectionReaders, UnitTypeData,
 };
 use campfire_deliveries::Deliveries;
 use campfire_interaction::Interaction;
@@ -25,10 +28,13 @@ use campfire_stats::Stats;
 use campfire_units::Units;
 use campfire_values::{EngineTag, NameId};
 use campfire_vision::Vision;
+use serde::Deserializer;
+use serde::de::DeserializeSeed;
 
 use crate::books::Books;
 use crate::books::built_books::BuiltBooks;
 use crate::books::leftover_books::LeftoverBooks;
+use crate::books::units_seed::UnitsSeed;
 use crate::release::api_binder::ApiBinder;
 use crate::release::called_registries::CalledRegistries;
 use crate::release::capability_rows::CapabilityRows;
@@ -40,6 +46,7 @@ use crate::release::kinds_only::KindsOnly;
 use crate::release::match_core::MatchCore;
 use crate::release::match_kind::{MatchKind, ModeStart, PackageScript};
 use crate::release::match_spec::MatchSpec;
+use crate::release::section_list::SectionList;
 use crate::release::state_only::StateOnly;
 
 mod api_binder;
@@ -61,6 +68,7 @@ pub(crate) mod match_spec;
 mod module_sets;
 #[cfg(feature = "internals")]
 mod resource_audit;
+mod section_list;
 mod stage_span;
 mod state_only;
 
@@ -151,6 +159,24 @@ impl Release {
             );
         }
         list.0
+    }
+
+    /// Every section the release's modules register, of every table, whatever a match's
+    /// capabilities, so a table reads alike in every mode and the load refuses a section of a
+    /// module its mode does not run.
+    pub fn sections() -> SectionReaders {
+        let mut list = SectionList::default();
+        Self::declare(Self::capabilities(), &mut list);
+        list.0
+    }
+
+    /// The unit types of a table of them by name, `[units.<name>]`, each read as the sections
+    /// the release's modules register read it: the read of a package's units, as serde's
+    /// `deserialize_with` takes it.
+    pub fn read_units<'de, D: Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<BTreeMap<DeclaredName, UnitTypeData>, D::Error> {
+        UnitsSeed(&Self::sections()).deserialize(deserializer)
     }
 
     /// Binds the script API of the release into `host`, as `script_api` records it, so `host`

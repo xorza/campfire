@@ -11,6 +11,7 @@ use crate::out_of_play::OutOfPlay;
 use crate::player_resources::PlayerResources;
 use crate::players_call::PlayersCall;
 use crate::players_world::PlayersWorld;
+use crate::resources_data::ResourcesData;
 use crate::seated::{Seated, Seating, SlotStart};
 
 /// The players and the match as entities: what spawns them, under every capability.
@@ -24,6 +25,7 @@ impl Module for Players {
     type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<ResourcesData>();
         Self::kinds(d);
         d.component::<MatchEntity>();
         d.component::<Player>();

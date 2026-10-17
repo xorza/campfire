@@ -1,4 +1,5 @@
 use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
 use serde::de::Error;
@@ -58,6 +59,11 @@ impl<'de> Deserialize<'de> for CollisionData {
 
 impl DataSection for CollisionData {
     const TABLE: DataTable = DataTable::Collision;
+}
+
+impl Section for CollisionData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "collision";
 }
 
 #[cfg(test)]

@@ -12,7 +12,7 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
+    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section, SpawnParts,
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
@@ -112,6 +112,8 @@ impl Declarations for DeclaredResources {
     fn book<B: Book>(&mut self) {
         self.ids.push(TypeId::of::<B>());
     }
+
+    fn section<S: Section>(&mut self) {}
 
     fn sets<S: ModuleSet>(&mut self) {}
 

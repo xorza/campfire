@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::num::NonZeroUsize;
 use std::slice;
@@ -6,25 +7,36 @@ use campfire_actions::{
     ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, DamageFields, DeliveryData,
     DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, KindError, LaunchFields,
     ListHook, MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields,
-    SpawnFields, Targeting, XpFields,
+    SlotKinds, SpawnFields, Targeting, TypeSlotsData, XpFields,
 };
-use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace, UnitTypeData};
+use campfire_areas::AreaData;
+use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace};
+use campfire_combat::{CombatData, ModeCombatData};
 use campfire_common::DeclaredName;
+use campfire_declare::{Section, UnitTypeData};
 use campfire_geometry::Metric;
-use campfire_items::{ItemData, ItemError};
+use campfire_interaction::{UseData, UsesData};
+use campfire_items::{InventoryData, ItemData, ItemError, ShopData};
 use campfire_math::Num;
-use campfire_mode::{ModeList, ModeNamesError, Offers};
-use campfire_progression::TrackError;
-use campfire_projectiles::ProjectileHits;
+use campfire_mode::{ModeData, ModeList, ModeNamesError, Offers};
+use campfire_navigation::{MapNavigationData, ModeNavigationData};
+use campfire_orders::AiData;
+use campfire_players::ResourcesData;
+use campfire_production::{ModeSupplyData, ProductionData, SupplyData};
+use campfire_progression::{ModeTracksData, TrackError};
+use campfire_projectiles::{ProjectileData, ProjectileHits};
 use campfire_script::{
     ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
     ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, SyncTo,
     UnknownName,
 };
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::{ModifierData, StatId};
-use campfire_units::TypesError;
+use campfire_stats::{
+    ModePoolsData, ModeStatsData, ModifierData, PassiveData, StatId, StatsData, TypePoolsData,
+};
+use campfire_units::{CollisionData, TypeParamsData, TypeStateData, TypeTagsData, TypesError};
 use campfire_values::{EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat};
+use campfire_vision::{GridData, VisionData};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
@@ -57,7 +69,7 @@ use crate::package_view::{PackageView, ViewKind};
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
     /// The names the mode's packages declare, each kind in its table.
-    names: NameTables<'a>,
+    names: NameTables,
     /// The release's engine tags, which no package gives.
     engine: Vec<EngineTag>,
     /// The move speed cap, in meters a second.
@@ -70,6 +82,34 @@ pub(crate) struct LoadCheck<'a> {
     /// modifier's and unit type's of its packages, as a script's handle has no type the load
     /// knows.
     state_fields: BTreeSet<&'a str>,
+    /// The mode's sections the checks read, each as a mode that does not give it reads it.
+    sections: ModeSections<'a>,
+}
+
+/// The mode's sections the checks read, each as a mode that does not give it reads it.
+#[derive(Debug)]
+struct ModeSections<'a> {
+    combat: Cow<'a, ModeCombatData>,
+    navigation: Cow<'a, ModeNavigationData>,
+    slots: Cow<'a, SlotKinds>,
+    stats: Cow<'a, ModeStatsData>,
+    tracks: Cow<'a, ModeTracksData>,
+    pools: Cow<'a, ModePoolsData>,
+    resources: Cow<'a, ResourcesData>,
+}
+
+impl<'a> ModeSections<'a> {
+    fn of(data: &'a ModeData) -> Self {
+        Self {
+            combat: data.section_or_default(),
+            navigation: data.section_or_default(),
+            slots: data.section_or_default(),
+            stats: data.section_or_default(),
+            tracks: data.section_or_default(),
+            pools: data.section_or_default(),
+            resources: data.section_or_default(),
+        }
+    }
 }
 
 /// What the action whose effects a check reads may name: its package's unit types, those it
@@ -138,6 +178,7 @@ impl<'a> LoadCheck<'a> {
             api,
             rate: TickRate::new(manifest.tick_hz.fastest()),
             state_fields: LoadCheck::state_fields(packages),
+            sections: ModeSections::of(&packages.data),
         };
         check.mode().map_err(fail)?;
         check.planned_data().map_err(fail)?;
@@ -203,11 +244,14 @@ impl<'a> LoadCheck<'a> {
             self.unit_type(unit_type, &at, &content.actions, &content.modifiers)?;
         }
         let held = units.iter().filter_map(|(name, unit_type)| {
-            Some((Place::UnitType(name.clone()), unit_type.passive.as_ref()?))
+            Some((
+                Place::UnitType(name.clone()),
+                &unit_type.section::<PassiveData>()?.0,
+            ))
         });
         passives_held_once(held.chain(action_passives(&content.actions)))?;
         if packages.manifest.capabilities.contains(Capability::Vision)
-            && packages.map.grid.is_none()
+            && packages.map.section::<GridData>().is_none()
         {
             return Err(LoadProblem::NoGrid);
         }
@@ -215,7 +259,7 @@ impl<'a> LoadCheck<'a> {
             .manifest
             .capabilities
             .contains(Capability::Navigation)
-            && packages.map.navigation.is_none()
+            && packages.map.section::<MapNavigationData>().is_none()
         {
             return Err(LoadProblem::NoPathingGrid);
         }
@@ -225,7 +269,7 @@ impl<'a> LoadCheck<'a> {
             names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
         }
         for unit_type in units.values() {
-            if let Some(orders) = &unit_type.orders {
+            if let Some(orders) = unit_type.section::<AiData>() {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
             }
         }
@@ -317,12 +361,13 @@ impl<'a> LoadCheck<'a> {
             DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(package.header.name.clone());
                 message(package, &avatar.name, &at)?;
-                if avatar.unit.orders.is_some() {
+                if avatar.unit.section::<AiData>().is_some() {
                     return Err(LoadProblem::AvatarOrders);
                 }
                 named(actions)?;
                 self.unit_type(&avatar.unit, &at, actions, modifiers)?;
-                let held = avatar.unit.passive.as_ref().map(|passive| (at, passive));
+                let passive = avatar.unit.section::<PassiveData>();
+                let held = passive.map(|passive| (at, &passive.0));
                 passives_held_once(held.into_iter().chain(action_passives(actions)))?;
                 let ranks = self.slotted_ranks(standing().chain([&avatar.unit]))?;
                 let unslotted = actions.keys().find(|id| !ranks.contains_key(id.as_str()));
@@ -364,7 +409,7 @@ impl<'a> LoadCheck<'a> {
             names.serve(path, ScriptRole::Mode, mode_params.iter().copied());
         }
         for unit_type in content.units.values() {
-            if let Some(orders) = &unit_type.orders {
+            if let Some(orders) = unit_type.section::<AiData>() {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
             }
         }
@@ -722,7 +767,8 @@ impl<'a> LoadCheck<'a> {
                 ViewKind::Mode | ViewKind::Loadout | ViewKind::Rules => None,
             };
             let units = content.units.values().chain(avatar);
-            let units = units.flat_map(|unit| unit.state.keys());
+            let units = units.filter_map(|unit| unit.section::<TypeStateData>());
+            let units = units.flat_map(|state| state.0.keys());
             fields.extend(modifiers.chain(units).map(DeclaredName::as_str));
         }
         fields
@@ -835,10 +881,10 @@ impl<'a> LoadCheck<'a> {
             }
             NameKind::Choice => declares(data.choices.keys(), name),
             NameKind::Item => packages.content.items.contains_key(name),
-            NameKind::Armor => data.combat.armors.contains_key(name),
+            NameKind::Armor => self.sections.combat.armors.contains_key(name),
             NameKind::Cost => self.names.cost_target(name).is_some(),
             NameKind::MarkerTag => {
-                let spawns = declares(data.navigation.spawn_tags.iter(), name);
+                let spawns = declares(self.sections.navigation.spawn_tags.iter(), name);
                 spawns
                     || packages
                         .map
@@ -861,9 +907,8 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The mode's damage kinds: with `combat`, at least one.
-    const fn damage_kinds(&self) -> Result<(), LoadProblem> {
-        let data = &self.packages.data;
-        let kinds = &data.combat.damage_kinds;
+    fn damage_kinds(&self) -> Result<(), LoadProblem> {
+        let kinds = &self.sections.combat.damage_kinds;
         if !self
             .packages
             .manifest
@@ -959,7 +1004,10 @@ impl<'a> LoadCheck<'a> {
                             id.to_owned(),
                         )));
                     }
-                    if !unit_type.walks() {
+                    if !unit_type
+                        .section::<StatsData>()
+                        .is_some_and(StatsData::walks)
+                    {
                         return Err(LoadProblem::TrainStands(id.to_owned()));
                     }
                 }
@@ -1091,7 +1139,7 @@ impl<'a> LoadCheck<'a> {
                         .units
                         .get(area)
                         .ok_or_else(|| unknown(NameKind::UnitType, area))?;
-                    if unit_type.area.is_none() {
+                    if unit_type.section::<AreaData>().is_none() {
                         return Err(LoadProblem::Delivery(DeliveryProblem::WrongSection {
                             action: id.clone(),
                             unit_type: area.clone(),
@@ -1114,7 +1162,7 @@ impl<'a> LoadCheck<'a> {
     /// capability the script API records as its reader; one of the map, to the capability that
     /// builds from it.
     fn sections_owned(&self) -> Result<(), LoadProblem> {
-        let (data, map) = (&self.packages.data, &self.packages.map);
+        let (data, map) = (&self.sections, &self.packages.map);
         let combat = &data.combat;
         let owner = |table, field| self.api.data_owner(table, field);
         let sections = [
@@ -1126,12 +1174,12 @@ impl<'a> LoadCheck<'a> {
                 Place::Combat,
             ),
             (
-                !data.stats.is_empty(),
+                !data.stats.0.is_empty(),
                 owner(DataTable::Mode, "stats"),
                 Place::Stats,
             ),
             (
-                !data.tracks.is_empty(),
+                !data.tracks.0.is_empty(),
                 owner(DataTable::Mode, "tracks"),
                 Place::Tracks,
             ),
@@ -1141,21 +1189,25 @@ impl<'a> LoadCheck<'a> {
                 Place::Navigation,
             ),
             (
-                data.supply.is_some(),
+                self.packages.data.section::<ModeSupplyData>().is_some(),
                 owner(DataTable::Mode, "supply"),
                 Place::Supply,
             ),
             (
-                map.navigation.is_some(),
+                map.section::<MapNavigationData>().is_some(),
                 Some(Capability::Navigation),
                 Place::MapNavigation,
             ),
             (
-                !map.paths.is_empty(),
+                !map.paths().is_empty(),
                 Some(Capability::Navigation),
                 Place::Paths,
             ),
-            (map.grid.is_some(), Some(Capability::Vision), Place::MapGrid),
+            (
+                map.section::<GridData>().is_some(),
+                Some(Capability::Vision),
+                Place::MapGrid,
+            ),
         ];
         for (held, capability, at) in sections {
             if let Some(capability) = capability.filter(|_| held) {
@@ -1168,18 +1220,15 @@ impl<'a> LoadCheck<'a> {
     /// The mode's pools and player resources: no pool named as a resource, a pool only with
     /// `stats`; and with `combat`, a life pool.
     fn pools_and_resources(&self) -> Result<(), LoadProblem> {
-        let data = &self.packages.data;
-        if let Some(name) = data
-            .resources
-            .iter()
-            .find(|name| data.pools.contains_key(*name))
+        let data = &self.sections;
+        if let Some(name) = (data.resources.0.iter()).find(|name| data.pools.0.contains_key(*name))
         {
             return Err(LoadProblem::Repeated {
                 at: Place::Resources,
                 name: name.to_string(),
             });
         }
-        for name in data.pools.keys() {
+        for name in data.pools.0.keys() {
             self.require(Capability::Stats, &Place::Pool(name.clone()))?;
         }
         let combat = self
@@ -1196,10 +1245,9 @@ impl<'a> LoadCheck<'a> {
     /// A box body only on a planar map.
     fn body_box(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
         let boxed = unit_type
-            .collision
-            .as_ref()
+            .section::<CollisionData>()
             .is_some_and(|collision| collision.form.is_box());
-        if boxed && self.packages.map.metric == Metric::Spatial {
+        if boxed && self.packages.map.metric() == Metric::Spatial {
             let at = at.clone();
             return Err(LoadProblem::BoxBody {
                 at,
@@ -1212,12 +1260,13 @@ impl<'a> LoadCheck<'a> {
     /// The capability of each section `unit_type` holds, at `at`, the mode declares; and a
     /// `supply` needs the mode's `[supply]`.
     fn sections(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        for field in unit_type.given() {
+        for field in unit_type.sections().keys() {
             if let Some(capability) = self.api.data_owner(DataTable::UnitType, field) {
                 self.require(capability, at)?;
             }
         }
-        if unit_type.supply.is_some() && self.packages.data.supply.is_none() {
+        let counted = self.packages.data.section::<ModeSupplyData>().is_some();
+        if unit_type.section::<SupplyData>().is_some() && !counted {
             return Err(LoadProblem::SupplyUncounted(at.clone()));
         }
         Ok(())
@@ -1239,21 +1288,21 @@ impl<'a> LoadCheck<'a> {
         modifiers: &BTreeMap<DeclaredName, ModifierData>,
     ) -> Result<(), LoadProblem> {
         self.sections(unit_type, at)?;
-        self.own_tags(&unit_type.tags, at)?;
+        self.own_tags(&unit_type.section_or_default::<TypeTagsData>().0, at)?;
         self.body_box(unit_type, at)?;
-        if unit_type.delivers() && !unit_type.delivery_only() {
+        if unit_type.delivers() && !delivery_only(unit_type) {
             return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
                 at.clone(),
             )));
         }
-        if let Some(area) = &unit_type.area {
+        if let Some(area) = unit_type.section::<AreaData>() {
             // The modifiers' ways, which the modifiers' checks read, pass on through an area's
             // `inside` modifiers.
             for modifier in area.inside.modifiers() {
                 modifier_exists(modifiers, modifier.as_str(), at)?;
             }
         }
-        if let Some(projectile) = &unit_type.projectile {
+        if let Some(projectile) = unit_type.section::<ProjectileData>() {
             if projectile.homing && projectile.speed <= self.cap {
                 return Err(LoadProblem::Delivery(DeliveryProblem::NotFaster(
                     at.clone(),
@@ -1269,12 +1318,16 @@ impl<'a> LoadCheck<'a> {
                 )));
             }
         }
-        self.unit_pools(&unit_type.pools, unit_type.combat.is_some(), at)?;
+        self.unit_pools(
+            &unit_type.section_or_default::<TypePoolsData>().0,
+            unit_type.section::<CombatData>().is_some(),
+            at,
+        )?;
         // The slotted ranks, which the actions' checks read, hold only the slots of a kind the
         // mode declares.
-        let kinds = &self.packages.data.slots;
+        let kinds = &self.sections.slots;
         let mut slotted = BTreeSet::new();
-        for (kind, ids) in &unit_type.slots {
+        for (kind, ids) in &unit_type.section_or_default::<TypeSlotsData>().0 {
             kinds
                 .names()
                 .named(kind.as_str())
@@ -1289,7 +1342,9 @@ impl<'a> LoadCheck<'a> {
                         name: id.to_string(),
                     });
                 }
-                if actions[id].kind == ActionKind::Train && unit_type.production.is_none() {
+                if actions[id].kind == ActionKind::Train
+                    && unit_type.section::<ProductionData>().is_none()
+                {
                     return Err(LoadProblem::NoQueue(id.clone()));
                 }
             }
@@ -1303,10 +1358,10 @@ impl<'a> LoadCheck<'a> {
     /// The inventory of a unit type at `at`, if it has one: it fills a slot kind the mode declares,
     /// of one rank, as an item's action has.
     fn inventory(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        let Some(inventory) = &unit_type.inventory else {
+        let Some(inventory) = unit_type.section::<InventoryData>() else {
             return Ok(());
         };
-        let kinds = &self.packages.data.slots;
+        let kinds = &self.sections.slots;
         // A kind the mode does not declare is the book build's problem.
         let Some(kind) = kinds.names().named(inventory.kind.as_str()) else {
             return Ok(());
@@ -1323,12 +1378,12 @@ impl<'a> LoadCheck<'a> {
     /// The slots of a unit type at `at`, its own, its inventory's and its use slot, are no more
     /// than a unit holds.
     fn slot_count(unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        let own: usize = unit_type.slots.values().map(Vec::len).sum();
+        let slots = unit_type.section_or_default::<TypeSlotsData>();
+        let own: usize = slots.0.values().map(Vec::len).sum();
         let inventory = unit_type
-            .inventory
-            .as_ref()
+            .section::<InventoryData>()
             .map_or(0, |inventory| NonZeroUsize::from(inventory.slots).get());
-        let uses = usize::from(unit_type.uses.is_some());
+        let uses = usize::from(unit_type.section::<UsesData>().is_some());
         if own + inventory + uses > ActionSlots::LIMIT {
             return Err(LoadProblem::TooManySlots(at.clone()));
         }
@@ -1362,7 +1417,10 @@ impl<'a> LoadCheck<'a> {
             }
         }
         let mode_passives = content.units.iter().filter_map(|(name, unit_type)| {
-            Some((Place::UnitType(name.clone()), unit_type.passive.as_ref()?))
+            Some((
+                Place::UnitType(name.clone()),
+                &unit_type.section::<PassiveData>()?.0,
+            ))
         });
         for (owner, modifier) in mode_passives.chain(action_passives(&content.actions)) {
             let held = items
@@ -1387,7 +1445,7 @@ impl<'a> LoadCheck<'a> {
     /// The shop of a unit type at `at`, if it is one: each item it sells costs only in the one
     /// player resource it takes. A name the mode does not have is the book build's problem.
     fn shop(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        let Some(shop) = &unit_type.shop else {
+        let Some(shop) = unit_type.section::<ShopData>() else {
             return Ok(());
         };
         if self
@@ -1419,7 +1477,7 @@ impl<'a> LoadCheck<'a> {
         let typed = self.unit_types();
         let kinds: BTreeSet<&DeclaredName> = typed
             .iter()
-            .filter_map(|typed| Some(&typed.unit_type.inventory.as_ref()?.kind))
+            .filter_map(|typed| Some(&typed.unit_type.section::<InventoryData>()?.kind))
             .collect();
         let slotted = self.slotted_in(&typed, &kinds);
         slotted.map_or(Ok(()), |(at, kind)| {
@@ -1437,11 +1495,11 @@ impl<'a> LoadCheck<'a> {
     /// uses'. A name the package or the mode does not have is the book build's problem.
     fn uses(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
-        let kinds = &packages.data.slots;
+        let kinds = &self.sections.slots;
         let typed = self.unit_types();
         let inventories: BTreeSet<&DeclaredName> = typed
             .iter()
-            .filter_map(|typed| Some(&typed.unit_type.inventory.as_ref()?.kind))
+            .filter_map(|typed| Some(&typed.unit_type.section::<InventoryData>()?.kind))
             .collect();
         let is_use = |actions: &BTreeMap<DeclaredName, ActionData>, id: &DeclaredName| {
             actions.get(id).map(|action| action.kind == ActionKind::Use)
@@ -1453,7 +1511,7 @@ impl<'a> LoadCheck<'a> {
             actions,
         } in &typed
         {
-            if let Some(usable) = &unit_type.usable
+            if let Some(usable) = unit_type.section::<UseData>()
                 && is_use(actions, &usable.action) == Some(false)
             {
                 return Err(LoadProblem::Use(UseProblem::NotUse {
@@ -1461,9 +1519,7 @@ impl<'a> LoadCheck<'a> {
                     action: usable.action.clone(),
                 }));
             }
-            if let Some(id) = unit_type
-                .slots
-                .values()
+            if let Some(id) = (unit_type.section_or_default::<TypeSlotsData>().0.values())
                 .flatten()
                 .find(|id| is_use(actions, id) == Some(true))
             {
@@ -1472,7 +1528,7 @@ impl<'a> LoadCheck<'a> {
                     action: id.clone(),
                 }));
             }
-            let Some(uses) = &unit_type.uses else {
+            let Some(uses) = unit_type.section::<UsesData>() else {
                 continue;
             };
             let Some(kind) = kinds.names().named(uses.kind.as_str()) else {
@@ -1563,11 +1619,8 @@ impl<'a> LoadCheck<'a> {
         kinds: &BTreeSet<&DeclaredName>,
     ) -> Option<(Place, DeclaredName)> {
         let types = typed.iter().filter_map(|typed| {
-            let kind = typed
-                .unit_type
-                .slots
-                .keys()
-                .find(|kind| kinds.contains(kind))?;
+            let slots = typed.unit_type.section::<TypeSlotsData>()?;
+            let kind = slots.0.keys().find(|kind| kinds.contains(kind))?;
             Some((typed.at.clone(), kind.clone()))
         });
         let choices = self
@@ -1601,9 +1654,7 @@ impl<'a> LoadCheck<'a> {
             .packages()
             .flat_map(|view| view.content.units.iter());
         for (name, unit_type) in units {
-            let falls = unit_type
-                .projectile
-                .as_ref()
+            let falls = (unit_type.section::<ProjectileData>())
                 .is_some_and(|projectile| projectile.gravity.is_some());
             if falls && planned(DataTable::Projectile, "gravity") {
                 return Err(LoadProblem::Planned {
@@ -1618,9 +1669,8 @@ impl<'a> LoadCheck<'a> {
     /// The mode's slot kinds: none that gives its ranks levels in a mode with no `level` track to
     /// read them on. Their count and names the decode holds.
     fn slot_kinds(&self) -> Result<(), LoadProblem> {
-        let data = &self.packages.data;
-        let kinds = data.slots.kinds();
-        let level_track = data.tracks.values().any(|track| track.level);
+        let kinds = self.sections.slots.kinds();
+        let level_track = self.sections.tracks.0.values().any(|track| track.level);
         let leveled = kinds.iter().find(|kind| {
             kind.ranks
                 .as_ref()
@@ -1641,14 +1691,15 @@ impl<'a> LoadCheck<'a> {
         for (name, choice) in &data.choices {
             let fills = |kind: &DeclaredName| {
                 let at = Place::Choice(name.clone());
-                data.slots
+                self.sections
+                    .slots
                     .names()
                     .named(kind.as_str())
                     .ok_or_else(|| unknown(&at, kind, NameKind::SlotKind))
             };
             match (choice.offers, &choice.slot) {
                 (Offers::Loadout, Some(kind)) => {
-                    let kind_ranks = data.slots.ranks(fills(kind)?);
+                    let kind_ranks = self.sections.slots.ranks(fills(kind)?);
                     if *ranks.get_or_insert(kind_ranks) != kind_ranks {
                         return Err(LoadProblem::Choice(ChoiceProblem::LoadoutRanks));
                     }
@@ -1669,7 +1720,6 @@ impl<'a> LoadCheck<'a> {
         combat: bool,
         at: &Place,
     ) -> Result<(), LoadProblem> {
-        let data = &self.packages.data;
         if !pools.is_empty() {
             self.require(Capability::Stats, at)?;
         }
@@ -1681,11 +1731,7 @@ impl<'a> LoadCheck<'a> {
                 });
             }
         }
-        let lives = data
-            .combat
-            .life
-            .as_ref()
-            .is_some_and(|life| pools.contains(life));
+        let lives = (self.sections.combat.life.as_ref()).is_some_and(|life| pools.contains(life));
         if lives && !combat {
             return Err(LoadProblem::CombatMissing(at.clone()));
         }
@@ -1713,7 +1759,7 @@ impl<'a> LoadCheck<'a> {
         stats: impl IntoIterator<Item = &'s Stat>,
         at: &Place,
     ) -> Result<(), LoadProblem> {
-        let declared = &self.packages.data.stats;
+        let declared = &self.sections.stats.0;
         let unknown = stats.into_iter().find(|stat| !declared.contains_key(stat));
         match unknown {
             Some(name) => Err(LoadProblem::Unknown {
@@ -1957,11 +2003,7 @@ impl EffectScope<'_> {
         else {
             return Err(unknown(at, unit_type, NameKind::UnitType));
         };
-        if spawned
-            .collision
-            .as_ref()
-            .is_some_and(|collision| collision.form.is_box())
-        {
+        if (spawned.section::<CollisionData>()).is_some_and(|collision| collision.form.is_box()) {
             return Err(fail(EffectProblem::SpawnBox));
         }
         Ok(())
@@ -2084,7 +2126,7 @@ fn weapon_fields_hold(
     let projectile = match &action.delivery {
         Some(delivery @ DeliveryData::Projectile { .. }) => units
             .get(delivery.unit_type())
-            .and_then(|unit_type| unit_type.projectile.as_ref()),
+            .and_then(|unit_type| unit_type.section::<ProjectileData>()),
         Some(DeliveryData::Area { .. }) | None => None,
     };
     if action.splash.is_some() && projectile.is_none() {
@@ -2130,7 +2172,7 @@ fn delivery_holds(
     };
     let flies_at_unit = match delivery {
         DeliveryData::Projectile { count, .. } => {
-            let Some(projectile) = &unit_type.projectile else {
+            let Some(projectile) = unit_type.section::<ProjectileData>() else {
                 return wrong_section();
             };
             let at_unit = matches!(action.targeting, Targeting::Unit(_));
@@ -2153,7 +2195,7 @@ fn delivery_holds(
             projectile.flight().at_unit()
         }
         DeliveryData::Area { .. } => {
-            if unit_type.area.is_none() {
+            if unit_type.section::<AreaData>().is_none() {
                 return wrong_section();
             }
             if action.targeting == Targeting::Direction {
@@ -2166,6 +2208,22 @@ fn delivery_holds(
         return fail(DeliveryProblem::Weapon);
     }
     Ok(())
+}
+
+/// Whether `unit_type`, a delivery type, is one and nothing more: of one section of a delivery
+/// type, beside its tags, params, state and `vision`, and no section of a unit that stands.
+fn delivery_only(unit_type: &UnitTypeData) -> bool {
+    let readers = Release::sections();
+    let delivers: Vec<&str> = readers.delivery_keys().collect();
+    let beside = [
+        TypeTagsData::KEY,
+        TypeParamsData::KEY,
+        TypeStateData::KEY,
+        VisionData::KEY,
+    ];
+    let mut keys = unit_type.sections().keys();
+    let delivered = keys.clone().filter(|key| delivers.contains(key)).count();
+    delivered == 1 && keys.all(|key| delivers.contains(&key) || beside.contains(&key))
 }
 
 /// Whether `names` holds `name`.

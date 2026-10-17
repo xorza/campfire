@@ -1,19 +1,16 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
 use campfire_actions::SlotKinds;
-use campfire_combat::ModeCombatData;
 use campfire_common::DeclaredName;
-use campfire_navigation::ModeNavigationData;
-use campfire_production::ModeSupplyData;
-use campfire_progression::TrackData;
+use campfire_declare::{Section, SectionReaders, SectionTable, Sections, TableRead};
 use campfire_script::{
     DataSection, DataTable, ScriptList, ScriptText, ScriptValue, SyncedStateDecl,
 };
-use campfire_stats::{PoolData, StatRule};
-use campfire_units::TagData;
-use campfire_values::{MessageId, Scalar, Stat};
+use campfire_values::{MessageId, Scalar};
 use campfire_visibility::ModeVisibility;
-use serde::{Deserialize, Serialize};
+use serde::de::DeserializeSeed;
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::choice_data::ChoiceData;
 use crate::option_data::OptionData;
@@ -24,19 +21,13 @@ use crate::team_data::TeamData;
 
 /// The mode's `data/mode.toml`, but its script, which its package's load resolves, and its
 /// actions, modifiers and item types, which its package's content holds: its name, its teams'
-/// names, its player inputs, its state, its params and its options.
+/// names, its player inputs, its state, its params and its options, the mode's own, and the
+/// sections of the modules that read the rest.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
     /// The message of the name players see.
     pub name: MessageId,
-    #[serde(default)]
-    pub combat: ModeCombatData,
-    #[serde(default)]
-    pub navigation: ModeNavigationData,
-    /// The kinds of slot its units' actions sit in, in order.
-    #[serde(default)]
-    pub slots: SlotKinds,
     /// What its players choose before their units spawn, by name.
     #[serde(default)]
     pub choices: BTreeMap<DeclaredName, ChoiceData>,
@@ -52,41 +43,45 @@ pub struct ModeData {
     /// The params whose values a session's host picks, by name.
     #[serde(default)]
     pub options: BTreeMap<DeclaredName, OptionData>,
-    /// Every stat its units carry, those the engine reads among them, each with its rule.
-    #[serde(default)]
-    pub stats: BTreeMap<Stat, StatRule>,
-    /// Its pools, by name, the life pool among them: the amounts its units spend and lose.
-    #[serde(default)]
-    pub pools: BTreeMap<DeclaredName, PoolData>,
-    /// Its players' resources, such as gold, which share no name with a pool.
-    #[serde(default)]
-    pub resources: Vec<DeclaredName>,
     /// Each of its manifest's teams, by name.
     #[serde(default)]
     pub teams: BTreeMap<DeclaredName, TeamData>,
     /// How pairs of its teams regard each other; a pair not named is hostile.
     #[serde(default)]
     pub relations: Vec<RelationData>,
-    /// The properties of its tags, by name.
-    #[serde(default)]
-    pub tags: BTreeMap<DeclaredName, TagData>,
-    /// The tracks its units gain experience on, by name.
-    #[serde(default)]
-    pub tracks: BTreeMap<DeclaredName, TrackData>,
     /// Who may take a slot once the match started.
     #[serde(default)]
     pub players: PlayersData,
     /// Who may ask for a save, and how often the mode saves.
     #[serde(default)]
     pub saves: SavesData,
-    /// Whether it counts supply, and its most.
-    pub supply: Option<ModeSupplyData>,
     /// Who receives each kind of its state, and what it leaves to the host.
     #[serde(default)]
     pub visibility: ModeVisibility,
+    /// Read apart, by `ModeData::seed`.
+    #[serde(skip)]
+    pub sections: Sections,
 }
 
 impl ModeData {
+    /// What reads the mode's table, its sections as `readers` register them; an error for a key
+    /// neither the mode nor a section reads, or a value that is no value of its type.
+    pub const fn seed(readers: &SectionReaders) -> ModeSeed<'_> {
+        ModeSeed(readers)
+    }
+
+    /// Its section `S`, if it gives it.
+    pub fn section<S: Section>(&self) -> Option<&S> {
+        debug_assert_eq!(S::TABLE, SectionTable::Mode, "{}", S::KEY);
+        self.sections.get()
+    }
+
+    /// Its section `S`, or the value a mode that does not give it reads as.
+    pub fn section_or_default<S: Section + Default>(&self) -> Cow<'_, S> {
+        debug_assert_eq!(S::TABLE, SectionTable::Mode, "{}", S::KEY);
+        self.sections.get_or_default()
+    }
+
     /// The names `ctx.p` reads of the mode: its params', then its options'.
     pub fn param_names(&self) -> impl Iterator<Item = &DeclaredName> {
         self.params.keys().chain(self.options.keys())
@@ -99,8 +94,24 @@ impl ModeData {
             .choices
             .values()
             .filter_map(|choice| choice.slot.as_ref());
-        let kind = kinds.find_map(|kind| self.slots.names().named(kind.as_str()));
-        kind.map_or(1, |kind| self.slots.ranks(kind))
+        let slots = self.section_or_default::<SlotKinds>();
+        let kind = kinds.find_map(|kind| slots.names().named(kind.as_str()));
+        kind.map_or(1, |kind| slots.ranks(kind))
+    }
+}
+
+/// What reads the mode's table, as serde's seed.
+#[derive(Debug, Clone, Copy)]
+pub struct ModeSeed<'r>(&'r SectionReaders);
+
+impl<'de> DeserializeSeed<'de> for ModeSeed<'_> {
+    type Value = ModeData;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<ModeData, D::Error> {
+        let table = self.0.table(SectionTable::Mode);
+        let TableRead { sections, rest, .. } = table.deserialize(deserializer)?;
+        let data: ModeData = TableRead::own(rest)?;
+        Ok(ModeData { sections, ..data })
     }
 }
 
@@ -153,4 +164,23 @@ pub enum ListEntry {
 
 impl DataSection for ModeData {
     const TABLE: DataTable = DataTable::Mode;
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_declare::{Section, SectionTable};
+
+    use crate::mode_data::ModeData;
+
+    impl ModeData {
+        /// It with `section` too, in place of one of its type.
+        #[must_use]
+        pub fn with<S: Section>(self, section: S) -> Self {
+            debug_assert_eq!(S::TABLE, SectionTable::Mode, "{}", S::KEY);
+            Self {
+                sections: self.sections.with(section),
+                ..self
+            }
+        }
+    }
 }

@@ -1,8 +1,9 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
+use campfire_declare::{Book, Section, SectionTable};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_script::View;
+use serde::{Deserialize, Serialize};
 
 use crate::ground::Ground;
 
@@ -61,4 +62,24 @@ impl Book for MapBook {
     const SCRIPTS_ONLY: bool = false;
 
     fn share(&self, _: &View) {}
+}
+
+/// A map's `metric`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct MetricData(pub Metric);
+
+impl Section for MetricData {
+    const TABLE: SectionTable = SectionTable::Map;
+    const KEY: &'static str = "metric";
+}
+
+/// A map's `[bounds]`, which every map gives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BoundsData(pub Bounds);
+
+impl Section for BoundsData {
+    const TABLE: SectionTable = SectionTable::Map;
+    const KEY: &'static str = "bounds";
 }

@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
-use campfire_actions::{CostTarget, SlotKind};
+use campfire_actions::{CostTarget, SlotKind, SlotKinds};
 use campfire_capabilities::{BookError, Books, Release};
 use campfire_mode::{ModeMap, ModeNames};
-use campfire_progression::TrackBook;
+use campfire_progression::{ModeTracksData, TrackBook};
 use campfire_units::UnitTypes;
 use campfire_values::{Names, PathId, ResourceId, Team, TrackId, TypeScope};
 
@@ -29,12 +29,12 @@ pub(crate) enum TableKind {
 /// by. So a name past a kind's limit, or a kind's name twice, fails as the book fails, before a
 /// check could find the name missing.
 #[derive(Debug)]
-pub(crate) struct NameTables<'a> {
+pub(crate) struct NameTables {
     /// The pools, the players' resources, the damage kinds and the layers.
     mode: ModeNames,
     tracks: Arc<Names<TrackId>>,
     /// The slot kinds' own table, which their data builds as it reads.
-    slot_kinds: &'a Names<SlotKind>,
+    slot_kinds: Arc<Names<SlotKind>>,
     /// The engine's tags, then every tag the packages name; each package's unit types in its
     /// scope, the mode's and the avatars in the mode's.
     types: UnitTypes,
@@ -44,18 +44,19 @@ pub(crate) struct NameTables<'a> {
     paths: Names<PathId>,
 }
 
-impl<'a> NameTables<'a> {
-    pub(crate) fn of(packages: &'a ModePackages) -> Result<Self, BookError> {
+impl NameTables {
+    pub(crate) fn of(packages: &ModePackages) -> Result<Self, BookError> {
         let data = &packages.data;
         let book_packages = packages.book_packages();
         let engine_tags = Release::engine_tags();
         let types = Books::unit_types(&engine_tags, packages.tag_names(), &book_packages);
-        let tracks = TrackBook::new(&data.tracks).map_err(BookError::Tracks)?;
-        let paths = packages.map.paths.iter().map(|path| path.name.as_str());
-        Ok(NameTables {
+        let tracks = data.section_or_default::<ModeTracksData>();
+        let tracks = TrackBook::new(&tracks.0).map_err(BookError::Tracks)?;
+        let paths = packages.map.paths().iter().map(|path| path.name.as_str());
+        Ok(Self {
             mode: ModeNames::of(data).map_err(BookError::Names)?,
             tracks: Arc::clone(tracks.names()),
-            slot_kinds: data.slots.names(),
+            slot_kinds: Arc::clone(data.section_or_default::<SlotKinds>().names()),
             types: types.map_err(BookError::Types)?,
             teams: ModeMap::team_names(&packages.manifest.teams).map_err(BookError::Mode)?,
             paths: Names::first_of(paths),

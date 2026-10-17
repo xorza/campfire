@@ -146,6 +146,9 @@ impl Module for Combat {
     type Set = CombatSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<CombatData>();
+        d.section::<TurretData>();
+        d.section::<ModeCombatData>();
         d.component::<TurretAngle>();
         d.book::<ByType<Turret>>();
         d.part::<BodyUnit, TurretAngle>(|at| at.of_type::<Turret>().map(|_| TurretAngle::REST));

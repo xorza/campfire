@@ -6,15 +6,14 @@ use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_math::Vec3;
 use campfire_mode::Mode;
 use campfire_package::ModePackages;
+use campfire_runner::MatchBuild;
 use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimWorld, StableId, TickRate};
-use campfire_stats::{PoolId, Stats};
+use campfire_stats::{ModePoolsData, PoolId, Stats};
 use campfire_test_packages::PackageTree;
 use campfire_values::{ActionId, ModifierId, Names, PackageIndex, Team};
 use campfire_vision::Vision;
-
-use campfire_runner::MatchBuild;
 
 /// An arena: the books of a mode, on its only map, with every book in place but the map's vision
 /// grid, which `load_vision` gives, and no mode installed. Its script never runs, so no `calc_damage` weighs a hit and
@@ -74,8 +73,8 @@ impl Arena {
 
     /// The pool `name` of the arena's mode.
     pub fn pool(&self, name: &str) -> PoolId {
-        let pools = self.packages.data().pools.keys();
-        let pools: Names<PoolId> = pools.map(DeclaredName::as_str).collect();
+        let data = self.packages.data().section_or_default::<ModePoolsData>();
+        let pools: Names<PoolId> = data.0.keys().map(DeclaredName::as_str).collect();
         pools
             .named(name)
             .unwrap_or_else(|| panic!("no pool {name}"))

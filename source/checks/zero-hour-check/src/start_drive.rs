@@ -5,11 +5,12 @@ use campfire_common::DeclaredName;
 use campfire_geometry::Shape;
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
-use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam};
+use campfire_mode::{MapData, MarkerData, ModeParam};
+use campfire_navigation::MapNavigationData;
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
 use campfire_sim::Position;
-use campfire_units::{Body, Destination};
+use campfire_units::{Body, Destination, MapPoint};
 
 use crate::failure::Failure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};
@@ -153,9 +154,7 @@ impl StartDrive {
 impl WallRect {
     /// The walls of `map`'s navigation, each the rectangle of its points.
     fn of(map: &MapData) -> Vec<Self> {
-        let walls = map
-            .navigation
-            .iter()
+        let walls = (map.section::<MapNavigationData>().into_iter())
             .flat_map(|navigation| &navigation.walls);
         walls
             .map(|wall| {

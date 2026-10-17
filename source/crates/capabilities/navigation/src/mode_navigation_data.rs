@@ -1,4 +1,5 @@
 use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -16,4 +17,9 @@ pub struct ModeNavigationData {
 
 impl DataSection for ModeNavigationData {
     const TABLE: DataTable = DataTable::ModeNavigation;
+}
+
+impl Section for ModeNavigationData {
+    const TABLE: SectionTable = SectionTable::Mode;
+    const KEY: &'static str = "navigation";
 }

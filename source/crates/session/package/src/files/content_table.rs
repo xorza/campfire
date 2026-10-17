@@ -1,4 +1,4 @@
-use campfire_capabilities::PackageContent;
+use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
 use serde::de::Error;
 
@@ -10,9 +10,10 @@ impl ContentTable {
     /// Takes a package's content's keys out of `table`, a data file's, and reads them; the rest of
     /// the table stays.
     pub(crate) fn take<E: Error>(table: &mut TomlTable) -> Result<PackageContent, E> {
-        table
-            .take_keys(PackageContent::KEYS)
-            .read()
+        let readers = Release::sections();
+        let content = table.take_keys(PackageContent::KEYS);
+        content
+            .read_with(PackageContent::seed(&readers))
             .map_err(E::custom)
     }
 }

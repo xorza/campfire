@@ -1,4 +1,5 @@
 use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -17,4 +18,9 @@ pub struct CombatData {
 
 impl DataSection for CombatData {
     const TABLE: DataTable = DataTable::Combat;
+}
+
+impl Section for CombatData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "combat";
 }

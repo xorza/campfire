@@ -19,7 +19,7 @@ use campfire_combat::ClipShots;
 use campfire_common::EnumAll;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Report, Role, Scratch, SetPlace,
+    ModuleSet, OneShot, Report, Role, Scratch, Section, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
@@ -363,6 +363,8 @@ impl Declarations for DeclarationAudit {
             declared_by: self.capability,
         });
     }
+
+    fn section<S: Section>(&mut self) {}
 
     fn sets<S: ModuleSet>(&mut self) {
         for &set in S::ALL {

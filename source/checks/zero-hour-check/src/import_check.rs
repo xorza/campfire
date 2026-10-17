@@ -4,9 +4,11 @@ use std::num::NonZeroU32;
 use campfire_actions::ActionKind;
 use campfire_client_files::{ClientObjects, ClientUnits, MapConditions, TerrainFile};
 use campfire_codec::Binary;
+use campfire_combat::ModeCombatData;
 use campfire_common::{DeclaredName, MapName};
 use campfire_import::{DropCause, Imported, WeaponDrop};
 use campfire_math::Num;
+use campfire_navigation::MapNavigationData;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 use tracing::info;
@@ -79,7 +81,7 @@ impl ImportCheck<'_> {
         if untextured > 0 {
             self.failures.push(Failure::Untextured(untextured));
         }
-        let navigation = self.packages.map().navigation.as_ref();
+        let navigation = self.packages.map().section::<MapNavigationData>();
         let walls = navigation.map_or(0, |navigation| navigation.walls.len());
         if walls != WALLS {
             self.failures.push(Failure::Walls(walls));
@@ -205,7 +207,7 @@ impl ImportCheck<'_> {
 
     /// The weapons, the armors, the damage kinds and the bodies of no life or a wounded start.
     pub(crate) fn combat(&mut self) {
-        let combat = &self.packages.data().combat;
+        let combat = self.packages.data().section_or_default::<ModeCombatData>();
         let dropped = &self.imported.dropped_weapons;
         let fought = FoughtCounts {
             weapons: self.kind_count(ActionKind::Attack),

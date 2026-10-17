@@ -1,4 +1,5 @@
 use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
 use serde::de::Error;
@@ -44,4 +45,9 @@ impl<'de> Deserialize<'de> for TurretData {
 
 impl DataSection for TurretData {
     const TABLE: DataTable = DataTable::Turret;
+}
+
+impl Section for TurretData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "turret";
 }

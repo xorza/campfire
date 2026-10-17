@@ -1,5 +1,6 @@
-use campfire_capabilities::{PackageContent, UnitTypeData};
+use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
+use campfire_declare::UnitTypeData;
 use campfire_values::MessageId;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
@@ -26,7 +27,9 @@ impl<'de> Deserialize<'de> for AvatarFile {
         }
         let Fields { name, mut rest } = Fields::deserialize(deserializer)?;
         let content = ContentTable::take(&mut rest)?;
-        let unit: UnitTypeData = rest.read().map_err(D::Error::custom)?;
+        let readers = Release::sections();
+        let unit = rest.read_with(UnitTypeData::seed(&readers));
+        let unit = unit.map_err(D::Error::custom)?;
         Ok(Self {
             name,
             unit,

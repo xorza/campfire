@@ -18,7 +18,7 @@ use campfire_net::{
     InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders, TickHashes,
 };
 use campfire_orders::OrdersAction;
-use campfire_players::{PlayerResources, PlayersWorld};
+use campfire_players::{PlayerResources, PlayersWorld, ResourcesData};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
@@ -542,8 +542,8 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     // gold from the start, and 100 more every 5 s, 100 ticks at its 20 Hz; its state's `joined`
     // goes to every client, and `left` to none.
     let packages = TestMode::Proving.packages();
-    let resources = packages.data().resources.iter();
-    let resources: Names<ResourceId> = resources.map(DeclaredName::as_str).collect();
+    let resources = packages.data().section_or_default::<ResourcesData>();
+    let resources: Names<ResourceId> = resources.0.iter().map(DeclaredName::as_str).collect();
     let gold = resources.named("gold").unwrap();
     let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
     setup.players = 2;

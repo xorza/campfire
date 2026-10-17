@@ -1,4 +1,5 @@
 use campfire_actions::ProjectileFlight;
+use campfire_declare::{Section, SectionTable};
 use campfire_geometry::MAX_BOUND;
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
@@ -197,6 +198,11 @@ impl<'de> Deserialize<'de> for ProjectileHits {
 
 impl DataSection for ProjectileData {
     const TABLE: DataTable = DataTable::Projectile;
+}
+
+impl Section for ProjectileData {
+    const TABLE: SectionTable = SectionTable::DeliveryType;
+    const KEY: &'static str = "projectile";
 }
 
 #[cfg(feature = "internals")]

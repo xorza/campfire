@@ -87,6 +87,7 @@ impl Module for Areas {
     type Set = AreasSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<AreaData>();
         d.engine_tags(&[Self::TAG]);
         d.component::<Area>();
         d.component::<AreaTrigger>();

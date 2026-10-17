@@ -1,3 +1,4 @@
+use campfire_declare::{Section, SectionTable};
 use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
@@ -69,4 +70,9 @@ impl DataSection for ModeCombatData {
 
 impl DataSection for LeechData {
     const TABLE: DataTable = DataTable::Leech;
+}
+
+impl Section for ModeCombatData {
+    const TABLE: SectionTable = SectionTable::Mode;
+    const KEY: &'static str = "combat";
 }

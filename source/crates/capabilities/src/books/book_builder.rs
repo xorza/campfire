@@ -5,34 +5,41 @@ use std::sync::Arc;
 use campfire_actions::{
     ActionData, ActionKind, ActionNames, ActionParts, ActionProblem, ActionSlots, ConstructData,
     CostTarget, EffectNames, PackageAction, PlacementData, PlacementRule, ProjectileFlight,
-    SlotKindBook, UseGroup,
+    SlotKindBook, SlotKinds, TypeSlotsData, UseGroup,
 };
-use campfire_areas::{AreaError, AreaSpec, Areas};
-use campfire_combat::{Armor, CombatBook, CombatData, OnDeath, Turret};
+use campfire_areas::{AreaData, AreaError, AreaSpec, Areas};
+use campfire_combat::{Armor, CombatBook, CombatData, ModeCombatData, OnDeath, Turret, TurretData};
 use campfire_common::DeclaredName;
-use campfire_interaction::{UseData, UseSlot, UseSpec};
-use campfire_items::{Inventory, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData};
+use campfire_declare::UnitTypeData;
+use campfire_interaction::{UseData, UseSlot, UseSpec, UsesData};
+use campfire_items::{
+    Inventory, InventoryData, ItemBook, ItemError, ItemId, ItemSpec, Shop, ShopData,
+};
 use campfire_mode::{MapInput, ModeInputs, ModeLoad, ModeMap, ModeNames, ResolvedMap};
-use campfire_navigation::{Walker, WalkerKinds};
-use campfire_orders::Ai;
+use campfire_navigation::{ModeNavigationData, Walker, WalkerKinds};
+use campfire_orders::{Ai, AiData};
 use campfire_players::ResourceAmount;
 use campfire_production::{
-    Builder, Gatherer, NewBuild, Node, PlacementCheck, Production, ResourceSet, Style, SupplyBook,
-    SupplyCostBook,
+    Builder, DropOffData, Gatherer, ModeSupplyData, NewBuild, Node, NodeData, PlacementCheck,
+    Production, ProductionData, ResourceSet, Style, SupplyBook, SupplyCostBook, SupplyData,
 };
-use campfire_progression::{TrackBook, TrackSet};
+use campfire_progression::{ModeTracksData, TrackBook, TrackSet, TypeTracksData};
 use campfire_projectiles::{ProjectileData, ProjectileSpec, Projectiles};
 use campfire_script::{Filter, NameKind, ScriptId, UnknownName};
 use campfire_sim::Capability;
 use campfire_stats::{
-    ModifierBook, ModifierError, ModifierLoad, PackageModifier, ParamBook, ParamTable, PoolBook,
-    PoolId, SpecError, StatBook, StatId, TypePassive,
+    ModePoolsData, ModeStatsData, ModifierBook, ModifierError, ModifierLoad, PackageModifier,
+    ParamBook, ParamTable, PassiveData, PoolBook, PoolId, SpecError, StatBook, StatId, StatsData,
+    TypePassive, TypePoolsData,
 };
-use campfire_units::{Avatar, TypeOrigin, TypesError, UnitTypes};
+use campfire_units::{
+    Avatar, CollisionData, ModeTagsData, TypeOrigin, TypesError, UnitTypeCore, UnitTypes,
+};
 use campfire_values::{
-    ActionId, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, PackagePath, Share,
-    Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
+    ActionId, DamageKind, EngineStat, FilterData, ModifierId, NameId, Names, PackageIndex,
+    PackagePath, Share, Stat, Tag, TimeTooLarge, TrackId, TypeScope, UnitType,
 };
+use campfire_vision::VisionData;
 
 use crate::books::Books;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
@@ -42,7 +49,6 @@ use crate::books::built_books::BuiltBooks;
 use crate::books::error::BookError;
 use crate::books::type_place::TypePlace;
 use crate::books::unit_start::{StartOf, UnitStart};
-use crate::books::unit_type_data::UnitTypeData;
 
 /// A unit type the builder looks up by the name it declared it by.
 const DECLARED: &str = "the builder declared each unit type";
@@ -68,6 +74,8 @@ pub(crate) struct BookBuilder<'a> {
     loadout_ranks: u8,
     /// Where each package's scripts start among the match's.
     script_starts: Vec<usize>,
+    /// The mode's kinds of slot.
+    slot_kinds: SlotKinds,
 }
 
 /// A unit type that stands, as its package gives it: its name in its scope, the scope, its file,
@@ -143,25 +151,31 @@ impl<'a> BookBuilder<'a> {
         let types = Books::unit_types(input.engine_tags, input.tag_names, &input.packages);
         let books = BookParts {
             types: types?,
-            supply: data.supply,
+            supply: data.section::<ModeSupplyData>().copied(),
             ..BookParts::default()
         };
         let names = ModeNames::of(data)?;
-        let life = data.combat.life_pool(&names.pools);
+        let combat = data.section_or_default::<ModeCombatData>();
+        let life = combat.life_pool(&names.pools);
         let life =
             life.map_err(|name| BookError::unknown(PackageIndex::MODE, BookPlace::Combat, name))?;
-        let armors = data
-            .combat
+        let armors = combat
             .armors
             .iter()
             .map(|(name, shares)| Ok((name.clone(), Armor::of(shares, &names.damage_kinds)?)))
             .collect::<Result<_, UnknownName>>()
             .map_err(|name| BookError::unknown(PackageIndex::MODE, BookPlace::Combat, name))?;
         let stats = BookBuilder::stat_book(input, &books.types)?;
-        let pools = PoolBook::new(&data.pools, Arc::clone(&names.pools), life, |pool, stat| {
-            let at = BookPlace::Pool(pool.clone());
-            BookBuilder::stat_in(&stats, PackageIndex::MODE, at, stat)
-        })?;
+        let pool_data = data.section_or_default::<ModePoolsData>();
+        let pools = PoolBook::new(
+            &pool_data.0,
+            Arc::clone(&names.pools),
+            life,
+            |pool, stat| {
+                let at = BookPlace::Pool(pool.clone());
+                BookBuilder::stat_in(&stats, PackageIndex::MODE, at, stat)
+            },
+        )?;
         Ok(BookBuilder {
             input,
             stats,
@@ -172,6 +186,7 @@ impl<'a> BookBuilder<'a> {
             names,
             loadout_ranks: data.loadout_ranks(),
             script_starts,
+            slot_kinds: data.section_or_default::<SlotKinds>().into_owned(),
         })
     }
 
@@ -190,7 +205,8 @@ impl<'a> BookBuilder<'a> {
     pub(crate) fn build(mut self) -> Result<Books, BookError> {
         let input = self.input;
         if input.set.contains(Capability::Progression) {
-            self.books.tracks = TrackBook::new(&input.data.tracks)?;
+            self.books.tracks =
+                TrackBook::new(&input.data.section_or_default::<ModeTracksData>().0)?;
         }
         for (index, package) in (0..).map(PackageIndex::new).zip(&input.packages) {
             self.modifiers(index, package)?;
@@ -236,7 +252,8 @@ impl<'a> BookBuilder<'a> {
         let resolved = self.resolve_map(&self.books.types)?;
         let mut parts = self.books;
         let stats = &self.stats;
-        let combat = CombatBook::new(&data.combat, input.rate, |stat| {
+        let combat = data.section_or_default::<ModeCombatData>();
+        let combat = CombatBook::new(&combat, input.rate, |stat| {
             BookBuilder::stat_in(stats, PackageIndex::MODE, BookPlace::Combat, stat)
         })?;
         let standing = parts.units.unit_types.iter();
@@ -249,7 +266,9 @@ impl<'a> BookBuilder<'a> {
             navigation,
             vision,
         } = resolved;
-        let types = parts.types.finish(&data.tags);
+        let types = parts
+            .types
+            .finish(&data.section_or_default::<ModeTagsData>().0);
         let mut built = BuiltBooks::default();
         built.add(types.states);
         built.add(types.origins);
@@ -263,7 +282,7 @@ impl<'a> BookBuilder<'a> {
         built.add(SupplyCostBook::new(parts.supplies, &parts.actions));
         built.add(parts.actions);
         built.add(parts.effects);
-        built.add(SlotKindBook(Arc::new(data.slots.clone())));
+        built.add(SlotKindBook(Arc::new(self.slot_kinds)));
         built.add(combat);
         built.add(parts.ais);
         built.add(parts.projectiles);
@@ -308,7 +327,9 @@ impl<'a> BookBuilder<'a> {
             built,
             damage_kinds,
             resources,
-            spawn_tags: self.input.data.navigation.spawn_tags.clone().into(),
+            spawn_tags: (data.section_or_default::<ModeNavigationData>().spawn_tags)
+                .clone()
+                .into(),
             inputs: ModeInputs {
                 units: parts.units,
                 load: ModeLoad {
@@ -409,7 +430,8 @@ impl<'a> BookBuilder<'a> {
     /// section, refreshed in the input's order: each package's types that stand, in its scope,
     /// and each avatar, in the mode's; an error for a stat the mode does not declare.
     fn stat_book(input: &BookInput<'_>, types: &UnitTypes) -> Result<StatBook, BookError> {
-        let mut book = StatBook::new(&input.data.stats, input.max_move_speed.get());
+        let stats = input.data.section_or_default::<ModeStatsData>();
+        let mut book = StatBook::new(&stats.0, input.max_move_speed.get());
         for (index, package) in (0..).map(PackageIndex::new).zip(&input.packages) {
             let units = package.content.units.iter();
             let declared = units
@@ -420,7 +442,7 @@ impl<'a> BookBuilder<'a> {
                 BookKind::Mode | BookKind::Loadout | BookKind::Rules => None,
             };
             for unit in declared.chain(avatar) {
-                let Some(stats) = &unit.file.stats else {
+                let Some(stats) = unit.file.section::<StatsData>() else {
                     continue;
                 };
                 let unit_type = types
@@ -449,14 +471,14 @@ impl<'a> BookBuilder<'a> {
                 package: index,
                 name: name.as_str().into(),
             };
-            types.load(scope, origin, &file.core())?;
+            types.load(scope, origin, &UnitTypeCore::from(file))?;
         }
         if let BookKind::Avatar(unit) = package.kind {
             let origin = TypeOrigin {
                 package: index,
                 name: package.name.into(),
             };
-            types.load(TypeScope::Mode, origin, &unit.core())?;
+            types.load(TypeScope::Mode, origin, &UnitTypeCore::from(unit))?;
         }
         Ok(())
     }
@@ -631,17 +653,14 @@ impl<'a> BookBuilder<'a> {
         };
         let form = self
             .names
-            .form(file.collision.as_ref())
+            .form(file.section::<CollisionData>())
             .map_err(at(place))?;
         let form = form
             .filter(|form| form.is_box())
             .ok_or_else(|| problem(ActionProblem::NoBox))?;
-        let alive = input
-            .data
-            .combat
-            .life
-            .as_ref()
-            .is_some_and(|life| file.pools.contains(life));
+        let combat = input.data.section_or_default::<ModeCombatData>();
+        let pools = file.section_or_default::<TypePoolsData>();
+        let alive = (combat.life.as_ref()).is_some_and(|life| pools.0.contains(life));
         let start_life = data.start_life;
         let starts = start_life.is_some_and(|share| !share.is_zero());
         if (alive && !starts) || start_life.is_some_and(Share::is_zero) {
@@ -731,18 +750,18 @@ impl<'a> BookBuilder<'a> {
                 .ok_or_else(|| UnknownName::new(NameKind::Resource, name))
         };
         let books = &mut self.books;
-        if let Some(production) = file.production {
+        if let Some(&production) = file.section::<ProductionData>() {
             books.producers.set(unit_type, production);
         }
-        if let Some(supply) = file.supply {
+        if let Some(&supply) = file.section::<SupplyData>() {
             books.supplies.set(unit_type, supply);
         }
-        if let Some(node) = &file.node {
+        if let Some(node) = file.section::<NodeData>() {
             let resource = resource(&node.resource)?;
             books.types.give_tag(unit_type, Production::NODE.tag());
             books.nodes.nodes.set(unit_type, resource);
         }
-        if let Some(drop_off) = &file.drop_off {
+        if let Some(drop_off) = file.section::<DropOffData>() {
             let taken = drop_off.resources.iter().map(resource);
             let taken = taken.collect::<Result<ResourceSet, UnknownName>>()?;
             books.types.give_tag(unit_type, Production::DROP_OFF.tag());
@@ -772,7 +791,7 @@ impl<'a> BookBuilder<'a> {
             unit,
             unit_type,
         };
-        let mut combat = file.combat.clone();
+        let mut combat = file.section::<CombatData>().cloned();
         if unit.declared.is_none() {
             self.books.types.give_tag(unit_type, Avatar::TAG.tag());
             if let Some(combat) = &mut combat {
@@ -794,7 +813,7 @@ impl<'a> BookBuilder<'a> {
 
     /// The AI of `at`, when it takes orders.
     fn ai(&mut self, at: TypeAt<'_>) -> Result<(), BookError> {
-        let Some(orders) = &at.unit.file.orders else {
+        let Some(orders) = at.unit.file.section::<AiData>() else {
             return Ok(());
         };
         let script = self.script(at.package, &orders.ai)?;
@@ -812,16 +831,13 @@ impl<'a> BookBuilder<'a> {
     /// What `at` starts with of its stats, with `combat`, its combat section as the type spawns
     /// with it; an error for a pool the mode does not declare, or for stats that make no unit.
     fn start(&self, at: TypeAt<'_>, combat: Option<&CombatData>) -> Result<UnitStart, BookError> {
-        let data = self.input.data;
-        let pools: Vec<(PoolId, &Stat)> = at
-            .unit
-            .file
-            .pools
-            .iter()
+        let pool_data = self.input.data.section_or_default::<ModePoolsData>();
+        let type_pools = at.unit.file.section_or_default::<TypePoolsData>();
+        let pools: Vec<(PoolId, &Stat)> = (type_pools.0.iter())
             .map(|pool| {
                 let id = self.names.pools.named(pool.as_str());
                 let id = id.ok_or_else(|| UnknownName::new(NameKind::Pool, pool))?;
-                Ok((id, &data.pools[pool].max))
+                Ok((id, &pool_data.0[pool].max))
             })
             .collect::<Result<_, UnknownName>>()
             .map_err(|name| at.unknown(name))?;
@@ -865,35 +881,36 @@ impl<'a> BookBuilder<'a> {
             armor.ok_or_else(|| UnknownName::new(NameKind::Armor, name))
         });
         let armor = armor.transpose().map_err(unknown)?;
-        let body = self.names.form(file.collision.as_ref()).map_err(unknown)?;
+        let body = self
+            .names
+            .form(file.section::<CollisionData>())
+            .map_err(unknown)?;
         let names = self.names(at.package, None);
-        let tracks: TrackSet = file
-            .tracks
-            .iter()
+        let tracks: TrackSet = (file.section_or_default::<TypeTracksData>().0.iter())
             .map(|track| names.track(track))
             .collect::<Result<_, UnknownName>>()
             .map_err(unknown)?;
-        let inventory = file.inventory.as_ref().map(|inventory| {
-            let kind = input.data.slots.names().named(inventory.kind.as_str());
+        let slot_kinds = &self.slot_kinds;
+        let inventory = file.section::<InventoryData>().map(|inventory| {
+            let kind = slot_kinds.names().named(inventory.kind.as_str());
             let kind = kind.ok_or_else(|| UnknownName::new(NameKind::SlotKind, &inventory.kind))?;
             Ok((Inventory::new(inventory.slots), UseGroup::new(kind)))
         });
         let inventory = inventory.transpose().map_err(unknown)?;
-        let shop = file.shop.as_ref().map(|shop| self.shop(shop));
+        let shop = file.section::<ShopData>().map(|shop| self.shop(shop));
         let shop = shop.transpose().map_err(unknown)?;
         let usable = file
-            .usable
-            .as_ref()
+            .section::<UseData>()
             .map(|usable| self.usable(usable, actions));
         let usable = usable.transpose().map_err(unknown)?;
-        let uses = file.uses.as_ref().map(|uses| {
-            let kind = input.data.slots.names().named(uses.kind.as_str());
+        let uses = file.section::<UsesData>().map(|uses| {
+            let kind = slot_kinds.names().named(uses.kind.as_str());
             kind.map(UseSlot::new)
                 .ok_or_else(|| UnknownName::new(NameKind::SlotKind, &uses.kind))
         });
         let uses = uses.transpose().map_err(unknown)?;
-        let turret = file.turret.as_ref().map(|turret| {
-            let slot = input.data.slots.names().named(turret.slot.as_str());
+        let turret = file.section::<TurretData>().map(|turret| {
+            let slot = slot_kinds.names().named(turret.slot.as_str());
             let slot = slot.ok_or_else(|| UnknownName::new(NameKind::SlotKind, &turret.slot))?;
             Ok(Turret::of(turret, slot, input.rate))
         });
@@ -903,7 +920,8 @@ impl<'a> BookBuilder<'a> {
             .map_err(unknown)?;
         let package = &input.packages[usize::from(at.package)];
         let slotted = |kind| {
-            let mut slotted = file.slots.values().flatten();
+            let slots = file.section_or_default::<TypeSlotsData>();
+            let mut slotted = slots.0.values().flatten();
             slotted.any(|id| {
                 let action = package.content.actions.get(id);
                 action.is_some_and(|action| action.kind == kind)
@@ -918,15 +936,16 @@ impl<'a> BookBuilder<'a> {
         books.turns.set_some(unit_type, turn);
         books.turrets.set_some(unit_type, turret);
         books.bodies.set_some(unit_type, body);
-        books
-            .sights
-            .set_some(unit_type, file.vision.map(|vision| vision.sight));
+        books.sights.set_some(
+            unit_type,
+            file.section::<VisionData>().map(|vision| vision.sight),
+        );
         books
             .type_tracks
             .set_some(unit_type, (!tracks.is_empty()).then_some(tracks));
         let builds = slotted(ActionKind::Build).then(Builder::default);
         books.builders.set_some(unit_type, builds);
-        let node = file.node.as_ref().map(|node| Node::new(node.amount.get()));
+        let node = (file.section::<NodeData>()).map(|node| Node::new(node.amount.get()));
         books.node_starts.set_some(unit_type, node);
         let gathers = slotted(ActionKind::Gather).then(Gatherer::default);
         books.gatherers.set_some(unit_type, gathers);
@@ -979,7 +998,7 @@ impl<'a> BookBuilder<'a> {
     /// The kind of walker of `at`, of its file and its body, when it walks; an error for a box
     /// body, which only a type that stands has.
     fn walker(&mut self, at: TypeAt<'_>) -> Result<(), BookError> {
-        if at.unit.file.walks() {
+        if BookBuilder::walks(at.unit.file) {
             let body = self.books.bodies.get(at.unit_type).copied();
             let walker = Walker::of_form(body).ok_or_else(|| BookError::BoxWalks {
                 package: at.package,
@@ -1001,9 +1020,9 @@ impl<'a> BookBuilder<'a> {
         inventory: Option<&(Inventory, UseGroup)>,
         uses: Option<UseSlot>,
     ) -> Result<Option<ActionSlots>, UnknownName> {
-        let slots = &self.input.data.slots;
+        let slots = &self.slot_kinds;
         let mut held = Vec::new();
-        for (kind, ids) in &file.slots {
+        for (kind, ids) in &file.section_or_default::<TypeSlotsData>().0 {
             let named = slots.names().named(kind.as_str());
             let kind = named.ok_or_else(|| UnknownName::new(NameKind::SlotKind, kind))?;
             let rank = slots.first_rank(kind);
@@ -1036,9 +1055,9 @@ impl<'a> BookBuilder<'a> {
         file: &UnitTypeData,
     ) -> Result<Option<ModifierId>, UnknownName> {
         let names = self.names(index, None);
-        let passive = file.passive.as_ref();
+        let passive = file.section::<PassiveData>();
         passive
-            .map(|name| ActionNames::modifier(&names, index, name))
+            .map(|name| ActionNames::modifier(&names, index, &name.0))
             .transpose()
     }
 
@@ -1060,13 +1079,13 @@ impl<'a> BookBuilder<'a> {
             .named((scope, name.as_str()))
             .expect(DECLARED);
         let at = || BookPlace::UnitType(TypePlace::Declared(name.clone()));
-        if let Some(projectile) = &file.projectile {
+        if let Some(projectile) = file.section::<ProjectileData>() {
             books.types.give_tag(unit_type, Projectiles::TAG.tag());
             let spec = ProjectileSpec::of(projectile, books.types.tags(), rate)
                 .map_err(|unknown| BookError::unknown(index, at(), unknown))?;
             books.projectiles.set(unit_type, spec);
         }
-        if let Some(area) = &file.area {
+        if let Some(area) = file.section::<AreaData>() {
             books.types.give_tag(unit_type, Areas::TAG.tag());
             let modifiers = &books.modifiers;
             let modifier = |id: &DeclaredName| {
@@ -1085,9 +1104,10 @@ impl<'a> BookBuilder<'a> {
                 )?;
             books.areas.set(unit_type, spec);
         }
-        books
-            .sights
-            .set_some(unit_type, file.vision.map(|vision| vision.sight));
+        books.sights.set_some(
+            unit_type,
+            file.section::<VisionData>().map(|vision| vision.sight),
+        );
         Ok(())
     }
 
@@ -1098,13 +1118,21 @@ impl<'a> BookBuilder<'a> {
         index: PackageIndex,
         types: impl IntoIterator<Item = &'u UnitTypeData>,
     ) -> Result<BTreeMap<&'u str, u8>, BookError> {
-        let slots = types.into_iter().map(|unit_type| &unit_type.slots);
-        let ranks = self.input.data.slots.slotted_ranks(slots);
+        let types = types.into_iter();
+        let slots = types.filter_map(|unit_type| unit_type.section::<TypeSlotsData>());
+        let ranks = self.slot_kinds.slotted_ranks(slots.map(|slots| &slots.0));
         ranks.map_err(|action| BookError::Action {
             package: index,
             action: action.clone(),
             problem: ActionProblem::SlottedRanks,
         })
+    }
+
+    /// Whether the units of `file` walk: its stats declare a move speed.
+    fn walks(file: &UnitTypeData) -> bool {
+        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
+        let stats = file.section::<StatsData>();
+        stats.is_some_and(|stats| stats.declares(&move_speed))
     }
 
     /// The script at `path` of the package at `index`, by its place in the order a match
@@ -1183,7 +1211,9 @@ impl ActionNames for BuildNames<'_> {
 
     fn flight(&self, package: PackageIndex, name: &DeclaredName) -> Option<ProjectileFlight> {
         let units = &self.input.packages[usize::from(package)].content.units;
-        let projectile = units.get(name).and_then(|file| file.projectile.as_ref());
+        let projectile = units
+            .get(name)
+            .and_then(|file| file.section::<ProjectileData>());
         projectile.map(ProjectileData::flight)
     }
 }

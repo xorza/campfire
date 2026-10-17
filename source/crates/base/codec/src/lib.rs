@@ -25,6 +25,7 @@ mod toml;
 #[cfg(feature = "internals")]
 mod toml_document;
 mod toml_table;
+mod toml_value;
 
 pub use crate::binary::{Binary, Taken};
 pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError};
@@ -33,6 +34,7 @@ pub use crate::json_value::JsonValue;
 pub use crate::sink::Sink;
 pub use crate::toml::Toml;
 pub use crate::toml_table::TomlTable;
+pub use crate::toml_value::TomlValue;
 
 /// What the tests of the engine's crates use of the formats: a TOML document they edit, and its
 /// values.

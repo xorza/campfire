@@ -7,7 +7,7 @@ use campfire_units::{HeightGrid, ScriptBook};
 use campfire_values::{EngineTag, PackagePath, Speed};
 
 use crate::books::package_content::PackageContent;
-use crate::books::unit_type_data::UnitTypeData;
+use campfire_declare::UnitTypeData;
 
 /// What a match's books are built from, which the package load checked: the mode's data, its
 /// map and teams, the rules of its manifest, its packages in the order a match loads them, and

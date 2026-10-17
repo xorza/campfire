@@ -2,16 +2,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 use std::sync::Arc;
 
-use campfire_actions::ActionData;
+use campfire_actions::{ActionData, SlotKinds, TypeSlotsData};
 use campfire_capabilities::{
-    BookInput, BookKind, BookPackage, Books, PackageContent, PackageScript, Release, UnitTypeData,
+    BookInput, BookKind, BookPackage, Books, PackageContent, PackageScript, Release,
 };
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
+use campfire_declare::UnitTypeData;
 use campfire_mode::{MapData, ModeData};
+use campfire_navigation::ModeNavigationData;
 use campfire_script::{ScriptHost, ScriptId, UnknownName};
 use campfire_sim::TickRate;
-use campfire_stats::{EdgeError, StatGraph, StatId};
-use campfire_units::{HeightGrid, ScriptBook};
+use campfire_stats::{EdgeError, ModeStatsData, StatGraph, StatId};
+use campfire_units::{HeightGrid, ModeTagsData, ScriptBook, TypeTagsData};
 use campfire_values::{EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
@@ -20,6 +22,7 @@ use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::{ContentError, LoadError};
 use crate::file_index::FileIndex;
+use crate::files::map_file::MapFile;
 use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
 use crate::files::mode_script::ModeScript;
@@ -259,7 +262,8 @@ impl ModePackages {
     /// an action of a way that applies it, declares as a scaling table reads each stat the table
     /// names. An error names a stat the mode does not have, where the package gives it.
     pub(crate) fn stat_graph(&self) -> Result<StatGraph, LoadError> {
-        let mut graph = StatGraph::new(self.data.stats.keys().cloned());
+        let stats = self.data.section_or_default::<ModeStatsData>();
+        let mut graph = StatGraph::new(stats.0.keys().cloned());
         for view in self.packages() {
             let content = view.content;
             let ways = self.modifier_ways(view);
@@ -304,8 +308,10 @@ impl ModePackages {
         &self,
         types: impl IntoIterator<Item = &'u UnitTypeData>,
     ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
-        let slots = types.into_iter().map(|unit_type| &unit_type.slots);
-        self.data.slots.slotted_ranks(slots)
+        let types = types.into_iter();
+        let slots = types.filter_map(|unit_type| unit_type.section::<TypeSlotsData>());
+        let kinds = self.data.section_or_default::<SlotKinds>();
+        kinds.slotted_ranks(slots.map(|slots| &slots.0))
     }
 
     /// Every tag its packages name but the engine's, each once, sorted: the tags of its unit
@@ -324,6 +330,8 @@ impl ModePackages {
         dependencies: &[Dependent],
     ) -> Vec<DeclaredName> {
         let (data, content) = mode;
+        let mode_tags = data.section_or_default::<ModeTagsData>();
+        let navigation = data.section_or_default::<ModeNavigationData>();
         let engine = Release::engine_tags();
         let contents =
             iter::once(content).chain(dependencies.iter().map(|dependent| &dependent.content));
@@ -340,15 +348,14 @@ impl ModePackages {
         let types = contents
             .flat_map(|content| content.units.values())
             .chain(avatars)
-            .flat_map(|unit_type| &unit_type.tags);
-        let declared = data
-            .tags
-            .iter()
-            .flat_map(|(name, tag)| [name].into_iter().chain(&tag.immune));
+            .filter_map(|unit_type| unit_type.section::<TypeTagsData>())
+            .flat_map(|tags| &tags.0);
+        let declared =
+            (mode_tags.0.iter()).flat_map(|(name, tag)| [name].into_iter().chain(&tag.immune));
         let names: BTreeSet<&DeclaredName> = modifiers
             .chain(types)
             .chain(declared)
-            .chain(&data.navigation.layers)
+            .chain(&navigation.layers)
             .filter(|name| EngineTag::named(&engine, name.as_str()).is_none())
             .collect();
         names.into_iter().cloned().collect()
@@ -403,7 +410,7 @@ impl ModePackages {
         };
         let map_data = PackagePath::parse(&format!("map/{map_name}/map.toml"))
             .expect("a map's name is a package path's name");
-        let map = files
+        let MapFile(map) = files
             .reader()
             .read_data(&map_data)
             .map_err(LoadProblem::Content)

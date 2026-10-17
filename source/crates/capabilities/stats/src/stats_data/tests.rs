@@ -1,7 +1,7 @@
 use std::str::FromStr;
 
 use campfire_script::{NameKind, UnknownName};
-use campfire_values::{EngineStat, NameId, UnitType};
+use campfire_values::{NameId, UnitType};
 
 use super::*;
 use crate::stat_book::StatBook;

@@ -138,6 +138,11 @@ impl Module for Production {
     type Set = ProductionSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<ProductionData>();
+        d.section::<SupplyData>();
+        d.section::<NodeData>();
+        d.section::<DropOffData>();
+        d.section::<ModeSupplyData>();
         d.removals::<Dead>();
         d.removals::<Gatherer>();
         d.removals::<Owner>();

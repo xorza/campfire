@@ -1,4 +1,7 @@
+use std::collections::BTreeMap;
+
 use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{Block, TagProperties};
 use serde::Deserialize;
@@ -43,4 +46,14 @@ impl TagData {
 
 impl DataSection for TagData {
     const TABLE: DataTable = DataTable::Tag;
+}
+
+/// The mode's `[tags]`: the properties of its tags, by name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(transparent)]
+pub struct ModeTagsData(pub BTreeMap<DeclaredName, TagData>);
+
+impl Section for ModeTagsData {
+    const TABLE: SectionTable = SectionTable::Mode;
+    const KEY: &'static str = "tags";
 }

@@ -5,6 +5,7 @@ use crate::avatar_unit::AvatarUnit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::{LoadError, PackageRef};
 use crate::files::avatar_file::AvatarFile;
+use crate::files::loadout_file::LoadoutFile;
 use crate::files::manifest::Manifest;
 use crate::files::package_name::PackageName;
 use crate::package::Package;
@@ -60,7 +61,7 @@ impl Dependent {
             }
             Manifest::Loadout(_) => {
                 let content = files.read_data(&PackageFiles::engine_path(LOADOUT_DATA));
-                let content = content.map_err(LoadProblem::Content).map_err(fail)?;
+                let LoadoutFile(content) = content.map_err(LoadProblem::Content).map_err(fail)?;
                 (content, DependentKind::Loadout)
             }
             Manifest::Rules(_) => (PackageContent::default(), DependentKind::Rules),

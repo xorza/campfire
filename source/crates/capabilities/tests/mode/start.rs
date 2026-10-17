@@ -1,6 +1,6 @@
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
-use campfire_units::{CellSplit, CoarseSpan, Ground, GroundError, HeightGrid, MapBook};
+use campfire_units::{CellSplit, CoarseSpan, Ground, GroundData, GroundError, HeightGrid, MapBook};
 use campfire_vision::VisionBook;
 
 use super::*;
@@ -69,9 +69,9 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     assert_eq!(game.player_entity(PlayerSlot::new(3)), None);
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
     let vision = game.resource::<VisionBook>().grid().unwrap();
-    let grid = Grid::new(Num::int(1), map().bounds).unwrap();
+    let grid = Grid::new(Num::int(1), map().bounds()).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
-    assert_eq!(game.resource::<MapBook>().bounds, map().bounds);
+    assert_eq!(game.resource::<MapBook>().bounds, map().bounds());
     // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
     // the grunt, with no body, the first's, `ground`.
     let tags = |id| {
@@ -223,9 +223,10 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
         to: [Num::int(20); 2],
     };
     let resolve = |ground: Option<GroundData>, heights: Option<&HeightGrid>| {
-        let map = MapData {
-            ground,
-            ..MapData::planar(Bounds::new([Num::int(-50); 2], [Num::int(50); 2]).unwrap())
+        let map = MapData::planar(Bounds::new([Num::int(-50); 2], [Num::int(50); 2]).unwrap());
+        let map = match ground {
+            Some(ground) => map.with(ground),
+            None => map,
         };
         let input = MapInput {
             map: &map,
@@ -372,13 +373,13 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
 
     // A height past the world's bound; and on a spatial map, whose points hold their own, any
     // height but 0.
-    let mut map = mode_files().map;
+    let map = mode_files().map;
     let ground = MapPoint::ground(0, 0);
     assert_eq!(
         map.placed_at(&ground, Num::int(1 << 21)),
         Err(ModeError::OutOfBounds)
     );
-    map.metric = Metric::Spatial;
+    let map = map.with(MetricData(Metric::Spatial));
     let space = MapPoint::Space([Num::ZERO, Num::ONE, Num::ZERO]);
     let lifted = Vec3::new(Num::ZERO, Num::int(1), Num::ZERO);
     assert_eq!(map.placed_at(&space, Num::ZERO), Ok(lifted));

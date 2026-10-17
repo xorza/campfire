@@ -40,6 +40,7 @@ use campfire_net::{
 };
 use campfire_package::{ModePackages, Texts};
 use campfire_package_disk::PackageDir;
+use campfire_players::ResourcesData;
 use campfire_protocol::Signer;
 use campfire_sim::{Capability, TickRate};
 use campfire_store::SecretFile;
@@ -262,12 +263,8 @@ fn add_ends(
     // holds, so only a mode of navigation has the preview of one.
     let capabilities = &packages.manifest().capabilities;
     if capabilities.contains(Capability::Production) {
-        let names: Names<ResourceId> = packages
-            .data()
-            .resources
-            .iter()
-            .map(DeclaredName::as_str)
-            .collect();
+        let data = packages.data().section_or_default::<ResourcesData>();
+        let names: Names<ResourceId> = data.0.iter().map(DeclaredName::as_str).collect();
         let resources = names.iter().map(|(resource, _)| resource).collect();
         app.add_plugins((
             ActionNames {

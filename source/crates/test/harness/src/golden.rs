@@ -7,7 +7,7 @@ use campfire_combat::Deaths;
 use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick};
 use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
-use campfire_players::PlayersWorld;
+use campfire_players::{PlayersWorld, ResourcesData};
 use campfire_script::ScriptFailures;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
 use campfire_stats::{PoolId, PoolMeters};
@@ -42,8 +42,8 @@ const DIGITS: usize = 16;
 impl Golden {
     /// A record of a match of `packages` for `players` players.
     pub(crate) fn new(packages: &ModePackages, players: u32) -> Self {
-        let names = packages.data().resources.iter();
-        let names: Names<ResourceId> = names.map(DeclaredName::as_str).collect();
+        let data = packages.data().section_or_default::<ResourcesData>();
+        let names: Names<ResourceId> = data.0.iter().map(DeclaredName::as_str).collect();
         let resources = names.iter().map(|(resource, _)| resource).collect();
         Self {
             resources,

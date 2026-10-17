@@ -1,3 +1,4 @@
+use campfire_declare::{Section, SectionTable};
 use std::num::NonZeroU32;
 
 use campfire_common::DeclaredName;
@@ -15,4 +16,9 @@ pub struct NodeData {
 
 impl DataSection for NodeData {
     const TABLE: DataTable = DataTable::Node;
+}
+
+impl Section for NodeData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "node";
 }

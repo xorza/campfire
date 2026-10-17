@@ -60,6 +60,8 @@ impl Module for Interaction {
     type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<UseData>();
+        d.section::<UsesData>();
         d.book::<ByType<UseSpec>>();
         d.book::<ByType<UseSlot>>();
         d.check::<ActionSlots>(Self::users_hold_their_slot);

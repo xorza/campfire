@@ -87,6 +87,7 @@ impl Module for Projectiles {
     type Set = ProjectilesSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<ProjectileData>();
         d.engine_tags(&[Self::TAG]);
         d.component::<Projectile>();
         d.component::<FlightState>();

@@ -12,7 +12,7 @@ use campfire_items::{Inventory, ItemId, ItemStack};
 use campfire_math::{Num, Vec3};
 use campfire_progression::Points;
 use campfire_sim::{Position, SimWorld, TickRate};
-use campfire_stats::{Level, PoolId, PoolMeters, Stats};
+use campfire_stats::{Level, ModePoolsData, PoolId, PoolMeters, Stats};
 use campfire_units::Lifespan;
 use campfire_values::{
     ModifierId, NameId, Names, Number, PackageIndex, Rank, Ranked, Scalar, Team,
@@ -386,8 +386,8 @@ pub(crate) fn assert_casts(
         // payments of each second: a tick adds the bits of its second's regeneration divided by
         // the ticks a second, and carries the remainder to the next, so it adds as much as the
         // tick before, or a bit more or less.
-        let pools = moba.packages().data().pools.keys();
-        let pools: Names<PoolId> = pools.map(DeclaredName::as_str).collect();
+        let pools = moba.packages().data().section_or_default::<ModePoolsData>();
+        let pools: Names<PoolId> = pools.0.keys().map(DeclaredName::as_str).collect();
         for (name, cost) in &data.cost {
             let pool = pools.named(name.as_str()).unwrap();
             let left = |at| showcase.at(at, player).pools[pool.index()].unwrap();

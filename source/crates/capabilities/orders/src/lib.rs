@@ -83,6 +83,7 @@ impl Module for Orders {
     type Set = OrdersSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<AiData>();
         d.component::<NextThink>();
         d.part::<BodyUnit, NextThink>(|at| at.of_type::<Ai>().map(|_| NextThink::FIRST));
         d.component::<Resetting>();

@@ -1,4 +1,5 @@
 use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
 use campfire_values::FilterData;
@@ -73,4 +74,9 @@ impl DataSection for AreaData {
 
 impl DataSection for AreaInsideData {
     const TABLE: DataTable = DataTable::AreaInside;
+}
+
+impl Section for AreaData {
+    const TABLE: SectionTable = SectionTable::DeliveryType;
+    const KEY: &'static str = "area";
 }

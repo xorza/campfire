@@ -3,7 +3,8 @@ use std::ops::RangeInclusive;
 
 use campfire_geometry::Bounds;
 use campfire_math::Num;
-use campfire_mode::{MapPoint, WallData};
+use campfire_navigation::WallData;
+use campfire_units::MapPoint;
 
 /// A map's cliffs as the pathfinder blocks them (12-zero-hour.md, Cliffs are walls): each cliff
 /// cell of the game's, and each cell of the eight round one, as `Pathfinder::classifyMap` grows

@@ -3465,10 +3465,10 @@ fn a_mode_loads_the_map_its_session_names() {
     let two = edited([("modes/3v3/map/second/map.toml", Edit::Create(&raised))]);
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
-    assert_eq!(planar.map().metric, Metric::Planar);
+    assert_eq!(planar.map().metric(), Metric::Planar);
     let spatial = two.mode_packages(Some(&second)).unwrap();
     assert_eq!(spatial.map_name(), &second);
-    assert_eq!(spatial.map().metric, Metric::Spatial);
+    assert_eq!(spatial.map().metric(), Metric::Spatial);
     let third = MapName::parse("third").unwrap();
     let error = two.mode_packages(Some(&third)).unwrap_err();
     assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));

@@ -7,12 +7,12 @@ use campfire_client_files::{
 };
 use campfire_codec::{Binary, Toml};
 use campfire_common::DeclaredName;
-use campfire_geometry::{Bounds, Metric};
+use campfire_geometry::Bounds;
 use campfire_math::Num;
-use campfire_mode::{
-    GroundData, MapData, MapNavigationData, MapPoint, MarkerData, ModeParam, PlacedUnitData,
-};
-use campfire_units::{CellSplit, CoarseSpan, Ground, HeightGrid};
+use campfire_mode::{MarkerData, ModeParam, PlacedUnitData};
+use campfire_navigation::MapNavigationData;
+use campfire_units::{BoundsData, CellSplit, CoarseSpan, Ground, GroundData, HeightGrid, MapPoint};
+use serde::Serialize;
 
 use crate::zero_hour::cliff_walls::{CellFrame, CliffWalls};
 use crate::zero_hour::error::MapError;
@@ -26,6 +26,19 @@ use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::terrain_atlas::{ClassTexture, TerrainAtlas};
 use crate::zero_hour::terrain_cells::TerrainCells;
+
+/// A map's `map/<name>/map.toml` as the import writes it: a planar map of its bounds, its ground
+/// and its navigation, the sections it gives, then the units and markers of the mode's own.
+#[derive(Debug, Serialize)]
+struct MapToml {
+    bounds: BoundsData,
+    ground: GroundData,
+    navigation: MapNavigationData,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    units: Vec<PlacedUnitData>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    markers: Vec<MarkerData>,
+}
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
 /// `client/maps/<name>/terrain.bin`, `client/maps/<name>/lights.toml` and
@@ -319,16 +332,13 @@ impl MapImport {
             rows: file.heights.depth,
         };
         let walls = CliffWalls::of(&cliffs, file.heights.width).walls(frame, bounds);
-        let map = MapData {
-            metric: Metric::Planar,
-            bounds,
-            ground: Some(ground),
-            grid: None,
-            navigation: Some(MapNavigationData {
+        let map = MapToml {
+            bounds: BoundsData(bounds),
+            ground,
+            navigation: MapNavigationData {
                 cell: Num::int(PATHFIND_CELL),
                 walls,
-            }),
-            paths: Vec::new(),
+            },
             units: bridges,
             markers,
         };
@@ -430,7 +440,10 @@ mod tests {
     use std::mem;
 
     use campfire_client_files::ClientUnit;
-    use campfire_units::GroundError;
+    use campfire_codec::TomlTable;
+    use campfire_declare::SectionReaders;
+    use campfire_mode::MapData;
+    use campfire_units::{GroundError, MetricData};
 
     use super::*;
     use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
@@ -439,6 +452,17 @@ mod tests {
     };
     use crate::zero_hour::format::map::map_file::internals::map;
     use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile};
+
+    /// The map of `text`, read as the engine reads the sections the import writes.
+    fn read_map(text: &str) -> MapData {
+        let mut readers = SectionReaders::default();
+        readers.add::<MetricData>();
+        readers.add::<BoundsData>();
+        readers.add::<GroundData>();
+        readers.add::<MapNavigationData>();
+        let raw = Toml::parse::<TomlTable>(text).unwrap();
+        raw.read_with(MapData::seed(&readers)).unwrap()
+    }
 
     /// The fixture map's `data/units.toml`.
     const UNITS_TOML: &str = r#"[units.americatankcrusader]
@@ -619,7 +643,7 @@ tags = ["wall"]
         // −1,493,172,476. The wall at (10, 0), which the map lists after both, comes first, as the
         // game spawns bridge-like objects before the others. The waypoint at (12.5, 7.5) is marker
         // `w3`. The road's end is none.
-        let map: MapData = Toml::parse(&imported.map).unwrap();
+        let map = read_map(&imported.map);
         let decimal = |text: &str| text.parse::<Num>().unwrap();
         let ground = |x: &str, z: &str| MapPoint::Ground([decimal(x), decimal(z)]);
         let unit = |unit_type: &str, pos, angle: i64, height: Num| PlacedUnitData {
@@ -668,7 +692,7 @@ tags = ["wall"]
         // x 30, to x 35; the wall's box, of reach 10 and 2.5 from (10, 0), lies within; not the
         // tree's x of 50, which the sim does not hold.
         let bounds = Toml::parse("min = [-10, -15]\nmax = [35, 10]").unwrap();
-        assert_eq!(map.bounds, bounds);
+        assert_eq!(map.bounds(), bounds);
         // The ground of the original's logic: split on the file's 1 to 3, and the partition's
         // cells of 40 from the world's corner over the boundary of 2 × 1 cells, x 0 to 20 and the
         // original's y 0 to 10, the engine's z 0 to −10. A boundary past the heights, 9 cells to
@@ -683,7 +707,7 @@ tags = ["wall"]
             split: CellSplit::OneThree,
             high: Some(span),
         };
-        assert_eq!(map.ground, Some(ground));
+        assert_eq!(map.ground_data(), Some(ground));
         let mut wide = file.clone();
         wide.heights.boundary = Some([9, 1]);
         assert!(import(&wide, &mut names, 3).is_ok());
@@ -730,16 +754,14 @@ tags = ["wall"]
         // west is (−10, −10), and column `x` x from −10 + 10 x. In the bounds, the walls are x
         // −10 to 10 by z 0 to 10, x −10 to 30 by z −10 to 0, and x 10 to 30 by z −20 to −10 cut
         // at the bounds' z −15.
-        let navigation = map.navigation.unwrap();
+        let navigation = map.section::<MapNavigationData>().unwrap();
         assert_eq!(navigation.cell, Num::int(10));
         let square = |[x0, z0, x1, z1]: [i64; 4]| {
             [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
                 .map(|[x, z]| MapPoint::Ground([Num::int(x), Num::int(z)]))
                 .to_vec()
         };
-        let walls: Vec<_> = navigation
-            .walls
-            .into_iter()
+        let walls: Vec<_> = (navigation.walls.iter().cloned())
             .map(|wall| wall.points)
             .collect();
         assert_eq!(
@@ -766,8 +788,8 @@ tags = ["wall"]
         for (x, kept) in [(35.0, true), (35.5, false)] {
             file.objects[waypoint].pos[0] = x;
             let moved = import(&file, &mut names, 3).unwrap();
-            let map = Toml::parse::<MapData>(&moved.map).unwrap();
-            assert_eq!(map.bounds, bounds);
+            let map = read_map(&moved.map);
+            assert_eq!(map.bounds(), bounds);
             assert_eq!(map.markers.len(), usize::from(kept));
             let dropped: &[&str] = if kept { &[] } else { &["Fixture_Center"] };
             assert_eq!(moved.dropped_waypoints, dropped);
@@ -788,11 +810,8 @@ tags = ["wall"]
                 (point.id, point.name) = (id, name.as_bytes().to_vec());
                 placed.objects.push(object);
             }
-            let markers = Toml::parse::<MapData>(
-                &import(&placed, &mut ImportNames::default(), 3).unwrap().map,
-            )
-            .unwrap()
-            .markers;
+            let markers =
+                read_map(&import(&placed, &mut ImportNames::default(), 3).unwrap().map).markers;
             markers
                 .iter()
                 .map(|marker| marker.tags.len())

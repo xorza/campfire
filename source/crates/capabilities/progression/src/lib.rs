@@ -20,6 +20,7 @@ mod experience;
 mod learn_orders;
 mod learning;
 mod level_ups;
+mod mode_tracks_data;
 mod points;
 mod progression_action;
 mod progression_api;
@@ -28,12 +29,14 @@ mod progression_effect;
 mod track_book;
 mod track_data;
 mod track_set;
+mod type_tracks_data;
 
 pub use crate::error::{ProgressionRefusal, TrackError};
 pub use crate::experience::{Experience, Raised, TrackXp};
 pub use crate::learn_orders::LearnOrders;
 pub use crate::learning::Learning;
 pub use crate::level_ups::{LevelUp, LevelUps};
+pub use crate::mode_tracks_data::ModeTracksData;
 pub use crate::points::Points;
 pub use crate::progression_action::ProgressionAction;
 pub use crate::progression_api::ProgressionApi;
@@ -42,6 +45,7 @@ pub use crate::progression_effect::ProgressionEffect;
 pub use crate::track_book::TrackBook;
 pub use crate::track_data::{Thresholds, TrackData};
 pub use crate::track_set::TrackSet;
+pub use crate::type_tracks_data::TypeTracksData;
 
 /// The `progression` capability: experience on tracks, the levels it reaches, and the ranks
 /// units learn for the points their levels give.
@@ -72,6 +76,8 @@ impl Module for Progression {
     type Set = ProgressionSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<TypeTracksData>();
+        d.section::<ModeTracksData>();
         d.component::<Experience>();
         d.component::<Points>();
         d.resource::<LevelUps>();

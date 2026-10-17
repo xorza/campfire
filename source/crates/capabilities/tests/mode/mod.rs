@@ -19,20 +19,23 @@ use campfire_combat::{
     PassEntry, RecentAttackers, Respawn,
 };
 use campfire_common::{DeclaredName, PlayerSlot, Ticks};
-use campfire_declare::{Book, ByType};
+use campfire_declare::{Book, ByType, Sections};
 use campfire_geometry::{Bounds, Grid, Metric};
 use campfire_items::Inventory;
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
-    InputValue, MapPoint, MarkerData, MatchResult, ModeError, ModeInput, Offer, TeamManifest,
+    InputValue, MarkerData, MatchResult, ModeError, ModeInput, Offer, TeamManifest,
     UnansweredSlotEvents, *,
 };
 use campfire_navigation::{
-    ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker, WalkerKinds,
+    MapNavigationData, MapPathsData, ModeNavigationData, NavigationBook, OnPath, PathData, PathEnd,
+    Route, Walker, WalkerKinds,
 };
-use campfire_players::{OutOfPlay, PlayerResources, PlayersWorld};
+use campfire_players::{OutOfPlay, PlayerResources, PlayersWorld, ResourcesData};
 use campfire_production::{ProductionData, Queued, TrainQueue};
-use campfire_progression::{Experience, Points, Progression, Thresholds, TrackData, TrackSet};
+use campfire_progression::{
+    Experience, ModeTracksData, Points, Progression, Thresholds, TrackData, TrackSet,
+};
 use campfire_script::internals::FailureKind;
 use campfire_script::{
     ApiError, CallError, NameKind, ParamProblem, Pool, ScriptBudgets, ScriptFailures, ScriptId,
@@ -44,13 +47,14 @@ use campfire_sim::{
     SlotEventKind, StableId, TickRate,
 };
 use campfire_stats::{
-    Application, Hold, Level, Life, ModifierClocks, ModifierData, Modifiers, NewInstance,
-    PlayerModifiers, PoolBook, PoolId, Pools, Reapply, StatBook, StatRule, StatShare, Stats,
-    TypePassive, UnitStats,
+    Application, Hold, Level, Life, ModePoolsData, ModeStatsData, ModifierClocks, ModifierData,
+    Modifiers, NewInstance, PlayerModifiers, PoolBook, PoolId, Pools, Reapply, StatBook, StatRule,
+    StatShare, Stats, TypePassive, UnitStats,
 };
 use campfire_units::{
-    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MatchEntity, MoveStep,
-    Owner, Player, SyncAll, SyncNone, UnitTypeCore, Units, UnitsWorld,
+    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MapPoint, MatchEntity,
+    MetricData, ModeTagsData, MoveStep, Owner, Player, SyncAll, SyncNone, UnitTypeCore, Units,
+    UnitsWorld,
 };
 use campfire_values::{
     ActionId, DamageKind, EngineEnum, FilterData, MessageId, ModifierId, Names, Number,
@@ -58,6 +62,7 @@ use campfire_values::{
     Team, TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
+use campfire_vision::GridData;
 
 /// 10 ticks a second: 100 ms is a tick.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
@@ -370,44 +375,42 @@ fn blink_data() -> ActionData {
 /// spawn at z = −5 and b's at 5; a's tower 8 m down the path; and a camp of a grunt in the middle.
 fn map() -> MapData {
     let grunt = ("unit_type", ModeParam::Text("grunt".to_owned()));
-    MapData {
-        grid: Some(GridData {
+    let bounds = Bounds::new([Num::int(-10), Num::int(-5)], [Num::int(10), Num::int(6)]).unwrap();
+    let mut map = MapData::planar(bounds)
+        .with(GridData {
             cell: Num::ONE,
             brush: Vec::new(),
-        }),
-        navigation: Some(MapNavigationData {
+        })
+        .with(MapNavigationData {
             cell: Num::ONE,
             walls: Vec::new(),
-        }),
-        paths: vec![PathData {
+        })
+        .with(MapPathsData(vec![PathData {
             name: DeclaredName::new("mid").unwrap(),
             points: [-10, 0, 10].map(|x| MapPoint::ground(x, 0)).into(),
-        }],
-        units: vec![PlacedUnitData {
-            path: Some(DeclaredName::new("mid").unwrap()),
-            ..PlacedUnitData::new("tower", "a", MapPoint::ground(-8, 0))
-        }],
-        markers: vec![
-            marker("a_spawn", "spawn", (0, -5), Some("a"), &[]),
-            marker("b_spawn", "spawn", (0, 5), Some("b"), &[]),
-            marker("camp", "camp", (0, 0), None, slice::from_ref(&grunt)),
-        ],
-        ..MapData::planar(
-            Bounds::new([Num::int(-10), Num::int(-5)], [Num::int(10), Num::int(6)]).unwrap(),
-        )
-    }
+        }]));
+    map.units = vec![PlacedUnitData {
+        path: Some(DeclaredName::new("mid").unwrap()),
+        ..PlacedUnitData::new("tower", "a", MapPoint::ground(-8, 0))
+    }];
+    map.markers = vec![
+        marker("a_spawn", "spawn", (0, -5), Some("a"), &[]),
+        marker("b_spawn", "spawn", (0, 5), Some("b"), &[]),
+        marker("camp", "camp", (0, 0), None, slice::from_ref(&grunt)),
+    ];
+    map
 }
 
 /// `map` made spatial, each point up at `y`.
-fn raised(mut map: MapData, y: i64) -> MapData {
+fn raised(map: MapData, y: i64) -> MapData {
     let raise = |point: &mut MapPoint| {
         let MapPoint::Ground([x, z]) = *point else {
             panic!("the test map's points are on the ground");
         };
         *point = MapPoint::Space([x, Num::int(y), z]);
     };
-    map.metric = Metric::Spatial;
-    for path in &mut map.paths {
+    let mut map = map.with(MetricData(Metric::Spatial));
+    for path in &mut map.section_mut::<MapPathsData>().unwrap().0 {
         path.points.iter_mut().for_each(raise);
     }
     for unit in &mut map.units {
@@ -553,19 +556,6 @@ fn mode_files() -> ModeFiles {
         data: ModeData {
             name: MessageId::new("mode").unwrap(),
             teams: BTreeMap::new(),
-            combat: ModeCombatData {
-                damage_kinds: DAMAGE_KINDS
-                    .map(|kind| DeclaredName::new(kind).unwrap())
-                    .into(),
-                ..ModeCombatData::default()
-            },
-            navigation: ModeNavigationData {
-                layers: ["ground", "air"]
-                    .map(|name| DeclaredName::new(name).unwrap())
-                    .into(),
-                spawn_tags: Vec::new(),
-            },
-            slots: slot_kinds(),
             choices: choices(),
             inputs: [
                 ("hero", InputType::String),
@@ -594,24 +584,39 @@ fn mode_files() -> ModeFiles {
             .map(|(name, param)| (DeclaredName::new(name).unwrap(), param))
             .into(),
             options,
-            stats: STATS_3V3
-                .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
-                .into(),
-            pools: BTreeMap::new(),
-            resources: RESOURCES
-                .map(|name| DeclaredName::new(name).unwrap())
-                .into(),
             relations: vec![RelationData {
                 teams: ["a", "neutral"].map(|name| DeclaredName::new(name).unwrap()),
                 relation: Relation::Neutral,
                 vision: true,
             }],
-            tags: BTreeMap::new(),
-            tracks: tracks(),
             players: PlayersData::default(),
             saves: SavesData::default(),
-            supply: None,
             visibility: ModeVisibility::default(),
+            sections: Sections::default()
+                .with(ModeCombatData {
+                    damage_kinds: DAMAGE_KINDS
+                        .map(|kind| DeclaredName::new(kind).unwrap())
+                        .into(),
+                    ..ModeCombatData::default()
+                })
+                .with(ModeNavigationData {
+                    layers: ["ground", "air"]
+                        .map(|name| DeclaredName::new(name).unwrap())
+                        .into(),
+                    spawn_tags: Vec::new(),
+                })
+                .with(slot_kinds())
+                .with(ModeStatsData(
+                    STATS_3V3
+                        .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
+                        .into(),
+                ))
+                .with(ResourcesData(
+                    RESOURCES
+                        .map(|name| DeclaredName::new(name).unwrap())
+                        .into(),
+                ))
+                .with(ModeTracksData(tracks())),
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),
@@ -731,23 +736,28 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         };
         ModeMap::resolve(input, unit_type).unwrap()
     };
-    let stats = StatBook::new(&data.stats, Num::int(10));
+    let stats = StatBook::new(&data.section_or_default::<ModeStatsData>().0, Num::int(10));
     let stat = |stat: &Stat| stats.named(stat).ok_or_else(|| stat.clone());
     // The test mode names no life pool: the one the test match binds stays.
-    let life = data.combat.life_pool(&mode_names.pools).unwrap();
+    let combat_data = data.section_or_default::<ModeCombatData>();
+    let life = combat_data.life_pool(&mode_names.pools).unwrap();
     let life = life.or_else(|| game.resource::<PoolBook>().life());
     let pools = Arc::clone(&mode_names.pools);
-    let pools = PoolBook::new(&data.pools, pools, life, |_, held| stat(held)).unwrap();
-    let combat = CombatBook::new(&data.combat, RATE, stat).unwrap();
+    let pool_data = data.section_or_default::<ModePoolsData>();
+    let pools = PoolBook::new(&pool_data.0, pools, life, |_, held| stat(held)).unwrap();
+    let combat = CombatBook::new(&combat_data, RATE, stat).unwrap();
     Units::change_types(game, |_, unit_types| {
         let bodies = types.iter().map(|unit| (unit.unit_type, unit.body));
         unit_types.tag_layers(&mode_names.layers, bodies);
     });
-    Units::seal_types(game, &data.tags);
+    Units::seal_types(game, &data.section_or_default::<ModeTagsData>().0);
     stats.load_into(game);
     pools.load_into(game);
     TestType::load(game, types);
-    SlotKindBook(Arc::new(data.slots.clone())).load_into(game);
+    SlotKindBook(Arc::new(
+        data.section_or_default::<SlotKinds>().into_owned(),
+    ))
+    .load_into(game);
     combat.load_into(game);
     let ResolvedMap {
         map,
@@ -804,16 +814,14 @@ fn installed_match(
         Capability::Production,
     ];
     let mut game = Match::test_unstarted(&declared, RATE, Some(scripts));
-    let resources: Vec<&str> = files
-        .data
-        .resources
-        .iter()
-        .map(DeclaredName::as_str)
-        .collect();
+    let resource_data = files.data.section_or_default::<ResourcesData>();
+    let resources: Vec<&str> = resource_data.0.iter().map(DeclaredName::as_str).collect();
     Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &resources);
     // The mode's tags, the layers' then those of its data, as its packages name them.
-    let layers = files.data.navigation.layers.iter();
-    let tags = layers.chain(files.data.tags.keys());
+    let navigation = files.data.section_or_default::<ModeNavigationData>();
+    let mode_tags = files.data.section_or_default::<ModeTagsData>();
+    let layers = navigation.layers.iter();
+    let tags = layers.chain(mode_tags.0.keys());
     Units::declare_tags(&mut game, tags.map(DeclaredName::as_str));
     let grunt_type = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt_data());
     let mut load = |name: &str, tag: &str| {
@@ -828,7 +836,10 @@ fn installed_match(
     load("bolt", "projectile");
     // The stats first, as a match's books know them before any action or modifier; the mode's
     // books give the full book at install.
-    Stats::load_rules(&mut game, &files.data.stats);
+    Stats::load_rules(
+        &mut game,
+        &files.data.section_or_default::<ModeStatsData>().0,
+    );
     let blink = blink_data();
     // A spell has one rank; hero X's ability, 2.
     let strike = Actions::load(&mut game, PackageIndex::MODE, "strike", &blink, None, 2).unwrap();
@@ -841,7 +852,10 @@ fn installed_match(
     let mut spell = LoadoutSetup::default();
     spell.push("blink", blink);
     let types = [grunt_type, tower_type, x, y, crate_type];
-    Progression::load_tracks(&mut game, &files.data.tracks);
+    Progression::load_tracks(
+        &mut game,
+        &files.data.section_or_default::<ModeTracksData>().0,
+    );
     for (name, data) in &files.modifiers {
         Stats::load_modifier(&mut game, PackageIndex::MODE, name, data, None);
     }

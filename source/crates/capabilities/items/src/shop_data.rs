@@ -1,4 +1,5 @@
 use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
 use campfire_values::{FilterData, Share};
@@ -47,4 +48,9 @@ impl<'de> Deserialize<'de> for ShopData {
 
 impl DataSection for ShopData {
     const TABLE: DataTable = DataTable::Shop;
+}
+
+impl Section for ShopData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "shop";
 }

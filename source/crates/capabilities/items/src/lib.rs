@@ -83,6 +83,8 @@ impl Module for Items {
     type Set = ItemsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<InventoryData>();
+        d.section::<ShopData>();
         d.callback::<CastSpends>((), Self::spend_use);
         d.component::<Inventory>();
         d.component::<UseGroup>();

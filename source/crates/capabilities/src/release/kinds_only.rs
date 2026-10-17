@@ -10,7 +10,7 @@ use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
     Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Report, Role, Scratch,
+    ModuleSet, OneShot, Report, Role, Scratch, Section,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, SimResource};
@@ -54,6 +54,8 @@ impl<V: KindVisitor> Declarations for KindsOnly<'_, V> {
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
     fn book<B: Book>(&mut self) {}
+
+    fn section<S: Section>(&mut self) {}
 
     fn sets<S: ModuleSet>(&mut self) {}
 

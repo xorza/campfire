@@ -1,4 +1,4 @@
-use campfire_capabilities::PackageContent;
+use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
 use campfire_mode::ModeData;
 use serde::de::Error;
@@ -27,7 +27,9 @@ impl<'de> Deserialize<'de> for ModeFile {
             .ok_or_else(|| D::Error::missing_field("script"))?
             .map_err(D::Error::custom)?;
         let content = ContentTable::take(&mut table)?;
-        let data: ModeData = table.read().map_err(D::Error::custom)?;
+        let readers = Release::sections();
+        let data = table.read_with(ModeData::seed(&readers));
+        let data = data.map_err(D::Error::custom)?;
         Ok(Self {
             script,
             data,

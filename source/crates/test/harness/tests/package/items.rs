@@ -3,9 +3,11 @@
 
 use std::num::{NonZeroU8, NonZeroU32};
 
-use campfire_capabilities::UnitTypeData;
-use campfire_codec::Toml;
+use campfire_capabilities::Release;
+use campfire_codec::{Toml, TomlTable};
 use campfire_common::DeclaredName;
+use campfire_declare::UnitTypeData;
+use campfire_items::{InventoryData, ShopData};
 use campfire_math::Num;
 use campfire_package::{
     ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
@@ -56,7 +58,7 @@ fn the_3v3s_items_read_as_their_data_holds_them() {
     assert_eq!(warblade.cost[&name("gold")], 1100);
     // The fountain sells the 11 for gold, to its allies within 8 m.
     let fountain = &packages.content().units[&name("fountain")];
-    let shop = fountain.shop.as_ref().unwrap();
+    let shop = fountain.section::<ShopData>().unwrap();
     assert_eq!(shop.items.len(), 11);
     assert_eq!(shop.resource.as_str(), "gold");
     assert_eq!(shop.reach, Num::int(8));
@@ -64,11 +66,14 @@ fn the_3v3s_items_read_as_their_data_holds_them() {
     // 70% of a warblade's 1100 is 770.
     assert_eq!(shop.sell_share.of(1100), 770);
     // A unit type's inventory, as every hero's reads.
-    let unit: UnitTypeData = Toml::parse("inventory = { slots = 6, kind = \"item\" }").unwrap();
-    let inventory = unit.inventory.unwrap();
+    let raw = Toml::parse::<TomlTable>("inventory = { slots = 6, kind = \"item\" }").unwrap();
+    let unit: UnitTypeData = raw
+        .read_with(UnitTypeData::seed(&Release::sections()))
+        .unwrap();
+    let inventory = unit.section::<InventoryData>().unwrap();
     assert_eq!(
-        (inventory.slots, inventory.kind),
-        (NonZeroU8::new(6).unwrap(), name("item"))
+        (inventory.slots, &inventory.kind),
+        (NonZeroU8::new(6).unwrap(), &name("item"))
     );
 }
 

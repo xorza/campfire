@@ -8,9 +8,9 @@ use std::{env, fmt};
 
 use campfire_actions::{ActionData, DeliveryData, EffectData, RequiresData, SlotKindData};
 use campfire_areas::{AreaData, AreaInsideData};
-use campfire_capabilities::{Release, UnitTypeData};
-use campfire_codec::Toml;
+use campfire_capabilities::Release;
 use campfire_combat::{CombatData, LeechData, ModeCombatData, TurretData};
+use campfire_declare::SectionTable;
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
 use campfire_math::Num;
@@ -410,14 +410,14 @@ fn the_data_fields_are_the_schemas() {
     let api = Release::script_api();
     // The mode's file holds its script and its package's actions, modifiers and item types
     // beside `ModeData`, which the package load reads apart.
+    // A table's keys are its own fields and the sections its modules register.
+    let sections = Release::sections();
     let mut mode = serde_fields::<ModeData>();
     mode.extend(["actions", "modifiers", "items", "script"]);
+    mode.extend(sections.keys(SectionTable::Mode));
     mode.sort_unstable();
-    let empty = Toml::parse::<UnitTypeData>("").unwrap();
-    let mut unit_type = empty.fields().map(|(name, _)| name).to_vec();
+    let mut unit_type: Vec<&str> = sections.keys(SectionTable::UnitType).collect();
     unit_type.sort_unstable();
-    // Its fields as `given` names them are those its table reads.
-    assert_eq!(unit_type, serde_fields::<UnitTypeData>());
     let tables = [
         (DataTable::Mode, mode),
         (DataTable::UnitType, unit_type),

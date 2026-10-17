@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_actions::ActionTarget;
+use campfire_actions::{ActionTarget, TypeSlotsData};
 use campfire_bots::{BotScript, OrderScript};
 use campfire_capabilities::Order;
 use campfire_common::{DeclaredName, PlayerSlot};
@@ -9,7 +9,7 @@ use campfire_math::Num;
 use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
-use campfire_players::{OrderUnits, PlayersWorld};
+use campfire_players::{OrderUnits, PlayersWorld, ResourcesData};
 use campfire_production::{BuildTarget, Site, TrainQueue};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputRules, SlotPlan};
@@ -115,12 +115,8 @@ impl SkirmishPlay {
         rate: NonZeroU32,
         failures: &mut Vec<Failure>,
     ) -> Option<SkirmishSteps> {
-        let names: Names<ResourceId> = packages
-            .data()
-            .resources
-            .iter()
-            .map(DeclaredName::as_str)
-            .collect();
+        let resources = packages.data().section_or_default::<ResourcesData>();
+        let names: Names<ResourceId> = resources.0.iter().map(DeclaredName::as_str).collect();
         let Some(money) = names.named("money") else {
             failures.push(Failure::NoMoney);
             return None;
@@ -377,7 +373,7 @@ impl Play<'_> {
             .content()
             .units
             .get(unit)
-            .and_then(|held| held.slots.get(&command))
+            .and_then(|held| held.section::<TypeSlotsData>()?.0.get(&command))
             .and_then(|slots| slots.iter().position(|held| held.as_str() == action))
             .ok_or(Failure::NoAction { unit, action })?;
         Ok(u8::try_from(at).expect("a unit's slots fit a u8"))

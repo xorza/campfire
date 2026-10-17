@@ -22,6 +22,7 @@ use crate::vision_column::RowReads;
 pub mod bench;
 mod brush_map;
 mod fog;
+mod grid_data;
 mod reveals;
 mod seeing;
 mod seen_by;
@@ -40,6 +41,7 @@ mod vision_groups;
 
 pub use crate::brush_map::BrushMap;
 pub use crate::fog::Fog;
+pub use crate::grid_data::{BrushData, GridData};
 pub use crate::reveals::{Reveal, Reveals};
 pub use crate::seeing::Seeing;
 pub use crate::seen_by::SeenBy;
@@ -85,6 +87,8 @@ impl Module for Vision {
     type Set = VisionSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<VisionData>();
+        d.section::<GridData>();
         d.resource::<Reveals>();
         d.cache::<Fog>();
         d.component::<SeenBy>();

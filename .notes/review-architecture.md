@@ -644,7 +644,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - `declare` assigns engine tag numbers in declaration order (RW 20). Waits for Q3 in `review-architecture_QUESTIONS.md`.
 
 **4.3 Books, sections and map sections declared with their builders.** Touches the top crate's books, `declare`, `mode` (the map), `vision`, `production`, `stats`, `combat`, `abilities`, each capability, and the test fixtures.
-- `d.book::<B>()` with its builder, and a unit-type section and a map section that each module registers by name. `BookParts`, the `built.add` list and `UnitTypeData`'s closed table go (E-11, K-19, R-22).
+- `d.book::<B>()` with its builder, each reading the sections its module registers, now that the mode's, the maps' and the unit types' tables are sections registered by key. `BookParts`, the `built.add` list and the builder's resolvers in the top crate go, and `mode` builds no book of navigation's or vision's (E-11, K-19, R-22).
 - `Book: Default` goes: a test fixture gives its data to the builders before its match builds, as `Release::empty_books` gives every book empty now (E-12, from 4.1).
 - The rest of the load facts decide which systems install, and their run conditions go: the vision grid, the supply's count, turrets, clips, slow weapons, intervals, regen, toggles and channels. Today the fixtures of these load their data after the build, so they move first (E-10, K-12, from 4.1).
 

@@ -18,7 +18,7 @@ use campfire_actions::{ActionSlots, ActionsSet};
 use campfire_combat::{Weigh, Weighers};
 use campfire_common::{EnumAll, PlayerSlot};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
-use campfire_navigation::{NavigationBook, OnPath, PathWalker};
+use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, PathWalker};
 use campfire_players::{Players, PlayersWorld, Seating, SlotStart};
 use campfire_production::ProductionSet;
 use campfire_script::{CallError, Ctx, Hook, Pool, ScriptRole, ScriptText, View};
@@ -40,7 +40,6 @@ mod game_map;
 mod loadout;
 mod loadout_setup;
 mod map_data;
-mod map_point;
 mod marker;
 mod marker_spec;
 mod marker_tag;
@@ -91,11 +90,7 @@ pub use crate::error::{
 };
 pub use crate::game_map::GameMap;
 pub use crate::loadout_setup::LoadoutSetup;
-pub use crate::map_data::{
-    BrushData, GridData, GroundData, MapData, MapNavigationData, MarkerData, PathData,
-    PlacedUnitData, WallData,
-};
-pub use crate::map_point::MapPoint;
+pub use crate::map_data::{MapData, MapSeed, MarkerData, PlacedUnitData};
 pub use crate::marker::{Marker, MarkerInfo};
 pub use crate::marker_spec::MarkerSpec;
 pub use crate::match_end::{MatchEnd, MatchResult};
@@ -103,7 +98,7 @@ pub use crate::match_mode::MatchMode;
 pub use crate::mode_api::ModeApi;
 pub use crate::mode_call::ModeCall;
 pub use crate::mode_core::ModeCore;
-pub use crate::mode_data::{InputType, ListEntry, ModeData, ModeParam};
+pub use crate::mode_data::{InputType, ListEntry, ModeData, ModeParam, ModeSeed};
 pub use crate::mode_hooks::ModeHooks;
 pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
@@ -285,7 +280,10 @@ impl Mode {
             map: GameMap::new(
                 path_names.map(ScriptText::from),
                 &markers,
-                &setup.data.navigation.spawn_tags,
+                &setup
+                    .data
+                    .section_or_default::<ModeNavigationData>()
+                    .spawn_tags,
             ),
         };
         view.names_mut().set_table(Arc::clone(start.map.tags()));

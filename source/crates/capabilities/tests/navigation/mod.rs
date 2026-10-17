@@ -5,14 +5,14 @@ use campfire_common::{DeclaredName, Tick};
 use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
-    MapData, MapInput, MapNavigationData, MapPoint, MarkerData, ModeError, ModeMap, PathData,
-    PlacedUnitData, ResolvedMap, TeamManifest, WallData,
+    MapData, MapInput, MarkerData, ModeError, ModeMap, PlacedUnitData, ResolvedMap, TeamManifest,
 };
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
-    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, TurnStep, Units,
+    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, MapPoint, TurnStep,
+    Units,
 };
 use campfire_values::{Block, NameId, Names, PathId, Team, UnitType};
 
@@ -817,25 +817,23 @@ fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
     let point = MapPoint::ground;
     let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
     let marker = |name, (x, z)| MarkerData::tagged(name, &[name], point(x, z));
-    MapData {
-        navigation: Some(MapNavigationData {
+    let bounds = Bounds::new([Num::int(0), Num::int(0)], [Num::int(10), Num::int(4)]).unwrap();
+    let mut map = MapData::planar(bounds)
+        .with(MapNavigationData {
             cell: Num::HALF,
             walls: Vec::new(),
-        }),
-        paths: vec![PathData {
+        })
+        .with(MapPathsData(vec![PathData {
             name: DeclaredName::new("lane").unwrap(),
             points: vec![point(1, 2), point(9, 2)],
-        }],
-        units: towers
-            .iter()
-            .map(|&at| placed("tower", at))
-            .chain([placed("creep", (1, 1))])
-            .collect(),
-        markers: vec![marker("spawn", (1, 1)), marker("camp", camp)],
-        ..MapData::planar(
-            Bounds::new([Num::int(0), Num::int(0)], [Num::int(10), Num::int(4)]).unwrap(),
-        )
-    }
+        }]));
+    map.units = towers
+        .iter()
+        .map(|&at| placed("tower", at))
+        .chain([placed("creep", (1, 1))])
+        .collect();
+    map.markers = vec![marker("spawn", (1, 1)), marker("camp", camp)];
+    map
 }
 
 /// The layers `rules` declares, by layer.
@@ -1006,7 +1004,8 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
     };
     let walled = |walls: Vec<WallData>| {
         let mut walled = corridor(&[], (8, 3));
-        walled.navigation.as_mut().unwrap().walls = walls;
+        let navigation = walled.section_mut::<MapNavigationData>();
+        navigation.unwrap().walls = walls;
         walled
     };
     let across = walled(vec![wall(None, &[(5, 0), (6, 0), (6, 4), (5, 4)])]);

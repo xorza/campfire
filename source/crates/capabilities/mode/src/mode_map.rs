@@ -4,13 +4,12 @@ use campfire_geometry::Grid;
 use campfire_navigation::{
     MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, WalkerKinds, Walls,
 };
-use campfire_units::{BodyForm, Ground, HeightGrid, Layer, MapBook};
+use campfire_units::{BodyForm, Ground, GroundData, HeightGrid, Layer, MapBook, MapPoint};
 use campfire_values::{Names, NamesError, Relations, Team, UnitType, VisionShare};
 use campfire_vision::{BrushMap, VisionBook, VisionGrid};
 
 use crate::error::ModeError;
-use crate::map_data::{GroundData, MapData};
-use crate::map_point::MapPoint;
+use crate::map_data::MapData;
 use crate::marker_spec::MarkerSpec;
 use crate::placed_unit::{PlacedPath, PlacedUnit};
 use crate::relation_data::RelationData;
@@ -118,8 +117,8 @@ impl ModeMap {
         let walls = map.walls(layers)?;
         let point = |point: &MapPoint| map.pos(point);
         let mut path_names = Names::default();
-        let mut points = Vec::with_capacity(map.paths.len());
-        for path in &map.paths {
+        let mut points = Vec::with_capacity(map.paths().len());
+        for path in map.paths() {
             if path_names.try_add(path.name.as_str()).is_err() {
                 return Err(ModeError::RepeatedPath(path.name.clone()));
             }
@@ -166,8 +165,8 @@ impl ModeMap {
                 pathing,
             },
             ground: MapBook {
-                metric: map.metric,
-                bounds: map.bounds,
+                metric: map.metric(),
+                bounds: map.bounds(),
                 ground: Self::ground(map, heights)?,
             },
             navigation: NavigationBook {
@@ -189,7 +188,7 @@ impl ModeMap {
     /// The ground of `map`, of its height grid `heights`, as its `[ground]` reads it; flat with no
     /// grid. An error for a `[ground]` with no grid, or coarse cells that do not fit it.
     fn ground(map: &MapData, heights: Option<&HeightGrid>) -> Result<Ground, ModeError> {
-        match (heights, map.ground) {
+        match (heights, map.ground_data()) {
             (None, None) => Ok(Ground::default()),
             (None, Some(_)) => Err(ModeError::NoHeights),
             (Some(grid), data) => {
@@ -218,7 +217,7 @@ impl ModeMap {
             let marker_team = marker.team.as_ref().map(&team).transpose()?;
             let region = marker.region.map(|region| {
                 region
-                    .region(map.metric, map.bounds)
+                    .region(map.metric(), map.bounds())
                     .filter(|_| marker.pos.is_none())
                     .ok_or_else(|| ModeError::Region(marker.name.clone()))
             });

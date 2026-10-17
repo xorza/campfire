@@ -79,6 +79,7 @@ mod slot_kind_data;
 mod slot_kinds;
 mod targeting;
 mod targets;
+mod type_slots_data;
 mod use_group;
 mod weapon;
 
@@ -148,6 +149,7 @@ pub use crate::slot_kind_data::{SlotKindData, SlotRanks};
 pub use crate::slot_kinds::SlotKinds;
 pub use crate::targeting::Targeting;
 pub use crate::targets::Targets;
+pub use crate::type_slots_data::TypeSlotsData;
 pub use crate::use_group::UseGroup;
 pub use crate::weapon::{Pitch, Scatter, Source, Weapon};
 
@@ -260,6 +262,8 @@ impl Module for Actions {
     type Set = ActionsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<TypeSlotsData>();
+        d.section::<SlotKinds>();
         d.removals::<Unpredicted>();
         d.component::<ActionSlots>();
         d.component::<ActionProgress>();

@@ -5,8 +5,8 @@ use bevy_ecs::world::World;
 use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_harness::{FixedMatch, Moba3v3, ScriptedMode};
 use campfire_math::Num;
-use campfire_players::PlayersWorld;
-use campfire_progression::Experience;
+use campfire_players::{PlayersWorld, ResourcesData};
+use campfire_progression::{Experience, ModeTracksData};
 use campfire_runner::SessionWorld;
 use campfire_script::ScriptFailures;
 use campfire_sim::internals::SimWorldInternals;
@@ -28,8 +28,8 @@ fn now(world: &World) -> u64 {
 
 /// The gold player `slot` holds in `world`, a match of `moba`.
 pub(crate) fn gold(moba: &ScriptedMode<Moba3v3>, world: &World, slot: u32) -> i64 {
-    let resources = moba.packages().data().resources.iter();
-    let resources: Names<ResourceId> = resources.map(DeclaredName::as_str).collect();
+    let resources = moba.packages().data().section_or_default::<ResourcesData>();
+    let resources: Names<ResourceId> = resources.0.iter().map(DeclaredName::as_str).collect();
     let gold = resources.named("gold").unwrap();
     let held = world.player_resources(PlayerSlot::new(slot));
     held.expect("a player of the 3v3 holds its resources")
@@ -38,9 +38,11 @@ pub(crate) fn gold(moba: &ScriptedMode<Moba3v3>, world: &World, slot: u32) -> i6
 
 /// The experience `id` has on the `level` track of `world`, a match of `moba`.
 pub(crate) fn level_xp(moba: &ScriptedMode<Moba3v3>, world: &World, id: StableId) -> Num {
-    let tracks = &moba.packages().data().tracks;
-    let at = tracks
-        .keys()
+    let tracks = moba
+        .packages()
+        .data()
+        .section_or_default::<ModeTracksData>();
+    let at = (tracks.0.keys())
         .position(|name| name.as_str() == "level")
         .unwrap();
     let experience = world.part::<Experience>(id);

@@ -1,8 +1,11 @@
 use std::sync::Arc;
 
+use campfire_combat::ModeCombatData;
 use campfire_common::DeclaredName;
+use campfire_navigation::ModeNavigationData;
+use campfire_players::ResourcesData;
 use campfire_script::{NameKind, UnknownName};
-use campfire_stats::PoolId;
+use campfire_stats::{ModePoolsData, PoolId};
 use campfire_units::{BodyForm, CollisionData, Layer};
 use campfire_values::{DamageKind, NameId, Names, NamesError, ResourceId};
 
@@ -24,14 +27,15 @@ impl ModeNames {
     /// The names of `data`; an error for a list with a name twice, or more names than the ids of
     /// their kind count.
     pub fn of(data: &ModeData) -> Result<Self, ModeNamesError> {
+        let pools = data.section_or_default::<ModePoolsData>();
+        let resources = data.section_or_default::<ResourcesData>();
+        let combat = data.section_or_default::<ModeCombatData>();
+        let navigation = data.section_or_default::<ModeNavigationData>();
         Ok(Self {
-            pools: Arc::new(Self::list(data.pools.keys(), ModeList::Pools)?),
-            resources: Arc::new(Self::list(&data.resources, ModeList::Resources)?),
-            damage_kinds: Arc::new(Self::list(
-                &data.combat.damage_kinds,
-                ModeList::DamageKinds,
-            )?),
-            layers: Self::list(&data.navigation.layers, ModeList::Layers)?,
+            pools: Arc::new(Self::list(pools.0.keys(), ModeList::Pools)?),
+            resources: Arc::new(Self::list(&resources.0, ModeList::Resources)?),
+            damage_kinds: Arc::new(Self::list(&combat.damage_kinds, ModeList::DamageKinds)?),
+            layers: Self::list(&navigation.layers, ModeList::Layers)?,
         })
     }
 

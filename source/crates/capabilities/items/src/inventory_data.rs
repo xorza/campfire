@@ -1,3 +1,4 @@
+use campfire_declare::{Section, SectionTable};
 use std::num::NonZeroU8;
 
 use campfire_common::DeclaredName;
@@ -15,4 +16,9 @@ pub struct InventoryData {
 
 impl DataSection for InventoryData {
     const TABLE: DataTable = DataTable::Inventory;
+}
+
+impl Section for InventoryData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "inventory";
 }

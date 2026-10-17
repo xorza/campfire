@@ -1,9 +1,12 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionData, DeliveryData};
-use campfire_capabilities::UnitTypeData;
+use campfire_areas::AreaData;
 use campfire_common::DeclaredName;
+use campfire_declare::UnitTypeData;
+use campfire_orders::AiData;
 use campfire_script::Applies;
+use campfire_stats::PassiveData;
 use campfire_values::PackagePath;
 
 use crate::error::way::Way;
@@ -40,7 +43,7 @@ impl<'a> ModifierWays<'a> {
                 Some(DeliveryData::Area { unit_type }) => content
                     .units
                     .get(unit_type)
-                    .and_then(|unit_type| unit_type.area.as_ref()),
+                    .and_then(|unit_type| unit_type.section::<AreaData>()),
                 _ => None,
             };
             let named = action
@@ -67,14 +70,17 @@ impl<'a> ModifierWays<'a> {
         };
         let ai = standing
             .iter()
-            .filter_map(|unit| unit.orders.as_ref().map(|orders| &orders.ai));
+            .filter_map(|unit| unit.section::<AiData>().map(|orders| &orders.ai));
         for path in mode_script.into_iter().chain(ai) {
             for (modifier, _) in applied(path) {
                 found.add(modifier, &Way::NoAction);
             }
         }
-        for passive in standing.iter().filter_map(|unit| unit.passive.as_ref()) {
-            found.add(passive.as_str(), &Way::NoAction);
+        for passive in standing
+            .iter()
+            .filter_map(|unit| unit.section::<PassiveData>())
+        {
+            found.add(passive.0.as_str(), &Way::NoAction);
         }
         let mut passes: Vec<(&str, &str)> = Vec::new();
         for (id, modifier) in &content.modifiers {

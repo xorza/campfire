@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
+use campfire_declare::{Section, SectionTable};
 use campfire_math::Num;
-use campfire_values::Stat;
+use campfire_values::{EngineStat, Stat};
 use serde::Deserialize;
 
 /// A unit type's `stats` section: each stat's value at level 1, and what it gains a level.
@@ -33,10 +34,20 @@ impl<const N: usize> From<[(Stat, StatValue); N]> for StatsData {
 }
 
 impl StatsData {
+    /// Whether its units walk: it declares a move speed.
+    pub fn walks(&self) -> bool {
+        self.declares(&Stat::Engine(EngineStat::MoveSpeed))
+    }
+
     /// Whether the type declares `stat`.
     pub fn declares(&self, stat: &Stat) -> bool {
         self.0.contains_key(stat)
     }
+}
+
+impl Section for StatsData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "stats";
 }
 
 #[cfg(test)]

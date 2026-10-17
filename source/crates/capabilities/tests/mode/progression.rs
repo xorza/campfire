@@ -202,7 +202,9 @@ fn on_input(ctx, player, name, value) {
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
     let mut files = mode_files();
     let core = DeclaredName::new("core").unwrap();
-    files.data.tags.insert(core, TagData::default());
+    let mut tags = files.data.section_or_default::<ModeTagsData>().into_owned();
+    tags.0.insert(core, TagData::default());
+    files.data = files.data.with(tags);
     let script = format!("{script}{PICKING}");
     let mut game = start_match(&script, ScriptLimits::ROOMY, &files).unwrap();
     Mode::tick_inputs(

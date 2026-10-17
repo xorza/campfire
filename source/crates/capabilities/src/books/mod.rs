@@ -27,7 +27,7 @@ pub(crate) mod leftover_books;
 pub(crate) mod package_content;
 pub(crate) mod type_place;
 pub(crate) mod unit_start;
-pub(crate) mod unit_type_data;
+pub(crate) mod units_seed;
 
 /// The books of a match, built once from its packages at its tick rate, each until the build
 /// puts it where its owner declares it, before its owner installs; the names of the mode's damage

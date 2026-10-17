@@ -66,7 +66,7 @@ impl ClientData {
             data.read_package(view.index, &view.package.files);
         }
         data.read_map(&packages.mode().package.files, packages.map_name());
-        data.metric = packages.map().metric;
+        data.metric = packages.map().metric();
         data
     }
 

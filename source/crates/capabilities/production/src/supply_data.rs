@@ -1,3 +1,4 @@
+use campfire_declare::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -14,4 +15,9 @@ pub struct SupplyData {
 
 impl DataSection for SupplyData {
     const TABLE: DataTable = DataTable::Supply;
+}
+
+impl Section for SupplyData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "supply";
 }

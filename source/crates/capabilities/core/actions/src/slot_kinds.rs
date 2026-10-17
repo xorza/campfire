@@ -1,3 +1,4 @@
+use campfire_declare::{Section, SectionTable};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
@@ -116,6 +117,11 @@ impl SlotKinds {
             .is_none()
             .then_some(Rank::FIRST)
     }
+}
+
+impl Section for SlotKinds {
+    const TABLE: SectionTable = SectionTable::Mode;
+    const KEY: &'static str = "slots";
 }
 
 #[cfg(test)]

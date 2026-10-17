@@ -34,6 +34,8 @@ mod collider;
 mod error;
 mod forced_moves;
 mod group_box;
+mod map_navigation_data;
+mod map_paths_data;
 mod mode_navigation_data;
 mod navigation_api;
 mod navigation_book;
@@ -68,6 +70,8 @@ pub use crate::collider::Collider;
 pub use crate::error::{MapProblem, NavigationRefusal};
 pub use crate::forced_moves::ForcedMoves;
 pub use crate::group_box::GroupBox;
+pub use crate::map_navigation_data::{MapNavigationData, WallData};
+pub use crate::map_paths_data::{MapPathsData, PathData};
 pub use crate::mode_navigation_data::ModeNavigationData;
 pub use crate::navigation_api::NavigationApi;
 pub use crate::navigation_book::NavigationBook;
@@ -166,6 +170,9 @@ impl Module for Navigation {
     type Set = NavigationSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<ModeNavigationData>();
+        d.section::<MapNavigationData>();
+        d.section::<MapPathsData>();
         d.removals::<Dead>();
         d.removals::<Unpredicted>();
         d.callback::<SpawnHooks>(Capability::Navigation, Self::make_room);

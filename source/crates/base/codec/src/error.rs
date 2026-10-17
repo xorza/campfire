@@ -1,3 +1,4 @@
+use serde::de::Error as DeError;
 use thiserror::Error;
 use toml::de;
 
@@ -47,6 +48,13 @@ pub struct TomlError(#[from] de::Error);
 #[derive(Debug, Error)]
 #[error(transparent)]
 pub struct JsonError(#[from] serde_json::Error);
+
+impl TomlError {
+    /// The error as another reader's of the format, written whole: TOML's error has no source.
+    pub fn into_de<E: DeError>(self) -> E {
+        E::custom(self.0.to_string().trim_end())
+    }
+}
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
