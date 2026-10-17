@@ -4,7 +4,7 @@ use blake3::Hasher;
 use campfire_common::{
     AfterLeave, MapName, PackageFingerprint, SegmentSeed, StateHash, Ticks, Version,
 };
-use secp256k1::Keypair;
+use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
 use crate::delegation::DelegationTerms;
@@ -603,13 +603,13 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
         file: file_bound,
         journal: Bounds::MAX.journal,
     };
-    assert!(SessionLog::decode_within(&file, within(start + 70 + kept), Signatures::Check).is_ok());
+    assert!(SessionLog::decode_within(&file, within(start + 70 + kept)).is_ok());
     let full = LogError::Input {
         tick: Tick::new(0),
         error: InputError::LogFull,
     };
     assert_eq!(
-        SessionLog::decode_within(&file, within(start + 70 + kept - 1), Signatures::Check).err(),
+        SessionLog::decode_within(&file, within(start + 70 + kept - 1)).err(),
         Some(full)
     );
     // A log full only once it takes a record of the most bytes and the end no more.

@@ -17,7 +17,7 @@ use crate::session_log::error::{HeaderError, LogError};
 use crate::session_log::log_entries::Entry;
 use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::session_header::SessionHeader;
-use crate::session_log::{Bounds, LoggedResult, SessionLog, Signatures, len, offset, put, take};
+use crate::session_log::{Bounds, LoggedResult, Past, SessionLog, len, offset, put, take};
 use crate::session_terms::SessionTerms;
 use crate::slot_plan::SlotPlan;
 use crate::slot_start::SlotStart;
@@ -41,6 +41,10 @@ impl SessionLog {
     /// them. The header goes field by field, each slot's start as a byte, 0 for a player, then
     /// the delegation's JSON, 1 for a bot and 2 for an open slot.
     pub fn encode(&self, out: &mut Vec<u8>) {
+        debug_assert!(
+            self.holds_all(),
+            "a log is written whole only while it forgot nothing, as one with no journal"
+        );
         assert!(
             self.segments.begun_count() == 0,
             "a log is written once every checkpoint it began has its record"
@@ -54,17 +58,6 @@ impl SessionLog {
             self.file_len,
             "the log counts its file's bytes"
         );
-    }
-
-    /// Writes into `out`, which is cleared first, the file of the log as it stood at the boundary
-    /// where segment `segment` starts: its segments up to that one, their ticks before it, and
-    /// none of the entries logged after them.
-    pub(super) fn encode_through(&self, segment: usize, out: &mut Vec<u8>) {
-        let tick = self.segments.first(segment + 1)[segment].tick;
-        let start = self.put_segments(out, segment + 1, tick);
-        self.put_entries(out, start..start);
-        put(out, &None::<ServerSeed>);
-        put(out, &None::<LoggedResult>);
     }
 
     /// Writes into `out`, which is cleared first, the tag, the header, and the first `segments`
@@ -96,18 +89,13 @@ impl SessionLog {
     /// signature, and only the bytes `encode` gives for the decoded log are accepted, so a log has
     /// one file.
     pub fn decode(bytes: &[u8]) -> Result<Self, LogError> {
-        Self::decode_within(bytes, Bounds::MAX, Signatures::Check)
+        Self::decode_within(bytes, Bounds::MAX)
     }
 
-    /// Decodes a log file as `decode` does, the log's file and journal held within `bounds`, its
-    /// signatures taken as `signatures` says. Each value it takes is canonical postcard, and each
+    /// Decodes a log file as `decode` does, the log's file and journal held within `bounds`. Each value it takes is canonical postcard, and each
     /// count is the count of what follows, so the bytes `encode` gives for the decoded log are
     /// the file's, which a debug build checks.
-    pub(super) fn decode_within(
-        bytes: &[u8],
-        bounds: Bounds,
-        signatures: Signatures,
-    ) -> Result<Self, LogError> {
+    pub(super) fn decode_within(bytes: &[u8], bounds: Bounds) -> Result<Self, LogError> {
         let mut rest = bytes.strip_prefix(LOG_TAG).ok_or(LogError::NotLog)?;
         let header = take_header(&mut rest)?;
         let mut log = Self::within(header, bounds).map_err(LogError::Header)?;
@@ -119,15 +107,15 @@ impl SessionLog {
         }
         for segment in 0..segments {
             if segment > 0 {
-                log.record_checkpoint_at(&mut rest, segment, signatures)?;
+                log.record_checkpoint_at(&mut rest, segment)?;
             }
             let ticks: u64 = take(&mut rest)?;
             for _ in 0..ticks {
-                log.record_logged(&mut rest, &mut inputs, &mut applied, signatures)?;
+                log.record_logged(&mut rest, &mut inputs, &mut applied)?;
                 drop(log.seal_tick(None));
             }
         }
-        log.record_logged(&mut rest, &mut inputs, &mut applied, signatures)?;
+        log.record_logged(&mut rest, &mut inputs, &mut applied)?;
         if let Some(server_seed) = take::<Option<ServerSeed>>(&mut rest)? {
             if !server_seed.check(log.segment(), &log.header.terms.seed_commitment) {
                 return Err(LogError::WrongSeed);
@@ -135,7 +123,7 @@ impl SessionLog {
             log.set_revealed(server_seed);
         }
         if let Some(LoggedResult { result, signature }) = take(&mut rest)? {
-            log.record_result_as(result, &signature, None, signatures)
+            log.record_result(result, &signature, None)
                 .map_err(LogError::Result)?;
         }
         if !rest.is_empty() {
@@ -210,13 +198,12 @@ impl SessionLog {
         rest: &mut &'a [u8],
         inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
-        signatures: Signatures,
     ) -> Result<(), LogError> {
         let entries: u32 = take(rest)?;
         for _ in 0..entries {
             match take::<u8>(rest)? {
-                PACKET_ENTRY => self.record_packet(rest, inputs, applied, signatures)?,
-                SERVER_ENTRY => self.record_server_input(rest, signatures)?,
+                PACKET_ENTRY => self.record_packet(rest, inputs, applied)?,
+                SERVER_ENTRY => self.record_server_input(rest)?,
                 _ => return Err(LogError::UnknownEntry),
             }
         }
@@ -224,13 +211,12 @@ impl SessionLog {
     }
 
     /// Records the packet `put_packet` wrote at the front of `rest`, with `inputs` and `applied`
-    /// as scratch, its signature taken as `signatures` says.
+    /// as scratch.
     pub(super) fn record_packet<'a>(
         &mut self,
         rest: &mut &'a [u8],
         inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
-        signatures: Signatures,
     ) -> Result<(), LogError> {
         let tick = self.next_tick();
         let slot = PlayerSlot::new(take(rest)?);
@@ -247,17 +233,12 @@ impl SessionLog {
             inputs: inputs.iter().copied(),
             signature: &signature,
         };
-        self.record_as(packet, applied, None, signatures)
+        self.record(packet, applied, None)
             .map_err(|error| LogError::Input { tick, error })
     }
 
-    /// Records the server input `put_server` wrote at the front of `rest`, its signature taken as
-    /// `signatures` says.
-    pub(super) fn record_server_input(
-        &mut self,
-        rest: &mut &[u8],
-        signatures: Signatures,
-    ) -> Result<(), LogError> {
+    /// Records the server input `put_server` wrote at the front of `rest`.
+    pub(super) fn record_server_input(&mut self, rest: &mut &[u8]) -> Result<(), LogError> {
         let tick = self.next_tick();
         let taken = ServerInput::take(rest).map_err(|error| match error {
             ServerInputDecodeError::Malformed(BinaryError::Truncated) => LogError::Truncated,
@@ -265,30 +246,26 @@ impl SessionLog {
         })?;
         *rest = taken.rest;
         let signature = take(rest)?;
-        self.record_server_as(taken.value, &signature, None, signatures)
+        self.record_server(taken.value, &signature, None)
             .map_err(|error| LogError::Server { tick, error })
     }
 
     /// Begins the checkpoint of segment `segment`, and records its record that `encode` wrote at
-    /// the front of `rest`, with its signature, taken as `signatures` says.
-    fn record_checkpoint_at(
-        &mut self,
-        rest: &mut &[u8],
-        segment: u32,
-        signatures: Signatures,
-    ) -> Result<(), LogError> {
+    /// the front of `rest`, with its signature.
+    fn record_checkpoint_at(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
         self.begin_checkpoint(None)
             .map_err(|error| LogError::Checkpoint { segment, error })?;
-        self.record_done(rest, segment, signatures)
+        self.record_done(rest, segment, Past::InLog)
     }
 
     /// Records the record of the checkpoint begun, of segment `segment`, that `encode` wrote at
-    /// the front of `rest`, with its signature, taken as `signatures` says.
+    /// the front of `rest`, with its signature, the past before its boundary held where `past`
+    /// says.
     pub(super) fn record_done(
         &mut self,
         rest: &mut &[u8],
         segment: u32,
-        signatures: Signatures,
+        past: Past,
     ) -> Result<(), LogError> {
         let taken = Checkpoint::take(rest).map_err(|error| match error {
             CheckpointDecodeError::Malformed(BinaryError::Truncated) => LogError::Truncated,
@@ -296,7 +273,7 @@ impl SessionLog {
         })?;
         *rest = taken.rest;
         let signature = take(rest)?;
-        self.record_checkpoint_as(taken.value, &signature, None, signatures)
+        self.record_checkpoint_in(taken.value, &signature, None, past)
             .map_err(|error| LogError::Checkpoint { segment, error })
     }
 }

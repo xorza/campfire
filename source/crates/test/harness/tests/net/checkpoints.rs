@@ -81,13 +81,10 @@ fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
     let held = log(local);
     let revealed = held.revealed_seeds().unwrap();
     let last = revealed.seed(held.segment()).unwrap().clone();
-    let (id, mut encoded) = (held.session_id(), Vec::new());
-    held.encode(&mut encoded);
+    let id = held.session_id();
     let data = local.server().world().resource::<ServerDir>();
     let file = SessionDir::publish(data, id, &last).unwrap();
-    // The journal publishes the file the log in memory writes.
     let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
-    assert_eq!(bytes, encoded);
     let published = SessionLog::decode(&bytes).unwrap();
     let mut replay = Replay::of(published, local.packages()).unwrap();
     let records: Vec<_> = replay
@@ -272,9 +269,13 @@ fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
             tick: Tick::new(11)
         }]
     );
-    let mut bytes = Vec::new();
-    log(&local).encode(&mut bytes);
-    SessionLog::decode(&bytes).unwrap();
+    local.server_mut().world_mut().session_mut().close_journal();
+    let held = log(&local);
+    let revealed = held.revealed_seeds().unwrap();
+    let last = revealed.seed(held.segment()).unwrap().clone();
+    let data = local.server().world().resource::<ServerDir>();
+    let file = SessionDir::publish(data, held.session_id(), &last).unwrap();
+    SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
 }
 
 #[test]

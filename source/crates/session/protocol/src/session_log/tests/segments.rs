@@ -320,25 +320,33 @@ fn revealing_an_earlier_segments_seed_is_a_bug() {
 
 #[test]
 fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
-    // A save at tick 2, segment 1, then tick 2 runs y, and player 0 sends z for tick 3.
+    // A save at tick 2, segment 1, then tick 2 runs y, and player 0 sends z for tick 3; the log
+    // keeps a journal, so it forgets what came before the save, and its twin keeps none.
     let mut log = two_ticks();
+    let mut twin = two_ticks();
     let file = MemorySink::new();
     let mut journal = Journal::start(&log, file.boxed());
     let record = checkpoint(&log, 3);
-    log.begin_checkpoint(Some(&mut journal)).unwrap();
     let signature = signed_by(&record, &TestKey::server());
+    log.begin_checkpoint(Some(&mut journal)).unwrap();
     log.record_checkpoint(record.clone(), &signature, Some(&mut journal))
         .unwrap();
-    let saved = encoded(&log);
+    twin.begin_checkpoint(None).unwrap();
+    twin.record_checkpoint(record.clone(), &signature, None)
+        .unwrap();
+    assert_eq!((log.base(), twin.base()), (Some(1), None));
+    let saved = encoded(&twin);
     let sealed: Vec<_> = log
         .seal_tick(Some(&mut journal))
         .map(|input| (input.slot.get(), input.payload.to_vec()))
         .collect();
     assert_eq!(sealed, [(1, b"y".to_vec())]);
+    assert_eq!(seal(&mut twin), [(1, b"y".to_vec())]);
     let mut applied = Vec::new();
-    resent(0, &[&[(3, b"z")]], 0)[0]
-        .submit_to(&mut log, &mut applied, Some(&mut journal))
+    let z = resent(0, &[&[(3, b"z")]], 0);
+    z[0].submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
+    z[0].submit(&mut twin, &mut applied).unwrap();
 
     // Segment 0 starts from no checkpoint, and segment 2 is none of the log's.
     for segment in [0, 2] {
@@ -353,24 +361,29 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
     log.bounds.journal = start + 38 + 4 * log.unit - 1;
     assert_eq!(log.load(1, Some(&mut journal)), Err(LogLoadError::LogFull));
     log.bounds.journal += 1;
-    // The load of segment 1: the log is the one saved, at tick 2 again, its y due again there
-    // and z gone; and the journal rebuilds the log loaded.
+    // The load of segment 1, from its checkpoint's carry: the log is the one saved, at tick 2
+    // again, its y due again there and z gone, as its twin's file shows; and the journal
+    // rebuilds the log loaded.
     log.load(1, Some(&mut journal)).unwrap();
+    twin.load(1, None).unwrap();
     assert_eq!(journal.len(), start + 38);
     log.bounds = Bounds::MAX;
-    assert_eq!(encoded(&log), saved);
-    assert_eq!((log.next_tick(), log.segment()), (Tick::new(2), 1));
-    assert_eq!(log.checkpoint_at(Tick::new(2)), Some(&record));
-    assert_eq!(log.carry(), record.carry);
+    assert_eq!(encoded(&twin), saved);
+    for loaded in [&log, &twin] {
+        assert_eq!((loaded.next_tick(), loaded.segment()), (Tick::new(2), 1));
+        assert_eq!(loaded.checkpoint_at(Tick::new(2)), Some(&record));
+        assert_eq!(loaded.carry(), record.carry);
+        assert_eq!(loaded.file_len, len(saved.len()));
+    }
     journal.flush();
     let loaded = file.bytes();
 
     // The journal counts its records on past the load: z again, in the record after the load's,
     // is durable once the records through it are.
     let written = journal.written();
-    resent(0, &[&[(3, b"z")]], 0)[0]
-        .submit_to(&mut log, &mut applied, Some(&mut journal))
+    z[0].submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
+    z[0].submit(&mut twin, &mut applied).unwrap();
     let slot = PlayerSlot::new(0);
     journal.advance_durable(written);
     assert_eq!(journal.durable_head(slot), None);
@@ -382,15 +395,20 @@ fn a_load_goes_back_to_its_checkpoint_and_the_journal_follows_it() {
         journal.durable_head(slot).map(|head| (head.seq, head.head)),
         Some((chain.next_seq() - 1, chain.head()))
     );
-    // The journal publishes the log loaded and gone on: z once, after the load.
-    log.reveal_seed(SEED_CHAIN.seed(1));
-    let held = encoded(&log);
+    // The journal publishes the log loaded and gone on, z once after the load: its twin's file.
+    twin.reveal_seed(SEED_CHAIN.seed(1));
     drop(log);
     drop(journal);
-    assert_eq!(published_from(&file.bytes()), Ok(held));
+    assert_eq!(published_from(&file.bytes()), Ok(encoded(&twin)));
 
+    // The journal's records to the load rebuild the log loaded, which forgets what came before
+    // its save.
     let records: Vec<&[u8]> = JournalFrames::new(&loaded).unwrap().collect();
     assert_eq!(records.last().map(|record| record[0]), Some(7));
     let rebuilt = SessionLog::from_journal(records, RELEASE).unwrap();
-    assert_eq!(encoded(&rebuilt), saved);
+    assert_eq!(
+        (rebuilt.next_tick(), rebuilt.base()),
+        (Tick::new(2), Some(1))
+    );
+    assert_eq!(rebuilt.carry(), record.carry);
 }

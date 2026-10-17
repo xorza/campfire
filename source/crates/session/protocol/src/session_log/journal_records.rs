@@ -10,7 +10,7 @@ use crate::session_log::error::{CheckpointError, JournalReplayError, LogError};
 use crate::session_log::journal::Journal;
 use crate::session_log::log_entries::Entry;
 use crate::session_log::segments::{LoggedCheckpoint, SegmentStart};
-use crate::session_log::{LoggedResult, SessionLog, Signatures, file, put, take};
+use crate::session_log::{LoggedResult, Past, SessionLog, file, put, take};
 
 /// The bytes that start each kind of journal record.
 pub(super) const JOURNAL_HEADER: u8 = 0;
@@ -123,8 +123,8 @@ impl SessionLog {
     ) -> Result<(), LogError> {
         let (&kind, mut rest) = record.split_first().ok_or(LogError::Truncated)?;
         match kind {
-            JOURNAL_PACKET => self.record_packet(&mut rest, inputs, applied, Signatures::Check)?,
-            JOURNAL_SERVER => self.record_server_input(&mut rest, Signatures::Check)?,
+            JOURNAL_PACKET => self.record_packet(&mut rest, inputs, applied)?,
+            JOURNAL_SERVER => self.record_server_input(&mut rest)?,
             JOURNAL_SEALED => drop(self.seal_tick(None)),
             JOURNAL_CHECKPOINT_BEGUN => {
                 let segment: u32 = take(&mut rest)?;
@@ -146,7 +146,8 @@ impl SessionLog {
                     .segments
                     .oldest_begun()
                     .map_or_else(|| self.segment(), |begun| begun.segment);
-                self.record_done(&mut rest, segment, Signatures::Check)?;
+                // The journal it is rebuilt from holds the past before the boundary.
+                self.record_done(&mut rest, segment, Past::InJournal)?;
             }
             JOURNAL_LOADED => {
                 let segment: u32 = take(&mut rest)?;
@@ -170,6 +171,10 @@ impl SessionLog {
     /// the log holds: the header, then each entry, each sealed tick, each checkpoint and the
     /// result, as the log took them.
     pub(crate) fn write_journal(&self, journal: &mut Journal) {
+        debug_assert!(
+            self.holds_all(),
+            "a log gives a new journal what it forgot nothing of"
+        );
         let mut out = vec![JOURNAL_HEADER];
         self.put_header(&mut out);
         journal.append(&out);

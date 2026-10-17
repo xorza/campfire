@@ -21,12 +21,32 @@ pub struct LogReplay {
 }
 
 impl LogReplay {
-    /// The replay of `log`'s sealed ticks from tick 0; none for a log of no sealed tick, whose
-    /// next tick its own schedule runs live.
+    /// The replay of the sealed ticks `log` holds: from tick 0, or, for a log that forgot what
+    /// came before its latest checkpoint, from that checkpoint's boundary, the schedule its carry
+    /// and the log's own state there give; none when it holds no sealed tick, and its next tick
+    /// its own schedule runs live.
     pub fn of(log: &SessionLog) -> Option<Self> {
-        (log.next_tick() > Tick::ZERO).then(|| Self {
-            next: Tick::ZERO,
-            schedule: InputSchedule::new(log.control.len(), log.header.terms.inputs),
+        let rules = log.header.terms.inputs;
+        let (next, schedule) = match log.base() {
+            None => (Tick::ZERO, InputSchedule::new(log.control.len(), rules)),
+            Some(base) => {
+                let start = log
+                    .segments
+                    .get(base)
+                    .expect("the log's base is a segment of it");
+                let boundary = start.boundary.as_ref().expect("a base has its boundary");
+                let record = start.checkpoint.as_ref().expect("a base has its record");
+                let spills = record.record.carry.slots.iter().map(|slot| slot.spill);
+                let pending = boundary.pending.iter().copied();
+                (
+                    start.tick,
+                    InputSchedule::restored(rules, spills.collect(), pending),
+                )
+            }
+        };
+        (log.next_tick() > next).then_some(Self {
+            next,
+            schedule,
             sealed_changes: 0..0,
         })
     }

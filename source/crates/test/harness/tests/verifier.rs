@@ -221,31 +221,48 @@ impl RecordSink for FileJournal {
 }
 
 #[test]
-fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
+fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
     // The orders' match, journaled from its start, checkpointed before tick 40 and ended before
-    // tick 72; the journal on disk holds every record once the match drops.
+    // tick 72, and its twin, which keeps no journal; the journal on disk holds every record once
+    // the match drops.
     let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
     let path = scratch.path("journal");
     let mut fixed = session().start();
+    let mut twin = session().start();
     fixed
         .game_mut()
         .session_mut()
         .keep_journal(Box::new(FileJournal(
             AppendWriter::create("journal", &path, JournalFrames::TAG).unwrap(),
         )));
-    let mut trail = HashTrail::default();
     let orders = ORDERS.each_ref();
-    play(&mut fixed, &orders, 0..40, &mut trail);
-    fixed.checkpoint(&mut Vec::new());
-    play(&mut fixed, &orders, 40..72, &mut trail);
-    fixed.end();
-    let bytes = encoded(fixed.game().session().log());
+    for game in [&mut fixed, &mut twin] {
+        let mut trail = HashTrail::default();
+        play(game, &orders, 0..40, &mut trail);
+        game.checkpoint(&mut Vec::new());
+        play(game, &orders, 40..72, &mut trail);
+        game.end();
+    }
+    // The journaled log forgot what came before its checkpoint; its twin holds every entry.
+    let held = fixed.game().session().log();
+    assert_eq!(held.next_tick(), twin.game().session().log().next_tick());
     drop(fixed);
     let file = scratch.read(&path);
-    let mut rebuilt =
+    let mut published = Vec::new();
+    let mut walk = |visit: &mut dyn FnMut(&[u8])| {
+        for record in JournalFrames::new(&file).unwrap() {
+            visit(record);
+        }
+    };
+    SessionLog::publish(&mut walk, &FixedSession::seed(1), &mut published).unwrap();
+    assert_eq!(published, encoded(twin.game().session().log()));
+    // The log its journal rebuilds forgets the same past, and stands where its twin does.
+    let rebuilt =
         SessionLog::from_journal(JournalFrames::new(&file).unwrap(), Version::ENGINE).unwrap();
-    rebuilt.reveal_seed(FixedSession::seed(1));
-    assert_eq!(encoded(&rebuilt), bytes);
+    let whole = twin.game().session().log();
+    assert_eq!(rebuilt.next_tick(), whole.next_tick());
+    assert_eq!(rebuilt.result(), whole.result());
+    assert!(rebuilt.checkpoints().eq(whole.checkpoints()));
 }
 
 #[test]

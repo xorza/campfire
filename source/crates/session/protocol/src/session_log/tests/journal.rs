@@ -5,23 +5,41 @@ fn records(file: &[u8]) -> Vec<&[u8]> {
     JournalFrames::new(file).unwrap().collect()
 }
 
+/// How many entries `log` holds: those since its base's boundary, once it forgot those before.
+fn held_entries(log: &SessionLog) -> u32 {
+    let base = log.base().and_then(|base| log.segments.get(base));
+    let from = base.and_then(|start| start.boundary.as_ref());
+    log.entries.len() - from.map_or(0, |boundary| boundary.entries.entries)
+}
+
 #[test]
 fn a_journal_rebuilds_the_log_it_followed() {
-    // Kept from the start: each record goes to the journal as the log takes it.
+    // Kept from the start: each record goes to the journal as the log takes it, and the log
+    // forgets what its checkpoint's record leaves before its boundary.
     let mut log = new_log();
     let file = MemorySink::new();
     let mut journal = Journal::start(&log, file.boxed());
     play_minimal(&mut log, Some(&mut journal));
-    let bytes = encoded(&log);
     // The sink takes the frames once they are flushed, all of them in one append.
     assert_eq!(file.appends(), 0);
     journal.flush();
     assert_eq!(file.appends(), 1);
     assert_eq!(journal.len(), len(file.bytes().len()));
     drop(journal);
+    // The log holds the packet after its checkpoint alone, of the three entries it took, as
+    // does the log its journal rebuilds; their state is the one a log with no journal holds.
+    let mut whole = new_log();
+    play_minimal(&mut whole, None);
     let journal = file.bytes();
     let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
-    assert_eq!(encoded(&rebuilt), bytes);
+    for log in [&log, &rebuilt] {
+        assert_eq!((log.base(), held_entries(log)), (Some(1), 1));
+        assert_eq!(log.next_tick(), whole.next_tick());
+        assert_eq!(log.result(), whole.result());
+        assert!(log.checkpoints().eq(whole.checkpoints()));
+        assert_eq!(log.carry(), whole.carry());
+    }
+    assert_eq!((whole.base(), held_entries(&whole)), (None, 3));
     // The header, a packet and a server input, the seal, the checkpoint's begin and its record,
     // a packet, the result.
     let kinds: Vec<u8> = records(&journal).iter().map(|record| record[0]).collect();
@@ -161,14 +179,14 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
 
 #[test]
 fn a_journal_publishes_the_file_its_log_writes() {
-    // Two segments, the second of a packet after its checkpoint, and the result.
+    // Two segments, the second of a packet after its checkpoint, and the result: the file a
+    // log of no journal, which forgets nothing, writes.
     let mut log = new_log();
     let file = MemorySink::new();
     let mut journal = Journal::start(&log, file.boxed());
     play_minimal(&mut log, Some(&mut journal));
     drop(journal);
-    log.reveal_seed(SEED_CHAIN.seed(1));
-    assert_eq!(published_from(&file.bytes()), Ok(encoded(&log)));
+    assert_eq!(published_from(&file.bytes()), Ok(encoded(&minimal())));
 
     // A journal of no record, and one whose last checkpoint has no record yet, publish nothing.
     let empty = MemorySink::new().bytes();

@@ -169,13 +169,10 @@ fn a_quick_load_goes_back_to_the_save_and_every_client_plays_on_from_it() {
     let held = log(&local);
     let revealed = held.revealed_seeds().unwrap();
     let last = revealed.seed(held.segment()).unwrap().clone();
-    let (id, mut encoded) = (held.session_id(), Vec::new());
-    held.encode(&mut encoded);
+    let id = held.session_id();
     let data = local.server().world().resource::<ServerDir>();
     let file = SessionDir::publish(data, id, &last).unwrap();
-    // The journal publishes the file the log in memory writes.
     let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
-    assert_eq!(bytes, encoded);
     let published = SessionLog::decode(&bytes).unwrap();
     assert_eq!(published.checkpoints().collect::<Vec<_>>(), [&save]);
     let mut replay = Replay::of(published, local.packages()).unwrap();
