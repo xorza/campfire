@@ -20,13 +20,12 @@ use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
 use crate::frame_point::FramePoint;
 use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
-use crate::holdings::Holdings;
+use crate::holdings::{Holdings, OwnedUnits};
 use crate::node_book::NodeBook;
 use crate::production_books::ProductionBooks;
 use crate::production_data::ProductionData;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
-use crate::supply::{Counted, Supply};
 use crate::train_queue::{Queued, TrainQueue};
 use crate::train_spec::TrainSpec;
 
@@ -63,9 +62,10 @@ impl Trains {
     /// its `requires` and, with supply, finds room under its player's cap, pays its whole cost, in
     /// pools and player resources, goes on cooldown, and joins the queue, where it holds its
     /// supply (04-capabilities/production.md, Tags block production). The order ends either way,
-    /// and the unit stays free. Supply and the units a requirement finds are counted once, as the first
-    /// train comes to them. A predicting client's form `F` pays nothing, as the unit's pools and
-    /// its player's resources are the server's.
+    /// and the unit stays free. The holdings follow the units as each run starts, so the supply
+    /// and the units a requirement finds are those of the match as it stands, and each train that
+    /// joins holds its supply at once. A predicting client's form `F` pays nothing, as the unit's
+    /// pools and its player's resources are the server's.
     #[expect(
         clippy::too_many_arguments,
         reason = "a system takes each resource and query it reads"
@@ -76,16 +76,8 @@ impl Trains {
         held_modifiers: PlayerRows<'_, '_, PlayerModifiers>,
         life: Option<Res<'_, PoolBook>>,
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
-        mut units: ParamSet<
-            '_,
-            '_,
-            (
-                Query<'_, '_, Counted>,
-                Query<'_, '_, Training, Without<Dead>>,
-            ),
-        >,
+        mut units: ParamSet<'_, '_, (OwnedUnits<'_, '_>, Query<'_, '_, Training, Without<Dead>>)>,
         mut order: Local<'_, Ordered>,
-        mut supply: Local<'_, Supply>,
         mut holdings: ResMut<'_, Holdings>,
     ) {
         let ProductionBooks {
@@ -97,6 +89,7 @@ impl Trains {
             rules,
         } = books;
         let now = tick.start();
+        holdings.follow(&units.p0());
         let trains = {
             let training = units.p1();
             let ordered = training
@@ -111,13 +104,7 @@ impl Trains {
         if trains.is_empty() {
             return;
         }
-        {
-            let counted = units.p0();
-            if let Some(rules) = rules.0 {
-                supply.count(&costs, rules, counted.iter());
-            }
-            holdings.read(counted.iter());
-        }
+        let max = rules.0.map(|rules| u64::from(rules.max));
         let mut training = units.p1();
         for &Keyed { entity, .. } in trains {
             let (
@@ -168,8 +155,8 @@ impl Trains {
                 .expect("a train's action trains")
                 .unit_type;
             let cost = costs.cost(made);
-            let counts = rules.0.is_some().then_some(owner).flatten();
-            if counts.is_some_and(|owner| !supply.has_room(owner, cost)) {
+            let counts = max.zip(owner);
+            if counts.is_some_and(|(max, owner)| !holdings.has_room(owner, cost, max)) {
                 continue;
             }
             let values = checked.values;
@@ -193,8 +180,8 @@ impl Trains {
                 toggle: None,
             });
             queue.push(queued, paid, now);
-            if let Some(owner) = counts {
-                supply.reserve(owner, cost);
+            if let Some((_, owner)) = counts {
+                holdings.reserve(entity, owner, cost);
             }
         }
     }

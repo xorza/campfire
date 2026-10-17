@@ -49,9 +49,8 @@ impl Construction {
             if changed.is_empty() {
                 return;
             }
-            view.read_holdings();
+            view.follow_holdings();
             changed.retain(|&entity| !view.applies(entity));
-            view.holdings.forget();
         }
         let mut builders = parts.p1();
         for &entity in &*changed {
@@ -100,7 +99,7 @@ impl Construction {
         }
         view.get_mut(world)
             .expect("a build view is always valid")
-            .read_holdings();
+            .follow_holdings();
         for &Keyed { entity, .. } in due {
             // A site the build before spawned stands in the grid this build's placement reads.
             grid.get_mut(world)

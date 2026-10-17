@@ -17,11 +17,10 @@ use crate::build_book::{BuildBook, Building, Style};
 use crate::build_start::BuildStart;
 use crate::builder::{BuildOrder, Builder};
 use crate::construction::step::{Start, Step};
-use crate::holdings::Holdings;
+use crate::holdings::{Holdings, OwnedUnits};
 use crate::placement::Placement;
 use crate::requirement_book::RequirementBook;
 use crate::site::Site;
-use crate::supply::Counted;
 
 /// What a build order reads of the match: the books, the players' resources and modifiers, the
 /// life pool, the placement, the builders, the sites, and the units the players own, which the
@@ -70,8 +69,8 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
         ),
         Without<Dead>,
     >,
-    owned: Query<'w, 's, Counted>,
-    pub(super) holdings: ResMut<'w, Holdings>,
+    owned: OwnedUnits<'w, 's>,
+    holdings: ResMut<'w, Holdings>,
     pub(super) changed: Query<'w, 's, Entity, (Changed<Builder>, Without<Dead>)>,
 }
 
@@ -99,9 +98,9 @@ impl BuildPlace {
 }
 
 impl<S: TeamSight> BuildView<'_, '_, S> {
-    /// Reads the holdings, unless they are read, for the requirements the builds meet.
-    pub(super) fn read_holdings(&mut self) {
-        self.holdings.read(self.owned.iter());
+    /// Follows the units, for the requirements the builds meet.
+    pub(super) fn follow_holdings(&mut self) {
+        self.holdings.follow(&self.owned);
     }
 
     /// Where the build at `target` places its building, by the builder `by`: the point's box,

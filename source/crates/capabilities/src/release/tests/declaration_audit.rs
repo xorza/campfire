@@ -25,7 +25,7 @@ use campfire_declare::{
 use campfire_deliveries::Deliverers;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_players::Player;
-use campfire_production::{Gatherer, PlayerSupply, Site, TrainQueue};
+use campfire_production::{Gatherer, PlayerSupply};
 use campfire_script::{ApiBuilder, CallParams, CallPart, MatchNames, RowReads, ViewColumn};
 use campfire_sim::{
     Breach, Capability, HostRule, OnAny, OwnResources, SimComponent, SimResource, SimSet,
@@ -34,7 +34,7 @@ use campfire_sim::{
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
 use campfire_units::{BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, UnitEntity};
-use campfire_values::{EngineTag, NameId, TagProperties, UnitType};
+use campfire_values::{EngineTag, NameId, TagProperties};
 use campfire_vision::VisionColumn;
 use serde::{Deserialize, Serialize};
 
@@ -498,6 +498,9 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "Flying::lose_teleported",
             "Flying::lose_died",
             "ProductionOrders::ordered",
+            "Holdings::inserted",
+            "Holdings::removed",
+            "Holdings::aged",
             "UseOrders::ordered",
         ]
     );
@@ -512,12 +515,7 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             type_name::<Owner>(),
             type_name::<Dead>(),
             type_name::<Unpredicted>(),
-            type_name::<Dead>(),
             type_name::<Gatherer>(),
-            type_name::<Owner>(),
-            type_name::<Site>(),
-            type_name::<TrainQueue>(),
-            type_name::<UnitType>(),
         ]
     );
     let runs: Vec<&str> = audit.one_shots.iter().map(|ty| ty.name).collect();

@@ -640,13 +640,12 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 7: visit what is due or changed
 
-**7.1 One due index.** Touches `sim`, `actions`, `combat`, `stats`, `abilities`, `areas`, `items`, `production`, `orders`, `units`.
+**7.1 One due index.** Waits for Q18 in `review-architecture_QUESTIONS.md`. Touches `sim`, `actions`, `combat`, `stats`, `abilities`, `areas`, `items`, `production`, `orders`, `units`.
 - `DueIndex` keyed by `(Tick, StableId)` replaces `DueRun`, and every timed process uses it (K-13, C-17, R-4).
 - `Lifespan` becomes immutable with an `on_insert` push.
 - **Goldens:** they may move where the order of visits was by `Entity`. Each move is explained.
 
 **7.2 Caches that follow deltas.** Touches `production`, `units` (view reader), `players`, `combat`, `items`, `script`.
-- Supply and holdings as one cache for each player, kept by observers (R-12).
 - The script view merges deltas and reads once for each phase that runs scripts (C-15). Call parts copy on first use, and literal names resolve once for each call site (S-24).
 - `Single` for the match entity and a dense player table (C-14).
 - The damage pass reads through a cached `SystemState`, and a heard event shares one handle (K-21).
@@ -658,7 +657,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - Room making and static following query the change's bounds (R-30).
 - Gathering searches use the grid, and each node keeps its queue (R-5).
 
-**7.4 Progress apart from configuration.** Touches `production`, `navigation`, `actions`.
+**7.4 Progress apart from configuration.** Waits for Q18 in `review-architecture_QUESTIONS.md`, as 7.1 changes the same parts. Touches `production`, `navigation`, `actions`.
 - `SiteProgress` and the route cursor become their own parts (R-26).
 - `SlotsMut` as a `QueryData` (C-18).
 - **Format:** the snapshot's version rises.
@@ -986,7 +985,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | R-8 | One clearance and region set for each distinct radius | `walker_kinds.rs:37-42`, `pathing_grid/mod.rs:48-136` | Plausible count | Backlog (D18) |
 | R-9 | The route work limit is the map's cell count | `route_planner/mod.rs:24, 173` | Plausible | Backlog |
 | R-10 | The heavy navigation and vision passes have deterministic parallel forms | `broadphase.rs:96-128`, `collider/mod.rs:46-53`, `seeing.rs:56-75` | Plausible | 11.1 |
-| R-12 | Supply and holdings are counted from scratch twice in each tick, through a shared flag memo | `trains.rs:83-114`, `player_supply.rs:44-62`, `holdings.rs:17-58` | Confirmed | 7.2 |
 | R-13 | Supply is one quantity with a constant cap | `supply.rs:18-127` | Confirmed | Backlog |
 | R-14 | Requirements are AND only, so Zero Hour's either-or prerequisites are dropped | `requirement_book.rs:12-66`, `production_import.rs:280-294` | Confirmed | Backlog |
 | R-15 | A train queue makes units only, at a fixed end tick, while a site progresses by a rate | `train_queue.rs:24-93`, `site.rs:84-105` | Confirmed | Backlog |

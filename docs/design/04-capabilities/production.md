@@ -13,7 +13,8 @@
 
 ## Supply
 
-- **Supply is derived, not a player resource.** Supply used and the cap follow from the living units, the queued trains and the complete providers, counted when a train checks its room, so no script keeps it and it cannot drift from them; an update at each event would need every system that spawns or kills to report it.
+- **Supply is derived, not a player resource.** Supply used and the cap follow from the living units, the queued trains and the complete providers, so no script keeps it and it cannot drift from them. Refused: an update at each event, which would need every system that spawns or kills to report it.
+- **Supply and holdings follow what changed.** One cache keeps what each unit counts for, and its observers mark a unit whose owner, type, death, site or presence comes or goes, as each fires on every path that spawns, kills, restores or rolls back; a queue, which changes in place, shows by its change tick. Each reader follows the marked units before it reads, so a count costs the units that changed, not every unit. Refused: a count of every unit at each train and again at each tick's end (R-12), and a `Changed` filter on each part, which reads every unit's change ticks in each tick.
 
 ## Requirements
 

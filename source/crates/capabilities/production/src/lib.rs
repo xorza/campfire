@@ -20,8 +20,8 @@ use campfire_declare::{
 use campfire_players::Player;
 use campfire_sim::{Capability, SimSet};
 use campfire_stats::StatsSet;
-use campfire_units::{BodyUnit, Dead, Owner, StatusTags, UnitGrid, UnitTypes, UnitsSet};
-use campfire_values::{Block, EngineTag, TagProperties, UnitType};
+use campfire_units::{BodyUnit, StatusTags, UnitGrid, UnitTypes, UnitsSet};
+use campfire_values::{Block, EngineTag, TagProperties};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 use crate::holdings::Holdings;
@@ -158,12 +158,7 @@ impl Module for Production {
         d.section::<NodeData>();
         d.section::<DropOffData>();
         d.section::<ModeSupplyData>();
-        d.removals::<Dead>();
         d.removals::<Gatherer>();
-        d.removals::<Owner>();
-        d.removals::<Site>();
-        d.removals::<TrainQueue>();
-        d.removals::<UnitType>();
         d.engine_tags(&[
             Self::CONSTRUCTING,
             Self::NODE,
@@ -171,7 +166,10 @@ impl Module for Production {
             Self::GATHERING,
         ]);
         d.component::<TrainQueue>();
-        d.scratch::<Holdings>();
+        d.cache::<Holdings>();
+        d.observer(Holdings::inserted);
+        d.observer(Holdings::removed);
+        d.observer(Holdings::aged);
         d.derived_sent::<PlayerSupply>();
         d.server_part::<Player, PlayerSupply>();
         d.component::<Rally>();
@@ -239,8 +237,8 @@ impl Module for Production {
         if !cx.has(Capability::Navigation) {
             cx.by_role(
                 ProductionSet::Start,
-                (Trains::start_trains::<ServerForm>, Holdings::forget_read).chain(),
-                (Trains::start_trains::<ClientForm>, Holdings::forget_read).chain(),
+                Trains::start_trains::<ServerForm>,
+                Trains::start_trains::<ClientForm>,
             );
             cx.server(ProductionSet::Finish, Trains::finish_trains);
             return;
@@ -300,7 +298,6 @@ impl Production {
             GatherLoop::forget_dead_gathers,
             GatherLoop::run::<S>,
             GatherLoop::tag_gatherers,
-            Holdings::forget_read,
         )
             .chain()
             .into_configs()

@@ -77,11 +77,21 @@ fn a_train_joins_only_with_room_under_its_players_cap_and_holds_its_supply_until
     // 9 + 3 of 10 does not.
     let entity = game.unit_entity(first_depot);
     game.entity_mut(entity).remove::<Dead>();
-    Production::owned(&mut game, depot, player);
-    Production::owned(&mut game, depot, player);
+    let second_depot = Production::owned(&mut game, depot, player);
+    let third_depot = Production::owned(&mut game, depot, player);
     step(&mut game, 1, 2, (9, 10), 5);
     step(&mut game, 0, 3, (9, 10), 6);
     step(&mut game, 0, 3, (9, 10), 7);
+    // Two depots die: 16 - 8 = 8 given, below the 9 used.
+    for id in [first_depot, second_depot] {
+        game.insert_parts(id, Dead);
+    }
+    step(&mut game, 0, 3, (9, 8), 8);
+    // The third despawns, and a new one spawns in the same tick: 8 - 4 + 4 = 8 given.
+    let gone = game.unit_entity(third_depot);
+    game.entity_mut(gone).despawn();
+    Production::owned(&mut game, depot, player);
+    step(&mut game, 0, 3, (9, 8), 9);
 }
 
 #[test]
