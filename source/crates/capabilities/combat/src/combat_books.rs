@@ -7,7 +7,8 @@ use campfire_actions::{
 };
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, NamesListError, Section};
 use campfire_script::{NameKind, UnknownName};
-use campfire_stats::{LifePool, PoolNames, StatBook, TypePoolsData, UnitStartError};
+use campfire_stats::{LifePool, StatBook, TypePoolsData, UnitStartError};
+use campfire_units::PoolNames;
 use campfire_values::{Names, NamesError, PackageIndex};
 
 use crate::Combat;

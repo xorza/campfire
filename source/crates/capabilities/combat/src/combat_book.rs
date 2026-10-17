@@ -3,7 +3,7 @@ use campfire_common::Ticks;
 use campfire_declare::Book;
 use campfire_script::MatchNames;
 use campfire_sim::TickRate;
-use campfire_stats::StatId;
+use campfire_units::StatId;
 use campfire_values::Stat;
 
 use crate::mode_combat_data::ModeCombatData;

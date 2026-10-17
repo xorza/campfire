@@ -23,7 +23,8 @@ use campfire_math::Num;
 use campfire_players::Player;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Due, Owner, PoolId, SpawnHooks, UnitGrid, UnitSteps, UnitsSet,
+    BodyUnit, Dead, DeclaredTags, Due, Owner, PoolId, PoolNames, SpawnHooks, UnitGrid, UnitSteps,
+    UnitsSet,
 };
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
@@ -78,7 +79,6 @@ mod player_grants;
 mod player_modifiers;
 mod pool_book;
 mod pool_data;
-mod pool_names;
 mod pools;
 mod refresh;
 mod refresh_scratch;
@@ -86,7 +86,6 @@ mod stat_book;
 mod stat_books;
 mod stat_change;
 mod stat_graph;
-mod stat_id;
 mod stat_op;
 mod stat_rule;
 mod stat_totals;
@@ -147,13 +146,11 @@ pub use crate::passive_data::PassiveData;
 pub use crate::player_modifiers::PlayerModifiers;
 pub use crate::pool_book::{PoolBook, PoolStats};
 pub use crate::pool_data::PoolData;
-pub use crate::pool_names::PoolNames;
 pub use crate::pools::Pools;
 pub use crate::refresh::Refresh;
 pub use crate::stat_book::StatBook;
 pub use crate::stat_change::StatChange;
 pub use crate::stat_graph::StatGraph;
-pub use crate::stat_id::StatId;
 pub use crate::stat_op::StatOp;
 pub use crate::stat_rule::StatRule;
 pub use crate::stat_totals::StatTotals;
@@ -288,8 +285,8 @@ impl Module for Stats {
         d.rule(StatGraph::rule);
         d.book::<StatBook>(StatBook::build);
         d.fact::<UnitSteps>(StatBook::unit_steps);
-        d.fact::<PoolNames>(PoolNames::build);
-        d.rule(PoolNames::rule);
+        d.fact::<PoolNames>(ModePoolsData::names);
+        d.rule(ModePoolsData::rule);
         d.book::<PoolBook>(PoolBook::build);
         d.fact::<TypePools>(TypePools::build);
         d.rule(TypePools::rule);
@@ -480,7 +477,7 @@ pub mod internals {
     use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId, TickRate};
-    use campfire_units::{Life, ScriptBook, UnitTypeBook, Units};
+    use campfire_units::{Life, ScriptBook, StatId, UnitTypeBook, Units};
     use campfire_values::{
         ActionId, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet, UnitType,
     };
@@ -493,7 +490,6 @@ pub mod internals {
     use crate::modifiers::Modifiers;
     use crate::param_book::ParamBook;
     use crate::stat_book::StatBook;
-    use crate::stat_id::StatId;
     use crate::stat_op::StatOp;
     use crate::stat_rule::StatRule;
     use crate::stats_effect::StatsEffect;

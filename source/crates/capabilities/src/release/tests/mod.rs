@@ -558,8 +558,8 @@ const LOOKUPS: [(&str, &str); 63] = [
     ("script/scripts/state_decl/state_schema.rs", "named"),
     ("script/scripts/view/tag_names.rs", "named"),
     ("stats/param_table.rs", "named"),
-    ("stats/stat_id.rs", "named"),
     ("stats/stats_call.rs", "named"),
+    ("units/stat_id.rs", "named"),
     ("values/name_table.rs", "named"),
 ];
 

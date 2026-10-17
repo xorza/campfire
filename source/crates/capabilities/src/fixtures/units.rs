@@ -7,9 +7,9 @@ use campfire_common::Tick;
 use campfire_script::{Filter, MatchNames, TagNames};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimSet, SimTick, StableId};
-use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, StatId, Stats};
+use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, Stats};
 use campfire_units::internals::TEST_PACKAGE;
-use campfire_units::{PoolId, StatusTags, TagBook, Units};
+use campfire_units::{PoolId, StatId, StatusTags, TagBook, Units};
 use campfire_values::{
     Block, DamageKind, Names, RelationSet, ResourceId, Stat, TagProperties, UnitType,
 };

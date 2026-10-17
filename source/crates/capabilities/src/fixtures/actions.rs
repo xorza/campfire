@@ -9,8 +9,8 @@ use campfire_declare::{Book, ByType};
 use campfire_projectiles::ProjectileSpec;
 use campfire_script::{Filter, MatchNames, NameKind, ScriptId, UnknownName};
 use campfire_sim::TickRate;
-use campfire_stats::{ModifierBook, StatId, Stats};
-use campfire_units::ScriptBook;
+use campfire_stats::{ModifierBook, Stats};
+use campfire_units::{ScriptBook, StatId};
 use campfire_values::{
     ActionId, DamageKind, FilterData, ModifierId, PackageIndex, Param, Stat, Tag, TypeScope,
     UnitType,

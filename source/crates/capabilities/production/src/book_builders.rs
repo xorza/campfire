@@ -6,8 +6,8 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, SourceType, UnitTypeData};
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, NameKind, UnknownName};
-use campfire_stats::{LifePool, ModifierBook, PoolNames, StatsData, TypePoolsData};
-use campfire_units::{BodyForm, UnitTypes};
+use campfire_stats::{LifePool, ModifierBook, StatsData, TypePoolsData};
+use campfire_units::{BodyForm, PoolNames, UnitTypes};
 use campfire_values::{ActionId, ModifierId, PackageIndex, ResourceId, Share, TypeScope, UnitType};
 
 use crate::Production;

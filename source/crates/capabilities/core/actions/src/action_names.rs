@@ -1,6 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_script::{Filter, UnknownName};
-use campfire_stats::StatId;
+use campfire_units::StatId;
 use campfire_values::{DamageKind, FilterData, ModifierId, PackageIndex, Stat, Tag, UnitType};
 
 use crate::cost_target::CostTarget;

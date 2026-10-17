@@ -7,13 +7,12 @@ use campfire_declare::{Book, BookCx, BookError, BookPlace};
 use campfire_math::{Num, Rounding};
 use campfire_script::{MatchNames, NameKind, UnknownName};
 use campfire_sim::TickRate;
-use campfire_units::{MoveStep, TurnStep, UnitSteps};
+use campfire_units::{MoveStep, StatId, TurnStep, UnitSteps};
 use campfire_values::{EngineStat, NameId, Names, PackageIndex, Stat, UnitType};
 
 use crate::mode_stats_data::ModeStatsData;
 use crate::move_speed_cap::MoveSpeedCap;
 use crate::stat_graph::StatGraph;
-use crate::stat_id::StatId;
 use crate::stat_rule::StatRule;
 use crate::stat_totals::StatTotals;
 use crate::stats_data::StatsData;

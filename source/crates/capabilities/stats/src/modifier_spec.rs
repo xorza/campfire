@@ -6,13 +6,13 @@ use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_script::{Filter, StateSchema, SyncTo, TagNames, UnknownName};
 use campfire_sim::TickRate;
+use campfire_units::StatId;
 use campfire_values::{FilterData, ModifierId, Names, Number, Param, Stat};
 
 use crate::applier_param::ApplierParam;
 use crate::error::{ModifierProblem, SpecError};
 use crate::interval_revival::IntervalRevival;
 use crate::modifier_data::{ModifierData, Reapply};
-use crate::stat_id::StatId;
 use crate::stat_op::StatOp;
 
 /// A modifier as a match runs it: its data with every name resolved at load, its stats to their

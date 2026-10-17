@@ -7,6 +7,7 @@ use campfire_declare::Book;
 use campfire_math::Num;
 use campfire_script::{MatchNames, ParamProblem};
 use campfire_sim::TickRate;
+use campfire_units::StatId;
 use campfire_values::{ActionId, ModifierId, NameId, Names, Param, Rank, Stat};
 
 use crate::applier_param::ApplierParam;
@@ -16,7 +17,6 @@ use crate::modifier_spec::ParamPlace;
 use crate::param_read::ParamRead;
 use crate::param_source::ParamSource;
 use crate::param_table::ParamTable;
-use crate::stat_id::StatId;
 
 /// The params of every action and every modifier of a match, one run each, by id: package data
 /// that the stat engine and the script frame both read, shared, never copied.
@@ -239,11 +239,11 @@ pub(crate) mod internals {
     use std::sync::Arc;
 
     use campfire_common::DeclaredName;
+    use campfire_units::StatId;
     use campfire_values::{Names, Param, Stat};
 
     use crate::applier_param::ApplierParam;
     use crate::param_book::{ApplierPlaces, ParamBook};
-    use crate::stat_id::StatId;
 
     impl ParamBook {
         /// Resolves each name of `appliers` in each action's params again, after a test added

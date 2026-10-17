@@ -7,7 +7,7 @@ use campfire_math::Num;
 use campfire_script::ParamProblem;
 use campfire_script::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
 use campfire_stats::*;
-use campfire_units::{ScriptBook, UnitTypes};
+use campfire_units::{ScriptBook, StatId, UnitTypes};
 use campfire_values::{
     ActionId, ModifierId, NameId, Number, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar,
     Scaling, Stat,

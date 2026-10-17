@@ -33,10 +33,10 @@ use campfire_sim::{
 };
 use campfire_stats::{
     Application, Ends, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance, PoolBook,
-    Pools, StatBook, StatId, StatRule, Stats, StatsSet,
+    Pools, StatBook, StatRule, Stats, StatsSet,
 };
 use campfire_units::{
-    BodyForm, Dead, Deaths, Fallen, Life, MapBook, Owner, PoolCost, PoolId, SpawnPoint,
+    BodyForm, Dead, Deaths, Fallen, Life, MapBook, Owner, PoolCost, PoolId, SpawnPoint, StatId,
     UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{

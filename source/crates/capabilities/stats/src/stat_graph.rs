@@ -1,11 +1,11 @@
 use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
 use campfire_script::{NameKind, UnknownName};
+use campfire_units::StatId;
 use campfire_values::{NameId, PackageIndex, Param, Stat};
 
 use crate::error::{EdgeError, StatGraphError};
 use crate::mode_stats_data::ModeStatsData;
 use crate::modifiers_data::ModifiersData;
-use crate::stat_id::StatId;
 
 /// Which stats a live stat change reads and which it changes, across a mode's modifiers: an edge
 /// from each stat a scaling param reads to the stat the change that reads it changes. A fact of

@@ -1,6 +1,7 @@
 use bevy_ecs::entity::Entity;
 use campfire_math::Num;
 use campfire_sim::StableId;
+use campfire_units::StatId;
 use campfire_values::{NameId, Rank, TagSet, UnitType};
 
 use crate::live_param::LiveParam;
@@ -9,7 +10,6 @@ use crate::modifiers::Modifiers;
 use crate::param_book::ParamBook;
 use crate::param_source::ParamSource;
 use crate::stat_book::StatBook;
-use crate::stat_id::StatId;
 use crate::stat_op::StatOp;
 use crate::stat_totals::StatTotals;
 

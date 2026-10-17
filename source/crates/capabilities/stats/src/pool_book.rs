@@ -5,15 +5,13 @@ use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
 use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_script::MatchNames;
-use campfire_units::PoolId;
+use campfire_units::{PoolId, PoolNames, StatId};
 use campfire_values::{Names, PackageIndex, Stat};
 
 use crate::life_pool::LifePool;
 use crate::mode_pools_data::ModePoolsData;
 use crate::pool_data::PoolData;
-use crate::pool_names::PoolNames;
 use crate::stat_book::StatBook;
-use crate::stat_id::StatId;
 
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
 /// of its regen. Package data, not state.

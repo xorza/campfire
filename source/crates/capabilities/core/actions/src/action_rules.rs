@@ -8,7 +8,8 @@ use campfire_declare::{
 use campfire_players::ResourceBook;
 use campfire_script::{NameKind, ScriptRole, UnknownName};
 use campfire_sim::Capability;
-use campfire_stats::{ModifiersData, PassiveData, PoolNames};
+use campfire_stats::{ModifiersData, PassiveData};
+use campfire_units::PoolNames;
 use campfire_values::{EngineTag, Names, PackageIndex};
 
 use crate::Actions;

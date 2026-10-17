@@ -9,7 +9,7 @@ use campfire_script::{
     UnknownName,
 };
 use campfire_sim::TickRate;
-use campfire_units::{ScriptBook, StatusTags, UnitTypes};
+use campfire_units::{ScriptBook, StatId, StatusTags, UnitTypes};
 use campfire_values::{ActionId, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet};
 
 use crate::application::{Adding, Application, ApplyAt, NewInstance};
@@ -25,7 +25,6 @@ use crate::modifiers_data::ModifiersData;
 use crate::param_book::ParamBook;
 use crate::param_read::ParamRead;
 use crate::stat_book::StatBook;
-use crate::stat_id::StatId;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the
@@ -405,13 +404,13 @@ pub(crate) mod internals {
 
     use campfire_math::Num;
     use campfire_script::HookSet;
+    use campfire_units::StatId;
     use campfire_values::{ModifierId, NameId, PackageIndex, TagSet};
 
     use crate::interval_revival::IntervalRevival;
     use crate::modifier_book::{ModifierBook, ModifierEntry};
     use crate::modifier_data::Reapply;
     use crate::modifier_spec::{ModifierSpec, SpecChange, SpecNumber};
-    use crate::stat_id::StatId;
     use crate::stat_op::StatOp;
 
     impl ModifierBook {

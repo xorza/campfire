@@ -1,7 +1,7 @@
 use campfire_common::Ticks;
 use campfire_geometry::Volume;
 use campfire_math::{Num, Rounding, SinCos, Vec3};
-use campfire_stats::StatId;
+use campfire_units::StatId;
 use campfire_values::{DamageKind, NameId, Speed, Tag, TagSet};
 
 use crate::action_data::SplashData;
