@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryData};
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_units::{Dead, PoolCost, PoolId};
+use campfire_units::{Dead, PoolCost, PoolId, PoolPayer, PoolPurse};
 
 use crate::life::{self, Life};
 use crate::meter::Meter;
@@ -104,12 +104,6 @@ impl<'a> PoolMeters<'a> {
         self.meter(pool).map(Meter::current)
     }
 
-    /// Whether it has every pool `cost` names, each holding at least its amount.
-    pub fn affords(&self, cost: &PoolCost) -> bool {
-        cost.iter()
-            .all(|(pool, amount)| self.current(pool).is_some_and(|current| current >= amount))
-    }
-
     /// The pools of the unit of `entity`, the life pool the match's.
     pub fn of(world: &World, entity: Entity) -> PoolMeters<'_> {
         let life_pool = world.get_resource::<PoolBook>().and_then(PoolBook::life);
@@ -143,16 +137,6 @@ impl PoolMetersMut<'_> {
         }
     }
 
-    /// Spends `cost`, which it affords.
-    pub fn pay(&mut self, cost: &PoolCost) {
-        debug_assert!(self.read().affords(cost), "a unit pays what it affords");
-        for (pool, amount) in cost.iter() {
-            self.change(pool, |meter| {
-                meter.take(amount);
-            });
-        }
-    }
-
     /// Adds `amount`, which is not negative, to `pool`, up to its maximum, when it has the pool.
     pub fn add(&mut self, pool: PoolId, amount: Num) {
         self.change(pool, |meter| meter.add(amount));
@@ -167,5 +151,30 @@ impl PoolMetersMut<'_> {
     /// pool.
     pub(crate) fn regen(&mut self, pool: PoolId, per_second: Num, hz: u32) {
         self.change(pool, |meter| meter.regen(per_second, hz));
+    }
+}
+
+/// It has every pool `cost` names, each holding at least its amount.
+impl PoolPurse for PoolMeters<'_> {
+    fn affords(&self, cost: &PoolCost) -> bool {
+        cost.iter()
+            .all(|(pool, amount)| self.current(pool).is_some_and(|current| current >= amount))
+    }
+}
+
+impl PoolPurse for PoolMetersMut<'_> {
+    fn affords(&self, cost: &PoolCost) -> bool {
+        self.read().affords(cost)
+    }
+}
+
+impl PoolPayer for PoolMetersMut<'_> {
+    fn pay(&mut self, cost: &PoolCost) {
+        debug_assert!(self.affords(cost), "a unit pays what it affords");
+        for (pool, amount) in cost.iter() {
+            self.change(pool, |meter| {
+                meter.take(amount);
+            });
+        }
     }
 }

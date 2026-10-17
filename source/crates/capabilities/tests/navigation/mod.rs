@@ -10,7 +10,7 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
     ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, MapPoint,
-    MapPointError, TurnStep, Units,
+    MapPointError, TurnStep, Units, Wall,
 };
 use campfire_values::{Block, NameId, Names, PathId, Team, UnitType};
 
@@ -858,7 +858,8 @@ fn check_walkable(
     }];
     let layers = layer_table(rules);
     let ground = MapBook::of(map.sections(), None).unwrap();
-    let navigation = NavigationBook::of(&ground, map.sections(), Some(&layers)).unwrap();
+    let navigation = NavigationBook::of(&ground, map.sections()).unwrap();
+    let walls = Navigation::walls_of(&ground, map.sections(), Some(&layers)).unwrap();
     let input = MapInput {
         map,
         relations: &[],
@@ -873,6 +874,7 @@ fn check_walkable(
     let check = WalkCheck {
         ground: &ground,
         navigation: &navigation,
+        walls: &walls,
         walkers: &kinds,
         placed: &map.placed_bodies(body),
         spawns: &map.spawn_points(&rules.spawn_tags),
@@ -1061,8 +1063,7 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
     ];
     let walls = |map: &MapData, rules| {
         let ground = MapBook::of(map.sections(), None).unwrap();
-        let book = NavigationBook::of(&ground, map.sections(), Some(&layer_table(rules)));
-        book.map(|book| book.walls)
+        Navigation::walls_of(&ground, map.sections(), Some(&layer_table(rules)))
     };
     for (wall, rules, error) in refused {
         assert_eq!(walls(&walled(vec![wall]), rules), Err(error));

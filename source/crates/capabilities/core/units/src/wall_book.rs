@@ -1,16 +1,20 @@
 use std::sync::Arc;
 
+use bevy_ecs::resource::Resource;
+use campfire_declare::Book;
 use campfire_geometry::BodyBox;
 use campfire_math::Vec3;
-use campfire_units::Layer;
+use campfire_script::MatchNames;
 
+use crate::layer::Layer;
 use crate::wall::Wall;
 
-/// The map's walls, as a placement tests a box against them.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Walls(Arc<[Wall]>);
+/// The map's walls, as a placement tests a box against them and the pathing grid blocks its
+/// cells: map data, not state, which the capability that reads the map's walls builds.
+#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+pub struct WallBook(Arc<[Wall]>);
 
-impl Walls {
+impl WallBook {
     pub fn new(walls: &[Wall]) -> Self {
         Self(walls.into())
     }
@@ -21,7 +25,7 @@ impl Walls {
 
     /// Whether `other` shares these walls, by their one allocation: a copy of a match's walls is
     /// them, with no compare of their points.
-    pub(crate) fn same(&self, other: &Self) -> bool {
+    pub fn same(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
     }
 
@@ -32,4 +36,10 @@ impl Walls {
             .iter()
             .any(|wall| wall.layer == layer && body.overlaps_polygon(pos, &wall.area))
     }
+}
+
+impl Book for WallBook {
+    const SCRIPTS_ONLY: bool = false;
+
+    fn share(&self, _: &mut MatchNames) {}
 }

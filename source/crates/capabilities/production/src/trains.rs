@@ -9,11 +9,12 @@ use campfire_actions::{
 };
 use campfire_declare::{ByType, RoleForm};
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{Navigation, Walker};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_sim::{IdAllocator, Keyed, Ordered, Position, SimTick, SimWorld, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPools};
-use campfire_units::{Body, Dead, Destination, Facing, MapBook, Owner, SpawnAt, Spawner};
+use campfire_units::{
+    Body, Dead, Destination, Facing, MapBook, OpenCellAsk, OpenCellRun, Owner, SpawnAt, Spawner,
+};
 use campfire_values::{Relation, Team, UnitTags, UnitType};
 
 use crate::frame_point::FramePoint;
@@ -327,20 +328,21 @@ impl TrainPlaces {
     /// position. With neither point, at the producer's position. A box's nearest point rounds to
     /// the nearest bit; a circle's is a step of its radius toward the rally point, as a walker
     /// steps.
-    fn spawn_place(self, world: &World, entity: Entity, unit_type: UnitType) -> Vec3 {
+    fn spawn_place(self, world: &mut World, entity: Entity, unit_type: UnitType) -> Vec3 {
         let producer = world.entity(entity);
         let pos = producer.get::<Position>().expect("a producer stands").get();
-        let walker = world
-            .get_resource::<ByType<Walker>>()
-            .and_then(|walkers| walkers.get(unit_type).copied());
         let near = match (self.exit, self.rally) {
             (Some(exit), _) => exit,
             (None, Some(to)) => Body::shape_of(producer.get::<Body>()).nearest_point(pos, to),
             (None, None) => return pos,
         };
         let fallback = self.exit.unwrap_or(pos);
-        walker
-            .and_then(|walker| Navigation::open_cell(world, walker, near))
+        let Some(&OpenCellRun(run)) = world.get_resource::<OpenCellRun>() else {
+            return fallback;
+        };
+        world
+            .run_system_with(run, OpenCellAsk { unit_type, near })
+            .expect("the open cell's search runs on any world")
             .unwrap_or(fallback)
     }
 }

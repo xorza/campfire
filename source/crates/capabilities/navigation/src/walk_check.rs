@@ -2,7 +2,7 @@ use campfire_common::DeclaredName;
 use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
-use campfire_units::{Body, MapBook};
+use campfire_units::{Body, MapBook, WallBook};
 use campfire_values::UnitType;
 
 use crate::body_index::{BodyIndex, IndexedBody};
@@ -21,6 +21,7 @@ use crate::walker_kinds::WalkerKinds;
 pub struct WalkCheck<'a> {
     pub ground: &'a MapBook,
     pub navigation: &'a NavigationBook,
+    pub walls: &'a WallBook,
     pub walkers: &'a WalkerKinds,
     pub placed: &'a [PlacedBody],
     pub spawns: &'a [MarkerPoint],
@@ -55,11 +56,7 @@ impl WalkCheck<'_> {
     /// nothing more to check.
     pub fn run(&self, name_of: impl Fn(UnitType) -> DeclaredName) -> Result<(), MapProblem> {
         let bounds = &self.ground.bounds;
-        let NavigationBook {
-            paths,
-            walls: placed_walls,
-            pathing,
-        } = self.navigation;
+        let NavigationBook { paths, pathing } = self.navigation;
         let mut ids = IdAllocator::default();
         let structures: Vec<IndexedBody> = self
             .placed
@@ -81,7 +78,7 @@ impl WalkCheck<'_> {
             return Ok(());
         };
         let walkers = self.walkers;
-        let terrain = Terrain::new(&cells, placed_walls.walls());
+        let terrain = Terrain::new(&cells, self.walls.walls());
         let widest_radius = walkers.iter().map(|walker| walker.radius).max();
         let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
         statics.update(&structures);

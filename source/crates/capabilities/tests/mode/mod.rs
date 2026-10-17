@@ -28,8 +28,8 @@ use campfire_mode::{
     UnansweredSlotEvents, *,
 };
 use campfire_navigation::{
-    MapNavigationData, MapPathsData, ModeNavigationData, NavigationBook, OnPath, PathData, PathEnd,
-    Route, Walker, WalkerKinds,
+    MapNavigationData, MapPathsData, ModeNavigationData, Navigation, NavigationBook, OnPath,
+    PathData, PathEnd, Route, Walker, WalkerKinds,
 };
 use campfire_players::{
     MatchEntity, OutOfPlay, Player, PlayerResources, PlayersWorld, ResourcesData,
@@ -739,7 +739,8 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
         .collect();
     let sections = files.map.sections();
     let ground = MapBook::of(sections, None).unwrap();
-    let navigation = NavigationBook::of(&ground, sections, Some(&layers)).unwrap();
+    let navigation = NavigationBook::of(&ground, sections).unwrap();
+    let walls = Navigation::walls_of(&ground, sections, Some(&layers)).unwrap();
     let vision = VisionBook::of(&ground, sections, files.teams.len()).unwrap();
     let map = {
         let names = game.resource::<MatchNames>();
@@ -775,6 +776,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     combat.load_into(game);
     ground.load_into(game);
     navigation.load_into(game);
+    walls.load_into(game);
     vision.load_into(game);
     {
         let mut names = game.resource_mut::<MatchNames>();

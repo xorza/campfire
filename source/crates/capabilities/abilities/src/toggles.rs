@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, ParamSet, Query, Res};
 use campfire_actions::{ActionBook, ActionSlots, Caster, SlotTimes, TogglePer, UseGroup};
 use campfire_sim::TickClock;
 use campfire_stats::{PoolBook, UnitPools};
-use campfire_units::Dead;
+use campfire_units::{Dead, PoolPayer, PoolPurse};
 use campfire_values::{Motion, UnitTags};
 
 use crate::Abilities;

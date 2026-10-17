@@ -7,7 +7,7 @@ use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{BodyBox, Bounds, Grid, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
-use campfire_units::Layer;
+use campfire_units::{Layer, Wall};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 
@@ -22,7 +22,6 @@ use crate::route_planner::{RoutePlanner, Walkable};
 use crate::terrain::Terrain;
 use crate::walker::Walker;
 use crate::walker_kinds::WalkerKinds;
-use crate::wall::Wall;
 
 /// Runs each bench of the crate whose id criterion's filter takes.
 pub fn run(c: &mut Criterion) {

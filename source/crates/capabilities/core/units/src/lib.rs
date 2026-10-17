@@ -42,10 +42,12 @@ mod map_point;
 mod move_step;
 mod new_unit;
 mod new_unit_states;
+mod open_cell_run;
 mod owner;
 mod player_units;
 mod pool_cost;
 mod pool_id;
+mod pool_purse;
 mod row_marks;
 mod row_source;
 mod script_book;
@@ -83,6 +85,8 @@ mod units_column;
 mod units_rules;
 mod units_world;
 mod view_reader;
+mod wall;
+mod wall_book;
 
 pub use crate::arrived_short::ArrivedShort;
 pub use crate::avatar::Avatar;
@@ -113,10 +117,12 @@ pub use crate::map_point::MapPoint;
 pub use crate::move_step::MoveStep;
 pub use crate::new_unit::NewUnit;
 pub use crate::new_unit_states::NewUnitStates;
+pub use crate::open_cell_run::{OpenCellAsk, OpenCellRun};
 pub use crate::owner::Owner;
 pub use crate::player_units::{Commanded, HeldPlayerUnits, PlayerUnits};
 pub use crate::pool_cost::PoolCost;
 pub use crate::pool_id::PoolId;
+pub use crate::pool_purse::{PoolPayer, PoolPurse};
 pub use crate::script_book::ScriptBook;
 pub use crate::seen_by::SeenBy;
 pub use crate::spawn_at::SpawnAt;
@@ -150,6 +156,8 @@ pub use crate::units_api::UnitsApi;
 pub use crate::units_call::UnitsCall;
 pub use crate::units_world::UnitsWorld;
 pub use crate::view_reader::ViewReader;
+pub use crate::wall::Wall;
+pub use crate::wall_book::WallBook;
 
 #[cfg(feature = "internals")]
 pub mod internals {

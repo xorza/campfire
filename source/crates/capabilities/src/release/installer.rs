@@ -240,7 +240,7 @@ impl Declarations for Installer<'_> {
         Removals::<C>::track(self.world, self.schedule);
     }
 
-    fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static) {
+    fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, R::Out, M> + 'static) {
         let id = self.world.register_system(system);
         self.world.insert_resource(R::new(id));
     }

@@ -2,26 +2,24 @@ use std::ops::ControlFlow;
 
 use bevy_ecs::query::{Allow, Has, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_geometry::{Placed, Shape};
+use campfire_geometry::{BodyBox, Placed, Shape};
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{BodyIndex, IndexedBody, NavigationBook};
 use campfire_players::OnMatch;
 use campfire_sim::{Position, Unpredicted};
-use campfire_units::{Body, Dead, MapBook, MoveStep, UnitsNear};
+use campfire_units::{Body, Dead, MapBook, MoveStep, UnitsNear, WallBook};
 use campfire_values::{Relation, Relations, TagSet, Team, UnitTags};
 use campfire_vision::{Fog, TeamSight, VisionBook};
 
 use crate::build_book::{BuildSpec, PlacementCheck};
 
 /// What a placement tests a building's box against: the bounds, the walls, whether the builder's
-/// team sees its point, the static bodies, and the living units near it that the builder's team
-/// sees, by `S`, of a match with no vision every unit, the walkers among them, found by the unit
-/// grid. A client tests the units it holds and does not predict too, where the server last had
-/// them.
+/// team sees its point, the static bodies, seen or not, and the living units near it that the
+/// builder's team sees, by `S`, of a match with no vision every unit, the walkers among them,
+/// each found by the unit grid. A client tests the units it holds and does not predict too, where
+/// the server last had them.
 #[derive(SystemParam, Debug)]
 pub struct Placement<'w, 's, S: TeamSight> {
-    navigation: Option<Res<'w, NavigationBook>>,
-    statics: Res<'w, BodyIndex>,
+    walls: Option<Res<'w, WallBook>>,
     relations: OnMatch<'w, 's, Relations>,
     map: Res<'w, MapBook>,
     vision: Option<Res<'w, VisionBook>>,
@@ -55,19 +53,15 @@ impl<S: TeamSight> Placement<'_, '_, S> {
         };
         let layer = body.layer();
         let walled = self
-            .navigation
+            .walls
             .as_deref()
-            .is_some_and(|book| book.walls.overlaps_box(pos, &boxed, layer));
+            .is_some_and(|walls| walls.overlaps_box(pos, &boxed, layer));
         if !self.map.bounds.holds_box(pos, &boxed) || walled {
             return false;
         }
         let grid = self.vision.as_deref().and_then(VisionBook::grid);
         let unseen = |(fog, grid)| !S::sees_point(fog, grid, pos, team);
         if self.fog.as_deref().zip(grid).is_some_and(unseen) {
-            return false;
-        }
-        let overlaps = |other: &IndexedBody| other.overlaps_box(pos, &boxed);
-        if self.statics.any_near(layer, pos, boxed.bound(), overlaps) {
             return false;
         }
         let Self {
@@ -79,18 +73,17 @@ impl<S: TeamSight> Placement<'_, '_, S> {
         } = self;
         let relations = relations.get();
         let seen = SeenNear::<S> { near, units, team };
+        // A static body blocks seen or not; a walker only when the team sees it, and is no friend's.
+        let overlaps = |unit: &NearUnit<'_>, walks: bool| {
+            unit.body
+                .filter(|other| unit.walks == walks && other.layer() == layer)
+                .is_some_and(|other| overlap(&boxed, pos, other, unit.pos))
+        };
+        if seen.any_static(pos, boxed.bound(), |unit| overlaps(&unit, false)) {
+            return false;
+        }
         let blocked = seen.any(pos, boxed.bound(), |unit| {
-            let Some(other) = unit
-                .body
-                .filter(|other| unit.walks && other.layer() == layer)
-            else {
-                return false;
-            };
-            let inside = match other.shape() {
-                Shape::Circle(radius) => boxed.closer(pos, unit.pos, radius.get()),
-                Shape::Box(other) => boxed.overlaps(pos, &other, unit.pos),
-            };
-            inside && relations.between(team, unit.team) != Relation::Friendly
+            overlaps(&unit, true) && relations.between(team, unit.team) != Relation::Friendly
         });
         // A rule's unit is one its filter selects for a builder of `team`, of those `team` sees,
         // that comes within its distance of the box by the reach rule.
@@ -131,17 +124,51 @@ struct SeenNear<'p, 'w, 's, S: TeamSight> {
     team: Team,
 }
 
+/// Which of the units near a placement a search visits: those its builder's team sees, or all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Sighted {
+    Seen,
+    Any,
+}
+
+/// Whether the inside of `boxed`, a box at `pos`, shares a point with that of `other`, a body at
+/// `at`: touching is not overlap.
+fn overlap(boxed: &BodyBox, pos: Vec3, other: &Body, at: Vec3) -> bool {
+    match other.shape() {
+        Shape::Circle(radius) => boxed.closer(pos, at, radius.get()),
+        Shape::Box(other) => boxed.overlaps(pos, &other, at),
+    }
+}
+
 impl<S: TeamSight> SeenNear<'_, '_, '_, S> {
     /// Whether `found` holds of a living unit whose bound comes within `reach` of `pos`, that
     /// the team sees, of a match with no vision every unit.
-    fn any(&self, pos: Vec3, reach: Num, mut found: impl FnMut(NearUnit<'_>) -> bool) -> bool {
+    fn any(&self, pos: Vec3, reach: Num, found: impl FnMut(NearUnit<'_>) -> bool) -> bool {
+        self.visit(pos, reach, Sighted::Seen, found)
+    }
+
+    /// Whether `found` holds of a living unit whose bound comes within `reach` of `pos`, whether
+    /// the team sees it or not.
+    fn any_static(&self, pos: Vec3, reach: Num, found: impl FnMut(NearUnit<'_>) -> bool) -> bool {
+        self.visit(pos, reach, Sighted::Any, found)
+    }
+
+    /// Whether `found` holds of a living unit whose bound comes within `reach` of `pos`, of those
+    /// `sighted` names.
+    fn visit(
+        &self,
+        pos: Vec3,
+        reach: Num,
+        sighted: Sighted,
+        mut found: impl FnMut(NearUnit<'_>) -> bool,
+    ) -> bool {
         let (units, team) = (self.units, self.team);
         let mut any = false;
         self.near.current().visit_near(pos, reach, |indexed| {
             let Ok((at, body, &of_team, tags, walks, seen)) = units.get(indexed.key) else {
                 return ControlFlow::Continue(());
             };
-            if S::sees(seen, team).unwrap_or(true) {
+            if sighted == Sighted::Any || S::sees(seen, team).unwrap_or(true) {
                 any = found(NearUnit {
                     pos: at.get(),
                     body,

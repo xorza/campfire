@@ -1,12 +1,12 @@
 use campfire_actions::BuildStart;
 use campfire_codec::Toml;
 use campfire_geometry::{Bounds, Grid, Polygon};
-use campfire_navigation::{Navigation, Walker, Wall};
+use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersAction;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
 use campfire_stats::Life;
-use campfire_units::{BuildTarget, Layer, MapBook, SeenBy};
+use campfire_units::{BuildTarget, Layer, MapBook, SeenBy, Wall};
 use campfire_values::{RelationSet, Share, TeamSet};
 use campfire_vision::{Sight, Vision};
 use serde::Deserialize;

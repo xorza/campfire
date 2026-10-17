@@ -8,8 +8,8 @@ use campfire_math::{Num, Rounding};
 use campfire_script::LivingUnit;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_stats::PoolMetersMut;
-use campfire_units::{PoolCost, UnitEntity};
+
+use campfire_units::{PoolCost, PoolPayer, PoolPurse, UnitEntity};
 use campfire_values::{ActionId, Relation, Team};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -54,11 +54,11 @@ pub struct SlotCharges {
 /// tick `now`, the unit's slots and what its purse affords, the slot and target `aim` names, how
 /// the unit regards a team, `relation`, and the living unit of a stable id, `living`.
 #[derive(Debug)]
-pub struct ActionCheck<'b, 'a, R, L> {
+pub struct ActionCheck<'b, 'a, R, L, P> {
     pub book: &'b ActionBook,
     pub now: Tick,
     pub slots: &'a ActionSlots,
-    pub purse: Purse<'a>,
+    pub purse: Purse<'a, P>,
     pub aim: SlotAim,
     pub relation: R,
     pub living: L,
@@ -116,6 +116,7 @@ impl SlotTimes {
             '_,
             impl Fn(Team) -> Relation,
             impl Fn(StableId) -> Option<LivingUnit>,
+            impl PoolPurse,
         >,
     ) -> Option<CheckedAction<'b>> {
         let ActionCheck {
@@ -297,7 +298,7 @@ impl SlotTimes {
         &mut self,
         slots: &ActionSlots,
         book: &ActionBook,
-        pools: &mut PoolMetersMut<'_>,
+        pools: &mut impl PoolPayer,
         keep: &PoolCost,
     ) {
         for (held, time) in slots.iter().zip(&mut self.0) {
@@ -312,7 +313,7 @@ impl SlotTimes {
                 continue;
             }
             let both = toggle.cost.checked_add(keep);
-            if both.is_some_and(|both| pools.read().affords(&both)) {
+            if both.is_some_and(|both| pools.affords(&both)) {
                 pools.pay(&toggle.cost);
             } else {
                 time.toggle = None;

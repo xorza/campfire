@@ -1,10 +1,9 @@
 use campfire_geometry::{Bounds, Polygon, Radius, Shape};
 use campfire_math::Vec3;
 use campfire_sim::IdAllocator;
-use campfire_units::Layer;
+use campfire_units::{Layer, Wall};
 
 use super::*;
-use crate::wall::Wall;
 /// A walker of `radius` on the first layer.
 fn ground(radius: Num) -> Walker {
     Walker {

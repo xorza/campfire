@@ -103,7 +103,7 @@ impl Declarations for SectionList {
 
     fn removals<C: Component>(&mut self) {}
 
-    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {}
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, R::Out, M> + 'static) {}
 
     fn loaded<R: Resource>(&mut self) {}
 

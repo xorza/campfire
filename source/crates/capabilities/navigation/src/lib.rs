@@ -12,13 +12,15 @@
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::system::In;
 use bevy_ecs::world::World;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, SimEdge, SimSet, Unpredicted};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, LayerNames, MoveStep, SpawnHooks, UnitTracker, UnitsSet,
+    BodyUnit, Dead, DeclaredTags, LayerNames, MoveStep, OpenCellAsk, OpenCellRun, SpawnHooks,
+    UnitTracker, UnitsSet, WallBook,
 };
 
 use crate::navigation_column::RowReads;
@@ -64,8 +66,6 @@ mod walk_check;
 mod walker;
 mod walker_kinds;
 mod walking;
-mod wall;
-mod walls;
 
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
@@ -96,8 +96,6 @@ pub use crate::walk_check::{MarkerPoint, PlacedBody, WalkCheck};
 pub use crate::walker::Walker;
 pub use crate::walker_kinds::WalkerKinds;
 pub use crate::walking::Walking;
-pub use crate::wall::Wall;
-pub use crate::walls::Walls;
 
 /// Navigation's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -193,11 +191,13 @@ impl Module for Navigation {
         d.observer(StaticBodies::state_removed);
         d.one_shot::<StaticTrackingRun, _>(StaticTracking::track_static_bodies);
         d.one_shot::<RoomMakingRun, _>(RoomMaking::make_room);
+        d.one_shot::<OpenCellRun, _>(Self::open_cell_of);
         d.listed::<MoveEffectData>();
         d.book::<ByType<Walker>>(Walker::book);
         d.fact::<LayerNames>(Self::layer_names);
         d.extend::<DeclaredTags>(Self::layer_tags);
         d.book::<NavigationBook>(NavigationBook::build);
+        d.book::<WallBook>(Self::walls);
         d.rule(Self::pathing_rule);
         d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
@@ -265,7 +265,7 @@ impl Navigation {
             world.contains_resource::<BodyIndex>(),
             "a map's pathing grid is navigation's, which the load checked the mode declares"
         );
-        let terrain = Terrain::new(&grid, world.resource::<NavigationBook>().walls.walls());
+        let terrain = Terrain::new(&grid, world.resource::<WallBook>().walls());
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&grid));
@@ -284,6 +284,13 @@ impl Navigation {
         world
             .run_system_with(run, entity)
             .expect("a box makes room on any world");
+    }
+
+    /// The center of the cell nearest `ask.near` among those its type's walker may stand in, as
+    /// `open_cell` gives it; `None` for a type that does not walk.
+    fn open_cell_of(In(ask): In<OpenCellAsk>, world: &World) -> Option<Vec3> {
+        let walker = *world.resource::<ByType<Walker>>().get(ask.unit_type)?;
+        Self::open_cell(world, walker, ask.near)
     }
 
     /// The center of the cell nearest `point` among those `walker` may stand in, at `point`'s
@@ -307,7 +314,7 @@ pub mod internals {
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::Num;
     use campfire_sim::{SimWorld, StableId};
-    use campfire_units::{Destination, MoveStep};
+    use campfire_units::{Destination, MoveStep, Wall, WallBook};
 
     use crate::Navigation;
     pub use crate::broadphase::internals::scene;
@@ -318,8 +325,6 @@ pub mod internals {
     use crate::route::{Route, RouteAsk};
     use crate::walker::Walker;
     use crate::walker_kinds::WalkerKinds;
-    use crate::wall::Wall;
-    use crate::walls::Walls;
 
     impl Navigation {
         /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
@@ -377,11 +382,7 @@ pub mod internals {
 
         /// Gives the match the walls `walls`, which a pathing grid loaded after blocks.
         pub fn load_walls(world: &mut World, walls: &[Wall]) {
-            let book = NavigationBook {
-                walls: Walls::new(walls),
-                ..world.resource::<NavigationBook>().clone()
-            };
-            book.load_into(world);
+            WallBook::new(walls).load_into(world);
         }
 
         /// Gives the match the paths `paths`.

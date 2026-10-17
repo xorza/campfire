@@ -6,7 +6,7 @@ use campfire_declare::{
 use campfire_navigation::{ModeNavigationData, NavigationBook, WalkCheck, Walker, WalkerKinds};
 use campfire_script::{NameKind, SyncTo, UnknownName};
 use campfire_sim::Capability;
-use campfire_units::{BodyForm, MapBook, TeamNames};
+use campfire_units::{BodyForm, MapBook, TeamNames, WallBook};
 use campfire_values::{PackageIndex, UnitType};
 
 use crate::choice_data::Offers;
@@ -146,11 +146,14 @@ impl ModeCore {
         };
         let none = NavigationBook::default();
         let navigation = cx.book_if::<NavigationBook>()?.unwrap_or(&none);
+        let no_walls = WallBook::default();
+        let walls = cx.book_if::<WallBook>()?.unwrap_or(&no_walls);
         let spawn_tags = cx.mode_section::<ModeNavigationData>();
         let spawn_tags = spawn_tags.map_or(&[][..], |navigation| &navigation.spawn_tags);
         let check = WalkCheck {
             ground: cx.book::<MapBook>()?,
             navigation,
+            walls,
             walkers: &kinds,
             placed: &map.placed_bodies(body_of),
             spawns: &map.spawn_points(spawn_tags),

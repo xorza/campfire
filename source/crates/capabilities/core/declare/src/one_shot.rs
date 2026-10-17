@@ -6,6 +6,8 @@ use bevy_ecs::system::{SystemId, SystemInput};
 pub trait OneShot: Resource {
     /// What the system takes as it runs.
     type In: SystemInput + 'static;
+    /// What the system gives back.
+    type Out: 'static;
 
-    fn new(id: SystemId<Self::In>) -> Self;
+    fn new(id: SystemId<Self::In, Self::Out>) -> Self;
 }

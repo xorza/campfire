@@ -640,12 +640,9 @@ Each change folds into its document when its batch lands. Each line names the de
 
 **5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
 - The proposal is `docs/design/action-pipeline.md`, accepted as written (2026-10-17): one start and one commit in `actions`, each kind committing at today's moment, no golden moves.
-- One start and go-off pair in `actions` owns the checks and the times. Kinds plug in by a callback table (K-17).
-- The `Purse` contract, the living test and the passive hook are contracts in `units`, and `actions` drops `stats`. The needs-and-uses test covers core modules (C-3, E-5).
+- One start and go-off pair in `actions` owns the checks and the times. Kinds plug in by a callback table (K-17). Waits for Q15 in `review-architecture_QUESTIONS.md`.
+- The `Purse` contract, the living test and the passive hook are contracts in `units`, and `actions` drops `stats`. The needs-and-uses test covers core modules (C-3, E-5). The living test waits for Q14 in `review-architecture_QUESTIONS.md`.
 - **Goldens:** they may move where the four loops differed. Each move is explained.
-
-**5.5 Contracts in `units`.** Touches `units`, `players`, `orders`, `navigation`, `production`, `interaction`, `items`, `net`, `visibility`, `vision`, `combat`.
-- `production` drops `navigation` (R-31), as decided on 2026-10-17: the walls move to `units` as map data; the placement tests the static bodies through `UnitsNear`; a train's open spawn cell comes from a one-shot system that `units` declares and navigation registers, which the train's finish runs. A golden may move where the unit grid and navigation's index differ within a tick; each move is explained.
 
 ### Phase 6: `Send` data and the server frame
 
@@ -1026,7 +1023,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | R-28 | `LoadoutSetup` and `Loadout` are one shape | `loadout_setup.rs:8-11`, `loadout.rs:9-12` | Confirmed | Backlog |
 | R-29 | The bot script copies a subset of orders by hand, by slot numbers and absolute positions | `order_script/mod.rs:141-206` | Confirmed | 12.2 |
 | R-30 | Static changes and box spawns walk every walker | `static_tracking.rs:98-124`, `room_making.rs:61-70` | Confirmed | 7.3 |
-| R-31 | `production` depends on `navigation` for a `Destination` write and two queries | `trains.rs:12, 330`, `placement.rs:7` | Confirmed | 5.5 |
 
 ### Sessions, the network and the server
 

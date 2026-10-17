@@ -1,5 +1,6 @@
 use campfire_actions::{Caster, Purse, RankValues, Weapon};
 use campfire_players::ResourceAmount;
+use campfire_units::PoolPurse;
 use campfire_values::{ActionId, Block, Motion, Rank, UnitTags, UnitType};
 
 /// The weapon of an attack under way: its slot, what it deals, and its values and its cost in
@@ -25,7 +26,7 @@ impl Wielded<'_> {
         &self,
         tags: Option<&UnitTags>,
         motion: Motion,
-        purse: Purse<'_>,
+        purse: Purse<'_, impl PoolPurse>,
     ) -> bool {
         !Caster::of(tags, motion, None).blocks(Block::Attack)
             && purse.affords(&self.values.cost, self.resource_cost)

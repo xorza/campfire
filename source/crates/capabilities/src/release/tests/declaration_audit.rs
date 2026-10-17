@@ -33,7 +33,7 @@ use campfire_sim::{
 };
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
-use campfire_units::{BodyUnit, Dead, DeliveryEntity, Owner, SeenBy, UnitEntity};
+use campfire_units::{BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, UnitEntity};
 use campfire_values::{EngineTag, NameId, TagProperties, UnitType};
 use campfire_vision::VisionColumn;
 use serde::{Deserialize, Serialize};
@@ -443,7 +443,7 @@ impl Declarations for DeclarationAudit {
         self.removals.push(Named::of::<C>());
     }
 
-    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, R::Out, M> + 'static) {
         self.one_shots.push(Named::of::<R>());
     }
 
@@ -473,11 +473,11 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
     // player, the mode's three of the match, the 30 of a unit, items' `UseGroup`, orders'
-    // `NextThink`, production's `StatusTags` and combat's `TurretAngle` among them, and the 50
+    // `NextThink`, production's `StatusTags` and combat's `TurretAngle` among them, and the 51
     // books, 15 of the core's, interaction's two and combat's armors and turrets among them.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 35);
-    assert_eq!(audit.books.len(), 50);
+    assert_eq!(audit.books.len(), 51);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 15);
     // The observers, the runs out of the schedule and the parts a server derives, which the
@@ -524,7 +524,8 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         runs,
         [
             type_name::<StaticTrackingRun>(),
-            type_name::<RoomMakingRun>()
+            type_name::<RoomMakingRun>(),
+            type_name::<OpenCellRun>()
         ]
     );
     let server: Vec<(&str, &str)> = audit

@@ -174,7 +174,7 @@ impl Declarations for DeclaredResources {
         self.ids.push(TypeId::of::<Messages<Removed<C>>>());
     }
 
-    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, R::Out, M> + 'static) {
         self.ids.push(TypeId::of::<R>());
     }
 

@@ -121,7 +121,7 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     fn removals<C: Component>(&mut self);
 
     /// `system`, which the module runs out of the schedule, by the id `R` keeps.
-    fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static);
+    fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, R::Out, M> + 'static);
 
     /// `hook`, which runs as each `C` is inserted, as Bevy's component hook.
     fn on_insert<C: Component>(&mut self, hook: ComponentHook);
