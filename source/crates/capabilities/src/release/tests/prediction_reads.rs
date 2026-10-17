@@ -67,12 +67,10 @@ fn server_only(world: &World) -> Vec<String> {
 /// so the check cannot read what each reads, and `Release::sync_held` checks them by what they
 /// do. The test fails on one this list lacks, and on one it names that is gone, so no new one
 /// joins them unchecked.
-const EXCLUSIVE: [&str; 5] = [
-    "campfire_combat::attacks::Attacks::attack_events",
+const EXCLUSIVE: [&str; 3] = [
     "campfire_deliveries::delivery_hooks::DeliveryHooks::end",
     "campfire_production::construction::Construction::start_builds<campfire_vision::team_sight::ByHolding>",
     "campfire_production::gather_loop::GatherLoop::run<campfire_vision::team_sight::ByHolding>",
-    "campfire_stats::modifier_intervals::ModifierIntervals::run_intervals",
 ];
 
 #[test]

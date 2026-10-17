@@ -18,8 +18,10 @@ use campfire_declare::{
     ByType, Declarations, InstallCx, Module, ModuleSet, NamedScripts, SetPlace,
 };
 use campfire_sim::{Capability, SimSet};
-use campfire_units::BodyUnit;
+use campfire_units::{BodyUnit, Due};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
+
+use crate::thinking::ThinkDue;
 
 mod ai;
 mod ai_data;
@@ -87,6 +89,7 @@ impl Module for Orders {
         d.component::<Resetting>();
         d.state::<BodyUnit, Resetting>();
         d.scratch::<PlayerOrders>();
+        d.scratch::<Due<ThinkDue>>();
         d.book::<ByType<Ai>>(Ai::book);
         d.rule(Ai::avatar_rule);
         d.extend::<ModifierAppliers>(Ai::applied_ways);
@@ -113,7 +116,12 @@ impl Module for Orders {
         );
         cx.scripted(
             OrdersSet::Think,
-            (Thinking::end_dead_resets, Thinking::think).chain(),
+            (
+                Thinking::end_dead_resets,
+                Thinking::collect_thinkers,
+                Thinking::think,
+            )
+                .chain(),
         );
     }
 }

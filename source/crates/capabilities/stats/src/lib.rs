@@ -23,7 +23,7 @@ use campfire_math::Num;
 use campfire_players::Player;
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
 use campfire_units::{
-    BodyUnit, Dead, DeclaredTags, Owner, SpawnHooks, UnitGrid, UnitSteps, UnitsSet,
+    BodyUnit, Dead, DeclaredTags, Due, Owner, SpawnHooks, UnitGrid, UnitSteps, UnitsSet,
 };
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
@@ -32,6 +32,8 @@ use crate::aura_carriers::AuraCarriers;
 use crate::modifier_adds::ModifierAdd;
 use crate::player_grants::PlayerGrants;
 use crate::stats_column::RowReads;
+
+use crate::modifier_intervals::IntervalDue;
 
 mod application;
 mod applier;
@@ -263,6 +265,7 @@ impl Module for Stats {
     type Set = StatsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.scratch::<Due<IntervalDue>>();
         d.section::<ModifiersData>();
         d.section::<TypePoolsData>();
         d.section::<StatsData>();
@@ -341,7 +344,11 @@ impl Module for Stats {
         );
         cx.add(StatsSet::ClearDead, ModifierEnds::clear_dead_modifiers);
         if intervals {
-            cx.add(StatsSet::Interval, ModifierIntervals::run_intervals);
+            cx.add(StatsSet::Interval, ModifierIntervals::count_intervals);
+            cx.scripted(
+                StatsSet::Interval,
+                ModifierIntervals::run_intervals.after(ModifierIntervals::count_intervals),
+            );
         }
         cx.by_role(
             StatsSet::Hold,

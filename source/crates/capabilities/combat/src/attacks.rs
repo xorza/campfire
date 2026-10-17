@@ -1,6 +1,6 @@
 use std::ops::ControlFlow;
 
-use bevy_ecs::query::{Has, QueryState, Without};
+use bevy_ecs::query::{Has, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
@@ -10,13 +10,11 @@ use campfire_actions::{
 use campfire_common::Tick;
 use campfire_declare::{ByType, RoleForm};
 use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, DeliveryQueue};
-use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
+use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut};
 use campfire_script::ScriptsWorld;
 use campfire_sim::{EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
-use campfire_stats::{
-    ModifierEvents, PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly, UnitStats,
-};
-use campfire_units::{Body, Dead, Facing, ForcedMove, MapBook, Owner, UnitsNear};
+use campfire_stats::{ModifierEvents, PoolBook, UnitPools, UnitPoolsReadOnly, UnitStats};
+use campfire_units::{Body, Dead, Due, Facing, ForcedMove, MapBook, Owner, UnitsNear};
 use campfire_values::{Block, Motion, TagSet, Team, UnitTags, UnitType};
 
 use crate::clip_shots::ClipShots;
@@ -260,43 +258,51 @@ impl Attacks {
         }
     }
 
-    /// Runs `on_attack` for each attack of the tick's volley, by attacker's stable id, before any
-    /// of them strikes or fires; not for one that does not strike.
-    pub(super) fn attack_events(
-        world: &mut World,
-        attackers: &mut QueryState<Attacker<'_>, Without<Dead>>,
-        mut going: Local<'_, Vec<GoingOff>>,
+    /// Collects each attack of the tick's volley that strikes, by attacker's stable id, for
+    /// `attack_events`, in a match that runs scripts.
+    pub(super) fn collect_attacks(
+        (volley, book, pools): (
+            Res<'_, Volley>,
+            Res<'_, ActionBook>,
+            Option<Res<'_, PoolBook>>,
+        ),
+        attackers: Query<'_, '_, Attacker<'_>, Without<Dead>>,
+        resources: PlayerRows<'_, '_, PlayerResources>,
+        due: Option<ResMut<'_, Due<GoingOff>>>,
     ) {
-        let Some(events) = ModifierEvents::of(world) else {
+        let Some(mut due) = due else {
             return;
         };
-        let book = world.resource::<ActionBook>();
-        let life = world.life_pool();
-        going.clear();
-        for off in world.resource::<Volley>().iter() {
-            let Ok(((slots, progress), tags, forced, pools, owner)) =
-                attackers.get(world, off.entity)
+        let life = pools.as_deref().and_then(PoolBook::life);
+        due.refill(volley.iter().filter(|off| {
+            let Ok(((slots, progress), tags, forced, pools, owner)) = attackers.get(off.entity)
             else {
-                continue;
+                return false;
             };
             let lives = pools.lives();
-            let purse = Purse::of(pools.of(life), world.owner_resources(owner));
-            if lives
-                && Self::wielded(book, slots, progress).strikes(tags, Motion::of(forced), purse)
-            {
-                going.push(off);
-            }
-        }
-        if !going.is_empty() {
+            let purse = Purse::of(pools.of(life), resources.of(owner));
+            lives && Self::wielded(&book, slots, progress).strikes(tags, Motion::of(forced), purse)
+        }));
+    }
+
+    /// Runs `on_attack` for each attack `collect_attacks` found striking, in its order, before any
+    /// of them strikes or fires; not for one that does not strike.
+    pub(super) fn attack_events(world: &mut World) {
+        let Some(mut due) = world.get_resource_mut::<Due<GoingOff>>() else {
+            return;
+        };
+        let going = due.take();
+        if let Some(events) = ModifierEvents::of(world).filter(|_| !going.is_empty()) {
             world.script_batch(|batch| {
                 for &GoingOff {
                     attacker, target, ..
-                } in &*going
+                } in &going
                 {
                     CombatEvent::Attack { attacker, target }.reach(&events, batch);
                 }
             });
         }
+        world.resource_mut::<Due<GoingOff>>().give_back(going);
     }
 
     /// Pays, for each attack of the tick's volley that strikes, as its events and its strike

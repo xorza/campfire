@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, QueryState};
+use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
@@ -10,13 +10,17 @@ use campfire_common::{Tick, Ticks};
 use campfire_script::{CallStart, Hook, HookCall, Pool, ScriptBatch, ScriptsWorld};
 use campfire_sim::{Keyed, Ordered, SimTick, StableId};
 use campfire_stats::{Held, HeldModifiers};
-use campfire_units::{ForcedMove, Owner};
+use campfire_units::{Due, ForcedMove, Owner};
 use campfire_values::{Motion, UnitTags};
 
 use crate::Abilities;
 
 /// The channels units run, in Hit: their hooks on the server, and on a client their cut and their
 /// end alone.
+/// A unit whose channel is due, keyed by its stable id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChannelDue(Keyed);
+
 #[derive(Debug)]
 pub struct Channels;
 
@@ -27,23 +31,32 @@ impl Channels {
     /// whose tags keep it from casting has its channel cut. A channel's calls share one snapshot of
     /// the units, read as the batch begins. A channel that still runs holds its action's `hold`
     /// on its unit this tick, from the unit at its rank.
-    pub(super) fn run_channels(
-        world: &mut World,
-        units: &mut QueryState<(Entity, &StableId, &ActionProgress)>,
-        (mut order, mut due): (Local<'_, Ordered>, Local<'_, Vec<Keyed>>),
+    pub(super) fn run_channels(world: &mut World) {
+        let due = world.resource_mut::<Due<ChannelDue>>().take();
+        if !due.is_empty() {
+            Self::run(world, &due);
+        }
+        world.resource_mut::<Due<ChannelDue>>().give_back(due);
+    }
+
+    /// Collects the units whose channel is due, by stable id, for `run_channels`.
+    pub(super) fn collect_channels(
+        units: Query<'_, '_, (Entity, &StableId, &ActionProgress)>,
+        mut order: Local<'_, Ordered>,
+        mut due: ResMut<'_, Due<ChannelDue>>,
     ) {
-        let now = world.resource::<SimTick>().start();
         let running = units
-            .iter(world)
+            .iter()
             .filter(|(.., progress)| progress.channel_due())
             .map(|(entity, &id, _)| Keyed { id, entity });
-        due.clear();
-        due.extend_from_slice(order.sort(running));
-        if due.is_empty() {
-            return;
-        }
+        due.refill(order.sort(running).iter().map(|&keyed| ChannelDue(keyed)));
+    }
+
+    /// Runs the channels of `due`, in order.
+    fn run(world: &mut World, due: &[ChannelDue]) {
+        let now = world.resource::<SimTick>().start();
         world.script_batch(|batch| {
-            for &Keyed { id, entity } in &*due {
+            for &ChannelDue(Keyed { id, entity }) in due {
                 let step = Self::step_channel(batch.world(), now, entity);
                 for (call, hook) in [
                     (step.interrupted, Hook::OnInterrupt),
@@ -55,7 +68,7 @@ impl Channels {
                 }
             }
         });
-        for &Keyed { id, entity } in &*due {
+        for &ChannelDue(Keyed { id, entity }) in due {
             let progress = world.get::<ActionProgress>(entity);
             let held = progress.and_then(|progress| {
                 Self::channel_hold(world.resource::<ActionBook>(), progress, id)

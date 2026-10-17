@@ -661,9 +661,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 6: `Send` data and the server frame
 
-**6.1 Data out of non-send resources.** Touches `units`, `script`, `mode`, `combat`, `stats`.
-- Scripted passes split into a plain collect and an exclusive script run (K-20).
-
 **6.2 One server match.** Touches `net` (sim server, lobby, session directory), `runner` (session, session rules), `package`, `apps/server`.
 - `MatchRun::begin` from `MatchSource::{New, Restored}` builds one `ServerMatch` (N-5).
 - `Session` owns its signer, and the frame's systems become ordinary systems (N-4).
@@ -1023,7 +1020,7 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | K-13 | About twenty passes scan every unit in each tick to find timers that are due | `volley.rs:27-49`, `attacks.rs:145-253`, `modifier_ends.rs:16-24`, `casts.rs:55-228`, `area_life.rs:329-334` | Confirmed scans. The cost is plausible. | 7.1 |
 | K-16 | An area's `inside` and an aura do one job in two shapes, and disagree on neutrals and lifeless units | `area_spec.rs:94-101`, `area_holds.rs:47-58`, `held_pass.rs:131-139` | Confirmed | Backlog |
 | K-17 | The one action pipeline is four hand-built loops | `attacks.rs:145-414`, `casts.rs:55-503` | Confirmed | 5.3 |
-| K-20 | Scripted passes hold the world for their whole run, and their hook state is non-send | `combat_hooks.rs:12-15`, `modifier_hooks.rs:46-50` | Confirmed shape | 6.1, 11.1 |
+| K-20 | The scripted passes' hook state is non-send | `modifier_hooks.rs:46-50` | Confirmed shape | 11.1 |
 | K-21 | The damage pass reads each unit through world lookups, a heard event allocates a handle for each listener, and `NextDamage` drops its buffer | `damage_pass.rs:213-429`, `modifier_hooks.rs:78-159` | Plausible | 7.2 |
 | K-23 | An item's cost may name several resources, and a shop takes one | `item_data.rs:18`, `item_book.rs:107-112`, `load_check.rs:1384-1407` | Confirmed | Backlog (D16) |
 | K-24 | `Pools` is a fixed 256-byte array for each unit | `pools.rs:22`, `meter.rs:7-13` | Plausible sizes | Backlog |

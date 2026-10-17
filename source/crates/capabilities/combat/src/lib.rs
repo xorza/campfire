@@ -19,13 +19,13 @@ use campfire_declare::{
 use campfire_math::RngStream;
 use campfire_sim::{Capability, SimSet};
 use campfire_stats::{Life, LifePool, StatsSet, TypePools};
-use campfire_units::{BodyUnit, Dead, Deaths, SpawnPoint, UnitGrid, UnitsSet};
+use campfire_units::{BodyUnit, Dead, Deaths, Due, SpawnPoint, UnitGrid, UnitsSet};
 
 use crate::combat_column::RowReads;
 use crate::held_hits::HeldHits;
 use crate::next_damage::NextDamage;
 use crate::turret::aiming::Aiming;
-use crate::volley::Volley;
+use crate::volley::{GoingOff, Volley};
 
 mod armor;
 mod attacks;
@@ -149,6 +149,7 @@ impl Module for Combat {
     type Set = CombatSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.scratch::<Due<GoingOff>>();
         d.section::<CombatData>();
         d.section::<TurretData>();
         d.section::<ModeCombatData>();
@@ -230,15 +231,13 @@ impl Module for Combat {
         cx.by_role(
             CombatSet::Strike,
             (
-                Attacks::attack_events.run_if(Volley::any),
+                (Attacks::collect_attacks, Attacks::attack_events)
+                    .chain()
+                    .run_if(Volley::any),
                 Attacks::strike::<ServerForm>,
             )
                 .chain(),
-            (
-                Attacks::attack_events.run_if(Volley::any),
-                Attacks::strike::<ClientForm>,
-            )
-                .chain(),
+            Attacks::strike::<ClientForm>,
         );
         if toggles {
             cx.server(

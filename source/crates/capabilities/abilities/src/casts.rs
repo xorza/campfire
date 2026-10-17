@@ -1,8 +1,9 @@
 use std::mem;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, QueryState, Without};
-use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::query::QueryData;
+use bevy_ecs::query::{Has, Without};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
     ActionBook, ActionCall, ActionCheck, ActionKind, ActionProgress, ActionSlots, CastSpends,
@@ -18,8 +19,8 @@ use campfire_script::{
     ScriptsWorld, Unit,
 };
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
-use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
-use campfire_units::{ArrivedShort, Body, Dead, Destination, ForcedMove, Owner};
+use campfire_stats::{Life, PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
+use campfire_units::{ArrivedShort, Body, Dead, Destination, Due, ForcedMove, Owner};
 use campfire_values::{ActionId, DashDelivery, Motion, Rank, Team, UnitTags};
 
 use crate::Abilities;
@@ -41,6 +42,25 @@ struct Prepared {
 
 /// The casts units are ordered: their start in Act, and in Hit their resolve, on a client
 /// predicted.
+/// A caster whose cast is due, keyed by its stable id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CastDue(Keyed);
+
+/// What the collect of the due casts reads of a caster, and its progress, which a cast it may not
+/// resolve goes back to its order in.
+#[derive(Debug, QueryData)]
+#[query_data(mutable, derive(Debug))]
+pub(crate) struct DueCaster {
+    entity: Entity,
+    id: &'static StableId,
+    progress: &'static mut ActionProgress,
+    slots: &'static ActionSlots,
+    tags: Option<&'static UnitTags>,
+    forced: Has<ForcedMove>,
+    used: Option<&'static UseGroup>,
+    life: Option<&'static Life>,
+}
+
 #[derive(Debug)]
 pub struct Casts;
 
@@ -207,57 +227,62 @@ impl Casts {
         }
     }
 
-    /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls
-    /// share one snapshot of the living units, read as the batch begins, so no call sees what an
-    /// earlier one changed, at once or in Resolve. A due cast whose caster's tags keep it from
-    /// casting, or that lives no more, goes back to its order instead.
-    pub(super) fn resolve_casts(
-        world: &mut World,
-        casters: &mut QueryState<(Entity, &StableId, &ActionProgress), Without<Dead>>,
-        (mut order, mut due): (Local<'_, Ordered>, Local<'_, Vec<Keyed>>),
+    /// Collects the casts due this tick, in the order of their caster's stable id, for
+    /// `resolve_casts`. A due cast whose caster's tags keep it from casting, or that lives no
+    /// more, goes back to its order instead.
+    pub(super) fn collect_casts(
+        (tick, book): (Res<'_, SimTick>, Res<'_, ActionBook>),
+        mut casters: Query<'_, '_, DueCaster, Without<Dead>>,
+        mut order: Local<'_, Ordered>,
+        mut due: ResMut<'_, Due<CastDue>>,
     ) {
-        let now = world.resource::<SimTick>().start();
+        let now = tick.start();
         let resolving = casters
-            .iter(world)
-            .filter(|(.., progress)| {
-                progress
+            .iter()
+            .filter(|caster| {
+                caster
+                    .progress
                     .in_progress()
                     .and_then(|underway| underway.cast_due(now))
                     .is_some()
             })
-            .map(|(entity, &id, _)| Keyed { id, entity });
-        due.clear();
-        due.extend_from_slice(order.sort(resolving));
-        due.retain(|&Keyed { entity, .. }| {
-            let unit = world.entity(entity);
-            let forced = unit.contains::<ForcedMove>();
-            let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
-            let progress = unit
-                .get::<ActionProgress>()
-                .expect("a due caster has progress");
-            let due = progress.in_progress().expect("a due cast is under way");
-            let slot = slots.slot(due.slot()).expect("a cast's slot");
-            let used = unit.get::<UseGroup>();
-            let book = world.resource::<ActionBook>();
-            let can_cast = world.lives(entity)
-                && !Caster::of(unit.get::<UnitTags>(), Motion::of(forced), used)
-                    .blocked(Some(slot), book);
+            .map(|caster| Keyed {
+                id: *caster.id,
+                entity: caster.entity,
+            });
+        let sorted = order.sort(resolving);
+        due.refill(sorted.iter().map(|&keyed| CastDue(keyed)));
+        due.retain(|&CastDue(Keyed { entity, .. })| {
+            let mut caster = casters.get_mut(entity).expect("a due caster");
+            let underway = caster
+                .progress
+                .in_progress()
+                .expect("a due cast is under way");
+            let slot = caster.slots.slot(underway.slot()).expect("a cast's slot");
+            let motion = Motion::of(caster.forced);
+            let can_cast = campfire_stats::lives(false, caster.life)
+                && !Caster::of(caster.tags, motion, caster.used).blocked(Some(slot), &book);
             if !can_cast {
-                world
-                    .get_mut::<ActionProgress>(entity)
-                    .expect("a due caster has progress")
-                    .interrupt();
+                caster.progress.interrupt();
             }
             can_cast
         });
-        if due.is_empty() {
-            return;
+    }
+
+    /// Resolves the casts `collect_casts` found due, in its order. Their calls share one snapshot
+    /// of the living units, read as the batch begins, so no call sees what an earlier one
+    /// changed, at once or in Resolve.
+    pub(super) fn resolve_casts(world: &mut World) {
+        let due = world.resource_mut::<Due<CastDue>>().take();
+        if !due.is_empty() {
+            let now = world.resource::<SimTick>().start();
+            world.script_batch(|batch| {
+                for &CastDue(Keyed { id: caster, entity }) in &due {
+                    Self::resolve(batch, now, caster, entity);
+                }
+            });
         }
-        world.script_batch(|batch| {
-            for &Keyed { id: caster, entity } in &*due {
-                Self::resolve(batch, now, caster, entity);
-            }
-        });
+        world.resource_mut::<Due<CastDue>>().give_back(due);
     }
 
     /// Resolves each due cast of a unit a client predicts as the server does when the cast's script

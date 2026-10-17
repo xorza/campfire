@@ -10,6 +10,8 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
+use crate::casts::CastDue;
+use crate::channels::ChannelDue;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_actions::{Action, ActionBook, ActionTarget, ActionsSet, CastSpends};
 use campfire_common::{EnumAll, Ticks};
@@ -17,6 +19,7 @@ use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::Deliverers;
 use campfire_script::{ScriptValue, View};
 use campfire_sim::{Capability, TickRate};
+use campfire_units::Due;
 
 mod abilities_api;
 mod abilities_effect;
@@ -66,6 +69,8 @@ impl Module for Abilities {
     type Set = AbilitiesSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.scratch::<Due<CastDue>>();
+        d.scratch::<Due<ChannelDue>>();
         d.calls::<Deliverers>();
         d.calls::<CastSpends>();
         d.api(AbilitiesApi::register);
@@ -91,11 +96,20 @@ impl Module for Abilities {
             );
             cx.scripted(
                 AbilitiesSet::Resolve,
-                (Casts::resolve_casts, Channels::run_channels).chain(),
+                (
+                    Casts::collect_casts,
+                    Casts::resolve_casts,
+                    Channels::collect_channels,
+                    Channels::run_channels,
+                )
+                    .chain(),
             );
         } else {
             cx.unscripted(AbilitiesSet::Resolve, Casts::predict_casts);
-            cx.scripted(AbilitiesSet::Resolve, Casts::resolve_casts);
+            cx.scripted(
+                AbilitiesSet::Resolve,
+                (Casts::collect_casts, Casts::resolve_casts).chain(),
+            );
         }
         if toggles {
             cx.server(AbilitiesSet::Toggles, Toggles::run_toggles);

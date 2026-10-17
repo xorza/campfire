@@ -94,7 +94,7 @@ fn a_feature_installs_its_passes_only_in_a_match_whose_books_have_it() {
         "campfire_combat::attacks::Attacks::pay_attack_toggles",
         "campfire_combat::turret::aiming::Aiming::aim",
         "campfire_production::player_supply::PlayerSupply::refresh",
-        "campfire_stats::modifier_intervals::ModifierIntervals::run_intervals",
+        "campfire_stats::modifier_intervals::ModifierIntervals::count_intervals",
         "campfire_stats::refresh::Refresh::regenerate",
         "campfire_vision::seeing::Seeing::refill",
         "campfire_vision::seeing::Seeing::see",
