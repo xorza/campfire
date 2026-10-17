@@ -2164,6 +2164,22 @@ static STAT_FLAWS: &[Flaw] = &[
         package: "player-spells",
         refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Action(first), Place::Action(second)] } if modifier == "haste" && first == "blink" && second == "haste"),
     },
+    // A modifier grants no engine tag: one that granted `avatar` would split who a player
+    // commands between the type's own tags and the unit's.
+    flaw(
+        GALE,
+        Edit::Set("modifiers.fair_wind.tags", r#"["avatar"]"#),
+        "hero-gale",
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Modifier(name), tag } if name == "fair_wind" && tag.name() == "avatar"),
+    ),
+    // A projectile type holds no passive, as a delivery's spawn gives none: a type with one is
+    // a type that stands, which no delivery names.
+    flaw(
+        GALE,
+        Edit::Set("units.wind_bolt.passive", r#""wind_shield""#),
+        "hero-gale",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "wind_bolt"),
+    ),
     // An aura's radius and a shield are never negative: as Gale's Fair Wind's value, as a rank
     // of the Wind Shield action's param its modifier reads, or as the modifier's own param.
     flaw(

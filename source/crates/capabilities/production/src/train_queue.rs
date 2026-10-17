@@ -7,7 +7,7 @@ use campfire_actions::{ActionBook, ActionKind};
 use campfire_common::{Tick, Ticks};
 use campfire_declare::ByType;
 use campfire_players::{PlayersWorld, ResourceAmount};
-use campfire_sim::SimComponent;
+use campfire_sim::{SimComponent, SimTick};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::UnitEntity;
 use campfire_values::{ActionId, NameId, Rank, UnitType};
@@ -102,7 +102,8 @@ impl SimComponent for TrainQueue {
 
     // A train the book lacks, or of a rank past its ranks, has no unit to make; a queue of a
     // type that produces nothing, or past what its type holds, breaks the rule of its room; a
-    // paid resource the mode lacks, or an amount below 0, has no refund to give.
+    // paid resource the mode lacks, or an amount below 0, has no refund to give; and a head's time
+    // ends at most its time after the tick the match runs next, as it started before it.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.resource::<ActionBook>();
         let trains = self.entries.iter().all(|queued| {
@@ -120,7 +121,10 @@ impl SimComponent for TrainQueue {
             .paid
             .iter()
             .all(|paid| paid.resource.index() < resources && paid.amount >= 0);
-        trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity) && paid
+        let now = world.resource::<SimTick>().start();
+        let head = self.entries.first().zip(self.head_done);
+        let timed = head.is_none_or(|(head, done)| done <= now.after(head.time));
+        trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity) && paid && timed
     }
 }
 

@@ -27,7 +27,9 @@ use campfire_script::{
     ScriptFailures, ScriptLimits, TagNames,
 };
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, Command, IdAllocator, Position, StableId, Unpredicted};
+use campfire_sim::{
+    Capability, Command, IdAllocator, Position, SimComponent, SimTick, StableId, Unpredicted,
+};
 use campfire_stats::{Life, Stats};
 use campfire_units::{BodyForm, Dead, Destination, Layer, MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{PackagePath, PathId, Rank, Scalar, Team, TeamSet, UnitType};
@@ -974,6 +976,14 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
             CallError::Script(ScriptError::CallLimit)
         ));
     }
+    // A restored unit is due at most its period, here 1 tick, after the tick the match runs
+    // next, as a think sets its next a period on; a later tick, which would keep its AI from
+    // thinking, fails the check.
+    let now = game.resource::<SimTick>().start();
+    let entity = game.unit_entity(first);
+    let holds = |next: NextThink| next.check(&game, entity);
+    assert!(holds(NextThink::FIRST) && holds(NextThink::new(now.after(Ticks::new(1)))));
+    assert!(!holds(NextThink::new(now.after(Ticks::new(2)))));
 }
 
 #[test]

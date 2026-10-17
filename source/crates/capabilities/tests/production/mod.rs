@@ -13,7 +13,7 @@ use campfire_mode::Mode;
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, SimComponent, SimWorld, StableId, Unpredicted};
+use campfire_sim::{Capability, SimComponent, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_units::{
     BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, StatusTags,
     UnitTypeCore, Units,
@@ -504,6 +504,11 @@ fn a_train_queue_is_state_and_restores() {
     };
     assert!(check(0, Tick::LIMIT.get()));
     assert!(!check(1, Tick::LIMIT.get()) && !check(0, Tick::LIMIT.get() + 1));
+    // A head started before the tick the match runs next ends at most its time after it: one of
+    // 3 ticks pushed in that tick holds; pushed a tick later, it would wait past what any train
+    // waits, and fails.
+    let now = restored.resource::<SimTick>().start().get();
+    assert!(check(now, 3) && !check(now + 1, 3));
     assert_eq!(restored.part::<TrainQueue>(id), game.part::<TrainQueue>(id));
 }
 

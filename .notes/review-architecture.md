@@ -640,11 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 3: boundaries
 
-**3.1 Restore relations and bounds.** Touches `progression`, `orders`, `production`, `units`, `package`.
-- A declared cross-part check holds that the level track requires `Points`, and that the tracks equal the type's (R-2).
-- `NextThink` and the queue head are bounded by the rule that made them (R-3).
-- The load refuses a passive on a delivery type (C-10), and engine tags in a modifier's grants (C-21).
-
 **3.2 Journal integrity.** Touches `protocol` (journal), `net` (session directory), `store` (append writer, durable directory) and 10-sessions.md.
 - A read stops at the first bad frame, cuts there and logs `JournalCut` with the bytes it dropped (N-15, D33).
 - The private record holds the seed chain alone, and the terms come from the journal's header (N-8).
@@ -1052,7 +1047,7 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-7 | `StatusTags` and `SpawnPoint` sit on every body unit, though one capability uses each | `units.rs:159-161` | Confirmed | 4.5 |
 | C-8 | `Player` and `MatchEntity` are named `players.*` but live in `units` | `player.rs:16-48`, `match_entity.rs:13-35` | Confirmed | 5.5 |
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
-| C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | Plausible | 3.1, 7.5 |
+| C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |
 | C-13 | Each `UnitsNear` reader holds `ResMut`, because the first reader rebuilds the grid | `unit_grid.rs:25-58` | Confirmed | 6.1 |
 | C-14 | The match entity and the players are found through the `BTreeMap` index on each call | `on_match.rs:18-25`, `player_rows.rs:25-59`, `targets.rs:49-51` | Confirmed. The cost needs a bench. | 7.2 |
 | C-15, S-24 | The script view walks and copies every entity for each script batch. Each call copies the mode state and every player's resources and resolves its literal names again. | `view_reader.rs:136-180`, `scripts_world.rs:15-17`, `mode_call.rs:194-208` | Plausible: needs a bench | 7.2 |
@@ -1060,7 +1055,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-18 | Slots, times and progress are three components that stay in step only by index, and each `zip` truncates silently | `action_slots/mod.rs:30-33`, `slot_times.rs:234-354` | Confirmed | 7.4 |
 | C-19 | Resource costs are a flat buffer whose shape a division implies | `action.rs:21-24, 89-93` | Confirmed | 5.1 |
 | C-20 | `ActionRange::Meters` holds a raw `Num` beside the checked `Distance` | `action_range.rs:8-31` | Confirmed | 5.1 |
-| C-21 | "Is an avatar" has two rules: the type's tags, and the derived tags with grants | `tag_book/mod.rs:40-56`, `avatar.rs:19-22` | Plausible | 3.1 |
 | C-22 | Six geometry predicates answer one question with four names, three result types and both boundary rules | `metric.rs:58-117`, `placed/mod.rs:30-35`, `body_box/mod.rs:143-152` | Confirmed | 12.1 |
 | C-23 | The sim's ground is 8-bit samples above 0, with no base height | `height_grid.rs:11-59` | Confirmed | Backlog (D23) |
 | C-24 | A unit has exactly one controller, its owner | `owner.rs:12-44`, `tick_commands.rs:70-74` | Confirmed | Backlog (D24) |
@@ -1125,8 +1119,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 
 | Ids | Finding | Evidence | Confidence | Step |
 | --- | --- | --- | --- | --- |
-| R-2 | A restored unit with the level track and no `Points` panics at its next level-up | `progression_effect.rs:69-73`, `experience.rs:87-95` | Plausible | 3.1 |
-| R-3 | A restored `NextThink` or queue head in the far future freezes AI or production with no error | `next_think.rs:36-38`, `train_queue.rs:106-124` | Confirmed | 3.1 |
 | R-4 | Exclusive production and AI systems run in each tick and scan their whole population | `trains.rs:94-192`, `construction/mod.rs:82-352`, `gather_loop/mod.rs:144-150`, `destinations.rs:19-111` | Confirmed | 7.1 |
 | R-5 | Gathering scans every node and worker, and its loop sees its own writes as changes | `gather_view.rs:148-200`, `gather_loop/mod.rs:137-243` | Confirmed scans. The trigger is plausible. | 7.3 |
 | R-6 | `ArrivedShort` is derived again in ten gaps for each tick, and two passes scan every walker | `navigation/src/lib.rs:219-223`, `routing.rs:35-145` | Confirmed | 7.3 |

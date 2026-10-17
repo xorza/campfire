@@ -5,7 +5,7 @@ use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_progression::*;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::{Capability, SimComponent, SimWorld};
 use campfire_stats::Level;
 use campfire_units::{UnitTypeCore, Units};
 use campfire_values::{DeclaredName, Team, TrackId};
@@ -178,4 +178,14 @@ fn experience_is_state_and_restores() {
     let mut third = points;
     third.gain(1);
     assert!(!third.check(&game, game.unit_entity(id)));
+    // A unit on the `level` track whose points are gone fails the restore, as its next level
+    // would find no points to raise.
+    let (held, unit) = (game.unit_entity(held), game.unit_entity(id));
+    game.despawn(held);
+    game.entity_mut(unit).remove::<Points>();
+    let mut snapshot = Vec::new();
+    game.snapshot(&mut snapshot);
+    let mut target = Match::unscripted(&declared);
+    tracks(&mut target);
+    assert!(target.restore_in_place(&snapshot).is_err());
 }
