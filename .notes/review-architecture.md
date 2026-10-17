@@ -634,13 +634,8 @@ Each change folds into its document when its batch lands. Each line names the de
 ### Phase 5: core pipelines and contracts
 
 **5.1 Kind sections owned by capabilities.** Touches `actions`, `combat`, `production`, the top crate and `package`.
-- `ActionData` holds the common fields and a `kind` section of the capability's own type. The hand table goes. `Weapon`, `Scatter` and `Pitch` move to combat, and the build and gather types move to production (C-1). Done after 5.3: the core's reach check reads a weapon's pitch, and its slot times a weapon's period, which combat gives once the kinds plug in through 5.3's callbacks.
+- `ActionData` holds the common fields and a `kind` section of the capability's own type. The hand table goes. `Weapon`, `Scatter` and `Pitch` move to combat, and the build and gather types move to production (C-1). 5.3 is done: each kind calls the shared start and commit steps, so a weapon's pitch and period come from combat, the kind that owns them.
 - **Goldens:** none. Data that a kind ignored without a word is now refused.
-
-**5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
-- The proposal is `docs/design/action-pipeline.md`, accepted as written (2026-10-17): one start and one commit in `actions`, each kind committing at today's moment, no golden moves.
-- One start step and one commit step in `actions`, which each kind's system calls at its own moment, as a GAS ability calls `CommitAbility` (K-17, decided 2026-10-17): the start tests the block, checks, clamps and tests the reach; the commit pays the pools and resources and spends the cooldown, a charge and a toggle. No golden moves.
-- **Goldens:** they may move where the four loops differed. Each move is explained.
 
 ### Phase 6: `Send` data and the server frame
 
@@ -983,7 +978,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | K-10 | One rule each: first weapon by slot, one attack at a time, one turret for each type, attack projectiles at a unit | `attacks.rs:215-218`, `turret/mod.rs:19-25`, `load_check.rs:2162-2164` | Confirmed | Backlog |
 | K-13 | About twenty passes scan every unit in each tick to find timers that are due | `volley.rs:27-49`, `attacks.rs:145-253`, `modifier_ends.rs:16-24`, `casts.rs:55-228`, `area_life.rs:329-334` | Confirmed scans. The cost is plausible. | 7.1 |
 | K-16 | An area's `inside` and an aura do one job in two shapes, and disagree on neutrals and lifeless units | `area_spec.rs:94-101`, `area_holds.rs:47-58`, `held_pass.rs:131-139` | Confirmed | Backlog |
-| K-17 | The one action pipeline is four hand-built loops | `attacks.rs:145-414`, `casts.rs:55-503` | Confirmed | 5.3 |
 | K-20 | The scripted passes' hook state is non-send | `modifier_hooks.rs:46-50` | Confirmed shape | 11.1 |
 | K-21 | The damage pass reads each unit through world lookups, a heard event allocates a handle for each listener, and `NextDamage` drops its buffer | `damage_pass.rs:213-429`, `modifier_hooks.rs:78-159` | Plausible | 7.2 |
 | K-23 | An item's cost may name several resources, and a shop takes one | `item_data.rs:18`, `item_book.rs:107-112`, `load_check.rs:1384-1407` | Confirmed | Backlog (D16) |

@@ -22,6 +22,7 @@
 - **A duration counts whole ticks from the end of its tick,** so it holds the same at any rate to within one tick.
 - **An instance lives while something keeps it.** A passive's rank, an aura, an area, a player and an application each keep it; it ends only when nothing does.
 - **Passives by one pass.** Each source pushes what its units want into one list, and one pass applies it and releases the rest, visiting only the units whose source or modifiers changed.
+- **Stats builds what the actions read of it.** The param book of every action and modifier, the modifier effects, `modifier`, `purge` and `restore`, the ways each modifier is applied and the grants of the actions' passives and holds are stats', as it sits above `actions`; it builds each from the actions' data once their load checked it, and pushes the passives' grants right before each grant pass, ordered against the actions' sets ([Actions](actions.md#mechanism)).
 - **Auras with no linger.** Every unit within an aura's radius holds its modifier, and loses it the tick it leaves; the sim has no flicker to hide.
 - **Player modifiers are upgrades.** A player's modifier holds on each living unit it selects, so an RTS's upgrades and a guild's bonuses are player modifiers.
 - **A magnitude is captured at application,** as the Gameplay Ability System captures one: a later rank changes the next application, not one held. A scaling stat change follows its source's stats while held, as League of Legends' bonus-scaling passives do, so the load refuses a loop between such changes.
