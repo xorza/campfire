@@ -2,12 +2,11 @@ use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
-use campfire_combat::Deaths;
 use campfire_players::Seating;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_units::BodyUnit;
 use campfire_units::internals::UnitsWorldInternals;
+use campfire_units::{BodyUnit, Deaths};
 use campfire_values::NameId;
 
 use super::*;

@@ -34,9 +34,9 @@ use campfire_sim::{
 };
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
 use campfire_stats::Modifiers;
-use campfire_units::{BodyUnit, Dead, DeliveryEntity, Owner, UnitEntity};
+use campfire_units::{BodyUnit, Dead, DeliveryEntity, Owner, SeenBy, UnitEntity};
 use campfire_values::{EngineTag, NameId, TagProperties, UnitType};
-use campfire_vision::{SeenBy, VisionColumn};
+use campfire_vision::VisionColumn;
 use serde::{Deserialize, Serialize};
 
 use crate::release::Release;

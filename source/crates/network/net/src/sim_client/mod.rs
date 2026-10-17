@@ -15,7 +15,6 @@ use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
 use campfire_bots::{BotOrder, BotScript, BotUnits, ScriptedInput};
 use campfire_capabilities::{MatchKind, MatchSpec, Order, Release};
-use campfire_combat::Fallen;
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declare::Role;
 use campfire_log::{ErrorReport, LogEvent};
@@ -25,7 +24,7 @@ use campfire_protocol::{SignedReceipt, Signer, Verifier};
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
 use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
-use campfire_units::{Avatar, Dead, Owner, PlayerUnits, UnitsWorld};
+use campfire_units::{Avatar, Dead, Fallen, Owner, PlayerUnits, UnitsWorld};
 use campfire_values::{Team, TeamSet};
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,

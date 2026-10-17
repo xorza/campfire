@@ -5,7 +5,6 @@ use std::num::NonZeroU32;
 
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Action, Order};
-use campfire_combat::Deaths;
 use campfire_common::{StateHash, Tick};
 use campfire_harness::{ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, MatchUnits};
 use campfire_math::Num;
@@ -17,6 +16,7 @@ use campfire_script::{Hook, ScriptFailures};
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
+use campfire_units::Deaths;
 use campfire_values::{Rank, Team, TrackId};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and

@@ -4,11 +4,12 @@ use std::ops::{ControlFlow, Range};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_combat::{Deaths, Kept};
+use campfire_combat::Kept;
 use campfire_common::PlayerSlot;
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_script::{Hook, PendingCalls, Pool, ScriptList, ScriptText, ScriptValue};
 use campfire_sim::{EntityIndex, SimTick, SlotEvent, SlotEventKind, TickInputs};
+use campfire_units::Deaths;
 
 use crate::calls::Calls;
 use crate::match_mode::MatchMode;

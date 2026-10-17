@@ -8,9 +8,8 @@ use campfire_orders::OrdersAction;
 use campfire_production::{BuildTarget, Production};
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_units::{BodyForm, Owner};
+use campfire_units::{BodyForm, Owner, SeenBy};
 use campfire_values::{Team, TeamSet, UnitType};
-use campfire_vision::SeenBy;
 
 use crate::fixtures::navigation::NavigationFixtures;
 use crate::order::{Action, Order};

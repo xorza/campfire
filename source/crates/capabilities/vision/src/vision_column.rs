@@ -5,9 +5,8 @@ use campfire_script::{
     AnyKeptRows, Filter, KeptRows, RowFill, ScriptList, ScriptRadius, ScriptValue, Unit,
     ViewColumn, ViewColumns,
 };
+use campfire_units::SeenBy;
 use campfire_values::{Relations, Team, TeamSet};
-
-use crate::seen_by::SeenBy;
 
 /// The parts of a unit vision reads into its row: the teams that saw it, and its team.
 pub(crate) type RowReads = (Option<&'static SeenBy>, Option<&'static Team>);

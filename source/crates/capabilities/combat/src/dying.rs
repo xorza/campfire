@@ -1,3 +1,7 @@
+use crate::kept::Kept;
+use crate::on_death::OnDeath;
+use crate::recent_attackers::RecentAttackers;
+use crate::respawn::Respawn;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
@@ -7,13 +11,8 @@ use campfire_deliveries::{Died, Teleported};
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, UnitPools};
 use campfire_units::{Avatar, Dead, Owner, SpawnPoint};
+use campfire_units::{Deaths, Fallen};
 use campfire_values::{Team, UnitType};
-
-use crate::deaths::{Deaths, Fallen};
-use crate::kept::Kept;
-use crate::on_death::OnDeath;
-use crate::recent_attackers::RecentAttackers;
-use crate::respawn::Respawn;
 
 /// Units that die at zero life, the dead that despawn, and the dead whose respawn is due.
 #[derive(Debug)]

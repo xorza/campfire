@@ -12,9 +12,8 @@ use campfire_net::{
 };
 use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
-use campfire_units::{Owner, SpawnPoint, Units, UnitsWorld};
+use campfire_units::{Owner, SeenBy, SpawnPoint, Units, UnitsWorld};
 use campfire_values::{Relation, Relations, Team};
-use campfire_vision::SeenBy;
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
 /// Frames of match: one tick each.

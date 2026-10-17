@@ -86,7 +86,7 @@ impl Deaths {
 
     /// Sorts the units of the deaths recorded so far, the damage pass's kills, for `killed` to
     /// find them: once a tick, before the deaths with no killer join the record.
-    pub(crate) fn index_killed(&mut self) {
+    pub fn index_killed(&mut self) {
         debug_assert!(self.killed.is_empty(), "the kills are indexed once a tick");
         self.killed
             .extend(self.entries.iter().map(|death| death.fallen.id));
@@ -94,7 +94,7 @@ impl Deaths {
     }
 
     /// Whether the damage pass killed `id` this tick, as `index_killed` sorted the kills.
-    pub(crate) fn killed(&self, id: StableId) -> bool {
+    pub fn killed(&self, id: StableId) -> bool {
         self.killed.binary_search(&id).is_ok()
     }
 

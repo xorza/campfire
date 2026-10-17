@@ -24,10 +24,9 @@ use campfire_players::{HeldOut, Player, PlayerResources, PlayersWorld};
 use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
 use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
 use campfire_test_packages::Edit;
-use campfire_units::{Dead, Owner};
+use campfire_units::{Dead, Owner, SeenBy};
 use campfire_values::{Team, TeamSet};
 use campfire_visibility::{HostVisibility, OutView, SpectatorFog, Visibility};
-use campfire_vision::SeenBy;
 use lightyear::prelude::{Replicate, Replicated, RollbackMode};
 
 use crate::net::short_3v3::{PICKS, short_3v3};

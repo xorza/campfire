@@ -13,9 +13,8 @@ use campfire_protocol::SessionLog;
 use campfire_runner::{Replay, Session};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_stats::{Life, PoolId, Pools};
-use campfire_units::{Body, Dead};
+use campfire_units::{Body, Dead, SeenBy};
 use campfire_values::{NameId, Team};
-use campfire_vision::SeenBy;
 
 const MATCH_TICKS: u64 = 600;
 /// The lane mode's respawn, 5000 ms at 30 ticks a second, from the end of the tick of death.

@@ -24,9 +24,8 @@ use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Level, Modifiers};
 use campfire_test_packages::TestMode;
-use campfire_units::{Body, Dead, Lifespan, MoveStep, Owner};
+use campfire_units::{Body, Dead, Lifespan, MoveStep, Owner, SeenBy};
 use campfire_values::{Team, TeamSet};
-use campfire_vision::SeenBy;
 
 /// What the match showed over its ticks.
 #[derive(Debug, Default)]

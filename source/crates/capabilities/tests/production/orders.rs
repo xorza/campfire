@@ -1,8 +1,8 @@
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
-use campfire_units::{Layer, MapBook};
+use campfire_units::{Layer, MapBook, SeenBy};
 use campfire_values::TeamSet;
-use campfire_vision::{SeenBy, Vision};
+use campfire_vision::Vision;
 
 use super::*;
 

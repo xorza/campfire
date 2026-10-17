@@ -14,7 +14,6 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use bevy_time::{Real, Time, Virtual};
-use campfire_combat::Deaths;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_declare::CapabilitySet;
 use campfire_log::{ErrorReport, LogEvent};
@@ -27,6 +26,7 @@ use campfire_protocol::{
 use campfire_quic::{CloseLink, QuicPlugin};
 use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError};
 use campfire_sim::{SimTick, SimWorld, TickRate};
+use campfire_units::Deaths;
 use campfire_visibility::Visibility;
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::server::ServerPlugins;

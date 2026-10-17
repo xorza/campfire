@@ -9,8 +9,7 @@ use bevy_ecs::system::{Commands, If, Query, Res, SystemParam};
 use campfire_capabilities::Release;
 use campfire_declare::{EntityKind, KindAudience, KindVisitor};
 use campfire_sim::StableId;
-use campfire_units::Owner;
-use campfire_vision::SeenBy;
+use campfire_units::{Owner, SeenBy};
 use lightyear::prelude::{NetworkTarget, PredictionTarget, Replicate};
 use tracing::debug;
 

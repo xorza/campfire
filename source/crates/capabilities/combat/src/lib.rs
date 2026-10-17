@@ -21,7 +21,7 @@ use campfire_declare::{
 use campfire_math::RngStream;
 use campfire_sim::{Capability, SimSet};
 use campfire_stats::{Life, LifePool, StatsSet, TypePools};
-use campfire_units::{BodyUnit, Dead, SpawnPoint, UnitsSet};
+use campfire_units::{BodyUnit, Dead, Deaths, SpawnPoint, UnitsSet};
 
 use crate::combat_column::RowReads;
 use crate::held_hits::HeldHits;
@@ -42,7 +42,6 @@ mod combat_event;
 mod damage;
 mod damage_handle;
 mod damage_pass;
-mod deaths;
 mod dying;
 mod error;
 mod heal;
@@ -73,7 +72,6 @@ pub use crate::combat_event::CombatEvent;
 pub use crate::damage::{Damage, DamageCause};
 pub use crate::damage_handle::DamageHandle;
 pub use crate::damage_pass::DamagePass;
-pub use crate::deaths::{DeathView, Deaths, Fallen};
 pub use crate::dying::Dying;
 pub use crate::error::{CombatDataError, CombatRefusal};
 pub use crate::heal::{Heal, HealCause};

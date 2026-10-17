@@ -3,9 +3,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
-use campfire_units::UnitEntity;
 use campfire_values::TeamSet;
 use serde::{Deserialize, Serialize};
+
+use crate::unit_entity::UnitEntity;
 
 /// The teams that see a unit, as the Vision stage of the last tick found them: those of its own
 /// vision group, and of each group with a living unit that sees the grid cell it stands in. A
@@ -24,7 +25,7 @@ impl Default for SeenBy {
 impl SeenBy {
     /// Of a unit no Vision stage has spoken of: one that spawned after the last, or in a match
     /// whose map gives no grid. Each reader decides who sees it.
-    pub(crate) const UNTOLD: Self = Self(None);
+    pub const UNTOLD: Self = Self(None);
 
     pub const fn new(teams: TeamSet) -> Self {
         Self(Some(teams))

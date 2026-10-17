@@ -1,8 +1,8 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_combat::DeathView;
 use campfire_script::PendingCalls;
 use campfire_sim::{SimResource, StableId};
+use campfire_units::DeathView;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

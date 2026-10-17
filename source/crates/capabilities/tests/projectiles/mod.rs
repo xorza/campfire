@@ -3,7 +3,7 @@ use bevy_ecs::query::With;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::{Binary, Toml};
 use campfire_combat::internals::Armed;
-use campfire_combat::{Combat, Deaths, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
+use campfire_combat::{Combat, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declare::ByType;
 use campfire_geometry::{Bounds, Grid};
@@ -15,9 +15,9 @@ use campfire_script::{Effect, Frame, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::{Life, Stats};
-use campfire_units::{BodyForm, DashTo, Dead, MapBook, UnitTypeCore, Units};
+use campfire_units::{BodyForm, DashTo, Dead, Deaths, MapBook, SeenBy, UnitTypeCore, Units};
 use campfire_values::{FilterData, Team, TypeScope, UnitType};
-use campfire_vision::{SeenBy, Sight, Vision};
+use campfire_vision::{Sight, Vision};
 
 /// A projectile type of 15 m/s, half a meter a tick, that hits enemies; homing, or along a line
 /// of `width` for `range` that ends at its first hit when `stop_on_hit`.

@@ -4,7 +4,6 @@
 
 use std::num::NonZeroU32;
 
-use campfire_combat::Deaths;
 use campfire_common::{StateHash, Tick};
 use campfire_harness::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
 use campfire_log::ErrorReport;
@@ -16,6 +15,7 @@ use campfire_runner::{
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
 use campfire_test_packages::TestMode;
 use campfire_units::Dead;
+use campfire_units::Deaths;
 
 /// A run of a match with a checkpoint before each of three ticks: its log, the snapshot of each
 /// checkpoint, the state hash after each tick, and the ticks a unit died and came back in.

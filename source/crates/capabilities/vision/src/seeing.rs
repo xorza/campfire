@@ -6,12 +6,11 @@ use campfire_common::Tick;
 use campfire_geometry::Shape;
 use campfire_players::OnMatch;
 use campfire_sim::{Position, SimTick};
-use campfire_units::{Body, Dead};
+use campfire_units::{Body, Dead, SeenBy};
 use campfire_values::{Relations, Team, UnitTags};
 
 use crate::fog::Fog;
 use crate::reveals::{Reveal, Reveals};
-use crate::seen_by::SeenBy;
 use crate::sight::Sight;
 use crate::vision_book::VisionBook;
 use crate::vision_grid::VisionGrid;

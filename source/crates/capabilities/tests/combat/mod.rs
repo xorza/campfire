@@ -35,7 +35,9 @@ use campfire_stats::{
     Application, Ends, Life, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance,
     PoolBook, PoolCost, PoolId, Pools, StatBook, StatId, StatRule, Stats, StatsSet,
 };
-use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld};
+use campfire_units::{
+    BodyForm, Dead, Deaths, Fallen, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld,
+};
 use campfire_values::{
     ActionId, Block, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, Rank,
     Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType, VisionShare,

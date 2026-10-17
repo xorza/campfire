@@ -32,10 +32,12 @@ use campfire_sim::{
     Capability, Command, IdAllocator, Position, SimComponent, SimTick, StableId, Unpredicted,
 };
 use campfire_stats::{Life, Stats};
-use campfire_units::{BodyForm, Dead, Destination, Layer, MoveStep, Owner, UnitTypeCore, Units};
+use campfire_units::{
+    BodyForm, Dead, Destination, Layer, MoveStep, Owner, SeenBy, UnitTypeCore, Units,
+};
 use campfire_values::{PackagePath, PathId, Rank, Scalar, Team, TeamSet, UnitType};
 use campfire_visibility::OutView;
-use campfire_vision::{SeenBy, Vision};
+use campfire_vision::Vision;
 
 const ONE: i64 = 1 << 24;
 /// The MOBA 3v3's creep and tower AI as they were when these tests were written: the

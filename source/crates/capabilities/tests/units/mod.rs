@@ -30,7 +30,6 @@ use campfire_units::*;
 use campfire_values::{
     Block, PackageIndex, PathId, Scalar, Stat, Team, TeamSet, TypeScope, UnitTags, UnitType,
 };
-use campfire_vision::SeenBy;
 
 /// A match of stats, combat and vision, with no grid, so the teams that see each unit are the
 /// `SeenBy` a test sets, its own team's else; with the stat book a weapon reads, and its types:

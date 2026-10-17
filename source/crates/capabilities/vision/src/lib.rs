@@ -14,7 +14,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_sim::Capability;
-use campfire_units::{UnitEntity, UnitsSet};
+use campfire_units::{SeenBy, UnitEntity, UnitsSet};
 
 use crate::vision_column::RowReads;
 
@@ -26,7 +26,6 @@ mod fog;
 mod grid_data;
 mod reveals;
 mod seeing;
-mod seen_by;
 mod seen_targets;
 mod sight;
 mod sight_cache;
@@ -47,7 +46,6 @@ pub use crate::fog::Fog;
 pub use crate::grid_data::{BrushData, GridData};
 pub use crate::reveals::{Reveal, Reveals};
 pub use crate::seeing::Seeing;
-pub use crate::seen_by::SeenBy;
 pub use crate::seen_targets::SeenTargets;
 pub use crate::sight::Sight;
 pub use crate::team_sight::{ByHolding, ByVision, TeamSight};
@@ -131,12 +129,11 @@ pub mod internals {
     use campfire_script::{Budget, CallError, CallStart, Ctx, ScriptHost, ScriptRole};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimTick, StableId};
-    use campfire_units::UnitsWorld;
+    use campfire_units::{SeenBy, UnitsWorld};
     use campfire_values::{Team, TeamSet};
 
     use crate::Vision;
     use crate::brush_map::BrushMap;
-    use crate::seen_by::SeenBy;
     use crate::vision_book::VisionBook;
     use crate::vision_column::VisionColumn;
     use crate::vision_grid::VisionGrid;

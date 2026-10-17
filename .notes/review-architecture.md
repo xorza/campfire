@@ -665,7 +665,6 @@ Each change folds into its document when its batch lands. Each line names the de
 **5.5 Contracts in `units`.** Touches `units`, `players`, `orders`, `navigation`, `production`, `interaction`, `items`, `net`, `visibility`, `vision`, `combat`.
 - `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20).
 - `Destination` writes and the standing-room query are contracts, and `production` drops `navigation` (R-31).
-- A death record and an audience contract, and `net` drops `combat` and `vision` (N-26).
 
 ### Phase 6: `Send` data and the server frame
 
@@ -1101,7 +1100,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-23 | No log line names its session | `events/input_logged.rs:19-27` | Confirmed | 6.3 |
 | N-24 | A 2 ms frame loop runs every Lightyear system 500 times a second for each match | `net_protocol/mod.rs:73-76`, `apps/server/src/main.rs:193` | Plausible | 11.2 |
 | N-25 | Small allocations for each message on the network paths | `offering.rs:259-263`, `input_ack.rs:18-27`, `chain_history/mod.rs:45-52` | Confirmed | 6.5 |
-| N-26, B-19 | `net` depends on `combat` for a log line and on `vision` for interest | `sim_server/mod.rs:16, 654-665`, `team_rooms.rs:4`, `kind_shows.rs:13` | Confirmed | 5.5 |
 | N-29 | A test's per-tick hash runs in the production schedule, and an error variant names the wrong fingerprint | `sim_server/mod.rs:224, 473-476`, `session/error.rs:37` | Confirmed | 6.2 |
 
 ### The client, the importer and the checks

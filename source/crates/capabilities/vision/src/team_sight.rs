@@ -3,10 +3,10 @@ use std::fmt::Debug;
 use bevy_ecs::query::{QueryItem, ReadOnlyQueryData};
 use campfire_declare::RoleForm;
 use campfire_math::Vec3;
+use campfire_units::SeenBy;
 use campfire_values::Team;
 
 use crate::fog::Fog;
-use crate::seen_by::SeenBy;
 use crate::vision_grid::VisionGrid;
 
 /// How a match tells whether a team sees a unit, for a check of what a player's order may aim at:

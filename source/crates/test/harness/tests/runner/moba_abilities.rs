@@ -27,11 +27,10 @@ use campfire_projectiles::Projectile;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Life, PoolMeters, Pools, Stats};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{Body, ForcedMove, MoveStep, Owner};
+use campfire_units::{Body, ForcedMove, MoveStep, Owner, SeenBy};
 use campfire_values::{
     ActionId, ModifierId, Number, Param, Rank, Ranked, Scalar, Scaling, Stat, Team,
 };
-use campfire_vision::SeenBy;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());

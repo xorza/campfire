@@ -15,14 +15,13 @@ use campfire_stats::{
     CarriedMut, Life, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatId,
     StatsWorld, UnitStats,
 };
-use campfire_units::{Avatar, Owner, TagEffect};
+use campfire_units::{Avatar, Deaths, Fallen, Owner, TagEffect};
 use campfire_values::{Block, NameId, Team, UnitTags, UnitType};
 
 use crate::armor::Armor;
 use crate::combat_book::CombatBook;
 use crate::combat_event::CombatEvent;
 use crate::damage::Damage;
-use crate::deaths::{Deaths, Fallen};
 use crate::heal::{Heal, HealCause};
 use crate::next_damage::NextDamage;
 use crate::pass_queue::{PassEntry, PassQueue};
