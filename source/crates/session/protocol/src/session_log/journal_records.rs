@@ -10,7 +10,7 @@ use crate::session_log::error::{CheckpointError, JournalReplayError, LogError};
 use crate::session_log::journal::Journal;
 use crate::session_log::log_entries::Entry;
 use crate::session_log::segments::{LoggedCheckpoint, SegmentStart};
-use crate::session_log::{LoggedResult, SessionLog, file, put, take};
+use crate::session_log::{LoggedResult, SessionLog, Signatures, file, put, take};
 
 /// The bytes that start each kind of journal record.
 const JOURNAL_HEADER: u8 = 0;
@@ -123,8 +123,8 @@ impl SessionLog {
     ) -> Result<(), LogError> {
         let (&kind, mut rest) = record.split_first().ok_or(LogError::Truncated)?;
         match kind {
-            JOURNAL_PACKET => self.record_packet(&mut rest, inputs, applied)?,
-            JOURNAL_SERVER => self.record_server_input(&mut rest)?,
+            JOURNAL_PACKET => self.record_packet(&mut rest, inputs, applied, Signatures::Check)?,
+            JOURNAL_SERVER => self.record_server_input(&mut rest, Signatures::Check)?,
             JOURNAL_SEALED => drop(self.seal_tick(None)),
             JOURNAL_CHECKPOINT_BEGUN => {
                 let segment: u32 = take(&mut rest)?;
@@ -146,7 +146,7 @@ impl SessionLog {
                     .segments
                     .oldest_begun()
                     .map_or_else(|| self.segment(), |begun| begun.segment);
-                self.record_done(&mut rest, segment)?;
+                self.record_done(&mut rest, segment, Signatures::Check)?;
             }
             JOURNAL_LOADED => {
                 let segment: u32 = take(&mut rest)?;

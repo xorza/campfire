@@ -79,9 +79,6 @@ pub struct SessionLog {
     /// Present once the segment is published.
     revealed: Option<ServerSeed>,
     verifier: Verifier,
-    /// Whether the log checks the signature of each record it takes, or trusts them, as it does
-    /// while it decodes its own past again for a load.
-    signatures: Signatures,
     /// The scratch a record's signed message is written into.
     message: Vec<u8>,
     /// The record the log takes now, its kind's byte then its body, encoded once: what its
@@ -130,9 +127,11 @@ struct Bounds {
 #[derive(Debug, Clone, Copy)]
 struct Bounds;
 
-/// How the log takes a record's signature.
+/// How a decode takes a record's signature, which it gives each record it takes: a parameter of
+/// the decode, so the log holds no mode (10-sessions.md, The signature policy is a parameter of
+/// the decode).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Signatures {
+pub(super) enum Signatures {
     /// It checks each against the key it must be of.
     Check,
     /// It trusts each, as the log's own past, whose every signature it checked as it first
@@ -259,7 +258,6 @@ impl SessionLog {
             header,
             revealed: None,
             verifier: Verifier::new(),
-            signatures: Signatures::Check,
             message: Vec::new(),
             record: Vec::new(),
             server_since: 0,
@@ -489,6 +487,21 @@ impl SessionLog {
         I: IntoIterator<Item = (Tick, &'a [u8])>,
         I::IntoIter: Clone,
     {
+        self.record_as(packet, applied, journal, Signatures::Check)
+    }
+
+    /// Logs a player's packet as `record` does, its signature taken as `signatures` says.
+    pub(super) fn record_as<'a, I>(
+        &mut self,
+        packet: PlayerPacket<'_, I>,
+        applied: &mut Vec<Applied>,
+        journal: Option<&mut Journal>,
+        signatures: Signatures,
+    ) -> Result<(), InputError>
+    where
+        I: IntoIterator<Item = (Tick, &'a [u8])>,
+        I::IntoIter: Clone,
+    {
         let PlayerPacket {
             slot,
             inputs,
@@ -545,7 +558,7 @@ impl SessionLog {
             chain.extend(stamp, payload);
         }
         let head = chain.signed_head(self.session_id);
-        if !self.checks(signature, &session_key, &head) {
+        if !self.checks(signatures, signature, &session_key, &head) {
             return Err(InputError::BadSignature);
         }
 
@@ -676,6 +689,17 @@ impl SessionLog {
         signature: &Signature,
         journal: Option<&mut Journal>,
     ) -> Result<(), ServerInputError> {
+        self.record_server_as(input, signature, journal, Signatures::Check)
+    }
+
+    /// Logs a server input as `record_server` does, its signature taken as `signatures` says.
+    pub(super) fn record_server_as(
+        &mut self,
+        input: ServerInput<'_>,
+        signature: &Signature,
+        journal: Option<&mut Journal>,
+        signatures: Signatures,
+    ) -> Result<(), ServerInputError> {
         let change = self.server_change(&input)?;
         let placed = EncodedPlace {
             session_id: self.session_id,
@@ -683,7 +707,7 @@ impl SessionLog {
             input: &self.record[1..],
         };
         let server_key = self.header.terms.server_key;
-        if !(self.signatures == Signatures::Trust
+        if !(signatures == Signatures::Trust
             || self.verifier.verifies(signature, &server_key, &placed))
         {
             return Err(ServerInputError::BadSignature);
@@ -723,14 +747,15 @@ impl SessionLog {
         self.log_server(input, change, &signature, journal)
     }
 
-    /// Whether `signature` is `key`'s over `record`, or trusted as the log's own past.
+    /// Whether `signature` is `key`'s over `record`, or trusted, as `signatures` says.
     fn checks(
         &mut self,
+        signatures: Signatures,
         signature: &Signature,
         key: &XOnlyPublicKey,
         record: &impl Signed,
     ) -> bool {
-        self.signatures == Signatures::Trust || self.verifier.verifies(signature, key, record)
+        signatures == Signatures::Trust || self.verifier.verifies(signature, key, record)
     }
 
     /// Checks that `server` holds the terms' server key, which signs what the server logs.
@@ -886,6 +911,18 @@ impl SessionLog {
         signature: &Signature,
         journal: Option<&mut Journal>,
     ) -> Result<(), CheckpointError> {
+        self.record_checkpoint_as(record, signature, journal, Signatures::Check)
+    }
+
+    /// Logs a checkpoint's record as `record_checkpoint` does, its signature taken as
+    /// `signatures` says.
+    pub(super) fn record_checkpoint_as(
+        &mut self,
+        record: Checkpoint,
+        signature: &Signature,
+        journal: Option<&mut Journal>,
+        signatures: Signatures,
+    ) -> Result<(), CheckpointError> {
         self.segments
             .oldest_begun()
             .ok_or(CheckpointError::NotBegun)?;
@@ -896,7 +933,7 @@ impl SessionLog {
             record: &record,
         };
         let server_key = *server_key;
-        if !self.checks(signature, &server_key, &signed) {
+        if !self.checks(signatures, signature, &server_key, &signed) {
             return Err(CheckpointError::BadSignature);
         }
         self.take_checkpoint(record, signature, journal)
@@ -998,6 +1035,17 @@ impl SessionLog {
         signature: &Signature,
         journal: Option<&mut Journal>,
     ) -> Result<(), ResultError> {
+        self.record_result_as(result, signature, journal, Signatures::Check)
+    }
+
+    /// Ends the session as `record_result` does, its signature taken as `signatures` says.
+    pub(super) fn record_result_as(
+        &mut self,
+        result: SessionResult,
+        signature: &Signature,
+        journal: Option<&mut Journal>,
+        signatures: Signatures,
+    ) -> Result<(), ResultError> {
         let server_key = &self.header.terms.server_key;
         let id = self.session_id;
         let signed = InSession {
@@ -1005,7 +1053,7 @@ impl SessionLog {
             record: &result,
         };
         let server_key = *server_key;
-        if !self.checks(signature, &server_key, &signed) {
+        if !self.checks(signatures, signature, &server_key, &signed) {
             return Err(ResultError::BadSignature);
         }
         self.take_result(result, signature, journal)

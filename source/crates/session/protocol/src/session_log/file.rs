@@ -111,7 +111,6 @@ impl SessionLog {
         let mut rest = bytes.strip_prefix(LOG_TAG).ok_or(LogError::NotLog)?;
         let header = take_header(&mut rest)?;
         let mut log = Self::within(header, bounds).map_err(LogError::Header)?;
-        log.signatures = signatures;
         let mut inputs = Vec::new();
         let mut applied = Vec::new();
         let segments: u32 = take(&mut rest)?;
@@ -120,15 +119,15 @@ impl SessionLog {
         }
         for segment in 0..segments {
             if segment > 0 {
-                log.record_checkpoint_at(&mut rest, segment)?;
+                log.record_checkpoint_at(&mut rest, segment, signatures)?;
             }
             let ticks: u64 = take(&mut rest)?;
             for _ in 0..ticks {
-                log.record_logged(&mut rest, &mut inputs, &mut applied)?;
+                log.record_logged(&mut rest, &mut inputs, &mut applied, signatures)?;
                 drop(log.seal_tick(None));
             }
         }
-        log.record_logged(&mut rest, &mut inputs, &mut applied)?;
+        log.record_logged(&mut rest, &mut inputs, &mut applied, signatures)?;
         if let Some(server_seed) = take::<Option<ServerSeed>>(&mut rest)? {
             if !server_seed.check(log.segment(), &log.header.terms.seed_commitment) {
                 return Err(LogError::WrongSeed);
@@ -136,7 +135,7 @@ impl SessionLog {
             log.set_revealed(server_seed);
         }
         if let Some(LoggedResult { result, signature }) = take(&mut rest)? {
-            log.record_result(result, &signature, None)
+            log.record_result_as(result, &signature, None, signatures)
                 .map_err(LogError::Result)?;
         }
         if !rest.is_empty() {
@@ -150,7 +149,6 @@ impl SessionLog {
                 "a file that decodes is the file its log encodes"
             );
         }
-        log.signatures = Signatures::Check;
         Ok(log)
     }
 
@@ -212,12 +210,13 @@ impl SessionLog {
         rest: &mut &'a [u8],
         inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
+        signatures: Signatures,
     ) -> Result<(), LogError> {
         let entries: u32 = take(rest)?;
         for _ in 0..entries {
             match take::<u8>(rest)? {
-                PACKET_ENTRY => self.record_packet(rest, inputs, applied)?,
-                SERVER_ENTRY => self.record_server_input(rest)?,
+                PACKET_ENTRY => self.record_packet(rest, inputs, applied, signatures)?,
+                SERVER_ENTRY => self.record_server_input(rest, signatures)?,
                 _ => return Err(LogError::UnknownEntry),
             }
         }
@@ -225,12 +224,13 @@ impl SessionLog {
     }
 
     /// Records the packet `put_packet` wrote at the front of `rest`, with `inputs` and `applied`
-    /// as scratch.
+    /// as scratch, its signature taken as `signatures` says.
     pub(super) fn record_packet<'a>(
         &mut self,
         rest: &mut &'a [u8],
         inputs: &mut Vec<(Tick, &'a [u8])>,
         applied: &mut Vec<Applied>,
+        signatures: Signatures,
     ) -> Result<(), LogError> {
         let tick = self.next_tick();
         let slot = PlayerSlot::new(take(rest)?);
@@ -247,12 +247,17 @@ impl SessionLog {
             inputs: inputs.iter().copied(),
             signature: &signature,
         };
-        self.record(packet, applied, None)
+        self.record_as(packet, applied, None, signatures)
             .map_err(|error| LogError::Input { tick, error })
     }
 
-    /// Records the server input `put_server` wrote at the front of `rest`.
-    pub(super) fn record_server_input(&mut self, rest: &mut &[u8]) -> Result<(), LogError> {
+    /// Records the server input `put_server` wrote at the front of `rest`, its signature taken as
+    /// `signatures` says.
+    pub(super) fn record_server_input(
+        &mut self,
+        rest: &mut &[u8],
+        signatures: Signatures,
+    ) -> Result<(), LogError> {
         let tick = self.next_tick();
         let taken = ServerInput::take(rest).map_err(|error| match error {
             ServerInputDecodeError::Malformed(BinaryError::Truncated) => LogError::Truncated,
@@ -260,28 +265,38 @@ impl SessionLog {
         })?;
         *rest = taken.rest;
         let signature = take(rest)?;
-        self.record_server(taken.value, &signature, None)
+        self.record_server_as(taken.value, &signature, None, signatures)
             .map_err(|error| LogError::Server { tick, error })
     }
 
     /// Begins the checkpoint of segment `segment`, and records its record that `encode` wrote at
-    /// the front of `rest`, with its signature.
-    fn record_checkpoint_at(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
+    /// the front of `rest`, with its signature, taken as `signatures` says.
+    fn record_checkpoint_at(
+        &mut self,
+        rest: &mut &[u8],
+        segment: u32,
+        signatures: Signatures,
+    ) -> Result<(), LogError> {
         self.begin_checkpoint(None)
             .map_err(|error| LogError::Checkpoint { segment, error })?;
-        self.record_done(rest, segment)
+        self.record_done(rest, segment, signatures)
     }
 
     /// Records the record of the checkpoint begun, of segment `segment`, that `encode` wrote at
-    /// the front of `rest`, with its signature.
-    pub(super) fn record_done(&mut self, rest: &mut &[u8], segment: u32) -> Result<(), LogError> {
+    /// the front of `rest`, with its signature, taken as `signatures` says.
+    pub(super) fn record_done(
+        &mut self,
+        rest: &mut &[u8],
+        segment: u32,
+        signatures: Signatures,
+    ) -> Result<(), LogError> {
         let taken = Checkpoint::take(rest).map_err(|error| match error {
             CheckpointDecodeError::Malformed(BinaryError::Truncated) => LogError::Truncated,
             error => LogError::CheckpointDecode { segment, error },
         })?;
         *rest = taken.rest;
         let signature = take(rest)?;
-        self.record_checkpoint(taken.value, &signature, None)
+        self.record_checkpoint_as(taken.value, &signature, None, signatures)
             .map_err(|error| LogError::Checkpoint { segment, error })
     }
 }
