@@ -6,6 +6,7 @@ use campfire_geometry::Placed;
 
 use super::*;
 use crate::action_range::ActionRange;
+use crate::rank_values::CostRun;
 
 fn weapon() -> Weapon {
     Weapon {
@@ -37,6 +38,7 @@ fn values(windup: u64, period: Option<u64>, amount: Option<Num>) -> RankValues {
         toggle: None,
         channel: None,
         charge: None,
+        resource_cost: CostRun::EMPTY,
         amount,
         period: period.map(Ticks::new),
         clip: None,

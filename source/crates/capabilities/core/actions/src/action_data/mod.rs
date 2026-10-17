@@ -371,7 +371,7 @@ impl ActionData {
                     let meters = self
                         .param_at(rank, reference.param.as_str(), ActionField::Range)?
                         .to_num();
-                    let meters = meters.filter(|meters| *meters >= Num::ZERO);
+                    let meters = meters.and_then(Distance::new);
                     ActionRange::Meters(meters.ok_or(ActionField::Range)?)
                 }
             },

@@ -99,7 +99,7 @@ impl Destinations {
                 Some((unit, ActionRange::Meters(range)))
                     if !targets.reaches(
                         Placed::new(position.get(), Body::shape_of(body)),
-                        range,
+                        range.get(),
                         &unit,
                     ) =>
                 {

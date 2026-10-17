@@ -126,7 +126,7 @@ impl ActionSlots {
         let ActionRange::Meters(range) = self.range_in(book, slot) else {
             panic!("a build's and a gather's ranks reach in meters, as their book checked");
         };
-        range
+        range.get()
     }
 
     /// The kind of the action in `slot`, as `book` gives it; none for a slot that is missing or

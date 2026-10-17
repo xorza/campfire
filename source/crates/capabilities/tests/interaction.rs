@@ -125,7 +125,7 @@ fn use_data(channel: Option<bool>) -> ActionData {
     ActionData {
         kind: ActionKind::Use,
         script: Some(PackagePath::parse("use.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(2),
         )))),
         windup_ms: Some(int(100)),

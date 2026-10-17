@@ -140,7 +140,7 @@ fn lash_out() -> ActionData {
 fn strike() -> ActionData {
     ActionData {
         script: Some(PackagePath::parse("strike.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(5),
         )))),
         cooldown_ms: Some(Ranked::One(int(1001))),
@@ -436,7 +436,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     // its caster over 100 ms, 3 ticks.
     let aim = ActionData {
         windup_ms: Some(Ranked::One(int(300))),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(10),
         )))),
         ..strike()
@@ -444,7 +444,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
     let aim = Abilities::load(&mut game, "aim", &aim, STRIKE);
     let shove = ActionData {
         script: Some(PackagePath::parse("shove.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(5),
         )))),
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
@@ -553,7 +553,7 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_th
     });
     let lunge = ActionData {
         script: Some(PackagePath::parse("lunge.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(10),
         )))),
         on_resolve: vec![
@@ -978,7 +978,7 @@ fn on_resolve(ctx, caster, target) {
 "#;
     let leap = |clamp| ActionData {
         script: Some(PackagePath::parse("leap.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(4),
         )))),
         clamp_to_range: clamp,
@@ -1063,7 +1063,7 @@ impl Reaching {
     fn place(game: &mut Match) -> Self {
         let hop = ActionData {
             script: Some(PackagePath::parse("hop.rhai").unwrap()),
-            range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+            range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
                 Num::int(4),
             )))),
             ..ActionData::cast(Targeting::Point)
@@ -1420,7 +1420,7 @@ fn on_interrupt(ctx, caster, target) {
     Stats::load_modifier(&mut game, PackageIndex::MODE, "ward", &ward, None);
     let drain = ActionData {
         script: Some(PackagePath::parse("drain.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(5),
         )))),
         channel: Some(ChannelData {
@@ -1518,7 +1518,7 @@ fn on_resolve(ctx, caster, target) {
     Abilities::load_stats(&mut game);
     let draw = ActionData {
         script: Some(PackagePath::parse("draw.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(5),
         )))),
         charge: Some(ChargeUpData {
@@ -2005,7 +2005,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.cost = BTreeMap::new();
     claws.params = BTreeMap::new();
     claws.targeting = Targeting::Unit(FilterData::parse("enemies").unwrap());
-    claws.range = Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+    claws.range = Some(Ranked::One(RangeField::Range(ActionRange::meters(
         Num::int(2),
     ))));
     claws.rate = Some(Stat::named("armor").unwrap());
@@ -2910,7 +2910,7 @@ fn sapper(ranged: bool) -> ActionData {
     ActionData {
         kind: ActionKind::Attack,
         script: None,
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(meters),
         )))),
         rate: Some(Stat::named("armor").unwrap()),
@@ -2979,7 +2979,7 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
         let target = Abilities::spawn_combatant(&mut game, (out, 0, 0), Team::new(1), ());
         let attacker = if by_cast {
             let data = ActionData {
-                range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+                range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
                     Num::int(5),
                 )))),
                 ..strike()

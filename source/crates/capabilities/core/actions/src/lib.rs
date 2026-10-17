@@ -378,7 +378,7 @@ pub mod internals {
     use crate::gather_spec::GatherSpec;
     use crate::kind_spec::KindSpec;
     use crate::rank_fields::{RankToggle, TogglePer};
-    use crate::rank_values::{ClipRule, RankValues};
+    use crate::rank_values::{ClipRule, CostRun, RankValues};
     use crate::weapon::{Pitch, Scatter, Source, Weapon};
 
     impl Actions {
@@ -409,7 +409,7 @@ pub mod internals {
                     hold: None,
                     aim: Aim::Unit(aim),
                     ranks: vec![RankValues {
-                        range: ActionRange::Meters(range),
+                        range: ActionRange::meters(range),
                         cooldown: Ticks::ZERO,
                         cost: PoolCost::default(),
                         windup: time,
@@ -417,6 +417,7 @@ pub mod internals {
                         toggle: None,
                         channel: None,
                         charge: None,
+                        resource_cost: CostRun::EMPTY,
                         amount: None,
                         period: None,
                         clip: None,
@@ -442,7 +443,7 @@ pub mod internals {
                     hold: None,
                     aim: Aim::None,
                     ranks: vec![RankValues {
-                        range: ActionRange::Meters(Num::ZERO),
+                        range: ActionRange::meters(Num::ZERO),
                         cooldown: Ticks::ZERO,
                         cost: PoolCost::default(),
                         windup: Ticks::ZERO,
@@ -453,6 +454,7 @@ pub mod internals {
                         }),
                         channel: None,
                         charge: None,
+                        resource_cost: CostRun::EMPTY,
                         amount: None,
                         period: None,
                         clip: None,
@@ -545,6 +547,7 @@ pub mod internals {
                     flight: ProjectileFlight::Homing,
                 },
             });
+            let resource_costs: Box<[ResourceAmount]> = weapon.resource_cost.into_iter().collect();
             Self::push(
                 world,
                 "weapon",
@@ -574,11 +577,12 @@ pub mod internals {
                         toggle: None,
                         channel: None,
                         charge: None,
+                        resource_cost: CostRun::whole(&resource_costs),
                         amount: weapon.amount,
                         period: weapon.period,
                         clip: weapon.clip,
                     }],
-                    resource_costs: weapon.resource_cost.into_iter().collect(),
+                    resource_costs,
                     script: None,
                     hooks: HookSet::default(),
                     delivery,
@@ -612,6 +616,7 @@ pub mod internals {
             time: Ticks,
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
+            let resource_costs: Box<[ResourceAmount]> = resource_cost.into_iter().collect();
             Self::push(
                 world,
                 "train",
@@ -630,11 +635,12 @@ pub mod internals {
                         toggle: None,
                         channel: None,
                         charge: None,
+                        resource_cost: CostRun::whole(&resource_costs),
                         amount: None,
                         period: None,
                         clip: None,
                     }],
-                    resource_costs: resource_cost.into_iter().collect(),
+                    resource_costs,
                     script: None,
                     hooks: HookSet::default(),
                     delivery: None,
@@ -652,6 +658,7 @@ pub mod internals {
             resource_cost: Option<ResourceAmount>,
         ) -> ActionId {
             let range = range.into();
+            let resource_costs: Box<[ResourceAmount]> = resource_cost.into_iter().collect();
             Self::push(
                 world,
                 "build",
@@ -662,7 +669,7 @@ pub mod internals {
                     hold: None,
                     aim: Aim::Point { clamp: false },
                     ranks: vec![RankValues {
-                        range: ActionRange::Meters(range),
+                        range: ActionRange::meters(range),
                         cooldown: Ticks::ZERO,
                         cost: PoolCost::default(),
                         windup: time,
@@ -670,11 +677,12 @@ pub mod internals {
                         toggle: None,
                         channel: None,
                         charge: None,
+                        resource_cost: CostRun::whole(&resource_costs),
                         amount: None,
                         period: None,
                         clip: None,
                     }],
-                    resource_costs: resource_cost.into_iter().collect(),
+                    resource_costs,
                     script: None,
                     hooks: HookSet::default(),
                     delivery: None,

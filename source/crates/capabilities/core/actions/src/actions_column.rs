@@ -140,7 +140,7 @@ impl ActionsColumn {
             let ActionRange::Meters(range) = slots.range_in(book, slot) else {
                 panic!("the load gives every attack a range in meters");
             };
-            range
+            range.get()
         });
         rows.slots.extend(slots.iter().map(|slot| {
             let action = slot

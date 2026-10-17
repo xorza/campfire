@@ -400,7 +400,7 @@ pub mod internals {
                 speed: self.speed,
                 ..TestWeapon::new(
                     Filter::of_match_relations(world, RelationSet::Enemies),
-                    ActionRange::Meters(self.range),
+                    ActionRange::meters(self.range),
                     self.windup,
                 )
             };

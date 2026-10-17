@@ -888,7 +888,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     let mut armed = |aim: &str| {
         let weapon = TestWeapon::new(
             Filter::parse(aim, &TagNames::new(&Release::engine_tags())).unwrap(),
-            ActionRange::Meters(Num::int(20)),
+            ActionRange::meters(Num::int(20)),
             Ticks::new(2),
         );
         let weapon = Actions::add_weapon(&mut game, weapon);

@@ -650,8 +650,7 @@ Each change folds into its document when its batch lands. Each line names the de
 ### Phase 5: core pipelines and contracts
 
 **5.1 Kind sections owned by capabilities.** Touches `actions`, `combat`, `production`, the top crate and `package`.
-- `ActionData` holds the common fields and a `kind` section of the capability's own type. The hand table goes. `Weapon`, `Scatter` and `Pitch` move to combat, and the build and gather types move to production (C-1).
-- The costs for each rank are a `Range` (C-19), and `ActionRange::Meters` holds a `Distance` (C-20).
+- `ActionData` holds the common fields and a `kind` section of the capability's own type. The hand table goes. `Weapon`, `Scatter` and `Pitch` move to combat, and the build and gather types move to production (C-1). Done after 5.3: the core's reach check reads a weapon's pitch, and its slot times a weapon's period, which combat gives once the kinds plug in through 5.3's callbacks.
 - **Goldens:** none. Data that a kind ignored without a word is now refused.
 
 **5.2 One effect registry.** Touches `actions`, `combat`, `stats`, `progression`, `areas`, `navigation`, `script`.
@@ -1004,8 +1003,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-15, S-24 | The script view walks and copies every entity for each script batch. Each call copies the mode state and every player's resources and resolves its literal names again. | `view_reader.rs:136-180`, `scripts_world.rs:15-17`, `mode_call.rs:194-208` | Plausible: needs a bench | 7.2 |
 | C-17 | `want_passives` scans every unit in four sets, and `end_lifespans` scans every lifespan in each tick | `actions/src/lib.rs:242-250`, `unit_ticks.rs:31-42` | Confirmed | 7.1 |
 | C-18 | Slots, times and progress are three components that stay in step only by index, and each `zip` truncates silently | `action_slots/mod.rs:30-33`, `slot_times.rs:234-354` | Confirmed | 7.4 |
-| C-19 | Resource costs are a flat buffer whose shape a division implies | `action.rs:21-24, 89-93` | Confirmed | 5.1 |
-| C-20 | `ActionRange::Meters` holds a raw `Num` beside the checked `Distance` | `action_range.rs:8-31` | Confirmed | 5.1 |
 | C-22 | Six geometry predicates answer one question with four names, three result types and both boundary rules | `metric.rs:58-117`, `placed/mod.rs:30-35`, `body_box/mod.rs:143-152` | Confirmed | 12.1 |
 | C-23 | The sim's ground is 8-bit samples above 0, with no base height | `height_grid.rs:11-59` | Confirmed | Backlog (D23) |
 | C-24 | A unit has exactly one controller, its owner | `owner.rs:12-44`, `tick_commands.rs:70-74` | Confirmed | Backlog (D24) |

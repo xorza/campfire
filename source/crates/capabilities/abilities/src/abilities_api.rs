@@ -102,7 +102,7 @@ impl AbilitiesApi {
             (action, frame.rank())
         };
         match ActionsColumn::range(ctx.view(), action, rank) {
-            ActionRange::Meters(meters) => ScriptValue::of(meters),
+            ActionRange::Meters(meters) => ScriptValue::of(meters.get()),
             ActionRange::Global => ScriptValue::UNIT,
         }
     }

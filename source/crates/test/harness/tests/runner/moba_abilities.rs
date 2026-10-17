@@ -343,10 +343,10 @@ fn every_moba_ability_reads_into_the_schema() {
     let Some(Ranked::PerRank(ranges)) = &rime.actions()["snow_owl"].range else {
         panic!("a range per rank");
     };
-    assert_eq!(ranges[1], RangeField::Range(ActionRange::Meters(half * 65)));
+    assert_eq!(ranges[1], RangeField::Range(ActionRange::meters(half * 65)));
     let wraps = &husk.actions()["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
-    let eleven = RangeField::Range(ActionRange::Meters(Num::int(11)));
+    let eleven = RangeField::Range(ActionRange::meters(Num::int(11)));
     assert_eq!(wraps.range, Some(Ranked::One(eleven)));
 }
 

@@ -210,7 +210,8 @@ impl Projectiles {
     /// its rank; `None` for a global range.
     const fn range(spec: &ProjectileSpec, range: ActionRange) -> Option<Num> {
         match (spec.range, range) {
-            (Some(meters), _) | (None, ActionRange::Meters(meters)) => Some(meters),
+            (Some(meters), _) => Some(meters),
+            (None, ActionRange::Meters(meters)) => Some(meters.get()),
             (None, ActionRange::Global) => None,
         }
     }

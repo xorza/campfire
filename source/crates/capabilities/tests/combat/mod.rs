@@ -178,7 +178,7 @@ fn rifle_fight(game: &mut Match, held: impl Bundle) -> [StableId; 2] {
         }),
         ..TestWeapon::new(
             Filter::of_match_relations(game, RelationSet::Enemies),
-            ActionRange::Meters(Num::int(2)),
+            ActionRange::meters(Num::int(2)),
             Ticks::ZERO,
         )
     };
@@ -323,7 +323,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             damage,
             ..TestWeapon::new(
                 aim,
-                ActionRange::Meters(Num::int(range)),
+                ActionRange::meters(Num::int(range)),
                 Ticks::new(windup),
             )
         };
@@ -464,7 +464,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
         }),
         ..TestWeapon::new(
             Filter::of_release_relations(RelationSet::Enemies),
-            ActionRange::Meters(Num::int(2)),
+            ActionRange::meters(Num::int(2)),
             Ticks::new(2),
         )
     };
@@ -532,7 +532,7 @@ fn a_toggle_an_attack_cannot_pay_with_its_own_cost_turns_off_and_the_attack_stri
         cost: PoolCost::new([(mana, Num::int(4))]),
         ..TestWeapon::new(
             Filter::of_release_relations(RelationSet::Enemies),
-            ActionRange::Meters(Num::int(2)),
+            ActionRange::meters(Num::int(2)),
             Ticks::new(2),
         )
     };

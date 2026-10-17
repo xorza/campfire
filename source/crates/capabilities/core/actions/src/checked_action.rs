@@ -47,6 +47,7 @@ impl CheckedAction<'_> {
         else {
             return;
         };
+        let range = range.get();
         if targets.reaches_point(Placed::new(from, shape), range, at) {
             return;
         }
@@ -118,6 +119,7 @@ impl CheckedAction<'_> {
         let ActionRange::Meters(range) = self.values.range else {
             return true;
         };
+        let range = range.get();
         let from = Placed::new(from, Body::shape_of(body));
         match (self.action.aim, self.target) {
             (Aim::Unit(_), ActionTarget::Unit(target)) => targets

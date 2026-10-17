@@ -21,8 +21,7 @@ pub struct Action {
     pub aim: Aim,
     /// Its capability fields at each rank, from rank 1.
     pub ranks: Vec<RankValues>,
-    /// Its cost in its caster's player's resources at each rank, one run of the same resources
-    /// each, rank after rank.
+    /// Its costs in its caster's player's resources, each rank's run where its values say.
     pub resource_costs: Box<[ResourceAmount]>,
     /// Its script, if it has one, and the action hooks the script defines: a script may serve
     /// only the action's modifiers.
@@ -112,9 +111,7 @@ impl Action {
 
     /// Its cost at `rank`, one of its ranks, in its caster's player's resources.
     pub fn resource_cost(&self, rank: Rank) -> &[ResourceAmount] {
-        let per_rank = self.resource_costs.len() / self.ranks.len().max(1);
-        let start = rank.index() * per_rank;
-        &self.resource_costs[start..start + per_rank]
+        &self.resource_costs[self.values(rank).resource_cost.range()]
     }
 
     /// The filter of the units it may attack, for a weapon, which the load lets aim only at a
