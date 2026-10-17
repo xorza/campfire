@@ -9,20 +9,23 @@ use campfire_players::OnMatch;
 use campfire_sim::{Position, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, MoveStep, UnitsNear};
 use campfire_values::{Relation, Relations, TagSet, Team, UnitTags};
-use campfire_vision::TeamSight;
+use campfire_vision::{Fog, TeamSight, VisionBook};
 
 use crate::build_book::{BuildSpec, PlacementCheck};
 
-/// What a placement tests a building's box against: the bounds, the walls, the static bodies,
-/// and the living units near it that the builder's team sees, by `S`, of a match with no vision
-/// every unit, the walkers among them, found by the unit grid. A client tests the units it holds
-/// and does not predict too, where the server last had them.
+/// What a placement tests a building's box against: the bounds, the walls, whether the builder's
+/// team sees its point, the static bodies, and the living units near it that the builder's team
+/// sees, by `S`, of a match with no vision every unit, the walkers among them, found by the unit
+/// grid. A client tests the units it holds and does not predict too, where the server last had
+/// them.
 #[derive(SystemParam, Debug)]
 pub struct Placement<'w, 's, S: TeamSight> {
     navigation: Option<Res<'w, NavigationBook>>,
     statics: Res<'w, BodyIndex>,
     relations: OnMatch<'w, 's, Relations>,
     map: Res<'w, MapBook>,
+    vision: Option<Res<'w, VisionBook>>,
+    fog: Option<Res<'w, Fog>>,
     near: UnitsNear<'w, 's>,
     units: Query<'w, 's, PlacedUnit<S>, (Without<Dead>, Allow<Unpredicted>)>,
 }
@@ -40,7 +43,9 @@ type PlacedUnit<S> = (
 
 impl<S: TeamSight> Placement<'_, '_, S> {
     /// Whether `body`, the box of `spec`'s building, may stand at `pos` for a builder of `team`:
-    /// it lies within the bounds, and its inside shares no point with a wall of its layer, a
+    /// it lies within the bounds, `team` saw its point in the last Vision stage, as Zero Hour
+    /// refuses a build point under shroud (04-capabilities/production.md, A build point its team
+    /// sees), and its inside shares no point with a wall of its layer, a
     /// static body of its layer, or the body on its layer of a walker that is not of a team
     /// friendly to `team`; and it meets its placement's rules. Each unit it tests is one `team`
     /// sees, as `SeenNear` finds them. Touching is not overlap.
@@ -54,6 +59,11 @@ impl<S: TeamSight> Placement<'_, '_, S> {
             .as_deref()
             .is_some_and(|book| book.walls.overlaps_box(pos, &boxed, layer));
         if !self.map.bounds.holds_box(pos, &boxed) || walled {
+            return false;
+        }
+        let grid = self.vision.as_deref().and_then(VisionBook::grid);
+        let unseen = |(fog, grid)| !S::sees_point(fog, grid, pos, team);
+        if self.fog.as_deref().zip(grid).is_some_and(unseen) {
             return false;
         }
         let overlaps = |other: &IndexedBody| other.overlaps_box(pos, &boxed);

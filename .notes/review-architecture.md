@@ -640,9 +640,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 2: confirmed bugs
 
-**2.5 Placement under fog.** Touches `production`.
-- A static body that the builder's team does not see does not block a placement, as Zero Hour's `isLocationLegalToBuild` refuses an unseen point (RW 9).
-
 **2.6 One bot step.** Touches `bots`, `net` and `zero-hour-check`.
 - `BotScript::serve(tick, slot, units, scratch, sink)` yields inputs, then orders, and reports missing units. The server's driver and the check both implement the sink (A-21).
 
@@ -1253,7 +1250,6 @@ Only the items that A8 found still true at HEAD. The rest of `.notes/review-work
 
 | Item | Finding | Step |
 | --- | --- | --- |
-| RW 9 | A static body blocks a placement whether the builder's team sees it or not | 2.5 |
 | RW 18 | `units.toml`, `mode.toml` and the manifest come from hand-mirrored structs and `format!` templates | 9.2 (with A-17) |
 | RW 20 | The deliveries' two shapes, `take_shots` and `launch` on the client, the doc "It builds on combat", the engine tags by hand, the control resolution, the use slot that items extends, the shop index, the naming of order inputs, `AiError::TimeTooLarge`, progression's unread `book` field, charges from progression's `Learning` | 4.1, 5.4, 5.5, 7.2, 10.1, 12.3 |
 | RW 21 | The client items: `face_camera`, keys by slot kind, the sampler, the panels each frame, `ClientData`, the packages resource, `place_objects`, the ring overlays, the panel widget, two click rules, the plane's size, `SLOTS`, `Fills`, `Option<Res<UnitLooks>>`, `site_percent`, the args, the wide signatures, the preview's tint | 10.1, 10.2, 10.3 |

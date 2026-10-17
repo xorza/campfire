@@ -162,6 +162,7 @@ fn prediction_reads_only_what_its_client_derives_or_every_client_that_holds_the_
         "campfire_production::production_orders::ProductionOrders::set_rallies",
         "campfire_production::trains::Trains::finish_trains",
         "campfire_projectiles::flying::Flying::fly",
+        "campfire_vision::seeing::Seeing::refill",
         "campfire_vision::seeing::Seeing::see",
     ];
     assert_eq!(server, own);

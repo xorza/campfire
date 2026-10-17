@@ -8,7 +8,7 @@ use campfire_sim::{EntityIndex, Position};
 use campfire_stats::Life;
 use campfire_units::{Layer, MapBook};
 use campfire_values::{RelationSet, Share, TeamSet};
-use campfire_vision::{SeenBy, Vision};
+use campfire_vision::{SeenBy, Sight, Vision};
 use serde::Deserialize;
 
 use super::*;
@@ -322,6 +322,32 @@ fn a_build_at_a_site_its_player_does_not_see_does_nothing() {
         game.insert_parts(depot, SeenBy::new(seers));
         Production::tick_ordering(&mut game, 0, second, at_site(depot));
         assert_eq!(Production::order_of(&game, second), joined, "{seers:?}");
+    }
+}
+
+#[test]
+fn a_build_at_a_point_its_team_does_not_see_is_refused() {
+    // With vision, a build needs its point in a cell its builder's team saw in the last Vision
+    // stage, as Zero Hour refuses a point under shroud. A builder at (−3, 0) of no sight sees no
+    // cell: its build at the origin ends, pays nothing and places nothing. One of 4 m of sight
+    // sees the origin's cell, whose center (0.5, 0.5) lies √(3.5² + 0.5²) ≈ 3.54 m off: it places
+    // its site, and pays 15 of its 100 gold.
+    let mut declared = ORDERING.to_vec();
+    declared.push(Capability::Vision);
+    for (sight, depots, gold) in [(None, 0, 100), (Some(4), 1, 85)] {
+        let mut game = shop_match_of(&declared);
+        let shop = Shop::place(&mut game);
+        let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+        let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
+        Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 3);
+        if let Some(range) = sight {
+            let sight = Sight::new(Num::int(range)).unwrap();
+            Units::give_type(&mut game, yard.builder, sight);
+        }
+        let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
+        Production::build_at(&mut game, builder, 0, 0);
+        let placed = (shop.depots(&mut game).len(), shop.gold(&game));
+        assert_eq!(placed, (depots, gold), "{sight:?}");
     }
 }
 

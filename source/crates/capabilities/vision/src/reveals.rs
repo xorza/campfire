@@ -31,13 +31,21 @@ impl Reveals {
         self.0.push(reveal);
     }
 
-    /// Calls `reveal` with each reveal under way in `now`, then drops those whose last tick it
-    /// is.
+    /// Drops the reveals whose last tick came before `now`, then calls `reveal` with each one
+    /// under way in `now`: a reveal stays to the tick after its last, so a fog filled again in that
+    /// tick, as after a restore, sees what the last Vision stage saw.
     pub(crate) fn run(&mut self, now: Tick, mut reveal: impl FnMut(&Reveal)) {
-        self.0.retain(|under_way| {
-            reveal(under_way);
-            under_way.last > now
-        });
+        self.0.retain(|under_way| under_way.last >= now);
+        self.0.iter().for_each(&mut reveal);
+    }
+
+    /// Calls `reveal` with each reveal that was under way in `then`, a tick whose Vision stage
+    /// ran, changing nothing.
+    pub(crate) fn each_of(&self, then: Tick, mut reveal: impl FnMut(&Reveal)) {
+        self.0
+            .iter()
+            .filter(|under_way| under_way.last >= then)
+            .for_each(&mut reveal);
     }
 }
 

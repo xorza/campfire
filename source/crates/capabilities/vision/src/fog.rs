@@ -1,5 +1,7 @@
 use std::ops::Range;
 
+use bevy_ecs::resource::Resource;
+use campfire_declare::Cache;
 use campfire_geometry::BodyBox;
 use campfire_math::{Num, Vec3};
 use campfire_values::{Relations, Team, TeamSet};
@@ -12,8 +14,11 @@ use crate::vision_groups::VisionGroups;
 /// The grid fog's work in a tick, kept between ticks: the vision groups, the bitmaps of the
 /// cells each sees, and each sight's runs of cells. `vision::see` drives it over the match's
 /// units, a bench over a scene.
-#[derive(Debug, Default)]
+#[derive(Resource, Debug, Default)]
 pub struct Fog {
+    /// Whether it holds a Vision stage's sight, which a placement reads; a new or a restored
+    /// match's fog holds none until it is filled.
+    filled: bool,
     groups: VisionGroups,
     maps: SightMaps,
     sights: SightCache<Sighting>,
@@ -28,7 +33,29 @@ pub(crate) struct Covering {
     body: BodyBox,
 }
 
+/// Built again from the match's units, its reveals and its map: a Vision stage fills it, and a
+/// fog that holds no stage's sight, as a restored match's, is filled as a tick starts.
+impl Cache for Fog {
+    fn installed() -> Option<Self> {
+        Some(Self::default())
+    }
+}
+
 impl Fog {
+    /// Whether it holds a Vision stage's sight.
+    pub(crate) const fn filled(&self) -> bool {
+        self.filled
+    }
+
+    /// Whether `team`'s vision group saw the cell of `pos` in the last Vision stage, as a
+    /// placement asks of its point (04-capabilities/production.md, A build point its team sees).
+    pub fn sees_point(&self, grid: &VisionGrid, pos: Vec3, team: Team) -> bool {
+        let Some(cell) = grid.grid.cell_of(pos).filter(|_| self.filled) else {
+            return false;
+        };
+        self.maps.sees(self.groups.of(team), cell..cell + 1, false)
+    }
+
     /// Builds the groups of `grid`'s teams again from `relations`, and empty bitmaps for them.
     pub fn rebuild(&mut self, grid: &VisionGrid, relations: &Relations) {
         self.groups.rebuild(grid.teams, relations);
@@ -37,8 +64,9 @@ impl Fog {
         self.covers.clear();
     }
 
-    /// Clears what the tick before revealed.
+    /// Clears what the tick before revealed, as a stage that fills it again begins.
     pub(crate) fn begin_tick(&mut self) {
+        self.filled = true;
         self.maps.begin_tick();
         self.sights.begin_tick();
         self.covers.begin_tick();

@@ -8,7 +8,7 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemCondition, SystemSet};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
 use campfire_sim::Capability;
@@ -59,6 +59,8 @@ pub struct Vision;
 /// The steps of `vision`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
 pub(crate) enum VisionSet {
+    /// A fog that holds no Vision stage's sight, a new or a restored match's, is filled.
+    Refill,
     /// Each team marks what it may see.
     See,
 }
@@ -69,6 +71,7 @@ impl ModuleSet for VisionSet {
 
     fn place(self) -> SetPlace {
         SetPlace::Phase(match self {
+            Self::Refill => Phase::Begin,
             Self::See => Phase::End,
         })
     }
@@ -82,6 +85,7 @@ impl Module for Vision {
     fn declare<D: Declarations>(d: &mut D) {
         d.sets::<VisionSet>();
         d.resource::<Reveals>();
+        d.cache::<Fog>();
         d.component::<SeenBy>();
         d.component::<Sight>();
         d.book::<ByType<Sight>>();
@@ -100,11 +104,14 @@ impl Module for Vision {
     /// the grid. What a team sees is the server's: a predicting client holds the units its team sees, as
     /// the server sends them, and reveals nothing.
     fn install(cx: &mut InstallCx<'_>) {
-        cx.server(
+        cx.server((
+            Seeing::refill
+                .run_if(VisionBook::has_grid.and_then(Seeing::unfilled))
+                .in_set(VisionSet::Refill),
             Seeing::see
                 .run_if(VisionBook::has_grid)
                 .in_set(VisionSet::See),
-        );
+        ));
     }
 }
 
