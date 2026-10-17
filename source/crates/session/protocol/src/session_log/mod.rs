@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::checkpoint::Checkpoint;
 use crate::checkpoint::checkpoint_begun::CheckpointBegun;
-use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot, LogCarry};
-use crate::controller::Controller;
+use crate::checkpoint::log_carry::{CarriedInput, CarriedSlot, LogCarry};
+use crate::control::{Control, Controller};
 use crate::delegation::Delegation;
 use crate::input_chain::InputChain;
 use crate::journal::Journal;
@@ -31,7 +31,7 @@ use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::player_packet::PlayerPacket;
 use crate::session_log::segments::{LoggedCheckpoint, Segments};
 use crate::session_log::session_header::SessionHeader;
-use crate::session_log::slot_control::{Control, Slot, SlotControl, TakenPacket};
+use crate::session_log::slot_control::{Slot, SlotControl, TakenPacket};
 use crate::session_result::SessionResult;
 use crate::signature::Signature;
 use crate::signed::{InSession, Signed};
@@ -448,7 +448,7 @@ impl SessionLog {
     }
 
     /// Who controls `slot` now; none for a slot the session does not have.
-    pub fn controller(&self, slot: PlayerSlot) -> Option<Controller> {
+    pub fn controller(&self, slot: PlayerSlot) -> Option<Controller<'_>> {
         self.debug_at_end();
         self.control.controller(slot, &self.entries)
     }
@@ -975,15 +975,9 @@ impl SessionLog {
             .map(PlayerSlot::new)
             .zip(self.control.iter())
             .map(|(at, slot)| CarriedSlot {
-                control: match slot.control {
-                    Control::Player { delegation, chain } => CarriedControl::Player {
-                        delegation: Box::new(self.entries.delegation(delegation).clone()),
-                        chain,
-                    },
-                    Control::Bot => CarriedControl::Bot,
-                    Control::Open => CarriedControl::Open,
-                    Control::Reserved => CarriedControl::Reserved,
-                },
+                control: slot
+                    .control
+                    .map(|delegation| Box::new(self.entries.delegation(delegation).clone())),
                 leaver: slot.leaver,
                 stamps: slot.stamps,
                 spill: self.schedule.spill(at),

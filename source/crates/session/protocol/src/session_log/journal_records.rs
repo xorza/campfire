@@ -3,6 +3,7 @@
 
 use campfire_common::{PlayerSlot, Tick, Version};
 
+use crate::control::Control;
 use crate::journal::Journal;
 use crate::journal::journal_frames::JournalFrames;
 use crate::journal::record_sink::RecordSink;
@@ -11,7 +12,6 @@ use crate::session_log::durable_head::DurableHead;
 use crate::session_log::error::{CheckpointError, JournalReplayError, LogError};
 use crate::session_log::log_entries::Entry;
 use crate::session_log::segments::{LoggedCheckpoint, SegmentStart};
-use crate::session_log::slot_control::Control;
 use crate::session_log::{LoggedResult, SessionLog, file, put, take};
 
 /// The bytes that start each kind of journal record.

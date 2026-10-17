@@ -121,11 +121,9 @@ impl Door {
         let log = seating.session.log();
         let slots = (0..log.slot_count()).map(PlayerSlot::new);
         let own = slots.clone().find_map(|slot| match log.controller(slot)? {
-            Controller::Player {
-                main_key,
-                session_key,
-                chain,
-            } if main_key == main => Some((slot, session_key, chain)),
+            Controller::Player { delegation, chain } if *delegation.main_key() == main => {
+                Some((slot, delegation.terms().session_key, chain))
+            }
             _ => None,
         });
         if let Some((slot, session_key, chain)) = own {

@@ -1476,9 +1476,14 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     let main = |player: u32| *mixed_delegation(player, player).main_key();
     assert_eq!(log.controller(slot(0)), Some(Controller::Bot));
     assert_eq!(log.leaver(slot(0)), Some(main(0)));
+    let delegation = mixed_delegation(1, 1);
+    assert_eq!(*delegation.main_key(), main(1));
+    assert_eq!(
+        delegation.terms().session_key,
+        session_key(1).x_only_public_key().0
+    );
     let joiner = Controller::Player {
-        main_key: main(1),
-        session_key: session_key(1).x_only_public_key().0,
+        delegation: &delegation,
         chain: InputChain::joined(
             slot(2),
             mixed_delegation(1, 1).id(),

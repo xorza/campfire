@@ -76,7 +76,7 @@ fn slot_of(local: &InProcessMatch, client: usize) -> PlayerSlot {
 }
 
 /// Who controls `slot` on the server.
-fn controller(local: &InProcessMatch, slot: PlayerSlot) -> Option<Controller> {
+fn controller(local: &InProcessMatch, slot: PlayerSlot) -> Option<Controller<'_>> {
     let session = local.server().world().resource::<Session>();
     session.log().controller(slot)
 }

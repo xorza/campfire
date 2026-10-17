@@ -9,7 +9,7 @@
 mod bytes;
 mod checkpoint;
 mod connect;
-mod controller;
+mod control;
 mod delegation;
 mod entropy;
 #[cfg(feature = "internals")]
@@ -49,7 +49,7 @@ pub use crate::checkpoint::error::CheckpointDecodeError;
 pub use crate::checkpoint::log_carry::LogCarry;
 pub use crate::connect::error::ConnectError;
 pub use crate::connect::{ConnectAnswer, ConnectChallenge, ConnectChallengeMeaning};
-pub use crate::controller::Controller;
+pub use crate::control::{Control, Controller};
 pub use crate::delegation::delegation_id::{DelegationId, DelegationIdMeaning};
 pub use crate::delegation::delegation_tag::DelegationTag;
 pub use crate::delegation::error::{DelegationError, EventError, ScopeError};

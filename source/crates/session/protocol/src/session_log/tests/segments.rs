@@ -52,7 +52,7 @@ fn a_checkpoint_carries_the_logs_own_state_and_starts_the_next_segment() {
     let mut chain = InputChain::new(PlayerSlot::new(1), root(1));
     chain.extend(Tick::new(1), b"x");
     chain.extend(Tick::new(2), b"y");
-    let player = |slot, chain| CarriedControl::Player {
+    let player = |slot, chain| Control::Player {
         delegation: Box::new(delegation(slot)),
         chain,
     };

@@ -1,6 +1,6 @@
 use campfire_common::{AfterLeave, PlayerSlot, Tick};
 
-use crate::controller::Controller;
+use crate::control::{Control, Controller};
 use crate::input_chain::InputChain;
 use crate::main_key::MainKey;
 use crate::session_log::log_entries::LogEntries;
@@ -17,26 +17,13 @@ pub(super) struct SlotControl {
 /// and the stamps of its player's inputs.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Slot {
-    pub(super) control: Control,
+    /// Who controls it, a player by the index of their current delegation among the log's.
+    pub(super) control: Control<u32>,
     pub(super) leaver: Option<MainKey>,
     pub(super) stamps: StampCount,
     /// The delegation whose key signed the head of its player's chain, by index; none before
     /// their first input.
     pub(super) head_signer: Option<u32>,
-}
-
-/// Who controls a slot.
-#[derive(Debug, Clone, Copy)]
-pub(super) enum Control {
-    /// A player, by the index of their current delegation, with their chain as logged so far.
-    Player {
-        delegation: u32,
-        chain: InputChain,
-    },
-    Bot,
-    Open,
-    /// None: it waits for the player who left it.
-    Reserved,
 }
 
 /// What a slot holds once it takes its player's packet: the delegation whose key signed it, the
@@ -50,7 +37,7 @@ pub(super) struct TakenPacket {
 
 impl Slot {
     /// A slot of `control` with no input yet.
-    pub(super) fn of(control: Control) -> Self {
+    pub(super) fn of(control: Control<u32>) -> Self {
         Self {
             control,
             leaver: None,
@@ -86,20 +73,16 @@ impl SlotControl {
 
     /// Who controls `slot` now, its delegations in `entries`; none for a slot the session does
     /// not have.
-    pub(super) fn controller(&self, slot: PlayerSlot, entries: &LogEntries) -> Option<Controller> {
-        Some(match self.get(slot)?.control {
-            Control::Player { delegation, chain } => {
-                let delegation = entries.delegation(delegation);
-                Controller::Player {
-                    main_key: *delegation.main_key(),
-                    session_key: delegation.terms().session_key,
-                    chain,
-                }
-            }
-            Control::Bot => Controller::Bot,
-            Control::Open => Controller::Open,
-            Control::Reserved => Controller::Reserved,
-        })
+    pub(super) fn controller<'e>(
+        &self,
+        slot: PlayerSlot,
+        entries: &'e LogEntries,
+    ) -> Option<Controller<'e>> {
+        Some(
+            self.get(slot)?
+                .control
+                .map(|delegation| entries.delegation(delegation)),
+        )
     }
 
     /// The main key of the player who left `slot` last, while no player took it since.
