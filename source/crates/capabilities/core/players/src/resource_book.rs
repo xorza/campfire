@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::{Book, BookCx, BookError, BookPlace, NamesListError, Section};
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::{Names, NamesError, PackageIndex, ResourceId};
 
 use crate::resources_data::ResourcesData;
@@ -35,7 +35,7 @@ impl ResourceBook {
 impl Book for ResourceBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(&self.0));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(&self.0));
     }
 }

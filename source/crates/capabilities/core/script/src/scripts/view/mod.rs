@@ -1,4 +1,4 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::fmt;
 use std::rc::Rc;
 
@@ -13,6 +13,7 @@ use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
 use crate::scripts::view::living_unit::LivingUnit;
+use crate::scripts::view::match_names::MatchNames;
 use crate::scripts::view::target_index::{TargetIndex, TargetQuery};
 use crate::scripts::view::unit::Unit;
 use crate::scripts::view::unit_row::UnitRow;
@@ -24,6 +25,7 @@ pub(crate) mod filter;
 pub(crate) mod filters;
 pub(crate) mod kept_rows;
 pub(crate) mod living_unit;
+pub(crate) mod match_names;
 pub(crate) mod row_fill;
 pub(crate) mod row_reads;
 pub(crate) mod tag_names;
@@ -48,6 +50,8 @@ pub struct View(Rc<ViewParts>);
 struct ViewParts {
     rate: TickRate,
     names: RefCell<ViewNames>,
+    /// The revision of the match's `MatchNames` that `names` derive from; none before the first.
+    names_at: Cell<Option<u64>>,
     rows: RefCell<ViewRows>,
     targets: RefCell<TargetIndex>,
     /// What reads a world's units into the rows, which the module that holds the units gives.
@@ -61,20 +65,16 @@ impl View {
         Self(Rc::new(ViewParts {
             rate,
             names: RefCell::default(),
+            names_at: Cell::new(None),
             rows: RefCell::default(),
             targets: RefCell::default(),
             read,
         }))
     }
 
-    /// The names scripts read, as the load and the mode set them.
+    /// The names scripts read, as the last read derived them from the match's `MatchNames`.
     pub fn names(&self) -> Ref<'_, ViewNames> {
         self.0.names.borrow()
-    }
-
-    /// The names, for the load and the mode to set.
-    pub fn names_mut(&self) -> RefMut<'_, ViewNames> {
-        self.0.names.borrow_mut()
     }
 
     /// The units as the running phase read them.
@@ -87,10 +87,24 @@ impl View {
         self.0.rows.borrow_mut()
     }
 
-    /// Reads the units of `world` for the phase that begins.
+    /// Reads the units of `world` for the phase that begins, and its names, when its `MatchNames`
+    /// changed since the read before.
     pub fn read(&self, world: &mut World) {
+        self.read_names(world);
         (self.0.read)(world);
         self.0.targets.borrow_mut().forget();
+    }
+
+    /// Derives the names from `world`'s `MatchNames`, when they changed since they last did: the
+    /// load and the mode change them, a tick does not.
+    fn read_names(&self, world: &World) {
+        let Some(names) = world.get_resource::<MatchNames>() else {
+            return;
+        };
+        if self.0.names_at.get() != Some(names.revision()) {
+            *self.0.names.borrow_mut() = ViewNames::of(names);
+            self.0.names_at.set(Some(names.revision()));
+        }
     }
 
     /// The map's bounds, as the units were read.
@@ -286,21 +300,5 @@ impl View {
 impl fmt::Debug for View {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("View")
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use campfire_values::FilterData;
-
-    use crate::scripts::error::UnknownName;
-    use crate::scripts::view::View;
-    use crate::scripts::view::filter::Filter;
-
-    impl View {
-        /// The run-time form of `filter`, its tag among those of the match's unit types.
-        pub fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
-            Filter::resolve(filter, self.names().tags())
-        }
     }
 }

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_actions::{ActionBook, KindSpec};
 use campfire_declare::{Book, ByType};
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::{ActionId, NameId, UnitType};
 
 use crate::supply_data::SupplyData;
@@ -98,5 +98,5 @@ impl Book for SupplyCostBook {
     const SCRIPTS_ONLY: bool = false;
 
     /// The production column takes it from the match at each read.
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }

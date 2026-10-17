@@ -4,7 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_actions::{ActionBook, ActionSlots, BuildStart, KindSpec};
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::{Filter, View};
+use campfire_script::{Filter, MatchNames};
 use campfire_units::BodyForm;
 use campfire_values::{ActionId, Share, UnitType};
 
@@ -188,7 +188,7 @@ impl BuildSpec<'_> {
 impl Book for BuildBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(test)]

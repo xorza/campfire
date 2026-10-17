@@ -4,7 +4,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ProjectileFlight, ShotDamage};
 use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_sim::{Position, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::{DeliveryEntity, MapBook};
@@ -182,9 +182,7 @@ impl SimComponent for Projectile {
         let carries = match self.payload {
             Payload::Attack(ShotDamage {
                 action, rank, kind, ..
-            }) => {
-                book.ranked(action, rank) && world.non_send::<View>().names().has_damage_kind(kind)
-            }
+            }) => book.ranked(action, rank) && world.resource::<MatchNames>().has_damage_kind(kind),
             Payload::Action {
                 action,
                 rank,

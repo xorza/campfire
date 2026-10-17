@@ -81,7 +81,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
             .unwrap()
             .tags
     };
-    let tag = |name| game.non_send::<View>().names().tags().named(name).unwrap();
+    let tag = |name| game.resource::<MatchNames>().tags().named(name).unwrap();
     let layer_tags = [0, 1].map(|id| [tag("ground"), tag("air")].map(|tag| tags(id).contains(tag)));
     assert_eq!(layer_tags, [[false, true], [true, false]]);
     assert_eq!(Mode::tracked_state(&game), state("start", 0, 0, 0));

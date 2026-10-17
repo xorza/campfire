@@ -20,7 +20,7 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPl
 use campfire_navigation::{ModeNavigationData, Navigation, NavigationBook, OnPath, PathWalker};
 use campfire_players::{MatchEntity, Player, Players, PlayersWorld, Seating, SlotStart};
 use campfire_production::ProductionSet;
-use campfire_script::{CallError, Ctx, Hook, Pool, ScriptRole, ScriptText, View};
+use campfire_script::{CallError, Ctx, Hook, MatchNames, Pool, ScriptRole, ScriptText};
 use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick};
 use campfire_units::{BodyForm, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone, UnitsSet};
 use campfire_values::Relations;
@@ -250,7 +250,6 @@ impl Mode {
     /// books: the map's pathing grid, for the kinds of its walkers, its teams, and the units the
     /// mode spawns.
     pub fn load(world: &mut World, setup: ModeSetup<'_>, inputs: ModeInputs) {
-        let view = world.non_send::<View>().clone();
         let ModeInputs { units, load } = inputs;
         let ModeLoad {
             map,
@@ -273,7 +272,9 @@ impl Mode {
             .section_or_default::<ModeNavigationData>()
             .spawn_tags;
         let map = GameMap::new(path_names.map(ScriptText::from), &markers, spawn_tags);
-        view.names_mut().set_table(Arc::clone(map.tags()));
+        world
+            .resource_mut::<MatchNames>()
+            .set_table(Arc::clone(map.tags()));
         let script = ModeScript::new(setup.data, setup.picks, map);
         let start = MapStart {
             teams,
@@ -290,8 +291,9 @@ impl Mode {
             slots: world.resource::<ByType<ActionSlots>>(),
         };
         let book = ModeSpec::new(setup, load);
-        view.names_mut().set_teams(Arc::clone(&book.teams));
-        view.names_mut().set_table(Arc::clone(book.choices.names()));
+        let mut names = world.resource_mut::<MatchNames>();
+        names.set_teams(Arc::clone(&book.teams));
+        names.set_table(Arc::clone(book.choices.names()));
         let players = usize::try_from(book.teams.players()).expect("a player count fits usize");
         world.insert_resource(Choices::empty(&book.choices, players));
         let ctx = world.non_send::<Ctx>().clone();
@@ -390,7 +392,7 @@ pub mod internals {
     use campfire_players::Seating;
     use campfire_script::FailureKind;
     use campfire_script::{
-        CallError, CallStart, Ctx, ScriptFailures, ScriptRole, ScriptValue, StateValue, View,
+        CallError, CallStart, Ctx, MatchNames, ScriptFailures, ScriptRole, ScriptValue, StateValue,
     };
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
@@ -676,8 +678,7 @@ pub mod internals {
             cause: DamageCause,
         ) {
             let kind = world
-                .non_send::<View>()
-                .names()
+                .resource::<MatchNames>()
                 .named(kind)
                 .expect("the mode names the damage kind");
             DamagePass::queue(

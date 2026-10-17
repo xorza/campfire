@@ -16,6 +16,7 @@ use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::OnPath;
 use campfire_script::FailureKind;
+use campfire_script::MatchNames;
 use campfire_script::{
     ApiError, CapabilityRefusal, NameKind, NumError, ScriptLimits, ScriptList, ScriptPools,
     ScriptValue, Unit, View,
@@ -40,7 +41,7 @@ fn units_match() -> Match {
     let scripts = ScriptPools { limits, players: 1 };
     let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
     let mut game = Match::server(&declared, scripts);
-    Units::name_kinds(&game, &[], &["health", "mana"], &[]);
+    Units::name_kinds(&mut game, &[], &["health", "mana"], &[]);
     Combat::load_weapon_stats(&mut game);
     let core = UnitTypeCore::default();
     let melee = Units::load_type(&mut game, TypeScope::Mode, "melee", &core);
@@ -577,19 +578,15 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
         types.load(scope, origin, &data)
     });
     assert_eq!(repeated, Err(TypesError::Repeated("grunt".to_owned())));
-    let view = game.non_send::<View>();
+    let names = game.resource::<MatchNames>();
     assert_eq!(
         (
-            view.names().named((TypeScope::Mode, "grunt")),
-            view.names().named((TypeScope::Mode, "tower"))
+            names.named((TypeScope::Mode, "grunt")),
+            names.named((TypeScope::Mode, "tower"))
         ),
         (Some(first), Some(second))
     );
-    assert_eq!(
-        view.names().named::<UnitType>((TypeScope::Mode, "wolf")),
-        None
-    );
-    let names = view.names();
+    assert_eq!(names.named::<UnitType>((TypeScope::Mode, "wolf")), None);
     let types = names.table::<UnitType>().unwrap();
     assert_eq!(
         types.named((TypeScope::Package(PackageIndex::new(1)), "grunt")),
@@ -600,7 +597,6 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
         None
     );
     assert_ne!(theirs, first);
-    drop(names);
     // Each type's origin: its package and its name there.
     Units::seal_once(&mut game);
     let origins = game.resource::<TypeOriginBook>();

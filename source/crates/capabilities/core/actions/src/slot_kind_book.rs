@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::{Book, BookCx, BookError};
-use campfire_script::View;
+use campfire_script::MatchNames;
 
 use crate::slot_kinds::SlotKinds;
 
@@ -23,7 +23,7 @@ impl Book for SlotKindBook {
     const SCRIPTS_ONLY: bool = false;
 
     /// Names the kinds to scripts; the actions column takes the book from the match at each read.
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(self.0.names()));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(self.0.names()));
     }
 }

@@ -83,6 +83,7 @@ pub use crate::scripts::view::filter::Filter;
 pub use crate::scripts::view::filters::Filters;
 pub use crate::scripts::view::kept_rows::{AnyKeptRows, ColumnRows, KeptRows, RunMove};
 pub use crate::scripts::view::living_unit::LivingUnit;
+pub use crate::scripts::view::match_names::MatchNames;
 pub use crate::scripts::view::row_fill::RowFill;
 pub use crate::scripts::view::row_reads::RowReads;
 pub use crate::scripts::view::tag_names::TagNames;

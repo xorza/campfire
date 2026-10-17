@@ -331,7 +331,7 @@ fn abilities_match() -> Match {
 fn abilities_match_with(limits: ScriptLimits, declared: &[Capability]) -> Match {
     let mut game = Match::server(declared, ScriptPools { limits, players: 2 });
     // The damage kinds a mode would declare: the MOBA test content's.
-    Units::name_kinds(&game, &["physical", "magic", "true"], &POOLS, &["gold"]);
+    Units::name_kinds(&mut game, &["physical", "magic", "true"], &POOLS, &["gold"]);
     Players::spawn(&mut game, 2, 1);
     Abilities::load_types(&mut game);
     game

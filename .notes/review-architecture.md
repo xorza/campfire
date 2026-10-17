@@ -136,7 +136,7 @@ The fourteen root causes of the first review merge into ten. Each names its find
 | C1 | The core and the session layer name every capability | C-1, C-3, C-4, C-5, E-3, E-5, E-6, E-11, S-5, S-7, S-8, S-11, K-19, R-22, R-31, N-26, N-27 |
 | C2 | The install runs before the load | E-9, E-10, E-12, E-13, E-14, K-11, K-12, C-7, K-15 |
 | C3 | A pass visits the population, not what is due or changed | K-13, C-15, C-17, R-4, R-5, R-6, R-7, R-12, R-30, S-24, E-17, A-10, K-21 |
-| C4 | Match facts live in non-send or exclusive state | B-1, E-4, E-7, K-20, N-4 |
+| C4 | Match facts live in non-send or exclusive state | B-1, E-4, K-20, N-4 |
 | C5 | Tick facts depend on the host's frames, and the executor fixes an undeclared order | E-1, E-2, E-16, N-3, N-7 |
 | C6 | An entity does not spawn whole, and no part chooses its storage | C-9, C-11, E-18, E-22, N-9, A-6, A-8, B-24 |
 | C7 | Rules of one game are fixed in Rust, and a rules package can hold no data | K-5 to K-10, K-23, R-8, R-9, R-13 to R-19, R-23 to R-25, C-23, C-24, S-9, S-10, S-14, A-3, A-4, A-5, A-16 |
@@ -662,7 +662,6 @@ Each change folds into its document when its batch lands. Each line names the de
 ### Phase 6: `Send` data and the server frame
 
 **6.1 Data out of non-send resources.** Touches `units`, `script`, `mode`, `combat`, `stats`.
-- A `Names` book (E-7, S-21).
 - `Spawner` becomes associated functions, with the spawnable types a load check and a client's spawn refused by another guard than the resource's absence (R-11).
 - Scripted passes split into a plain collect and an exclusive script run (K-20).
 
@@ -954,7 +953,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | E-2 | A `Restoring` world flag switches hooks into a trusting mode that each hook must remember | `restoring.rs:1-7`, `entity_kinds.rs:38`, `level.rs:59` | Confirmed | 7.5 |
 | E-4 | About 90 functions take `&mut World`, so the tick is bound to one thread whatever the executor | `damage_pass.rs:103-124`, `attacks.rs:262`, `trains.rs:194` | Confirmed | 11.1 |
 | E-5 | The core `actions` module depends on `stats`, and the release test of needs skips core modules | `actions/Cargo.toml:31`, `release/tests/mod.rs:311-321` | Confirmed | 5.3 |
-| E-7 | The script `View` owns the damage-kind, resource and team names that restore checks read | `books/mod.rs:118-133`, `units.rs:208-245` | Confirmed | 6.1 |
 | R-11 | `Spawner` holds the spawnable types for one `debug_assert!` | `spawner.rs:19-22, 50` | Confirmed | 6.1 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
 | E-18 | A restore moves each entity once for each state type it holds | `state_registry/mod.rs:400-424, 662-684` | Confirmed | 7.5 |
@@ -1006,7 +1004,7 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | S-18 | A spawned unit is a second handle type that a script cannot store | `new_unit.rs:7-30`, `state_value.rs:66-75` | Confirmed | 8.5 |
 | S-19 | Timers take a flag argument, have no cancel, and have unchecked names | `mode_api.rs:356-365, 718-831` | Confirmed | 8.5 |
 | S-20 | Script state has no enum, list of scalars or state for each player | `state_type.rs`, `state_decl/mod.rs:35-60` | Confirmed | 8.5 |
-| S-21, B-1 | Rhai without `sync`, and `Rc` and `RefCell` in the runtime, pin a match to its thread. Name reads are pinned with it. | `Cargo.toml:198`, `view/mod.rs:43-55`, `ctx.rs:19-27`, `script_host/mod.rs:69-80` | Confirmed | 6.1, 11.2 |
+| S-21, B-1 | Rhai without `sync`, and `Rc` and `RefCell` in the runtime, pin a match to its thread. | `Cargo.toml:198`, `view/mod.rs:43-55`, `ctx.rs:19-27`, `script_host/mod.rs:69-80` | Confirmed | 11.2 |
 | S-22 | Each load binds the whole API to parse, and each match and restore binds again and compiles from source | `mode_packages/mod.rs:145-160, 376-377`, `match_build/mod.rs:52-55` | Confirmed. The cost is plausible. | 8.3 |
 | S-23 | Each `Num`, vector and handle in Rhai is two heap allocations, and handles carry an `Rc<View>` | rhai `dynamic.rs:98`, `view/unit.rs:8-13` | Plausible | 8.3 |
 | S-25 | The choice of pool and the policy for a spent pool are decided at about eight call sites | `delivery_hooks.rs:81-91`, `modifier_hooks.rs:213-222`, `thinking.rs:117-133` | Confirmed | 8.2 |

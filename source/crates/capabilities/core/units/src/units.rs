@@ -9,8 +9,8 @@ use campfire_declare::{
     ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, SetPlace, StateFields,
 };
 use campfire_script::{
-    CoreApi, Ctx, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId,
-    ScriptList, ScriptPrints, StatePlace, StateSchema, View, ViewApi,
+    CoreApi, Ctx, MatchNames, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures, ScriptHost,
+    ScriptId, ScriptList, ScriptPrints, StatePlace, StateSchema, View, ViewApi,
 };
 use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
@@ -95,6 +95,8 @@ impl Module for Units {
     type Set = UnitsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        // Before every book, which shares its names into it as it installs.
+        d.cache::<MatchNames>();
         Self::runtime(d);
         d.calls::<SpawnHooks>();
         d.engine_tags(&[Avatar::TAG, Dead::TAG]);
@@ -226,7 +228,7 @@ impl Units {
     /// Whether every unit's team is one the mode has, as a team the mode lacks has no place in
     /// the vision groups and the mode's tables; the first that is not.
     fn teams_known(world: &World) -> Result<(), Breach> {
-        let names = world.non_send::<View>().names();
+        let names = world.resource::<MatchNames>();
         Breach::first(world, |entity| {
             world
                 .get::<Team>(entity)
@@ -254,7 +256,7 @@ impl Units {
 
     /// A relation of a team the mode lacks would join it to a vision group of the mode's teams.
     fn relations_known(world: &World) -> Result<(), Breach> {
-        let names = world.non_send::<View>().names();
+        let names = world.resource::<MatchNames>();
         Breach::first(world, |entity| {
             world
                 .get::<Relations>(entity)
@@ -323,7 +325,9 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_common::{DeclaredName, NamedEnum};
     use campfire_declare::{Book, ByType};
-    use campfire_script::{CallError, Ctx, ScriptError, ScriptHost, ScriptId, ScriptValue, View};
+    use campfire_script::{
+        CallError, Ctx, MatchNames, ScriptError, ScriptHost, ScriptId, ScriptValue,
+    };
     use campfire_sim::StableId;
     use campfire_values::{Block, PackageIndex, Relation, Scalar, Team, TypeScope, UnitType};
 
@@ -341,8 +345,7 @@ pub(crate) mod internals {
         /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
         pub fn type_named(world: &World, name: &str) -> Option<UnitType> {
             world
-                .non_send::<View>()
-                .names()
+                .resource::<MatchNames>()
                 .named((TypeScope::Mode, name))
         }
 

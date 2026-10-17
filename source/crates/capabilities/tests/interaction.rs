@@ -79,7 +79,7 @@ impl Objects {
                 players: 2,
             },
         );
-        Units::name_kinds(&game, &["true"], &["health", "mana", "rage"], &[]);
+        Units::name_kinds(&mut game, &["true"], &["health", "mana", "rage"], &[]);
         Abilities::load_types(&mut game);
         Abilities::load_stats(&mut game);
         for user in ["walking caster", "caster"] {

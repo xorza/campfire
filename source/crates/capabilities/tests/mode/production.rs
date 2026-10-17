@@ -134,8 +134,10 @@ fn on_mode_input(ctx, player, name, value) {
 "#;
     // Hero X uses 2 and gives 6, of a most of 5; a grunt uses 1.
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    let view = game.non_send::<View>().clone();
-    let named = |name: &str| view.names().named((TypeScope::Mode, name)).unwrap();
+    let named = |name: &str| {
+        let names = game.resource::<MatchNames>();
+        names.named((TypeScope::Mode, name)).unwrap()
+    };
     let (hero, grunt) = (named("hero-x"), named("grunt"));
     let mut types = ByType::default();
     types.set(

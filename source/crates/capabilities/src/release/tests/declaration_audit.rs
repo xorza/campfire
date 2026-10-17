@@ -26,7 +26,7 @@ use campfire_deliveries::Deliverers;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
 use campfire_players::Player;
 use campfire_production::{Gatherer, PlayerSupply, Site, TrainQueue};
-use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
+use campfire_script::{ApiBuilder, CallParams, CallPart, MatchNames, RowReads, ViewColumn};
 use campfire_sim::{
     Breach, Capability, HostRule, OnAny, OwnResources, SimComponent, SimResource, SimSet,
     Unpredicted,
@@ -592,7 +592,7 @@ struct StrayBook;
 impl Book for StrayBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 /// Sets of no module, which the test declares twice.

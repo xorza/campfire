@@ -5,7 +5,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::{Book, BookCx, BookError, BookPlace};
 use campfire_math::{Num, Rounding};
-use campfire_script::{NameKind, UnknownName, View};
+use campfire_script::{MatchNames, NameKind, UnknownName};
 use campfire_sim::TickRate;
 use campfire_units::{MoveStep, TurnStep, UnitSteps};
 use campfire_values::{EngineStat, NameId, Names, PackageIndex, Stat, UnitType};
@@ -293,8 +293,8 @@ impl StatBook {
 impl Book for StatBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(&self.names));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(&self.names));
     }
 }
 

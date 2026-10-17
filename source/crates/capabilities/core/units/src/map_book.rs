@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_declare::{Book, BookCx, BookError, BookPlace, Section, SectionTable, Sections};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::PackageIndex;
 use serde::{Deserialize, Serialize};
 
@@ -106,7 +106,7 @@ impl MapBook {
 impl Book for MapBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 /// A map's `metric`.

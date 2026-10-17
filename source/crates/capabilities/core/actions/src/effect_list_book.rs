@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_declare::Book;
-use campfire_script::{CallError, Ctx, View};
+use campfire_script::{CallError, Ctx, MatchNames};
 use campfire_values::{ActionId, NameId};
 
 use crate::action_data::ActionData;
@@ -207,7 +207,7 @@ fn position(len: usize) -> u32 {
 impl Book for EffectListBook {
     const SCRIPTS_ONLY: bool = true;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(feature = "internals")]

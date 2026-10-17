@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
 use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::{Names, PackageIndex, Stat};
 
 use crate::life_pool::LifePool;
@@ -103,8 +103,8 @@ impl PoolBook {
 impl Book for PoolBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(&self.names));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(&self.names));
     }
 }
 

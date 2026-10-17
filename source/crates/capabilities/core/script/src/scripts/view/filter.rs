@@ -95,21 +95,19 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_values::RelationSet;
 
-    use crate::scripts::view::View;
     use crate::scripts::view::filter::Filter;
+    use crate::scripts::view::match_names::MatchNames;
 
     impl Filter {
         /// The filter of `relations` alone, of the tags of the match `world` holds.
         pub fn of_match_relations(world: &World, relations: RelationSet) -> Self {
-            let view = world.non_send::<View>();
-            let names = view.names();
-            Self::of_relations(relations, names.tags())
+            Self::of_relations(relations, world.resource::<MatchNames>().tags())
         }
 
         /// The filter `text` names, of the tags of the match `world` holds.
         pub fn of_match(world: &World, text: &str) -> Self {
-            let view = world.non_send::<View>();
-            Self::parse(text, view.names().tags()).expect("a filter of the match's tags")
+            let tags = world.resource::<MatchNames>().tags();
+            Self::parse(text, tags).expect("a filter of the match's tags")
         }
     }
 }

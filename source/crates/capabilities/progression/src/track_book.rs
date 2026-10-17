@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_stats::Level;
 use campfire_values::{NameId, Names, TrackId};
 
@@ -101,7 +101,7 @@ impl Book for TrackBook {
 
     /// Names the tracks to scripts; the progression column takes the book from the match at each
     /// read.
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(self.names()));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(self.names()));
     }
 }

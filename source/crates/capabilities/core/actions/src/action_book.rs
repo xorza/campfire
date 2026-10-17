@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_script::{ScriptId, ScriptRole, View};
+use campfire_script::{MatchNames, ScriptId, ScriptRole};
 use campfire_units::ScriptBook;
 use campfire_values::{ActionId, NameId, Names, PackageIndex, Rank};
 
@@ -118,8 +118,8 @@ impl Book for ActionBook {
 
     /// Names the actions to scripts; the actions column takes the book from the match at each
     /// read.
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(self.names()));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(self.names()));
     }
 }
 

@@ -412,7 +412,7 @@ mod tests {
     use bevy_ecs::resource::Resource;
     use campfire_codec::{Toml, TomlTable};
     use campfire_common::DeclaredName;
-    use campfire_script::View;
+    use campfire_script::MatchNames;
     use serde::Deserialize;
 
     use super::*;
@@ -429,7 +429,7 @@ mod tests {
     impl Book for Count {
         const SCRIPTS_ONLY: bool = false;
 
-        fn share(&self, _: &View) {}
+        fn share(&self, _: &mut MatchNames) {}
     }
 
     /// A book of a test that reads `Count`.
@@ -439,7 +439,7 @@ mod tests {
     impl Book for Doubled {
         const SCRIPTS_ONLY: bool = false;
 
-        fn share(&self, _: &View) {}
+        fn share(&self, _: &mut MatchNames) {}
     }
 
     /// A fact of a test.
@@ -466,7 +466,7 @@ mod tests {
     impl Book for Looped {
         const SCRIPTS_ONLY: bool = false;
 
-        fn share(&self, _: &View) {}
+        fn share(&self, _: &mut MatchNames) {}
     }
 
     /// The error of a script `path` of the mode that it does not hold.

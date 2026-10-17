@@ -7,7 +7,7 @@ use campfire_common::SegmentSeed;
 use campfire_declare::{Book, ByType, Role};
 use campfire_math::Num;
 use campfire_orders::Ai;
-use campfire_script::{ScriptLimits, ScriptPools, View};
+use campfire_script::{MatchNames, ScriptLimits, ScriptPools};
 use campfire_sim::{Capability, SimWorld};
 use campfire_stats::{ModifierBook, ParamBook, StatBook, StatRule};
 use campfire_values::Stat;
@@ -25,7 +25,7 @@ struct StrayBook;
 impl Book for StrayBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 /// The message of the panic `run` raises.

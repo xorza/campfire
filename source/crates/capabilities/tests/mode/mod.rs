@@ -39,10 +39,11 @@ use campfire_progression::{
     Experience, ModeTracksData, Points, Progression, Thresholds, TrackData, TrackSet,
 };
 use campfire_script::FailureKind;
+use campfire_script::MatchNames;
 use campfire_script::{
     ApiError, CallError, NameKind, ParamProblem, Pool, ScriptBudgets, ScriptFailures, ScriptId,
     ScriptLimits, ScriptPools, ScriptRole, StateDecl, StateDefault, StateType, StateValue, SyncTo,
-    SyncedStateDecl, View,
+    SyncedStateDecl,
 };
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, SimComponent, SimResource, SimTick, SlotEvent,
@@ -740,8 +741,8 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     let navigation = NavigationBook::of(&ground, sections, Some(&layers)).unwrap();
     let vision = VisionBook::of(&ground, sections, files.teams.len()).unwrap();
     let map = {
-        let view = game.non_send::<View>();
-        let unit_type = |name: &str| view.names().named((TypeScope::Mode, name));
+        let names = game.resource::<MatchNames>();
+        let unit_type = |name: &str| names.named((TypeScope::Mode, name));
         let input = MapInput {
             map: &files.map,
             relations: &data.relations,
@@ -775,8 +776,7 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     navigation.load_into(game);
     vision.load_into(game);
     {
-        let view = game.non_send::<View>();
-        let mut names = view.names_mut();
+        let mut names = game.resource_mut::<MatchNames>();
         let kinds = combat_data.damage_kinds.iter().map(DeclaredName::as_str);
         names.set_table(Arc::new(kinds.collect::<Names<DamageKind>>()));
         let resources = data.section_or_default::<ResourcesData>();
@@ -825,7 +825,7 @@ fn installed_match(
     let mut game = Match::test_unstarted(&declared, RATE, Some(scripts));
     let resource_data = files.data.section_or_default::<ResourcesData>();
     let resources: Vec<&str> = resource_data.0.iter().map(DeclaredName::as_str).collect();
-    Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &resources);
+    Units::name_kinds(&mut game, &DAMAGE_KINDS, &POOLS, &resources);
     // The mode's tags, the layers' then those of its data, as its packages name them.
     let navigation = files.data.section_or_default::<ModeNavigationData>();
     let mode_tags = files.data.section_or_default::<ModeTagsData>();
@@ -876,7 +876,7 @@ fn installed_match(
     let load = load_mode_books(&mut game, files, &types);
     Release::install_mode(&mut game, setup(files, script), ModeInputs { units, load });
     // The scripts name pools the data does not declare, whose maxima no stat sets.
-    Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
+    Units::name_kinds(&mut game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
     game
 }
 

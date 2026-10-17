@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_script::View;
+use campfire_script::MatchNames;
 
 use crate::mode_supply_data::ModeSupplyData;
 
@@ -19,5 +19,5 @@ impl Book for SupplyBook {
     const SCRIPTS_ONLY: bool = false;
 
     /// The production column takes it from the match at each read.
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }

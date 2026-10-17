@@ -5,7 +5,8 @@ use campfire_common::DeclaredName;
 use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_math::Num;
 use campfire_script::{
-    HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName, View,
+    HookSet, MatchNames, NameKind, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames,
+    UnknownName,
 };
 use campfire_sim::TickRate;
 use campfire_units::{ScriptBook, StatusTags, UnitTypes};
@@ -393,8 +394,8 @@ impl ModifierBook {
 impl Book for ModifierBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(self.names()));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(self.names()));
     }
 }
 

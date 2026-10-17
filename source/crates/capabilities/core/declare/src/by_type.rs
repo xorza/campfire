@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::{NameId, UnitType};
 
 use crate::book::Book;
@@ -86,7 +86,7 @@ impl<T: Send + Sync + 'static> Default for ByType<T> {
 impl<T: PerType> Book for ByType<T> {
     const SCRIPTS_ONLY: bool = T::SCRIPTS_ONLY;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(test)]

@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_players::ResourceAmount;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::{ActionId, ModifierId, NameId, Names, ResourceId};
 
 use crate::error::ItemError;
@@ -115,7 +115,7 @@ impl ItemSpec {
 impl Book for ItemBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(test)]

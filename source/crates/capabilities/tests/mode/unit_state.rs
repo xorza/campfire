@@ -40,8 +40,7 @@ fn on_mode_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(1, input("probe", "spawn"))]);
     let grunt = |game: &Match| {
         let grunt_type = game
-            .non_send::<View>()
-            .names()
+            .resource::<MatchNames>()
             .named((TypeScope::Mode, "grunt"))
             .unwrap();
         let grunts = game

@@ -274,7 +274,7 @@ pub mod internals {
     use campfire_common::{Tick, Ticks};
     use campfire_declare::ServerForm;
     use campfire_math::{Num, Rounding};
-    use campfire_script::{Filter, View};
+    use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{StableId, TickRate};
     use campfire_stats::{Life, PoolBook, PoolId, StatBook, StatRule, Stats};
@@ -312,8 +312,7 @@ pub mod internals {
             kind: &str,
         ) {
             let kind = world
-                .non_send::<View>()
-                .names()
+                .resource::<MatchNames>()
                 .named(kind)
                 .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
             DamagePass::queue(

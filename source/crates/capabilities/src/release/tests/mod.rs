@@ -535,6 +535,7 @@ const LOOKUPS: [(&str, &str); 63] = [
     ("bots/bot_script/mod.rs", "named"),
     // The load, and a filter a script names.
     ("script/scripts/view/filter.rs", "named"),
+    ("script/scripts/view/match_names.rs", "named"),
     ("values/filter_data.rs", "named"),
     // Script calls, each argument by its type, and the mode inputs, whose names enter with the
     // players' inputs.
@@ -555,7 +556,6 @@ const LOOKUPS: [(&str, &str); 63] = [
     ("script/scripts/script_names.rs", "named"),
     ("script/scripts/state_decl/state_schema.rs", "named"),
     ("script/scripts/view/tag_names.rs", "named"),
-    ("script/scripts/view/view_names.rs", "named"),
     ("stats/param_table.rs", "named"),
     ("stats/pool_id.rs", "named"),
     ("stats/stat_id.rs", "named"),

@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::{ActionId, ModifierId, UnitType};
 
 /// What each train and build with a `requires` needs its player to hold, by action: unit types of
@@ -69,7 +69,7 @@ impl RequirementBook {
 impl Book for RequirementBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(test)]

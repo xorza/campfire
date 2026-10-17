@@ -25,7 +25,7 @@ use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
-use campfire_script::{Filter, ScriptLimits, ScriptPools, View};
+use campfire_script::{Filter, MatchNames, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimTick, SimWorld,
@@ -320,8 +320,8 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     let hover = UnitTypeCore::tagged(&["ground", "air"]);
     let hover = Units::load_type(&mut game, TypeScope::Mode, "hover", &hover);
     let weapon = |game: &mut Match, aim: &str, range, windup, damage| {
-        let view = game.non_send::<View>().clone();
-        let aim = view
+        let aim = game
+            .resource::<MatchNames>()
             .resolve_filter(&FilterData::parse(aim).unwrap())
             .unwrap();
         let weapon = TestWeapon {

@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_geometry::Grid;
-use campfire_script::View;
+use campfire_script::MatchNames;
 
 use crate::paths::Paths;
 use crate::walls::Walls;
@@ -19,7 +19,7 @@ pub struct NavigationBook {
 impl Book for NavigationBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(self.paths.shared_names());
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(self.paths.shared_names());
     }
 }

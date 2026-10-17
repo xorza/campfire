@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_script::{TagNames, View};
+use campfire_script::{MatchNames, TagNames};
 use campfire_values::{NameTable, Names, Scalar, UnitType};
 
 /// The names of the unit types a match loaded and of their tags, and the types' params, which
@@ -60,8 +60,7 @@ impl UnitTypeBook {
 impl Book for UnitTypeBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        let mut names = view.names_mut();
+    fn share(&self, names: &mut MatchNames) {
         names.set_table(Arc::clone(&self.types));
         names.set_tags(self.tags.clone());
         names.set_params(Arc::clone(&self.params));

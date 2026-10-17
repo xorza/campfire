@@ -1,9 +1,10 @@
 use std::any::type_name;
 
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::Schedules;
 use bevy_ecs::world::World;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_sim::SimUpdate;
 
 use crate::role::Role;
@@ -15,9 +16,9 @@ pub trait Book: Resource + Sized {
     /// Whether only a match that runs scripts reads it, so a client holds none.
     const SCRIPTS_ONLY: bool;
 
-    /// Gives the script view what it copies of it: a call part or a view column takes its book
-    /// from the match as it begins.
-    fn share(&self, view: &View);
+    /// Gives the match's names the tables it holds, which the script view and the match's checks
+    /// read; a call part or a view column takes its book from the match as it begins.
+    fn share(&self, names: &mut MatchNames);
 
     /// Whether a match of `role`, which installs its owner, holds it: one that runs scripts, when
     /// only scripts read it.
@@ -45,8 +46,10 @@ pub trait Book: Resource + Sized {
         Self::share_in(world);
     }
 
-    /// Gives the script view what it copies of `world`'s book, as it stands.
-    fn share_in(world: &World) {
-        world.resource::<Self>().share(world.non_send::<View>());
+    /// Gives the match's names what `world`'s book holds, as it stands.
+    fn share_in(world: &mut World) {
+        world.resource_scope(|world, mut names: Mut<'_, MatchNames>| {
+            world.resource::<Self>().share(&mut names);
+        });
     }
 }

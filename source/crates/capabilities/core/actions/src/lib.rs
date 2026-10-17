@@ -366,7 +366,7 @@ pub mod internals {
     use campfire_declare::Book;
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
-    use campfire_script::{Filter, HookSet, NameKind, UnknownName, View};
+    use campfire_script::{Filter, HookSet, MatchNames, NameKind, UnknownName};
     use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
     use campfire_values::{
         ActionId, DamageKind, ModifierId, NameId, PackageIndex, Speed, Tag, TrackId, TypeScope,
@@ -507,12 +507,11 @@ pub mod internals {
         pub speed: Option<Speed>,
     }
 
-    /// The names of an action's effect lists as a match's world resolves them: its view, its param
+    /// The names of an action's effect lists as a match's world resolves them: its names, its param
     /// book, and the modifiers of the action's package.
     #[derive(Debug)]
     pub struct MatchEffectNames<'w> {
         world: &'w World,
-        view: &'w View,
         action: ActionId,
         package: PackageIndex,
     }
@@ -606,9 +605,8 @@ pub mod internals {
             package: PackageIndex,
             data: &ActionData,
         ) {
-            let view = world.non_send::<View>().clone();
             let mut lists = world.remove_resource::<EffectListBook>().unwrap();
-            let names = MatchEffectNames::new(world, &view, action, package);
+            let names = MatchEffectNames::new(world, action, package);
             lists
                 .push(action, data, &names)
                 .expect("a test's effect lists name what its match has");
@@ -699,15 +697,9 @@ pub mod internals {
     }
 
     impl<'w> MatchEffectNames<'w> {
-        pub const fn new(
-            world: &'w World,
-            view: &'w View,
-            action: ActionId,
-            package: PackageIndex,
-        ) -> Self {
+        pub const fn new(world: &'w World, action: ActionId, package: PackageIndex) -> Self {
             MatchEffectNames {
                 world,
-                view,
                 action,
                 package,
             }
@@ -724,15 +716,14 @@ pub mod internals {
         }
 
         fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
-            self.view
-                .names()
+            self.world
+                .resource::<MatchNames>()
                 .named(name.as_str())
                 .ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
         }
 
         fn pool(&self, name: &DeclaredName) -> Result<PoolId, UnknownName> {
-            let names = self.view.names();
-            let pools = names.table::<PoolId>();
+            let pools = self.world.resource::<MatchNames>().table::<PoolId>();
             pools
                 .and_then(|pools| pools.named(name.as_str()))
                 .ok_or_else(|| UnknownName::new(NameKind::Pool, name))
@@ -744,15 +735,15 @@ pub mod internals {
         }
 
         fn track(&self, name: &DeclaredName) -> Result<TrackId, UnknownName> {
-            self.view
-                .names()
+            self.world
+                .resource::<MatchNames>()
                 .named(name.as_str())
                 .ok_or_else(|| UnknownName::new(NameKind::Track, name))
         }
 
         fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
-            self.view
-                .names()
+            self.world
+                .resource::<MatchNames>()
                 .tags()
                 .named(name.as_str())
                 .ok_or_else(|| UnknownName::new(NameKind::Tag, name))
@@ -760,8 +751,8 @@ pub mod internals {
 
         fn package_type(&self, name: &DeclaredName) -> Result<UnitType, UnknownName> {
             let scope = TypeScope::of_package(self.package);
-            self.view
-                .names()
+            self.world
+                .resource::<MatchNames>()
                 .named((scope, name.as_str()))
                 .ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
         }

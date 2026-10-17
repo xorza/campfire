@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::{ParamProblem, View};
+use campfire_script::{MatchNames, ParamProblem};
 use campfire_sim::TickRate;
 use campfire_values::{ActionId, ModifierId, NameId, Names, Param, Rank, Stat};
 
@@ -229,7 +229,7 @@ impl Book for ParamBook {
 
     /// Shares nothing: the stats' part of the call frame takes the book from the match as each
     /// call begins.
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(feature = "internals")]

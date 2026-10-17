@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_script::{StateSchema, StateValue, SyncTo, View};
+use campfire_script::{MatchNames, StateSchema, StateValue, SyncTo};
 use campfire_values::{NameId, UnitType};
 
 /// The script state each unit type declares, a schema for each type in the order of the types:
@@ -67,7 +67,7 @@ impl<'a> IntoIterator for &'a UnitStateBook {
 impl Book for UnitStateBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(test)]

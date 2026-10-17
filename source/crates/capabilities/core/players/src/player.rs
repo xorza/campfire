@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
 use campfire_declare::{EntityKind, KindAudience};
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_sim::{KindMarker, SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::EntityKinds;
@@ -41,7 +41,7 @@ impl SimComponent for Player {
     // would hide the player's state from where it is looked for; and an entity is of one kind.
     fn check(&self, world: &World, entity: Entity) -> bool {
         world.get::<StableId>(entity) == Some(&StableId::of_player(self.0))
-            && world.non_send::<View>().names().has_player(self.0)
+            && world.resource::<MatchNames>().has_player(self.0)
             && EntityKinds::alone(world, entity)
     }
 }

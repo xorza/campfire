@@ -37,7 +37,7 @@ pub use crate::release::match_spec::MatchSpec;
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::fixtures::abilities::AbilitiesFixtures;
-    pub use crate::fixtures::actions::{ActionsFixtures, MatchNames};
+    pub use crate::fixtures::actions::{ActionsFixtures, WorldActionNames};
     pub use crate::fixtures::areas::AreasFixtures;
     pub use crate::fixtures::navigation::NavigationFixtures;
     pub use crate::fixtures::orders::OrdersFixtures;
