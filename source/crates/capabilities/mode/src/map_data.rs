@@ -2,13 +2,11 @@ use std::collections::BTreeMap;
 
 use campfire_common::DeclaredName;
 use campfire_declare::{Section, SectionReaders, SectionTable, Sections, TableRead};
-use campfire_geometry::{Bounds, Grid, Metric, Polygon};
+use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
-use campfire_navigation::{MapNavigationData, MapPathsData, PathData, PathEnd, Wall};
+use campfire_navigation::{MapPathsData, PathData, PathEnd};
 use campfire_sim::Position;
-use campfire_units::{BoundsData, GroundData, Layer, MapPoint, MetricData};
-use campfire_values::Names;
-use campfire_vision::GridData;
+use campfire_units::{BoundsData, GroundData, MapPoint, MapPointError, MetricData};
 use serde::de::{DeserializeSeed, Error};
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -108,6 +106,11 @@ impl MapData {
         self.sections.get()
     }
 
+    /// Its sections, its bounds among them.
+    pub const fn sections(&self) -> &Sections {
+        &self.sections
+    }
+
     /// How it measures distance: on the ground plane when it names no metric.
     pub fn metric(&self) -> Metric {
         self.section::<MetricData>()
@@ -132,74 +135,15 @@ impl MapData {
             .map_or(&[], |paths| paths.0.as_slice())
     }
 
-    /// The vision grid over the bounds, if the map has one; an error unless its cell is positive
-    /// and at most the world's bound, and it has at most 2²² cells.
-    pub fn grid(&self) -> Result<Option<Grid>, ModeError> {
-        self.grid_of(self.section::<GridData>().map(|grid| grid.cell))
-    }
-
-    /// The areas of the map's brush, in its order; an error for a point that does not fit the
-    /// map's metric or lies outside its bounds, and points that make no simple polygon.
-    pub fn brush(&self) -> Result<Vec<Polygon>, ModeError> {
-        let Some(grid) = self.section::<GridData>() else {
-            return Ok(Vec::new());
-        };
-        let mut areas = Vec::with_capacity(grid.brush.len());
-        for (brush, data) in grid.brush.iter().enumerate() {
-            let points = self.plane(&data.points)?;
-            areas
-                .push(Polygon::new(points).map_err(|problem| ModeError::Brush { brush, problem })?);
-        }
-        Ok(areas)
-    }
-
-    /// `points` on the ground plane; an error as `point` gives.
-    fn plane(&self, points: &[MapPoint]) -> Result<Vec<[Num; 2]>, ModeError> {
-        points
-            .iter()
-            .map(|point| {
-                let at = self.pos(point)?;
-                Ok([at.x, at.z])
-            })
-            .collect()
-    }
-
-    /// The pathing grid's cells over the bounds, if the map has them; an error as for `grid`.
-    pub fn pathing(&self) -> Result<Option<Grid>, ModeError> {
-        let navigation = self.section::<MapNavigationData>();
-        self.grid_of(navigation.map(|navigation| navigation.cell))
-    }
-
-    /// The map's walls, each on the layer of `layers` it names; an error for a layer the mode does
-    /// not declare, a point that does not fit the map's metric or lies outside its bounds, and
-    /// points that make no simple polygon.
-    pub fn walls(&self, layers: &Names<Layer>) -> Result<Vec<Wall>, ModeError> {
-        let Some(navigation) = self.section::<MapNavigationData>() else {
-            return Ok(Vec::new());
-        };
-        let mut walls = Vec::with_capacity(navigation.walls.len());
-        for (wall, data) in navigation.walls.iter().enumerate() {
-            let layer = match &data.layer {
-                Some(name) => layers
-                    .named(name.as_str())
-                    .ok_or_else(|| ModeError::UnknownLayer(name.clone()))?,
-                None => Layer::FIRST,
-            };
-            let area = Polygon::new(self.plane(&data.points)?)
-                .map_err(|problem| ModeError::Wall { wall, problem })?;
-            walls.push(Wall { layer, area });
-        }
-        Ok(walls)
-    }
-
     /// The place of `point`; an error unless it fits the map's metric and lies within its
     /// bounds.
     pub(crate) fn pos(&self, point: &MapPoint) -> Result<Vec3, ModeError> {
-        match point.pos() {
-            _ if !point.fits(self.metric()) => Err(ModeError::PointShape),
-            Some(pos) if self.bounds().contains(pos) => Ok(pos),
-            _ => Err(ModeError::OutOfBounds),
-        }
+        point
+            .place(self.metric(), self.bounds())
+            .map_err(|error| match error {
+                MapPointError::Shape => ModeError::PointShape,
+                MapPointError::OutOfBounds => ModeError::OutOfBounds,
+            })
     }
 
     /// Where a placed unit at `point` stands: on a planar map `height` above the ground, as a
@@ -219,14 +163,6 @@ impl MapData {
                     .ok_or(ModeError::OutOfBounds)
             }
         }
-    }
-
-    fn grid_of(&self, cell: Option<Num>) -> Result<Option<Grid>, ModeError> {
-        let Some(cell) = cell else {
-            return Ok(None);
-        };
-        let grid = Grid::new(cell, self.bounds());
-        grid.map(Some).ok_or(ModeError::Grid)
     }
 }
 
@@ -311,9 +247,8 @@ pub(crate) mod internals {
 #[cfg(test)]
 mod tests {
     use campfire_codec::{Toml, TomlError, TomlTable};
-    use campfire_geometry::PolygonError;
-    use campfire_navigation::WallData;
-    use campfire_vision::BrushData;
+    use campfire_navigation::{MapNavigationData, WallData};
+    use campfire_vision::{BrushData, GridData};
 
     use super::*;
 
@@ -410,43 +345,6 @@ mod tests {
             Toml::write(&marker),
             "name = \"w1\"\ntags = [\"waypoint\"]\npos = [\"0\", \"0\"]\n"
         );
-    }
-
-    #[test]
-    fn a_brush_loads_only_as_a_simple_polygon_within_the_bounds() {
-        let bounds = Bounds::new([Num::ZERO; 2], [Num::int(4); 2]).unwrap();
-        let with = |points: &[(i64, i64)]| {
-            MapData::planar(bounds).with(GridData {
-                cell: Num::ONE,
-                brush: vec![BrushData {
-                    points: points
-                        .iter()
-                        .map(|&(x, z)| MapPoint::ground(x, z))
-                        .collect(),
-                }],
-            })
-        };
-        let fault = |problem| Err(ModeError::Brush { brush: 0, problem });
-        assert_eq!(
-            with(&[(0, 0), (4, 0), (0, 5)]).brush(),
-            Err(ModeError::OutOfBounds)
-        );
-        assert_eq!(
-            with(&[(0, 0), (4, 0)]).brush(),
-            fault(PolygonError::TooFewPoints)
-        );
-        let crossed = PolygonError::EdgesMeet {
-            first: 0,
-            second: 2,
-        };
-        assert_eq!(
-            with(&[(0, 0), (4, 4), (4, 0), (0, 4)]).brush(),
-            fault(crossed)
-        );
-        let triangle = with(&[(0, 0), (4, 0), (0, 4)]).brush().unwrap();
-        assert_eq!(triangle.len(), 1);
-        // A map with no vision grid has no brush.
-        assert_eq!(MapData::planar(bounds).brush(), Ok(Vec::new()));
     }
 
     #[test]

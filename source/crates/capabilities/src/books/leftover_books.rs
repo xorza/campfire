@@ -9,15 +9,13 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Report, Role, Scratch, Section,
+    Book, BuildFn, BuiltBooks, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn,
+    Fact, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, SimResource};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_values::EngineTag;
-
-use crate::books::built_books::BuiltBooks;
 
 /// The end of the books' install, a walk of every module's declarations: each book of a module
 /// the match does not run, which its install did not take, is dropped, so a built book no module
@@ -52,7 +50,11 @@ impl Declarations for LeftoverBooks<'_> {
 
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
-    fn book<B: Book>(&mut self) {
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {
         drop(self.0.take::<B>());
     }
 

@@ -32,7 +32,7 @@ use crate::lists_of::ListsOf;
 /// action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`, and by launch id
 /// the run of each list a launch holds, `on_hit` and `on_end`. An action past the end has none.
 /// Package data, not state.
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug, Clone, Default)]
 pub struct EffectListBook {
     effects: Vec<EffectSpec>,
     runs: Vec<[Range<u32>; 3]>,

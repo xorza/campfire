@@ -10,6 +10,9 @@
 )]
 
 mod book;
+mod book_cx;
+mod book_source;
+mod built_books;
 mod by_type;
 mod cache;
 mod callback_table;
@@ -18,6 +21,8 @@ mod capability_set;
 mod declarations;
 mod entity_kind;
 mod entity_parts;
+mod error;
+mod fact;
 mod install_cx;
 mod kind_spawn;
 mod kind_visitor;
@@ -38,6 +43,9 @@ mod spawn_parts;
 mod unit_type_data;
 
 pub use crate::book::Book;
+pub use crate::book_cx::{BookCx, BuildFn, ExtendFn};
+pub use crate::book_source::{BookSource, Given, SourceKind, SourcePackage, SourceType};
+pub use crate::built_books::BuiltBooks;
 pub use crate::by_type::ByType;
 pub use crate::cache::Cache;
 pub use crate::callback_table::CallbackTable;
@@ -46,6 +54,8 @@ pub use crate::capability_set::CapabilitySet;
 pub use crate::declarations::{ColumnFill, Declarations};
 pub use crate::entity_kind::{EntityKind, KindAudience};
 pub use crate::entity_parts::EntityParts;
+pub use crate::error::{BookError, BookPlace, NamesListError, Problem, TypePlace};
+pub use crate::fact::Fact;
 pub use crate::install_cx::{InstallCx, InstallFacts};
 pub use crate::kind_spawn::{KindSpawn, SpawnCore};
 pub use crate::kind_visitor::KindVisitor;

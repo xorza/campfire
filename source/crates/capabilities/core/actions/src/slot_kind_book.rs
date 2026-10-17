@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
+use campfire_declare::{Book, BookCx, BookError};
 use campfire_script::View;
 
 use crate::slot_kinds::SlotKinds;
@@ -10,6 +10,14 @@ use crate::slot_kinds::SlotKinds;
 /// Package data, not state. A clone shares the kinds, as the script view reads them.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub struct SlotKindBook(pub Arc<SlotKinds>);
+
+impl SlotKindBook {
+    /// The mode's `[[slots]]`, none when it gives none.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let kinds = cx.mode_section::<SlotKinds>().cloned();
+        Ok(Self(Arc::new(kinds.unwrap_or_default())))
+    }
+}
 
 impl Book for SlotKindBook {
     const SCRIPTS_ONLY: bool = false;

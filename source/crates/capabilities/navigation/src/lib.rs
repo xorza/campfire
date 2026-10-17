@@ -19,7 +19,9 @@ use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPl
 use campfire_geometry::Grid;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, SimEdge, SimSet, Unpredicted};
-use campfire_units::{BodyUnit, Dead, Destination, MoveStep, SpawnHooks, UnitTracker, UnitsSet};
+use campfire_units::{
+    BodyUnit, Dead, Destination, LayerNames, MoveStep, SpawnHooks, UnitTracker, UnitsSet,
+};
 
 use crate::navigation_column::RowReads;
 use crate::pathing_grid::PathingGrid;
@@ -39,6 +41,7 @@ mod map_paths_data;
 mod mode_navigation_data;
 mod navigation_api;
 mod navigation_book;
+mod navigation_books;
 mod navigation_column;
 mod navigation_effect;
 mod on_path;
@@ -67,7 +70,7 @@ mod walls;
 
 pub use crate::body_index::{BodyIndex, IndexedBody};
 pub use crate::collider::Collider;
-pub use crate::error::{MapProblem, NavigationRefusal};
+pub use crate::error::{MapProblem, NavigationDataError, NavigationRefusal};
 pub use crate::forced_moves::ForcedMoves;
 pub use crate::group_box::GroupBox;
 pub use crate::map_navigation_data::{MapNavigationData, WallData};
@@ -191,8 +194,9 @@ impl Module for Navigation {
         d.one_shot::<StaticTrackingRun, _>(StaticTracking::track_static_bodies);
         d.one_shot::<RoomMakingRun, _>(RoomMaking::make_room);
         d.callback::<EffectQueues>(Capability::Navigation, NavigationEffect::queue_listed);
-        d.book::<ByType<Walker>>();
-        d.book::<NavigationBook>();
+        d.book::<ByType<Walker>>(Walker::book);
+        d.fact::<LayerNames>(Self::layer_names);
+        d.book::<NavigationBook>(NavigationBook::build);
         d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
         // A unit that walks, which its move step tells, takes a route and a progress.
@@ -253,6 +257,14 @@ impl Navigation {
     /// navigation book block, for the kinds of `walkers`, a static index for the widest of them,
     /// and a planner of routes on the grid; the static bodies fill the grid and the index from
     /// the first tick on.
+    /// Gives `world` its map's pathing grid, when the map has one, for the kinds of `walkers`.
+    pub fn load_map(world: &mut World, walkers: impl Into<WalkerKinds>) {
+        let grid = world.get_resource::<NavigationBook>();
+        if let Some(grid) = grid.and_then(|book| book.pathing) {
+            Self::load_pathing(world, grid, walkers);
+        }
+    }
+
     pub fn load_pathing(world: &mut World, grid: Grid, walkers: impl Into<WalkerKinds>) {
         let walkers = walkers.into();
         debug_assert!(

@@ -21,6 +21,7 @@ mod error;
 mod inventory;
 mod inventory_data;
 mod item_book;
+mod item_books;
 mod item_data;
 mod item_holds;
 mod item_id;
@@ -93,11 +94,12 @@ impl Module for Items {
         d.component::<UseGroup>();
         d.require::<Inventory, UseGroup>();
         d.require::<UseGroup, Inventory>();
-        d.book::<ItemBook>();
-        d.book::<ByType<Shop>>();
+        d.book::<ItemBook>(ItemBook::build);
+        d.book::<ByType<Shop>>(Shop::book);
         d.api(ItemsApi::register);
-        d.book::<ByType<Inventory>>();
-        d.book::<ByType<UseGroup>>();
+        d.book::<ByType<Inventory>>(Inventory::book);
+        d.book::<ByType<UseGroup>>(Inventory::groups);
+        d.extend::<ByType<ActionSlots>>(Self::inventory_slots);
         d.part::<BodyUnit, Inventory>(|at| at.of_type::<Inventory>().cloned());
         d.part::<BodyUnit, UseGroup>(|at| at.of_type::<UseGroup>().copied());
     }

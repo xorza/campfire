@@ -1,6 +1,7 @@
 use campfire_common::{DeclaredName, EnumAll};
 use campfire_script::{CapabilityRefusal, ParamProblem, UnknownName};
 use campfire_sim::Capability;
+use campfire_values::Stat;
 use thiserror::Error;
 
 /// Why a modifier does not load.
@@ -101,4 +102,22 @@ impl StatsRefusal {
             ParamProblem::Time => Self::ParamTime,
         }
     }
+}
+
+/// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
+/// failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum UnitStartError {
+    /// A stat its pools need is not one it gives a value.
+    #[error("stat {0} is not declared")]
+    MissingStat(Stat),
+    /// A pool's maximum is not positive at level 1.
+    #[error("stat {0} is not positive")]
+    NotPositive(Stat),
+    /// It has a `combat` section but not the life pool.
+    #[error("a unit type with combat lacks the life pool")]
+    NoLifePool,
+    /// It has the life pool but no `combat` section.
+    #[error("a unit type with the life pool lacks combat")]
+    NoCombat,
 }

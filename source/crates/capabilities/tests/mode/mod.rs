@@ -52,9 +52,9 @@ use campfire_stats::{
     StatShare, Stats, TypePassive, UnitStats,
 };
 use campfire_units::{
-    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MapPoint, MatchEntity,
-    MetricData, ModeTagsData, MoveStep, Owner, Player, SyncAll, SyncNone, UnitTypeCore, Units,
-    UnitsWorld,
+    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MapBook, MapPoint,
+    MatchEntity, MetricData, ModeTagsData, MoveStep, Owner, Player, SyncAll, SyncNone,
+    UnitTypeCore, Units, UnitsWorld,
 };
 use campfire_values::{
     ActionId, DamageKind, EngineEnum, FilterData, MessageId, ModifierId, Names, Number,
@@ -62,7 +62,7 @@ use campfire_values::{
     Team, TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
-use campfire_vision::GridData;
+use campfire_vision::{GridData, VisionBook};
 
 /// 10 ticks a second: 100 ms is a tick.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
@@ -722,19 +722,20 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     // The mode's books, each loaded as the install loads it.
     let data = &files.data;
     let mode_names = ModeNames::of(data).unwrap();
-    let resolved = {
+    let sections = files.map.sections();
+    let ground = MapBook::of(sections, None).unwrap();
+    let navigation = NavigationBook::of(&ground, sections, Some(&mode_names.layers)).unwrap();
+    let vision = VisionBook::of(&ground, sections, files.teams.len()).unwrap();
+    let map = {
         let view = game.non_send::<View>();
-        let relations = &data.relations;
         let unit_type = |name: &str| view.names().named((TypeScope::Mode, name));
-        let layers = &mode_names.layers;
         let input = MapInput {
             map: &files.map,
-            heights: None,
-            teams: &files.teams,
-            relations,
-            layers,
+            relations: &data.relations,
+            teams: ModeMap::team_names(&files.teams).unwrap(),
+            paths: Some(&navigation.paths),
         };
-        ModeMap::resolve(input, unit_type).unwrap()
+        ModeMap::of(input, unit_type).unwrap()
     };
     let stats = StatBook::new(&data.section_or_default::<ModeStatsData>().0, Num::int(10));
     let stat = |stat: &Stat| stats.named(stat).ok_or_else(|| stat.clone());
@@ -759,12 +760,6 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     ))
     .load_into(game);
     combat.load_into(game);
-    let ResolvedMap {
-        map,
-        ground,
-        navigation,
-        vision,
-    } = resolved;
     ground.load_into(game);
     navigation.load_into(game);
     vision.load_into(game);

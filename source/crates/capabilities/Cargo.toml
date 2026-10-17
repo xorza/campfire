@@ -68,7 +68,6 @@ campfire-vision.workspace = true
 
 bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
-derive_more.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 

@@ -7,15 +7,13 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Report, Role, Scratch, Section,
+    Book, BuildFn, BuiltBooks, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn,
+    Fact, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
 use campfire_sim::{Breach, Capability, HostRule, OwnResources, SimComponent, SimResource};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_values::EngineTag;
-
-use crate::books::built_books::BuiltBooks;
 
 /// Builds every book a module declares, empty, as a builder that built them all would.
 #[derive(Debug, Default)]
@@ -48,7 +46,11 @@ impl Declarations for EveryBook {
 
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
-    fn book<B: Book>(&mut self) {
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {
         self.0.add(B::default());
     }
 

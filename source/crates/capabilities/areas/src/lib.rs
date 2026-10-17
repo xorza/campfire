@@ -19,10 +19,11 @@ use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_math::Vec3;
 use campfire_sim::{Capability, SimSet, StableId};
 use campfire_stats::StatsSet;
-use campfire_units::DeliveryEntity;
+use campfire_units::{DeliveryEntity, UnitTypes};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
 mod area;
+mod area_books;
 mod area_data;
 mod area_holds;
 mod area_launches;
@@ -95,7 +96,8 @@ impl Module for Areas {
         d.scratch::<AreaLaunches>();
         d.callback::<Deliverers>(DeliveryKind::Area, Self::deliver);
         d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);
-        d.book::<ByType<AreaSpec>>();
+        d.extend::<UnitTypes>(Self::tag_types);
+        d.book::<ByType<AreaSpec>>(AreaSpec::book);
         d.api(AreasApi::register);
     }
 

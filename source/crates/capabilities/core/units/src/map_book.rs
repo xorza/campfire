@@ -1,11 +1,16 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::{Book, Section, SectionTable};
+use campfire_declare::{Book, BookCx, BookError, BookPlace, Section, SectionTable, Sections};
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_script::View;
+use campfire_values::PackageIndex;
 use serde::{Deserialize, Serialize};
 
+use crate::error::{GroundLoadError, MapPointError};
 use crate::ground::Ground;
+use crate::ground_data::GroundData;
+use crate::height_grid::HeightGrid;
+use crate::map_point::MapPoint;
 
 /// The map's measure of distance, its bounds and its ground; the world's bounds and a flat
 /// ground before a map names its own. Package data, not state.
@@ -27,6 +32,12 @@ impl Default for MapBook {
 }
 
 impl MapBook {
+    /// The place of the map's point `point`; an error unless it fits the map's metric and lies
+    /// within its bounds.
+    pub fn pos(&self, point: MapPoint) -> Result<Vec3, MapPointError> {
+        point.place(self.metric, self.bounds)
+    }
+
     /// The point in space of the position `pos`: on a planar map, its ground's height at it
     /// raised by the position's height above the ground (04-capabilities/00-overview.md, The sim's
     /// ground is the map's height grid); on a spatial map, the position itself.
@@ -55,6 +66,39 @@ impl MapBook {
             Metric::Planar => self.ground.highest_along([a.x, a.z], [b.x, b.z]),
             Metric::Spatial => None,
         }
+    }
+}
+
+impl MapBook {
+    /// The map's measure of distance, its bounds and its ground, of its height grid, which the load
+    /// gives when the map has one, as its `[ground]` reads it; flat with no grid. An error for a
+    /// `[ground]` with no grid, or coarse cells that do not fit it.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let book = Self::of(cx.source().map, cx.given::<HeightGrid>());
+        book.map_err(|problem| BookError::rule(PackageIndex::MODE, BookPlace::Map, problem))
+    }
+
+    /// The book of a map of `sections`, its bounds among them, and of its height grid `heights`,
+    /// when it has one; an error as `build` gives.
+    pub fn of(sections: &Sections, heights: Option<&HeightGrid>) -> Result<Self, GroundLoadError> {
+        let bounds = sections.get::<BoundsData>();
+        let bounds = bounds
+            .expect("a map gives its bounds, as its read checks")
+            .0;
+        let metric = sections.get::<MetricData>();
+        let ground = match (heights, sections.get::<GroundData>()) {
+            (None, None) => Ground::default(),
+            (None, Some(_)) => return Err(GroundLoadError::NoHeights),
+            (Some(grid), data) => {
+                let GroundData { split, high } = data.copied().unwrap_or_default();
+                Ground::new(grid.clone(), split, high).map_err(GroundLoadError::Ground)?
+            }
+        };
+        Ok(Self {
+            metric: metric.map_or_else(Metric::default, |metric| metric.0),
+            bounds,
+            ground,
+        })
     }
 }
 

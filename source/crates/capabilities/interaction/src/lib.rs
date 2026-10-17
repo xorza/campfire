@@ -9,6 +9,7 @@ use campfire_sim::{Breach, Capability};
 use campfire_values::UnitType;
 
 mod interaction_api;
+mod interaction_books;
 mod use_data;
 mod use_slot;
 mod use_spec;
@@ -62,8 +63,9 @@ impl Module for Interaction {
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<UseData>();
         d.section::<UsesData>();
-        d.book::<ByType<UseSpec>>();
-        d.book::<ByType<UseSlot>>();
+        d.book::<ByType<UseSpec>>(UseSpec::book);
+        d.book::<ByType<UseSlot>>(UseSlot::book);
+        d.extend::<ByType<ActionSlots>>(Self::use_slots);
         d.check::<ActionSlots>(Self::users_hold_their_slot);
         d.api(InteractionApi::register);
     }

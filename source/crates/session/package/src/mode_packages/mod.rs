@@ -3,11 +3,9 @@ use std::iter;
 use std::sync::Arc;
 
 use campfire_actions::{ActionData, SlotKinds, TypeSlotsData};
-use campfire_capabilities::{
-    BookInput, BookKind, BookPackage, Books, PackageContent, PackageScript, Release,
-};
+use campfire_capabilities::{BookInput, Books, PackageContent, PackageScript, Release};
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
-use campfire_declare::UnitTypeData;
+use campfire_declare::{SourceKind, SourcePackage, UnitTypeData};
 use campfire_mode::{MapData, ModeData};
 use campfire_navigation::ModeNavigationData;
 use campfire_script::{ScriptHost, ScriptId, UnknownName};
@@ -133,7 +131,7 @@ impl ModePackages {
             "a session's rate is within the manifest's range"
         );
         let engine_tags = Release::engine_tags();
-        Books::build(&self.book_input(rate, &self.stat_order, &engine_tags))
+        Release::books(&self.book_input(rate, &self.stat_order, &engine_tags))
             .expect("the load built the books at the fastest rate")
     }
 
@@ -206,15 +204,16 @@ impl ModePackages {
     }
 
     /// Its packages as its books are built from them, the mode's then each dependency's.
-    pub(crate) fn book_packages(&self) -> Vec<BookPackage<'_>> {
-        let packages = self.packages().map(|view| BookPackage {
+    pub(crate) fn book_packages(&self) -> Vec<SourcePackage<'_>> {
+        let packages = self.packages().map(|view| SourcePackage {
             name: view.package.header.name.as_str(),
-            content: view.content,
+            units: &view.content.units,
+            content: &view.content.sections,
             kind: match view.kind {
-                ViewKind::Mode => BookKind::Mode,
-                ViewKind::Avatar(avatar) => BookKind::Avatar(&avatar.unit),
-                ViewKind::Loadout => BookKind::Loadout,
-                ViewKind::Rules => BookKind::Rules,
+                ViewKind::Mode => SourceKind::Mode,
+                ViewKind::Avatar(avatar) => SourceKind::Avatar(&avatar.unit),
+                ViewKind::Loadout => SourceKind::Loadout,
+                ViewKind::Rules => SourceKind::Rules,
             },
             scripts: view
                 .package

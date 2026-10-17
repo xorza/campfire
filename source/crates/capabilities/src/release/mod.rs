@@ -8,20 +8,20 @@ use campfire_areas::Areas;
 use campfire_combat::Combat;
 use campfire_common::DeclaredName;
 use campfire_declare::{
-    CapabilitySet, Declarations, InstallFacts, KindVisitor, MatchFacts, ModuleVisitor, Role,
-    SectionReaders, UnitTypeData,
+    BuiltBooks, CapabilitySet, Declarations, InstallFacts, KindVisitor, MatchFacts, ModuleVisitor,
+    Role, SectionReaders, UnitTypeData,
 };
 use campfire_deliveries::Deliveries;
 use campfire_interaction::Interaction;
 use campfire_items::Items;
-use campfire_mode::{Mode, ModeCore, ModeLoad};
+use campfire_mode::{Mode, ModeCore};
 use campfire_navigation::Navigation;
 use campfire_orders::Orders;
 use campfire_players::Players;
 use campfire_production::Production;
 use campfire_progression::Progression;
 use campfire_projectiles::Projectiles;
-use campfire_script::{ApiBuilder, ScriptApi, ScriptHost, ScriptId, View};
+use campfire_script::{ApiBuilder, ScriptApi, ScriptHost, ScriptId};
 use campfire_sim::{Capability, SimWorldBuilder, Unpredicted};
 use campfire_state_types::StateTypes;
 use campfire_stats::Stats;
@@ -32,7 +32,6 @@ use serde::Deserializer;
 use serde::de::DeserializeSeed;
 
 use crate::books::Books;
-use crate::books::built_books::BuiltBooks;
 use crate::books::leftover_books::LeftoverBooks;
 use crate::books::units_seed::UnitsSeed;
 use crate::release::api_binder::ApiBinder;
@@ -50,6 +49,7 @@ use crate::release::section_list::SectionList;
 use crate::release::state_only::StateOnly;
 
 mod api_binder;
+mod book_build;
 mod called_registries;
 mod capability_rows;
 #[cfg(feature = "internals")]
@@ -256,11 +256,7 @@ impl Release {
             mode_script,
         };
         let Books {
-            mut built,
-            damage_kinds,
-            resources,
-            inputs,
-            ..
+            mut built, inputs, ..
         } = books;
         Self::modules(&mut Installing::new(
             parts,
@@ -270,13 +266,6 @@ impl Release {
         ));
         Self::declare(Self::capabilities(), &mut LeftoverBooks(&mut built));
         assert!(built.is_empty(), "each built book is declared: {built:?}");
-        {
-            let world = sim.parts().world;
-            let view = world.non_send::<View>();
-            let mut names = view.names_mut();
-            names.set_table(damage_kinds);
-            names.set_table(resources);
-        }
         if facts.role.scripts() {
             let world = sim.parts().world;
             ScriptApi::bind(&mut world.non_send_mut::<ScriptHost>(), |builder| {
@@ -286,8 +275,7 @@ impl Release {
         match kind {
             MatchKind::Rules => {}
             MatchKind::Predicting => {
-                let ModeLoad { map, walkers, .. } = &inputs.load;
-                map.install_pathing(sim.parts().world, walkers.clone());
+                Navigation::load_map(sim.parts().world, inputs.load.walkers);
             }
             MatchKind::Mode(ModeStart { scripts, setup }) => {
                 assert!(
@@ -336,13 +324,12 @@ pub(crate) mod internals {
     use std::collections::BTreeSet;
     use std::fmt::Debug;
     use std::num::NonZeroU64;
-    use std::sync::Arc;
 
     use bevy_ecs::archetype::Archetype;
     use bevy_ecs::component::{Component, Mutable};
     use bevy_ecs::schedule::InternedSystemSet;
     use bevy_ecs::world::World;
-    use campfire_declare::{CapabilitySet, InstallFacts, MatchFacts};
+    use campfire_declare::{BuiltBooks, CapabilitySet, InstallFacts, MatchFacts};
     use campfire_mode::{Mode, ModeInputs, ModeLoad, ModeMap, ModeSetup, ModeUnits};
     use campfire_navigation::WalkerKinds;
     use campfire_script::{ScriptApi, ScriptHost};
@@ -356,7 +343,6 @@ pub(crate) mod internals {
     use campfire_values::{Names, Relations};
 
     use crate::books::Books;
-    use crate::books::built_books::BuiltBooks;
     use crate::books::every_book::EveryBook;
     use crate::fixtures::units::UnitsFixtures;
     use crate::release::Release;
@@ -413,12 +399,9 @@ pub(crate) mod internals {
                 relations: Relations::default(),
                 placed: Vec::new(),
                 markers: Vec::new(),
-                pathing: None,
             };
             Books {
                 built,
-                damage_kinds: Arc::default(),
-                resources: Arc::default(),
                 spawn_tags: Box::default(),
                 inputs: ModeInputs {
                     units: ModeUnits::default(),

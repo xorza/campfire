@@ -24,11 +24,8 @@ mod order;
 mod release;
 
 pub use crate::books::Books;
-pub use crate::books::book_input::{BookInput, BookKind, BookPackage};
-pub use crate::books::book_place::BookPlace;
-pub use crate::books::error::{BookError, UnitStartError};
+pub use crate::books::book_input::BookInput;
 pub use crate::books::package_content::{ContentSeed, PackageContent};
-pub use crate::books::type_place::TypePlace;
 pub use crate::order::{Action, Order};
 pub use crate::release::Release;
 pub use crate::release::error::CapabilityError;

@@ -89,7 +89,7 @@ impl Module for Orders {
         d.component::<Resetting>();
         d.state::<BodyUnit, Resetting>();
         d.scratch::<PlayerOrders>();
-        d.book::<ByType<Ai>>();
+        d.book::<ByType<Ai>>(Ai::book);
         d.api(OrdersApi::register);
     }
 

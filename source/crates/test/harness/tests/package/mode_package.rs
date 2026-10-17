@@ -7,7 +7,7 @@ use campfire_actions::{
     ActionDataField, ActionField, ActionKind, DoesData, EffectData, EffectTo, HealFields,
     LaunchFields, ListHook, PlannedEffect, PurgeFields,
 };
-use campfire_capabilities::{CapabilityError, Release, UnitStartError};
+use campfire_capabilities::{CapabilityError, Release};
 use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
 use campfire_common::{DeclaredName, MapName};
@@ -25,10 +25,11 @@ use campfire_package_disk::PackageDir;
 use campfire_script::internals::Undefined;
 use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::ModifierProblem;
+use campfire_stats::{ModifierProblem, UnitStartError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::HeightGrid;
 use campfire_values::{EngineEnum, Number, Scalar, TimeTooLarge};
+use campfire_vision::VisionDataError;
 
 use crate::package::moba::{edited, load, moba, two_lanes};
 
@@ -1620,9 +1621,12 @@ static ACTION_FLAWS: &[Flaw] = &[
     flaw(MAP, Edit::Remove("navigation"), MODE, |problem| {
         matches!(problem, LoadProblem::NoPathingGrid)
     }),
-    flaw(MAP, Edit::Set("grid.cell", r#""0""#), MODE, |problem| {
-        matches!(problem, LoadProblem::Mode(ModeError::Grid))
-    }),
+    flaw(
+        MAP,
+        Edit::Set("grid.cell", r#""0""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Book { problem, .. } if problem.get() == Some(&VisionDataError::Grid)),
+    ),
     flaw(
         MAP,
         Edit::Set("bounds", "{ min = [1, 0], max = [0, 1] }"),

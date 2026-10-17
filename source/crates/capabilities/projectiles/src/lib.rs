@@ -13,7 +13,7 @@
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionRange, ActionTarget, ActionsSet, Aim, Delivery, DeliveryShape,
+    ActionBook, ActionRange, ActionTarget, ActionsSet, Aim, Delivery, DeliveryShape, Flights,
     ProjectileFlight,
 };
 use campfire_common::EnumAll;
@@ -22,7 +22,7 @@ use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
 use campfire_geometry::Bounds;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, Position, SimWorld, StableId};
-use campfire_units::{Body, MapBook};
+use campfire_units::{Body, MapBook, UnitTypes};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
 mod curve;
@@ -33,6 +33,7 @@ mod flying;
 mod launches;
 mod launching;
 mod projectile;
+mod projectile_books;
 mod projectile_data;
 mod projectile_spec;
 mod projectiles_api;
@@ -96,7 +97,9 @@ impl Module for Projectiles {
         d.callback::<Deliverers>(DeliveryKind::Projectile, Self::deliver);
         d.require::<Projectile, FlightState>();
         d.observer(Flying::lose_teleported);
-        d.book::<ByType<ProjectileSpec>>();
+        d.extend::<UnitTypes>(Self::tag_types);
+        d.fact::<Flights>(Self::flights);
+        d.book::<ByType<ProjectileSpec>>(ProjectileSpec::book);
         d.api(ProjectilesApi::register);
     }
 

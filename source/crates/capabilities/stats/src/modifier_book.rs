@@ -2,26 +2,28 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
-use campfire_declare::Book;
+use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_math::Num;
 use campfire_script::{
     HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName, View,
 };
 use campfire_sim::TickRate;
-use campfire_units::{ScriptBook, StatusTags};
+use campfire_units::{ScriptBook, StatusTags, UnitTypes};
 use campfire_values::{ActionId, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet};
 
 use crate::application::{Adding, Application, ApplyAt, NewInstance};
 use crate::applier_param::ApplierParam;
-use crate::error::ModifierError;
+use crate::error::{ModifierError, SpecError};
 use crate::instance::{Instance, StackEnd, StatShare};
 use crate::interval::Interval;
 use crate::interval_revival::IntervalRevival;
 use crate::lifetime::{Ends, Hold, Lifetime};
 use crate::modifier_data::{ModifierData, Reapply};
 use crate::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
+use crate::modifiers_data::ModifiersData;
 use crate::param_book::ParamBook;
 use crate::param_read::ParamRead;
+use crate::stat_book::StatBook;
 use crate::stat_id::StatId;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
@@ -332,6 +334,52 @@ impl ModifierBook {
             },
             max_stacks: spec.max_stacks,
         }
+    }
+}
+
+impl ModifierBook {
+    /// Every package's modifiers, package by package, each by name, with its script; an error for
+    /// a name the mode does not declare or a modifier that breaks a rule.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let scripts = cx.book::<ScriptBook>()?;
+        let tags = cx.fact::<UnitTypes>()?.tags();
+        let stats = cx.book::<StatBook>()?;
+        let mut book = Self::default();
+        for (index, package) in cx.packages() {
+            let Some(modifiers) = package.content.get::<ModifiersData>() else {
+                continue;
+            };
+            let modifiers = modifiers.0.iter().map(|(name, data)| {
+                let script = data.script.as_ref().map(|path| cx.script(index, path));
+                Ok(PackageModifier {
+                    name,
+                    data,
+                    script: script.transpose()?,
+                })
+            });
+            let modifiers = modifiers.collect::<Result<Vec<_>, BookError>>()?;
+            let load = ModifierLoad {
+                scripts,
+                tags,
+                stat: |stat: &Stat| {
+                    let found = stats.named(stat);
+                    found.ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
+                },
+                rate: cx.rate(),
+            };
+            book.load(load, index, &modifiers)
+                .map_err(|ModifierError { modifier, error }| {
+                    let at = BookPlace::Entry {
+                        table: ModifiersData::KEY,
+                        name: modifier,
+                    };
+                    match error {
+                        SpecError::Problem(problem) => BookError::rule(index, at, problem),
+                        SpecError::Unknown(name) => BookError::unknown(index, at, name),
+                    }
+                })?;
+        }
+        Ok(book)
     }
 }
 

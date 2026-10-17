@@ -10,9 +10,9 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemCondition};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    InstallFacts, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section,
-    SpawnParts,
+    Book, BuildFn, BuiltBooks, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations,
+    EntityKind, EntityParts, ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, ModuleSet,
+    OneShot, Report, Role, Scratch, Section, SpawnParts,
 };
 use campfire_script::{ApiBuilder, CallParams, CallPart, Ctx, RowReads, ViewColumn};
 use campfire_sim::{
@@ -23,7 +23,6 @@ use campfire_state_types::{Replication, StateTypes};
 use campfire_units::{EntityKinds, ViewReader};
 use campfire_values::EngineTag;
 
-use crate::books::built_books::BuiltBooks;
 use crate::release::stage_span::StageSpan;
 
 /// The consumer that puts a module's declarations into a match: its state types and restore
@@ -137,7 +136,11 @@ impl Declarations for Installer<'_> {
 
     /// The book its builder made, in place before its owner installs, so the install reads it;
     /// the script view takes what it copies of it.
-    fn book<B: Book>(&mut self) {
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {
         let book = (self.books.take::<B>())
             .unwrap_or_else(|| panic!("{} is declared and built", type_name::<B>()));
         if B::held(self.role) {

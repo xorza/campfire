@@ -8,9 +8,7 @@ use campfire_production::{Gatherer, NodeAt};
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{HostRule, Position, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
-use campfire_units::{
-    DashTo, ForcedMove, MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState,
-};
+use campfire_units::{DashTo, ForcedMove, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState};
 use campfire_values::{ActionStart, DashDelivery, VisionShare};
 
 use super::*;

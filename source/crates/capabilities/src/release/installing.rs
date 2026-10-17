@@ -1,9 +1,8 @@
 use std::fmt;
 
-use campfire_declare::{InstallCx, InstallFacts, Module, ModuleVisitor};
+use campfire_declare::{BuiltBooks, InstallCx, InstallFacts, Module, ModuleVisitor};
 use campfire_sim::SimParts;
 
-use crate::books::built_books::BuiltBooks;
 use crate::release::declaring::{Declaring, Scripts};
 use crate::release::installer::{InstallParts, Installer};
 

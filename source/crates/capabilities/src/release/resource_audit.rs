@@ -11,8 +11,9 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section, SpawnParts,
+    Book, BuildFn, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind,
+    EntityParts, ExtendFn, Fact, KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch,
+    Section, SpawnParts,
 };
 use campfire_mode::ModeWorld;
 use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
@@ -109,7 +110,11 @@ impl Declarations for DeclaredResources {
 
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
-    fn book<B: Book>(&mut self) {
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {
         self.ids.push(TypeId::of::<B>());
     }
 

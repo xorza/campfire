@@ -1,11 +1,13 @@
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, SectionTable};
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, SectionTable};
 use campfire_math::Num;
-use campfire_script::{DataSection, DataTable};
+use campfire_script::{DataSection, DataTable, NameKind, UnknownName};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::body_form::BodyForm;
+use crate::layer::Layer;
+use crate::layer_names::LayerNames;
 
 /// A unit type's `collision` section: its body, a circle of its `radius` or a box of its `box`
 /// size, `[width, depth]`, in meters, its `height`, 0 when it names none, and the layer it moves
@@ -59,6 +61,31 @@ impl<'de> Deserialize<'de> for CollisionData {
 
 impl DataSection for CollisionData {
     const TABLE: DataTable = DataTable::Collision;
+}
+
+impl CollisionData {
+    /// The body of each unit type that stands with a `collision` section, on the layer it names,
+    /// by the mode's layers, or on the first; an error for a layer the mode does not declare.
+    pub fn bodies(cx: &BookCx<'_>) -> Result<ByType<BodyForm>, BookError> {
+        let layers = cx.fact_if::<LayerNames>()?;
+        let mut bodies = ByType::default();
+        for unit in cx.standing() {
+            let Some(collision) = unit.data.section::<Self>() else {
+                continue;
+            };
+            let layer = match &collision.layer {
+                Some(name) => {
+                    let named = layers.and_then(|layers| layers.0.named(name.as_str()));
+                    let unknown = || UnknownName::new(NameKind::Layer, name);
+                    let at = || BookPlace::UnitType(unit.place());
+                    named.ok_or_else(|| BookError::unknown(unit.package, at(), unknown()))?
+                }
+                None => Layer::FIRST,
+            };
+            bodies.set(unit.unit_type, collision.form.on(layer));
+        }
+        Ok(bodies)
+    }
 }
 
 impl Section for CollisionData {

@@ -1,7 +1,9 @@
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
-use campfire_units::{CellSplit, CoarseSpan, Ground, GroundData, GroundError, HeightGrid, MapBook};
-use campfire_vision::VisionBook;
+use campfire_units::{
+    CellSplit, CoarseSpan, Ground, GroundData, GroundError, GroundLoadError, HeightGrid,
+};
+use campfire_vision::VisionDataError;
 
 use super::*;
 
@@ -174,8 +176,7 @@ fn on_mode_input(ctx, player, name, value) {
 
 #[test]
 fn a_map_with_vision_holds_at_most_64_teams() {
-    // The test mode's map has a vision grid. Its teams are checked before its units, so a map
-    // of 64 teams fails later, on the units of the teams it lacks, and one of 65 at once.
+    // The test mode's map has a vision grid, which holds 64 teams and refuses a 65th.
     let files = mode_files();
     let teams = |count: usize| -> Vec<TeamManifest> {
         (0..count)
@@ -185,20 +186,14 @@ fn a_map_with_vision_holds_at_most_64_teams() {
             })
             .collect()
     };
-    let layers = Names::default();
+    let map = files.map.sections();
+    let ground = MapBook::of(map, None).unwrap();
     let resolve = |count| {
-        let teams = teams(count);
-        let input = MapInput {
-            map: &files.map,
-            heights: None,
-            teams: &teams,
-            relations: &[],
-            layers: &layers,
-        };
-        ModeMap::resolve(input, |_| None).err()
+        let teams = ModeMap::team_names(&teams(count)).unwrap();
+        VisionBook::of(&ground, map, teams.len()).err()
     };
-    assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
-    assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
+    assert_eq!(resolve(64), None);
+    assert_eq!(resolve(65), Some(VisionDataError::TooManyTeams));
 }
 
 #[test]
@@ -207,8 +202,6 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
     // `[ground]` with no grid is refused; with one, its split and coarse cells are those of its
     // `[ground]`, the grid's own cells with none, and coarse cells smaller than its cells are
     // refused.
-    let files = mode_files();
-    let layers = Names::default();
     let grid = HeightGrid::new(
         [Num::ZERO; 2],
         Num::int(10),
@@ -228,14 +221,7 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
             Some(ground) => map.with(ground),
             None => map,
         };
-        let input = MapInput {
-            map: &map,
-            heights,
-            teams: &files.teams,
-            relations: &[],
-            layers: &layers,
-        };
-        ModeMap::resolve(input, |_| None).map(|resolved| resolved.ground.ground)
+        MapBook::of(map.sections(), heights).map(|book| book.ground)
     };
     let read = |split, cell| GroundData {
         split,
@@ -244,7 +230,7 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
     assert_eq!(resolve(None, None), Ok(Ground::default()));
     assert_eq!(
         resolve(Some(GroundData::default()), None),
-        Err(ModeError::NoHeights)
+        Err(GroundLoadError::NoHeights)
     );
     let own = Ground::new(grid.clone(), CellSplit::ZeroTwo, None).unwrap();
     assert_eq!(resolve(None, Some(&grid)), Ok(own));
@@ -255,7 +241,7 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
     );
     assert_eq!(
         resolve(Some(read(CellSplit::OneThree, 5)), Some(&grid)),
-        Err(ModeError::Ground(GroundError::CoarseCell))
+        Err(GroundLoadError::Ground(GroundError::CoarseCell))
     );
 }
 

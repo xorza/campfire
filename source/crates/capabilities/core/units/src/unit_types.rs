@@ -2,17 +2,20 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use campfire_common::DeclaredName;
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, Fact, SourceKind};
 use campfire_script::{StateSchema, TagNames};
 use campfire_values::{
-    EngineTag, NameId, NameTable, Names, NamesError, Scalar, Tag, TagProperties, TagSet, TypeScope,
-    UnitType,
+    EngineTag, NameId, NameTable, Names, NamesError, PackageIndex, Scalar, Tag, TagProperties,
+    TagSet, TypeScope, UnitType,
 };
 
+use crate::avatar::Avatar;
 use crate::body_form::BodyForm;
 use crate::error::TypesError;
 use crate::layer::Layer;
+use crate::layer_names::LayerNames;
 use crate::tag_book::TagBook;
-use crate::tag_data::TagData;
+use crate::tag_data::{ModeTagsData, TagData};
 use crate::type_origin_book::{TypeOrigin, TypeOriginBook};
 use crate::unit_state_book::UnitStateBook;
 use crate::unit_type_book::UnitTypeBook;
@@ -46,6 +49,8 @@ pub struct UnitTypeBooks {
     pub origins: TypeOriginBook,
     pub states: UnitStateBook,
 }
+
+impl Fact for UnitTypes {}
 
 /// No tag and no type.
 impl Default for UnitTypes {
@@ -170,10 +175,99 @@ impl UnitTypes {
         book
     }
 
-    /// The books of the types: their names and params, their tags, each with the effects `data`
-    /// gives it by name beside an engine tag's own, their origins and their state fields. A tag
-    /// neither names has no effect.
-    pub fn finish(self, data: &BTreeMap<DeclaredName, TagData>) -> UnitTypeBooks {
+    /// The match's unit types and tags: the release's engine tags, then every tag the packages
+    /// name, then each package's types, in the order `cx` numbers them, an avatar's tagged
+    /// `avatar`; an error for a type its scope names already, or past the most types or tags a
+    /// match holds.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let source = cx.source();
+        let fail = |error| BookError::rule(PackageIndex::MODE, BookPlace::Types, error);
+        let mut types = Self::new(source.engine_tags.iter().copied());
+        for name in source.tag_names {
+            types.declare(name.as_str()).map_err(fail)?;
+        }
+        for (index, package) in cx.packages() {
+            let scope = TypeScope::of_package(index);
+            for (name, data) in package.units {
+                let origin = TypeOrigin {
+                    package: index,
+                    name: name.as_str().into(),
+                };
+                types
+                    .load(scope, origin, &UnitTypeCore::from(data))
+                    .map_err(fail)?;
+            }
+            if let SourceKind::Avatar(data) = package.kind {
+                let origin = TypeOrigin {
+                    package: index,
+                    name: package.name.into(),
+                };
+                types
+                    .load(TypeScope::Mode, origin, &UnitTypeCore::from(data))
+                    .map_err(fail)?;
+            }
+        }
+        for unit in cx.types() {
+            debug_assert_eq!(
+                types.types.named((unit.scope, unit.name)),
+                Some(unit.unit_type),
+                "the build numbers the types as their load does"
+            );
+            if unit.avatar() {
+                types.give_tag(unit.unit_type, Avatar::TAG.tag());
+            }
+        }
+        Ok(types)
+    }
+
+    /// Tags each unit type that stands with the name of the layer its body moves on, as the
+    /// mode's layers name them: the first with no body.
+    pub fn tag_bodies(cx: &BookCx<'_>, types: &mut Self) -> Result<(), BookError> {
+        let Some(layers) = cx.fact_if::<LayerNames>()? else {
+            return Ok(());
+        };
+        let bodies = cx.book::<ByType<BodyForm>>()?;
+        let standing = cx.standing().map(|unit| unit.unit_type);
+        let bodies = standing.map(|unit_type| (unit_type, bodies.get(unit_type).copied()));
+        types.tag_layers(&layers.0, bodies);
+        Ok(())
+    }
+
+    /// The book of the match's unit types and tags, as their draft holds them.
+    pub fn build_type_book(cx: &BookCx<'_>) -> Result<UnitTypeBook, BookError> {
+        Ok(cx.fact::<Self>()?.type_book())
+    }
+
+    /// The book of the match's unit types' origins.
+    pub fn build_origin_book(cx: &BookCx<'_>) -> Result<TypeOriginBook, BookError> {
+        Ok(cx.fact::<Self>()?.origin_book())
+    }
+
+    /// The book of the match's unit types' state fields.
+    pub fn build_state_book(cx: &BookCx<'_>) -> Result<UnitStateBook, BookError> {
+        Ok(cx.fact::<Self>()?.state_book())
+    }
+
+    /// The book of the match's tags, each with the effects the mode's `[tags]` gives it.
+    pub fn build_tag_book(cx: &BookCx<'_>) -> Result<TagBook, BookError> {
+        let none = BTreeMap::new();
+        let data = cx.mode_section::<ModeTagsData>();
+        let data = data.map_or(&none, |data| &data.0);
+        Ok(cx.fact::<Self>()?.tag_book(data))
+    }
+
+    /// The book of the types' names and params.
+    pub fn type_book(&self) -> UnitTypeBook {
+        UnitTypeBook::new(
+            self.tags.clone(),
+            Arc::clone(&self.types),
+            Arc::clone(&self.params),
+        )
+    }
+
+    /// The book of the types' tags, each with the effects `data` gives it by name beside an engine
+    /// tag's own. A tag neither names has no effect.
+    pub fn tag_book(&self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
         let tags = self.tags.names().iter().map(|(tag, name)| {
             let engine = self
                 .engine
@@ -190,31 +284,33 @@ impl UnitTypes {
             (engine.union(data.properties()), immune.collect())
         });
         let effects: Vec<_> = tags.collect();
-        let types = self.type_tags.into_iter().enumerate().map(|(at, tags)| {
+        let types = self.type_tags.iter().enumerate().map(|(at, &tags)| {
             (
                 UnitType::new(u16::try_from(at).expect("types fit u16")),
                 tags,
             )
         });
-        UnitTypeBooks {
-            types: UnitTypeBook::new(self.tags, self.types, self.params),
-            tags: TagBook::new(self.engine.len(), effects, types),
-            origins: self.origins,
-            states: self.states.into_iter().collect(),
-        }
+        TagBook::new(self.engine.len(), effects, types)
     }
-}
 
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::unit_state_book::UnitStateBook;
-    use crate::unit_types::UnitTypes;
+    pub fn origin_book(&self) -> TypeOriginBook {
+        self.origins.clone()
+    }
 
-    impl UnitTypes {
-        /// The book of the state fields of the types so far, as a test that loads a type at a
-        /// time puts it in again after each.
-        pub(crate) fn state_book(&self) -> UnitStateBook {
-            self.states.iter().cloned().collect()
+    /// The book of the types' state fields.
+    pub fn state_book(&self) -> UnitStateBook {
+        self.states.iter().cloned().collect()
+    }
+
+    /// The books of the types: their names and params, their tags, each with the effects `data`
+    /// gives it by name beside an engine tag's own, their origins and their state fields. A tag
+    /// neither names has no effect.
+    pub fn finish(self, data: &BTreeMap<DeclaredName, TagData>) -> UnitTypeBooks {
+        UnitTypeBooks {
+            tags: self.tag_book(data),
+            states: self.state_book(),
+            origins: self.origins,
+            types: UnitTypeBook::new(self.tags, self.types, self.params),
         }
     }
 }

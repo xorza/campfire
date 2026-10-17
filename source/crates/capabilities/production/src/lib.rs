@@ -19,13 +19,14 @@ use campfire_declare::{
 };
 use campfire_sim::{Capability, SimSet};
 use campfire_stats::StatsSet;
-use campfire_units::{BodyUnit, Dead, Owner, Player, UnitsSet};
+use campfire_units::{BodyUnit, Dead, Owner, Player, UnitTypes, UnitsSet};
 use campfire_values::{Block, EngineTag, TagProperties, UnitType};
 use campfire_vision::{ByHolding, ByVision, TeamSight};
 
 use crate::holdings::Holdings;
 use crate::production_column::RowReads;
 
+mod book_builders;
 mod build_book;
 mod build_target;
 mod builder;
@@ -164,17 +165,18 @@ impl Module for Production {
         d.component::<Site>();
         d.component::<Node>();
         d.component::<Gatherer>();
-        d.book::<ByType<ProductionData>>();
-        d.book::<RequirementBook>();
-        d.book::<SupplyCostBook>();
-        d.book::<BuildBook>();
-        d.book::<NodeBook>();
-        d.book::<SupplyBook>();
+        d.extend::<UnitTypes>(Self::tag_types);
+        d.book::<ByType<ProductionData>>(ProductionData::book);
+        d.book::<RequirementBook>(RequirementBook::build);
+        d.book::<SupplyCostBook>(SupplyCostBook::build);
+        d.book::<BuildBook>(BuildBook::build);
+        d.book::<NodeBook>(NodeBook::build);
+        d.book::<SupplyBook>(SupplyBook::build);
         d.column::<ProductionColumn, RowReads>(ProductionColumn::fill_row);
         d.api(ProductionApi::register);
-        d.book::<ByType<Builder>>();
-        d.book::<ByType<Node>>();
-        d.book::<ByType<Gatherer>>();
+        d.book::<ByType<Builder>>(Builder::book);
+        d.book::<ByType<Node>>(Node::book);
+        d.book::<ByType<Gatherer>>(Gatherer::book);
         d.part::<BodyUnit, TrainQueue>(|at| {
             at.of_type::<ProductionData>()
                 .map(|_| TrainQueue::default())

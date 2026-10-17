@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
+use campfire_geometry::Grid;
 use campfire_script::View;
 
 use crate::paths::Paths;
@@ -11,6 +12,8 @@ use crate::walls::Walls;
 pub struct NavigationBook {
     pub paths: Paths,
     pub walls: Walls,
+    /// The cells units plan routes over, when the map has them.
+    pub pathing: Option<Grid>,
 }
 
 impl Book for NavigationBook {

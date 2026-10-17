@@ -45,10 +45,12 @@ use crate::unit_entity::delivery_entity::DeliveryEntity;
 use crate::unit_grid::{GridUnits, UnitGrid};
 use crate::unit_state::{StateSync, SyncAll, SyncCall, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::unit_state_book::UnitStateBook;
+use crate::unit_steps::UnitSteps;
 use crate::unit_ticks::UnitTicks;
 use crate::unit_tracker::UnitTracker;
 use crate::unit_type_book::UnitTypeBook;
 use crate::unit_type_core::{TypeParamsData, TypeStateData, TypeTagsData};
+use crate::unit_types::UnitTypes;
 use crate::units_api::UnitsApi;
 use crate::units_call::UnitsCall;
 use crate::units_column::{StateRowReads, UnitsColumn};
@@ -148,12 +150,14 @@ impl Module for Units {
         d.require::<UnitEntity, Team>();
         // A forced move moves a unit that walks, in place of its step.
         d.require::<ForcedMove, MoveStep>();
-        d.book::<UnitTypeBook>();
-        d.book::<UnitStateBook>();
-        d.book::<TypeOriginBook>();
-        d.book::<TagBook>();
-        d.book::<MapBook>();
-        d.book::<ScriptBook>();
+        d.fact::<UnitTypes>(UnitTypes::build);
+        d.extend::<UnitTypes>(UnitTypes::tag_bodies);
+        d.book::<UnitTypeBook>(UnitTypes::build_type_book);
+        d.book::<UnitStateBook>(UnitTypes::build_state_book);
+        d.book::<TypeOriginBook>(UnitTypes::build_origin_book);
+        d.book::<TagBook>(UnitTypes::build_tag_book);
+        d.book::<MapBook>(MapBook::build);
+        d.book::<ScriptBook>(ScriptBook::build);
         d.column::<UnitsColumn, StateRowReads>(UnitsColumn::fill_state);
         d.call_part::<UnitsCall>();
         d.call_part::<ScriptCall>();
@@ -162,9 +166,9 @@ impl Module for Units {
         d.api(NewUnit::register);
         d.api(UnitsApi::register);
         d.api(ViewApi::register_queries);
-        d.book::<ByType<MoveStep>>();
-        d.book::<ByType<TurnStep>>();
-        d.book::<ByType<BodyForm>>();
+        d.book::<ByType<MoveStep>>(UnitSteps::steps);
+        d.book::<ByType<TurnStep>>(UnitSteps::turns);
+        d.book::<ByType<BodyForm>>(CollisionData::bodies);
         // The spawner gives a unit the facing of its angle, which its body turns by; this part
         // holds every unit to one.
         d.part::<BodyUnit, Facing>(|at| Some(Facing::of(Facing::angle_of(at))));

@@ -16,7 +16,7 @@ use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
 use campfire_players::PlayerResources;
-use campfire_script::{ScriptLimits, ScriptPools};
+use campfire_script::{ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimUpdate, StateRegistry};
 use campfire_store::internals::{CargoManifest, SourceFiles};
@@ -479,23 +479,34 @@ fn a_module_names_another_modules_sets_only_where_its_sets_run() {
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 43] = [
-    // The load.
+const LOOKUPS: [(&str, &str); 54] = [
+    // The load, each module's books by their builders.
+    ("actions/action_load.rs", "named"),
+    ("actions/action_slots/mod.rs", "named"),
     ("actions/cost_target.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
-    ("books/book_builder.rs", "named"),
-    ("books/unit_start/mod.rs", "named"),
+    ("areas/area_books.rs", "named"),
     ("combat/armor.rs", "named"),
+    ("combat/combat_books.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
+    ("declare/book_cx.rs", "named"),
+    ("interaction/interaction_books.rs", "named"),
+    ("items/item_books.rs", "named"),
     ("mode/game_map.rs", "named"),
-    ("mode/map_data.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map.rs", "named"),
     ("mode/mode_names.rs", "named"),
+    ("mode/mode_units.rs", "named"),
+    ("navigation/navigation_books.rs", "named"),
+    ("production/book_builders.rs", "named"),
+    ("progression/progression_books.rs", "named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/modifier_spec.rs", "named"),
     ("stats/param_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
+    ("stats/type_passive.rs", "named"),
+    ("stats/type_pools.rs", "named"),
+    ("units/collision_data.rs", "named"),
     ("units/unit_types.rs", "named"),
     ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.

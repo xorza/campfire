@@ -1,7 +1,9 @@
-use campfire_geometry::Metric;
+use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::{Deserialize, Serialize};
+
+use crate::error::MapPointError;
 
 /// A point of the map, in meters: `[x, z]` on the ground plane of a planar map, `[x, y, z]` on a
 /// spatial one.
@@ -21,6 +23,16 @@ impl MapPoint {
         };
         let point = Vec3::new(x, y, z);
         Position::from(point).within_bound().then_some(point)
+    }
+
+    /// Its place on a map of `metric` and `bounds`; an error unless it fits the metric and lies
+    /// within the bounds.
+    pub fn place(self, metric: Metric, bounds: Bounds) -> Result<Vec3, MapPointError> {
+        match self.pos() {
+            _ if !self.fits(metric) => Err(MapPointError::Shape),
+            Some(pos) if bounds.contains(pos) => Ok(pos),
+            _ => Err(MapPointError::OutOfBounds),
+        }
     }
 
     /// Whether it has the shape of a point of a map of `metric`.

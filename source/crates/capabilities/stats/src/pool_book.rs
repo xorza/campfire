@@ -3,12 +3,16 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
-use campfire_declare::Book;
+use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_script::View;
-use campfire_values::{Names, Stat};
+use campfire_values::{Names, PackageIndex, Stat};
 
+use crate::life_pool::LifePool;
+use crate::mode_pools_data::ModePoolsData;
 use crate::pool_data::PoolData;
 use crate::pool_id::PoolId;
+use crate::pool_names::PoolNames;
+use crate::stat_book::StatBook;
 use crate::stat_id::StatId;
 
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
@@ -67,6 +71,26 @@ impl PoolBook {
         (0..).zip(&self.pools).map(|(at, &stats)| {
             let pool = PoolId::new(at).expect("the mode's names hold its pools within the limit");
             (pool, stats)
+        })
+    }
+}
+
+impl PoolBook {
+    /// The mode's pools, each with its stats, and its life pool, as the module that kills units
+    /// names it; an error for a stat the mode does not declare.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let none = BTreeMap::new();
+        let pools = cx.mode_section::<ModePoolsData>();
+        let pools = pools.map_or(&none, |pools| &pools.0);
+        let names = Arc::clone(&cx.fact::<PoolNames>()?.0);
+        let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
+        let stats = cx.book::<StatBook>()?;
+        Self::new(pools, names, life, |pool, stat| {
+            let at = BookPlace::Entry {
+                table: ModePoolsData::KEY,
+                name: pool.clone(),
+            };
+            stats.named_in(PackageIndex::MODE, at, stat)
         })
     }
 }

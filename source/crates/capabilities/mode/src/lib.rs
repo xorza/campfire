@@ -18,7 +18,7 @@ use campfire_actions::{ActionSlots, ActionsSet};
 use campfire_combat::{Weigh, Weighers};
 use campfire_common::{EnumAll, PlayerSlot};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
-use campfire_navigation::{ModeNavigationData, NavigationBook, OnPath, PathWalker};
+use campfire_navigation::{ModeNavigationData, Navigation, NavigationBook, OnPath, PathWalker};
 use campfire_players::{Players, PlayersWorld, Seating, SlotStart};
 use campfire_production::ProductionSet;
 use campfire_script::{CallError, Ctx, Hook, Pool, ScriptRole, ScriptText, View};
@@ -61,6 +61,7 @@ mod mode_schema;
 mod mode_setup;
 mod mode_spec;
 mod mode_state;
+mod mode_teams;
 mod mode_units;
 mod mode_world;
 mod offer;
@@ -103,11 +104,12 @@ pub use crate::mode_hooks::ModeHooks;
 pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
 pub use crate::mode_load::ModeLoad;
-pub use crate::mode_map::{MapInput, ModeMap, ResolvedMap};
+pub use crate::mode_map::{MapInput, ModeMap};
 pub use crate::mode_names::ModeNames;
 pub use crate::mode_setup::ModeSetup;
 pub use crate::mode_spec::{MapStart, ModeSpec, SpecLoad};
 pub use crate::mode_state::{ModeState, ModeSync};
+pub use crate::mode_teams::ModeTeams;
 pub use crate::mode_units::ModeUnits;
 pub use crate::mode_world::ModeWorld;
 pub use crate::offer::Offer;
@@ -167,7 +169,6 @@ impl Module for Mode {
         Capability::Production,
         Capability::Progression,
         Capability::Stats,
-        Capability::Vision,
     ];
     type Set = ModeSet;
 
@@ -261,13 +262,12 @@ impl Mode {
             walkers,
             loadout_ranks,
         } = load;
-        map.install_pathing(world, walkers);
+        Navigation::load_map(world, walkers);
         let ModeMap {
             teams,
             relations,
             placed,
             markers,
-            ..
         } = map;
         let paths = world
             .get_resource::<NavigationBook>()

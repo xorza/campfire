@@ -32,3 +32,26 @@ pub enum GroundError {
     #[error("the ground has more coarse cells than its grid has samples")]
     CoarseCount,
 }
+
+/// Why a map's ground does not load. Packages are untrusted, so each is an expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum GroundLoadError {
+    /// The map gives a `[ground]` but no height grid.
+    #[error("a [ground] with no height grid")]
+    NoHeights,
+    /// The height grid and the `[ground]` make no ground.
+    #[error(transparent)]
+    Ground(GroundError),
+}
+
+/// Why a point of a map has no place on it. Packages are untrusted, so each is an expected
+/// failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum MapPointError {
+    /// It has the shape of the other metric's points.
+    #[error("a point of the map does not fit its metric")]
+    Shape,
+    /// It lies outside the map's bounds.
+    #[error("a map point is outside the map's bounds")]
+    OutOfBounds,
+}

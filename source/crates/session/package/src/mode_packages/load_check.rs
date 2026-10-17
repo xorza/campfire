@@ -4,23 +4,25 @@ use std::num::NonZeroUsize;
 use std::slice;
 
 use campfire_actions::{
-    ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, DamageFields, DeliveryData,
-    DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, KindError, LaunchFields,
-    ListHook, MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields,
-    SlotKinds, SpawnFields, Targeting, TypeSlotsData, XpFields,
+    ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, ActionsData, DamageFields,
+    DeliveryData, DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, KindError,
+    LaunchFields, ListHook, MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField,
+    RestoreFields, SlotKinds, SpawnFields, Targeting, TypeSlotsData, XpFields,
 };
 use campfire_areas::AreaData;
-use campfire_capabilities::{BookError, BookPlace, Books, Release, TypePlace};
+use campfire_capabilities::Release;
 use campfire_combat::{CombatData, ModeCombatData};
 use campfire_common::DeclaredName;
-use campfire_declare::{Section, UnitTypeData};
+use campfire_declare::{
+    BookError, BookPlace, NamesListError, Problem, Section, TypePlace, UnitTypeData,
+};
 use campfire_geometry::Metric;
 use campfire_interaction::{UseData, UsesData};
-use campfire_items::{InventoryData, ItemData, ItemError, ShopData};
+use campfire_items::{InventoryData, ItemData, ItemError, ItemsData, ShopData};
 use campfire_math::Num;
-use campfire_mode::{ModeData, ModeList, ModeNamesError, Offers};
-use campfire_navigation::{MapNavigationData, ModeNavigationData};
-use campfire_orders::AiData;
+use campfire_mode::{ModeData, ModeError, Offers};
+use campfire_navigation::{MapNavigationData, ModeNavigationData, NavigationDataError};
+use campfire_orders::{AiData, AiError};
 use campfire_players::ResourcesData;
 use campfire_production::{ModeSupplyData, ProductionData, SupplyData};
 use campfire_progression::{ModeTracksData, TrackError};
@@ -32,10 +34,13 @@ use campfire_script::{
 };
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{
-    ModePoolsData, ModeStatsData, ModifierData, PassiveData, StatId, StatsData, TypePoolsData,
+    ModePoolsData, ModeStatsData, ModifierData, ModifierProblem, ModifiersData, PassiveData,
+    StatId, StatsData, TypePoolsData, UnitStartError,
 };
 use campfire_units::{CollisionData, TypeParamsData, TypeStateData, TypeTagsData, TypesError};
-use campfire_values::{EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat};
+use campfire_values::{
+    EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat, TimeTooLarge,
+};
 use campfire_vision::{GridData, VisionData};
 
 use crate::dependent::{Dependent, DependentKind};
@@ -194,7 +199,7 @@ impl<'a> LoadCheck<'a> {
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
         let engine_tags = Release::engine_tags();
         let input = packages.book_input(check.rate, &stat_order, &engine_tags);
-        let books = Books::build(&input).map_err(|error| book_error(packages, error))?;
+        let books = Release::books(&input).map_err(|error| book_error(packages, error))?;
         books
             .check_walkable()
             .map_err(|problem| fail(LoadProblem::Map(problem)))?;
@@ -1811,57 +1816,19 @@ impl<'a> LoadCheck<'a> {
 /// The load error of what building `packages`' books refused, at the fastest rate the mode
 /// allows.
 fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
-    let at = |package: PackageIndex, unit_type: TypePlace| match unit_type {
-        TypePlace::Avatar => {
-            let view = packages.packages().nth(usize::from(package));
-            let package = &view.expect("the books name a package").package;
-            Place::Avatar(package.header.name.clone())
-        }
-        TypePlace::Declared(name) => Place::UnitType(name),
-    };
     let (package, problem) = match error {
-        BookError::Start {
+        BookError::Unknown {
             package,
-            unit_type,
-            error,
+            at,
+            name: UnknownName { of, name },
         } => (
             package,
-            LoadProblem::UnitStart {
-                at: at(package, unit_type),
-                error,
+            LoadProblem::Unknown {
+                at: book_place(packages, package, at),
+                name,
+                of,
             },
         ),
-        BookError::BoxWalks { package, unit_type } => (
-            package,
-            LoadProblem::BoxBody {
-                at: at(package, unit_type),
-                problem: BoxProblem::Walks,
-            },
-        ),
-        BookError::Ai {
-            package,
-            unit_type,
-            error,
-        } => (
-            package,
-            LoadProblem::Ai {
-                at: at(package, unit_type),
-                error,
-            },
-        ),
-        BookError::Action {
-            package,
-            action,
-            problem,
-        } => (package, action_problem(action, problem)),
-        BookError::Modifier {
-            package,
-            modifier,
-            problem,
-        } => (package, LoadProblem::Modifier { modifier, problem }),
-        BookError::Mode(error) => (PackageIndex::MODE, LoadProblem::Mode(error)),
-        BookError::Names(error) => (PackageIndex::MODE, names_problem(error)),
-        BookError::Types(error) => (PackageIndex::MODE, types_problem(error)),
         BookError::Script { package, path } => (
             package,
             LoadProblem::Script {
@@ -1869,49 +1836,119 @@ fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
                 problem: ScriptProblem::Missing,
             },
         ),
-        BookError::Tracks(TrackError::TooMany) => {
-            (PackageIndex::MODE, LoadProblem::TooMany(Limit::Tracks))
-        }
-        BookError::Tracks(TrackError::LevelTracks) => {
-            (PackageIndex::MODE, LoadProblem::LevelTracks)
-        }
-        BookError::Item {
+        BookError::Rule {
             package,
-            item,
-            error,
-        } => (
-            package,
-            LoadProblem::Item(match error {
-                ItemError::StackCost(_) => ItemProblem::StackCost(item),
-                ItemError::CheaperThanComponents(_) => ItemProblem::CheaperThanComponents(item),
-            }),
-        ),
-        BookError::AreaTime { package, unit_type } => (
-            package,
-            LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type)),
-        ),
-        BookError::Unknown {
-            package,
-            at: place,
-            name,
-        } => {
-            let at = match place {
-                BookPlace::UnitType(unit_type) => at(package, unit_type),
-                BookPlace::Action(action) => Place::Action(action),
-                BookPlace::Modifier(modifier) => Place::Modifier(modifier),
-                BookPlace::Pool(pool) => Place::Pool(pool),
-                BookPlace::Item(item) => Place::Item(item),
-                BookPlace::Combat => Place::Combat,
-            };
-            let UnknownName { of, name } = name;
-            (package, LoadProblem::Unknown { at, name, of })
-        }
+            at,
+            problem,
+        } => (package, rule_problem(packages, package, at, problem)),
     };
     let view = packages.packages().nth(usize::from(package));
     LoadError::of(
         &view.expect("the books name a package").package.header.name,
         problem,
     )
+}
+
+/// The place of `at`, of the package at `package`, as a load error names it.
+fn book_place(packages: &ModePackages, package: PackageIndex, at: BookPlace) -> Place {
+    match at {
+        BookPlace::UnitType(TypePlace::Avatar) => {
+            let view = packages.packages().nth(usize::from(package));
+            let package = &view.expect("the books name a package").package;
+            Place::Avatar(package.header.name.clone())
+        }
+        BookPlace::UnitType(TypePlace::Declared(name)) => Place::UnitType(name),
+        BookPlace::Entry { table, name } => match table {
+            ActionsData::KEY => Place::Action(name),
+            ModifiersData::KEY => Place::Modifier(name),
+            ItemsData::KEY => Place::Item(name),
+            ModePoolsData::KEY => Place::Pool(name),
+            other => unreachable!("no book names an entry of {other}"),
+        },
+        BookPlace::Section(key) => match key {
+            ModeCombatData::KEY => Place::Combat,
+            ModeTracksData::KEY => Place::Tracks,
+            ModeNavigationData::KEY => Place::Navigation,
+            ResourcesData::KEY => Place::Resources,
+            _ => Place::Mode,
+        },
+        BookPlace::Map | BookPlace::Teams => Place::Mode,
+        BookPlace::Types => Place::UnitTypes,
+    }
+}
+
+/// The problem of `problem`, a rule of a module the data at `at`, of the package at `package`,
+/// breaks: each in the case the load reports it by, or as the module's own.
+fn rule_problem(
+    packages: &ModePackages,
+    package: PackageIndex,
+    at: BookPlace,
+    problem: Problem,
+) -> LoadProblem {
+    let entry = |at: &BookPlace| match at {
+        BookPlace::Entry { name, .. } => name.clone(),
+        other => unreachable!(
+            "an action's, a modifier's or an item's problem is at its entry, not {other}"
+        ),
+    };
+    if let Some(error) = problem.get::<UnitStartError>() {
+        return LoadProblem::UnitStart {
+            at: book_place(packages, package, at),
+            error: error.clone(),
+        };
+    }
+    if problem.get::<NavigationDataError>() == Some(&NavigationDataError::BoxWalks) {
+        return LoadProblem::BoxBody {
+            at: book_place(packages, package, at),
+            problem: BoxProblem::Walks,
+        };
+    }
+    if let Some(&error) = problem.get::<AiError>() {
+        return LoadProblem::Ai {
+            at: book_place(packages, package, at),
+            error,
+        };
+    }
+    if let Some(error) = problem.get::<ActionProblem>() {
+        return action_problem(entry(&at), error.clone());
+    }
+    if let Some(&error) = problem.get::<ModifierProblem>() {
+        return LoadProblem::Modifier {
+            modifier: entry(&at),
+            problem: error,
+        };
+    }
+    if let Some(error) = problem.get::<ItemError>() {
+        let item = entry(&at);
+        return LoadProblem::Item(match error {
+            ItemError::StackCost(_) => ItemProblem::StackCost(item),
+            ItemError::CheaperThanComponents(_) => ItemProblem::CheaperThanComponents(item),
+        });
+    }
+    if problem.get::<TimeTooLarge>().is_some()
+        && let BookPlace::UnitType(TypePlace::Declared(unit_type)) = &at
+    {
+        return LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type.clone()));
+    }
+    if let Some(error) = problem.get::<ModeError>() {
+        return LoadProblem::Mode(error.clone());
+    }
+    if let Some(error) = problem.get::<TrackError>() {
+        return match error {
+            TrackError::TooMany => LoadProblem::TooMany(Limit::Tracks),
+            TrackError::LevelTracks => LoadProblem::LevelTracks,
+        };
+    }
+    if let Some(error) = problem.get::<TypesError>() {
+        return types_problem(error.clone());
+    }
+    if let (Some(error), BookPlace::Section(key)) = (problem.get::<NamesListError>(), &at) {
+        return names_problem(key, error);
+    }
+    LoadProblem::Book {
+        at: book_place(packages, package, at),
+        problem,
+    }
 }
 
 /// The problem of `error`, the unit types or tags that the book build refused.
@@ -1926,25 +1963,30 @@ fn types_problem(error: TypesError) -> LoadProblem {
     }
 }
 
-/// The problem of `error`, a list of the mode's names that the book build refused.
-fn names_problem(error: ModeNamesError) -> LoadProblem {
+/// The problem of `error`, the list of the mode's names at the section `key` that the book build
+/// refused.
+fn names_problem(key: &str, error: &NamesListError) -> LoadProblem {
     match error {
-        ModeNamesError::TooMany(list) => LoadProblem::TooMany(match list {
-            ModeList::Pools => Limit::Pools,
-            ModeList::Resources => Limit::Resources,
-            ModeList::DamageKinds => Limit::DamageKinds,
+        NamesListError::TooMany => LoadProblem::TooMany(match key {
+            ModePoolsData::KEY => Limit::Pools,
+            ResourcesData::KEY => Limit::Resources,
+            ModeCombatData::KEY => Limit::DamageKinds,
             // Each layer is a tag of the match.
-            ModeList::Layers => Limit::Tags,
+            ModeNavigationData::KEY => Limit::Tags,
+            other => unreachable!("no list of names is the mode's [{other}]"),
         }),
-        ModeNamesError::Repeated { list, name } => {
-            let at = match list {
-                ModeList::Pools => Place::Pool(name.clone()),
-                ModeList::Resources => Place::Resources,
-                ModeList::DamageKinds => Place::Combat,
-                ModeList::Layers => Place::Navigation,
+        NamesListError::Repeated(name) => {
+            let at = match key {
+                ModePoolsData::KEY => Place::Pool(name.clone()),
+                ResourcesData::KEY => Place::Resources,
+                ModeCombatData::KEY => Place::Combat,
+                ModeNavigationData::KEY => Place::Navigation,
+                other => unreachable!("no list of names is the mode's [{other}]"),
             };
-            let name = name.to_string();
-            LoadProblem::Repeated { at, name }
+            LoadProblem::Repeated {
+                at,
+                name: name.to_string(),
+            }
         }
     }
 }

@@ -1,6 +1,8 @@
 use campfire_common::{DeclaredName, EnumAll};
+use campfire_geometry::PolygonError;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
+use campfire_units::MapPointError;
 use thiserror::Error;
 
 /// Why a map cannot be walked as its mode needs, for the widest walker among the map's walls and
@@ -34,6 +36,39 @@ pub enum MapProblem {
         unit: usize,
         unit_type: DeclaredName,
     },
+}
+
+/// Why the map's paths and walls, or a unit type's body, break a rule of navigation. Packages are
+/// untrusted, so each is an expected failure; paths and walls count from 0.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum NavigationDataError {
+    /// A point of a path or a wall has no place on the map.
+    #[error(transparent)]
+    Point(#[from] MapPointError),
+    /// The pathing grid's cell is not positive or beyond the world's bound, or it makes more than
+    /// 2²² cells.
+    #[error(
+        "the pathing grid needs a positive cell within the world's bound and at most 2²² cells"
+    )]
+    Grid,
+    /// A wall names a layer the mode does not declare.
+    #[error("no layer \"{0}\"")]
+    UnknownLayer(DeclaredName),
+    /// The points of wall `wall` make no simple polygon.
+    #[error("wall {wall}")]
+    Wall {
+        wall: usize,
+        #[source]
+        problem: PolygonError,
+    },
+    #[error("\"{0}\" names two paths")]
+    RepeatedPath(DeclaredName),
+    /// A path has no waypoint.
+    #[error("path \"{0}\" has no waypoint")]
+    EmptyPath(DeclaredName),
+    /// The unit type walks and has a box body, which only a type that stands still has.
+    #[error("a box body on a type that walks")]
+    BoxWalks,
 }
 
 /// Why the navigation capability refused a script call: a script gave it a value it does not

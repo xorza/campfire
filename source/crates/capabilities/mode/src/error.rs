@@ -1,8 +1,6 @@
 use campfire_common::{DeclaredName, EnumAll};
-use campfire_geometry::PolygonError;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
-use campfire_units::GroundError;
 use campfire_values::Scalar;
 use thiserror::Error;
 
@@ -68,16 +66,11 @@ pub enum ModeError {
     /// More teams than a team index counts.
     #[error("more teams than a team index counts")]
     TooManyTeams,
-    /// More teams than a map with a vision grid holds.
-    #[error("more teams than a map with a vision grid holds")]
-    TooManyVisionTeams,
     /// A relation of a team to itself, or of a pair the relations name before.
     #[error("a relation of \"{0}\" and \"{1}\" again, or of a team to itself")]
     RepeatedRelation(DeclaredName, DeclaredName),
     #[error("\"{0}\" names two teams")]
     RepeatedTeam(DeclaredName),
-    #[error("\"{0}\" names two paths")]
-    RepeatedPath(DeclaredName),
     #[error("\"{0}\" names two markers")]
     RepeatedMarker(DeclaredName),
     #[error("no team \"{0}\"")]
@@ -96,41 +89,12 @@ pub enum ModeError {
     /// a point too.
     #[error("marker \"{0}\": the region is no box within the bounds, or has a point too")]
     Region(DeclaredName),
-    /// A path has no waypoint.
-    #[error("path \"{0}\" has no waypoint")]
-    EmptyPath(DeclaredName),
     /// A placed unit of a spatial map gives a height, which its point holds.
     #[error("a placed unit of a spatial map gives a height")]
     SpatialHeight,
     /// A point of the map is outside its bounds.
     #[error("a map point is outside the map's bounds")]
     OutOfBounds,
-    /// The grid's cell is not positive or beyond the world's bound, or it makes more than 2²²
-    /// cells.
-    #[error("the grid needs a positive cell within the world's bound and at most 2²² cells")]
-    Grid,
-    /// A wall names a layer the mode does not declare.
-    #[error("no layer \"{0}\"")]
-    UnknownLayer(DeclaredName),
-    /// The points of wall `wall`, counted from 0, make no simple polygon.
-    #[error("wall {wall}")]
-    Wall {
-        wall: usize,
-        #[source]
-        problem: PolygonError,
-    },
-    /// The points of brush `brush`, counted from 0, make no simple polygon.
-    #[error("brush {brush}")]
-    Brush {
-        brush: usize,
-        #[source]
-        problem: PolygonError,
-    },
-    /// The map's `[ground]` reads a height grid the map does not have.
-    #[error("the map's [ground] reads a height grid it does not have")]
-    NoHeights,
-    #[error("the map's ground")]
-    Ground(#[from] GroundError),
 }
 
 /// Why the mode capability refused a script call: a script gave it a value it does not take.

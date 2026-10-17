@@ -7,7 +7,7 @@
 )]
 
 use bevy_ecs::schedule::SystemSet;
-use campfire_actions::{ActionsSet, EffectQueues};
+use campfire_actions::{ActionsSet, EffectQueues, TrackNames};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_sim::Capability;
@@ -24,6 +24,7 @@ mod mode_tracks_data;
 mod points;
 mod progression_action;
 mod progression_api;
+mod progression_books;
 mod progression_column;
 mod progression_effect;
 mod track_book;
@@ -82,10 +83,11 @@ impl Module for Progression {
         d.component::<Points>();
         d.resource::<LevelUps>();
         d.callback::<EffectQueues>(Capability::Progression, ProgressionEffect::queue_listed);
-        d.book::<TrackBook>();
+        d.book::<TrackBook>(TrackBook::build);
+        d.fact::<TrackNames>(Self::track_names);
         d.column::<ProgressionColumn, RowReads>(ProgressionColumn::fill_row);
         d.api(ProgressionApi::register);
-        d.book::<ByType<TrackSet>>();
+        d.book::<ByType<TrackSet>>(TrackSet::book);
         d.part::<BodyUnit, Experience>(|at| {
             let tracks = *at.of_type::<TrackSet>()?;
             (!tracks.is_empty()).then(|| Experience::new(tracks))

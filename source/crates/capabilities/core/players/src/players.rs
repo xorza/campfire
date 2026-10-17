@@ -11,6 +11,7 @@ use crate::out_of_play::OutOfPlay;
 use crate::player_resources::PlayerResources;
 use crate::players_call::PlayersCall;
 use crate::players_world::PlayersWorld;
+use crate::resource_book::ResourceBook;
 use crate::resources_data::ResourcesData;
 use crate::seated::{Seated, Seating, SlotStart};
 
@@ -26,6 +27,7 @@ impl Module for Players {
 
     fn declare<D: Declarations>(d: &mut D) {
         d.section::<ResourcesData>();
+        d.book::<ResourceBook>(ResourceBook::build);
         Self::kinds(d);
         d.component::<MatchEntity>();
         d.component::<Player>();

@@ -1,8 +1,9 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::PerType;
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, PerType};
 use campfire_math::Num;
+use campfire_script::{NameKind, UnknownName};
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
@@ -19,6 +20,7 @@ use crate::action_slots::slot_times::SlotTimes;
 use crate::rank_values::{ChargeRule, RankValues};
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
+use crate::type_slots_data::TypeSlotsData;
 
 pub(crate) mod action_progress;
 pub(crate) mod slot_times;
@@ -55,6 +57,44 @@ impl ActionSlot {
             .get(self.action?)
             .expect("a slot's action is in the book");
         action.values_at(self.rank?)?.charges
+    }
+}
+
+impl ActionSlots {
+    /// The slots each unit type that stands spawns with of its package's actions, kind after kind,
+    /// each at its kind's first rank, as its `slots` places them; an error for a kind the mode
+    /// does not declare or an action its package does not have. An inventory and a use slot add
+    /// their own empty slots to the type's.
+    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+        let kinds = &cx.book::<SlotKindBook>()?.0;
+        let actions = cx.book::<ActionBook>()?;
+        let mut book = ByType::default();
+        for unit in cx.standing() {
+            let Some(slots) = unit.data.section::<TypeSlotsData>() else {
+                continue;
+            };
+            let unknown =
+                |name| BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name);
+            let mut held = Vec::new();
+            for (kind, ids) in &slots.0 {
+                let named = kinds.names().named(kind.as_str());
+                let kind =
+                    named.ok_or_else(|| unknown(UnknownName::new(NameKind::SlotKind, kind)))?;
+                let rank = kinds.first_rank(kind);
+                for id in ids {
+                    let action = actions.names().named((unit.package, id.as_str()));
+                    let action =
+                        action.ok_or_else(|| unknown(UnknownName::new(NameKind::Ability, id)))?;
+                    held.push((action, kind, rank));
+                }
+            }
+            if held.is_empty() {
+                continue;
+            }
+            held.sort_by_key(|&(_, kind, _)| kind);
+            book.set(unit.unit_type, Self::new(held));
+        }
+        Ok(book)
     }
 }
 

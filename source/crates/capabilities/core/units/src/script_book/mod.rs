@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
+use campfire_declare::{Book, BookCx, BookError};
 use campfire_script::{Hook, HookSet, ScriptId, ScriptRole, View};
 
 /// The hooks each script of a match defines, by `ScriptId`, in the order the match compiles its
@@ -29,6 +29,14 @@ impl ScriptBook {
         let defined = self.hooks[script.index()];
         let hooks = Hook::ALL.into_iter().filter(|hook| hook.role() == role);
         hooks.filter(|&hook| defined.contains(hook)).collect()
+    }
+}
+
+impl ScriptBook {
+    /// The hooks of the match's scripts, which the load gives as it compiles them.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let given = cx.given::<Self>();
+        Ok(given.expect("the load gives the match's scripts").clone())
     }
 }
 

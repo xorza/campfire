@@ -29,6 +29,13 @@ impl<T: Send + Sync + 'static> ByType<T> {
         self.entries.iter().flatten()
     }
 
+    /// Takes `unit_type`'s value out, as an extension of the book changes it before the book is
+    /// shared.
+    pub fn take(&mut self, unit_type: UnitType) -> Option<T> {
+        let entries = Arc::get_mut(&mut self.entries).expect("a book is built before it is shared");
+        entries.get_mut(unit_type.index())?.take()
+    }
+
     /// Gives `unit_type` `value`, when it is some, as `set` does.
     pub fn set_some(&mut self, unit_type: UnitType, value: Option<T>) {
         if let Some(value) = value {

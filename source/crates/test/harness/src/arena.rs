@@ -3,6 +3,7 @@ use bevy_ecs::world::World;
 use campfire_actions::Actions;
 use campfire_capabilities::{Match, Order};
 use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_declare::Book;
 use campfire_math::Vec3;
 use campfire_mode::Mode;
 use campfire_package::ModePackages;
@@ -12,8 +13,9 @@ use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimWorld, StableId, TickRate};
 use campfire_stats::{ModePoolsData, PoolId, Stats};
 use campfire_test_packages::PackageTree;
+use campfire_units::MapBook;
 use campfire_values::{ActionId, ModifierId, Names, PackageIndex, Team};
-use campfire_vision::Vision;
+use campfire_vision::VisionBook;
 
 /// An arena: the books of a mode, on its only map, with every book in place but the map's vision
 /// grid, which `load_vision` gives, and no mode installed. Its script never runs, so no `calc_damage` weighs a hit and
@@ -84,10 +86,11 @@ impl Arena {
     /// as the mode's install does: from the next Vision stage, each team sees what its units and
     /// its reveals show it.
     pub fn load_vision(&self, game: &mut World, teams: usize) {
-        let grid = self.packages.map().grid().unwrap();
-        let grid = grid.expect("the map has a vision grid");
-        let brush = self.packages.map().brush().unwrap();
-        Vision::load_grid(game, grid, &brush, teams);
+        let map = self.packages.map().sections();
+        let ground = MapBook::of(map, None).unwrap();
+        let book = VisionBook::of(&ground, map, teams).unwrap();
+        assert!(book.grid().is_some(), "the map has a vision grid");
+        book.load_into(game);
     }
 
     /// Runs one tick of `game`, the arena's match, as `SimWorld::step` does, and keeps its

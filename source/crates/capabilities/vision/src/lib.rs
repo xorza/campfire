@@ -21,6 +21,7 @@ use crate::vision_column::RowReads;
 #[cfg(feature = "internals")]
 pub mod bench;
 mod brush_map;
+mod error;
 mod fog;
 mod grid_data;
 mod reveals;
@@ -33,6 +34,7 @@ mod sight_maps;
 mod team_sight;
 mod vision_api;
 mod vision_book;
+mod vision_books;
 mod vision_column;
 mod vision_data;
 mod vision_effect;
@@ -40,6 +42,7 @@ mod vision_grid;
 mod vision_groups;
 
 pub use crate::brush_map::BrushMap;
+pub use crate::error::VisionDataError;
 pub use crate::fog::Fog;
 pub use crate::grid_data::{BrushData, GridData};
 pub use crate::reveals::{Reveal, Reveals};
@@ -93,8 +96,8 @@ impl Module for Vision {
         d.cache::<Fog>();
         d.component::<SeenBy>();
         d.component::<Sight>();
-        d.book::<ByType<Sight>>();
-        d.book::<VisionBook>();
+        d.book::<ByType<Sight>>(Sight::book);
+        d.book::<VisionBook>(VisionBook::build);
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
         d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());

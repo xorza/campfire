@@ -1,5 +1,5 @@
 use campfire_common::DeclaredName;
-use campfire_geometry::{Grid, Shape};
+use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
 use campfire_units::{Body, MapBook};
@@ -14,14 +14,13 @@ use crate::segment::Segment;
 use crate::terrain::Terrain;
 use crate::walker_kinds::WalkerKinds;
 
-/// What a map's walk check reads: its ground, with the bounds; its paths and walls; its pathing
-/// cells, none for a map with no `[navigation]`; each kind of unit that walks; the bodies of its
-/// placed units that do not walk; and the points of the markers its mode's units spawn at.
+/// What a map's walk check reads: its ground, with the bounds; its paths, walls and pathing cells,
+/// none for a map with no `[navigation]`; each kind of unit that walks; the bodies of its placed
+/// units that do not walk; and the points of the markers its mode's units spawn at.
 #[derive(Debug, Clone, Copy)]
 pub struct WalkCheck<'a> {
     pub ground: &'a MapBook,
     pub navigation: &'a NavigationBook,
-    pub cells: Option<Grid>,
     pub walkers: &'a WalkerKinds,
     pub placed: &'a [PlacedBody],
     pub spawns: &'a [MarkerPoint],
@@ -59,6 +58,7 @@ impl WalkCheck<'_> {
         let NavigationBook {
             paths,
             walls: placed_walls,
+            pathing,
         } = self.navigation;
         let mut ids = IdAllocator::default();
         let structures: Vec<IndexedBody> = self
@@ -77,7 +77,7 @@ impl WalkCheck<'_> {
                 });
             }
         }
-        let Some(cells) = self.cells else {
+        let &Some(cells) = pathing else {
             return Ok(());
         };
         let walkers = self.walkers;

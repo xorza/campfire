@@ -4,15 +4,13 @@ use campfire_capabilities::{Match, Release};
 use campfire_common::{DeclaredName, Tick};
 use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
-use campfire_mode::{
-    MapData, MapInput, MarkerData, ModeError, ModeMap, PlacedUnitData, ResolvedMap, TeamManifest,
-};
+use campfire_mode::{MapData, MapInput, MarkerData, ModeMap, PlacedUnitData, TeamManifest};
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
-    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, MapPoint, TurnStep,
-    Units,
+    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, MapPoint,
+    MapPointError, TurnStep, Units,
 };
 use campfire_values::{Block, NameId, Names, PathId, Team, UnitType};
 
@@ -859,20 +857,15 @@ fn check_walkable(
         slots: 0,
     }];
     let layers = layer_table(rules);
+    let ground = MapBook::of(map.sections(), None).unwrap();
+    let navigation = NavigationBook::of(&ground, map.sections(), Some(&layers)).unwrap();
     let input = MapInput {
         map,
-        heights: None,
-        teams: &teams,
         relations: &[],
-        layers: &layers,
+        teams: ModeMap::team_names(&teams).unwrap(),
+        paths: Some(&navigation.paths),
     };
-    let resolved = ModeMap::resolve(input, unit_type).unwrap();
-    let ResolvedMap {
-        map,
-        ground,
-        navigation,
-        ..
-    } = resolved;
+    let map = ModeMap::of(input, unit_type).unwrap();
     let name = |unit_type: UnitType| TYPES[unit_type.index()];
     let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
     let body = |unit_type| body_of(name(unit_type));
@@ -880,7 +873,6 @@ fn check_walkable(
     let check = WalkCheck {
         ground: &ground,
         navigation: &navigation,
-        cells: map.pathing,
         walkers: &kinds,
         placed: &map.placed_bodies(body),
         spawns: &map.spawn_points(&rules.spawn_tags),
@@ -1040,17 +1032,17 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
         (
             wall(Some("air"), &[(5, 0), (6, 0), (6, 4)]),
             &rules,
-            ModeError::UnknownLayer(air),
+            NavigationDataError::UnknownLayer(air),
         ),
         (
             wall(None, &[(5, 0), (6, 0), (6, 5)]),
             &rules,
-            ModeError::OutOfBounds,
+            NavigationDataError::Point(MapPointError::OutOfBounds),
         ),
         (
             wall(None, &[(5, 0), (6, 0)]),
             &rules,
-            ModeError::Wall {
+            NavigationDataError::Wall {
                 wall: 0,
                 problem: PolygonError::TooFewPoints,
             },
@@ -1058,7 +1050,7 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
         (
             wall(Some("air"), &[(5, 0), (6, 4), (6, 0), (5, 4)]),
             &layered,
-            ModeError::Wall {
+            NavigationDataError::Wall {
                 wall: 0,
                 problem: PolygonError::EdgesMeet {
                     first: 0,
@@ -1067,13 +1059,22 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
             },
         ),
     ];
+    let walls = |map: &MapData, rules| {
+        let ground = MapBook::of(map.sections(), None).unwrap();
+        let book = NavigationBook::of(&ground, map.sections(), Some(&layer_table(rules)));
+        book.map(|book| book.walls)
+    };
     for (wall, rules, error) in refused {
-        assert_eq!(walled(vec![wall]).walls(&layer_table(rules)), Err(error));
+        assert_eq!(walls(&walled(vec![wall]), rules), Err(error));
     }
     let lifted = walled(vec![wall(Some("air"), &[(5, 0), (6, 0), (6, 4)])]);
-    let walls = lifted.walls(&layer_table(&layered)).unwrap();
+    let walls = walls(&lifted, &layered).unwrap();
     assert_eq!(
-        walls.iter().map(|wall| wall.layer).collect::<Vec<_>>(),
+        walls
+            .walls()
+            .iter()
+            .map(|wall| wall.layer)
+            .collect::<Vec<_>>(),
         [AIR]
     );
 }

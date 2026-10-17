@@ -1,6 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_declare::{ByType, PerType};
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, PerType};
+use campfire_script::{NameKind, UnknownName};
 use campfire_sim::StableId;
 use campfire_values::{ModifierId, Rank, UnitType};
 
@@ -8,11 +9,33 @@ use crate::Stats;
 use crate::applier::Applier;
 use crate::lifetime::Hold;
 use crate::modifier_adds::ModifierAdd;
+use crate::modifier_book::ModifierBook;
 use crate::modifiers::Modifiers;
+use crate::passive_data::PassiveData;
 
 /// The modifier a unit type's units hold from their spawn on, from themselves: its passive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TypePassive(pub ModifierId);
+
+impl TypePassive {
+    /// The passive of each unit type that stands with one, a modifier of its package; an error for
+    /// a modifier the package does not have.
+    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+        let modifiers = cx.book::<ModifierBook>()?;
+        let mut passives = ByType::default();
+        for unit in cx.standing() {
+            let Some(passive) = unit.data.section::<PassiveData>() else {
+                continue;
+            };
+            let named = modifiers.names().named((unit.package, passive.0.as_str()));
+            let unknown = || UnknownName::new(NameKind::Modifier, &passive.0);
+            let at = || BookPlace::UnitType(unit.place());
+            let id = named.ok_or_else(|| BookError::unknown(unit.package, at(), unknown()))?;
+            passives.set(unit.unit_type, Self(id));
+        }
+        Ok(passives)
+    }
+}
 
 impl PerType for TypePassive {
     const SCRIPTS_ONLY: bool = false;

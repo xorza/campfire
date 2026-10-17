@@ -18,8 +18,8 @@ use campfire_actions::{ActionSlots, CapabilityDoesSpec, CastSpends, EffectQueues
 use campfire_combat::ClipShots;
 use campfire_common::EnumAll;
 use campfire_declare::{
-    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Report, Role, Scratch, Section, SetPlace,
+    Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
+    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, Section, SetPlace,
 };
 use campfire_deliveries::{Deliverers, DeliveryKind};
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
@@ -357,7 +357,11 @@ impl Declarations for DeclarationAudit {
         self.checks.push(Named::of::<C>());
     }
 
-    fn book<B: Book>(&mut self) {
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {
         self.books.push(DeclaredBook {
             ty: Named::of::<B>(),
             declared_by: self.capability,
@@ -463,13 +467,13 @@ fn the_modules_declarations_keep_every_rule_between_them() {
     assert_eq!(audit.problems(), Vec::<String>::new());
     // The audit read every module: the core's four kinds, the stats' and the players' parts of a
     // player, the mode's three of the match, the 31 of a unit, items' `UseGroup`, orders'
-    // `NextThink`, the units' `StatusTags` and combat's `TurretAngle` among them, and the 48
-    // books, 14 of the core's, interaction's two and combat's armors and turrets among them.
+    // `NextThink`, the units' `StatusTags` and combat's `TurretAngle` among them, and the 50
+    // books, 15 of the core's, interaction's two and combat's armors and turrets among them.
     assert_eq!(audit.kinds.len(), 4);
     assert_eq!(audit.parts.len(), 36);
-    assert_eq!(audit.books.len(), 48);
+    assert_eq!(audit.books.len(), 50);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
-    assert_eq!(core.count(), 14);
+    assert_eq!(core.count(), 15);
     // The observers, the runs out of the schedule and the parts a server derives, which the
     // installer adds for their modules.
     assert_eq!(
@@ -616,8 +620,8 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.require::<UnitEntity, Stray>();
     audit.require::<UnitEntity, Player>();
     audit.check::<Player>(|_| Ok(()));
-    audit.book::<StrayBook>();
-    audit.book::<StrayBook>();
+    audit.book::<StrayBook>(|_| Ok(StrayBook));
+    audit.book::<StrayBook>(|_| Ok(StrayBook));
     audit.part::<Player, Stray>(|_| Some(Stray));
     audit.engine_tags(&STRAY_TAGS);
     // A column that reads a type no module declares.

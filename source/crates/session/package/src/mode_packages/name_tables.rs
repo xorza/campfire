@@ -1,11 +1,17 @@
+use std::error::Error;
 use std::sync::Arc;
 
 use campfire_actions::{CostTarget, SlotKind, SlotKinds};
-use campfire_capabilities::{BookError, Books, Release};
-use campfire_mode::{ModeMap, ModeNames};
+use campfire_capabilities::{Books, Release};
+use campfire_combat::ModeCombatData;
+use campfire_declare::{BookError, BookPlace, NamesListError, Section};
+use campfire_mode::{ModeList, ModeMap, ModeNames, ModeNamesError};
+use campfire_navigation::ModeNavigationData;
+use campfire_players::ResourcesData;
 use campfire_progression::{ModeTracksData, TrackBook};
+use campfire_stats::ModePoolsData;
 use campfire_units::UnitTypes;
-use campfire_values::{Names, PathId, ResourceId, Team, TrackId, TypeScope};
+use campfire_values::{Names, PackageIndex, PathId, ResourceId, Team, TrackId, TypeScope};
 
 use crate::mode_packages::ModePackages;
 
@@ -51,16 +57,42 @@ impl NameTables {
         let engine_tags = Release::engine_tags();
         let types = Books::unit_types(&engine_tags, packages.tag_names(), &book_packages);
         let tracks = data.section_or_default::<ModeTracksData>();
-        let tracks = TrackBook::new(&tracks.0).map_err(BookError::Tracks)?;
+        let tracks = TrackBook::new(&tracks.0);
+        let tracks =
+            tracks.map_err(|error| Self::error(BookPlace::Section(ModeTracksData::KEY), error))?;
         let paths = packages.map.paths().iter().map(|path| path.name.as_str());
         Ok(Self {
-            mode: ModeNames::of(data).map_err(BookError::Names)?,
+            mode: ModeNames::of(data).map_err(Self::names_error)?,
             tracks: Arc::clone(tracks.names()),
             slot_kinds: Arc::clone(data.section_or_default::<SlotKinds>().names()),
-            types: types.map_err(BookError::Types)?,
-            teams: ModeMap::team_names(&packages.manifest.teams).map_err(BookError::Mode)?,
+            types: types?,
+            teams: ModeMap::team_names(&packages.manifest.teams)
+                .map_err(|error| Self::error(BookPlace::Teams, error))?,
             paths: Names::first_of(paths),
         })
+    }
+
+    /// The book error of `error`, a rule the mode's data at `at` breaks.
+    fn error<E: Error + Clone + PartialEq + Send + Sync + 'static>(
+        at: BookPlace,
+        error: E,
+    ) -> BookError {
+        BookError::rule(PackageIndex::MODE, at, error)
+    }
+
+    /// The book error of `error`, a list of the mode's names that does not load.
+    fn names_error(error: ModeNamesError) -> BookError {
+        let (list, error) = match error {
+            ModeNamesError::TooMany(list) => (list, NamesListError::TooMany),
+            ModeNamesError::Repeated { list, name } => (list, NamesListError::Repeated(name)),
+        };
+        let key = match list {
+            ModeList::Pools => ModePoolsData::KEY,
+            ModeList::Resources => ResourcesData::KEY,
+            ModeList::DamageKinds => ModeCombatData::KEY,
+            ModeList::Layers => ModeNavigationData::KEY,
+        };
+        Self::error(BookPlace::Section(key), error)
     }
 
     /// Whether the mode declares `text` a name of `kind`: a unit type of the mode's scope.

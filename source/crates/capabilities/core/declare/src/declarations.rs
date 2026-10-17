@@ -12,8 +12,10 @@ use campfire_state_types::StateTypes;
 use campfire_values::EngineTag;
 
 use crate::book::Book;
+use crate::book_cx::{BuildFn, ExtendFn};
 use crate::cache::Cache;
 use crate::callbacks::Callbacks;
+use crate::fact::Fact;
 use crate::kind_spawn::KindSpawn;
 use crate::kind_visitor::KindVisitor;
 use crate::module_set::ModuleSet;
@@ -47,8 +49,16 @@ pub trait Declarations: StateTypes + KindVisitor + OwnResources {
     /// which a restore runs.
     fn check<C: SimComponent>(&mut self, check: fn(&World) -> Result<(), Breach>);
 
-    /// `B`, a book the module reads, empty until the books fill it.
-    fn book<B: Book>(&mut self);
+    /// `B`, a book the module reads, which `build` makes from the match's packages before the
+    /// install.
+    fn book<B: Book>(&mut self, build: BuildFn<B>);
+
+    /// `F`, a fact a module's books build on, which `build` makes from the match's packages.
+    fn fact<F: Fact>(&mut self, build: BuildFn<F>);
+
+    /// `extend`, which adds the module's part to `B`, a book or a fact of a module it builds on,
+    /// as soon as `B` is built.
+    fn extend<B: Send + Sync + 'static>(&mut self, extend: ExtendFn<B>);
 
     /// `S`, a section of a data table that the module reads, by its key.
     fn section<S: Section>(&mut self);

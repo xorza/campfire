@@ -1,13 +1,13 @@
 use campfire_actions::{ActionDataField, ActionField, ActionKind, ActionSlots, ListHook};
 use campfire_capabilities::CapabilityError;
-use campfire_capabilities::UnitStartError;
 use campfire_common::{DeclaredName, MapName};
+use campfire_declare::Problem;
 use campfire_mode::ModeError;
 use campfire_navigation::MapProblem;
 use campfire_orders::AiError;
 use campfire_script::{ApiVersion, NameKind, ParamProblem};
 use campfire_sim::Capability;
-use campfire_stats::ModifierProblem;
+use campfire_stats::{ModifierProblem, UnitStartError};
 use campfire_values::{EngineTag, PackagePath, Stat, TimeTooLarge};
 use thiserror::Error;
 
@@ -153,6 +153,13 @@ pub enum LoadProblem {
     /// The mode's teams or map name what it does not have.
     #[error(transparent)]
     Mode(ModeError),
+    /// Data at `at` breaks a rule of the module that reads it, as the module reports it.
+    #[error("{at}")]
+    Book {
+        at: Place,
+        #[source]
+        problem: Problem,
+    },
     /// A capability field of an ability does not hold at a rank.
     #[error("action \"{action}\": {field:?} gives no value of its kind")]
     ActionField {

@@ -644,12 +644,12 @@ Each change folds into its document when its batch lands. Each line names the de
 - `declare` assigns engine tag numbers in declaration order (RW 20). Waits for Q3 in `review-architecture_QUESTIONS.md`.
 
 **4.3 Books, sections and map sections declared with their builders.** Touches the top crate's books, `declare`, `mode` (the map), `vision`, `production`, `stats`, `combat`, `abilities`, each capability, and the test fixtures.
-- `d.book::<B>()` with its builder, each reading the sections its module registers, now that the mode's, the maps' and the unit types' tables are sections registered by key. `BookParts`, the `built.add` list and the builder's resolvers in the top crate go, and `mode` builds no book of navigation's or vision's (E-11, K-19, R-22).
 - `Book: Default` goes: a test fixture gives its data to the builders before its match builds, as `Release::empty_books` gives every book empty now (E-12, from 4.1).
 - The rest of the load facts decide which systems install, and their run conditions go: the vision grid, the supply's count, turrets, clips, slow weapons, intervals, regen, toggles and channels. Today the fixtures of these load their data after the build, so they move first (E-10, K-12, from 4.1).
 
 **4.4 Data checks declared with their modules.** Touches `package` and each capability.
 - `d.check` returns the module's own error inside a `LoadProblem` case of `declare`. `package` keeps only the checks across packages and drops its capability dependencies (B-18).
+- The load check's name tables come from the modules' own name facts, as the books' build makes them, and `ModeNames` goes; a book error's module problem maps to its load problem in the module, not in `package`'s hand list of problem types.
 
 **4.5 Parts from data.** Touches `combat`, `stats`, `units`, `production`, `sim`, `state-types`.
 - Per-type predicates give `ClipShots`, `RecentAttackers` (with its entries bounded by the window), `StatusTags` and `SpawnPoint` (K-11, C-7).
@@ -988,7 +988,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | E-7 | The script `View` owns the damage-kind, resource and team names that restore checks read | `books/mod.rs:118-133`, `units.rs:208-245` | Confirmed | 6.1 |
 | E-8, C-12, R-11 | `MatchMode`, `Spawner`, `ViewReader` and `CombatHooks` are non-send with no script handle in them. `Spawner` holds an `Rc<[bool]>` for one `debug_assert!`. | `mode/src/lib.rs:192-208`, `spawner.rs:19-22, 50`, `view_reader.rs:27-41`, `combat_hooks.rs:12-26` | Confirmed | 6.1 |
 | E-10, E-12, K-12 | Books are `Default`, the vision grid, the supply's count and feature passes are run conditions or passes with nothing to do, as the fixtures load their data after the build | `declare/src/book.rs`, `vision/src/lib.rs:108-116`, `production/src/lib.rs:200-204`, `refresh.rs:225-245` | Confirmed | 4.3 |
-| E-11, K-19 | The books, the unit-type sections and their resolvers are hand lists in the top crate, and every book is built for every mode | `book_parts.rs:24-73`, `book_builder.rs:189-322`, `unit_type_data.rs:20-61` | Confirmed | 4.3 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
 | E-18 | A restore moves each entity once for each state type it holds | `state_registry/mod.rs:400-424, 662-684` | Confirmed | 7.5 |
 | E-19 | `StateRegistry` is a type list, a codec, a change tracker and a mode switch | `state_registry/mod.rs:57-64` | Confirmed | 7.7 |
@@ -1099,7 +1098,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | R-19 | No attack-move, patrol, hold or auto-acquire, and the MOBA leash is a native order | `unit_order.rs:18-161`, `thinking.rs:91-98` | Confirmed | Backlog (D19) |
 | R-20 | `orders` ends other orders by writing navigation's and production's parts | `unit_order.rs:56-233` | Confirmed | 5.5 |
 | R-21 | Path walking is split over three crates and walks one way only | `path_walker.rs`, `destinations.rs:19-57`, `spawn_group.rs:23-48` | Confirmed | 9.4 |
-| R-22 | `mode` builds navigation's and vision's books from the map | `mode_map.rs:77-186` | Confirmed | 4.3 |
 | R-23 | Sight is fixed state for each type, not a stat | `sight.rs:16-55` | Confirmed | Backlog |
 | R-24 | One point for each level of one track, on units only | `points.rs:18-45` | Confirmed | Backlog |
 | R-25 | Teams fixed by the manifest, `Won(Team)` or `Draw`, no factions, options for scripts only | `team_manifest.rs:7-10`, `match_end.rs:27-30`, `option_data.rs:9-13` | Confirmed | Backlog (D21, D31) |

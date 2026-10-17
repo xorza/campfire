@@ -11,14 +11,14 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionSlots, ActionsSet, EffectQueues};
+use campfire_actions::{ActionSlots, ActionsSet, DamageKindBook, EffectQueues};
 use campfire_common::EnumAll;
 use campfire_declare::{
     ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
 };
 use campfire_math::RngStream;
 use campfire_sim::{Capability, SimSet};
-use campfire_stats::{Life, StatsSet};
+use campfire_stats::{Life, LifePool, StatsSet, TypePools};
 use campfire_units::{BodyUnit, Dead, SpawnPoint, UnitsSet};
 
 use crate::combat_column::RowReads;
@@ -32,6 +32,7 @@ mod attacks;
 mod clip_shots;
 mod combat_api;
 mod combat_book;
+mod combat_books;
 mod combat_column;
 mod combat_data;
 mod combat_effect;
@@ -150,7 +151,7 @@ impl Module for Combat {
         d.section::<TurretData>();
         d.section::<ModeCombatData>();
         d.component::<TurretAngle>();
-        d.book::<ByType<Turret>>();
+        d.book::<ByType<Turret>>(Turret::book);
         d.part::<BodyUnit, TurretAngle>(|at| at.of_type::<Turret>().map(|_| TurretAngle::REST));
         d.component::<Kept>();
         d.component::<Life>();
@@ -168,15 +169,17 @@ impl Module for Combat {
         d.resource::<HeldHits>();
         d.report::<Deaths>();
         d.calls::<Weighers>();
-        d.book::<CombatBook>();
+        d.book::<DamageKindBook>(Self::damage_kinds);
+        d.fact::<LifePool>(Self::life_pool);
+        d.book::<CombatBook>(CombatBook::build);
         d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();
         d.column::<CombatColumn, RowReads>(CombatColumn::fill_row);
         d.api(CombatApi::register);
-        d.book::<ByType<Life>>();
-        d.book::<ByType<OnDeath>>();
-        d.book::<ByType<Armor>>();
+        d.book::<ByType<Life>>(TypePools::lives);
+        d.book::<ByType<OnDeath>>(OnDeath::book);
+        d.book::<ByType<Armor>>(Armor::book);
         d.part::<BodyUnit, Life>(|at| at.of_type::<Life>().copied());
         d.part::<BodyUnit, OnDeath>(|at| at.of_type::<OnDeath>().copied());
         // A unit that can die keeps who struck it, for its death's assisters.
