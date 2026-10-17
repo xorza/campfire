@@ -53,8 +53,8 @@ use campfire_stats::{
     StatsData, UnitStats,
 };
 use campfire_units::{
-    Body, Dead, Destination, ForcedMove, Life, MoveStep, Owner, PoolId, SyncNone, TagData,
-    UnitState, UnitTypeCore, Units,
+    Body, Dead, Destination, ForcedMove, Life, MoveStep, NeededLevel, Owner, PoolId, SyncNone,
+    TagData, UnitState, UnitTypeCore, Units,
 };
 use campfire_values::{
     ActionId, ActionStart, Block, DamageKind, FilterData, NameId, Number, PackageIndex,
@@ -2752,7 +2752,7 @@ fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
     let mut data = lash_out();
     data.passive_modifier = Some(DeclaredName::new("guard").unwrap());
     let lash_out = Abilities::load(&mut game, "lash_out", &data, LASH_OUT);
-    let levels = [1, 1, 3, 3, 5].map(|level| Level::new(level).unwrap());
+    let levels = [1, 1, 3, 3, 5].map(|level| NeededLevel::new(level).unwrap());
     let ranks = SlotRanks::new(NonZeroU8::new(5).unwrap(), Some(levels.to_vec())).unwrap();
     let basic = SlotKindData {
         name: DeclaredName::new("basic").unwrap(),

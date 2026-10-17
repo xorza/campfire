@@ -38,7 +38,7 @@ impl Learning<'_> {
                 self.kinds
                     .0
                     .level_of(held.kind, next)
-                    .is_none_or(|needed| needed <= level)
+                    .is_none_or(|needed| needed.get() <= level.get())
             })
     }
     /// The charges of the action in `held` at its rank: how many it holds at most, and the ticks
