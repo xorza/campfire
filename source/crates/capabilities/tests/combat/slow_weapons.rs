@@ -77,4 +77,17 @@ fn a_held_hit_is_state_and_one_on_a_target_gone_by_then_lands_nothing() {
     game.despawn(entity);
     game.run_until(6);
     assert_eq!(Combat::held_hits(&game), 0);
+
+    // A target that dies before its hit lands loses the hit as it dies, in tick 3, so a respawn
+    // gets none from before.
+    let mut game = fight_match();
+    let [_, target] = slow_fight(&mut game, 60);
+    game.run_until(3);
+    assert_eq!(Combat::held_hits(&game), 1);
+    let entity = game.unit_entity(target);
+    let mut life = game.get_mut::<Life>(entity).unwrap();
+    let all = life.current();
+    life.take(all);
+    game.step();
+    assert_eq!(Combat::held_hits(&game), 0);
 }

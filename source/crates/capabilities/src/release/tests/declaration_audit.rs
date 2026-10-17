@@ -488,11 +488,13 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "UnitTracker<GridUnits>::lost_body",
             "Units::refill_view",
             "Level::raise",
+            "HeldHits::drop_died",
             "UnitTracker<StaticBodies>::aged",
             "StaticBodies::part_removed",
             "StaticBodies::state_inserted",
             "StaticBodies::state_removed",
             "Flying::lose_teleported",
+            "Flying::lose_died",
         ]
     );
     // The parts whose removals a module reads, which reach it as the tick ages them.

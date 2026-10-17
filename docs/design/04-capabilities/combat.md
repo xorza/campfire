@@ -37,6 +37,7 @@
 - **Deaths at the end of Resolve.** A unit at zero life dies at the end of Resolve; one whose life reaches zero later in the tick, as `ctx.kill` in a mode's hook leaves it, dies at the next tick's.
 - **Kill credit.** The source whose damage took the life to zero is the killer; the units that damaged the victim within the mode's assist window assisted.
 - **A respawn is at least a tick later,** at its spawn place, its pools full.
+- **What aims at a unit learns of its death and its respawn.** A death drops the held hits on its unit and makes the projectiles that home on it lose it, and a respawn tells them it was put elsewhere at once, as a teleport does, since a respawn in the next tick's inputs puts the same unit back before they move again. Refused: each reader's test of life at its own step alone, which a unit that came back passes.
 
 ## Events
 

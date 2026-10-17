@@ -3,6 +3,7 @@ use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::ActionProgress;
 use campfire_declare::ByType;
+use campfire_deliveries::{Died, Teleported};
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
 use campfire_stats::{Life, UnitPools};
 use campfire_units::{Avatar, Dead, Owner, SpawnPoint};
@@ -55,6 +56,7 @@ impl Dying {
                 progress.stop();
             }
             commands.entity(entity).insert(Dead);
+            commands.trigger(Died { id });
             if !deaths.killed(id) {
                 let fallen = Fallen {
                     id,
@@ -81,25 +83,34 @@ impl Dying {
         }
     }
 
-    /// Brings back each dead unit whose respawn is due, at its spawn point with full pools.
+    /// Brings back each dead unit whose respawn is due, at its spawn point with full pools: put
+    /// there at once, as what homes on it learns.
     pub(super) fn respawn(
         tick: Res<'_, SimTick>,
         mut commands: Commands<'_, '_>,
         mut dead: Query<
             '_,
             '_,
-            (Entity, &Respawn, &SpawnPoint, UnitPools, &mut Position),
+            (
+                Entity,
+                &StableId,
+                &Respawn,
+                &SpawnPoint,
+                UnitPools,
+                &mut Position,
+            ),
             With<Dead>,
         >,
     ) {
         let now = tick.start();
-        for (entity, respawn, spawn, mut pools, mut position) in &mut dead {
+        for (entity, &id, respawn, spawn, mut pools, mut position) in &mut dead {
             if respawn.at > now {
                 continue;
             }
             pools.fill();
             *position = Position::from(spawn.get());
             commands.entity(entity).remove::<(Dead, Respawn)>();
+            commands.trigger(Teleported { id });
         }
     }
 

@@ -666,7 +666,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20).
 - `Destination` writes and the standing-room query are contracts, and `production` drops `navigation` (R-31).
 - A death record and an audience contract, and `net` drops `combat` and `vision` (N-26).
-- A `Died` entity event that projectiles and held hits observe, and `Teleported` on a respawn (K-22).
 - `TickCommand::controls` is the one control answer (RW 20).
 - The use slot extends through `UseSlot::extend_slots` (RW 20).
 - One naming of order inputs and order sets (RW 20).
@@ -1046,7 +1045,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | K-17 | The one action pipeline is four hand-built loops | `attacks.rs:145-414`, `casts.rs:55-503` | Confirmed | 5.3 |
 | K-20 | Scripted passes hold the world for their whole run, and their hook state is non-send | `combat_hooks.rs:12-15`, `modifier_hooks.rs:46-50` | Confirmed shape | 6.1, 11.1 |
 | K-21 | The damage pass reads each unit through world lookups, a heard event allocates a handle for each listener, and `NextDamage` drops its buffer | `damage_pass.rs:213-429`, `modifier_hooks.rs:78-159` | Plausible | 7.2 |
-| K-22 | A death ends nothing that is aimed at its unit, and a respawn moves the unit with no `Teleported` | `dying.rs:183-190`, `flights.rs:147` | Plausible | 5.5 |
 | K-23 | An item's cost may name several resources, and a shop takes one | `item_data.rs:18`, `item_book.rs:107-112`, `load_check.rs:1384-1407` | Confirmed | Backlog (D16) |
 | K-24 | `Pools` is a fixed 256-byte array for each unit | `pools.rs:22`, `meter.rs:7-13` | Plausible sizes | Backlog |
 | K-25 | Small items: `ModifierBook` cloned past the borrow checker, a `clear` with no caller, a hand-spelled `Changed` scan, mixed argument names | `damage_pass.rs:348`, `pass_queue.rs:329`, `toggles.rs:44-54`, `combat_api.rs:205-232` | Confirmed | 12.3 |

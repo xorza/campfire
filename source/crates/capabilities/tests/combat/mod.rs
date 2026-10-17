@@ -4,8 +4,10 @@ use std::num::NonZeroU16;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::component::Component;
+use bevy_ecs::observer::On;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::system::RunSystemOnce;
+use bevy_ecs::system::{ResMut, RunSystemOnce};
 use bevy_ecs::world::World;
 use campfire_actions::internals::TestWeapon;
 use campfire_actions::{
@@ -18,6 +20,7 @@ use campfire_codec::Binary;
 use campfire_combat::internals::{Armed, Attack};
 use campfire_combat::*;
 use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_deliveries::{Died, Teleported};
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
@@ -928,8 +931,18 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     }
 
     // The hero comes back at the start of its respawn tick, 10, at its spawn point with full
-    // health and no attacker on record; the attackers dropped it when it died.
+    // health and no attacker on record; the attackers dropped it when it died. Its death and its
+    // respawn each tell what aims at it, once.
     let mut game = fight_match();
+    game.insert_resource(Heard::default());
+    game.add_observer(|died: On<'_, '_, Died>, mut heard: ResMut<'_, Heard>| {
+        heard.0.push(("died", died.id));
+    });
+    game.add_observer(
+        |teleported: On<'_, '_, Teleported>, mut heard: ResMut<'_, Heard>| {
+            heard.0.push(("teleported", teleported.id));
+        },
+    );
     let stays = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
     let [fighter, stays] = arm(&mut game, [fighter(), stays]);
     let attacker = Mode::spawn(&mut game, fighter, (4, 0, 0), Team::new(0), ());
@@ -963,7 +976,15 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     assert_eq!(Stats::health(&game, hero), 30);
     assert_eq!(attackers(&game), Some(0));
     assert_eq!(Attack::of(&game, attacker).target(), None);
+    assert_eq!(
+        game.resource::<Heard>().0,
+        [("died", hero), ("teleported", hero)]
+    );
 }
+
+/// The units each event of a death or a teleport named, in the order heard.
+#[derive(Resource, Debug, Default)]
+struct Heard(Vec<(&'static str, StableId)>);
 
 /// Loads a book of the stats `[combat]` binds, with no limits, and binds them: the heal scale
 /// `healing_received_pct`, and leech `life_steal` from attacks and `spell_vamp` from the rest,

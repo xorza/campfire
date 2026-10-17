@@ -168,6 +168,7 @@ impl Module for Combat {
         d.scratch::<Volley>();
         d.resource::<NextDamage>();
         d.resource::<HeldHits>();
+        d.observer(HeldHits::drop_died);
         d.report::<Deaths>();
         d.calls::<Weighers>();
         d.book::<DamageKindBook>(Self::damage_kinds);

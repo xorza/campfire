@@ -4,7 +4,7 @@ use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use campfire_actions::Targets;
 use campfire_declare::ByType;
-use campfire_deliveries::{DeliveryQueue, Teleported};
+use campfire_deliveries::{DeliveryQueue, Died, Teleported};
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, StableId};
 use campfire_stats::Life;
@@ -27,8 +27,20 @@ impl Flying {
         teleported: On<'_, '_, Teleported>,
         mut projectiles: Query<'_, '_, (&Projectile, &mut FlightState)>,
     ) {
-        for (projectile, mut state) in &mut projectiles {
-            if projectile.homes_on(teleported.id) {
+        Self::lose(teleported.id, &mut projectiles);
+    }
+
+    /// Makes each projectile that homes on the unit `died` names lose it.
+    pub(super) fn lose_died(
+        died: On<'_, '_, Died>,
+        mut projectiles: Query<'_, '_, (&Projectile, &mut FlightState)>,
+    ) {
+        Self::lose(died.id, &mut projectiles);
+    }
+
+    fn lose(id: StableId, projectiles: &mut Query<'_, '_, (&Projectile, &mut FlightState)>) {
+        for (projectile, mut state) in projectiles {
+            if projectile.homes_on(id) {
                 state.disjoint();
             }
         }

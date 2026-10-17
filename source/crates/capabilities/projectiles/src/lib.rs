@@ -98,6 +98,7 @@ impl Module for Projectiles {
         d.callback::<Deliverers>(Capability::Projectiles, Self::deliver);
         d.require::<Projectile, FlightState>();
         d.observer(Flying::lose_teleported);
+        d.observer(Flying::lose_died);
         d.extend::<UnitTypes>(Self::tag_types);
         d.fact::<Flights>(Self::flights);
         d.book::<ByType<ProjectileSpec>>(ProjectileSpec::book);
