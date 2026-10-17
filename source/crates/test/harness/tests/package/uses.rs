@@ -1,7 +1,7 @@
 //! The uses in the 3v3: a fountain that the hero Husk uses with a prayer, which loads, and each
 //! flaw of a use, an object or a user, which fails the load with its own problem.
 
-use campfire_actions::ActionDataField;
+use campfire_actions::{ActionDataField, ActionProblem, MeteredKind};
 use campfire_common::DeclaredName;
 use campfire_package::{
     LoadError, LoadProblem, ModePackages, PackageName, PackageRef, Place, UseProblem,
@@ -11,6 +11,7 @@ use campfire_sim::Capability;
 use campfire_test_packages::Edit;
 
 use crate::package::moba::{edited, load};
+use crate::package::module_rules::{entry, rule_at};
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
@@ -122,7 +123,10 @@ const FLAWS: [Flaw; 21] = [
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("actions.pray.range", r#""global""#))],
         package: MODE,
-        refused: |problem| use_problem(problem, &UseProblem::Global(name("pray"))),
+        refused: |problem| {
+            let global = ActionProblem::Global(MeteredKind::Use);
+            rule_at(problem, &entry("actions", "pray"), &global)
+        },
     },
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("actions.pray.targeting", r#""point""#))],

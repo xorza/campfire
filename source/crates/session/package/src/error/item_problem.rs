@@ -15,12 +15,6 @@ pub enum ItemProblem {
     /// An inventory at `at` fills a slot kind with ranks, while an item's action has one.
     #[error("{at}: its inventory fills {kind}, a slot kind with ranks")]
     RankedInventory { at: Place, kind: DeclaredName },
-    /// A full stack of the item costs, in some resource, more than an amount holds.
-    #[error("item {0}: a full stack costs more than an amount holds")]
-    StackCost(DeclaredName),
-    /// The item costs less, in some resource, than the components it is built from.
-    #[error("item {0} costs less than its components")]
-    CheaperThanComponents(DeclaredName),
     /// The shop type at `at` sells the item, which costs in a resource the shop does not take.
     #[error("{at}: sells item {item}, which costs in another resource")]
     ShopResource { at: Place, item: DeclaredName },

@@ -4,30 +4,26 @@ use std::num::NonZeroUsize;
 use std::slice;
 
 use campfire_actions::{
-    ActionData, ActionKind, ActionProblem, ActionRange, ActionSlots, ActionsData, DamageFields,
-    DeliveryData, DoesData, EffectData, EffectRule, EffectTo, HealFields, KindData, KindError,
-    LaunchFields, ListHook, MeteredKind, ModifierFields, MoveData, PurgeFields, RangeField,
-    RestoreFields, SlotKinds, SpawnFields, Targeting, TypeSlotsData, XpFields,
+    ActionData, ActionKind, ActionRange, ActionSlots, ActionsData, DamageFields, DeliveryData,
+    DoesData, EffectData, EffectTo, HealFields, KindData, KindError, LaunchFields, ListHook,
+    ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields, SlotKinds, SpawnFields,
+    Targeting, TypeSlotsData, XpFields,
 };
 use campfire_areas::AreaData;
 use campfire_capabilities::Release;
 use campfire_combat::{CombatData, ModeCombatData};
 use campfire_common::DeclaredName;
-use campfire_declare::{
-    BookError, BookPlace, NamesListError, Problem, Section, TypePlace, UnitTypeData,
-};
+use campfire_declare::{BookError, BookPlace, Section, TypePlace, UnitTypeData};
 use campfire_geometry::Metric;
 use campfire_interaction::{UseData, UsesData};
-use campfire_items::{InventoryData, ItemData, ItemError, ItemsData, ShopData};
+use campfire_items::{InventoryData, ItemData, ItemsData, ShopData};
 use campfire_math::Num;
-use campfire_mode::{ModeData, ModeError, Offers};
-use campfire_navigation::{
-    MapNavigationData, MapPathsData, ModeNavigationData, NavigationDataError,
-};
-use campfire_orders::{AiData, AiError};
+use campfire_mode::{ModeData, Offers};
+use campfire_navigation::{MapNavigationData, MapPathsData, ModeNavigationData};
+use campfire_orders::AiData;
 use campfire_players::ResourcesData;
 use campfire_production::{ModeSupplyData, ProductionData, SupplyData};
-use campfire_progression::{ModeTracksData, TrackError};
+use campfire_progression::ModeTracksData;
 use campfire_projectiles::{ProjectileData, ProjectileHits};
 use campfire_script::{
     ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
@@ -36,13 +32,11 @@ use campfire_script::{
 };
 use campfire_sim::{Capability, TickRate};
 use campfire_stats::{
-    ModePoolsData, ModeStatsData, ModifierData, ModifierProblem, ModifiersData, PassiveData,
-    StatId, StatsData, TypePoolsData, UnitStartError,
+    ModePoolsData, ModeStatsData, ModifierData, ModifiersData, PassiveData, StatId, StatsData,
+    TypePoolsData,
 };
-use campfire_units::{CollisionData, TypeParamsData, TypeStateData, TypeTagsData, TypesError};
-use campfire_values::{
-    EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat, TimeTooLarge,
-};
+use campfire_units::{CollisionData, TypeParamsData, TypeStateData, TypeTagsData};
+use campfire_values::{EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat};
 use campfire_vision::{GridData, VisionData};
 
 use crate::dependent::{Dependent, DependentKind};
@@ -54,7 +48,6 @@ use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
 use crate::error::gather_problem::GatherProblem;
 use crate::error::item_problem::ItemProblem;
-use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
@@ -1887,7 +1880,13 @@ fn book_error(packages: &ModePackages, error: BookError) -> LoadError {
             package,
             at,
             problem,
-        } => (package, rule_problem(packages, package, at, problem)),
+        } => (
+            package,
+            LoadProblem::Rule {
+                at: book_place(packages, package, at),
+                problem,
+            },
+        ),
     };
     let view = packages.packages().nth(usize::from(package));
     LoadError::of(
@@ -1911,157 +1910,6 @@ fn book_place(packages: &ModePackages, package: PackageIndex, at: BookPlace) -> 
         BookPlace::Map => Place::Map,
         BookPlace::Teams => Place::Mode,
         BookPlace::Types => Place::UnitTypes,
-    }
-}
-
-/// The problem of `problem`, a rule of a module the data at `at`, of the package at `package`,
-/// breaks: each in the case the load reports it by, or as the module's own.
-fn rule_problem(
-    packages: &ModePackages,
-    package: PackageIndex,
-    at: BookPlace,
-    problem: Problem,
-) -> LoadProblem {
-    let entry = |at: &BookPlace| match at {
-        BookPlace::Entry { name, .. } => name.clone(),
-        other => unreachable!(
-            "an action's, a modifier's or an item's problem is at its entry, not {other}"
-        ),
-    };
-    if let Some(error) = problem.get::<UnitStartError>() {
-        return LoadProblem::UnitStart {
-            at: book_place(packages, package, at),
-            error: error.clone(),
-        };
-    }
-    if problem.get::<NavigationDataError>() == Some(&NavigationDataError::BoxWalks) {
-        return LoadProblem::BoxBody {
-            at: book_place(packages, package, at),
-            problem: BoxProblem::Walks,
-        };
-    }
-    if let Some(&error) = problem.get::<AiError>() {
-        return LoadProblem::Ai {
-            at: book_place(packages, package, at),
-            error,
-        };
-    }
-    if let Some(error) = problem.get::<ActionProblem>() {
-        return action_problem(entry(&at), error.clone());
-    }
-    if let Some(&error) = problem.get::<ModifierProblem>() {
-        return LoadProblem::Modifier {
-            modifier: entry(&at),
-            problem: error,
-        };
-    }
-    if let Some(error) = problem.get::<ItemError>() {
-        let item = entry(&at);
-        return LoadProblem::Item(match error {
-            ItemError::StackCost(_) => ItemProblem::StackCost(item),
-            ItemError::CheaperThanComponents(_) => ItemProblem::CheaperThanComponents(item),
-        });
-    }
-    if problem.get::<TimeTooLarge>().is_some()
-        && let BookPlace::UnitType(TypePlace::Declared(unit_type)) = &at
-    {
-        return LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type.clone()));
-    }
-    if let Some(error) = problem.get::<ModeError>() {
-        return LoadProblem::Mode(error.clone());
-    }
-    if let Some(error) = problem.get::<TrackError>() {
-        return match error {
-            TrackError::TooMany => LoadProblem::TooMany(Limit::Tracks),
-            TrackError::LevelTracks => LoadProblem::LevelTracks,
-        };
-    }
-    if let Some(error) = problem.get::<TypesError>() {
-        return types_problem(error.clone());
-    }
-    if let (Some(error), BookPlace::Section(key)) = (problem.get::<NamesListError>(), &at) {
-        return names_problem(key, error);
-    }
-    LoadProblem::Rule {
-        at: book_place(packages, package, at),
-        problem,
-    }
-}
-
-/// The problem of `error`, the unit types or tags that the book build refused.
-fn types_problem(error: TypesError) -> LoadProblem {
-    match error {
-        TypesError::TooManyTags => LoadProblem::TooMany(Limit::Tags),
-        TypesError::TooManyTypes => LoadProblem::TooMany(Limit::UnitTypes),
-        TypesError::Repeated(name) => LoadProblem::Repeated {
-            at: Place::UnitTypes,
-            name,
-        },
-    }
-}
-
-/// The problem of `error`, the list of the mode's names at the section `key` that the book build
-/// refused.
-fn names_problem(key: &str, error: &NamesListError) -> LoadProblem {
-    match error {
-        NamesListError::TooMany => LoadProblem::TooMany(match key {
-            ModePoolsData::KEY => Limit::Pools,
-            ResourcesData::KEY => Limit::Resources,
-            ModeCombatData::KEY => Limit::DamageKinds,
-            // Each layer is a tag of the match.
-            ModeNavigationData::KEY => Limit::Tags,
-            other => unreachable!("no list of names is the mode's [{other}]"),
-        }),
-        NamesListError::Repeated(name) => {
-            let at = match key {
-                ModePoolsData::KEY => Place::Entry {
-                    table: ModePoolsData::KEY,
-                    name: name.clone(),
-                },
-                ResourcesData::KEY => Place::Section(ResourcesData::KEY),
-                ModeCombatData::KEY => Place::Section(ModeCombatData::KEY),
-                ModeNavigationData::KEY => Place::Section(ModeNavigationData::KEY),
-                other => unreachable!("no list of names is the mode's [{other}]"),
-            };
-            LoadProblem::Repeated {
-                at,
-                name: name.to_string(),
-            }
-        }
-    }
-}
-
-/// The problem of `problem`, a rule the data of `action` breaks, as the book build found it.
-fn action_problem(action: DeclaredName, problem: ActionProblem) -> LoadProblem {
-    match problem {
-        ActionProblem::Time(error) => LoadProblem::Action { action, error },
-        ActionProblem::RankCount(ranks) => LoadProblem::RankCount { action, ranks },
-        ActionProblem::SlottedRanks => LoadProblem::ActionRanks(action),
-        ActionProblem::Field(field) => LoadProblem::ActionField { action, field },
-        ActionProblem::KindField(field) => LoadProblem::KindField { action, field },
-        ActionProblem::NotRun(kind) => LoadProblem::KindNotRun { action, kind },
-        ActionProblem::Global(MeteredKind::Gather) => {
-            LoadProblem::Gather(GatherProblem::Global(action))
-        }
-        ActionProblem::Global(MeteredKind::Build) => {
-            LoadProblem::Build(BuildProblem::Global(action))
-        }
-        ActionProblem::Global(MeteredKind::Use) => LoadProblem::Use(UseProblem::Global(action)),
-        ActionProblem::Section(unit_type) => {
-            LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type })
-        }
-        ActionProblem::NoBox => LoadProblem::Build(BuildProblem::NoBox(action)),
-        ActionProblem::StartLife => LoadProblem::Build(BuildProblem::StartLife(action)),
-        ActionProblem::Effect { list, rule } => LoadProblem::Effect {
-            action,
-            list,
-            problem: match rule {
-                EffectRule::Planned(planned) => EffectProblem::Planned(planned),
-                EffectRule::Overflow => EffectProblem::Overflow,
-                EffectRule::Negative => EffectProblem::Negative,
-                EffectRule::Duration => EffectProblem::Duration,
-            },
-        },
     }
 }
 

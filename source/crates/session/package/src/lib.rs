@@ -34,7 +34,6 @@ pub use crate::error::delivery_problem::DeliveryProblem;
 pub use crate::error::effect_problem::EffectProblem;
 pub use crate::error::gather_problem::GatherProblem;
 pub use crate::error::item_problem::ItemProblem;
-pub use crate::error::limit::Limit;
 pub use crate::error::load_problem::LoadProblem;
 pub use crate::error::locale_problem::LocaleProblem;
 pub use crate::error::place::Place;

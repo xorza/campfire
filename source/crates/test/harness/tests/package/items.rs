@@ -7,7 +7,7 @@ use campfire_capabilities::Release;
 use campfire_codec::{Toml, TomlTable};
 use campfire_common::DeclaredName;
 use campfire_declare::UnitTypeData;
-use campfire_items::{InventoryData, ShopData};
+use campfire_items::{InventoryData, ItemError, ShopData};
 use campfire_math::Num;
 use campfire_package::{
     ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
@@ -17,6 +17,7 @@ use campfire_sim::Capability;
 use campfire_test_packages::Edit;
 
 use crate::package::moba::{edited, load};
+use crate::package::module_rules::{entry, rule_of};
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
@@ -172,7 +173,12 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.warblade.cost", "{ gold = 749 }"),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::CheaperThanComponents(item)) if item == "warblade"),
+        refused: |problem| {
+            rule_of(problem, |at, error: &ItemError| {
+                *at == entry("items", "warblade")
+                    && matches!(error, ItemError::CheaperThanComponents(_))
+            })
+        },
     },
     // A full stack's cost is what an amount holds: (2³² − 1)², about 1.8 · 10¹⁹, is past 2⁶³ − 1.
     Flaw {
@@ -187,7 +193,11 @@ const FLAWS: [Flaw; 23] = [
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::StackCost(item)) if item == "health_potion"),
+        refused: |problem| {
+            rule_of(problem, |at, error: &ItemError| {
+                *at == entry("items", "health_potion") && matches!(error, ItemError::StackCost(_))
+            })
+        },
     },
     // A stack and uses of at least one.
     Flaw {

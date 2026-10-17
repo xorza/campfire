@@ -9,9 +9,6 @@ pub enum UseProblem {
     /// A use aims at something but a unit its filter selects.
     #[error("action \"{0}\": a use aims at a unit its filter selects")]
     Aims(DeclaredName),
-    /// A use's range is global, where its user walks in range of its object.
-    #[error("action \"{0}\": a use's range is in meters")]
-    Global(DeclaredName),
     /// The `use` section at `at` names an action of another kind.
     #[error("{at}: its use names action \"{action}\", which is not of the `use` kind")]
     NotUse { at: Place, action: DeclaredName },

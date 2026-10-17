@@ -57,9 +57,6 @@ pub enum DeliveryProblem {
     /// A weapon's delivery is neither a homing projectile nor a curve.
     #[error("weapon \"{0}\": its delivery is a homing projectile or a curve")]
     Weapon(DeclaredName),
-    /// An area type has a time that does not count in ticks at the fastest rate the mode allows.
-    #[error("unit type {0}: a time too large to count in ticks")]
-    AreaTime(DeclaredName),
     /// A train makes a projectile or an area type, whose units only actions deliver.
     #[error("train \"{0}\" makes a projectile or an area type")]
     Trained(DeclaredName),

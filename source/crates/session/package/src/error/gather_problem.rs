@@ -7,7 +7,4 @@ pub enum GatherProblem {
     /// It aims at something but a unit its filter selects.
     #[error("action \"{0}\": a gather aims at a unit its filter selects")]
     Aims(DeclaredName),
-    /// Its range is global, which no worker walks into.
-    #[error("action \"{0}\": a gather's range is in meters")]
-    Global(DeclaredName),
 }

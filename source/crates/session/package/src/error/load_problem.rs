@@ -1,14 +1,12 @@
-use campfire_actions::{ActionDataField, ActionField, ActionKind, ActionSlots, ListHook};
+use campfire_actions::{ActionDataField, ActionKind, ActionSlots, ListHook};
 use campfire_capabilities::CapabilityError;
 use campfire_common::{DeclaredName, MapName};
 use campfire_declare::Problem;
-use campfire_mode::ModeError;
 use campfire_navigation::MapProblem;
-use campfire_orders::AiError;
 use campfire_script::{ApiVersion, NameKind, ParamProblem};
 use campfire_sim::Capability;
-use campfire_stats::{ModifierProblem, UnitStartError};
-use campfire_values::{EngineTag, PackagePath, Stat, TimeTooLarge};
+use campfire_stats::ModifierProblem;
+use campfire_values::{EngineTag, PackagePath, Stat};
 use thiserror::Error;
 
 use crate::error::ContentError;
@@ -19,7 +17,6 @@ use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
 use crate::error::gather_problem::GatherProblem;
 use crate::error::item_problem::ItemProblem;
-use crate::error::limit::Limit;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
@@ -147,9 +144,6 @@ pub enum LoadProblem {
         action: DeclaredName,
         kind: ActionKind,
     },
-    /// The mode's teams or map name what it does not have.
-    #[error(transparent)]
-    Mode(ModeError),
     /// Data at `at` breaks a rule of the module that reads it, as the module reports it.
     #[error("{at}")]
     Rule {
@@ -157,24 +151,12 @@ pub enum LoadProblem {
         #[source]
         problem: Problem,
     },
-    /// A capability field of an ability does not hold at a rank.
-    #[error("action \"{action}\": {field:?} gives no value of its kind")]
-    ActionField {
-        action: DeclaredName,
-        field: ActionField,
-    },
-    /// The mode declares more of something than a match holds.
-    #[error(transparent)]
-    TooMany(Limit),
-    /// More than one of the mode's tracks is the `level` track.
-    #[error("more than one `level` track")]
-    LevelTracks,
+    /// More packages, the mode's and those it depends on, than a package index counts.
+    #[error("more packages than a package index counts")]
+    TooManyPackages,
     /// The slot kind of that name gives its ranks levels, in a mode with no `level` track.
     #[error("slot kind {0}: its ranks' `levels` need a `level` track")]
     RankLevels(DeclaredName),
-    /// A per-rank array of an ability has another length than its ranks.
-    #[error("action \"{action}\": a per-rank array without {ranks} entries")]
-    RankCount { action: DeclaredName, ranks: u8 },
     /// The script at `path`, or the one data names there.
     #[error("{path}")]
     Script {
@@ -237,28 +219,6 @@ pub enum LoadProblem {
     /// A unit type or a modifier at `at` carries a tag only the engine gives.
     #[error("{at}: {:?}, a tag only the engine gives", .tag.name())]
     EngineTag { at: Place, tag: EngineTag },
-    /// A unit type at `at` makes no unit: its stats, pools and combat do not hold together at
-    /// level 1.
-    #[error("{at}")]
-    UnitStart {
-        at: Place,
-        #[source]
-        error: UnitStartError,
-    },
-    /// A unit type's AI at `at` does not load.
-    #[error("{at}")]
-    Ai {
-        at: Place,
-        #[source]
-        error: AiError,
-    },
-    /// A time of an action does not count in ticks at the fastest rate the mode allows.
-    #[error("action \"{action}\"")]
-    Action {
-        action: DeclaredName,
-        #[source]
-        error: TimeTooLarge,
-    },
     /// A modifier does not load at the fastest rate the mode allows.
     #[error("modifier \"{modifier}\"")]
     Modifier {

@@ -15,7 +15,6 @@ use campfire_units::{HeightGrid, ModeTagsData, ScriptBook, TypeTagsData};
 use campfire_values::{EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
-use crate::error::limit::Limit;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::{ContentError, LoadError};
@@ -388,7 +387,7 @@ impl ModePackages {
         let name = manifest.header.name.clone();
         let fail = |problem| LoadError::of(&name, problem);
         if PackageIndex::dependency(dependencies.len()).is_none() {
-            return Err(fail(LoadProblem::TooMany(Limit::Packages)));
+            return Err(fail(LoadProblem::TooManyPackages));
         }
         let ModeFile {
             script,
