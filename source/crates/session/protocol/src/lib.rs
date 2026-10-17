@@ -105,12 +105,13 @@ pub mod internals {
 pub mod bench {
     use criterion::Criterion;
 
-    use crate::{input_chain, server_seeds};
+    use crate::{input_chain, server_seeds, session_log};
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         input_chain::bench::chain_head(c);
         server_seeds::bench::server_seeds(c);
+        session_log::bench::record_tick(c);
     }
 }
 

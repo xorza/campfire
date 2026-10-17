@@ -356,7 +356,6 @@ Each section gives the target shape of one system, the findings it removes, and 
   - `AppendWriter` bounds its bytes that are not yet durable. The owner checks a sync that is still running, and past a bound the server ends with its storage failure (N-16, B-15).
   - `DurableDir::remove` renames to a tombstone first (B-17).
 - **Keys.** One `ServerKey` owner, not `Clone`, erases its `Keypair` on drop, and an `Arc<Signer>` is shared. `Secret` is not `Copy`, is zeroed on drop, and compares in constant time (N-19, B-25).
-- **Signature checks.** `SessionLog::record` splits into `check` and `apply`. The frame checks different slots' packets in parallel and applies them in slot order (N-11).
 - **Small items:**
   - The delegation expiration has one decimal spelling (N-28).
   - `TickHashes` goes behind `internals`, and the misnamed error variant is renamed (N-29).
@@ -648,7 +647,6 @@ Each change folds into its document when its batch lands. Each line names the de
 
 **6.4 The session log.** Touches `protocol` (session log, journal, controller, carry) and `net` (seats, player link, checkpoints).
 - A proposal first, `docs/design/session-log-state.md`, for review before any code (decided 2026-10-17): the live log as its latest checkpoint's state and the entries since, as Raft keeps a snapshot and a tail; the replay as a cursor value the session owns beside the log; publication by two streaming passes over the journal, each load's cut applied; one encode for each record into the journal's frame buffer; the signature policy as a parameter of the decode (N-17, N-14, N-13, D34). The code waits for the review.
-- A bench of `record_inputs` with 8 and 32 slots' packets first (decided 2026-10-17). `check` and `apply` split, with parallel checks across slots, only when the bench shows the checks take a set share of the frame's budget (N-11).
 - A relationship from a slot's entity to its link (N-18). Waits for Q16 in `review-architecture_QUESTIONS.md`.
 
 **6.5 Allocations on the network paths.** Touches `net` and `protocol`.
@@ -1032,7 +1030,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | N-2 | A link that did not join uses every channel with no budget | `net_protocol/mod.rs:96-117`, `offering.rs:40, 176-193` | Confirmed | 1.1 |
 | N-9 | Replicated entities get `Replicate`, `Rooms` and `PredictionTarget` after their spawn | `kind_shows.rs:86-112`, `viewer.rs:136-190` | Confirmed | 7.5 |
 | N-10 | Lightyear's default features add interpolation, and the server binary links the client stack | `Cargo.toml:186`, `net/src/lib.rs:108-122` | Confirmed | 12.2 |
-| N-11 | Every signature check and signing runs on the tick thread, one slot after another, with a syscall for each signature's aux randomness | `sim_server/mod.rs:503-583`, `signer.rs:81-105` | Plausible cost | 6.4 |
 | N-13 | Each record is encoded two or three times, with a wake for each record | `session_log/mod.rs:557-770`, `journal_records.rs:250-255` | Confirmed | 6.4 |
 | N-14 | The server keeps the whole session in memory and publishes from it, against 10-sessions.md | `session_log/mod.rs:87-88`, `session_dir/mod.rs:178-220` | Confirmed drift | 6.4 |
 | N-17 | `SessionLog` has 21 fields, a hidden replay mode and a signature mode | `session_log/mod.rs:77-120, 1137-1144` | Confirmed | 6.4 |
