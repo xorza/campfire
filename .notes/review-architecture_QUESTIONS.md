@@ -22,3 +22,13 @@ Each question waits for the user's decision. The plan's items point here.
   3. **Keep the dependency.** `production` keeps `navigation` for the two reads. Cost: R-31 stays in part.
 - **Blocked:** the second bullet of 5.5 alone.
 
+
+## Q12. Batch 6.4, N-11: parallel signature checks with no measurement
+
+- **Item:** 6.4, N-11, the part "`check` and `apply` split, with parallel checks across slots". The aux randomness part is done.
+- **Why it waits:** N-11's cost is "Plausible": no bench measures the frame's signature checks. A BIP-340 check costs about 50 µs, so a frame of 8 slots' packets takes about 0.4 ms on one thread. A fan-out to worker threads costs a wake for each, of about the same size, and the threads must come through `store`, which has no scoped parallel map yet. P1 of the plan asks for a measurement before a change for speed.
+- **Options:**
+  1. **Measure first (recommended).** Add a bench of `record_inputs` with 8 and 32 slots' packets. Split and fan out only when the checks take more than a set share of the frame's budget. Cost: one bench now, and the change later if the bench asks for it.
+  2. **Split and fan out now.** `SessionLog::record` splits into `check` (`&self`, the signature) and `apply`. `store` gains a scoped parallel map, and the frame checks the packets of different slots on it and applies them in slot order. Cost: a new proxy API and thread wakes in each frame, with no measured gain.
+  3. **Split only.** `check` and `apply` split, and the frame calls them in turn on one thread. Cost: the code changes shape for a gain that comes only with option 2.
+- **Blocked:** the check-and-apply bullet of 6.4 alone.

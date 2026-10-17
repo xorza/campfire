@@ -355,7 +355,7 @@ Each section gives the target shape of one system, the findings it removes, and 
   - The private record holds only the seed chain, and the terms come from the journal's header alone (N-8).
   - `AppendWriter` bounds its bytes that are not yet durable. The owner checks a sync that is still running, and past a bound the server ends with its storage failure (N-16, B-15).
   - `DurableDir::remove` renames to a tombstone first (B-17).
-- **Keys.** One `ServerKey` owner, not `Clone`, erases its `Keypair` on drop, and an `Arc<Signer>` is shared. `Secret` is not `Copy`, is zeroed on drop, and compares in constant time (N-19, B-25). Signatures draw their aux randomness from a CSPRNG for each signer, seeded once (N-11).
+- **Keys.** One `ServerKey` owner, not `Clone`, erases its `Keypair` on drop, and an `Arc<Signer>` is shared. `Secret` is not `Copy`, is zeroed on drop, and compares in constant time (N-19, B-25).
 - **Signature checks.** `SessionLog::record` splits into `check` and `apply`. The frame checks different slots' packets in parallel and applies them in slot order (N-11).
 - **Small items:**
   - The delegation expiration has one decimal spelling (N-28).
@@ -653,7 +653,7 @@ Each change folds into its document when its batch lands. Each line names the de
 - `LogReplay`, the decode's signature policy, and `JournaledLog` (N-17).
 - The live log keeps state, and publication streams the journal (N-14, D34).
 - One encode for each record, and one wake of the journal worker for each frame (N-13).
-- `check` and `apply` split, with parallel checks across slots and aux randomness from a CSPRNG for each signer (N-11).
+- `check` and `apply` split, with parallel checks across slots (N-11). Waits for Q12 in `review-architecture_QUESTIONS.md`.
 - One `Control` shape, and a relationship from a slot's entity to its link (N-18).
 
 **6.5 Allocations on the network paths.** Touches `net` and `protocol`.
