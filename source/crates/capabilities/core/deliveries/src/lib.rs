@@ -24,7 +24,7 @@ mod delivery_spawner;
 mod teleported;
 
 pub use crate::dash_delivering::DashDelivering;
-pub use crate::delivered::Delivered;
+pub use crate::delivered::{AttackShot, Delivered, DeliveredPayload};
 pub use crate::deliverers::Deliverers;
 pub use crate::delivering::{Delivering, Launcher};
 pub use crate::delivery_queue::{DashEnd, DeliveryQueue};

@@ -662,9 +662,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - The `Purse` contract, the living test and the passive hook are contracts in `units`, and `actions` drops `stats`. The needs-and-uses test covers core modules (C-3, E-5).
 - **Goldens:** they may move where the four loops differed. Each move is explained.
 
-**5.4 One delivery report.** Touches `deliveries`, `projectiles`, `combat`, `units`, `values`, `navigation`.
-- One `Delivered` record, so combat answers the attack payload from the hooks' queue (K-18).
-
 **5.5 Contracts in `units`.** Touches `units`, `players`, `orders`, `navigation`, `production`, `interaction`, `items`, `net`, `visibility`, `vision`, `combat`.
 - `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20).
 - `Destination` writes and the standing-room query are contracts, and `production` drops `navigation` (R-31).
@@ -1049,7 +1046,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | K-13 | About twenty passes scan every unit in each tick to find timers that are due | `volley.rs:27-49`, `attacks.rs:145-253`, `modifier_ends.rs:16-24`, `casts.rs:55-228`, `area_life.rs:329-334` | Confirmed scans. The cost is plausible. | 7.1 |
 | K-16 | An area's `inside` and an aura do one job in two shapes, and disagree on neutrals and lifeless units | `area_spec.rs:94-101`, `area_holds.rs:47-58`, `held_pass.rs:131-139` | Confirmed | Backlog |
 | K-17 | The one action pipeline is four hand-built loops | `attacks.rs:145-414`, `casts.rs:55-503` | Confirmed | 5.3 |
-| K-18 | A projectile reports through two channels, by its payload, and only one of them splashes | `flights.rs:406-434` | Confirmed | 5.4 |
 | K-20 | Scripted passes hold the world for their whole run, and their hook state is non-send | `combat_hooks.rs:12-15`, `modifier_hooks.rs:46-50` | Confirmed shape | 6.1, 11.1 |
 | K-21 | The damage pass reads each unit through world lookups, a heard event allocates a handle for each listener, and `NextDamage` drops its buffer | `damage_pass.rs:213-429`, `modifier_hooks.rs:78-159` | Plausible | 7.2 |
 | K-22 | A death ends nothing that is aimed at its unit, and a respawn moves the unit with no `Teleported` | `dying.rs:183-190`, `flights.rs:147` | Plausible | 5.5 |

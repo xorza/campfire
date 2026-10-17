@@ -2389,6 +2389,7 @@ dependencies = [
  "campfire-combat",
  "campfire-common",
  "campfire-declare",
+ "campfire-deliveries",
  "campfire-math",
  "campfire-players",
  "campfire-script",

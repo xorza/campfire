@@ -8,7 +8,7 @@ use campfire_script::{CallStart, HookCall, Pool, ScriptValue, ScriptsWorld};
 use campfire_sim::{SimTick, SimWorld};
 use campfire_units::{HitHandle, Owner};
 
-use crate::delivered::Delivered;
+use crate::delivered::{Delivered, DeliveredPayload};
 use crate::delivery_queue::DeliveryQueue;
 
 /// The hooks of the tick's delivery hits and ends, and the despawn of the delivery units that
@@ -59,7 +59,14 @@ impl DeliveryHooks {
         world.script_batch(|batch| {
             let ctx = batch.ctx().clone();
             for delivered in due {
-                let Delivered { by, reach, hit } = *delivered;
+                let Delivered {
+                    payload: DeliveredPayload::Action(by),
+                    reach,
+                    hit,
+                } = *delivered
+                else {
+                    continue;
+                };
                 let reached = reach.hook();
                 let hook = ListHook::from(reached).hook();
                 let book = batch.world().resource::<ActionBook>();

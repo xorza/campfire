@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_actions::{ShotHits, Targets};
+use campfire_actions::Targets;
 use campfire_declare::ByType;
 use campfire_deliveries::{DeliveryQueue, Teleported};
 use campfire_math::Num;
@@ -34,18 +34,15 @@ impl Flying {
         }
     }
 
-    /// Flies each projectile a step, in the order of their stable ids, as `Flights::fly` says. An
-    /// attack's hit joins the tick's shot hits; an action's hits and ends run its hooks, and an
+    /// Flies each projectile a step, in the order of their stable ids, as `Flights::fly` says. Its
+    /// hits and its end join the tick's deliveries, which combat answers for an attack's and
+    /// whose hooks run for an action's, and an
     /// ended projectile despawns after them. A line's hits are kept while it flies, and a cast's,
     /// for a type that strikes a unit once a cast, while any of its projectiles flies.
     pub(super) fn fly(
         targets: Targets<'_, '_>,
         specs: Res<'_, ByType<ProjectileSpec>>,
-        (mut hits, mut deliveries, mut struck): (
-            ResMut<'_, ShotHits>,
-            ResMut<'_, DeliveryQueue>,
-            ResMut<'_, StruckUnits>,
-        ),
+        (mut deliveries, mut struck): (ResMut<'_, DeliveryQueue>, ResMut<'_, StruckUnits>),
         mut projectiles: Query<
             '_,
             '_,
@@ -74,7 +71,6 @@ impl Flying {
             .any(|(.., projectile, _, _, _)| !matches!(projectile.flight(), Flight::Homing { .. }));
         let grid = meet.then(|| near.current());
         let mut flights = Flights {
-            hits: &mut hits,
             deliveries: &mut deliveries,
             struck: &mut struck,
             grid,

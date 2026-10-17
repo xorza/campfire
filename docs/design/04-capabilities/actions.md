@@ -56,6 +56,7 @@
 - **A projectile hits by any of its filters.** `hits` takes `none`, a filter, or a list of filters, any one of which selects a hit, as 0 A.D.'s `MatchesClassList` selects by any entry, OpenRA's warheads by any of their `ValidTargets` and Zero Hour's `ProjectileCollidesWith` by any bit; one filter holds no "or" of two tags, and a list of none is refused, as `none` says it.
 - **An area triggers once and holds while it lasts.** It reaches the living units its filter selects once after its delay, and holds its modifiers on the units inside while it lasts, as a Dota thinker carries an aura.
 - **Every delivery records its hit.** How it reached a unit, its projectile or area, the aimed unit, where, how far and from which way, reaches `on_hit`, `on_end` and the damage it deals.
+- **One record for every delivery.** A projectile's hit or end, an area's and a dash's end each join the tick's one queue of deliveries, with what the delivery carries: an action's, whose hooks and lists run as the deliveries end, or an attack's shot, whose damage combat queues as the hits land, so a new delivery reports in one shape. Refused: an attack's hits in a scratch of their own beside the queue, which split one report in two by its payload.
 
 ## Effects
 

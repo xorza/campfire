@@ -5,7 +5,9 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_actions::{Reached, Targets};
 use campfire_common::Ticks;
 use campfire_declare::ByType;
-use campfire_deliveries::{Delivered, DeliveryQueue, DeliverySpawner, NewDelivery};
+use campfire_deliveries::{
+    Delivered, DeliveredPayload, DeliveryQueue, DeliverySpawner, NewDelivery,
+};
 use campfire_geometry::Placed;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId};
@@ -70,7 +72,12 @@ impl AreaLife {
                 direction: None,
             };
             let by = area.by();
-            let delivered = |reach| Delivered { by, reach, hit };
+            let payload = DeliveredPayload::Action(by);
+            let delivered = |reach| Delivered {
+                payload,
+                reach,
+                hit,
+            };
             if triggers_at.is_some_and(|at| at <= now) {
                 let spec = specs.get(unit_type).expect("an area's type has a spec");
                 reached.clear();

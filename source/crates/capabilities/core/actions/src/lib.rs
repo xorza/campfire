@@ -82,7 +82,6 @@ mod rank_values;
 mod reached;
 mod requires_data;
 mod shot_damage;
-mod shot_hits;
 mod shots;
 mod slot_aim;
 mod slot_claims;
@@ -163,7 +162,6 @@ pub use crate::rank_values::{ChannelRule, ChargeRule, ClipRule, LoadedRanks, Ran
 pub use crate::reached::Reached;
 pub use crate::requires_data::RequiresData;
 pub use crate::shot_damage::ShotDamage;
-pub use crate::shot_hits::{ShotHit, ShotHits};
 pub use crate::shots::{Shot, Shots};
 pub use crate::slot_aim::SlotAim;
 pub use crate::slot_claims::{SlotClaim, SlotClaims};
@@ -295,7 +293,6 @@ impl Module for Actions {
         d.component::<ActionProgress>();
         d.component::<SlotTimes>();
         d.scratch::<Shots>();
-        d.scratch::<ShotHits>();
         d.require::<ActionSlots, SlotTimes>();
         d.require::<ActionSlots, ActionProgress>();
         d.fact::<ActionLoad>(ActionLoad::build);

@@ -5,10 +5,11 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCheck, ActionProgress, ActionSlots, ActionTarget, Caster, InProgress, Payer,
-    Purse, Reached, Shot, ShotDamage, ShotHit, ShotHits, Shots, SlotAim, SlotTimes, Targets,
+    Purse, Reached, Shot, ShotDamage, Shots, SlotAim, SlotTimes, Targets,
 };
 use campfire_common::Tick;
 use campfire_declare::{ByType, RoleForm};
+use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, DeliveryQueue};
 use campfire_players::{PlayerResources, PlayerRows, PlayerRowsMut, PlayersWorld};
 use campfire_script::ScriptsWorld;
 use campfire_sim::{EntityIndex, Position, SimRng, SimTick, StableId, TickClock};
@@ -66,28 +67,34 @@ impl Attacks {
         }
     }
 
-    /// Queues the damage of each hit and each end of an attack's projectile this tick, in the
-    /// order they came, its weapon's damage with the roll it drew: to the unit a hit struck, for
+    /// Queues the damage of each hit and each end of an attack's projectile this tick, of the
+    /// tick's deliveries, in the order they came, its weapon's damage with the roll it drew: to the unit a hit struck, for
     /// a weapon of no splash; and where a projectile of a weapon of a splash ends, to each living
     /// unit of the relations its splash affects, to its source when it spares none, whose volume
     /// lies nearer the end's point in space than its radius, by stable id
     /// (04-capabilities/combat.md, An attack may splash).
     pub(super) fn take_hits(
         (tick, book): (Res<'_, SimTick>, Res<'_, ActionBook>),
-        (mut hits, mut queue): (ResMut<'_, ShotHits>, ResMut<'_, PassQueue>),
+        (deliveries, mut queue): (Res<'_, DeliveryQueue>, ResMut<'_, PassQueue>),
         targets: Targets<'_, '_>,
         mut near: UnitsNear<'_, '_>,
         mut splashed: Local<'_, Vec<StableId>>,
     ) {
         let now = tick.start();
-        for ShotHit {
-            source,
-            team,
-            reach,
-            damage: shot,
-            hit,
-        } in hits.drain()
-        {
+        for &delivered in deliveries.delivered() {
+            let Delivered {
+                payload:
+                    DeliveredPayload::Attack(AttackShot {
+                        source,
+                        team,
+                        damage: shot,
+                    }),
+                reach,
+                hit,
+            } = delivered
+            else {
+                continue;
+            };
             let damage = |target| Damage {
                 source: Some(source),
                 target,

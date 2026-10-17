@@ -7,7 +7,7 @@ use campfire_sim::StableId;
 use campfire_values::Hit;
 
 use crate::dash_delivering::DashDelivering;
-use crate::delivered::Delivered;
+use crate::delivered::{Delivered, DeliveredPayload};
 
 /// The hits and ends of this tick's deliveries whose action's hooks run, in the order they
 /// happened; and the delivery units that ended, which despawn once the hooks ran, so a hook still
@@ -34,6 +34,11 @@ impl DeliveryQueue {
         self.delivered.push(delivered);
     }
 
+    /// What the tick's deliveries reached so far, in the order they did.
+    pub fn delivered(&self) -> &[Delivered] {
+        &self.delivered
+    }
+
     /// Records that the delivery unit `entity` ended this tick, so it despawns.
     pub fn end(&mut self, entity: Entity) {
         self.ended.push(entity);
@@ -48,7 +53,7 @@ impl DeliveryQueue {
             pos,
             direction,
         } = end;
-        let by = dash.by;
+        let payload = DeliveredPayload::Action(dash.by);
         let hit = Hit {
             delivery: None,
             target,
@@ -57,7 +62,7 @@ impl DeliveryQueue {
             direction,
         };
         self.delivered.push(Delivered {
-            by,
+            payload,
             reach: Reached::End,
             hit,
         });

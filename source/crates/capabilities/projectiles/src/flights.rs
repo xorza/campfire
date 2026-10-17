@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
-use campfire_actions::{Reached, ShotHit, ShotHits, Targets};
-use campfire_deliveries::{Delivered, Delivering, DeliveryQueue};
+use campfire_actions::{Reached, Targets};
+use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, Delivering, DeliveryQueue};
 use campfire_geometry::{BodyGrid, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_script::Filters;
@@ -21,7 +21,6 @@ use crate::struck_units::{Struck, StruckUnits};
 /// of the units a line's step meets, by share of the step.
 #[derive(Debug)]
 pub(crate) struct Flights<'a> {
-    pub(crate) hits: &'a mut ShotHits,
     pub(crate) deliveries: &'a mut DeliveryQueue,
     pub(crate) struck: &'a mut StruckUnits,
     /// The units near, when a line or a curve flies.
@@ -407,11 +406,13 @@ impl Flights<'_> {
         let Fired { projectile, team } = fired;
         let source = projectile.source();
         match projectile.payload() {
-            Payload::Attack(damage) => self.hits.hit(ShotHit {
-                source,
-                team,
+            Payload::Attack(damage) => self.deliveries.deliver(Delivered {
+                payload: DeliveredPayload::Attack(AttackShot {
+                    source,
+                    team,
+                    damage,
+                }),
                 reach,
-                damage,
                 hit,
             }),
             Payload::Action {
@@ -420,13 +421,13 @@ impl Flights<'_> {
                 start,
                 ..
             } => self.deliveries.deliver(Delivered {
-                by: Delivering {
+                payload: DeliveredPayload::Action(Delivering {
                     source,
                     action,
                     rank,
                     start,
                     launch: None,
-                },
+                }),
                 reach,
                 hit,
             }),
