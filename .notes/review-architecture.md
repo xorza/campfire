@@ -629,7 +629,7 @@ Each change folds into its document when its batch lands. Each line names the de
 
 ### Phase 1: the crash and the divergence
 
-**1.1 Transport bounds.** Waits for Q1 in `review-architecture_QUESTIONS.md`: the fix goes in the Lightyear fork.
+**1.1 Transport bounds.** The fix goes in a branch of the Lightyear fork cut from upstream master, which the user proposes upstream as a PR; this repository then pins it by `rev` (Q1). The fork's branch needs the user's push, as this plan pushes only its own branch.
 - **Touches:** the Lightyear fork's transport crate, `net_protocol` and 05-protocol-spec.md.
 - **Why first:** one datagram stops the server.
 - **Steps:**
@@ -638,14 +638,14 @@ Each change folds into its document when its batch lands. Each line names the de
   3. A link carries only the join channel, with a window of one, until it joins (N-2).
 - **Format:** the network protocol's version rises.
 
+### Phase 3: the sim's bans
+
+**3.4 A script's print.** Touches `script`, `net`, `apps/server`, `apps/client`, `rules`.
+- The script host writes each `print` and `debug` into a `Messages<ScriptPrinted>`, which the server and the client read and log, so the sim logs nothing and the rules test loses its one exception (B-3, Q2).
+
 ### Phase 4: declarations own what a module adds
 
-**4.1 Books before the install.** Touches the release, `declare`, `values` (engine tags).
-- `declare` assigns engine tag numbers in declaration order (RW 20). Waits for Q3 in `review-architecture_QUESTIONS.md`.
 
-**4.5 Parts from data.** Touches `combat`, `stats`, `units`, `production`, `sim`, `state-types`.
-- Per-type predicates give `ClipShots`, `RecentAttackers` (with its entries bounded by the window) and `SpawnPoint` (K-11, C-7). Waits for Q5 in `review-architecture_QUESTIONS.md`.
-- Each module declares its `DataKind` rows (E-6). Waits for Q4 in `review-architecture_QUESTIONS.md`.
 
 ### Phase 5: core pipelines and contracts
 
@@ -654,17 +654,17 @@ Each change folds into its document when its batch lands. Each line names the de
 - **Goldens:** none. Data that a kind ignored without a word is now refused.
 
 **5.2 One effect registry.** Touches `actions`, `combat`, `stats`, `progression`, `areas`, `navigation`, `script`.
-- Each capability declares an effect once, with its data key, script name and argument types. The data list and the `ctx` call come from that declaration (C-2, S-8). Waits for Q6 in `review-architecture_QUESTIONS.md`.
+- Each capability declares an effect once, with its data key, script name and argument types. The data list and the `ctx` call come from that declaration (C-2, S-8). Each listed effect is a `Box<dyn ListedEffect>` of `actions` with the four reads the core needs and its resolve; each capability registers its parser by data key, its `ctx` call builds the same value, and its resolved effects live in its own book by index. `Section` reads gain the release's readers (Q6).
 
 **5.3 One action pipeline.** Touches `actions`, `combat`, `abilities`, `production`, `units`, `stats`.
-- Waits for Q7 in `review-architecture_QUESTIONS.md`.
+- A design document under `docs/design/` proposes the contracts, the new layer order with `stats` above `actions`, and the golden moves it expects, for the user to review before the batch is built (Q7).
 - One start and go-off pair in `actions` owns the checks and the times. Kinds plug in by a callback table (K-17).
 - The `Purse` contract, the living test and the passive hook are contracts in `units`, and `actions` drops `stats`. The needs-and-uses test covers core modules (C-3, E-5).
 - **Goldens:** they may move where the four loops differed. Each move is explained.
 
 **5.5 Contracts in `units`.** Touches `units`, `players`, `orders`, `navigation`, `production`, `interaction`, `items`, `net`, `visibility`, `vision`, `combat`.
-- `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20). Waits for Q9 in `review-architecture_QUESTIONS.md`.
-- The standing-room query is a contract, and `production` drops `navigation` (R-31). Waits for Q8 in `review-architecture_QUESTIONS.md`.
+- `UnitOrdered` is an entity event, and `orders` drops `production` and `interaction` (R-20). `units` gets `UnitOrdered { entity, order }` with an order kind of its own, and `BuildTarget` moves to `units`; orders triggers it for each order it gives, production sets or clears its loops in its observer, and interaction fills or checks the use slot in its. The command protocol stays (Q9).
+- The static bodies' index and the walls become types of `units`, which navigation fills, and `units` methods answer "is this box free" and "the nearest cell a walker stands in", so `production` drops `navigation` (R-31, Q8).
 
 ### Phase 6: `Send` data and the server frame
 
@@ -962,7 +962,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | E-2 | A `Restoring` world flag switches hooks into a trusting mode that each hook must remember | `restoring.rs:1-7`, `entity_kinds.rs:38`, `level.rs:59` | Confirmed | 7.5 |
 | E-4 | About 90 functions take `&mut World`, so the tick is bound to one thread whatever the executor | `damage_pass.rs:103-124`, `attacks.rs:262`, `trains.rs:194` | Confirmed | 11.1 |
 | E-5 | The core `actions` module depends on `stats`, and the release test of needs skips core modules | `actions/Cargo.toml:31`, `release/tests/mod.rs:311-321` | Confirmed | 5.3 |
-| E-6 | `Capability` names five capabilities with no module, and `DataKind` names capability concepts in the lowest layers | `sim/src/capability.rs:12-31`, `data_kind.rs:9-48` | Confirmed | 4.5 |
 | E-7 | The script `View` owns the damage-kind, resource and team names that restore checks read | `books/mod.rs:118-133`, `units.rs:208-245` | Confirmed | 6.1 |
 | E-8, C-12, R-11 | `MatchMode`, `Spawner`, `ViewReader` and `CombatHooks` are non-send with no script handle in them. `Spawner` holds an `Rc<[bool]>` for one `debug_assert!`. | `mode/src/lib.rs:192-208`, `spawner.rs:19-22, 50`, `view_reader.rs:27-41`, `combat_hooks.rs:12-26` | Confirmed | 6.1 |
 | E-17 | The hash and the snapshot walk every entity once for each state type | `state_registry/mod.rs:546-561, 642-660` | Plausible: needs the bench | 7.7 |
@@ -980,7 +979,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-1 | Action kinds are a closed enum and a flat `ActionData` of 41 fields, with a hand table of the fields for each kind, and `expect`s that package data can reach | `kind_spec.rs:11-18`, `action_data/mod.rs:36-131`, `action_data_field.rs:16-58`, `kind_data.rs:48-79` | Confirmed | 5.1 |
 | C-2, S-8 | Listed effects are a closed core enum of other capabilities' effects, and data effects and script calls are two vocabularies | `capability_does_spec.rs:11-55`, `effect_data.rs:15-42` | Confirmed | 5.2 |
 | C-3 | Costs, targets and passives tie the action pipeline to `stats`, and a target must have `Life` | `holds.rs:7-9`, `targets.rs:11, 85-90`, `purse.rs:2` | Confirmed | 5.3 |
-| C-7 | `StatusTags` and `SpawnPoint` sit on every body unit, though one capability uses each | `units.rs:159-161` | Confirmed | 4.5 |
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
 | C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |
 | C-13 | Each `UnitsNear` reader holds `ResMut`, because the first reader rebuilds the grid | `unit_grid.rs:25-58` | Confirmed | 6.1 |
@@ -1035,7 +1033,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | K-8 | The only damage model past armor shares is a Rhai call for each damage entry, with no pool | `damage_pass.rs:172-190`, `armor.rs:206-244` | Confirmed shape. The cost is plausible. | Backlog (D11) |
 | K-9 | Leech has two fixed bindings, one heal scale, and each splashed unit gets on-hit effects and leech | `combat_book.rs:16-21`, `damage_pass.rs:405-442`, `attacks.rs:106-134` | Confirmed | Backlog (D15) |
 | K-10 | One rule each: first weapon by slot, one attack at a time, one turret for each type, attack projectiles at a unit | `attacks.rs:215-218`, `turret/mod.rs:19-25`, `load_check.rs:2162-2164` | Confirmed | Backlog |
-| K-11 | Units carry `ClipShots`, `RecentAttackers`, `Level`, `Modifiers` and `ModifierClocks` that their mode never reads. `RecentAttackers` keeps every attacker that still exists. | `combat/src/lib.rs:167, 189-191`, `recent_attackers.rs:135-144`, `stats/src/lib.rs:245-248` | Confirmed | 4.5 |
 | K-13 | About twenty passes scan every unit in each tick to find timers that are due | `volley.rs:27-49`, `attacks.rs:145-253`, `modifier_ends.rs:16-24`, `casts.rs:55-228`, `area_life.rs:329-334` | Confirmed scans. The cost is plausible. | 7.1 |
 | K-16 | An area's `inside` and an aura do one job in two shapes, and disagree on neutrals and lifeless units | `area_spec.rs:94-101`, `area_holds.rs:47-58`, `held_pass.rs:131-139` | Confirmed | Backlog |
 | K-17 | The one action pipeline is four hand-built loops | `attacks.rs:145-414`, `casts.rs:55-503` | Confirmed | 5.3 |
