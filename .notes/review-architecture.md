@@ -881,7 +881,6 @@ These numbers decide steps, so they come before the steps:
 | `integration/server_tick` and the battle benches, before and after each sparse-set marker | D26 | 7.6 |
 | The `state_hash` bench with cached queries | E-17 | 7.7 |
 | Allocation counts of `calc_damage`, `on_think` and `find` | D30 | 8.3 |
-| `record_inputs` at the rule-bounded burst | N-11's parallel checks | 6.4 |
 | The 3v3 tick with Rhai `sync` | D2 | 11.2 |
 | Each parallel kernel against its serial form | R-10 | 11.1 |
 | The count of distinct walker radii in a Zero Hour import | R-8 | its backlog slice |

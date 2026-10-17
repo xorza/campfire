@@ -18,3 +18,4 @@ What the server's frame spends to check the players' packets, measured 2026-10-1
 
 - A packet costs about 18.8 µs to record at 8 players and 19.4 µs at 32: its signature check, 18.3 µs, is 94 % to 97 % of it.
 - At 30 ticks a second and one packet a player a tick, the checks take 4.5 ms of each second at 8 players, 0.45 % of one core, and 18.6 ms at 32, 1.9 %.
+- The worst frame is one after a stall: it takes up to the max input delay less one ticks' packets, 9 under `InputRules::LAN`, so 9 × 620 µs, about 5.6 ms, at 32 players, a sixth of a 30 Hz tick.
