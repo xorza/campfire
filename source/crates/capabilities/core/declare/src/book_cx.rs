@@ -486,7 +486,7 @@ mod tests {
     #[test]
     fn the_types_number_by_package_then_name_then_avatar_and_scripts_by_package() {
         let mut readers = SectionReaders::default();
-        readers.add::<Shell>();
+        readers.add::<Shell>(None);
         let unit = |text: &str| {
             let raw = Toml::parse::<TomlTable>(text).unwrap();
             raw.read_with(UnitTypeData::seed(&readers)).unwrap()

@@ -1,6 +1,7 @@
 use std::fmt;
 
 use campfire_codec::{TomlError, TomlTable, TomlValue};
+use campfire_sim::Capability;
 use serde::de::{DeserializeOwned, DeserializeSeed, Error, MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 
@@ -12,17 +13,20 @@ use crate::sections::{SectionValue, Sections};
 #[derive(Debug, Default)]
 pub struct SectionReaders(Vec<SectionReader>);
 
-/// How one section reads: its table, its key, and its read of the value at its key.
+/// How one section reads: its table, its key, the capability of the module that registers it,
+/// none for the core's, and its read of the value at its key.
 #[derive(Debug, Clone, Copy)]
 struct SectionReader {
     table: SectionTable,
     key: &'static str,
+    owner: Option<Capability>,
     read: fn(TomlValue) -> Result<Box<dyn SectionValue>, TomlError>,
 }
 
 impl SectionReaders {
-    /// Registers `S`; a key that a section of its table registers already is a logic error.
-    pub fn add<S: Section>(&mut self) {
+    /// Registers `S`, of a module of `owner`, none for the core's; a key that a section of its
+    /// table registers already is a logic error.
+    pub fn add<S: Section>(&mut self, owner: Option<Capability>) {
         let table = S::TABLE.read_in();
         assert!(
             self.reader(table, S::KEY).is_none(),
@@ -32,6 +36,7 @@ impl SectionReaders {
         self.0.push(SectionReader {
             table: S::TABLE,
             key: S::KEY,
+            owner,
             read: |value| {
                 let section: Box<dyn SectionValue> = Box::new(value.read::<S>()?);
                 Ok(section)
@@ -57,6 +62,12 @@ impl SectionReaders {
         let delivers = self.0.iter();
         let delivers = delivers.filter(|reader| reader.table == SectionTable::DeliveryType);
         delivers.map(|reader| reader.key)
+    }
+
+    /// The capability of the module that registers the section `key` of `table`; none for a
+    /// section of the core's, or of no module.
+    pub fn owner(&self, table: SectionTable, key: &str) -> Option<Capability> {
+        self.reader(table.read_in(), key)?.owner
     }
 
     fn of(&self, table: SectionTable) -> impl Iterator<Item = &SectionReader> {
@@ -229,9 +240,9 @@ mod tests {
 
     fn readers() -> SectionReaders {
         let mut readers = SectionReaders::default();
-        readers.add::<Speed>();
-        readers.add::<Bolt>();
-        readers.add::<Grid>();
+        readers.add::<Speed>(None);
+        readers.add::<Bolt>(None);
+        readers.add::<Grid>(None);
         readers
     }
 
@@ -303,7 +314,7 @@ mod tests {
     #[should_panic(expected = "two sections of one table take the key speed")]
     fn two_sections_of_one_table_take_no_key_twice() {
         let mut readers = readers();
-        readers.add::<OtherSpeed>();
+        readers.add::<OtherSpeed>(None);
     }
 
     #[test]

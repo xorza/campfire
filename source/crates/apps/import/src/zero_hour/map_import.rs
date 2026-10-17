@@ -456,10 +456,10 @@ mod tests {
     /// The map of `text`, read as the engine reads the sections the import writes.
     fn read_map(text: &str) -> MapData {
         let mut readers = SectionReaders::default();
-        readers.add::<MetricData>();
-        readers.add::<BoundsData>();
-        readers.add::<GroundData>();
-        readers.add::<MapNavigationData>();
+        readers.add::<MetricData>(None);
+        readers.add::<BoundsData>(None);
+        readers.add::<GroundData>(None);
+        readers.add::<MapNavigationData>(None);
         let raw = Toml::parse::<TomlTable>(text).unwrap();
         raw.read_with(MapData::seed(&readers)).unwrap()
     }

@@ -218,16 +218,6 @@ impl ScriptApi {
         self.data.push(field);
     }
 
-    /// The capability that reads the field `name` of `table`, which the API records; none for
-    /// the core's.
-    pub fn data_owner(&self, table: DataTable, name: &str) -> Option<Capability> {
-        self.data
-            .iter()
-            .find(|held| (held.table, held.name) == (table, name))
-            .unwrap_or_else(|| panic!("{table:?}.{name} is recorded"))
-            .capability
-    }
-
     /// The member `name` of `owner`.
     pub fn member(&self, owner: ApiOwner, name: &str) -> Option<&ApiMember> {
         let at = self

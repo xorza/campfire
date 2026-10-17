@@ -168,24 +168,29 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     let capability = |name| api.member(ApiOwner::Ctx, name).unwrap().spec.capability;
     assert_eq!(capability("timer"), None);
     assert_eq!(capability("respawn"), Some(Capability::Combat));
-    // A data field is the capability's whose module records it: the mode's sections each of
-    // the capability that reads them, the mode's script the core's.
+    // A section is the capability's whose module registers it: the mode's sections each of the
+    // capability that reads them, and the mode's script, which no section holds, no module's.
+    let sections = Release::sections();
     let owners = [
-        (DataTable::Mode, "script", None),
-        (DataTable::Mode, "combat", Some(Capability::Combat)),
-        (DataTable::Mode, "stats", Some(Capability::Stats)),
-        (DataTable::Mode, "tracks", Some(Capability::Progression)),
+        (SectionTable::Mode, "script", None),
+        (SectionTable::Mode, "combat", Some(Capability::Combat)),
+        (SectionTable::Mode, "stats", Some(Capability::Stats)),
+        (SectionTable::Mode, "tracks", Some(Capability::Progression)),
         (
-            DataTable::ModeNavigation,
-            "layers",
+            SectionTable::Mode,
+            "navigation",
             Some(Capability::Navigation),
         ),
-        (DataTable::UnitType, "shop", Some(Capability::Items)),
-        (DataTable::UnitType, "use", Some(Capability::Interaction)),
-        (DataTable::UnitType, "uses", Some(Capability::Interaction)),
+        (SectionTable::UnitType, "shop", Some(Capability::Items)),
+        (SectionTable::UnitType, "use", Some(Capability::Interaction)),
+        (
+            SectionTable::UnitType,
+            "uses",
+            Some(Capability::Interaction),
+        ),
     ];
-    for (table, field, owner) in owners {
-        assert_eq!(api.data_owner(table, field), owner, "{table:?}.{field}");
+    for (table, key, owner) in owners {
+        assert_eq!(sections.owner(table, key), owner, "{table:?}.{key}");
     }
     let method = MemberKind::Method;
     assert!(api.builtin("len", method) && api.builtin("max", method));

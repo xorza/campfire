@@ -13,17 +13,18 @@ use campfire_areas::AreaData;
 use campfire_capabilities::Release;
 use campfire_combat::{CombatData, ModeCombatData};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookError, BookPlace, Section, TypePlace, UnitTypeData};
+use campfire_declare::{
+    BookError, BookPlace, Section, SectionReaders, SectionTable, TypePlace, UnitTypeData,
+};
 use campfire_geometry::Metric;
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ItemsData, ShopData};
 use campfire_math::Num;
 use campfire_mode::ModeData;
-use campfire_navigation::{MapNavigationData, MapPathsData, ModeNavigationData};
+use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
 use campfire_players::ResourcesData;
 use campfire_production::{ModeSupplyData, ProductionData, SupplyData};
-use campfire_progression::ModeTracksData;
 use campfire_projectiles::{ProjectileData, ProjectileHits};
 use campfire_script::{
     ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
@@ -37,7 +38,7 @@ use campfire_stats::{
 };
 use campfire_units::{CollisionData, TypeParamsData, TypeStateData, TypeTagsData};
 use campfire_values::{EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat};
-use campfire_vision::{GridData, VisionData};
+use campfire_vision::VisionData;
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
@@ -83,6 +84,8 @@ pub(crate) struct LoadCheck<'a> {
     state_fields: BTreeSet<&'a str>,
     /// The mode's sections the checks read, each as a mode that does not give it reads it.
     sections: ModeSections<'a>,
+    /// The sections of every module of the release, each with the capability of its module.
+    readers: SectionReaders,
 }
 
 /// The mode's sections the checks read, each as a mode that does not give it reads it.
@@ -92,7 +95,6 @@ struct ModeSections<'a> {
     navigation: Cow<'a, ModeNavigationData>,
     slots: Cow<'a, SlotKinds>,
     stats: Cow<'a, ModeStatsData>,
-    tracks: Cow<'a, ModeTracksData>,
     pools: Cow<'a, ModePoolsData>,
     resources: Cow<'a, ResourcesData>,
 }
@@ -104,7 +106,6 @@ impl<'a> ModeSections<'a> {
             navigation: data.section_or_default(),
             slots: data.section_or_default(),
             stats: data.section_or_default(),
-            tracks: data.section_or_default(),
             pools: data.section_or_default(),
             resources: data.section_or_default(),
         }
@@ -178,7 +179,9 @@ impl<'a> LoadCheck<'a> {
             rate: TickRate::new(manifest.tick_hz.fastest()),
             state_fields: LoadCheck::state_fields(packages),
             sections: ModeSections::of(&packages.data),
+            readers: Release::sections(),
         };
+        check.sections_owned()?;
         check.mode().map_err(fail)?;
         check.planned_data().map_err(fail)?;
         check.loadout()?;
@@ -210,7 +213,6 @@ impl<'a> LoadCheck<'a> {
         let data = &packages.data;
         let content = &packages.content;
         let units = &content.units;
-        self.sections_owned()?;
         self.names()?;
         self.damage_kinds()?;
         self.pools_and_resources()?;
@@ -475,7 +477,6 @@ impl<'a> LoadCheck<'a> {
                 table: ModifiersData::KEY,
                 name: id.clone(),
             };
-            self.require(Capability::Stats, &at)?;
             self.own_tags(&modifier.tags, &at)?;
             // The ways pass on through an aura's modifier, which the checks below read.
             if let Some(aura) = &modifier.aura {
@@ -1140,65 +1141,64 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// Each section of the mode's data and of its map that it holds belongs to a capability the
-    /// mode declares, as each of a unit type's does: a match builds a section's grids, books and
-    /// rules only for the capability that runs them. A section of the mode's data belongs to the
-    /// capability the script API records as its reader; one of the map, to the capability that
-    /// builds from it.
-    fn sections_owned(&self) -> Result<(), LoadProblem> {
-        let (data, map) = (&self.sections, &self.packages.map);
-        let combat = &data.combat;
-        let owner = |table, field| self.api.data_owner(table, field);
-        let sections = [
-            (
-                !combat.damage_kinds.is_empty()
-                    || combat.stats().next().is_some()
-                    || combat.life.is_some(),
-                owner(DataTable::Mode, "combat"),
-                Place::Section(ModeCombatData::KEY),
-            ),
-            (
-                !data.stats.0.is_empty(),
-                owner(DataTable::Mode, "stats"),
-                Place::Section(ModeStatsData::KEY),
-            ),
-            (
-                !data.tracks.0.is_empty(),
-                owner(DataTable::Mode, "tracks"),
-                Place::Section(ModeTracksData::KEY),
-            ),
-            (
-                !data.navigation.layers.is_empty(),
-                owner(DataTable::ModeNavigation, "layers"),
-                Place::Section(ModeNavigationData::KEY),
-            ),
-            (
-                self.packages.data.section::<ModeSupplyData>().is_some(),
-                owner(DataTable::Mode, "supply"),
-                Place::Section(ModeSupplyData::KEY),
-            ),
-            (
-                map.section::<MapNavigationData>().is_some(),
-                Some(Capability::Navigation),
-                Place::MapSection(MapNavigationData::KEY),
-            ),
-            (
-                !map.paths().is_empty(),
-                Some(Capability::Navigation),
-                Place::MapSection(MapPathsData::KEY),
-            ),
-            (
-                map.section::<GridData>().is_some(),
-                Some(Capability::Vision),
-                Place::MapSection(GridData::KEY),
-            ),
-        ];
-        for (held, capability, at) in sections {
-            if let Some(capability) = capability.filter(|_| held) {
-                self.require(capability, &at)?;
+    /// Each section of the packages' data is of a capability the mode declares, as a match builds
+    /// the books of a section and checks its rules only for the module that registers it: of the
+    /// mode's data, of its map, and of each package's content and unit types.
+    fn sections_owned(&self) -> Result<(), LoadError> {
+        let packages = self.packages;
+        let undeclared =
+            |(key, capability), at: fn(&'static str) -> Place| LoadProblem::Undeclared {
+                capability,
+                at: at(key),
+            };
+        let mode = self.undeclared(SectionTable::Mode, packages.data.sections.keys());
+        let mode = mode.map(|found| undeclared(found, Place::Section));
+        let map = || {
+            let map = self.undeclared(SectionTable::Map, packages.map.sections().keys());
+            map.map(|found| undeclared(found, Place::MapSection))
+        };
+        if let Some(problem) = mode.or_else(map) {
+            return Err(LoadError::of(&packages.manifest.header.name, problem));
+        }
+        for view in packages.packages() {
+            let content = self.undeclared(SectionTable::Package, view.content.sections.keys());
+            let content = content.map(|found| undeclared(found, Place::Section));
+            let avatar = match view.kind {
+                ViewKind::Avatar(avatar) => Some((
+                    Place::Avatar(view.package.header.name.clone()),
+                    &avatar.unit,
+                )),
+                ViewKind::Mode | ViewKind::Loadout | ViewKind::Rules => None,
+            };
+            let units = view.content.units.iter();
+            let mut units = units.map(|(name, unit)| (Place::UnitType(name.clone()), unit));
+            let unit = || {
+                units.by_ref().chain(avatar).find_map(|(at, unit)| {
+                    let (_, capability) =
+                        self.undeclared(SectionTable::UnitType, unit.sections().keys())?;
+                    Some(LoadProblem::Undeclared { capability, at })
+                })
+            };
+            if let Some(problem) = content.or_else(unit) {
+                return Err(LoadError::of(&view.package.header.name, problem));
             }
         }
         Ok(())
+    }
+
+    /// The first of `keys`, sections of `table`, whose module is of a capability the mode does not
+    /// declare, with that capability.
+    fn undeclared(
+        &self,
+        table: SectionTable,
+        keys: impl IntoIterator<Item = &'static str>,
+    ) -> Option<(&'static str, Capability)> {
+        let declared = &self.packages.manifest.capabilities;
+        keys.into_iter().find_map(|key| {
+            let owner = self.readers.owner(table, key);
+            let capability = owner.filter(|&capability| !declared.contains(capability))?;
+            Some((key, capability))
+        })
     }
 
     /// The mode's pools and player resources: no pool named as a resource, a pool only with
@@ -1211,15 +1211,6 @@ impl<'a> LoadCheck<'a> {
                 at: Place::Section(ResourcesData::KEY),
                 name: name.to_string(),
             });
-        }
-        for name in data.pools.0.keys() {
-            self.require(
-                Capability::Stats,
-                &Place::Entry {
-                    table: ModePoolsData::KEY,
-                    name: name.clone(),
-                },
-            )?;
         }
         let combat = self
             .packages
@@ -1247,14 +1238,8 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The capability of each section `unit_type` holds, at `at`, the mode declares; and a
-    /// `supply` needs the mode's `[supply]`.
+    /// A `supply` of `unit_type`, at `at`, needs the mode's `[supply]`.
     fn sections(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        for field in unit_type.sections().keys() {
-            if let Some(capability) = self.api.data_owner(DataTable::UnitType, field) {
-                self.require(capability, at)?;
-            }
-        }
         let counted = self.packages.data.section::<ModeSupplyData>().is_some();
         if unit_type.section::<SupplyData>().is_some() && !counted {
             return Err(LoadProblem::SupplyUncounted(at.clone()));
@@ -1393,7 +1378,6 @@ impl<'a> LoadCheck<'a> {
                 table: ItemsData::KEY,
                 name: id.clone(),
             };
-            self.require(Capability::Items, &at)?;
             // The component loop and the components' cost, below, read each resource and each
             // component.
             let resources = self.names.resources();
@@ -1679,9 +1663,6 @@ impl<'a> LoadCheck<'a> {
         combat: bool,
         at: &Place,
     ) -> Result<(), LoadProblem> {
-        if !pools.is_empty() {
-            self.require(Capability::Stats, at)?;
-        }
         for (place, name) in pools.iter().enumerate() {
             if pools[..place].contains(name) {
                 return Err(LoadProblem::Repeated {

@@ -19,9 +19,12 @@ use campfire_state_types::{Replication, StateTypes};
 use campfire_values::EngineTag;
 
 /// The consumer that gathers the sections each module registers, in the order the modules
-/// declare them.
+/// declare them, each with the capability of the module it visits.
 #[derive(Debug, Default)]
-pub(super) struct SectionList(pub(super) SectionReaders);
+pub(super) struct SectionList {
+    pub(super) readers: SectionReaders,
+    module: Option<Capability>,
+}
 
 impl StateTypes for SectionList {
     fn component<C: Replication>(&mut self) {}
@@ -42,7 +45,9 @@ impl KindVisitor for SectionList {
 }
 
 impl Declarations for SectionList {
-    fn module(&mut self, _: Option<Capability>) {}
+    fn module(&mut self, capability: Option<Capability>) {
+        self.module = capability;
+    }
 
     fn require<H: SimComponent, C: SimComponent>(&mut self) {}
 
@@ -59,7 +64,7 @@ impl Declarations for SectionList {
     fn rule(&mut self, _: RuleFn) {}
 
     fn section<S: Section>(&mut self) {
-        self.0.add::<S>();
+        self.readers.add::<S>(self.module);
     }
 
     fn sets<S: ModuleSet>(&mut self) {}

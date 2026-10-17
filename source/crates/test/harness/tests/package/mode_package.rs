@@ -619,8 +619,8 @@ static DATA_FLAWS: &[Flaw] = &[
         },
     ),
     // A section of the mode's data or of its map is its capability's, declared or refused: the
-    // map's vision grid without `vision`, its pathing grid without `navigation`, `[supply]`
-    // without `production`.
+    // map's vision grid without `vision`, the mode's `[navigation]` without `navigation`,
+    // `[supply]` without `production`.
     flaw(
         MANIFEST,
         Edit::Replace(r#", "vision", "progression""#, r#", "progression""#),
@@ -644,7 +644,7 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Navigation,
-                    at: Place::MapSection("navigation")
+                    at: Place::Section("navigation")
                 }
             )
         },

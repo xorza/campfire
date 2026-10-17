@@ -255,12 +255,12 @@ mod tests {
     /// The readers of every section a map of a test holds.
     fn readers() -> SectionReaders {
         let mut readers = SectionReaders::default();
-        readers.add::<MetricData>();
-        readers.add::<BoundsData>();
-        readers.add::<GroundData>();
-        readers.add::<GridData>();
-        readers.add::<MapNavigationData>();
-        readers.add::<MapPathsData>();
+        readers.add::<MetricData>(None);
+        readers.add::<BoundsData>(None);
+        readers.add::<GroundData>(None);
+        readers.add::<GridData>(None);
+        readers.add::<MapNavigationData>(None);
+        readers.add::<MapPathsData>(None);
         readers
     }
 

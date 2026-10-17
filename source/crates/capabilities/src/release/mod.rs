@@ -167,7 +167,7 @@ impl Release {
     pub fn sections() -> SectionReaders {
         let mut list = SectionList::default();
         Self::declare(Self::capabilities(), &mut list);
-        list.0
+        list.readers
     }
 
     /// The unit types of a table of them by name, `[units.<name>]`, each read as the sections
