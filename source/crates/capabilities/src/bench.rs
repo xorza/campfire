@@ -6,15 +6,15 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, SlotKind, TimedSlots};
-use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
-use campfire_declare::{Book, Role};
+use campfire_common::{PlayerSlot, Ticks};
+use campfire_declare::Book;
 use campfire_math::{Num, Vec3};
 use campfire_players::{Players, PlayersWorld};
 use campfire_production::{
     GatherOrder, GatherSpec, GatherStep, Gatherer, Node, NodeAt, NodeBook, Production, ResourceSet,
 };
 use campfire_script::Filter;
-use campfire_sim::{Capability, IdAllocator, SimUpdate, StableId, TickRate};
+use campfire_sim::{Capability, IdAllocator, SimWorld, StableId};
 use campfire_units::{
     Body, BodyForm, BodyUnit, Destination, Owner, TypeOrigin, UnitCore, UnitTypeCore, UnitTypes,
 };
@@ -23,8 +23,6 @@ use criterion::{Criterion, Throughput};
 
 use crate::release::Release;
 use crate::release::r#match::Match;
-use crate::release::match_kind::MatchKind;
-use crate::release::match_spec::MatchSpec;
 
 /// Workers in each of the two fields.
 const WORKERS: i64 = 100;
@@ -44,18 +42,16 @@ fn gather(c: &mut Criterion) {
     group.throughput(Throughput::Elements(2 * WORKERS.unsigned_abs()));
     group.bench_function("two_fields", |bench| {
         let world = fields.get_or_insert_with(two_fields);
-        bench.iter(|| world.run_schedule(SimUpdate));
+        bench.iter(|| world.step());
     });
     group.finish();
 }
 
 /// The two fields of `gather`, past the 30 ticks that bring the loop to its steady state.
 fn two_fields() -> Match {
-    let rate = TickRate::new(NonZeroU32::new(30).unwrap());
-    // A match without navigation runs no gather, as only navigation tests a box for room.
-    let set = Release::capability_set(&[Capability::Production, Capability::Navigation]).unwrap();
-    let spec = MatchSpec::new(SegmentSeed::ZERO, rate, Role::Rules).set(set);
-    let mut world = Match::new(spec, Release::empty_books(rate), MatchKind::Rules);
+    // A match without navigation runs no gather, as only navigation tests a box for room. It
+    // installs at its first tick, after the scene's books load.
+    let mut world = Match::unscripted(&[Capability::Production, Capability::Navigation]);
 
     let gold = ResourceId::new(0);
     Players::start_without_mode(&mut world, [Team::new(0)], 1);
@@ -151,7 +147,7 @@ fn two_fields() -> Match {
     // Tick 0 gives each node to its first worker by stable id, whose trip ends 3 ticks on and
     // frees it to the next: by tick 29, 9 trips of 5 at each of the 16 nodes.
     for _ in 0..30 {
-        world.run_schedule(SimUpdate);
+        world.step();
     }
     let gold_in = world
         .player_resources(PlayerSlot::new(0))
