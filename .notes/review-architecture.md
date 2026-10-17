@@ -667,7 +667,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - `Destination` writes and the standing-room query are contracts, and `production` drops `navigation` (R-31).
 - A death record and an audience contract, and `net` drops `combat` and `vision` (N-26).
 - A `Died` entity event that projectiles and held hits observe, and `Teleported` on a respawn (K-22).
-- `Player` and `MatchEntity` move to `players` (C-8).
 - `TickCommand::controls` is the one control answer (RW 20).
 - The use slot extends through `UseSlot::extend_slots` (RW 20).
 - One naming of order inputs and order sets (RW 20).
@@ -987,7 +986,6 @@ Each row is one finding, or several findings that state one defect. "Step" is th
 | C-2, S-8 | Listed effects are a closed core enum of other capabilities' effects, and data effects and script calls are two vocabularies | `capability_does_spec.rs:11-55`, `effect_data.rs:15-42` | Confirmed | 5.2 |
 | C-3 | Costs, targets and passives tie the action pipeline to `stats`, and a target must have `Life` | `holds.rs:7-9`, `targets.rs:11, 85-90`, `purse.rs:2` | Confirmed | 5.3 |
 | C-7 | `StatusTags` and `SpawnPoint` sit on every body unit, though one capability uses each | `units.rs:159-161` | Confirmed | 4.5 |
-| C-8 | `Player` and `MatchEntity` are named `players.*` but live in `units` | `player.rs:16-48`, `match_entity.rs:13-35` | Confirmed | 5.5 |
 | C-9 | A unit spawns in two archetype moves, because its facing travels on the half-built entity | `unit_core.rs:35-80`, `facing.rs:39-42` | Confirmed | 7.5 |
 | C-10 | Spawn hooks run on the mode's spawn path only, so a passive on a delivery type is dropped with no error | `spawner.rs:54`, `delivery_spawner.rs:66-68` | The load already refuses a passive on a delivery type, as `NotDelivery`; a test pins it. The spawn paths' split stays. | 7.5 |
 | C-13 | Each `UnitsNear` reader holds `ResMut`, because the first reader rebuilds the grid | `unit_grid.rs:25-58` | Confirmed | 6.1 |
