@@ -649,7 +649,6 @@ Each change folds into its document when its batch lands. Each line names the de
 - Call parts copy on first use, and literal names resolve once for each call site (S-24).
 - `Single` for the match entity and a dense player table (C-14).
 - The damage pass reads through a cached `SystemState`, and a heard event shares one handle (K-21).
-- A shop index (RW 20).
 
 **7.3 Navigation and gathering passes.** Touches `navigation` and `production`.
 - `RouteMut`, so the report passes go, and `RouteAsks` (R-6).
@@ -1062,7 +1061,7 @@ Only the items that A8 found still true at HEAD. The rest of `.notes/review-work
 | Item | Finding | Step |
 | --- | --- | --- |
 | RW 18 | `units.toml`, `mode.toml` and the manifest come from hand-mirrored structs and `format!` templates | 9.2 (with A-17) |
-| RW 20 | The deliveries' two shapes, `take_shots` and `launch` on the client, the doc "It builds on combat", the engine tags by hand, the control resolution, the use slot that items extends, the shop index, the naming of order inputs, `AiError::TimeTooLarge`, progression's unread `book` field, charges from progression's `Learning` | 4.1, 5.4, 5.5, 7.2, 10.1, 12.3 |
+| RW 20 | The deliveries' two shapes, `take_shots` and `launch` on the client, the doc "It builds on combat", the engine tags by hand, the control resolution, the use slot that items extends, the naming of order inputs, `AiError::TimeTooLarge`, progression's unread `book` field, charges from progression's `Learning` | 4.1, 5.4, 5.5, 7.2, 10.1, 12.3 |
 | RW 21 | The client items: `face_camera`, keys by slot kind, the sampler, the panels each frame, `ClientData`, the packages resource, `place_objects`, the ring overlays, the panel widget, two click rules, the plane's size, `SLOTS`, `Fills`, `Option<Res<UnitLooks>>`, `site_percent`, the args, the wide signatures, the preview's tint | 10.1, 10.2, 10.3 |
 | RW 22 | Published surfaces that are wider than their callers | 12.3 |
 | RW 23 | 02's `common` row still omits `NamedEnum`, the hashers and the allocation audit. production.md's Supply text differs from the code. | 12.3, 7.2 |

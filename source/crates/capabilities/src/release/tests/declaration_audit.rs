@@ -501,6 +501,8 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "Holdings::inserted",
             "Holdings::removed",
             "Holdings::aged",
+            "ShopIndex::typed",
+            "ShopIndex::untyped",
             "UseOrders::ordered",
         ]
     );

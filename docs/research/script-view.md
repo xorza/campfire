@@ -9,7 +9,7 @@ What a read of the script view costs, measured 2026-10-17.
 
 ## Results
 
-| Case | A walk of every unit, at `75cdf2589` | Only the units touched, from the next commit |
+| Case | A walk of every unit, at `75cdf2589` | Only the units touched, at `80dc76d07` |
 | --- | ---: | ---: |
 | `integration/script_view/read` | 97.2 µs | 82.1 µs |
 | `integration/script_view/reread` | 65.8 µs | 35.1 µs |

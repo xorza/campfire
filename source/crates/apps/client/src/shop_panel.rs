@@ -121,7 +121,7 @@ impl ShopPanel {
     fn show(
         panel: Single<'_, '_, &Visibility, With<PanelRoot>>,
         own: OwnPlayer<'_, '_>,
-        shopping: Shopping<'_, '_>,
+        mut shopping: Shopping<'_, '_>,
         carriers: Query<'_, '_, (&Inventory, Option<&Owner>), Allow<Unpredicted>>,
         funds_rows: PlayerRows<'_, '_, PlayerResources>,
         (mut shown, names): (ResMut<'_, Shown>, Res<'_, ItemTexts>),

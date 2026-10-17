@@ -384,7 +384,7 @@ impl ShopRead {
 
     /// The nearest shop unit whose buyers select `unit`.
     fn nearest(game: &mut Match, unit: StableId) -> Option<StableId> {
-        let read = move |shopping: Shopping<'_, '_>| shopping.nearest_for(unit);
+        let read = move |mut shopping: Shopping<'_, '_>| shopping.nearest_for(unit);
         game.run_system_once(read).unwrap()
     }
 
@@ -640,11 +640,15 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
 
     // The nearest shop whose buyers select the hero, in its reach or not, as a panel shows it:
     // of the two at the origin, 5 m and a bit away, the lower stable id; then one at (8, 0, 0),
-    // 3 m away; and once the hero is dead, the one that serves the dead.
+    // 3 m away, which spawned after the first search; the two at the origin again once it
+    // despawns; and once the hero is dead, the one that serves the dead.
     let nearest = |game: &mut Match| ShopRead::nearest(game, hero);
     assert_eq!(nearest(&mut game), Some(shop));
     let near = Mode::spawn(&mut game, living, (8, 0, 0), Team::new(0), ());
     assert_eq!(nearest(&mut game), Some(near));
+    let entity = game.unit_entity(near);
+    game.entity_mut(entity).despawn();
+    assert_eq!(nearest(&mut game), Some(shop));
     game.insert_parts(hero, Dead);
     assert_eq!(nearest(&mut game), Some(shop));
 }

@@ -19,6 +19,8 @@ use campfire_declare::{
 use campfire_sim::{Capability, SimSet};
 use campfire_units::BodyUnit;
 
+use crate::shop_index::ShopIndex;
+
 mod error;
 mod inventory;
 mod inventory_data;
@@ -33,6 +35,7 @@ mod items_data;
 mod items_rules;
 mod shop;
 mod shop_data;
+mod shop_index;
 mod shopping;
 mod trade_orders;
 
@@ -99,6 +102,9 @@ impl Module for Items {
         d.require::<UseGroup, Inventory>();
         d.book::<ItemBook>(ItemBook::build);
         d.book::<ByType<Shop>>(Shop::book);
+        d.cache::<ShopIndex>();
+        d.observer(ShopIndex::typed);
+        d.observer(ShopIndex::untyped);
         d.api(ItemsApi::register);
         d.book::<ByType<Inventory>>(Inventory::book);
         d.book::<ByType<UseGroup>>(Inventory::groups);
