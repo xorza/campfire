@@ -23,6 +23,7 @@ use campfire_net::{
     ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
     MatchClock, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir, ServerPin,
     ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld, SlotBot,
+    UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
@@ -498,12 +499,14 @@ impl InProcessMatch {
         server.finish();
         server.cleanup();
         server.world_mut().insert_resource(data);
-        server.world_mut().insert_resource(PendingRestore {
+        let restore = PendingRestore::check(UncheckedRestore {
             session,
             packages: Arc::clone(&self.packages),
             server: self.server_setup(),
             bots: self.server_bots(),
-        });
+        })
+        .unwrap();
+        server.world_mut().insert_resource(restore);
         server.update();
         assert!(
             server.world().contains_resource::<MatchClock>(),

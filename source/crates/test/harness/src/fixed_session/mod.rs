@@ -11,7 +11,7 @@ use campfire_protocol::{
     Delegation, DelegationTerms, InputChain, InputRules, SeedChain, SeedContribution, ServerSeed,
     ServerSeeds, SessionHeader, SessionLog, SessionTerms, Signer, SlotPlan, SlotStart,
 };
-use campfire_runner::{HostChoices, Session, SessionRules, SessionSource};
+use campfire_runner::{HostChoices, Session, SessionRules, SessionSource, UncheckedSource};
 use secp256k1::XOnlyPublicKey;
 
 use crate::fixed_session::fixed_match::FixedMatch;
@@ -143,12 +143,13 @@ impl FixedSession {
             .iter()
             .map(|keys| TestKey::signer(keys.session))
             .collect();
-        let source = SessionSource {
+        let source = SessionSource::check(UncheckedSource {
             log: self.log(),
             seeds: Self::seeds(),
             packages: &self.packages,
             signer: Some(Arc::new(Self::server_signer())),
-        };
+        })
+        .unwrap();
         let game = Session::start_match(source).unwrap();
         FixedMatch::new(game, chains, signers, self.terms.clone(), log)
     }

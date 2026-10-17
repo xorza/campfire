@@ -21,7 +21,7 @@ pub use crate::session::error::{
     CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, SnapshotCheckError,
     StartError,
 };
-pub use crate::session::session_source::{ResumeAt, SessionSource};
+pub use crate::session::session_source::{ResumeAt, SessionSource, UncheckedSource};
 pub use crate::session::session_world::SessionWorld;
 pub use crate::session_rules::error::TermsError;
 pub use crate::session_rules::{CheckedTerms, HostChoices, SessionRules};

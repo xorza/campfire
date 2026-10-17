@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_log::{ErrorReport, LogEvent};
 use campfire_package::ModePackages;
-use campfire_runner::Session;
+use campfire_runner::{CheckedTerms, Session, SessionRules, TermsError};
 use tracing::error;
 
 use crate::events::session_restored::SessionRestored;
@@ -23,9 +23,45 @@ pub struct PendingRestore {
     pub packages: Arc<ModePackages>,
     pub server: ServerSetup,
     pub bots: ServerBots,
+    /// The session's terms as the rules of `packages` checked them.
+    pub(crate) checked: CheckedTerms,
+}
+
+/// A session to restore, its terms not yet checked by the rules of the packages the server
+/// runs now.
+#[derive(Debug)]
+pub struct UncheckedRestore {
+    pub session: RestoredSession,
+    pub packages: Arc<ModePackages>,
+    pub server: ServerSetup,
+    pub bots: ServerBots,
 }
 
 impl PendingRestore {
+    /// The restore of `unchecked`; an error when the rules of its packages do not admit the
+    /// terms the session ran under, as packages changed since then may not.
+    pub fn check(unchecked: UncheckedRestore) -> Result<Self, TermsError> {
+        let UncheckedRestore {
+            session,
+            packages,
+            server,
+            bots,
+        } = unchecked;
+        let checked = SessionRules::of(&packages).check(session.terms())?;
+        Ok(Self {
+            session,
+            packages,
+            server,
+            bots,
+            checked,
+        })
+    }
+
+    /// The session's terms as the rules of its packages checked them.
+    pub const fn checked(&self) -> &CheckedTerms {
+        &self.checked
+    }
+
     /// Restores the session in `world`'s server, its log's bytes from the first frame on, and
     /// logs `SessionRestored`; see `SimServer::restore_match`. An error, logged, ends the app.
     pub fn run(world: &mut World) {

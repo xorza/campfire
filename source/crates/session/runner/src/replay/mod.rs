@@ -1,7 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
 use campfire_common::Tick;
-use campfire_mode::OptionPicks;
 use campfire_package::ModePackages;
 use campfire_protocol::{Checkpoint, SeedError, SessionLog};
 use campfire_sim::{SimWorld, TickRate};
@@ -10,7 +9,7 @@ use crate::match_build::MatchBuild;
 use crate::replay::error::ReplayError;
 use crate::session::Session;
 use crate::session::error::{SnapshotCheckError, StartError};
-use crate::session::session_source::SessionSource;
+use crate::session::session_source::{SessionSource, UncheckedSource};
 use crate::session::session_world::SessionWorld;
 
 pub(crate) mod error;
@@ -41,12 +40,15 @@ impl<'p> Replay<'p> {
             .ok_or(StartError::Seed(SeedError::NotRevealed))?;
         let ticks = published.next_tick();
         Ok(Replay {
-            game: Session::start_match(SessionSource {
-                log: published.rewound(),
-                seeds,
-                packages,
-                signer: None,
-            })?,
+            game: Session::start_match(
+                SessionSource::check(UncheckedSource {
+                    log: published.rewound(),
+                    seeds,
+                    packages,
+                    signer: None,
+                })
+                .map_err(StartError::Terms)?,
+            )?,
             target: None,
             packages,
             ticks,
@@ -104,17 +106,16 @@ impl<'p> Replay<'p> {
                 target
             }
             empty => {
-                let header = self.game.session().log().header();
+                let session = self.game.session();
+                let header = session.log().header();
                 let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
                 let rate = TickRate::new(header.terms.tick_hz);
-                let options = &self.packages.data().options;
-                let picks = OptionPicks::checked(options, &header.terms.options)
-                    .expect("the replay's session checked its terms");
+                let picks = &session.checked().picks;
                 empty.insert(MatchBuild::restore_target(
                     self.packages,
                     rate,
                     slots,
-                    &picks,
+                    picks,
                 ))
             }
         };

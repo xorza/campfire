@@ -47,6 +47,8 @@ pub struct Session {
     autosave: Option<Ticks>,
     /// The server's signer, which signs what the session logs; none on a verifier.
     signer: Option<Arc<Signer>>,
+    /// The log's terms as the mode's rules checked them, once for the session.
+    checked: CheckedTerms,
 }
 
 impl Session {
@@ -62,12 +64,16 @@ impl Session {
             log,
             seeds,
             packages,
+            checked,
             signer,
         } = source;
         let header = log.header();
-        let CheckedTerms { visibility, picks } = SessionRules::of(packages)
-            .check(&header.terms)
-            .map_err(StartError::Terms)?;
+        debug_assert_eq!(
+            SessionRules::of(packages).check(&header.terms).as_ref(),
+            Ok(&checked),
+            "a session's source holds its log's terms checked"
+        );
+        let CheckedTerms { visibility, picks } = &checked;
         if seeds.last() < log.segment() {
             return Err(StartError::Seed(SeedError::NotRevealed));
         }
@@ -87,7 +93,7 @@ impl Session {
         let players = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
         let rate = TickRate::new(header.terms.tick_hz);
         let spec = MatchBuild::spec(packages, seed, rate, players).out(visibility.out());
-        MatchBuild::build(world, spec, packages, players, &picks);
+        MatchBuild::build(world, spec, packages, players, picks);
         let saves = packages.data().saves;
         let autosave = saves.autosave_ms.map(|ms| {
             rate.ticks(NonZeroU64::from(ms).get())
@@ -101,7 +107,13 @@ impl Session {
             saves,
             autosave,
             signer,
+            checked,
         })
+    }
+
+    /// The log's terms as the mode's rules checked them, once for the session.
+    pub(crate) const fn checked(&self) -> &CheckedTerms {
+        &self.checked
     }
 
     /// Restores `snapshot` in `world`, a match built for it, when it is the snapshot `record`,
@@ -358,6 +370,7 @@ pub(crate) mod internals {
                 mut log,
                 seeds,
                 signer,
+                checked,
                 ..
             } = session;
             log.load(at.segment).map_err(ResumeError::Load)?;
@@ -365,6 +378,7 @@ pub(crate) mod internals {
                 log: log.rewound(),
                 seeds,
                 packages,
+                checked,
                 signer,
             };
             Self::resume_match(source, at)

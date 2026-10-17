@@ -6,7 +6,7 @@ use campfire_common::MapName;
 use campfire_mode::{OptionPicks, OptionValue};
 use campfire_net::{
     Lobby, LobbyOpening, PendingRestore, Publisher, RestoredSession, ServerBots, ServerDir,
-    ServerSetup, SessionDir,
+    ServerSetup, SessionDir, UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::SessionTerms;
@@ -65,22 +65,22 @@ impl Opening {
         found: Option<RestoredSession>,
         setup: OpeningSetup<'_>,
     ) -> Result<Self, OpeningError> {
-        let rules = SessionRules::of(&setup.packages);
-        let check = |terms: &SessionTerms| rules.check(terms).map_err(OpeningError::Terms);
         let (session, visibility) = if let Some(session) = found {
-            let visibility = check(session.terms())?.visibility;
-            Self::picks(&rules, &session.terms().options, &setup.options)?;
-            Self::visibility(&rules, &visibility, &setup.host)?;
-            let restore = PendingRestore {
+            let restore = PendingRestore::check(UncheckedRestore {
                 session,
                 packages: Arc::new(setup.packages),
                 server: setup.server,
                 bots: setup.bots,
-            };
+            })
+            .map_err(OpeningError::Terms)?;
+            let visibility = restore.checked().visibility;
+            let rules = SessionRules::of(&restore.packages);
+            Self::picks(&rules, &restore.session.terms().options, &setup.options)?;
+            Self::visibility(&rules, &visibility, &setup.host)?;
             (Opened::Restored(Box::new(restore)), visibility)
         } else {
             let lobby = Self::open(setup)?;
-            let visibility = check(lobby.terms())?.visibility;
+            let visibility = lobby.checked().visibility;
             (Opened::New(Box::new(lobby)), visibility)
         };
         let terms = session.terms();

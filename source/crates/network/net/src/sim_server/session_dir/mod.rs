@@ -11,7 +11,9 @@ use campfire_package::ModePackages;
 use campfire_protocol::{
     JournalFrames, SessionId, SessionLog, SessionPrivate, SessionTerms, Signer,
 };
-use campfire_runner::{ResumeAt, Session, SessionSource, SessionWorld};
+use campfire_runner::{
+    CheckedTerms, ResumeAt, Session, SessionRules, SessionSource, SessionWorld, StartError,
+};
 use campfire_sim::StateRegistry;
 use campfire_store::{
     AppendOpenError, DirEntries, DurableDir, DurableDirError, DurableFile, InputFile, PathError,
@@ -242,6 +244,16 @@ impl SessionDir {
     }
 }
 
+/// What a session's replay takes beside its world: the packages of its mode, the server's
+/// signer, which signs what the session logs, and the log's terms as the mode's rules checked
+/// them.
+#[derive(Debug)]
+pub(crate) struct ReplayWith<'p> {
+    pub(crate) packages: &'p ModePackages,
+    pub(crate) signer: Arc<Signer>,
+    pub(crate) checked: CheckedTerms,
+}
+
 impl RestoredSession {
     /// The session's terms, which its journal's header holds.
     pub const fn terms(&self) -> &SessionTerms {
@@ -257,10 +269,14 @@ impl RestoredSession {
     pub(crate) fn replay(
         self,
         world: &mut World,
-        packages: &ModePackages,
-        signer: Arc<Signer>,
+        with: ReplayWith<'_>,
         mut after_tick: impl FnMut(&mut World),
     ) -> Result<SnapshotDir, RestoreMatchError> {
+        let ReplayWith {
+            packages,
+            signer,
+            checked,
+        } = with;
         let Self {
             private,
             log,
@@ -284,6 +300,7 @@ impl RestoredSession {
                 log: log.rewound(),
                 seeds,
                 packages,
+                checked,
                 signer: Some(signer),
             };
             let at = ResumeAt {
@@ -296,6 +313,7 @@ impl RestoredSession {
                 log: log.rewound(),
                 seeds,
                 packages,
+                checked,
                 signer: Some(signer),
             };
             Session::start(world, source).map_err(RestoreMatchError::Start)?;
@@ -323,8 +341,18 @@ impl RestoredSession {
             packages,
             signer,
         } = publisher;
+        let checked = SessionRules::of(packages)
+            .check(self.terms())
+            .map_err(|error| {
+                AbortError::Replay(RestoreMatchError::Start(StartError::Terms(error)))
+            })?;
+        let with = ReplayWith {
+            packages,
+            signer: Arc::clone(signer),
+            checked,
+        };
         let mut world = World::new();
-        self.replay(&mut world, packages, Arc::clone(signer), |_| {})
+        self.replay(&mut world, with, |_| {})
             .map_err(AbortError::Replay)?;
         if world.session().log().result().is_none() {
             let result = world.session_result();

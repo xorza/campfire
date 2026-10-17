@@ -33,7 +33,7 @@ use crate::pace::Pace;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_server::lobby::{Lobby, LobbyOpening};
-use crate::sim_server::pending_restore::PendingRestore;
+use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
 use crate::sim_server::server_bots::{ServerBots, SlotBot};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
@@ -281,12 +281,14 @@ impl Runs {
         let session = SessionDir::waiting(&dir).map_err(LocalServerError::Waiting)?;
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let mut app = self.app(server_io, dir);
-        app.insert_resource(PendingRestore {
+        let restore = PendingRestore::check(UncheckedRestore {
             session: session.expect("the session that loaded, whose match started"),
             packages: Arc::clone(&self.packages),
             server: self.server.clone(),
             bots: self.bots.clone(),
-        });
+        })
+        .expect("the packages that ran the session admit its terms");
+        app.insert_resource(restore);
         self.relinks.give(client_io);
         Ok(app)
     }

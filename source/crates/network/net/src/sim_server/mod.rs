@@ -24,7 +24,7 @@ use campfire_protocol::{
     SessionTerms,
 };
 use campfire_quic::{CloseLink, QuicPlugin};
-use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError};
+use campfire_runner::{CheckedTerms, Session, SessionSource, SessionWorld, StartError};
 use campfire_script::ScriptPrints;
 use campfire_sim::{SimTick, TickRate};
 use campfire_units::Deaths;
@@ -75,7 +75,7 @@ use crate::sim_server::receipts::Receipts;
 use crate::sim_server::seats::Seats;
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::session_dir::SessionFiles;
+use crate::sim_server::session_dir::{ReplayWith, SessionFiles};
 use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
 use crate::sim_server::snapshot_dir::SnapshotDir;
 use crate::sim_server::spectators::Spectators;
@@ -273,8 +273,8 @@ pub(crate) struct SessionStart<'a> {
     pub(crate) bots: ServerBots,
     /// The lobby's offering, which the door offers from then on.
     pub(crate) offering: Offering,
-    /// The visibility the terms carry, as the lobby made it.
-    pub(crate) visibility: Visibility,
+    /// The terms as the lobby made them, of the mode's rules.
+    pub(crate) checked: CheckedTerms,
 }
 
 /// What a match runs with from the next fixed tick, as it starts or restores, its journal kept
@@ -367,7 +367,7 @@ impl SimServer {
             server,
             bots,
             offering,
-            visibility,
+            checked,
         } = start;
         assert_eq!(
             clients.len(),
@@ -375,7 +375,7 @@ impl SimServer {
             "one client per player"
         );
         let terms = log.header().terms.clone();
-        Self::take_terms(world, &terms, visibility);
+        Self::take_terms(world, &terms, checked.visibility);
         let slots = log.slot_count();
         Session::start(
             world,
@@ -383,6 +383,7 @@ impl SimServer {
                 log,
                 seeds,
                 packages,
+                checked,
                 signer: Some(Arc::clone(&server.signer)),
             },
         )?;
@@ -469,17 +470,17 @@ impl SimServer {
             packages,
             server,
             bots,
+            checked,
         } = restore;
         let terms = restored.log.header().terms.clone();
-        // The rules of the packages the server runs now may not admit the terms it ran under.
-        let visibility = SessionRules::of(&packages)
-            .check(&terms)
-            .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?
-            .visibility;
-        Self::take_terms(world, &terms, visibility);
+        Self::take_terms(world, &terms, checked.visibility);
         let slots = restored.log.slot_count();
-        let signer = Arc::clone(&server.signer);
-        let snapshots = restored.replay(world, &packages, signer, replayed)?;
+        let with = ReplayWith {
+            packages: &packages,
+            signer: Arc::clone(&server.signer),
+            checked,
+        };
+        let snapshots = restored.replay(world, with, replayed)?;
         let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
         let now = world.resource::<Time<Real>>().elapsed();
         let run = MatchRun {

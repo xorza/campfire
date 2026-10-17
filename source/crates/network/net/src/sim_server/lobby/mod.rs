@@ -13,8 +13,8 @@ use campfire_protocol::{
     Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
     SlotPlan, SlotStart,
 };
-use campfire_runner::{HostChoices, SessionRules};
-use campfire_visibility::{HostVisibility, Visibility};
+use campfire_runner::{CheckedTerms, HostChoices, SessionRules};
+use campfire_visibility::HostVisibility;
 use lightyear::prelude::Connected;
 use tracing::info;
 
@@ -47,8 +47,9 @@ pub struct Lobby {
     server: ServerSetup,
     /// The links that joined, by slot, with their delegations.
     joined: Vec<(Entity, Delegation)>,
-    /// The session's visibility, which bounds its spectators.
-    visibility: Visibility,
+    /// The session's terms as the mode's rules made them: its visibility, which bounds its
+    /// spectators, and its picks.
+    checked: CheckedTerms,
     /// Where the session's log and snapshots go as the server writes them, once it keeps them.
     files: Option<SessionFiles>,
 }
@@ -177,7 +178,7 @@ impl Lobby {
             bots,
             server,
             joined: Vec::with_capacity(players),
-            visibility,
+            checked: CheckedTerms { visibility, picks },
             files: None,
         })
     }
@@ -194,6 +195,11 @@ impl Lobby {
         let dir = SessionDir::create(data, session, &private).map_err(KeepFilesError::Dir)?;
         self.files = Some(dir.start().map_err(KeepFilesError::Journal)?);
         Ok(())
+    }
+
+    /// The session's terms as the mode's rules made them.
+    pub const fn checked(&self) -> &CheckedTerms {
+        &self.checked
     }
 
     pub const fn terms(&self) -> &SessionTerms {
@@ -228,7 +234,7 @@ impl Lobby {
         }
         let mut watching = Spectators::count(viewers.iter());
         for link in checked.watching.drain(..) {
-            match Spectators::place(&lobby.visibility, watching) {
+            match Spectators::place(&lobby.checked.visibility, watching) {
                 Ok(viewer) => {
                     commands.entity(link).insert((Joined, viewer));
                     watching += 1;
@@ -293,7 +299,7 @@ impl Lobby {
             server: &lobby.server,
             bots: lobby.bots,
             offering: lobby.offering,
-            visibility: lobby.visibility,
+            checked: lobby.checked,
         };
         SimServer::start_match(world, start, &links)
             .expect("the lobby's terms come from its own packages");

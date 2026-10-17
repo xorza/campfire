@@ -83,7 +83,7 @@ pub use crate::sim_server::error::RestoreMatchError;
 pub use crate::sim_server::journal_watch::JournalWatch;
 pub use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError};
 pub use crate::sim_server::lobby::{Lobby, LobbyOpening, LobbySetup};
-pub use crate::sim_server::pending_restore::PendingRestore;
+pub use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
 pub use crate::sim_server::server_bots::{ServerBots, SlotBot};
 pub use crate::sim_server::server_dir::ServerDir;
 pub use crate::sim_server::server_layout::ServerLayout;

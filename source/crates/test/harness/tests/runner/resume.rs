@@ -12,6 +12,7 @@ use campfire_package::ModePackages;
 use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
 use campfire_runner::{
     Replay, ResumeAt, ResumeError, Session, SessionSource, SessionWorld, SnapshotCheckError,
+    UncheckedSource,
 };
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
 use campfire_test_packages::TestMode;
@@ -98,12 +99,13 @@ impl Checkpointed {
         for (checkpoint, snapshot) in (0..).zip(&self.snapshots) {
             let log = SessionLog::decode(&self.log).unwrap().rewound();
             let segment = checkpoint + 1;
-            let source = SessionSource {
+            let source = SessionSource::check(UncheckedSource {
                 log,
                 seeds: FixedSession::seeds(),
                 packages,
                 signer: Some(Arc::new(FixedSession::server_signer())),
-            };
+            })
+            .unwrap();
             let checkpoint_at = ResumeAt { segment, snapshot };
             let mut game = Session::resume_match(source, checkpoint_at)
                 .unwrap_or_else(|error| panic!("segment {segment}: {}", ErrorReport::of(&error)));
@@ -188,12 +190,13 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     fixed.game().session().log().encode(&mut bytes);
     let resume = |segment, snapshot: &[u8]| {
         let log = SessionLog::decode(&bytes).unwrap().rewound();
-        let source = SessionSource {
+        let source = SessionSource::check(UncheckedSource {
             log,
             seeds: FixedSession::seeds(),
             packages: proving.packages(),
             signer: Some(Arc::new(FixedSession::server_signer())),
-        };
+        })
+        .unwrap();
         Session::resume_match(source, ResumeAt { segment, snapshot }).err()
     };
     assert!(matches!(resume(3, &first), Some(ResumeError::NoCheckpoint)));

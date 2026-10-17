@@ -27,7 +27,7 @@ use campfire_protocol::{
 };
 use campfire_runner::{
     Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionSource, SessionWorld,
-    SlotRuleError, SnapshotCheckError, StartError, TermsError,
+    SlotRuleError, SnapshotCheckError, StartError, TermsError, UncheckedSource,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
 use campfire_stats::Life;
@@ -273,12 +273,15 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     // Seeds that reach segment 0 alone do not start the log of two.
     let first = ServerSeeds::new(0, FixedSession::seed(0));
     assert!(matches!(
-        Session::start_match(SessionSource {
-            log: SessionLog::decode(&encoded(log)).unwrap().rewound(),
-            seeds: first,
-            packages: &packages(),
-            signer: None,
-        }),
+        Session::start_match(
+            SessionSource::check(UncheckedSource {
+                log: SessionLog::decode(&encoded(log)).unwrap().rewound(),
+                seeds: first,
+                packages: &packages(),
+                signer: None,
+            })
+            .unwrap()
+        ),
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
     assert_eq!(replay.check_snapshot(&record, &snapshot), Ok(()));
@@ -691,12 +694,15 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         Some(VerifyError::Start(StartError::Seed(SeedError::NotRevealed)))
     ));
     assert!(matches!(
-        Session::start_match(SessionSource {
-            log: session.log(),
-            seeds: ServerSeeds::new(0, ServerSeed::new([8; 32])),
-            packages: &packages(),
-            signer: None,
-        }),
+        Session::start_match(
+            SessionSource::check(UncheckedSource {
+                log: session.log(),
+                seeds: ServerSeeds::new(0, ServerSeed::new([8; 32])),
+                packages: &packages(),
+                signer: None,
+            })
+            .unwrap()
+        ),
         Err(StartError::Seed(SeedError::WrongSeed))
     ));
 
@@ -764,12 +770,15 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         NonZeroU32::new(30).unwrap(),
         1,
     );
-    let refused = Session::start_match(SessionSource {
-        log: thrown.log(),
-        seeds: FixedSession::seeds(),
-        packages: thrown.packages(),
-        signer: None,
-    })
+    let refused = Session::start_match(
+        SessionSource::check(UncheckedSource {
+            log: thrown.log(),
+            seeds: FixedSession::seeds(),
+            packages: thrown.packages(),
+            signer: None,
+        })
+        .unwrap(),
+    )
     .err();
     let Some(refused @ StartError::MatchStart(_)) = refused else {
         panic!("{refused:?}");

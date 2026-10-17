@@ -14,7 +14,7 @@ use campfire_state_types::DataKind;
 use campfire_store::internals::Scratch;
 use campfire_test_packages::TestMode;
 use campfire_values::Scalar;
-use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
+use campfire_visibility::{OutView, Setting, SpectatorFog, Visibility, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
 
 use super::*;
@@ -85,7 +85,11 @@ fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
             settings: settings.iter().map(|text| text.parse().unwrap()).collect(),
             max_spectators,
         };
-        Lobby::new(setup).map(|lobby| Visibility::decode(&lobby.terms().visibility).unwrap())
+        Lobby::new(setup).map(|lobby| {
+            let terms = Visibility::decode(&lobby.terms().visibility).unwrap();
+            assert_eq!(terms, lobby.checked().visibility);
+            terms
+        })
     };
     let visibility = hosted(&["spectators=teams", "out=spectators"], 2).unwrap();
     assert_eq!(visibility.spectators(), SpectatorFog::Teams);
