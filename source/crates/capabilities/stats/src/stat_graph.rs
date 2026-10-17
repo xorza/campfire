@@ -1,11 +1,16 @@
+use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
 use campfire_script::{NameKind, UnknownName};
-use campfire_values::{NameId, Stat};
+use campfire_values::{NameId, PackageIndex, Param, Stat};
 
-use crate::error::EdgeError;
+use crate::error::{EdgeError, StatGraphError};
+use crate::mode_stats_data::ModeStatsData;
+use crate::modifiers_data::ModifiersData;
 use crate::stat_id::StatId;
 
 /// Which stats a live stat change reads and which it changes, across a mode's modifiers: an edge
-/// from each stat a scaling param reads to the stat the change that reads it changes.
+/// from each stat a scaling param reads to the stat the change that reads it changes. A fact of
+/// the match, which the stats build of the modifiers' own params, and the modules whose data
+/// applies a modifier extend with the params they give it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StatGraph {
     stats: Vec<Stat>,
@@ -19,6 +24,8 @@ struct StatEdge {
     changed: u16,
 }
 
+impl Fact for StatGraph {}
+
 impl StatGraph {
     /// The graph of no edge among `stats`, the mode's stats in order.
     pub fn new(stats: impl IntoIterator<Item = Stat>) -> Self {
@@ -26,6 +33,48 @@ impl StatGraph {
             stats: stats.into_iter().collect(),
             edges: Vec::new(),
         }
+    }
+
+    /// The graph of the mode's stats, with the edges of each change that reads a param its
+    /// modifier declares; an error for a stat the mode does not have, at the modifier.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let stats = cx.mode_section::<ModeStatsData>();
+        let mut graph = Self::new(stats.into_iter().flat_map(|stats| stats.0.keys().cloned()));
+        for (package, source) in cx.packages() {
+            let modifiers = source.content.get::<ModifiersData>();
+            for (id, modifier) in modifiers.into_iter().flat_map(|modifiers| &modifiers.0) {
+                for (changed, change) in &modifier.stats {
+                    let own = change
+                        .value
+                        .param()
+                        .and_then(|name| modifier.params.get(name));
+                    for read in own.into_iter().flat_map(Param::stats) {
+                        graph.add(read, changed).map_err(|error| {
+                            let at = BookPlace::Entry {
+                                table: ModifiersData::KEY,
+                                name: id.clone(),
+                            };
+                            BookError::unknown(package, at, error.name())
+                        })?;
+                    }
+                }
+            }
+        }
+        Ok(graph)
+    }
+
+    /// The stats in the order the stats refresh computes them, of the match's graph; an error
+    /// for live stat changes that read each other in a loop, of the mode's stats.
+    pub fn order_in(cx: &BookCx<'_>) -> Result<Vec<StatId>, BookError> {
+        cx.fact::<Self>()?.order().map_err(|stats| {
+            let at = BookPlace::Section(ModeStatsData::KEY);
+            BookError::rule(PackageIndex::MODE, at, StatGraphError::Loop(stats))
+        })
+    }
+
+    /// The rule of the live stat changes: none reads, through others, the stat it changes.
+    pub(crate) fn rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        Self::order_in(cx).map(drop)
     }
 
     /// Adds that a change of `changed` reads `read`; an error for the first of `changed` and

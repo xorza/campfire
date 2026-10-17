@@ -38,6 +38,39 @@ pub enum EdgeError {
     Changed(UnknownName),
 }
 
+impl EdgeError {
+    /// The stat the graph does not hold.
+    pub fn name(self) -> UnknownName {
+        match self {
+            Self::Read(name) | Self::Changed(name) => name,
+        }
+    }
+}
+
+/// Why a package's modifier breaks a rule of stats. Packages are untrusted, so each is an
+/// expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ModifiersDataError {
+    /// It grants a tag only the engine gives.
+    #[error("the tag {0}, which only the engine gives")]
+    EngineTag(DeclaredName),
+}
+
+/// Why a mode's stats have no order the stats refresh computes them in.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum StatGraphError {
+    /// Live stat changes across the mode's modifiers read each other in a loop, through these
+    /// stats.
+    #[error("live stat changes read each other in a loop through {}", joined(.0))]
+    Loop(Vec<Stat>),
+}
+
+/// The names of `stats`, in their order.
+fn joined(stats: &[Stat]) -> String {
+    let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
+    names.join(", ")
+}
+
 /// The modifier `modifier` of a package does not load, for `error`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModifierError {

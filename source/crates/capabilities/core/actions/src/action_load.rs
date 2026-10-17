@@ -1,8 +1,7 @@
-use std::collections::BTreeMap;
 use std::mem;
 
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section, SourceKind, UnitTypeData};
+use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::{
@@ -19,18 +18,16 @@ use crate::action_book::{ActionBook, PackageAction};
 use crate::action_data::ActionData;
 use crate::action_names::ActionNames;
 use crate::action_parts::ActionParts;
+use crate::action_ranks::ActionRanks;
 use crate::actions_data::ActionsData;
 use crate::cost_target::CostTarget;
 use crate::damage_kind_book::DamageKindBook;
 use crate::delivery::ProjectileFlight;
 use crate::effect_list_book::EffectListBook;
 use crate::effect_names::EffectNames;
-use crate::error::{ActionError, ActionProblem};
+use crate::error::ActionError;
 use crate::flights::Flights;
-use crate::loadout_ranks::LoadoutRanks;
-use crate::slot_kinds::SlotKinds;
 use crate::track_names::TrackNames;
-use crate::type_slots_data::TypeSlotsData;
 
 /// Every package's actions as a match loads them: the book, each action's params, one run per
 /// action, and its effect lists.
@@ -45,33 +42,17 @@ impl Fact for ActionLoad {}
 
 impl ActionLoad {
     /// Every package's actions, package by package, each by its id, of the ranks its slots give
-    /// it: the mode's and an avatar's the ranks of the kinds their types that stand place them
-    /// in, 1 when none does, a loadout's the loadout's; an error for a name the match does not
-    /// have, an action placed in kinds of other ranks, or one that breaks a rule.
+    /// it, but a rules package's, which no match loads; an error for a name the match does not
+    /// have, or an action that breaks a rule.
     pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
         let names = LoadNames::of(cx)?;
+        let ranks = cx.fact::<ActionRanks>()?;
         let mut load = Self::default();
-        let kinds = cx.mode_section::<SlotKinds>();
-        let none = SlotKinds::default();
-        let kinds = kinds.unwrap_or(&none);
         for (index, package) in cx.packages() {
-            let standing = package.units.values().filter(|unit| !unit.delivers());
-            let ranks = match package.kind {
-                SourceKind::Mode => Ranks::Slotted(Self::slotted(index, kinds, standing)?),
-                SourceKind::Avatar(unit) => {
-                    Ranks::Slotted(Self::slotted(index, kinds, standing.chain([unit]))?)
-                }
-                SourceKind::Loadout => {
-                    let ranks = cx.fact_if::<LoadoutRanks>()?;
-                    Ranks::Loadout(ranks.map_or(1, |ranks| ranks.0))
-                }
-                SourceKind::Rules => continue,
-            };
             let actions = package.content.get::<ActionsData>().into_iter();
             for (id, data) in actions.flat_map(|actions| &actions.0) {
-                let ranks = match &ranks {
-                    Ranks::Slotted(ranks) => ranks.get(id.as_str()).copied().unwrap_or(1),
-                    &Ranks::Loadout(ranks) => ranks,
+                let Some(ranks) = ranks.of(index, id.as_str()) else {
+                    continue;
                 };
                 load.action(
                     cx,
@@ -86,26 +67,6 @@ impl ActionLoad {
             }
         }
         Ok(load)
-    }
-
-    /// The ranks the types of `slots`, of the package at `index`, give each action they place;
-    /// an error for an action placed in slot kinds of different ranks.
-    fn slotted<'u>(
-        index: PackageIndex,
-        kinds: &SlotKinds,
-        types: impl IntoIterator<Item = &'u UnitTypeData>,
-    ) -> Result<BTreeMap<&'u str, u8>, BookError> {
-        let slots = types
-            .into_iter()
-            .filter_map(|unit| unit.section::<TypeSlotsData>());
-        let ranks = kinds.slotted_ranks(slots.map(|slots| &slots.0));
-        ranks.map_err(|action| {
-            let at = BookPlace::Entry {
-                table: ActionsData::KEY,
-                name: action.clone(),
-            };
-            BookError::rule(index, at, ActionProblem::SlottedRanks)
-        })
     }
 
     /// Loads `loaded`, with its script, its params and its effect lists.
@@ -195,14 +156,6 @@ impl ActionLoad {
         let appliers = modifiers.map_or(&none, |modifiers| modifiers.appliers());
         Ok(ParamBook::new(tables, appliers))
     }
-}
-
-/// The ranks a package's actions load with: each by the kinds its types place it in, or all of a
-/// loadout's alike.
-#[derive(Debug)]
-enum Ranks<'u> {
-    Slotted(BTreeMap<&'u str, u8>),
-    Loadout(u8),
 }
 
 /// An action to load: its package's place, its id, its data, and its ranks.

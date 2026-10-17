@@ -12,8 +12,8 @@ use campfire_values::{EngineStat, NameId, Names, PackageIndex, Stat, UnitType};
 
 use crate::mode_stats_data::ModeStatsData;
 use crate::move_speed_cap::MoveSpeedCap;
+use crate::stat_graph::StatGraph;
 use crate::stat_id::StatId;
-use crate::stat_order::StatOrder;
 use crate::stat_rule::StatRule;
 use crate::stat_totals::StatTotals;
 use crate::stats_data::StatsData;
@@ -237,10 +237,8 @@ impl StatBook {
                 BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name)
             })?;
         }
-        let order = cx
-            .given::<StatOrder>()
-            .expect("the load gives the stats' order");
-        Ok(book.with_order(order.0.iter().copied()))
+        let order = StatGraph::order_in(cx)?;
+        Ok(book.with_order(order))
     }
 
     /// The id of `stat`, which data at `at` of the package at `package` names; an error for a

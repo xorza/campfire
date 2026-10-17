@@ -1,17 +1,15 @@
 use campfire_capabilities::CapabilityError;
 use campfire_common::{DeclaredName, MapName};
 use campfire_declare::Problem;
-use campfire_script::{ApiVersion, NameKind, ParamProblem};
+use campfire_script::{ApiVersion, NameKind};
 use campfire_sim::Capability;
-use campfire_stats::ModifierProblem;
-use campfire_values::{EngineTag, PackagePath, Stat};
+use campfire_values::PackagePath;
 use thiserror::Error;
 
 use crate::error::ContentError;
 use crate::error::locale_problem::LocaleProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
-use crate::error::way::Way;
 use crate::files::package_name::PackageName;
 
 /// A problem that fails a package's load, as the load's checks find them (08-script-api.md, Checks
@@ -63,9 +61,6 @@ pub enum LoadProblem {
     /// A team of the manifest has no `[teams.<team>]` that names it.
     #[error("team \"{0}\" has no name")]
     UnnamedTeam(DeclaredName),
-    /// Unit types place the action in slot kinds of other ranks.
-    #[error("action \"{0}\" sits in slot kinds of other ranks")]
-    ActionRanks(DeclaredName),
     /// Data at `at` breaks a rule of the module that reads it, as the module reports it.
     #[error("{at}")]
     Rule {
@@ -88,44 +83,12 @@ pub enum LoadProblem {
     /// or slots, a name twice in one of the mode's lists.
     #[error("{at}: {name:?} twice")]
     Repeated { at: Place, name: String },
-    /// A modifier is the passive of two owners of its package, unit types by `passive` and
-    /// actions by `passive_modifier`, which would share its hold.
-    #[error("modifier {modifier} is the passive of both {} and {}", .owners[0], .owners[1])]
-    SharedPassive {
-        modifier: DeclaredName,
-        owners: [Place; 2],
-    },
-    /// Live stat changes across the mode's modifiers read each other in a loop, through these
-    /// stats.
-    #[error("live stat changes read each other in a loop through {}", joined(.0))]
-    StatLoop(Vec<Stat>),
     /// Data or a script at `at` names something of `of` the mode or its packages do not have.
     #[error("{at}: no {of} {name:?}")]
     Unknown {
         at: Place,
         name: String,
         of: NameKind,
-    },
-    /// A unit type or a modifier at `at` carries a tag only the engine gives.
-    #[error("{at}: {:?}, a tag only the engine gives", .tag.name())]
-    EngineTag { at: Place, tag: EngineTag },
-    /// A modifier does not load at the fastest rate the mode allows.
-    #[error("modifier \"{modifier}\"")]
-    Modifier {
-        modifier: DeclaredName,
-        #[source]
-        problem: ModifierProblem,
-    },
-    /// A param a modifier reads does not hold as the modifier reads it.
-    #[error("modifier \"{modifier}\", {}", param_of(.param, .way.as_ref()))]
-    ModifierParam {
-        modifier: DeclaredName,
-        param: DeclaredName,
-        /// The way that applies the modifier the problem is of; none for its own param, whatever
-        /// applies it.
-        way: Option<Way>,
-        #[source]
-        problem: ParamProblem,
     },
     /// A file of human text at `path`.
     #[error("{path}")]
@@ -138,20 +101,6 @@ pub enum LoadProblem {
     /// yet.
     #[error("{at}: {field} is planned, and the release does not read it yet")]
     Planned { field: &'static str, at: Place },
-}
-
-/// The names of `stats`, in their order.
-fn joined(stats: &[Stat]) -> String {
-    let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
-    names.join(", ")
-}
-
-/// A modifier's param `param`, as the way `way` applies the modifier, or its own when none does.
-fn param_of(param: &DeclaredName, way: Option<&Way>) -> String {
-    match way {
-        Some(way) => format!("param {param}, by {way}"),
-        None => format!("its own param {param}"),
-    }
 }
 
 /// `maps` as text, comma-separated, or `none`.

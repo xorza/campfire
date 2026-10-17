@@ -44,6 +44,7 @@ pub(crate) mod script_radius;
 pub(crate) mod script_role;
 pub(crate) mod script_text;
 pub(crate) mod script_ticks;
+pub(crate) mod script_uses;
 pub(crate) mod script_value;
 pub(crate) mod script_window;
 pub(crate) mod scripts_world;

@@ -12,7 +12,7 @@
 
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, ActionsSet, EffectQueues};
+use campfire_actions::{ActionTarget, ActionsSet, EffectQueues, ModifierAppliers};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
@@ -99,6 +99,7 @@ impl Module for Areas {
         d.extend::<UnitTypes>(Self::tag_types);
         d.book::<ByType<AreaSpec>>(AreaSpec::book);
         d.rule(Self::deliveries_rule);
+        d.extend::<ModifierAppliers>(Self::inside_ways);
         d.api(AreasApi::register);
     }
 

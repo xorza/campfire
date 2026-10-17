@@ -49,6 +49,7 @@ impl Books {
             mode: &none,
             map: &none,
             packages: packages.to_vec(),
+            mode_script: None,
             given: Given::default(),
         };
         UnitTypes::build(&BookCx::new(source))

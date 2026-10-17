@@ -86,7 +86,6 @@ mod stat_change;
 mod stat_graph;
 mod stat_id;
 mod stat_op;
-mod stat_order;
 mod stat_rule;
 mod stat_totals;
 mod stats_api;
@@ -106,7 +105,8 @@ pub use crate::applier::Applier;
 pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
 pub use crate::error::{
-    EdgeError, ModifierError, ModifierProblem, SpecError, StatsRefusal, UnitStartError,
+    EdgeError, ModifierError, ModifierProblem, ModifiersDataError, SpecError, StatGraphError,
+    StatsRefusal, UnitStartError,
 };
 pub use crate::grant_pass::GrantPass;
 pub use crate::grants::{Grant, GrantChange, GrantFrom, Grants, GrantsIter, UnitGrants};
@@ -157,7 +157,6 @@ pub use crate::stat_change::StatChange;
 pub use crate::stat_graph::StatGraph;
 pub use crate::stat_id::StatId;
 pub use crate::stat_op::StatOp;
-pub use crate::stat_order::StatOrder;
 pub use crate::stat_rule::StatRule;
 pub use crate::stat_totals::StatTotals;
 pub use crate::stats_api::StatsApi;
@@ -281,8 +280,11 @@ impl Module for Stats {
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
         d.non_send::<ModifierEvents>(|world, role| Some(ModifierEvents::install(world, role)));
+        d.rule(ModifiersData::rule);
         d.book::<ModifierBook>(ModifierBook::build);
         d.fact::<ModifierParamTable>(ModifierParamTable::build);
+        d.fact::<StatGraph>(StatGraph::build);
+        d.rule(StatGraph::rule);
         d.book::<StatBook>(StatBook::build);
         d.fact::<UnitSteps>(StatBook::unit_steps);
         d.fact::<PoolNames>(PoolNames::build);

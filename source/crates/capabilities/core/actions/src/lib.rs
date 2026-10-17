@@ -14,9 +14,10 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_sim::{Capability, SimSet, Unpredicted};
-use campfire_stats::{ParamBook, StatsSet};
+use campfire_stats::{ParamBook, StatGraph, StatsSet};
 use campfire_units::{BodyUnit, UnitsSet};
 
+use crate::action_ranks::ActionRanks;
 use crate::actions_api::ActionsApi;
 use crate::actions_column::RowReads;
 use crate::holds::Holds;
@@ -31,6 +32,7 @@ mod action_load;
 mod action_names;
 mod action_parts;
 mod action_range;
+mod action_ranks;
 mod action_rules;
 mod action_slots;
 mod action_target;
@@ -67,6 +69,8 @@ mod launch_id;
 mod list_hook;
 mod lists_of;
 mod loadout_ranks;
+mod modifier_appliers;
+mod modifier_ways;
 mod payer;
 mod placement_data;
 mod purse;
@@ -131,7 +135,9 @@ pub use crate::effect_data::{
 pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
 pub use crate::effect_queues::{EffectQueues, QueueListed};
-pub use crate::error::{ActionError, ActionProblem, KindError, SlotError, SlotKindsError};
+pub use crate::error::{
+    ActionError, ActionProblem, AppliedError, KindError, SlotError, SlotKindsError, Way,
+};
 pub use crate::fan::Fan;
 pub use crate::flights::Flights;
 pub use crate::gather_spec::GatherSpec;
@@ -142,6 +148,8 @@ pub use crate::launch_id::LaunchId;
 pub use crate::list_hook::ListHook;
 pub use crate::lists_of::{ListsOf, ReachHook};
 pub use crate::loadout_ranks::LoadoutRanks;
+pub use crate::modifier_appliers::ModifierAppliers;
+pub use crate::modifier_ways::ModifierWays;
 pub use crate::payer::Payer;
 pub use crate::placement_data::{PlacementData, PlacementRule};
 pub use crate::purse::Purse;
@@ -300,6 +308,13 @@ impl Module for Actions {
         d.fact::<SlotClaims>(|_| Ok(SlotClaims::default()));
         d.rule(SlotClaims::rule);
         d.rule(Self::rule);
+        d.fact::<ActionRanks>(ActionRanks::build);
+        d.rule(ActionRanks::rule);
+        d.fact::<ModifierAppliers>(ModifierAppliers::build);
+        d.fact::<ModifierWays>(ModifierWays::build);
+        d.rule(Self::passives_rule);
+        d.rule(ModifierWays::rule);
+        d.extend::<StatGraph>(ModifierWays::stat_edges);
         d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
         d.part::<BodyUnit, ActionProgress>(|at| {

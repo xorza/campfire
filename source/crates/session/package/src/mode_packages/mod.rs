@@ -1,22 +1,19 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::iter;
 use std::sync::Arc;
 
-use campfire_actions::{ActionData, ActionsData, SlotKinds, TypeSlotsData};
 use campfire_capabilities::{BookInput, Books, PackageContent, PackageScript, Release};
 use campfire_common::{DeclaredName, MapName, PackageFingerprint};
-use campfire_declare::{Section, SourceKind, SourcePackage, UnitTypeData};
+use campfire_declare::{ScriptAt, SourceKind, SourcePackage};
 use campfire_mode::{MapData, ModeData};
 use campfire_navigation::ModeNavigationData;
-use campfire_script::{ScriptHost, ScriptId, UnknownName};
+use campfire_script::{ScriptHost, ScriptId, ScriptUses};
 use campfire_sim::TickRate;
-use campfire_stats::{EdgeError, ModeStatsData, ModifiersData, StatGraph, StatId};
 use campfire_units::{HeightGrid, ModeTagsData, ScriptBook, TypeTagsData};
 use campfire_values::{EngineTag, Names, PackageIndex, PackagePath, UnitType};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::load_problem::LoadProblem;
-use crate::error::place::Place;
 use crate::error::{ContentError, LoadError};
 use crate::file_index::FileIndex;
 use crate::files::map_file::MapFile;
@@ -26,7 +23,6 @@ use crate::files::mode_script::ModeScript;
 use crate::files::package_name::PackageName;
 use crate::files::units_file::UnitsFile;
 use crate::mode_packages::load_check::LoadCheck;
-use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_files::PackageFiles;
 use crate::package_view::{PackageView, ViewKind};
@@ -55,11 +51,10 @@ pub struct ModePackages {
     pub(crate) dependencies: Vec<Dependent>,
     /// The hooks each script defines, as the load read them, in the order a match compiles them.
     scripts: ScriptBook,
+    /// What each script uses of the data, in the same order.
+    uses: ScriptUses,
     /// Every tag its packages name but the engine's, in the order a match declares them.
     tag_names: Vec<DeclaredName>,
-    /// The places of the mode's stats in the order the stats refresh computes them, which the
-    /// load check found from the stat graph.
-    stat_order: Vec<StatId>,
 }
 
 impl ModePackages {
@@ -129,7 +124,7 @@ impl ModePackages {
             "a session's rate is within the manifest's range"
         );
         let engine_tags = Release::engine_tags();
-        Release::books(&self.book_input(rate, &self.stat_order, &engine_tags))
+        Release::books(&self.book_input(rate, &engine_tags))
             .expect("the load built the books at the fastest rate")
     }
 
@@ -178,11 +173,10 @@ impl ModePackages {
         }
     }
 
-    /// What its books are built from at `rate`, its stats computed in `stat_order`.
+    /// What its books are built from at `rate`.
     pub(crate) fn book_input<'a>(
         &'a self,
         rate: TickRate,
-        stat_order: &'a [StatId],
         engine_tags: &'a [EngineTag],
     ) -> BookInput<'a> {
         BookInput {
@@ -196,8 +190,15 @@ impl ModePackages {
             tag_names: &self.tag_names,
             packages: self.book_packages(),
             scripts: &self.scripts,
+            script_uses: &self.uses,
+            mode_script: self
+                .packages()
+                .find(|&view| self.runs_script_of(view))
+                .map(|view| ScriptAt {
+                    package: view.index,
+                    path: self.script.path(),
+                }),
             rate,
-            stat_order,
         }
     }
 
@@ -234,6 +235,15 @@ impl ModePackages {
         book
     }
 
+    /// What each script of `packages` uses of the data, in the order a match compiles them.
+    fn read_uses<'p>(packages: impl IntoIterator<Item = &'p Package>) -> ScriptUses {
+        let mut uses = ScriptUses::default();
+        for script in packages.into_iter().flat_map(|package| &package.scripts) {
+            uses.push(&script.facts);
+        }
+        uses
+    }
+
     /// The name of the map it loaded.
     pub const fn map_name(&self) -> &MapName {
         &self.map_name
@@ -246,77 +256,6 @@ impl ModePackages {
     /// The map's height grid, when it has one.
     pub const fn heights(&self) -> Option<&HeightGrid> {
         self.heights.as_ref()
-    }
-
-    /// The ways each modifier of `view`, one of its packages, is applied.
-    pub(crate) fn modifier_ways<'a>(&'a self, view: PackageView<'a>) -> ModifierWays<'a> {
-        let mode_script = self.runs_script_of(view).then_some(self.script.path());
-        ModifierWays::of(view, mode_script)
-    }
-
-    /// Which stats each live stat change reads and which it changes, across the modifiers of the
-    /// mode and of each package it depends on: a change that reads a param its modifier, or else
-    /// an action of a way that applies it, declares as a scaling table reads each stat the table
-    /// names. An error names a stat the mode does not have, where the package gives it.
-    pub(crate) fn stat_graph(&self) -> Result<StatGraph, LoadError> {
-        let stats = self.data.section_or_default::<ModeStatsData>();
-        let mut graph = StatGraph::new(stats.0.keys().cloned());
-        for view in self.packages() {
-            let content = view.content;
-            let ways = self.modifier_ways(view);
-            let fail = |at, name: UnknownName| {
-                let UnknownName { of, name } = name;
-                let problem = LoadProblem::Unknown { at, name, of };
-                LoadError::of(&view.package.header.name, problem)
-            };
-            for (id, modifier) in content.modifiers() {
-                let by: Vec<(&DeclaredName, &ActionData)> =
-                    ways.actions_of(id.as_str(), content.actions()).collect();
-                for (changed, change) in &modifier.stats {
-                    let Some(name) = change.value.param() else {
-                        continue;
-                    };
-                    let own = modifier.params.get(name).map(|param| (None, param));
-                    let applied = by.iter().filter(|_| own.is_none());
-                    let applied = applied
-                        .filter_map(|&(action, data)| Some((Some(action), data.params.get(name)?)));
-                    for (action, param) in own.into_iter().chain(applied) {
-                        for read in param.stats() {
-                            graph.add(read, changed).map_err(|error| match error {
-                                EdgeError::Read(name) if let Some(action) = action => fail(
-                                    Place::Entry {
-                                        table: ActionsData::KEY,
-                                        name: action.clone(),
-                                    },
-                                    name,
-                                ),
-                                EdgeError::Read(name) | EdgeError::Changed(name) => fail(
-                                    Place::Entry {
-                                        table: ModifiersData::KEY,
-                                        name: id.clone(),
-                                    },
-                                    name,
-                                ),
-                            })?;
-                        }
-                    }
-                }
-            }
-        }
-        Ok(graph)
-    }
-
-    /// The ranks of each action `types` place in their slots: those of the slot kind it sits in.
-    /// An error names an action they place in kinds of other ranks. A kind the mode does not
-    /// declare places nothing.
-    pub(crate) fn slotted_ranks<'u>(
-        &self,
-        types: impl IntoIterator<Item = &'u UnitTypeData>,
-    ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
-        let types = types.into_iter();
-        let slots = types.filter_map(|unit_type| unit_type.section::<TypeSlotsData>());
-        let kinds = self.data.section_or_default::<SlotKinds>();
-        kinds.slotted_ranks(slots.map(|slots| &slots.0))
     }
 
     /// Every tag its packages name but the engine's, each once, sorted: the tags of its unit
@@ -440,9 +379,10 @@ impl ModePackages {
             }
         }
         let dependents = dependencies.iter().map(|dependent| &dependent.package);
-        let scripts = Self::read_hooks(iter::once(&mode).chain(dependents));
+        let scripts = Self::read_hooks(iter::once(&mode).chain(dependents.clone()));
+        let uses = Self::read_uses(iter::once(&mode).chain(dependents));
         let tag_names = Self::collect_tag_names((&data, &content), &dependencies);
-        let mut packages = Self {
+        let packages = Self {
             mode,
             manifest,
             script,
@@ -451,12 +391,12 @@ impl ModePackages {
             map,
             heights,
             content,
-            tag_names,
             dependencies,
             scripts,
-            stat_order: Vec::new(),
+            uses,
+            tag_names,
         };
-        packages.stat_order = LoadCheck::run(&packages, &api)?;
+        LoadCheck::run(&packages, &api)?;
         Ok(packages)
     }
 }

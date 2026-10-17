@@ -354,7 +354,7 @@ pub(crate) mod internals {
     use campfire_geometry::Bounds;
     use campfire_math::Num;
     use campfire_mode::{MapData, Mode, ModeData, ModeInputs, ModeSetup};
-    use campfire_script::{ScriptApi, ScriptHost};
+    use campfire_script::{ScriptApi, ScriptHost, ScriptUses};
     use campfire_sim::TickRate;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
@@ -431,8 +431,9 @@ pub(crate) mod internals {
                 tag_names: &[],
                 packages: vec![mode],
                 scripts: &ScriptBook::default(),
+                script_uses: &ScriptUses::default(),
+                mode_script: None,
                 rate,
-                stat_order: &[],
             };
             let mut books = Self::books(&input).expect("a mode of no data builds");
             UnitTypes::new(Self::engine_tags()).open_in(&mut books.built);

@@ -1,7 +1,10 @@
 use campfire_common::DeclaredName;
-use campfire_script::UnknownName;
+use campfire_declare::BookPlace;
+use campfire_script::{ParamProblem, UnknownName};
 use campfire_sim::Capability;
+use campfire_stats::ModifierProblem;
 use campfire_values::TimeTooLarge;
+use derive_more::Display;
 use thiserror::Error;
 
 use crate::action_data::error::{ActionField, EffectRule};
@@ -141,5 +144,49 @@ impl From<KindError> for ActionProblem {
             KindError::NotRun(kind) => Self::NotRun(kind),
             KindError::Field(field) => Self::KindField(field),
         }
+    }
+}
+
+/// A way a modifier is applied, by the ways stats give (04-capabilities/stats.md, An application
+/// never fails after its call): with an action of its package, at each of the action's ranks, or
+/// with no action, at rank 1.
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Way {
+    #[display("action {_0}")]
+    Action(DeclaredName),
+    #[display("no action")]
+    NoAction,
+}
+
+/// Why a package's modifier breaks a rule of the ways that apply it. Packages are untrusted, so
+/// each is an expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum AppliedError {
+    /// A param it reads does not hold as it reads it, as the way `way` applies it; its own param
+    /// whatever applies it, when `way` is none.
+    #[error("{}", param_of(.param, .way.as_ref()))]
+    Param {
+        param: DeclaredName,
+        way: Option<Way>,
+        #[source]
+        problem: ParamProblem,
+    },
+    /// An aura radius or a shield is below zero, as its own param or one an action gives it.
+    #[error(transparent)]
+    Sign(#[from] ModifierProblem),
+    /// It is the passive of two owners of its package, unit types by `passive` and actions by
+    /// `passive_modifier`, which would share its hold: of the place of the error and `first`.
+    #[error("modifier {modifier} is also the passive of {first}")]
+    SharedPassive {
+        modifier: DeclaredName,
+        first: BookPlace,
+    },
+}
+
+/// A modifier's param `param`, as the way `way` applies the modifier, or its own when none does.
+fn param_of(param: &DeclaredName, way: Option<&Way>) -> String {
+    match way {
+        Some(way) => format!("param {param}, by {way}"),
+        None => format!("its own param {param}"),
     }
 }

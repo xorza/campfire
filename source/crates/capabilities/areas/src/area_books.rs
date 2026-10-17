@@ -1,8 +1,10 @@
-use campfire_actions::{ActionsData, DeliveryData, DoesData, LaunchFields, Targeting};
+use campfire_actions::{
+    ActionsData, DeliveryData, DoesData, LaunchFields, ModifierAppliers, Targeting, Way,
+};
 use campfire_common::DeclaredName;
-use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section};
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, Section, TypePlace};
 use campfire_script::{NameKind, UnknownName};
-use campfire_stats::ModifierBook;
+use campfire_stats::{ModifierBook, ModifiersData};
 use campfire_units::UnitTypes;
 
 use crate::Areas;
@@ -11,6 +13,36 @@ use crate::area_spec::AreaSpec;
 use crate::error::{AreaDeliveryError, AreaError};
 
 impl Areas {
+    /// Adds that each action that delivers an area applies the modifiers the area holds on the
+    /// units inside it; an error for one its package does not have, through which no way passes.
+    pub(crate) fn inside_ways(
+        cx: &BookCx<'_>,
+        appliers: &mut ModifierAppliers,
+    ) -> Result<(), BookError> {
+        for (package, source) in cx.packages() {
+            let modifiers = source.content.get::<ModifiersData>();
+            let actions = source.content.get::<ActionsData>();
+            for (id, action) in actions.into_iter().flat_map(|actions| &actions.0) {
+                let Some(DeliveryData::Area { unit_type }) = &action.delivery else {
+                    continue;
+                };
+                let area = source.units.get(unit_type);
+                let Some(area) = area.and_then(|unit| unit.section::<AreaData>()) else {
+                    continue;
+                };
+                for modifier in area.inside.modifiers() {
+                    if !modifiers.is_some_and(|modifiers| modifiers.0.contains_key(modifier)) {
+                        let at = BookPlace::UnitType(TypePlace::Declared(unit_type.clone()));
+                        let name = UnknownName::new(NameKind::Modifier, modifier);
+                        return Err(BookError::unknown(package, at, name));
+                    }
+                    appliers.apply(package, modifier.as_str(), Way::Action(id.clone()));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The rule of every action's area delivery and launches: each of a unit type of the area
     /// section, and a delivery aimed at other than along a direction. A type the package does not
     /// have is the actions' problem.

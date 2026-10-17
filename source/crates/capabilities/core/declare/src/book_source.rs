@@ -24,7 +24,16 @@ pub struct BookSource<'a> {
     pub map: &'a Sections,
     /// The mode's package, then each dependency's.
     pub packages: Vec<SourcePackage<'a>>,
+    /// The script the mode runs as its own; none in a match of no mode script, as a test's.
+    pub mode_script: Option<ScriptAt<'a>>,
     pub given: Given<'a>,
+}
+
+/// A script of the match, by its package's place and its path there.
+#[derive(Debug, Clone, Copy)]
+pub struct ScriptAt<'a> {
+    pub package: PackageIndex,
+    pub path: &'a PackagePath,
 }
 
 /// One package of a match: its name, its kind, its unit types by name, the sections of its

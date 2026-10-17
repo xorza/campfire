@@ -16,9 +16,22 @@ use campfire_state_types::{Replication, StateTypes};
 use campfire_values::EngineTag;
 
 /// Declares each book and fact a module declares, and each extension, in the build of a match's
-/// books.
+/// books: a module of the match's in full, and of the release's the books and facts alone, which
+/// mark what the match does not run.
 #[derive(Debug)]
-pub(crate) struct BookCells<'c, 'a>(pub(crate) &'c mut BookCx<'a>);
+pub(crate) struct BookCells<'c, 'a> {
+    pub(crate) cx: &'c mut BookCx<'a>,
+    pub(crate) walk: CellWalk,
+}
+
+/// Which modules a walk of the declarations visits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CellWalk {
+    /// The match's, each declaration whole.
+    Match,
+    /// The release's, each book and fact absent unless the match declares it.
+    Release,
+}
 
 impl StateTypes for BookCells<'_, '_> {
     fn component<C: Replication>(&mut self) {}
@@ -48,19 +61,29 @@ impl Declarations for BookCells<'_, '_> {
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
     fn fact<F: Fact>(&mut self, build: BuildFn<F>) {
-        self.0.declare_fact(build);
+        match self.walk {
+            CellWalk::Match => self.cx.declare_fact(build),
+            CellWalk::Release => self.cx.declare_absent::<F>(),
+        }
     }
 
     fn extend<B: Send + Sync + 'static>(&mut self, extend: ExtendFn<B>) {
-        self.0.declare_extend(extend);
+        if self.walk == CellWalk::Match {
+            self.cx.declare_extend(extend);
+        }
     }
 
     fn book<B: Book>(&mut self, build: BuildFn<B>) {
-        self.0.declare_book(build);
+        match self.walk {
+            CellWalk::Match => self.cx.declare_book(build),
+            CellWalk::Release => self.cx.declare_absent::<B>(),
+        }
     }
 
     fn rule(&mut self, rule: RuleFn) {
-        self.0.declare_rule(rule);
+        if self.walk == CellWalk::Match {
+            self.cx.declare_rule(rule);
+        }
     }
 
     fn section<S: Section>(&mut self) {}

@@ -479,7 +479,7 @@ fn a_module_names_another_modules_sets_only_where_its_sets_run() {
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 59] = [
+const LOOKUPS: [(&str, &str); 60] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_rules.rs", "named"),
@@ -505,6 +505,7 @@ const LOOKUPS: [(&str, &str); 59] = [
     ("progression/progression_books.rs", "named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/modifier_spec.rs", "named"),
+    ("stats/modifiers_data.rs", "named"),
     ("stats/param_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
     ("stats/type_passive.rs", "named"),

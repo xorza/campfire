@@ -1,8 +1,8 @@
 use campfire_common::DeclaredName;
-use campfire_declare::{CapabilitySet, SourcePackage};
+use campfire_declare::{CapabilitySet, ScriptAt, SourcePackage};
 use campfire_mode::{MapData, ModeData, TeamManifest};
+use campfire_script::ScriptUses;
 use campfire_sim::TickRate;
-use campfire_stats::StatId;
 use campfire_units::{HeightGrid, ScriptBook};
 use campfire_values::{EngineTag, Speed};
 
@@ -27,8 +27,9 @@ pub struct BookInput<'a> {
     /// The mode's package, then each dependency's.
     pub packages: Vec<SourcePackage<'a>>,
     pub scripts: &'a ScriptBook,
+    /// What each script uses of the data, in the order a match compiles them.
+    pub script_uses: &'a ScriptUses,
+    /// The script the mode runs as its own, none in a match of no mode script.
+    pub mode_script: Option<ScriptAt<'a>>,
     pub rate: TickRate,
-    /// The places of the mode's stats in the order the stats refresh computes them, which the
-    /// mode's stat graph gives.
-    pub stat_order: &'a [StatId],
 }

@@ -1,3 +1,4 @@
+use campfire_actions::{ModifierAppliers, Way};
 use campfire_common::Ticks;
 use campfire_declare::{BookCx, BookError, BookPlace, ByType, PerType};
 use campfire_script::{Hook, ScriptId, ScriptRole};
@@ -36,6 +37,20 @@ impl Ai {
 }
 
 impl Ai {
+    /// Adds that the AI of each unit type that stands applies, with no action, the modifiers its
+    /// script applies; an error for a script the type's package does not hold.
+    pub(crate) fn applied_ways(
+        cx: &BookCx<'_>,
+        appliers: &mut ModifierAppliers,
+    ) -> Result<(), BookError> {
+        for unit in cx.standing() {
+            if let Some(orders) = unit.data.section::<AiData>() {
+                appliers.script(cx, unit.package, &orders.ai, &Way::NoAction)?;
+            }
+        }
+        Ok(())
+    }
+
     /// The rule of an avatar: its type takes no `orders`, as bots play it.
     pub(crate) fn avatar_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let ordered = cx

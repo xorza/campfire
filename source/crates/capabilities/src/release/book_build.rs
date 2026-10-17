@@ -2,10 +2,10 @@ use campfire_actions::LoadoutRanks;
 use campfire_declare::{BookCx, BookError, BookSource, ByType, Given};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeTeams, ModeUnits};
 use campfire_navigation::{Walker, WalkerKinds};
-use campfire_stats::{MoveSpeedCap, StatOrder};
+use campfire_stats::MoveSpeedCap;
 
 use crate::books::Books;
-use crate::books::book_cells::BookCells;
+use crate::books::book_cells::{BookCells, CellWalk};
 use crate::books::book_input::BookInput;
 use crate::books::load_names::LoadNames;
 use crate::release::Release;
@@ -60,12 +60,11 @@ impl Release {
         input: &BookInput<'_>,
         run: impl FnOnce(BookCx<'_>) -> Result<T, BookError>,
     ) -> Result<T, BookError> {
-        let stat_order = StatOrder(input.stat_order.to_vec());
         let cap = MoveSpeedCap(input.max_move_speed.get());
         let teams = ModeTeams(input.teams.to_vec());
         let mut given = Given::default();
         given.add(input.scripts);
-        given.add(&stat_order);
+        given.add(input.script_uses);
         given.add(&cap);
         given.add(&teams);
         given.add(input.data);
@@ -81,10 +80,14 @@ impl Release {
             mode: &input.data.sections,
             map: input.map.sections(),
             packages: input.packages.clone(),
+            mode_script: input.mode_script,
             given,
         };
         let mut cx = BookCx::new(source);
-        Self::declare(input.set, &mut BookCells(&mut cx));
+        let walk = CellWalk::Match;
+        Self::declare(input.set, &mut BookCells { cx: &mut cx, walk });
+        let walk = CellWalk::Release;
+        Self::declare(Self::capabilities(), &mut BookCells { cx: &mut cx, walk });
         run(cx)
     }
 }

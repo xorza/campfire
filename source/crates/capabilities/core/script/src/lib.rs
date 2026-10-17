@@ -64,6 +64,7 @@ pub use crate::scripts::script_radius::ScriptRadius;
 pub use crate::scripts::script_role::{ParamScope, ScriptRole};
 pub use crate::scripts::script_text::ScriptText;
 pub use crate::scripts::script_ticks::ScriptTicks;
+pub use crate::scripts::script_uses::{AppliedModifier, ScriptUse, ScriptUses};
 pub use crate::scripts::script_value::script_list::ScriptList;
 pub use crate::scripts::script_value::script_map::ScriptMap;
 pub use crate::scripts::script_value::{ScriptType, ScriptValue};

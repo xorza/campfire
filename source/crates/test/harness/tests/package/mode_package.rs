@@ -4,9 +4,9 @@ use std::fmt::Write;
 use std::num::NonZeroU32;
 
 use campfire_actions::{
-    ActionDataField, ActionField, ActionKind, ActionProblem, DoesData, EffectData, EffectRule,
-    EffectTo, HealFields, LaunchFields, ListHook, MeteredKind, PlannedEffect, PurgeFields,
-    SlotError,
+    ActionDataField, ActionField, ActionKind, ActionProblem, AppliedError, DoesData, EffectData,
+    EffectRule, EffectTo, HealFields, LaunchFields, ListHook, MeteredKind, PlannedEffect,
+    PurgeFields, SlotError, Way,
 };
 use campfire_areas::AreaDeliveryError;
 use campfire_capabilities::{CapabilityError, Release};
@@ -14,7 +14,7 @@ use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
 use campfire_combat::CombatDataError;
 use campfire_common::{DeclaredName, MapName};
-use campfire_declare::NamesListError;
+use campfire_declare::{BookPlace, NamesListError, TypePlace};
 use campfire_geometry::Metric;
 use campfire_math::Num;
 use campfire_mode::{ModeDataError, ModeError};
@@ -22,7 +22,7 @@ use campfire_navigation::{MapProblem, NavigationDataError};
 use campfire_orders::AiError;
 use campfire_package::{
     ContentError, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName, PackageRef,
-    Place, ScriptProblem, Way,
+    Place, ScriptProblem,
 };
 use campfire_package_disk::PackageDir;
 use campfire_production::ProductionDataError;
@@ -31,10 +31,10 @@ use campfire_projectiles::{ProjectileDeliveryError, ProjectileError};
 use campfire_script::internals::Undefined;
 use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::{ModifierProblem, UnitStartError};
+use campfire_stats::{ModifierProblem, ModifiersDataError, StatGraphError, UnitStartError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::{HeightGrid, TypesError, UnitTypeError};
-use campfire_values::{EngineEnum, Number, Scalar, TimeTooLarge};
+use campfire_values::{EngineEnum, Number, Scalar, Stat, TimeTooLarge};
 use campfire_vision::VisionDataError;
 
 use crate::package::moba::{edited, load, moba, two_lanes};
@@ -114,7 +114,44 @@ const PRODUCTION: Edit<'static> = Edit::Replace(r#""items"]"#, r#""items", "prod
 
 /// Whether `problem` is Rime's Slow's `slow` param failing for `kind` by `way`.
 fn slow_fails(problem: &LoadProblem, way: Option<&Way>, kind: ParamProblem) -> bool {
-    matches!(problem, LoadProblem::ModifierParam { modifier, param, way: found, problem } if modifier == "slow" && param == "slow" && found.as_ref() == way && *problem == kind)
+    let error = AppliedError::Param {
+        param: name("slow"),
+        way: way.cloned(),
+        problem: kind,
+    };
+    rule_at(problem, &entry("modifiers", "slow"), &error)
+}
+
+/// Whether `problem` is the modifier `modifier` held as the passive of `first` and of the
+/// action `second` of one package.
+fn shared_passive(problem: &LoadProblem, modifier: &str, first: BookPlace, second: &str) -> bool {
+    let error = AppliedError::SharedPassive {
+        modifier: name(modifier),
+        first,
+    };
+    rule_at(problem, &entry("actions", second), &error)
+}
+
+/// The place of the action `id`, as a module's rule names it.
+fn action_place(id: &str) -> BookPlace {
+    BookPlace::Entry {
+        table: "actions",
+        name: name(id),
+    }
+}
+
+/// Whether `problem` is live stat changes that read each other in a loop through `stats`.
+fn stat_loop<const N: usize>(problem: &LoadProblem, stats: [&str; N]) -> bool {
+    let looped = stats.map(|stat| Stat::named(stat).unwrap()).to_vec();
+    rule_at(
+        problem,
+        &Place::Section("stats"),
+        &StatGraphError::Loop(looped),
+    )
+}
+
+fn name(name: &str) -> DeclaredName {
+    DeclaredName::new(name).unwrap()
 }
 
 /// Whether `problem` is a script that does not compile, as it reads the variable `name`, which
@@ -1190,7 +1227,13 @@ static DATA_FLAWS: &[Flaw] = &[
         "spells/data/loadout.toml",
         Edit::Set("units.totem.slots.basic", r#"["blink"]"#),
         "player-spells",
-        |problem| matches!(problem, LoadProblem::ActionRanks(action) if action.as_str() == "blink"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "blink"),
+                &ActionProblem::SlottedRanks,
+            )
+        },
     ),
     flaw(
         RIME,
@@ -2175,7 +2218,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[modifiers.surge]\nstats = { attack_damage = { param = \"surge\" } }\n\n[modifiers.vamp]\nstats = { spell_vamp = { param = \"vamp\" } }\n[modifiers.vamp.params]\nvamp = { base = 0, attack_damage = \"1\" }\n\n[actions.surge]\ntargeting = \"none\"\npassive_modifier = \"surge\"\n[actions.surge.params]\nsurge = { base = 0, spell_vamp = \"10\" }\n\n[actions.melee_creep_attack]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::StatLoop(stats) if stats.iter().map(ToString::to_string).eq(["attack_damage", "spell_vamp"])),
+        |problem| stat_loop(problem, ["attack_damage", "spell_vamp"]),
     ),
     // Dual Path's spell vamp reads attack damage; a modifier whose attack damage reads spell
     // vamp closes a loop.
@@ -2186,7 +2229,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[modifiers.loop]\nstats = { attack_damage = { param = \"thirst\" } }\n[modifiers.loop.params]\nthirst = { base = 0, spell_vamp = \"10\" }\n\n[modifiers.dual_path.params]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::StatLoop(stats) if stats.iter().map(ToString::to_string).eq(["attack_damage", "spell_vamp"])),
+        |problem| stat_loop(problem, ["attack_damage", "spell_vamp"]),
     ),
     flaw(
         "heroes/veil/data/avatar.toml",
@@ -2276,7 +2319,13 @@ static STAT_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Replace(r#"tags = ["slowed"]"#, r#"tags = ["projectile"]"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Entry { table: "modifiers", name: id }, tag } if tag.name() == "projectile" && id == "slow"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "slow"),
+                &ModifiersDataError::EngineTag(name("projectile")),
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -2383,13 +2432,20 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("actions.lash_out.passive_modifier", r#""withering_touch""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Avatar(avatar), Place::Entry { table: "actions", name: action }] } if modifier == "withering_touch" && avatar == "hero-husk" && action == "lash_out"),
+        |problem| {
+            shared_passive(
+                problem,
+                "withering_touch",
+                BookPlace::UnitType(TypePlace::Avatar),
+                "lash_out",
+            )
+        },
     ),
     flaw(
         HUSK,
         Edit::Set("actions.dread.passive_modifier", r#""lash_out_guard""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Entry { table: "actions", name: first }, Place::Entry { table: "actions", name: second }] } if modifier == "lash_out_guard" && first == "dread" && second == "lash_out"),
+        |problem| shared_passive(problem, "lash_out_guard", action_place("dread"), "lash_out"),
     ),
     // The same of the mode, a unit type's and an action's, and of a loadout, two actions'.
     Flaw {
@@ -2403,7 +2459,14 @@ static STAT_FLAWS: &[Flaw] = &[
             ),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::UnitType(tower), Place::Entry { table: "actions", name: action }] } if modifier == "warden_blessing" && tower == "tower" && action == "tower_attack"),
+        refused: |problem| {
+            shared_passive(
+                problem,
+                "warden_blessing",
+                BookPlace::UnitType(TypePlace::Declared(name("tower"))),
+                "tower_attack",
+            )
+        },
     },
     Flaw {
         file: "spells/data/loadout.toml",
@@ -2413,7 +2476,7 @@ static STAT_FLAWS: &[Flaw] = &[
             Edit::Set("actions.haste.passive_modifier", r#""haste""#),
         )],
         package: "player-spells",
-        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Entry { table: "actions", name: first }, Place::Entry { table: "actions", name: second }] } if modifier == "haste" && first == "blink" && second == "haste"),
+        refused: |problem| shared_passive(problem, "haste", action_place("blink"), "haste"),
     },
     // A modifier grants no engine tag: one that granted `avatar` would split who a player
     // commands between the type's own tags and the unit's.
@@ -2421,7 +2484,13 @@ static STAT_FLAWS: &[Flaw] = &[
         GALE,
         Edit::Set("modifiers.fair_wind.tags", r#"["avatar"]"#),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Entry { table: "modifiers", name }, tag } if name == "fair_wind" && tag.name() == "avatar"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "fair_wind"),
+                &ModifiersDataError::EngineTag(name("avatar")),
+            )
+        },
     ),
     // A projectile type holds no passive, as a delivery's spawn gives none: a type with one is
     // a type that stands, which no delivery names.
@@ -2443,7 +2512,13 @@ static STAT_FLAWS: &[Flaw] = &[
         GALE,
         Edit::Set("modifiers.fair_wind.aura.radius", r#""-1.0""#),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "fair_wind"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "fair_wind"),
+                &AppliedError::Sign(ModifierProblem::Negative),
+            )
+        },
     ),
     flaw(
         GALE,
@@ -2452,13 +2527,25 @@ static STAT_FLAWS: &[Flaw] = &[
             "[80, 120, -1, 200, 240]",
         ),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "wind_shield"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "wind_shield"),
+                &AppliedError::Sign(ModifierProblem::Negative),
+            )
+        },
     ),
     flaw(
         GALE,
         Edit::Set("modifiers.wind_shield.params.shield", "-5"),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "wind_shield"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "wind_shield"),
+                &AppliedError::Sign(ModifierProblem::Negative),
+            )
+        },
     ),
     // A way that applies a modifier gives each param it reads and does not declare: Rime's Slow
     // reads `slow` of Fan of Frost, which applies it on hit; of Chill Arrows, whose held
@@ -2513,7 +2600,17 @@ static STAT_FLAWS: &[Flaw] = &[
             ),
         )],
         package: "hero-rime",
-        refused: |problem| matches!(problem, LoadProblem::ModifierParam { modifier, param, way: None, problem: ParamProblem::ScalingTime } if modifier == "stun" && param == "stun_ms"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "stun"),
+                &AppliedError::Param {
+                    param: name("stun_ms"),
+                    way: None,
+                    problem: ParamProblem::ScalingTime,
+                },
+            )
+        },
     },
     // A name a script gives the API, as the registry marks the argument: a tag, a track, a unit
     // type of the mode's scope, a team.
@@ -3597,7 +3694,13 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::ActionRanks(action) if action == "taunt"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "taunt"),
+                &ActionProblem::SlottedRanks,
+            )
+        },
     },
     // A script adds only to a player resource the mode declares.
     flaw(

@@ -44,7 +44,7 @@ mod unit_type_data;
 
 pub use crate::book::Book;
 pub use crate::book_cx::{BookCx, BuildFn, ExtendFn, RuleFn};
-pub use crate::book_source::{BookSource, Given, SourceKind, SourcePackage, SourceType};
+pub use crate::book_source::{BookSource, Given, ScriptAt, SourceKind, SourcePackage, SourceType};
 pub use crate::built_books::BuiltBooks;
 pub use crate::by_type::ByType;
 pub use crate::cache::Cache;

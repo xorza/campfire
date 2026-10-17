@@ -1,7 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
-use campfire_actions::{CostTarget, DamageKindBook, SlotKindBook, TrackNames};
+use campfire_actions::{
+    ActionsData, CostTarget, DamageKindBook, ModifierWays, SlotKindBook, TrackNames,
+};
 use campfire_combat::ModeCombatData;
 use campfire_common::DeclaredName;
 use campfire_declare::{BookCx, BookError};
@@ -9,9 +11,11 @@ use campfire_mode::MapData;
 use campfire_navigation::{ModeNavigationData, NavigationBook};
 use campfire_players::ResourceBook;
 use campfire_script::NameKind;
-use campfire_stats::{PoolId, PoolNames};
+use campfire_stats::{ModifiersData, PoolId, PoolNames};
 use campfire_units::{LayerNames, TeamNames, UnitTypes};
-use campfire_values::{DamageKind, Names, PathId, ResourceId, Team, TrackId, TypeScope};
+use campfire_values::{
+    DamageKind, Names, PackageIndex, PathId, ResourceId, Team, TrackId, TypeScope,
+};
 
 /// The names of a match's packages that scripts and data name, each kind as the book or the fact
 /// of the module that owns it builds it: what the load resolves a script's names by
@@ -33,9 +37,33 @@ pub struct LoadNames {
     armors: BTreeSet<DeclaredName>,
     /// The tags of the markers the mode's units spawn at and of the map's markers.
     marker_tags: BTreeSet<DeclaredName>,
+    /// The params that the actions that apply each package's modifier give it, by the package
+    /// and the modifier: what its script may read beside its own.
+    given_params: BTreeMap<(PackageIndex, DeclaredName), BTreeSet<DeclaredName>>,
 }
 
 impl LoadNames {
+    /// The params the actions of each package give each of its modifiers they apply.
+    fn given_params_of(
+        cx: &BookCx<'_>,
+    ) -> Result<BTreeMap<(PackageIndex, DeclaredName), BTreeSet<DeclaredName>>, BookError> {
+        let mut given = BTreeMap::new();
+        let ways = cx.fact::<ModifierWays>()?;
+        for (package, source) in cx.packages() {
+            let (Some(modifiers), Some(actions)) = (
+                source.content.get::<ModifiersData>(),
+                source.content.get::<ActionsData>(),
+            ) else {
+                continue;
+            };
+            for id in modifiers.0.keys() {
+                let params = ways.given_params(package, id.as_str(), &actions.0);
+                given.insert((package, id.clone()), params.cloned().collect());
+            }
+        }
+        Ok(given)
+    }
+
     /// The names of the build `cx`, each built by its owner as the build asks for it; an error
     /// for the first a builder refuses.
     pub(crate) fn of(cx: &mut BookCx<'_>) -> Result<Self, BookError> {
@@ -60,7 +88,9 @@ impl LoadNames {
             .given::<MapData>()
             .expect("the load gives the mode's map");
         let marked = map.markers.iter().flat_map(|marker| &marker.tags);
+        let given_params = Self::given_params_of(cx)?;
         Ok(Self {
+            given_params,
             resources: resources.unwrap_or_default(),
             pools: pools.unwrap_or_default(),
             damage_kinds: damage_kinds.unwrap_or_default(),
@@ -77,6 +107,17 @@ impl LoadNames {
                 .take_fact::<UnitTypes>()?
                 .expect("the core declares the unit types"),
         })
+    }
+
+    /// The params that the actions that apply modifier `id` of the package at `package` give it,
+    /// which its script may read beside its own.
+    pub fn given_params(
+        &self,
+        package: PackageIndex,
+        id: &DeclaredName,
+    ) -> impl Iterator<Item = &DeclaredName> {
+        let given = self.given_params.get(&(package, id.clone()));
+        given.into_iter().flatten()
     }
 
     /// Whether the match has the name `name` of `kind`, a unit type of the mode's scope; none for

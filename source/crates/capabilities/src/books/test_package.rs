@@ -2,8 +2,8 @@ use campfire_codec::{Toml, TomlTable};
 use campfire_declare::{SourceKind, SourcePackage};
 use campfire_math::Num;
 use campfire_mode::{MapData, ModeData, TeamManifest};
+use campfire_script::ScriptUses;
 use campfire_sim::TickRate;
-use campfire_stats::{ModeStatsData, StatId};
 use campfire_units::ScriptBook;
 use campfire_values::Speed;
 
@@ -36,10 +36,6 @@ impl TestPackage<'_> {
         let content = table(self.content)
             .read_with(PackageContent::seed(&readers))
             .unwrap();
-        let stats = data.section_or_default::<ModeStatsData>().0.len();
-        let stat_order: Vec<StatId> = (0..u16::try_from(stats).unwrap())
-            .map(StatId::new)
-            .collect();
         let mode = SourcePackage {
             name: "mode",
             kind: SourceKind::Mode,
@@ -58,8 +54,9 @@ impl TestPackage<'_> {
             tag_names: &[],
             packages: vec![mode],
             scripts: &ScriptBook::default(),
+            script_uses: &ScriptUses::default(),
+            mode_script: None,
             rate,
-            stat_order: &stat_order,
         };
         Release::books(&input).unwrap()
     }

@@ -2219,6 +2219,7 @@ dependencies = [
  "campfire-stats",
  "campfire-units",
  "campfire-values",
+ "derive_more",
  "serde",
  "thiserror 2.0.21",
 ]
@@ -2764,13 +2765,11 @@ name = "campfire-package"
 version = "0.1.0"
 dependencies = [
  "campfire-actions",
- "campfire-areas",
  "campfire-capabilities",
  "campfire-codec",
  "campfire-common",
  "campfire-declare",
  "campfire-items",
- "campfire-math",
  "campfire-mode",
  "campfire-navigation",
  "campfire-orders",

@@ -2,36 +2,29 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_actions::{ActionData, ActionKind, ActionsData};
-use campfire_areas::AreaData;
 use campfire_capabilities::{LoadNames, Release};
 use campfire_common::DeclaredName;
-use campfire_declare::{
-    BookError, BookPlace, Section, SectionReaders, SectionTable, TypePlace, UnitTypeData,
-};
+use campfire_declare::{BookError, BookPlace, Section, SectionReaders, SectionTable, TypePlace};
 use campfire_items::ItemsData;
-use campfire_math::Num;
 use campfire_mode::ModeData;
 use campfire_orders::AiData;
 use campfire_projectiles::ProjectileData;
 use campfire_script::{
-    ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
-    ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status,
-    UnknownName,
+    ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind, ScriptApi,
+    ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, UnknownName,
 };
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::{ModeStatsData, ModifierData, ModifiersData, PassiveData, StatId};
+use campfire_stats::{ModeStatsData, ModifierData};
 use campfire_units::TypeStateData;
-use campfire_values::{EngineTag, FilterData, MessageId, PackageIndex, PackagePath, Param, Stat};
+use campfire_values::{FilterData, MessageId, PackageIndex, PackagePath, Stat};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
-use crate::error::way::Way;
 use crate::files::mode_script::ModeScript;
 use crate::mode_packages::ModePackages;
-use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
 
@@ -44,13 +37,9 @@ use crate::package_view::{PackageView, ViewKind};
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
     /// The names the mode's packages declare, each kind as its owner builds it.
-    names: LoadNames,
-    /// The release's engine tags, which no package gives.
-    engine: Vec<EngineTag>,
+    names: &'a LoadNames,
     /// The script API of the release, which every name a script uses must be of.
     api: &'a ScriptApi,
-    /// The fastest rate the mode allows, at which a time counts the most ticks.
-    rate: TickRate,
     /// Every field a script may name after `.state`: those of the mode's state, and of every
     /// modifier's and unit type's of its packages, as a script's handle has no type the load
     /// knows.
@@ -91,46 +80,21 @@ struct ScriptUse<'a> {
 }
 
 impl<'a> LoadCheck<'a> {
-    /// The tags a unit type or a modifier at `at` carries: none the engine's, which only the
-    /// engine gives.
-    fn own_tags(&self, tags: &[DeclaredName], at: &Place) -> Result<(), LoadProblem> {
-        match tags
-            .iter()
-            .find_map(|tag| EngineTag::named(&self.engine, tag.as_str()))
-        {
-            Some(tag) => Err(LoadProblem::EngineTag {
-                at: at.clone(),
-                tag,
-            }),
-            None => Ok(()),
-        }
-    }
-
-    /// Checks `packages` against the script API `api`; the order the stats refresh computes the
-    /// mode's stats in.
-    pub(crate) fn run(
-        packages: &'a ModePackages,
-        api: &'a ScriptApi,
-    ) -> Result<Vec<StatId>, LoadError> {
+    /// Checks `packages` against the script API `api`.
+    pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<(), LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError::of(&manifest.header.name, problem);
         Self::sections_owned(packages, &Release::sections())?;
-        let stat_order = packages
-            .stat_graph()?
-            .order()
-            .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
         let engine = Release::engine_tags();
         let rate = TickRate::new(manifest.tick_hz.fastest());
-        let input = packages.book_input(rate, &stat_order, &engine);
+        let input = packages.book_input(rate, &engine);
         // The modules' rules of their data come first, so a script that names what a broken rule
         // leaves out shows the rule.
         let names = Release::check_rules(&input).map_err(|error| book_error(packages, error))?;
         let check = LoadCheck {
             packages,
-            names,
-            engine: engine.clone(),
+            names: &names,
             api,
-            rate,
             state_fields: LoadCheck::state_fields(packages),
             sections: ModeSections::of(&packages.data),
         };
@@ -150,7 +114,7 @@ impl<'a> LoadCheck<'a> {
             shown_named(dependent.content.actions())
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
-        Ok(stat_order)
+        Ok(())
     }
 
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.
@@ -160,17 +124,6 @@ impl<'a> LoadCheck<'a> {
         let content = &packages.content;
         let units = &content.units;
         self.names()?;
-        for (name, unit_type) in units {
-            let at = Place::UnitType(name.clone());
-            Self::unit_type(unit_type, &at, content.modifiers())?;
-        }
-        let held = units.iter().filter_map(|(name, unit_type)| {
-            Some((
-                Place::UnitType(name.clone()),
-                &unit_type.section::<PassiveData>()?.0,
-            ))
-        });
-        passives_held_once(held.chain(action_passives(content.actions())))?;
         let mut names = PackageNames::new(&packages.mode, content.modifiers(), content.actions());
         let mode_params: BTreeSet<&str> = data.param_names().map(DeclaredName::as_str).collect();
         if let ModeScript::Own(path) = &packages.script {
@@ -181,12 +134,8 @@ impl<'a> LoadCheck<'a> {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
             }
         }
-        let ranks = self.slotted_ranks(units.values())?;
-        let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
         self.actions(content.actions(), &mut names)?;
-        let view = packages.mode();
-        let ways = packages.modifier_ways(view);
-        self.modifiers(&mut names, &ways, content.actions(), ranks)?;
+        self.modifiers(PackageIndex::MODE, &mut names);
         self.scripts(&names)
     }
 
@@ -249,10 +198,9 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// An avatar, loadout or rules package the mode depends on: an avatar's unit type, with every
-    /// action of the package in its slots, and each action with the ranks of its kind; a
-    /// loadout's actions, each with the ranks of the slot kind its choice fills; its delivery
-    /// types; and its scripts, a rules package's the mode's when the mode names one of them.
+    /// An avatar, loadout or rules package the mode depends on, at `view`: an avatar's name, and
+    /// a name for each action of an avatar or a loadout, which a player casts; and its scripts,
+    /// a rules package's the mode's when the mode names one of them.
     fn dependent(
         &self,
         view: PackageView<'a>,
@@ -261,47 +209,15 @@ impl<'a> LoadCheck<'a> {
         let package = &dependent.package;
         let content = &dependent.content;
         let (actions, modifiers) = (content.actions(), content.modifiers());
-        // Its types that stand, an avatar's summons or a loadout's: their slots hold actions of
-        // the package as the avatar's do.
-        let standing = || {
-            content
-                .units
-                .values()
-                .filter(|unit_type| !unit_type.delivers())
-        };
-        let slotted = match &dependent.kind {
+        match &dependent.kind {
             DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(package.header.name.clone());
                 message(package, &avatar.name, &at)?;
                 named(actions)?;
-                Self::unit_type(&avatar.unit, &at, modifiers)?;
-                let passive = avatar.unit.section::<PassiveData>();
-                let held = passive.map(|passive| (at, &passive.0));
-                passives_held_once(held.into_iter().chain(action_passives(actions)))?;
-                let ranks = self.slotted_ranks(standing().chain([&avatar.unit]))?;
-                Some(ranks)
             }
-            DependentKind::Loadout => {
-                named(actions)?;
-                passives_held_once(action_passives(actions))?;
-                // A loadout's action loads with the loadout's ranks, so a summon of it places
-                // its actions only in kinds of those ranks.
-                let loadout_ranks = self.packages.data.loadout_ranks();
-                let placed = self.slotted_ranks(standing())?;
-                let other = placed.iter().find(|&(_, &ranks)| ranks != loadout_ranks);
-                if let Some((id, _)) = other {
-                    let id = DeclaredName::new(id).expect("an action's id is a declared name");
-                    return Err(LoadProblem::ActionRanks(id));
-                }
-                None
-            }
-            DependentKind::Rules => None,
-        };
-        for (id, unit_type) in &content.units {
-            Self::unit_type(unit_type, &Place::UnitType(id.clone()), modifiers)?;
+            DependentKind::Loadout => named(actions)?,
+            DependentKind::Rules => {}
         }
-        let loadout_ranks = self.packages.data.loadout_ranks();
-        let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
         let mut names = PackageNames::new(package, modifiers, actions);
         let data = &self.packages.data;
         let mode_params: BTreeSet<&str> = data.param_names().map(DeclaredName::as_str).collect();
@@ -319,25 +235,12 @@ impl<'a> LoadCheck<'a> {
             }
         }
         self.actions(actions, &mut names)?;
-        let ways = self.packages.modifier_ways(view);
-        self.modifiers(&mut names, &ways, actions, ranks)?;
+        self.modifiers(view.index, &mut names);
         self.scripts(&names)
     }
 
-    /// The ranks `types` give each action they place, as `ModePackages::slotted_ranks` reads
-    /// them; an action placed in kinds of other ranks fails.
-    fn slotted_ranks<'u>(
-        &self,
-        types: impl IntoIterator<Item = &'u UnitTypeData>,
-    ) -> Result<BTreeMap<&'u str, u8>, LoadProblem> {
-        self.packages
-            .slotted_ranks(types)
-            .map_err(|id| LoadProblem::ActionRanks(id.clone()))
-    }
-
-    /// A package's `actions`, each with the ranks `ranks` gives it and its delivery one of the
-    /// package's `units`, and the roles of their scripts in `names`: the capabilities each uses,
-    /// the modifiers it names, which the modifiers' ways hold, and the params it reads.
+    /// A package's `actions`: the name of each a message of the package, and the roles of their
+    /// scripts in `names`, each with the params it may read.
     fn actions(
         &self,
         actions: &'a BTreeMap<DeclaredName, ActionData>,
@@ -362,144 +265,21 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The package's modifiers: the capability, an aura's modifier, which the ways pass through,
-    /// the params each reads, and the roles of their scripts. A modifier reads its own params,
-    /// then those each of its `ways` gives, of `actions` at the ranks `ranks` gives them.
-    fn modifiers(
-        &self,
-        names: &mut PackageNames<'a>,
-        ways: &ModifierWays<'_>,
-        actions: &'a BTreeMap<DeclaredName, ActionData>,
-        ranks: impl Fn(&str) -> u8,
-    ) -> Result<(), LoadProblem> {
+    /// The roles of the package's modifiers' scripts in `names`, each with the params it may
+    /// read: its modifier's own, and those the actions that apply the modifier give, of the
+    /// package at `package`.
+    fn modifiers(&self, package: PackageIndex, names: &mut PackageNames<'a>) {
         for (id, modifier) in names.modifiers {
-            let at = Place::Entry {
-                table: ModifiersData::KEY,
-                name: id.clone(),
-            };
-            self.own_tags(&modifier.tags, &at)?;
-            // The ways pass on through an aura's modifier, which the checks below read.
-            if let Some(aura) = &modifier.aura {
-                modifier_exists(names.modifiers, aura.modifier.as_str(), &at)?;
-            }
-            let by: Vec<&ActionData> = ways
-                .actions_of(id.as_str(), actions)
-                .map(|(_, action)| action)
-                .collect();
-            let ways: Vec<&Way> = ways.of_modifier(id.as_str()).collect();
-            let script = modifier
-                .script
-                .as_ref()
-                .and_then(|path| names.package.script(path));
-            let scripted = script
-                .into_iter()
-                .flat_map(|script| &script.facts.params)
-                .filter_map(|name| DeclaredName::new(name));
-            let reads: BTreeSet<DeclaredName> =
-                modifier.param_refs().cloned().chain(scripted).collect();
-            for param in &reads {
-                // A param nothing declares is unknown, not a way's to give: where the modifier's
-                // numbers read it, here; where its script does, as the script's checks find it.
-                let declared = modifier.params.contains_key(param)
-                    || by.iter().any(|action| action.params.contains_key(param));
-                if !declared {
-                    if modifier.param_refs().any(|read| read == param) {
-                        return Err(LoadProblem::Unknown {
-                            of: NameKind::Param,
-                            at,
-                            name: param.to_string(),
-                        });
-                    }
-                    continue;
-                }
-                let number = modifier.param_refs().any(|read| read == param);
-                self.modifier_param(modifier, param, number, &ways, actions)
-                    .map_err(|(way, problem)| LoadProblem::ModifierParam {
-                        modifier: id.clone(),
-                        param: param.clone(),
-                        way: way.cloned(),
-                        problem,
-                    })?;
-            }
-            for (param, own) in &modifier.params {
-                let short = own.ranks().and_then(|held| {
-                    ways.iter().copied().find(|way| match way {
-                        Way::Action(action) => held < usize::from(ranks(action.as_str())),
-                        Way::NoAction => false,
-                    })
-                });
-                if let Some(way) = short {
-                    return Err(LoadProblem::ModifierParam {
-                        modifier: id.clone(),
-                        param: param.clone(),
-                        way: Some(way.clone()),
-                        problem: ParamProblem::Short,
-                    });
-                }
-            }
-            let readable: BTreeSet<&str> = modifier
-                .params
-                .keys()
-                .chain(by.iter().flat_map(|action| action.params.keys()))
-                .map(DeclaredName::as_str)
-                .collect();
-            let appliers = by.iter().map(|action| &action.params);
-            modifier
-                .check_signs(appliers)
-                .map_err(|problem| LoadProblem::Modifier {
-                    modifier: id.clone(),
-                    problem,
-                })?;
             if let Some(script) = &modifier.script {
-                names.serve(script, ScriptRole::Modifier, readable.iter().copied());
+                let given = self.names.given_params(package, id);
+                let readable = modifier.params.keys().chain(given);
+                names.serve(
+                    script,
+                    ScriptRole::Modifier,
+                    readable.map(DeclaredName::as_str),
+                );
             }
         }
-        Ok(())
-    }
-
-    /// The param `param` that `modifier` reads, a `number` of it or only its script, as each of
-    /// `ways` gives it: its own, whatever applies it, or else each way's action's, which no way
-    /// with no action has. What a number reads holds a number at every rank, and where a time
-    /// reads it, no scaling param and a time that counts in ticks; a failure is of the way, none
-    /// for the modifier's own param.
-    fn modifier_param<'w>(
-        &self,
-        modifier: &ModifierData,
-        param: &DeclaredName,
-        number: bool,
-        ways: &[&'w Way],
-        actions: &BTreeMap<DeclaredName, ActionData>,
-    ) -> Result<(), (Option<&'w Way>, ParamProblem)> {
-        let time = modifier.times().any(|number| number.param() == Some(param));
-        let holds = |param: &Param| {
-            if !number {
-                return Ok(());
-            }
-            let numbers: Option<Vec<Num>> = param.numbers().collect();
-            let numbers = numbers.ok_or(ParamProblem::Overflow)?;
-            if time && matches!(param, Param::Scaling(_)) {
-                return Err(ParamProblem::ScalingTime);
-            }
-            let counts = |&ms: &Num| ModifierData::ticks(ms, self.rate).is_some();
-            if time && !numbers.iter().all(counts) {
-                return Err(ParamProblem::Time);
-            }
-            Ok(())
-        };
-        if let Some(own) = modifier.params.get(param) {
-            return holds(own).map_err(|problem| (None, problem));
-        }
-        for &way in ways {
-            let given = match way {
-                Way::Action(action) => actions
-                    .get(action)
-                    .and_then(|action| action.params.get(param)),
-                Way::NoAction => None,
-            };
-            let given = given.ok_or((Some(way), ParamProblem::Missing))?;
-            holds(given).map_err(|problem| (Some(way), problem))?;
-        }
-        Ok(())
     }
 
     /// Every script of the package: named by data, its hooks those of its roles, and every name
@@ -741,7 +521,7 @@ impl<'a> LoadCheck<'a> {
         let known = match self.names.has(named.kind, name) {
             Some(known) => known,
             None => match named.kind {
-                NameKind::Modifier => return modifier_exists(package.modifiers, name, &at),
+                NameKind::Modifier => package.modifiers.contains_key(name),
                 NameKind::Ability => package.actions.contains_key(name),
                 NameKind::Message => package.package.text.gives(name),
                 NameKind::Param => package
@@ -838,23 +618,6 @@ impl<'a> LoadCheck<'a> {
             let capability = owner.filter(|&capability| !declared.contains(capability))?;
             Some((key, capability))
         })
-    }
-
-    /// A unit type at `at`, of a package of `modifiers`: an area's `inside` modifiers of
-    /// `modifiers`.
-    fn unit_type(
-        unit_type: &UnitTypeData,
-        at: &Place,
-        modifiers: &BTreeMap<DeclaredName, ModifierData>,
-    ) -> Result<(), LoadProblem> {
-        if let Some(area) = unit_type.section::<AreaData>() {
-            // The modifiers' ways, which the modifiers' checks read, pass on through an area's
-            // `inside` modifiers.
-            for modifier in area.inside.modifiers() {
-                modifier_exists(modifiers, modifier.as_str(), at)?;
-            }
-        }
-        Ok(())
     }
 
     /// No data gives a field the script API plans: the mode's `state_version`, or a projectile
@@ -1045,21 +808,6 @@ impl<'a> PackageNames<'a> {
     }
 }
 
-/// The passive of each of `actions`, by its place.
-fn action_passives(
-    actions: &BTreeMap<DeclaredName, ActionData>,
-) -> impl Iterator<Item = (Place, &DeclaredName)> {
-    actions.iter().filter_map(|(id, action)| {
-        Some((
-            Place::Entry {
-                table: ActionsData::KEY,
-                name: id.clone(),
-            },
-            action.passive_modifier.as_ref()?,
-        ))
-    })
-}
-
 /// Whether `package`'s own language's file gives the message `id`, which data at `at` names.
 fn message(package: &Package, id: &MessageId, at: &Place) -> Result<(), LoadProblem> {
     if package.text.gives(id.as_str()) {
@@ -1091,40 +839,6 @@ fn shown_named(actions: &BTreeMap<DeclaredName, ActionData>) -> Result<(), LoadP
         Some((id, _)) => Err(LoadProblem::UnnamedAction(id.clone())),
         None => Ok(()),
     }
-}
-
-/// Each modifier the passive of one of `owners` at most, the unit types and actions of one
-/// package, each with the modifier it holds as its passive.
-fn passives_held_once<'p>(
-    owners: impl IntoIterator<Item = (Place, &'p DeclaredName)>,
-) -> Result<(), LoadProblem> {
-    let mut held: BTreeMap<&DeclaredName, Place> = BTreeMap::new();
-    for (owner, modifier) in owners {
-        if let Some(first) = held.get(modifier) {
-            return Err(LoadProblem::SharedPassive {
-                modifier: modifier.clone(),
-                owners: [first.clone(), owner],
-            });
-        }
-        held.insert(modifier, owner);
-    }
-    Ok(())
-}
-
-/// `id` is one of `modifiers`.
-fn modifier_exists(
-    modifiers: &BTreeMap<DeclaredName, ModifierData>,
-    id: &str,
-    at: &Place,
-) -> Result<(), LoadProblem> {
-    if modifiers.contains_key(id) {
-        return Ok(());
-    }
-    Err(LoadProblem::Unknown {
-        of: NameKind::Modifier,
-        at: at.to_owned(),
-        name: id.to_owned(),
-    })
 }
 
 /// Whether `names` holds `name`.

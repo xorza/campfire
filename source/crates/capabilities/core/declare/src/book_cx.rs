@@ -1,6 +1,6 @@
 use std::any::{Any, TypeId, type_name};
 use std::cell::{Cell, OnceCell};
-use std::fmt;
+use std::{fmt, mem};
 
 use campfire_script::ScriptId;
 use campfire_sim::{Capability, TickRate};
@@ -33,8 +33,16 @@ pub struct BookCx<'a> {
     /// Where each package's scripts start among the match's.
     script_starts: Vec<usize>,
     cells: Vec<BookCell>,
+    /// The extensions of books and facts no module declared yet, each by the type it extends.
+    pending: Vec<(TypeId, &'static str, Extension)>,
+    /// The books and facts of the release's modules that the match does not run, whose
+    /// extensions do nothing.
+    absent: Vec<TypeId>,
     rules: Vec<RuleFn>,
 }
+
+/// How an extension adds its module's part to the value of its cell.
+type Extension = Box<dyn Fn(&BookCx<'_>, &mut (dyn Any + Send + Sync)) -> Result<(), BookError>>;
 
 /// One declared book or fact: how it builds, what extends it, whether the match installs it, and
 /// the value once built.
@@ -43,7 +51,7 @@ struct BookCell {
     name: &'static str,
     kept: Kept,
     build: Box<dyn Fn(&BookCx<'_>) -> Result<Box<dyn Any + Send + Sync>, BookError>>,
-    extends: Vec<Box<dyn Fn(&BookCx<'_>, &mut (dyn Any + Send + Sync)) -> Result<(), BookError>>>,
+    extends: Vec<Extension>,
     building: Cell<bool>,
     value: OnceCell<Box<dyn Any + Send + Sync>>,
 }
@@ -103,6 +111,8 @@ impl<'a> BookCx<'a> {
             type_names,
             script_starts,
             cells: Vec::new(),
+            pending: Vec::new(),
+            absent: Vec::new(),
             rules: Vec::new(),
         }
     }
@@ -265,6 +275,10 @@ impl<'a> BookCx<'a> {
             "{} is declared once",
             type_name::<T>()
         );
+        let (extends, pending) = mem::take(&mut self.pending)
+            .into_iter()
+            .partition(|(type_id, _, _)| *type_id == TypeId::of::<T>());
+        self.pending = pending;
         self.cells.push(BookCell {
             type_id: TypeId::of::<T>(),
             name: type_name::<T>(),
@@ -273,25 +287,54 @@ impl<'a> BookCx<'a> {
                 let value: Box<dyn Any + Send + Sync> = Box::new(build(cx)?);
                 Ok(value)
             }),
-            extends: Vec::new(),
+            extends: extends.into_iter().map(|(_, _, extend)| extend).collect(),
             building: Cell::new(false),
             value: OnceCell::new(),
         });
     }
 
-    /// Declares `extend`, which adds a module's part to `B`, a book or a fact a module before it
-    /// declares, as soon as `B` is built.
+    /// Declares `extend`, which adds a module's part to `B`, a book or a fact a module declares,
+    /// before it or after it, as soon as `B` is built.
     pub fn declare_extend<B: Send + Sync + 'static>(&mut self, extend: ExtendFn<B>) {
+        let extension: Extension = Box::new(move |cx, value| {
+            let value = value.downcast_mut().expect("a cell holds its own type");
+            extend(cx, value)
+        });
         let cell = self
             .cells
             .iter_mut()
             .find(|cell| cell.type_id == TypeId::of::<B>());
-        let cell = cell
-            .unwrap_or_else(|| panic!("{} is declared before what extends it", type_name::<B>()));
-        cell.extends.push(Box::new(move |cx, value| {
-            let value = value.downcast_mut().expect("a cell holds its own type");
-            extend(cx, value)
-        }));
+        match cell {
+            Some(cell) => cell.extends.push(extension),
+            None => self
+                .pending
+                .push((TypeId::of::<B>(), type_name::<B>(), extension)),
+        }
+    }
+
+    /// Declares that a module of the release that the match does not run declares `T`, a book or
+    /// a fact, so an extension of it does nothing: a module adds to what a module above it holds,
+    /// whether or not the match runs that module.
+    pub fn declare_absent<T: 'static>(&mut self) {
+        if !self
+            .cells
+            .iter()
+            .any(|cell| cell.type_id == TypeId::of::<T>())
+        {
+            self.absent.push(TypeId::of::<T>());
+        }
+    }
+
+    /// Asserts that every extension's book or fact is declared, by the match or by a module it
+    /// does not run, as a logic error of the declarations otherwise.
+    fn assert_declared(&self) {
+        let undeclared = self.pending.iter().find(|(type_id, _, _)| {
+            let declared = |cell: &BookCell| cell.type_id == *type_id;
+            !self.absent.contains(type_id) && !self.cells.iter().any(declared)
+        });
+        if let Some((_, name, _)) = undeclared {
+            panic!("{name} is extended, and no module of the release declares it");
+        }
     }
 
     /// Declares `rule`, which the build checks before any book.
@@ -302,6 +345,7 @@ impl<'a> BookCx<'a> {
     /// Checks every rule declared, in the order of their declarations; an error for the first the
     /// data breaks.
     pub fn check_all(&self) -> Result<(), BookError> {
+        self.assert_declared();
         for rule in &self.rules {
             rule(self)?;
         }
@@ -311,6 +355,7 @@ impl<'a> BookCx<'a> {
     /// Builds every book and fact declared, in the order of their declarations, each the first
     /// time it is asked for; an error for the first a build refuses.
     pub fn build_all(&self) -> Result<(), BookError> {
+        self.assert_declared();
         for at in 0..self.cells.len() {
             self.built(at)?;
         }
@@ -371,7 +416,7 @@ mod tests {
     use serde::Deserialize;
 
     use super::*;
-    use crate::book_source::Given;
+    use crate::book_source::{Given, ScriptAt};
     use crate::capability_set::CapabilitySet;
     use crate::section_readers::SectionReaders;
     use crate::sections::Sections;
@@ -442,6 +487,7 @@ mod tests {
             mode: &none,
             map: &none,
             packages: Vec::new(),
+            mode_script: None,
             given: Given::default(),
         };
         run(BookCx::new(source))
@@ -451,21 +497,33 @@ mod tests {
     fn a_book_builds_once_as_first_asked_for_with_its_extensions() {
         with_cx(|mut cx| {
             // `Doubled` is declared first and asks for `Count`, built then of the fact `Base` and
-            // extended by 1: 2 × (3 + 1).
+            // extended by 1, by an extension declared before it, then by 2 more: 2 × (3 + 1 + 2).
             cx.declare_book::<Doubled>(|cx| Ok(Doubled(cx.book::<Count>()?.0 * 2)));
+            cx.declare_extend::<Count>(|_, count| {
+                count.0 += 1;
+                Ok(())
+            });
             cx.declare_book::<Count>(|cx| Ok(Count(cx.fact::<Base>()?.0)));
             cx.declare_fact::<Base>(|_| Ok(Base(3)));
             cx.declare_extend::<Count>(|_, count| {
-                count.0 += 1;
+                count.0 += 2;
                 Ok(())
             });
             assert!(cx.book_if::<Looped>().unwrap().is_none());
             cx.build_all().unwrap();
             assert_eq!(cx.take_fact::<Base>().unwrap(), Some(Base(3)));
             let mut books = cx.into_books();
-            assert_eq!(books.take::<Doubled>(), Some(Doubled(8)));
-            assert_eq!(books.take::<Count>(), Some(Count(4)));
+            assert_eq!(books.take::<Doubled>(), Some(Doubled(12)));
+            assert_eq!(books.take::<Count>(), Some(Count(6)));
             assert!(books.is_empty(), "a fact is no book: {books:?}");
+        });
+        // An extension of a book of a module the match does not run does nothing.
+        with_cx(|mut cx| {
+            cx.declare_extend::<Count>(|_, _| panic!("Count is not built"));
+            cx.declare_absent::<Count>();
+            cx.check_all().unwrap();
+            cx.build_all().unwrap();
+            assert!(cx.book_if::<Count>().unwrap().is_none());
         });
     }
 
@@ -482,6 +540,15 @@ mod tests {
             cx.declare_rule(|_| Err(broken("scripts/first.rhai")));
             cx.declare_rule(|_| Err(broken("scripts/second.rhai")));
             assert_eq!(cx.check_all(), Err(broken("scripts/first.rhai")));
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "Count is extended, and no module of the release declares it")]
+    fn an_extension_of_a_book_no_module_declares_is_a_logic_error() {
+        with_cx(|mut cx| {
+            cx.declare_extend::<Count>(|_, _| Ok(()));
+            cx.build_all().unwrap();
         });
     }
 
@@ -546,6 +613,10 @@ mod tests {
                     scripts: vec![&paths[1], &paths[2]],
                 },
             ],
+            mode_script: Some(ScriptAt {
+                package: PackageIndex::new(0),
+                path: &paths[0],
+            }),
             given: Given::default(),
         };
         let cx = BookCx::new(source);
