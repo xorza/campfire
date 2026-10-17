@@ -197,6 +197,7 @@ impl Module for Navigation {
         d.book::<ByType<Walker>>(Walker::book);
         d.fact::<LayerNames>(Self::layer_names);
         d.book::<NavigationBook>(NavigationBook::build);
+        d.rule(Self::pathing_rule);
         d.column::<NavigationColumn, RowReads>(NavigationColumn::fill_row);
         d.api(NavigationApi::register);
         // A unit that walks, which its move step tells, takes a route and a progress.

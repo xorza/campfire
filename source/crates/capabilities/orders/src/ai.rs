@@ -36,6 +36,18 @@ impl Ai {
 }
 
 impl Ai {
+    /// The rule of an avatar: its type takes no `orders`, as bots play it.
+    pub(crate) fn avatar_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        let ordered = cx
+            .types()
+            .iter()
+            .find(|unit| unit.avatar() && unit.data.section::<AiData>().is_some());
+        ordered.map_or(Ok(()), |unit| {
+            let at = BookPlace::UnitType(unit.place());
+            Err(BookError::rule(unit.package, at, AiError::AvatarOrders))
+        })
+    }
+
     /// The AI of each unit type that stands and takes orders, its script one of its package's; an
     /// error for a script the package does not hold, or an AI that does not load.
     pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {

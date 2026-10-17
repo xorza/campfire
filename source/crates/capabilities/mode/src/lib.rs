@@ -87,7 +87,7 @@ pub use crate::calls::Calls;
 pub use crate::choice_data::{ChoiceData, Offers};
 pub use crate::choices::Choices;
 pub use crate::error::{
-    ModeError, ModeList, ModeNamesError, ModeRefusal, OptionValueError, PickError,
+    ModeDataError, ModeError, ModeList, ModeNamesError, ModeRefusal, OptionValueError, PickError,
 };
 pub use crate::game_map::GameMap;
 pub use crate::loadout_setup::LoadoutSetup;

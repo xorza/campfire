@@ -12,6 +12,9 @@ pub enum AiError {
     /// The script has no `on_think(ctx, unit)`.
     #[error("AI script has no on_think(ctx, unit)")]
     NoThink,
+    /// An avatar's type gives `orders`, and bots play an avatar.
+    #[error("an avatar takes no `orders`: bots play it")]
+    AvatarOrders,
 }
 
 /// Why the orders capability refused a script call: a script gave it a value it does not take.

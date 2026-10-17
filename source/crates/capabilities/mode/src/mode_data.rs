@@ -64,6 +64,15 @@ pub struct ModeData {
 }
 
 impl ModeData {
+    /// The key of its `[players]`.
+    pub const PLAYERS: &'static str = "players";
+    /// The key of its state fields.
+    pub const STATE: &'static str = "state";
+    /// The key of its options.
+    pub const OPTIONS: &'static str = "options";
+    /// The key of its choices.
+    pub const CHOICES: &'static str = "choices";
+
     /// What reads the mode's table, its sections as `readers` register them; an error for a key
     /// neither the mode nor a section reads, or a value that is no value of its type.
     pub const fn seed(readers: &SectionReaders) -> ModeSeed<'_> {

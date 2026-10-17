@@ -255,9 +255,7 @@ impl Release {
             facts: &facts,
             mode_script,
         };
-        let Books {
-            mut built, inputs, ..
-        } = books;
+        let Books { mut built, inputs } = books;
         Self::modules(&mut Installing::new(
             parts,
             &mut built,

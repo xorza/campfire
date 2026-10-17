@@ -14,13 +14,13 @@ use campfire_common::{DeclaredName, MapName};
 use campfire_declare::NamesListError;
 use campfire_geometry::Metric;
 use campfire_math::Num;
-use campfire_mode::ModeError;
+use campfire_mode::{ModeDataError, ModeError};
 use campfire_navigation::{MapProblem, NavigationDataError};
 use campfire_orders::AiError;
 use campfire_package::{
-    BoxProblem, BuildProblem, ChoiceProblem, ContentError, DeliveryProblem, EffectProblem,
-    GatherProblem, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName, PackageRef,
-    Place, ScriptProblem, Way,
+    BoxProblem, BuildProblem, ContentError, DeliveryProblem, EffectProblem, GatherProblem,
+    LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName, PackageRef, Place,
+    ScriptProblem, Way,
 };
 use campfire_package_disk::PackageDir;
 use campfire_progression::TrackError;
@@ -742,7 +742,12 @@ static DATA_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("level = true\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::RankLevels(kind) if kind.as_str() == "basic"),
+        |problem| {
+            rule(
+                problem,
+                &TrackError::RankLevels(DeclaredName::new("basic").unwrap()),
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -830,7 +835,7 @@ static DATA_FLAWS: &[Flaw] = &[
             "orders = { ai = \"scripts/lash_out.rhai\", think_ms = 250 }\n[combat]\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::AvatarOrders),
+        |problem| rule(problem, &AiError::AvatarOrders),
     ),
     flaw(
         HUSK,
@@ -1661,7 +1666,7 @@ static ACTION_FLAWS: &[Flaw] = &[
         rule(problem, &VisionDataError::NoGrid)
     }),
     flaw(MAP, Edit::Remove("navigation"), MODE, |problem| {
-        matches!(problem, LoadProblem::NoPathingGrid)
+        rule(problem, &NavigationDataError::NoPathingGrid)
     }),
     flaw(MAP, Edit::Set("grid.cell", r#""0""#), MODE, |problem| {
         rule(problem, &VisionDataError::Grid)
@@ -1688,14 +1693,14 @@ static ACTION_FLAWS: &[Flaw] = &[
         Edit::Set("units.2.pos", "[-36, -37]"),
         MODE,
         |problem| {
-            matches!(problem, LoadProblem::Map(MapProblem::WaypointBlocked { path, waypoint })
-                if path == "west" && *waypoint == 1)
+            let path = DeclaredName::new("west").unwrap();
+            rule(problem, &MapProblem::WaypointBlocked { path, waypoint: 1 })
         },
     ),
     // A meter from the north spawn, at (0, −60).
     flaw(MAP, Edit::Set("units.2.pos", "[0, -59]"), MODE, |problem| {
-        matches!(problem, LoadProblem::Map(MapProblem::MarkerBlocked { marker })
-                if marker == "north_spawn")
+        let marker = DeclaredName::new("north_spawn").unwrap();
+        rule(problem, &MapProblem::MarkerBlocked { marker })
     }),
     flaw(
         UNITS,
@@ -1769,7 +1774,7 @@ static ACTION_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("late_join = true", "late_join = false"),
         MODE,
-        |problem| matches!(problem, LoadProblem::BotTakeoverWithoutLateJoin),
+        |problem| rule(problem, &ModeDataError::BotTakeoverWithoutLateJoin),
     ),
     // An option whose default is none of its values; one of a param's name, which `ctx.p` would
     // read as one.
@@ -1789,7 +1794,13 @@ static ACTION_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Set("options.income_gold", "{ values = [8, 16], default = 8 }"),
         MODE,
-        |problem| matches!(problem, LoadProblem::OptionParam(name) if name.as_str() == "income_gold"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("options", "income_gold"),
+                &ModeDataError::OptionParam,
+            )
+        },
     ),
     // `[visibility]`: a name no setting has; a recipient life's audience holds whatever the
     // mode says.
@@ -1819,7 +1830,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "first_blood = { type = \"bool\", default = false, sync = \"team\" }",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::ModeStateSync(name) if name.as_str() == "first_blood"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("state", "first_blood"),
+                &ModeDataError::StateSync,
+            )
+        },
     ),
     // Names the script API plans: a `ctx` method and field, a handle's field, a hook and data
     // fields.
@@ -2839,7 +2856,13 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Remove("choices.spells.slot"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name)) if name.as_str() == "spells"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("choices", "spells"),
+                &ModeDataError::ChoiceSlot,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -2848,13 +2871,19 @@ static MAP_FLAWS: &[Flaw] = &[
             "unique = true\nslot = \"spell\"\n\n[choices.spells]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name)) if name.as_str() == "hero"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("choices", "hero"),
+                &ModeDataError::ChoiceSlot,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("slot = \"spell\"", "slot = \"spells\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, at: Place::Choice(choice), name } if choice.as_str() == "spells" && name == "spells"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, at: Place::Entry { table: "choices", name: choice }, name } if choice.as_str() == "spells" && name == "spells"),
     ),
     flaw(
         MODE_DATA,
@@ -2863,7 +2892,7 @@ static MAP_FLAWS: &[Flaw] = &[
             "slot = \"spell\"\n\n[choices.more]\nname = \"choice-spells\"\noffers = \"loadout\"\nslot = \"basic\"",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::LoadoutRanks)),
+        |problem| rule(problem, &ModeDataError::LoadoutRanks),
     ),
     flaw(
         "modes/3v3/scripts/mode.rhai",

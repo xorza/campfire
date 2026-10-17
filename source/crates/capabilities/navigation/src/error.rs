@@ -42,6 +42,9 @@ pub enum MapProblem {
 /// untrusted, so each is an expected failure; paths and walls count from 0.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum NavigationDataError {
+    /// The mode declares navigation, and its map has no pathing grid for units to plan routes over.
+    #[error("the mode declares navigation, and its map has no [navigation] cells")]
+    NoPathingGrid,
     /// A point of a path or a wall has no place on the map.
     #[error(transparent)]
     Point(#[from] MapPointError),

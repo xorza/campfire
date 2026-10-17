@@ -1,7 +1,7 @@
 use campfire_actions::LoadoutRanks;
 use campfire_declare::{BookCx, BookError, BookSource, ByType, Given};
 use campfire_mode::{ModeInputs, ModeLoad, ModeMap, ModeTeams, ModeUnits};
-use campfire_navigation::{ModeNavigationData, Walker, WalkerKinds};
+use campfire_navigation::{Walker, WalkerKinds};
 use campfire_stats::{MoveSpeedCap, StatOrder};
 
 use crate::books::Books;
@@ -75,12 +75,8 @@ impl Release {
             .flat_map(ByType::values)
             .copied()
             .collect();
-        let navigation = input.data.section::<ModeNavigationData>();
         Ok(Books {
             built,
-            spawn_tags: navigation.map_or_else(Box::default, |navigation| {
-                navigation.spawn_tags.clone().into()
-            }),
             inputs: ModeInputs {
                 units,
                 load: ModeLoad {

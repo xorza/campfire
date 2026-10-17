@@ -25,6 +25,29 @@ pub enum ModeNamesError {
     Repeated { list: ModeList, name: DeclaredName },
 }
 
+/// Why the mode's own data breaks a rule of the mode. Packages are untrusted, so each is an
+/// expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ModeDataError {
+    /// A bot takes a leaver's place in a mode no player joins late.
+    #[error("bot_takeover without late_join")]
+    BotTakeoverWithoutLateJoin,
+    /// A field of the mode's state syncs to an owner or a team, which the mode's state has none
+    /// of.
+    #[error("a field of the mode's state syncs to an owner or a team")]
+    StateSync,
+    /// An option and a param of one name, which `ctx.p` reads as one (03-game-scripting.md, A
+    /// mode declares its options).
+    #[error("the mode declares a param of the option's name")]
+    OptionParam,
+    /// A choice of loadout entries names no slot kind, or a choice of avatars names one.
+    #[error("a choice of loadout entries fills a slot kind, one of avatars none")]
+    ChoiceSlot,
+    /// Two choices of loadout entries fill slot kinds of other ranks.
+    #[error("choices of loadout entries fill slot kinds of other ranks")]
+    LoadoutRanks,
+}
+
 /// Why the picks a session's terms carry are none of the mode's options (10-sessions.md, The
 /// host picks, and the terms record the pick). Terms come from a server or a published log, so
 /// each is an expected failure.

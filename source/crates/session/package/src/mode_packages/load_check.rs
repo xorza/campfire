@@ -18,7 +18,7 @@ use campfire_geometry::Metric;
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ItemsData, ShopData};
 use campfire_math::Num;
-use campfire_mode::{ModeData, Offers};
+use campfire_mode::ModeData;
 use campfire_navigation::{MapNavigationData, MapPathsData, ModeNavigationData};
 use campfire_orders::AiData;
 use campfire_players::ResourcesData;
@@ -27,7 +27,7 @@ use campfire_progression::ModeTracksData;
 use campfire_projectiles::{ProjectileData, ProjectileHits};
 use campfire_script::{
     ApiOwner, CtxMisuse, DataTable, EnumRecord, EnumString, Hook, MemberKind, NameKind,
-    ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status, SyncTo,
+    ParamProblem, ScriptApi, ScriptFacts, ScriptFunction, ScriptName, ScriptRole, Status,
     UnknownName,
 };
 use campfire_sim::{Capability, TickRate};
@@ -43,7 +43,6 @@ use crate::dependent::{Dependent, DependentKind};
 use crate::error::LoadError;
 use crate::error::box_problem::BoxProblem;
 use crate::error::build_problem::BuildProblem;
-use crate::error::choice_problem::ChoiceProblem;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
 use crate::error::gather_problem::GatherProblem;
@@ -194,10 +193,7 @@ impl<'a> LoadCheck<'a> {
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
         let engine_tags = Release::engine_tags();
         let input = packages.book_input(check.rate, &stat_order, &engine_tags);
-        let books = Release::check_books(&input).map_err(|error| book_error(packages, error))?;
-        books
-            .check_walkable()
-            .map_err(|problem| fail(LoadProblem::Map(problem)))?;
+        Release::check_books(&input).map_err(|error| book_error(packages, error))?;
         // A name is the client's alone, so it is checked last: a train or a build whose other
         // problems the checks above find shows those.
         shown_named(packages.content.actions()).map_err(fail)?;
@@ -214,29 +210,10 @@ impl<'a> LoadCheck<'a> {
         let data = &packages.data;
         let content = &packages.content;
         let units = &content.units;
-        if data.players.bot_takeover && !data.players.late_join {
-            return Err(LoadProblem::BotTakeoverWithoutLateJoin);
-        }
-        let owned = data
-            .state
-            .iter()
-            .find(|(_, field)| matches!(field.sync, SyncTo::Owner | SyncTo::Team));
-        if let Some((name, _)) = owned {
-            return Err(LoadProblem::ModeStateSync(name.clone()));
-        }
-        if let Some(name) = data
-            .options
-            .keys()
-            .find(|name| data.params.contains_key(*name))
-        {
-            return Err(LoadProblem::OptionParam(name.clone()));
-        }
         self.sections_owned()?;
         self.names()?;
         self.damage_kinds()?;
         self.pools_and_resources()?;
-        self.slot_kinds()?;
-        self.choices()?;
         self.items()?;
         self.uses()?;
         for (name, unit_type) in units {
@@ -250,14 +227,6 @@ impl<'a> LoadCheck<'a> {
             ))
         });
         passives_held_once(held.chain(action_passives(content.actions())))?;
-        if packages
-            .manifest
-            .capabilities
-            .contains(Capability::Navigation)
-            && packages.map.section::<MapNavigationData>().is_none()
-        {
-            return Err(LoadProblem::NoPathingGrid);
-        }
         let mut names = PackageNames::new(&packages.mode, content.modifiers(), content.actions());
         let mode_params: BTreeSet<&str> = data.param_names().map(DeclaredName::as_str).collect();
         if let ModeScript::Own(path) = &packages.script {
@@ -363,9 +332,6 @@ impl<'a> LoadCheck<'a> {
             DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(package.header.name.clone());
                 message(package, &avatar.name, &at)?;
-                if avatar.unit.section::<AiData>().is_some() {
-                    return Err(LoadProblem::AvatarOrders);
-                }
                 named(actions)?;
                 self.unit_type(&avatar.unit, &at, actions, modifiers)?;
                 let passive = avatar.unit.section::<PassiveData>();
@@ -1699,51 +1665,6 @@ impl<'a> LoadCheck<'a> {
                     field: "gravity",
                     at: Place::UnitType(name.clone()),
                 });
-            }
-        }
-        Ok(())
-    }
-
-    /// The mode's slot kinds: none that gives its ranks levels in a mode with no `level` track to
-    /// read them on. Their count and names the decode holds.
-    fn slot_kinds(&self) -> Result<(), LoadProblem> {
-        let kinds = self.sections.slots.kinds();
-        let level_track = self.sections.tracks.0.values().any(|track| track.level);
-        let leveled = kinds.iter().find(|kind| {
-            kind.ranks
-                .as_ref()
-                .is_some_and(|ranks| ranks.levels().is_some())
-        });
-        match leveled {
-            Some(kind) if !level_track => Err(LoadProblem::RankLevels(kind.name.clone())),
-            _ => Ok(()),
-        }
-    }
-
-    /// The mode's choices: a choice of loadout entries fills a slot kind the mode declares, and
-    /// a choice of avatars none; every choice of loadout entries fills a kind of the same ranks,
-    /// which the entries have.
-    fn choices(&self) -> Result<(), LoadProblem> {
-        let data = &self.packages.data;
-        let mut ranks = None;
-        for (name, choice) in &data.choices {
-            let fills = |kind: &DeclaredName| {
-                let at = Place::Choice(name.clone());
-                self.sections
-                    .slots
-                    .names()
-                    .named(kind.as_str())
-                    .ok_or_else(|| unknown(&at, kind, NameKind::SlotKind))
-            };
-            match (choice.offers, &choice.slot) {
-                (Offers::Loadout, Some(kind)) => {
-                    let kind_ranks = self.sections.slots.ranks(fills(kind)?);
-                    if *ranks.get_or_insert(kind_ranks) != kind_ranks {
-                        return Err(LoadProblem::Choice(ChoiceProblem::LoadoutRanks));
-                    }
-                }
-                (Offers::Avatars, None) => {}
-                _ => return Err(LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name.clone()))),
             }
         }
         Ok(())

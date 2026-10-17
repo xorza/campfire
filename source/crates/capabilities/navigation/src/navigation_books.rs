@@ -16,6 +16,16 @@ use crate::wall::Wall;
 use crate::walls::Walls;
 
 impl Navigation {
+    /// The rule of a mode that declares navigation: its map has a pathing grid.
+    pub(crate) fn pathing_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
+        if cx.map_section::<MapNavigationData>().is_none() {
+            let at = BookPlace::MapSection(MapNavigationData::KEY);
+            let problem = NavigationDataError::NoPathingGrid;
+            return Err(BookError::rule(PackageIndex::MODE, at, problem));
+        }
+        Ok(())
+    }
+
     /// The names of the mode's layers; an error for a name twice, or past the most layers a match
     /// holds.
     pub(crate) fn layer_names(cx: &BookCx<'_>) -> Result<LayerNames, BookError> {

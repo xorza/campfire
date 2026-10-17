@@ -84,6 +84,7 @@ impl Module for Progression {
         d.resource::<LevelUps>();
         d.callback::<EffectQueues>(Capability::Progression, ProgressionEffect::queue_listed);
         d.book::<TrackBook>(TrackBook::build);
+        d.rule(Self::levels_rule);
         d.fact::<TrackNames>(Self::track_names);
         d.column::<ProgressionColumn, RowReads>(ProgressionColumn::fill_row);
         d.api(ProgressionApi::register);

@@ -1,12 +1,15 @@
-use campfire_common::EnumAll;
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use campfire_values::{NameId, TrackId};
 use thiserror::Error;
 
 /// Why the mode's tracks do not load. Packages are untrusted, so each is an expected failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TrackError {
+    /// The slot kind of that name gives its ranks levels, in a mode with no `level` track.
+    #[error("slot kind {0}: its ranks' `levels` need a `level` track")]
+    RankLevels(DeclaredName),
     /// More tracks than a unit holds.
     #[error("more than {} tracks", TrackId::LIMIT)]
     TooMany,

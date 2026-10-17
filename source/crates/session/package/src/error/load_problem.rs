@@ -2,7 +2,6 @@ use campfire_actions::{ActionDataField, ActionKind, ActionSlots, ListHook};
 use campfire_capabilities::CapabilityError;
 use campfire_common::{DeclaredName, MapName};
 use campfire_declare::Problem;
-use campfire_navigation::MapProblem;
 use campfire_script::{ApiVersion, NameKind, ParamProblem};
 use campfire_sim::Capability;
 use campfire_stats::ModifierProblem;
@@ -12,7 +11,6 @@ use thiserror::Error;
 use crate::error::ContentError;
 use crate::error::box_problem::BoxProblem;
 use crate::error::build_problem::BuildProblem;
-use crate::error::choice_problem::ChoiceProblem;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
 use crate::error::gather_problem::GatherProblem;
@@ -66,19 +64,9 @@ pub enum LoadProblem {
     /// Data or a script at `at` uses a capability the mode does not declare.
     #[error("{at} uses {capability:?}, which the mode does not declare")]
     Undeclared { capability: Capability, at: Place },
-    /// The mode declares an option and a param of one name, which `ctx.p` reads as one
-    /// (03-game-scripting.md, A mode declares its options).
-    #[error("the mode declares the option {0} and a param of its name")]
-    OptionParam(DeclaredName),
     /// The mode declares `combat`, and no damage kinds for its damage.
     #[error("the mode declares combat, and no damage kinds")]
     NoDamageKinds,
-    /// The mode declares `navigation`, and its map has no `[navigation]` cells to plan routes on.
-    #[error("the mode declares navigation, and its map has no [navigation] cells")]
-    NoPathingGrid,
-    /// The map cannot be walked as the mode needs.
-    #[error(transparent)]
-    Map(MapProblem),
     /// A unit type's slot names an action its package does not have.
     #[error("a slot names no action \"{0}\"")]
     UnknownSlot(DeclaredName),
@@ -92,9 +80,6 @@ pub enum LoadProblem {
     /// A team of the manifest has no `[teams.<team>]` that names it.
     #[error("team \"{0}\" has no name")]
     UnnamedTeam(DeclaredName),
-    /// An avatar names an AI: a player controls it, and a bot plays it through player inputs.
-    #[error("an avatar takes no `orders`: bots play it")]
-    AvatarOrders,
     /// A unit type holds this train, and has no `production` section to queue it.
     #[error("train \"{0}\" sits on a unit type with no queue")]
     NoQueue(DeclaredName),
@@ -154,9 +139,6 @@ pub enum LoadProblem {
     /// More packages, the mode's and those it depends on, than a package index counts.
     #[error("more packages than a package index counts")]
     TooManyPackages,
-    /// The slot kind of that name gives its ranks levels, in a mode with no `level` track.
-    #[error("slot kind {0}: its ranks' `levels` need a `level` track")]
-    RankLevels(DeclaredName),
     /// The script at `path`, or the one data names there.
     #[error("{path}")]
     Script {
@@ -180,9 +162,6 @@ pub enum LoadProblem {
     /// stats.
     #[error("live stat changes read each other in a loop through {}", joined(.0))]
     StatLoop(Vec<Stat>),
-    /// The mode's slot kinds or choices, or what names them.
-    #[error(transparent)]
-    Choice(ChoiceProblem),
     /// Data or a script at `at` names something of `of` the mode or its packages do not have.
     #[error("{at}: no {of} {name:?}")]
     Unknown {
@@ -197,14 +176,6 @@ pub enum LoadProblem {
     /// life and never die.
     #[error("{0}: the life pool without combat")]
     CombatMissing(Place),
-    /// The mode's `[players]` lets a new player take a bot's slot but no open one: taking a bot's
-    /// slot is a late join, which `late_join` allows.
-    #[error("the mode's [players]: bot_takeover without late_join")]
-    BotTakeoverWithoutLateJoin,
-    /// A field of the mode's state syncs to an owner or a team, which the match does not have:
-    /// it takes `none` or `all`.
-    #[error("the mode's state field \"{0}\" syncs to an owner or a team")]
-    ModeStateSync(DeclaredName),
     /// A projectile or an area type, or what delivers or makes one.
     #[error(transparent)]
     Delivery(DeliveryProblem),
