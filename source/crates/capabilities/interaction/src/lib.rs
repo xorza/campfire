@@ -3,19 +3,22 @@
 #![warn(clippy::float_arithmetic)]
 
 use bevy_ecs::world::World;
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionSlots, SlotClaims};
 use campfire_declare::{ByType, Declarations, InstallCx, Module, NoSet};
 use campfire_sim::{Breach, Capability};
 use campfire_values::UnitType;
 
+mod error;
 mod interaction_api;
 mod interaction_books;
+mod interaction_rules;
 mod use_data;
 mod use_slot;
 mod use_spec;
 mod uses_data;
 mod using;
 
+pub use crate::error::UseError;
 pub use crate::interaction_api::InteractionApi;
 pub use crate::use_data::UseData;
 pub use crate::use_slot::UseSlot;
@@ -66,6 +69,8 @@ impl Module for Interaction {
         d.book::<ByType<UseSpec>>(UseSpec::book);
         d.book::<ByType<UseSlot>>(UseSlot::book);
         d.extend::<ByType<ActionSlots>>(Self::use_slots);
+        d.extend::<SlotClaims>(Self::claim_slots);
+        d.rule(Self::rule);
         d.check::<ActionSlots>(Self::users_hold_their_slot);
         d.api(InteractionApi::register);
     }

@@ -1,8 +1,10 @@
 //! The uses in the 3v3: a fountain that the hero Husk uses with a prayer, which loads, and each
 //! flaw of a use, an object or a user, which fails the load with its own problem.
 
-use campfire_actions::{ActionDataField, ActionProblem, MeteredKind};
+use campfire_actions::{ActionDataField, ActionProblem, MeteredKind, SlotError};
 use campfire_common::DeclaredName;
+use campfire_interaction::UseError;
+use campfire_items::ItemsDataError;
 use campfire_package::{
     LoadError, LoadProblem, ModePackages, PackageName, PackageRef, Place, UseProblem,
 };
@@ -137,15 +139,7 @@ const FLAWS: [Flaw; 21] = [
     Flaw {
         edits: &[(UNITS, Edit::Set("units.fountain.use.action", r#""harden""#))],
         package: MODE,
-        refused: |problem| {
-            use_problem(
-                problem,
-                &UseProblem::NotUse {
-                    at: fountain(),
-                    action: name("harden"),
-                },
-            )
-        },
+        refused: |problem| rule_at(problem, &fountain(), &UseError::NotUse(name("harden"))),
     },
     Flaw {
         edits: &[(UNITS, Edit::Set("units.fountain.use.action", r#""kneel""#))],
@@ -168,12 +162,10 @@ const FLAWS: [Flaw; 21] = [
         )],
         package: MODE,
         refused: |problem| {
-            use_problem(
+            rule_at(
                 problem,
-                &UseProblem::Named {
-                    at: Place::UnitType(name("wolf")),
-                    action: name("pray"),
-                },
+                &Place::UnitType(name("wolf")),
+                &UseError::Named(name("pray")),
             )
         },
     },
@@ -184,16 +176,8 @@ const FLAWS: [Flaw; 21] = [
         )],
         package: MODE,
         refused: |problem| {
-            use_problem(
-                problem,
-                &UseProblem::Named {
-                    at: Place::Entry {
-                        table: "items",
-                        name: name("health_potion"),
-                    },
-                    action: name("pray"),
-                },
-            )
+            let at = entry("items", "health_potion");
+            rule_at(problem, &at, &ItemsDataError::UseAction(name("pray")))
         },
     },
     Flaw {
@@ -204,14 +188,12 @@ const FLAWS: [Flaw; 21] = [
                 r#"{ name = "action-blink", kind = "use", targeting = "all", range = "2.0" }"#,
             ),
         )],
-        package: MODE,
+        package: "player-spells",
         refused: |problem| {
-            use_problem(
+            rule_at(
                 problem,
-                &UseProblem::Named {
-                    at: Place::Loadouts,
-                    action: name("vow"),
-                },
+                &entry("actions", "vow"),
+                &UseError::Named(name("vow")),
             )
         },
     },
@@ -224,77 +206,70 @@ const FLAWS: [Flaw; 21] = [
     },
     Flaw {
         edits: &[(HUSK, Edit::Set("uses.kind", r#""basic""#))],
-        package: MODE,
-        refused: |problem| {
-            use_problem(
-                problem,
-                &UseProblem::RankedKind {
-                    at: husk(),
-                    kind: name("basic"),
-                },
-            )
-        },
+        package: "hero-husk",
+        refused: |problem| rule_at(problem, &husk(), &SlotError::RankedClaim(name("basic"))),
     },
     Flaw {
         edits: &[(HUSK, Edit::Set("uses.kind", r#""item""#))],
-        package: MODE,
-        refused: |problem| {
-            use_problem(
-                problem,
-                &UseProblem::InventoryKind {
-                    at: husk(),
-                    kind: name("item"),
-                },
-            )
-        },
-    },
-    Flaw {
-        edits: &[(HUSK, Edit::Set("slots.use", r#"["dread"]"#))],
-        package: MODE,
-        refused: |problem| {
-            use_problem(
-                problem,
-                &UseProblem::KindSlotted {
-                    at: husk(),
-                    kind: name("use"),
-                },
-            )
-        },
+        package: "hero-husk",
+        refused: |problem| rule_at(problem, &husk(), &SlotError::ClaimedTwice(name("item"))),
     },
     Flaw {
         edits: &[(
             HUSK,
-            Edit::Set("units.mourner", r#"{ slots = { use = ["dread"] } }"#),
+            Edit::Set(
+                "slots",
+                r#"{ basic = ["grasping_wraps", "lash_out"], ultimate = ["tomb_bind"], weapon = ["attack"], use = ["dread"] }"#,
+            ),
         )],
-        package: MODE,
+        package: "hero-husk",
         refused: |problem| {
-            use_problem(
-                problem,
-                &UseProblem::KindSlotted {
-                    at: Place::UnitType(name("mourner")),
-                    kind: name("use"),
-                },
-            )
+            let slotted = SlotError::ClaimedSlotted {
+                kind: name("use"),
+                by: Capability::Interaction,
+            };
+            rule_at(problem, &husk(), &slotted)
+        },
+    },
+    Flaw {
+        edits: &[
+            (
+                HUSK,
+                Edit::Set(
+                    "actions.mourn",
+                    r#"{ name = "action-dread", targeting = "none" }"#,
+                ),
+            ),
+            (
+                HUSK,
+                Edit::Set("units.mourner", r#"{ slots = { use = ["mourn"] } }"#),
+            ),
+        ],
+        package: "hero-husk",
+        refused: |problem| {
+            let slotted = SlotError::ClaimedSlotted {
+                kind: name("use"),
+                by: Capability::Interaction,
+            };
+            rule_at(problem, &Place::UnitType(name("mourner")), &slotted)
         },
     },
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("choices.spells.slot", r#""use""#))],
         package: MODE,
         refused: |problem| {
-            use_problem(
-                problem,
-                &UseProblem::KindSlotted {
-                    at: Place::Choice(name("spells")),
-                    kind: name("use"),
-                },
-            )
+            let slotted = SlotError::ClaimedSlotted {
+                kind: name("use"),
+                by: Capability::Interaction,
+            };
+            rule_at(problem, &entry("choices", "spells"), &slotted)
         },
     },
     // A unit holds 256 slots at most: Husk's own 5, its inventory's and its use slot.
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.slots", "251"))],
         package: "hero-husk",
-        refused: |problem| matches!(problem, LoadProblem::TooManySlots(at) if *at == husk()),
+        refused: |problem| rule_at(problem, &husk(), &SlotError::TooMany),
     },
     // Uses need `interaction`.
     Flaw {

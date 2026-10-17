@@ -5,6 +5,7 @@
 - **One pipeline for every action.** An attack, a cast, a use, a build, a train and a gather run one pipeline of checks, time, delivery, effects and cost; capabilities add **kinds**, what is special about an action, and **deliveries**, how it reaches what it affects. So one cooldown, cost, range and interruption rule serve a hero's ultimate, a rifle and a barracks, as the Gameplay Ability System makes an attack an ability and StarCraft II runs weapons and abilities through the same effects.
 - **One schema for every action.** Every action is a table of a package; a field its kind does not use fails the load.
 - **Slot kinds in the mode's order.** The mode declares where actions sit on a unit, and a unit's slots go kind after kind in that order, so a client binds its keys to the same slots on every unit.
+- **A capability claims the slot kinds it fills.** A slot kind whose slots a capability fills of its own, as an inventory's are its items' and a use slot its object's, is a claim that the capability's module adds to a fact of actions, which refuses a claimed kind of more than one rank or of two capabilities, a unit type that puts actions in one, and more slots than a unit holds; the mode refuses a choice that fills one. Refused: each capability checking the sections of the others, which made items and interaction read each other's data.
 
 ## The pipeline
 

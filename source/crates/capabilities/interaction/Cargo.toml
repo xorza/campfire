@@ -28,6 +28,7 @@ campfire-values.workspace = true
 
 bevy_ecs.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 campfire-interaction = { workspace = true, features = ["internals"] }

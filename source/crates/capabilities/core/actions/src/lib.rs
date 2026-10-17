@@ -78,6 +78,7 @@ mod shot_damage;
 mod shot_hits;
 mod shots;
 mod slot_aim;
+mod slot_claims;
 mod slot_kind;
 mod slot_kind_book;
 mod slot_kind_data;
@@ -129,7 +130,7 @@ pub use crate::effect_data::{
 pub use crate::effect_list_book::{EffectListBook, EffectSpec, ListCall};
 pub use crate::effect_names::EffectNames;
 pub use crate::effect_queues::{EffectQueues, QueueListed};
-pub use crate::error::{ActionError, ActionProblem, KindError, SlotKindsError};
+pub use crate::error::{ActionError, ActionProblem, KindError, SlotError, SlotKindsError};
 pub use crate::fan::Fan;
 pub use crate::flights::Flights;
 pub use crate::gather_spec::GatherSpec;
@@ -154,6 +155,7 @@ pub use crate::shot_damage::ShotDamage;
 pub use crate::shot_hits::{ShotHit, ShotHits};
 pub use crate::shots::{Shot, Shots};
 pub use crate::slot_aim::SlotAim;
+pub use crate::slot_claims::{SlotClaim, SlotClaims};
 pub use crate::slot_kind::SlotKind;
 pub use crate::slot_kind_book::SlotKindBook;
 pub use crate::slot_kind_data::{SlotKindData, SlotRanks};
@@ -294,6 +296,8 @@ impl Module for Actions {
         d.column::<ActionsColumn, RowReads>(ActionsColumn::fill_row);
         d.api(ActionsApi::register);
         d.book::<ByType<ActionSlots>>(ActionSlots::book);
+        d.fact::<SlotClaims>(|_| Ok(SlotClaims::default()));
+        d.rule(SlotClaims::rule);
         d.part::<BodyUnit, ActionSlots>(|at| at.of_type::<ActionSlots>().cloned());
         d.part::<BodyUnit, SlotTimes>(|at| at.of_type::<ActionSlots>().map(SlotTimes::ready));
         d.part::<BodyUnit, ActionProgress>(|at| {

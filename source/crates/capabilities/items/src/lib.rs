@@ -10,7 +10,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionProgress, ActionSlots, ActionsSet, CastSpends, SlotTimes, SlotsMut, UseGroup,
+    ActionProgress, ActionSlots, ActionsSet, CastSpends, SlotClaims, SlotTimes, SlotsMut, UseGroup,
 };
 use campfire_common::EnumAll;
 use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
@@ -28,12 +28,13 @@ mod item_id;
 mod items_action;
 mod items_api;
 mod items_data;
+mod items_rules;
 mod shop;
 mod shop_data;
 mod shopping;
 mod trade_orders;
 
-pub use crate::error::ItemError;
+pub use crate::error::{ItemError, ItemsDataError};
 pub use crate::inventory::{CarrierSlots, Inventory, ItemStack, Purchase};
 pub use crate::inventory_data::InventoryData;
 pub use crate::item_book::{ItemBook, ItemSpec};
@@ -100,6 +101,8 @@ impl Module for Items {
         d.book::<ByType<Inventory>>(Inventory::book);
         d.book::<ByType<UseGroup>>(Inventory::groups);
         d.extend::<ByType<ActionSlots>>(Self::inventory_slots);
+        d.extend::<SlotClaims>(Self::claim_slots);
+        d.rule(Self::rule);
         d.part::<BodyUnit, Inventory>(|at| at.of_type::<Inventory>().cloned());
         d.part::<BodyUnit, UseGroup>(|at| at.of_type::<UseGroup>().copied());
     }

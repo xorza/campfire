@@ -1,4 +1,4 @@
-use campfire_actions::{LoadoutRanks, SlotKinds};
+use campfire_actions::{LoadoutRanks, SlotClaims, SlotError, SlotKinds};
 use campfire_common::DeclaredName;
 use campfire_declare::{
     BookCx, BookError, BookPlace, ByType, Declarations, InstallCx, Module, NoSet,
@@ -78,12 +78,13 @@ impl ModeCore {
     }
 
     /// The rule of the mode's choices: a choice of loadout entries fills a slot kind the mode
-    /// declares, and a choice of avatars none; every choice of loadout entries fills a kind of
-    /// the same ranks, which the entries have.
+    /// declares, which no capability claims, and a choice of avatars none; every choice of
+    /// loadout entries fills a kind of the same ranks, which the entries have.
     fn choices_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
         let data = cx
             .given::<ModeData>()
             .expect("the load gives the mode's data");
+        let claims = cx.fact::<SlotClaims>()?;
         let kinds = cx.mode_section::<SlotKinds>();
         let mut ranks = None;
         for (name, choice) in &data.choices {
@@ -99,6 +100,11 @@ impl ModeCore {
                         let unknown = UnknownName::new(NameKind::SlotKind, kind);
                         BookError::unknown(PackageIndex::MODE, at(), unknown)
                     })?;
+                    if let Some(by) = claims.claimant(kind) {
+                        let kind = kind.clone();
+                        let problem = SlotError::ClaimedSlotted { kind, by };
+                        return Err(BookError::rule(PackageIndex::MODE, at(), problem));
+                    }
                     let kind_ranks = kinds.ranks(id);
                     if *ranks.get_or_insert(kind_ranks) != kind_ranks {
                         let at = BookPlace::Section(ModeData::CHOICES);
@@ -119,7 +125,6 @@ impl ModeCore {
     /// The rule of the mode's map: the kinds of its unit types that walk walk it, among its
     /// placed units of the types that do not walk, as `WalkCheck::run` says.
     fn walk_rule(cx: &BookCx<'_>) -> Result<(), BookError> {
-        let units = cx.fact::<ModeUnits>()?;
         let map = cx.fact::<ModeMap>()?;
         let walkers = cx.book_if::<ByType<Walker>>()?;
         let kinds: WalkerKinds = walkers
@@ -130,7 +135,7 @@ impl ModeCore {
         let bodies = cx.book::<ByType<BodyForm>>()?;
         let body_of = |unit_type| {
             assert!(
-                units.unit_types.contains(&unit_type),
+                cx.type_of(unit_type).stands(),
                 "a placed unit's type stands"
             );
             let walks = walkers.is_some_and(|walkers| walkers.get(unit_type).is_some());

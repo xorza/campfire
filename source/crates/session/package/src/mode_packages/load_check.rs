@@ -1,13 +1,12 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
-use std::num::NonZeroUsize;
 use std::slice;
 
 use campfire_actions::{
-    ActionData, ActionKind, ActionRange, ActionSlots, ActionsData, DamageFields, DeliveryData,
-    DoesData, EffectData, EffectTo, HealFields, KindData, KindError, LaunchFields, ListHook,
-    ModifierFields, MoveData, PurgeFields, RangeField, RestoreFields, SlotKinds, SpawnFields,
-    Targeting, TypeSlotsData, XpFields,
+    ActionData, ActionKind, ActionRange, ActionsData, DamageFields, DeliveryData, DoesData,
+    EffectData, EffectTo, HealFields, KindData, KindError, LaunchFields, ListHook, ModifierFields,
+    MoveData, PurgeFields, RangeField, RestoreFields, SlotKinds, SpawnFields, Targeting,
+    TypeSlotsData, XpFields,
 };
 use campfire_areas::AreaData;
 use campfire_capabilities::Release;
@@ -17,8 +16,7 @@ use campfire_declare::{
     BookError, BookPlace, Section, SectionReaders, SectionTable, TypePlace, UnitTypeData,
 };
 use campfire_geometry::Metric;
-use campfire_interaction::{UseData, UsesData};
-use campfire_items::{InventoryData, ItemData, ItemsData, ShopData};
+use campfire_items::ItemsData;
 use campfire_math::Num;
 use campfire_mode::ModeData;
 use campfire_navigation::ModeNavigationData;
@@ -47,7 +45,6 @@ use crate::error::build_problem::BuildProblem;
 use crate::error::delivery_problem::DeliveryProblem;
 use crate::error::effect_problem::EffectProblem;
 use crate::error::gather_problem::GatherProblem;
-use crate::error::item_problem::ItemProblem;
 use crate::error::load_problem::LoadProblem;
 use crate::error::place::Place;
 use crate::error::script_problem::ScriptProblem;
@@ -129,14 +126,6 @@ struct PackageNames<'a> {
     actions: &'a BTreeMap<DeclaredName, ActionData>,
 }
 
-/// A unit type of one of the mode's packages: its place, its data, and its package's actions.
-#[derive(Debug)]
-struct PackageType<'p> {
-    at: Place,
-    unit_type: &'p UnitTypeData,
-    actions: &'p BTreeMap<DeclaredName, ActionData>,
-}
-
 /// What data says of a script: the roles it serves, and the params its `ctx.p` may read.
 #[derive(Debug, Default)]
 struct ScriptUse<'a> {
@@ -216,8 +205,6 @@ impl<'a> LoadCheck<'a> {
         self.names()?;
         self.damage_kinds()?;
         self.pools_and_resources()?;
-        self.items()?;
-        self.uses()?;
         for (name, unit_type) in units {
             let at = Place::UnitType(name.clone());
             self.unit_type(unit_type, &at, content.actions(), content.modifiers())?;
@@ -318,9 +305,6 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         let package = &dependent.package;
         let content = &dependent.content;
-        if !content.items().is_empty() {
-            return Err(LoadProblem::Item(ItemProblem::OutsideMode));
-        }
         let (actions, modifiers) = (content.actions(), content.modifiers());
         // Its types that stand, an avatar's summons or a loadout's: their slots hold actions of
         // the package as the avatar's do.
@@ -1324,303 +1308,7 @@ impl<'a> LoadCheck<'a> {
                 }
             }
         }
-        LoadCheck::slot_count(unit_type, at)?;
-        self.inventory(unit_type, at)?;
-        self.shop(unit_type, at)?;
         Ok(())
-    }
-
-    /// The inventory of a unit type at `at`, if it has one: it fills a slot kind the mode declares,
-    /// of one rank, as an item's action has.
-    fn inventory(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        let Some(inventory) = unit_type.section::<InventoryData>() else {
-            return Ok(());
-        };
-        let kinds = &self.sections.slots;
-        // A kind the mode does not declare is the book build's problem.
-        let Some(kind) = kinds.names().named(inventory.kind.as_str()) else {
-            return Ok(());
-        };
-        if kinds.ranks(kind) != 1 {
-            return Err(LoadProblem::Item(ItemProblem::RankedInventory {
-                at: at.clone(),
-                kind: inventory.kind.clone(),
-            }));
-        }
-        Ok(())
-    }
-
-    /// The slots of a unit type at `at`, its own, its inventory's and its use slot, are no more
-    /// than a unit holds.
-    fn slot_count(unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        let slots = unit_type.section_or_default::<TypeSlotsData>();
-        let own: usize = slots.0.values().map(Vec::len).sum();
-        let inventory = unit_type
-            .section::<InventoryData>()
-            .map_or(0, |inventory| NonZeroUsize::from(inventory.slots).get());
-        let uses = usize::from(unit_type.section::<UsesData>().is_some());
-        if own + inventory + uses > ActionSlots::LIMIT {
-            return Err(LoadProblem::TooManySlots(at.clone()));
-        }
-        Ok(())
-    }
-
-    /// The mode's item types: an item costs in the mode's player resources, is built from items
-    /// of the mode and never from itself, and holds no modifier that is another's passive; and no
-    /// unit type or choice fills an inventory's slot kind. Item types need `items`. Its costs
-    /// against its stack and its components the item book holds.
-    fn items(&self) -> Result<(), LoadProblem> {
-        let packages = self.packages;
-        let content = &packages.content;
-        let items = content.items();
-        for (id, item) in items {
-            let at = Place::Entry {
-                table: ItemsData::KEY,
-                name: id.clone(),
-            };
-            // The component loop and the components' cost, below, read each resource and each
-            // component.
-            let resources = self.names.resources();
-            let resource = |name: &&DeclaredName| resources.named(name.as_str()).is_none();
-            if let Some(name) = item.cost.keys().find(resource) {
-                return Err(unknown(&at, name, NameKind::Resource));
-            }
-            if let Some(name) = item
-                .components
-                .iter()
-                .find(|name| !items.contains_key(*name))
-            {
-                return Err(unknown(&at, name, NameKind::Item));
-            }
-        }
-        let mode_passives = content.units.iter().filter_map(|(name, unit_type)| {
-            Some((
-                Place::UnitType(name.clone()),
-                &unit_type.section::<PassiveData>()?.0,
-            ))
-        });
-        for (owner, modifier) in mode_passives.chain(action_passives(content.actions())) {
-            let held = items
-                .iter()
-                .find(|(_, item)| item.modifiers.contains(modifier));
-            if let Some((item, _)) = held {
-                return Err(LoadProblem::SharedPassive {
-                    modifier: modifier.clone(),
-                    owners: [
-                        owner,
-                        Place::Entry {
-                            table: ItemsData::KEY,
-                            name: item.clone(),
-                        },
-                    ],
-                });
-            }
-        }
-        self.inventory_kinds()?;
-        if let Some(looped) = component_loop(items) {
-            return Err(LoadProblem::Item(ItemProblem::ComponentLoop(
-                looped.clone(),
-            )));
-        }
-        Ok(())
-    }
-
-    /// The shop of a unit type at `at`, if it is one: each item it sells costs only in the one
-    /// player resource it takes. A name the mode does not have is the book build's problem.
-    fn shop(&self, unit_type: &UnitTypeData, at: &Place) -> Result<(), LoadProblem> {
-        let Some(shop) = unit_type.section::<ShopData>() else {
-            return Ok(());
-        };
-        if self
-            .names
-            .resources()
-            .named(shop.resource.as_str())
-            .is_none()
-        {
-            return Ok(());
-        }
-        let items = self.packages.content.items();
-        let other = |item: &&DeclaredName| {
-            items
-                .get(*item)
-                .is_some_and(|item| item.cost.keys().any(|resource| *resource != shop.resource))
-        };
-        if let Some(item) = shop.items.iter().find(other) {
-            return Err(LoadProblem::Item(ItemProblem::ShopResource {
-                at: at.clone(),
-                item: item.clone(),
-            }));
-        }
-        Ok(())
-    }
-
-    /// No unit type of any package and no choice puts actions in a slot kind whose slots an
-    /// inventory fills: those slots are the items'.
-    fn inventory_kinds(&self) -> Result<(), LoadProblem> {
-        let typed = self.unit_types();
-        let kinds: BTreeSet<&DeclaredName> = typed
-            .iter()
-            .filter_map(|typed| Some(&typed.unit_type.section::<InventoryData>()?.kind))
-            .collect();
-        let slotted = self.slotted_in(&typed, &kinds);
-        slotted.map_or(Ok(()), |(at, kind)| {
-            Err(LoadProblem::Item(ItemProblem::InventoryKindSlotted {
-                at,
-                kind,
-            }))
-        })
-    }
-
-    /// The uses: each `use` section names an action of its package of the `use` kind, and nothing
-    /// else names one, no unit type's slots, no item and no loadout entry, as a use runs only from
-    /// its object; and each `uses` names a slot kind of one rank, as a use's action has, that no
-    /// inventory fills, and in which no unit type and no choice puts actions, as its slot is the
-    /// uses'. A name the package or the mode does not have is the book build's problem.
-    fn uses(&self) -> Result<(), LoadProblem> {
-        let packages = self.packages;
-        let kinds = &self.sections.slots;
-        let typed = self.unit_types();
-        let inventories: BTreeSet<&DeclaredName> = typed
-            .iter()
-            .filter_map(|typed| Some(&typed.unit_type.section::<InventoryData>()?.kind))
-            .collect();
-        let is_use = |actions: &BTreeMap<DeclaredName, ActionData>, id: &DeclaredName| {
-            actions.get(id).map(|action| action.kind == ActionKind::Use)
-        };
-        let mut held = BTreeSet::new();
-        for PackageType {
-            at,
-            unit_type,
-            actions,
-        } in &typed
-        {
-            if let Some(usable) = unit_type.section::<UseData>()
-                && is_use(actions, &usable.action) == Some(false)
-            {
-                return Err(LoadProblem::Use(UseProblem::NotUse {
-                    at: at.clone(),
-                    action: usable.action.clone(),
-                }));
-            }
-            if let Some(id) = (unit_type.section_or_default::<TypeSlotsData>().0.values())
-                .flatten()
-                .find(|id| is_use(actions, id) == Some(true))
-            {
-                return Err(LoadProblem::Use(UseProblem::Named {
-                    at: at.clone(),
-                    action: id.clone(),
-                }));
-            }
-            let Some(uses) = unit_type.section::<UsesData>() else {
-                continue;
-            };
-            let Some(kind) = kinds.names().named(uses.kind.as_str()) else {
-                continue;
-            };
-            let at = at.clone();
-            let name = uses.kind.clone();
-            if kinds.ranks(kind) != 1 {
-                return Err(LoadProblem::Use(UseProblem::RankedKind { at, kind: name }));
-            }
-            if inventories.contains(&uses.kind) {
-                return Err(LoadProblem::Use(UseProblem::InventoryKind {
-                    at,
-                    kind: name,
-                }));
-            }
-            held.insert(&uses.kind);
-        }
-        if let Some((at, kind)) = self.slotted_in(&typed, &held) {
-            return Err(LoadProblem::Use(UseProblem::KindSlotted { at, kind }));
-        }
-        let content = &packages.content;
-        let items = (content.items().iter()).filter_map(|(id, item)| {
-            Some((
-                Place::Entry {
-                    table: ItemsData::KEY,
-                    name: id.clone(),
-                },
-                item.action.as_ref()?,
-            ))
-        });
-        let loadouts = packages
-            .dependencies
-            .iter()
-            .filter(|dependent| matches!(dependent.kind, DependentKind::Loadout))
-            .flat_map(|dependent| dependent.content.actions().iter())
-            .filter(|(_, action)| action.kind == ActionKind::Use)
-            .map(|(id, _)| (Place::Loadouts, id));
-        let named = items
-            .filter(|(_, id)| is_use(content.actions(), id) == Some(true))
-            .chain(loadouts)
-            .next();
-        named.map_or(Ok(()), |(at, action)| {
-            Err(LoadProblem::Use(UseProblem::Named {
-                at,
-                action: action.clone(),
-            }))
-        })
-    }
-
-    /// Every unit type of the mode's packages, each with its place and its package's actions: the
-    /// mode's, each avatar, and each type a dependency holds, an avatar's summon among them.
-    fn unit_types(&self) -> Vec<PackageType<'a>> {
-        let packages = self.packages;
-        let mode = packages
-            .content
-            .units
-            .iter()
-            .map(|(name, unit_type)| PackageType {
-                at: Place::UnitType(name.clone()),
-                unit_type,
-                actions: packages.content.actions(),
-            });
-        let dependents = packages.dependencies.iter().flat_map(|dependent| {
-            let actions = dependent.content.actions();
-            let avatar = match &dependent.kind {
-                DependentKind::Avatar(avatar) => Some(PackageType {
-                    at: Place::Avatar(dependent.package.header.name.clone()),
-                    unit_type: &avatar.unit,
-                    actions,
-                }),
-                DependentKind::Loadout | DependentKind::Rules => None,
-            };
-            let held = dependent
-                .content
-                .units
-                .iter()
-                .map(move |(name, unit_type)| PackageType {
-                    at: Place::UnitType(name.clone()),
-                    unit_type,
-                    actions,
-                });
-            avatar.into_iter().chain(held)
-        });
-        mode.chain(dependents).collect()
-    }
-
-    /// The first of `typed` and of the mode's choices that puts actions in a slot kind of `kinds`,
-    /// with that kind.
-    fn slotted_in(
-        &self,
-        typed: &[PackageType<'_>],
-        kinds: &BTreeSet<&DeclaredName>,
-    ) -> Option<(Place, DeclaredName)> {
-        let types = typed.iter().filter_map(|typed| {
-            let slots = typed.unit_type.section::<TypeSlotsData>()?;
-            let kind = slots.0.keys().find(|kind| kinds.contains(kind))?;
-            Some((typed.at.clone(), kind.clone()))
-        });
-        let choices = self
-            .packages
-            .data
-            .choices
-            .iter()
-            .filter_map(|(name, choice)| {
-                let kind = choice.slot.as_ref().filter(|kind| kinds.contains(kind))?;
-                Some((Place::Choice(name.clone()), kind.clone()))
-            });
-        types.chain(choices).next()
     }
 
     /// No data gives a field the script API plans: the mode's `state_version`, or a projectile
@@ -2098,41 +1786,4 @@ fn unknown(at: &Place, name: &DeclaredName, of: NameKind) -> LoadProblem {
         name: name.to_string(),
         of,
     }
-}
-
-/// An item of `items` built, through its components, from itself, if one is: the first a walk of
-/// each item's components in id order meets again on its own path.
-fn component_loop(items: &BTreeMap<DeclaredName, ItemData>) -> Option<&DeclaredName> {
-    /// Where the walk is with an item: not met, on the path, or done with every item it is built
-    /// from.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    enum Mark {
-        Open,
-        OnPath,
-        Done,
-    }
-    fn walk<'i>(
-        id: &'i DeclaredName,
-        items: &'i BTreeMap<DeclaredName, ItemData>,
-        marks: &mut BTreeMap<&'i DeclaredName, Mark>,
-    ) -> Option<&'i DeclaredName> {
-        match marks.get(id).copied().unwrap_or(Mark::Open) {
-            Mark::OnPath => return Some(id),
-            Mark::Done => return None,
-            Mark::Open => {}
-        }
-        marks.insert(id, Mark::OnPath);
-        let components = items
-            .get(id)
-            .map_or(&[][..], |item| item.components.as_slice());
-        for component in components {
-            if let Some(looped) = walk(component, items, marks) {
-                return Some(looped);
-            }
-        }
-        marks.insert(id, Mark::Done);
-        None
-    }
-    let mut marks = BTreeMap::new();
-    items.keys().find_map(|id| walk(id, items, &mut marks))
 }

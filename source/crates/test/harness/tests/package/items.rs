@@ -3,21 +3,20 @@
 
 use std::num::{NonZeroU8, NonZeroU32};
 
+use campfire_actions::SlotError;
 use campfire_capabilities::Release;
 use campfire_codec::{Toml, TomlTable};
 use campfire_common::DeclaredName;
 use campfire_declare::UnitTypeData;
-use campfire_items::{InventoryData, ItemError, ShopData};
+use campfire_items::{InventoryData, ItemError, ItemsDataError, ShopData};
 use campfire_math::Num;
-use campfire_package::{
-    ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
-};
+use campfire_package::{ContentError, LoadError, LoadProblem, ModePackages, PackageRef, Place};
 use campfire_script::NameKind;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
 
 use crate::package::moba::{edited, load};
-use crate::package::module_rules::{entry, rule_of};
+use crate::package::module_rules::{entry, rule, rule_at, rule_of};
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
@@ -156,7 +155,13 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.long_sword.components", r#"["warblade"]"#),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "long_sword"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("items", "long_sword"),
+                &ItemsDataError::ComponentLoop,
+            )
+        },
     },
     Flaw {
         edits: &[(
@@ -164,7 +169,13 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.long_sword.components", r#"["long_sword"]"#),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "long_sword"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("items", "long_sword"),
+                &ItemsDataError::ComponentLoop,
+            )
+        },
     },
     // An item costs at least what its components cost: 350 + 400 = 750.
     Flaw {
@@ -246,12 +257,18 @@ const FLAWS: [Flaw; 23] = [
             (HUSK, Edit::Set("inventory.kind", r#""relics""#)),
         ],
         package: "hero-husk",
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::RankedInventory { kind, .. }) if kind == "relics"),
+        refused: |problem| rule(problem, &SlotError::RankedClaim(name("relics"))),
     },
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.kind", r#""spell""#))],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::InventoryKindSlotted { at: Place::Choice(choice), kind }) if choice == "spells" && kind == "spell"),
+        refused: |problem| {
+            let problem_ = SlotError::ClaimedSlotted {
+                kind: name("spell"),
+                by: Capability::Items,
+            };
+            rule_at(problem, &entry("choices", "spells"), &problem_)
+        },
     },
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.slots", "0"))],
@@ -293,7 +310,10 @@ const FLAWS: [Flaw; 23] = [
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopResource { at, item }) if *at == fountain() && item == "health_potion"),
+        refused: |problem| {
+            let sells = ItemsDataError::ShopResource(name("health_potion"));
+            rule_at(problem, &fountain(), &sells)
+        },
     },
     Flaw {
         edits: &[(UNITS, Edit::Set("units.fountain.shop.reach", r#""-1.0""#))],
@@ -356,7 +376,7 @@ fn every_flaw_of_the_items_fails_the_load_with_its_own_problem() {
     )];
     let error = with_items(&carried).unwrap_err();
     assert!(
-        matches!(*error.problem, LoadProblem::Item(ItemProblem::OutsideMode)),
+        rule(&error.problem, &ItemsDataError::OutsideMode),
         "{error:?}"
     );
 }

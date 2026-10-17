@@ -11,7 +11,7 @@ use campfire_players::ResourcesData;
 use campfire_progression::{ModeTracksData, TrackBook};
 use campfire_stats::ModePoolsData;
 use campfire_units::UnitTypes;
-use campfire_values::{Names, PackageIndex, PathId, ResourceId, Team, TrackId, TypeScope};
+use campfire_values::{Names, PackageIndex, PathId, Team, TrackId, TypeScope};
 
 use crate::mode_packages::ModePackages;
 
@@ -110,10 +110,6 @@ impl NameTables {
             TableKind::Path => self.paths.named(text).is_some(),
             TableKind::UnitType => self.types.types().named((TypeScope::Mode, text)).is_some(),
         }
-    }
-
-    pub(crate) fn resources(&self) -> &Names<ResourceId> {
-        &self.mode.resources
     }
 
     /// What a cost named `name` takes from: a pool, or else a player resource.

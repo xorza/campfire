@@ -16,7 +16,6 @@ pub(crate) mod build_problem;
 pub(crate) mod delivery_problem;
 pub(crate) mod effect_problem;
 pub(crate) mod gather_problem;
-pub(crate) mod item_problem;
 pub(crate) mod load_problem;
 pub(crate) mod locale_problem;
 pub(crate) mod place;

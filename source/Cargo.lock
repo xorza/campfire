@@ -2490,6 +2490,7 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-geometry",
+ "campfire-interaction",
  "campfire-items",
  "campfire-log",
  "campfire-math",
@@ -2565,6 +2566,7 @@ dependencies = [
  "campfire-units",
  "campfire-values",
  "serde",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -2768,7 +2770,6 @@ dependencies = [
  "campfire-common",
  "campfire-declare",
  "campfire-geometry",
- "campfire-interaction",
  "campfire-items",
  "campfire-math",
  "campfire-mode",

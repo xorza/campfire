@@ -1,5 +1,6 @@
 use campfire_common::DeclaredName;
 use campfire_script::UnknownName;
+use campfire_sim::Capability;
 use campfire_values::TimeTooLarge;
 use thiserror::Error;
 
@@ -57,6 +58,24 @@ pub enum SlotKindsError {
     TooMany,
     #[error("the slot kind `{0}` twice")]
     Repeated(DeclaredName),
+}
+
+/// Why a unit type's slots break a rule of the slot kinds a capability claims. Packages are
+/// untrusted, so each is an expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum SlotError {
+    /// A claimed kind of more than one rank, where an item's and a use's action have one.
+    #[error("slot kind {0}, which it claims, has more than one rank")]
+    RankedClaim(DeclaredName),
+    /// A kind two capabilities claim.
+    #[error("slot kind {0}, which another capability claims")]
+    ClaimedTwice(DeclaredName),
+    /// Actions in a kind whose slots `by` fills.
+    #[error("actions in slot kind {kind}, whose slots {by:?} fills")]
+    ClaimedSlotted { kind: DeclaredName, by: Capability },
+    /// More slots, its own and those its claims fill, than a unit holds.
+    #[error("more slots than a unit holds")]
+    TooMany,
 }
 
 /// Why an action's data does not load into a match: a rule it breaks, or a name the match does

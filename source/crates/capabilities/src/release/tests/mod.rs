@@ -479,11 +479,12 @@ fn a_module_names_another_modules_sets_only_where_its_sets_run() {
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 55] = [
+const LOOKUPS: [(&str, &str); 57] = [
     // The load, each module's books by their builders.
     ("actions/action_load.rs", "named"),
     ("actions/action_slots/mod.rs", "named"),
     ("actions/cost_target.rs", "named"),
+    ("actions/slot_claims.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
     ("areas/area_books.rs", "named"),
     ("combat/armor.rs", "named"),
@@ -492,6 +493,7 @@ const LOOKUPS: [(&str, &str); 55] = [
     ("declare/book_cx.rs", "named"),
     ("interaction/interaction_books.rs", "named"),
     ("items/item_books.rs", "named"),
+    ("items/items_rules.rs", "named"),
     ("mode/game_map.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map.rs", "named"),
