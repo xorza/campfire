@@ -10,8 +10,8 @@ use campfire_mode::MapData;
 use campfire_navigation::{ModeNavigationData, NavigationBook};
 use campfire_players::ResourceBook;
 use campfire_script::NameKind;
-use campfire_stats::{ModeStatsData, PoolId, PoolNames};
-use campfire_units::{LayerNames, TeamNames, UnitTypes};
+use campfire_stats::{ModeStatsData, PoolNames};
+use campfire_units::{LayerNames, PoolId, TeamNames, UnitTypes};
 use campfire_values::{
     DamageKind, Names, PackageIndex, PathId, ResourceId, Stat, Team, TrackId, TypeScope,
 };

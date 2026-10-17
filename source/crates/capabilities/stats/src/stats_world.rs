@@ -2,12 +2,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
 use campfire_players::PlayersWorld;
-use campfire_units::Dead;
+use campfire_units::{Dead, PoolId};
 
 use crate::life::{self, Life};
 use crate::player_modifiers::PlayerModifiers;
 use crate::pool_book::PoolBook;
-use crate::pool_id::PoolId;
 
 /// What the stats module gives a world, for every crate.
 pub trait StatsWorld {

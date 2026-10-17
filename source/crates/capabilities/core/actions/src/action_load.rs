@@ -5,10 +5,10 @@ use campfire_declare::{BookCx, BookError, BookPlace, Fact, Section};
 use campfire_players::ResourceBook;
 use campfire_script::{Filter, NameKind, UnknownName};
 use campfire_stats::{
-    ModifierBook, ModifierParamTable, ParamBook, ParamTable, ParamTables, PoolId, PoolNames,
-    StatBook, StatId,
+    ModifierBook, ModifierParamTable, ParamBook, ParamTable, ParamTables, PoolNames, StatBook,
+    StatId,
 };
-use campfire_units::{ScriptBook, UnitTypes};
+use campfire_units::{PoolId, ScriptBook, UnitTypes};
 use campfire_values::{
     ActionId, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, Stat, Tag, TrackId,
     TypeScope, UnitType,

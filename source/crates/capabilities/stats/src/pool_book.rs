@@ -5,12 +5,12 @@ use bevy_ecs::resource::Resource;
 use campfire_common::DeclaredName;
 use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_script::MatchNames;
+use campfire_units::PoolId;
 use campfire_values::{Names, PackageIndex, Stat};
 
 use crate::life_pool::LifePool;
 use crate::mode_pools_data::ModePoolsData;
 use crate::pool_data::PoolData;
-use crate::pool_id::PoolId;
 use crate::pool_names::PoolNames;
 use crate::stat_book::StatBook;
 use crate::stat_id::StatId;
@@ -110,8 +110,9 @@ impl Book for PoolBook {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use campfire_units::PoolId;
+
     use crate::pool_book::PoolBook;
-    use crate::pool_id::PoolId;
 
     impl PoolBook {
         /// Makes `life` the life pool, as a test world with no mode needs.

@@ -4,13 +4,13 @@ use campfire_script::{
     ApiBuilder, ApiOwner, ApiVersion, Applies, CapabilityRefusal, Checked, Ctx, DataTable, Hook,
     MemberSpec, ScriptTicks, Status, Unit,
 };
+use campfire_units::PoolId;
 use campfire_values::{ModifierId, Rank, TagProperty};
 
 use crate::error::StatsRefusal;
 use crate::meter::Meter;
 use crate::modifier_data::{AuraData, ModifierData};
 use crate::modifier_handle::ModifierHandle;
-use crate::pool_id::PoolId;
 use crate::stat_id::StatId;
 use crate::stats_call::StatsCall;
 use crate::stats_column::StatsColumn;

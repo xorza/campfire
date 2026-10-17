@@ -4,7 +4,7 @@ use bevy_ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, Removals, StableId, TickRate, Unpredicted};
-use campfire_units::{Dead, MoveStep, StatusTags, TagEffect, TurnStep};
+use campfire_units::{Dead, MoveStep, PoolId, StatusTags, TagEffect, TurnStep};
 use campfire_values::{NameId, UnitTags, UnitType};
 
 use crate::level::Level;
@@ -14,7 +14,6 @@ use crate::modifiers::Modifiers;
 use crate::param_book::ParamBook;
 use crate::param_source::ParamSource;
 use crate::pool_book::PoolBook;
-use crate::pool_id::PoolId;
 use crate::pools::Pools;
 use crate::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stat_book::StatBook;

@@ -4,7 +4,8 @@ use campfire_common::DeclaredName;
 use campfire_declare::{BookError, Listed};
 use campfire_script::{CallError, Frame, View};
 use campfire_sim::Capability;
-use campfire_stats::{PoolId, StatsEffect};
+use campfire_stats::StatsEffect;
+use campfire_units::PoolId;
 use campfire_values::Number;
 use serde::Deserialize;
 

@@ -3,7 +3,7 @@ use std::num::{NonZeroU8, NonZeroU16};
 use campfire_math::Num;
 
 use campfire_players::ResourceAmount;
-use campfire_stats::PoolCost;
+use campfire_units::PoolCost;
 
 use crate::action_range::ActionRange;
 

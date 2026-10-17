@@ -3,13 +3,13 @@ use campfire_common::{PlayerSlot, Ticks};
 use campfire_math::Num;
 use campfire_script::{Effect, Frame};
 use campfire_sim::StableId;
+use campfire_units::PoolId;
 use campfire_values::{ModifierId, Tag};
 
 use crate::Stats;
 use crate::applier::Applier;
 use crate::modifier_adds::{HeldModifierAdds, ModifierAdd};
 use crate::modifier_handle::ModifierHandle;
-use crate::pool_id::PoolId;
 use crate::stats_call::StatsCall;
 use crate::stats_world::StatsWorld;
 

@@ -9,6 +9,7 @@ use campfire_script::{
     View, ViewColumn,
 };
 use campfire_sim::StableId;
+use campfire_units::PoolId;
 use campfire_values::{ActionId, ModifierId, NameId, Rank};
 
 use crate::error::StatsRefusal;
@@ -20,7 +21,6 @@ use crate::modifier_handle::{HandleOf, ModifierHandle};
 use crate::modifiers::Modifiers;
 use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::pool_book::PoolBook;
-use crate::pool_id::PoolId;
 use crate::pools::Pools;
 use crate::stat_id::StatId;
 use crate::stats_call::StatsCall;

@@ -12,8 +12,8 @@ use campfire_items::{Inventory, ItemId, ItemStack};
 use campfire_math::{Num, Vec3};
 use campfire_progression::Points;
 use campfire_sim::{Position, SimWorld, TickRate};
-use campfire_stats::{Level, ModePoolsData, PoolId, PoolMeters, Stats};
-use campfire_units::Lifespan;
+use campfire_stats::{Level, ModePoolsData, PoolMeters, Stats};
+use campfire_units::{Lifespan, PoolId};
 use campfire_values::{
     ModifierId, NameId, Names, Number, PackageIndex, Rank, Ranked, Scalar, Team,
 };

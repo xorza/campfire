@@ -3,13 +3,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryData};
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_units::Dead;
+use campfire_units::{Dead, PoolCost, PoolId};
 
 use crate::life::{self, Life};
 use crate::meter::Meter;
 use crate::pool_book::PoolBook;
-use crate::pool_cost::PoolCost;
-use crate::pool_id::PoolId;
 use crate::pools::Pools;
 
 /// A unit's pools by pool id, its life among them: `Life` and `Pools` as one, for a rule that

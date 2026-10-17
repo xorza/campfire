@@ -1,8 +1,7 @@
 use std::str::FromStr;
 
-use campfire_stats::PoolCost;
-
 use campfire_geometry::Placed;
+use campfire_units::PoolCost;
 
 use super::*;
 use crate::action_range::ActionRange;

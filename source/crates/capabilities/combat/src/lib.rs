@@ -276,8 +276,8 @@ pub mod internals {
     use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{StableId, TickRate};
-    use campfire_stats::{Life, PoolBook, PoolId, StatBook, StatRule, Stats};
-    use campfire_units::{UnitTypeCore, Units};
+    use campfire_stats::{Life, PoolBook, StatBook, StatRule, Stats};
+    use campfire_units::{PoolId, UnitTypeCore, Units};
     use campfire_values::{DamageKind, Rank, RelationSet, Speed, Stat, UnitType};
 
     use crate::Combat;

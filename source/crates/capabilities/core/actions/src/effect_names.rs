@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use campfire_common::DeclaredName;
 use campfire_script::UnknownName;
-use campfire_stats::PoolId;
+use campfire_units::PoolId;
 use campfire_values::{DamageKind, ModifierId, Tag, TrackId, UnitType};
 
 /// The match's ids of the names an action's effect lists give: what an action's lists resolve

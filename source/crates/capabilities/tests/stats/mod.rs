@@ -17,7 +17,8 @@ use campfire_sim::{
 };
 use campfire_stats::*;
 use campfire_units::{
-    Body, BodyUnit, Dead, DeliveryEntity, MoveStep, TagBook, TagData, TurnStep, UnitTypeCore, Units,
+    Body, BodyUnit, Dead, DeliveryEntity, MoveStep, PoolId, TagBook, TagData, TurnStep,
+    UnitTypeCore, Units,
 };
 use campfire_values::{
     Block, ModifierId, NameId, PackageIndex, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags,

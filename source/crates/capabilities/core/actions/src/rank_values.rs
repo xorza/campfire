@@ -5,7 +5,7 @@ use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_players::ResourceAmount;
 use campfire_sim::TickRate;
-use campfire_stats::PoolCost;
+use campfire_units::PoolCost;
 use campfire_values::{Rank, TimeTooLarge};
 
 use crate::action_data::ActionData;
@@ -188,7 +188,7 @@ mod tests {
     use std::num::NonZeroU32;
 
     use campfire_codec::Toml;
-    use campfire_stats::PoolId;
+    use campfire_units::PoolId;
     use campfire_values::ResourceId;
 
     use super::*;

@@ -11,9 +11,9 @@ use campfire_runner::internals::ArenaSpec;
 use campfire_script::{ScriptFailure, ScriptFailures};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{SimWorld, StableId, TickRate};
-use campfire_stats::{ModePoolsData, PoolId, Stats};
+use campfire_stats::{ModePoolsData, Stats};
 use campfire_test_packages::PackageTree;
-use campfire_units::MapBook;
+use campfire_units::{MapBook, PoolId};
 use campfire_values::{ActionId, ModifierId, Names, PackageIndex, Team};
 use campfire_vision::VisionBook;
 

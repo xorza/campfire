@@ -5,7 +5,7 @@ use bevy::transform::components::Transform;
 use campfire_actions::{ChargeRule, SlotCharges};
 use campfire_common::{Tick, Ticks};
 use campfire_math::{Num, Rounding};
-use campfire_stats::PoolId;
+use campfire_units::PoolId;
 
 use crate::view::float_num::FloatNum;
 

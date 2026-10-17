@@ -49,11 +49,11 @@ use campfire_sim::{
 };
 use campfire_stats::{
     Hold, IntervalRevival, Level, Life, LiveCarriers, ModifierBook, ModifierClocks, ModifierData,
-    Modifiers, PoolId, Pools, StatBook, StatChange, StatGraph, StatOp, StatRule, StatValue, Stats,
+    Modifiers, Pools, StatBook, StatChange, StatGraph, StatOp, StatRule, StatValue, Stats,
     StatsData, UnitStats,
 };
 use campfire_units::{
-    Body, Dead, Destination, ForcedMove, MoveStep, Owner, SyncNone, TagData, UnitState,
+    Body, Dead, Destination, ForcedMove, MoveStep, Owner, PoolId, SyncNone, TagData, UnitState,
     UnitTypeCore, Units,
 };
 use campfire_values::{

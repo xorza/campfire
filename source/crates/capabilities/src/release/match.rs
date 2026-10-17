@@ -82,7 +82,7 @@ pub(crate) mod internals {
     use campfire_players::Players;
     use campfire_script::ScriptPools;
     use campfire_sim::{Capability, TickRate};
-    use campfire_stats::PoolId;
+    use campfire_units::PoolId;
     use serde::Serialize;
     use serde::de::DeserializeOwned;
 

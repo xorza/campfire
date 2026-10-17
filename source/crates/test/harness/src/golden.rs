@@ -9,10 +9,10 @@ use campfire_package::ModePackages;
 use campfire_players::{PlayersWorld, ResourcesData};
 use campfire_script::ScriptFailures;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
-use campfire_stats::{PoolId, PoolMeters};
+use campfire_stats::PoolMeters;
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
-use campfire_units::{Dead, Deaths, Owner};
+use campfire_units::{Dead, Deaths, Owner, PoolId};
 use campfire_values::{NameId, Names, ResourceId, Team};
 
 /// The pinned record of a whole match, one line a tick: the state hash, which changes with the

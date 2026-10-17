@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use campfire_declare::{BookCx, BookError, BookPlace, Fact, NamesListError, Section};
 use campfire_players::ResourcesData;
+use campfire_units::PoolId;
 use campfire_values::{Names, NamesError, PackageIndex};
 
 use crate::mode_pools_data::ModePoolsData;
-use crate::pool_id::PoolId;
 
 /// The names of the mode's pools, by pool.
 #[derive(Debug, Clone, Default)]

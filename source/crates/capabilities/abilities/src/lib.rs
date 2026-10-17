@@ -151,7 +151,8 @@ pub mod internals {
     use campfire_script::{Hook, ScriptFailures};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId};
-    use campfire_stats::{ModifierClocks, Modifiers, PoolId, Pools, StatRule, Stats};
+    use campfire_stats::{ModifierClocks, Modifiers, Pools, StatRule, Stats};
+    use campfire_units::PoolId;
     use campfire_values::{PackageIndex, Stat};
 
     use crate::Abilities;

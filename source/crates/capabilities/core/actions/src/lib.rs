@@ -367,7 +367,8 @@ pub mod internals {
     use campfire_math::Num;
     use campfire_players::ResourceAmount;
     use campfire_script::{Filter, HookSet, MatchNames, NameKind, UnknownName};
-    use campfire_stats::{ParamBook, PoolCost, PoolId, StatId, Stats};
+    use campfire_stats::{ParamBook, StatId, Stats};
+    use campfire_units::{PoolCost, PoolId};
     use campfire_values::{
         ActionId, DamageKind, ModifierId, NameId, PackageIndex, Speed, Tag, TrackId, TypeScope,
         UnitType,
