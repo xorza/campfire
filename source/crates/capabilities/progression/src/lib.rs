@@ -1,45 +1,60 @@
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::EffectQueues;
+use bevy_ecs::schedule::SystemSet;
+use campfire_actions::{ActionsSet, TrackNames};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_sim::Capability;
-use campfire_units::BodyUnit;
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_script::{ApiVersion, Status};
+use campfire_sim::{Capability, SimEdge, SimSet};
+use campfire_stats::StatsSet;
+use campfire_units::{BodyUnit, UnitGrid};
 
+use crate::experience_book::Share;
 use crate::progression_column::RowReads;
 
 mod error;
 mod experience;
+mod experience_book;
+mod experience_data;
 mod learn_orders;
 mod learning;
 mod level_ups;
+mod mode_tracks_data;
 mod points;
 mod progression_action;
 mod progression_api;
+mod progression_books;
 mod progression_column;
 mod progression_effect;
 mod track_book;
 mod track_data;
 mod track_set;
+mod type_tracks_data;
+mod xp_effect_data;
 
-pub use crate::error::{ProgressionRefusal, TrackError};
+pub use crate::error::{ExperienceError, ProgressionRefusal, TrackError};
 pub use crate::experience::{Experience, Raised, TrackXp};
+pub use crate::experience_book::ExperienceBook;
+pub use crate::experience_data::{ExperienceData, ExperienceTo, Gives, ModeExperienceData};
 pub use crate::learn_orders::LearnOrders;
 pub use crate::learning::Learning;
-pub use crate::level_ups::{LevelUp, LevelUps};
+pub use crate::level_ups::{LevelUp, LevelUps, OnLevelUp};
+pub use crate::mode_tracks_data::ModeTracksData;
 pub use crate::points::Points;
 pub use crate::progression_action::ProgressionAction;
 pub use crate::progression_api::ProgressionApi;
 pub use crate::progression_column::ProgressionColumn;
-pub use crate::progression_effect::ProgressionEffect;
 pub use crate::track_book::TrackBook;
 pub use crate::track_data::{Thresholds, TrackData};
 pub use crate::track_set::TrackSet;
+pub use crate::type_tracks_data::TypeTracksData;
+pub use crate::xp_effect_data::XpEffectData;
 
 /// The `progression` capability: experience on tracks, the levels it reaches, and the ranks
 /// units learn for the points their levels give.
@@ -48,19 +63,23 @@ pub struct Progression;
 
 /// The steps of `progression`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum ProgressionSet {
+pub enum ProgressionSet {
     /// The tick's learn orders learn their ranks.
     Commands,
+    /// Once units died, after the gap's stats refresh: their deaths give experience, whose
+    /// level-ups the mode answers in its stage.
+    Share,
 }
 
 impl ModuleSet for ProgressionSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Commands => Phase::Learn,
-        })
+        match self {
+            Self::Commands => SetPlace::at(ActionsSet::Learn),
+            Self::Share => SetPlace::gap(SimEdge::After(SimSet::Resolve))
+                .after(StatsSet::Refresh(SimEdge::After(SimSet::Resolve))),
+        }
     }
 }
 
@@ -68,17 +87,25 @@ impl Module for Progression {
     const CAPABILITY: Option<Capability> = Some(Capability::Progression);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = ProgressionSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<ProgressionSet>();
+        d.section::<TypeTracksData>();
+        d.section::<ModeTracksData>();
         d.component::<Experience>();
         d.component::<Points>();
         d.resource::<LevelUps>();
-        d.callback::<EffectQueues>(Capability::Progression, ProgressionEffect::queue_listed);
-        d.book::<TrackBook>();
+        d.listed::<XpEffectData>();
+        d.book::<TrackBook>(TrackBook::build);
+        d.section::<ModeExperienceData>();
+        d.section::<ExperienceData>();
+        d.book::<ExperienceBook>(ExperienceBook::build);
+        d.rule(Self::levels_rule);
+        d.fact::<TrackNames>(Self::track_names);
         d.column::<ProgressionColumn, RowReads>(ProgressionColumn::fill_row);
         d.api(ProgressionApi::register);
-        d.book::<ByType<TrackSet>>();
+        d.hook::<OnLevelUp>(Status::Runs(ApiVersion::FIRST));
+        d.book::<ByType<TrackSet>>(TrackSet::book);
         d.part::<BodyUnit, Experience>(|at| {
             let tracks = *at.of_type::<TrackSet>()?;
             (!tracks.is_empty()).then(|| Experience::new(tracks))
@@ -95,8 +122,15 @@ impl Module for Progression {
 
     /// Adds progression to a match: in Inputs, the tick's learn orders learn their ranks. Its
     /// effects queue through its callback.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems(LearnOrders::learn_ranks.in_set(ProgressionSet::Commands));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.add(ProgressionSet::Commands, LearnOrders::learn_ranks);
+        if cx
+            .book::<ExperienceBook>()
+            .and_then(ExperienceBook::share)
+            .is_some()
+        {
+            cx.server(ProgressionSet::Share, UnitGrid::before_reading(Share::give));
+        }
     }
 }
 
@@ -105,8 +139,9 @@ pub mod internals {
     use std::collections::BTreeMap;
 
     use bevy_ecs::world::World;
-    use campfire_declare::Book;
-    use campfire_values::DeclaredName;
+    use campfire_common::DeclaredName;
+
+    use campfire_declare::internals::BookLoad;
 
     use crate::Progression;
     use crate::track_book::TrackBook;

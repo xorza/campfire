@@ -4,7 +4,7 @@ use campfire_store::{StreamSender, StreamWriter};
 use tracing::error;
 use tracing_subscriber::fmt::MakeWriter;
 
-use crate::error_report::ErrorReport;
+use campfire_common::ErrorReport;
 
 /// The JSON log file while the binary runs, which a worker writes, so the thread that logs never
 /// waits for the disk. The binary holds it from `Logging::start` to the end of `main`: dropped,

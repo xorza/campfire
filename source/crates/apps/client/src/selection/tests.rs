@@ -1,6 +1,7 @@
 use campfire_math::Num;
 use campfire_orders::OrdersAction;
 use campfire_sim::IdAllocator;
+use campfire_units::GroundPoint;
 
 use super::*;
 
@@ -51,8 +52,10 @@ fn a_selection_orders_its_units_as_one_group() {
     let mut ids = IdAllocator::default();
     let [a, b] = [ids.allocate(), ids.allocate()];
     let action = OrdersAction::Move {
-        x: Num::int(3),
-        z: Num::int(-2),
+        to: GroundPoint {
+            x: Num::int(3),
+            z: Num::int(-2),
+        },
     };
     let mut selection = Selection::default();
     assert_eq!(selection.order(action), None);

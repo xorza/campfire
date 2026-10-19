@@ -1,6 +1,7 @@
 use bevy_ecs::world::{Mut, World};
+use campfire_common::ErrorReport;
 use campfire_common::Tick;
-use campfire_log::{ErrorReport, LogEvent};
+use campfire_log::LogEvent;
 use campfire_mode::{MatchEnd, MatchResult, ModeWorld};
 use campfire_protocol::{Checkpoint, Outcome, SessionResult, SlotChangeKind, SnapshotFingerprint};
 use campfire_script::ScriptFailures;
@@ -78,10 +79,10 @@ impl SessionWorld for World {
         self.resource_scope(|world, mut session: Mut<'_, Session>| {
             debug_assert_eq!(
                 world.resource::<SimTick>().start(),
-                session.log.next_tick(),
-                "the sim and the log are at the same tick"
+                session.next_tick(),
+                "the sim and the session are at the same tick"
             );
-            let next = session.log.next_tick();
+            let next = session.next_tick();
             if let Some(segment) = session
                 .log
                 .segment_starting(next)
@@ -91,18 +92,30 @@ impl SessionWorld for World {
                     .seeds
                     .seed(segment)
                     .expect("the seeds reach the log's last segment");
-                let seed = session.log.header().segment_seed(segment, &server_seed);
+                let seed = session.log.header().segment_seed(segment, server_seed);
                 world.insert_resource(SimRng::new(seed));
                 session.segment = segment;
             }
             let mut inputs = world.resource_mut::<TickInputs>();
-            for input in session.log.seal_tick() {
-                inputs.push(TickInput {
-                    slot: input.slot,
-                    payload: input.payload,
-                });
-            }
-            for change in session.log.sealed_changes() {
+            let session = &mut *session;
+            let changes = if let Some(replay) = &mut session.replay {
+                for input in replay.seal_tick(&session.log) {
+                    inputs.push(TickInput {
+                        slot: input.slot,
+                        payload: input.payload,
+                    });
+                }
+                replay.sealed_changes(&session.log)
+            } else {
+                for input in session.log.seal_tick(session.journal.as_mut()) {
+                    inputs.push(TickInput {
+                        slot: input.slot,
+                        payload: input.payload,
+                    });
+                }
+                session.log.sealed_changes()
+            };
+            for change in changes {
                 let kind = match change.kind {
                     SlotChangeKind::Joined { .. } => SlotEventKind::Joined,
                     SlotChangeKind::Left { .. } => SlotEventKind::Left,
@@ -112,15 +125,16 @@ impl SessionWorld for World {
                     kind,
                 });
             }
+            session.end_replay();
         });
         let tick = self.resource::<SimTick>().start();
         self.run_schedule(SimUpdate);
-        if let Some(failures) = self.get_non_send::<ScriptFailures>() {
+        if let Some(failures) = self.get_resource::<ScriptFailures>() {
             for failure in failures.get() {
                 ScriptCallFailed {
                     tick,
                     unit: failure.id,
-                    hook: failure.hook,
+                    hook: failure.hook.name.to_owned(),
                     error: ErrorReport::of(&failure.error).to_string(),
                 }
                 .log();
@@ -138,13 +152,10 @@ impl SessionWorld for World {
         tick: Tick,
         mut on_boundary: impl FnMut(&mut Self) -> Result<(), E>,
     ) -> Result<(), E> {
-        debug_assert!(
-            self.session().log().next_tick() <= tick,
-            "a replay goes forward"
-        );
+        debug_assert!(self.session().next_tick() <= tick, "a replay goes forward");
         loop {
             on_boundary(self)?;
-            if self.session().log().next_tick() >= tick {
+            if self.session().next_tick() >= tick {
                 return Ok(());
             }
             self.run_tick_alone();

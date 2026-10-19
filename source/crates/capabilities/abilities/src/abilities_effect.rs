@@ -2,7 +2,7 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ActionSlots, SlotKind, SlotTimes};
 use campfire_common::Ticks;
 use campfire_math::Num;
-use campfire_script::{Effect, Frame};
+use campfire_script::{Effect, EffectKind, Frame};
 use campfire_sim::{SimWorld, StableId};
 use campfire_values::ActionId;
 
@@ -27,6 +27,8 @@ pub(crate) enum AbilitiesEffect {
 }
 
 impl Effect for AbilitiesEffect {
+    const KIND: EffectKind = EffectKind::Change;
+
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
         let unit = match self {

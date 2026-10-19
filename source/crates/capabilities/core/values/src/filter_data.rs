@@ -2,10 +2,10 @@ use std::fmt;
 
 use campfire_common::NamedEnum;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::declared_name::DeclaredName;
 use crate::relation_set::RelationSet;
+use campfire_common::DeclaredName;
 
 /// A filter in data, such as an area's `affects`: a set of relations, then tags after colons,
 /// each one the unit must have, or with `!` one it must not, which the load checks against the
@@ -68,6 +68,13 @@ impl<'de> Deserialize<'de> for FilterData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
         Self::parse(&text).ok_or_else(|| D::Error::custom(format!("filter {text:?}")))
+    }
+}
+
+/// As data writes it, the text `Deserialize` reads.
+impl Serialize for FilterData {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
     }
 }
 

@@ -80,8 +80,8 @@ pub struct BorderWrap {
     pub border: u32,
 }
 
-/// The terrain's surface, as a material file's (02-engine-core.md, Client): its metallic, roughness
-/// and specular factors, each from 0 to 1.
+/// The terrain's surface, as a glTF material's: its metallic, roughness and specular factors, each
+/// from 0 to 1.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TerrainSurface {
     pub metallic: f32,

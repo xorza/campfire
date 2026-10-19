@@ -4,16 +4,15 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
 use campfire_players::ResourceAmount;
-use campfire_script::View;
-use campfire_values::{ActionId, ModifierId, NameId, Names, ResourceId};
+use campfire_script::MatchNames;
+use campfire_values::{ActionId, ItemId, ModifierId, NameId, Names, ResourceId};
 
 use crate::error::ItemError;
-use crate::item_id::ItemId;
 
 /// The mode's item types, by id: package data, not state. A full stack of each costs what an
 /// amount holds, and each costs at least its components. A clone shares the items, as a write
 /// that reads them holds them.
-#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
 pub struct ItemBook(Arc<Items>);
 
 /// The items of an `ItemBook`.
@@ -115,7 +114,7 @@ impl ItemSpec {
 impl Book for ItemBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(test)]

@@ -11,12 +11,12 @@ use tracing::{error, warn};
 use tracing_subscriber::filter::Directive;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use tracing_subscriber::{EnvFilter, Layer, fmt};
+use tracing_subscriber::{EnvFilter, Layer, Registry, fmt};
 
 use crate::error::FilterRefused;
-use crate::error_report::ErrorReport;
 use crate::json_layer::json;
 use crate::log_file::{LogFile, LogLines};
+use campfire_common::ErrorReport;
 
 /// Where a binary logs: to standard error, as text colored only on a terminal, by `RUST_LOG`;
 /// and, when `CAMPFIRE_LOG` names a file, also there as JSON lines with their spans, by
@@ -71,7 +71,19 @@ impl Logging {
         let file = writer
             .as_ref()
             .map(|writer| json(LogLines(writer.sender())).with_filter(file_filter.filter));
+        // A binary that plays a test fixture's match, as a check, holds the capture its log check
+        // reads, the one subscriber of its process being its log.
+        #[cfg(feature = "internals")]
+        #[expect(
+            clippy::absolute_paths,
+            reason = "a gated statement names its function in full, as no gated import sits mid-file"
+        )]
+        let capture: Option<Box<dyn Layer<Registry> + Send + Sync>> =
+            Some(crate::json_layer::internals::capture_layer());
+        #[cfg(not(feature = "internals"))]
+        let capture: Option<Box<dyn Layer<Registry> + Send + Sync>> = None;
         tracing_subscriber::registry()
+            .with(capture)
             .with(terminal)
             .with(file)
             .init();

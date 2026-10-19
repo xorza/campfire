@@ -64,7 +64,9 @@ pub(crate) fn build(c: &mut Criterion) {
                 let mut host = ScriptHost::new(per_call);
                 Release::bind_script_api(&mut host);
                 let start = Instant::now();
-                packages.compile_scripts(|source| host.compile(source));
+                for script in packages.scripts() {
+                    host.compile(script.source).unwrap();
+                }
                 spent += start.elapsed();
                 black_box(host);
             }

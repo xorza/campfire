@@ -1,5 +1,6 @@
 use std::ops::Neg;
 
+use crate::coordinate;
 use crate::direction::unit_divisor::UnitDivisor;
 use crate::root;
 use crate::root::{RoundedRoot, WideRoot};
@@ -11,10 +12,9 @@ mod unit_divisor;
 
 /// The bits of fraction of each axis of a unit vector.
 const FRACTION: u32 = 62;
-/// The widest axis a direction is taken from, or an offset it measures, exclusive: positions lie
-/// within ±2⁴⁴ bits, so offsets, and a box's at twice the scale, within ±2⁴⁷. Each product with a
-/// unit axis stays below 2¹⁰⁹, and a sum of three below 2¹¹¹.
-const WIDEST: i128 = 1 << 47;
+/// The widest axis a direction is taken from, or an offset it measures, exclusive: each product
+/// with a unit axis stays below 2¹⁰⁹, and a sum of three below 2¹¹¹.
+const WIDEST: i128 = coordinate::WIDEST;
 
 /// The direction of a vector of `N` axes, in any integer unit, as bits or halves of a bit: its unit
 /// vector, each axis with 62 bits of fraction, and its length, each rounded to nearest. Each

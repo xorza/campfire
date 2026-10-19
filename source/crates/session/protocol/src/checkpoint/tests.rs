@@ -3,7 +3,8 @@ use campfire_common::PlayerSlot;
 use secp256k1::XOnlyPublicKey;
 
 use super::*;
-use crate::checkpoint::log_carry::{CarriedControl, CarriedInput, CarriedSlot};
+use crate::checkpoint::log_carry::{CarriedInput, CarriedSlot};
+use crate::control::Control;
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::delegation::{Delegation, DelegationTerms};
 use crate::harness::test_key::TestKey;
@@ -47,13 +48,13 @@ fn record() -> Checkpoint {
     };
     let mut chain = InputChain::new(PlayerSlot::new(0), InputHash::new([2; 32]));
     chain.extend(Tick::new(4), b"a");
-    let player = CarriedControl::Player {
+    let player = Control::Player {
         delegation: Box::new(delegation()),
         chain,
     };
     let reserved = CarriedSlot {
         leaver: Some(MainKey::new([12; 32])),
-        ..slot(CarriedControl::Reserved)
+        ..slot(Control::Reserved)
     };
     Checkpoint {
         segment: 1,
@@ -63,8 +64,8 @@ fn record() -> Checkpoint {
         carry: LogCarry {
             slots: vec![
                 slot(player),
-                slot(CarriedControl::Bot),
-                slot(CarriedControl::Open),
+                slot(Control::Bot),
+                slot(Control::Open),
                 reserved,
             ],
             pending: vec![CarriedInput {

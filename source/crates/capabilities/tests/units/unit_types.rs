@@ -1,6 +1,7 @@
 use campfire_capabilities::Release;
+use campfire_common::DeclaredName;
 use campfire_units::*;
-use campfire_values::{DeclaredName, NameId, PackageIndex, Tag, TypeScope, UnitType};
+use campfire_values::{NameId, PackageIndex, Tag, TypeScope, UnitType};
 
 #[test]
 fn the_types_load_up_to_the_most_tags_and_types_a_match_holds() {

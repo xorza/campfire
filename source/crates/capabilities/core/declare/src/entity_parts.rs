@@ -1,10 +1,11 @@
 use std::any::TypeId;
 use std::fmt;
 
+use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::component::{Component, ComponentId};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
-use bevy_ecs::world::{EntityWorldMut, World};
+use bevy_ecs::world::World;
 use campfire_sim::Breach;
 
 use crate::kind_spawn::{KindSpawn, SpawnCore};
@@ -51,16 +52,11 @@ impl<H: Component> EntityParts<H> {
         parts.push(Part {
             ty,
             push: Box::new(move |at, writer| {
-                debug_assert_eq!(
-                    at.world().components().component_id::<C>(),
-                    Some(id),
-                    "a part's component is of the world that holds the parts"
-                );
-                if at.world().get::<C>(at.entity()).is_some() {
+                if writer.holds(id) || at.world().get::<C>(at.entity()).is_some() {
                     return;
                 }
                 if let Some(part) = start(at) {
-                    writer.push(part);
+                    writer.push_by_id(id, part);
                 }
             }),
             missing: Box::new(move |at| {
@@ -70,16 +66,23 @@ impl<H: Component> EntityParts<H> {
         });
     }
 
-    /// Puts each part the modules declare for the host on `entity`, which spawns, as `push`
-    /// makes them, in one move.
-    pub fn give(entity: &mut EntityWorldMut<'_>) {
-        SpawnParts::give(entity, |writer| Self::push(writer, None));
+    /// Spawns an entity of the host of `core` and each part the modules declare for the host,
+    /// as `push` makes them, in one move.
+    pub fn spawn<B: Bundle<Effect: NoBundleEffect>>(world: &mut World, core: B) -> Entity {
+        // The write takes the parts by their components, which it finds registered.
+        world.register_bundle::<B>();
+        let mut entity = world.spawn_empty();
+        SpawnParts::give(&mut entity, |writer| {
+            writer.push_bundle(core);
+            Self::push(writer, None);
+        });
+        entity.id()
     }
 
     /// Pushes onto `writer` each part the modules declare for the host that the entity it
-    /// writes, which spawns with `core`, lacks, but a part it holds, which its spawn's caller
-    /// gave; none in a match whose modules declare none. Each part is made from the core, the
-    /// entity's facing and its type's books, never from another declared part, so their order
+    /// writes, which spawns with `core`, lacks, but a part the write or the entity holds, which
+    /// its spawn's caller gave; none in a match whose modules declare none. Each part is made
+    /// from the core and its type's books, never from another declared part, so their order
     /// changes none.
     pub fn push(writer: &mut PartWriter<'_, '_>, core: Option<SpawnCore>) {
         let world = writer.world();

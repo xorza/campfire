@@ -1,9 +1,9 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_players::Player;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_units::Player;
 use campfire_values::{ModifierId, Rank};
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +20,13 @@ impl PlayerModifiers {
     pub fn add(&mut self, modifier: ModifierId) {
         if let Err(at) = self.0.binary_search(&modifier) {
             self.0.insert(at, modifier);
+        }
+    }
+
+    /// Removes `modifier`, if it holds it.
+    pub fn remove(&mut self, modifier: ModifierId) {
+        if let Ok(at) = self.0.binary_search(&modifier) {
+            self.0.remove(at);
         }
     }
 

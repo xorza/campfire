@@ -26,9 +26,10 @@ impl U64x4 {
 }
 
 impl FloorRoot for U64x4 {
-    /// Exact for every `u64`. The value rounds once to `f64`, by at most 2⁻⁵³ of itself, and the
-    /// root once more, so the estimate lies within 2⁻²⁰ of the root, below 2³²; rounded to the
-    /// nearest integer, it is the floor or one above it, and one step down corrects it.
+    /// Exact for every `u64` (09-determinism-core.md, Float lanes compute exact results). The value
+    /// rounds once to `f64`, by at most 2⁻⁵³ of itself, and the root once more, so the estimate
+    /// lies within 2⁻²⁰ of the root, below 2³²; rounded to the nearest integer, it is the floor or
+    /// one above it, and one step down corrects it.
     fn floor_root(self) -> Self {
         let estimate = F64x4::from_u64(self.0).sqrt().round_to_u64();
         let [a, b, c, d] = self.0;

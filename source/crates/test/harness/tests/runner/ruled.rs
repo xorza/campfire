@@ -36,9 +36,7 @@ fn a_mode_runs_the_script_its_rules_package_holds() {
         outcome: Outcome::Aborted,
         ..game.session_result()
     };
-    game.session_mut()
-        .record_result(aborted, &FixedSession::server_signer())
-        .unwrap();
+    game.session_mut().record_result(aborted).unwrap();
     game.session_mut().reveal_seed();
     let mismatch = ResultMismatch::Outcome {
         logged: Outcome::Aborted,

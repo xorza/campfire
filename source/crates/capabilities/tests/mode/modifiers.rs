@@ -2,13 +2,14 @@ use campfire_common::Tick;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_stats::StatsRefusal;
+use campfire_values::Named;
 
 use super::*;
 
 #[test]
 fn a_mode_applies_a_modifier_writes_its_handle_and_sees_it_end() {
     let blesser = r#"
-fn on_input(ctx, player, name, value) {
+fn take_input(ctx, player, name, value) {
     let hero = ctx.avatars()[0];
     if value == "bless" {
         let m = ctx.add_modifier(hero, "blessing", 100);
@@ -26,9 +27,20 @@ fn on_input(ctx, player, name, value) {
     } else if value == "renew" {
         let m = ctx.add_modifier(hero, "blessing");
         m.state.count = 9;
-        ctx.remove(m);
+        ctx.remove_modifier(m);
         let renewed = ctx.add_modifier(hero, "blessing");
         ctx.state.seen = renewed.stacks * 10 + renewed.state.count;
+    } else if value == "find" {
+        let m = hero.modifier("blessing");
+        ctx.state.seen = if m == () { -1 } else { m.stacks * 10 + m.state.count };
+    } else if value == "find_from" {
+        ctx.state.seen = if hero.modifier("blessing", hero) == () { -1 } else { 1 };
+    } else if value == "find_twice" {
+        let m = hero.modifier("blessing");
+        m.stacks = 2;
+        ctx.state.seen = hero.modifier("blessing").stacks;
+    } else if value == "drop" {
+        ctx.remove_modifier(hero.modifier("blessing"));
     } else if value == "unknown" {
         ctx.add_modifier(hero, "curse");
     } else if value == "rally" {
@@ -85,6 +97,19 @@ fn on_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("probe", "renew"))]);
     assert_eq!(Mode::field(&game, "seen"), StateValue::Int(10));
     assert_eq!(held(&game), [(1, Some(u + 4), vec![StateValue::Int(0)])]);
+    // The hero's instance, which the mode applied from no source, is the one `modifier` finds
+    // and none from the hero: its two finds in a call are one handle, whose 2 stacks it writes,
+    // and the next call reads 2 stacks and the count 0. A removal through it ends it.
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "find_twice"))]);
+    assert_eq!(Mode::field(&game, "seen"), StateValue::Int(2));
+    for (probe, seen) in [("find", 20), ("find_from", -1)] {
+        Mode::tick_inputs(&mut game, &[(0, input("probe", probe))]);
+        assert_eq!(Mode::field(&game, "seen"), StateValue::Int(seen), "{probe}");
+    }
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "drop"))]);
+    assert_eq!(held(&game), []);
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "find"))]);
+    assert_eq!(Mode::field(&game, "seen"), StateValue::Int(-1));
     // A name the package does not declare fails; so does one the script computes, of a modifier
     // that reads a param of its applier's action, which the mode does not have.
     Mode::tick_inputs(
@@ -92,31 +117,33 @@ fn on_input(ctx, player, name, value) {
         &[(0, input("probe", "unknown")), (0, input("probe", "rally"))],
     );
     let missing = StatsRefusal::param(ParamProblem::Missing).refused();
-    let refused = [ApiError::Unknown(NameKind::Modifier), missing];
+    let refused = [ApiError::Unknown(ModifierId::NAMES), missing];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
 }
 
 #[test]
 fn a_player_modifier_holds_on_each_unit_of_its_player_it_selects_and_on_one_spawned_after() {
     let script = r#"
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     let at = ctx.map.markers("camp")[0].pos;
+    let players = ctx.players;
     if value == "units" {
-        ctx.spawn_unit("grunt", "a", at, 1);
-        ctx.spawn_unit("tower", "a", at, 1);
-        ctx.spawn_unit("grunt", "a", at, 0);
+        ctx.spawn_unit("grunt", "a", at, players[1]);
+        ctx.spawn_unit("tower", "a", at, players[1]);
+        ctx.spawn_unit("grunt", "a", at, players[0]);
     } else if value == "drill" {
-        ctx.add_player_modifier(1, "drill");
+        ctx.add_player_modifier(players[1], "drill");
     } else if value == "another" {
-        ctx.spawn_unit("grunt", "a", at, 1);
+        ctx.spawn_unit("grunt", "a", at, players[1]);
+    } else if value == "undrill" {
+        ctx.remove_player_modifier(players[1], "drill");
+        ctx.remove_player_modifier(players[0], "drill");
     } else if value == "stranger" {
-        ctx.add_player_modifier(1, "march");
-    } else if value == "nobody" {
-        ctx.add_player_modifier(9, "drill");
+        ctx.add_player_modifier(players[1], "march");
     } else if value == "rally" {
-        ctx.add_player_modifier(1, "ral" + "ly");
+        ctx.add_player_modifier(players[1], "ral" + "ly");
     } else if value == "turncoat" {
-        ctx.spawn_unit("grunt", "a", at, 2);
+        ctx.spawn_unit("grunt", "a", at, players[2]);
     }
 }
 "#;
@@ -163,30 +190,34 @@ fn on_mode_input(ctx, player, name, value) {
     game.entity_mut(revived).remove::<Dead>();
     Mode::tick_inputs(&mut game, &[]);
     assert_eq!(drilled(&game), [4]);
-    let held = |slot| {
+    let held = |game: &Match, slot| {
         let entity = game.player_entity(PlayerSlot::new(slot)).unwrap();
         game.get::<PlayerModifiers>(entity)
             .unwrap()
             .iter()
             .collect::<Vec<_>>()
     };
-    assert_eq!((held(1), held(0)), (vec![drill], vec![]));
-    // A modifier the package does not declare, a player the session does not have, a modifier
-    // that reads a param of an action, which a player's never has, and a unit of player 2, of
-    // team `b`, on team `a`, fail, and the last spawns nothing.
+    assert_eq!((held(&game, 1), held(&game, 0)), (vec![drill], vec![]));
+    // Player 1's removal ends the drill on grunt 4 in the tick's Resolve, and player 0's, which
+    // holds none, does nothing.
+    Mode::tick_inputs(&mut game, &[(1, input("probe", "undrill"))]);
+    assert!(Mode::failures(&game).is_empty());
+    assert_eq!((held(&game, 1), held(&game, 0)), (vec![], vec![]));
+    assert_eq!(drilled(&game), Vec::<u64>::new());
+    // A modifier the package does not declare, a modifier that reads a param of an action,
+    // which a player's never has, and a unit of player 2, of team `b`, on team `a`, fail, and
+    // the last spawns nothing.
     Mode::tick_inputs(
         &mut game,
         &[
             (1, input("probe", "stranger")),
-            (1, input("probe", "nobody")),
             (1, input("probe", "rally")),
             (1, input("probe", "turncoat")),
         ],
     );
     let missing = StatsRefusal::param(ParamProblem::Missing).refused();
     let refused = [
-        ApiError::Unknown(NameKind::Modifier),
-        ApiError::UnknownPlayer,
+        ApiError::Unknown(ModifierId::NAMES),
         missing,
         ModeRefusal::PlayerOffTeam.refused(),
     ];

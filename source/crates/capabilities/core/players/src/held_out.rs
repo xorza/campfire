@@ -3,8 +3,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
-use campfire_units::Player;
 use serde::{Deserialize, Serialize};
+
+use crate::player::Player;
 
 /// Marks a player the mode's script holds out of play, `ctx.set_out`, as an eliminated or a
 /// defeated player is, on its entity (14-replication-audiences.md, A player out of play sees what

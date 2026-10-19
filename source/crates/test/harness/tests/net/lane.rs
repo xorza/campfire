@@ -8,8 +8,7 @@ use campfire_harness::{End, InProcessMatch, MatchSetup};
 use campfire_math::Num;
 use campfire_orders::OrdersAction;
 use campfire_sim::EntityIndex;
-use campfire_stats::Life;
-use campfire_units::{MoveStep, Owner};
+use campfire_units::{GroundPoint, Life, MoveStep, Owner};
 use campfire_values::{Team, UnitType};
 
 /// A match of the lane mode whose one player's walker stands at the map's edge, 8 m off the lane,
@@ -20,8 +19,10 @@ fn quiet_lane() -> InProcessMatch {
     local.order(
         0,
         OrdersAction::Move {
-            x: Num::ZERO,
-            z: Num::from_int(8).unwrap(),
+            to: GroundPoint {
+                x: Num::ZERO,
+                z: Num::from_int(8).unwrap(),
+            },
         },
     );
     local

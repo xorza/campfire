@@ -1,7 +1,7 @@
 use bevy_ecs::resource::Resource;
+use campfire_units::SeenBy;
 use campfire_values::{NameId, Team, TeamSet};
 use campfire_visibility::{OutView, SpectatorFog, Visibility};
-use campfire_vision::SeenBy;
 use lightyear::prelude::{RoomAllocator, RoomId, Rooms};
 
 /// A Lightyear room for each team: a unit stands in the rooms of the teams that see it, and a

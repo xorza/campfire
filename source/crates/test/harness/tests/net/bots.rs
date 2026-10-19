@@ -1,23 +1,110 @@
 //! The server's bots: one of the plan's slots, which plays its script's orders and mode inputs in
 //! their ticks, and the bot that takes a slot over after its player left.
 
+use std::num::NonZeroU32;
 use std::time::Duration;
 
 use bevy_ecs::query::With;
-use campfire_bots::OrderScript;
+use campfire_actions::ActionTarget;
+use campfire_bots::{
+    BotBuffers, BotNames, BotScript, BotSink, HeldBotView, Named, OrderScript, OrderUnsent,
+};
+use campfire_capabilities::{Action, Order};
 use campfire_common::{AfterLeave, PlayerSlot, StateHash, Tick};
 use campfire_harness::{
-    End, FixedMatch, FixedSession, HashTrail, InProcessMatch, LinkModel, MatchSetup,
+    End, FixedMatch, FixedSession, HashTrail, InProcessMatch, LinkModel, MatchSetup, MatchUnits,
 };
 use campfire_mode::{ModeWorld, PlayersData, SaveBy, SavesData};
 use campfire_net::internals::SimServerWorldInternals;
-use campfire_net::{SessionTimes, SlotBot, TickHashes};
+use campfire_net::internals::TickHashes;
+use campfire_net::{SessionTimes, SlotBot};
+use campfire_orders::OrdersAction;
 use campfire_progression::Experience;
 use campfire_protocol::{Controller, InputRules, LeaveReason, ServerInput, SessionLog, SlotPlan};
 use campfire_runner::{Replay, Session, SessionWorld};
 use campfire_script::StateValue;
 use campfire_store::internals::Scratch;
+use campfire_test_packages::TestMode;
 use campfire_units::{Destination, Owner};
+
+/// What a bot's step gave: each payload sent, and why each unsent order went unsent.
+#[derive(Debug, Default)]
+struct Heard {
+    sent: Vec<Vec<u8>>,
+    unsent: Vec<OrderUnsent>,
+}
+
+impl BotSink for Heard {
+    fn send(&mut self, _: PlayerSlot, payload: &[u8]) {
+        self.sent.push(payload.to_vec());
+    }
+
+    fn unsent(&mut self, _: PlayerSlot, _: &Action<Named>, cause: OrderUnsent) {
+        self.unsent.push(cause);
+    }
+}
+
+#[test]
+fn a_due_order_finds_its_slot_among_its_units_and_its_target_by_its_filter_or_goes_unsent() {
+    // The walker's bot casts its first ability at the nearest enemy hero it sees, in tick 0 and
+    // in tick 1. In tick 0 no Vision stage has run, so each hero is seen by its own team alone,
+    // as an order may aim only at what its team sees: the cast goes unsent. In tick 1 the
+    // walker's team sees the runner, 4 m off, and the cast goes to it, as the walker holds the
+    // ability in its slot 0. Then it orders the creeps' attack, which the walker does not hold;
+    // attacks a stunned enemy hero, and none is; and moves its tower bolts, of which it owns
+    // none.
+    let session = FixedSession::new(TestMode::Lane.packages(), NonZeroU32::new(30).unwrap(), 2);
+    let mut fixed = session.start();
+    let units = MatchUnits::of(fixed.game());
+    let [walker, runner] = [0, 1].map(|slot| units.hero(slot));
+    let cast = "action.orders.slot = { slot = \"first\", target.unit = \"enemies:avatar\" }";
+    let text = format!(
+        "[[order]]\ntick = 0\n{cast}\n[[order]]\ntick = 1\n{cast}\n\
+         [[order]]\ntick = 1\naction.orders.slot = {{ slot = \"creep_attack\", target = \"none\" }}\n\
+         [[order]]\ntick = 1\naction.orders.attack.target = \"enemies:avatar:stunned\"\n\
+         [[order]]\ntick = 1\nunits = \"tower_bolt\"\naction.orders.move.to = [1, 1]\n"
+    );
+    let books = session.packages().name_books();
+    let names = BotNames::new(&books);
+    let mut bot = BotScript::new(&OrderScript::parse(&text).unwrap(), &names).unwrap();
+    let mut view = HeldBotView::new(fixed.game_mut());
+    let slot = PlayerSlot::new(0);
+    let mut step = |fixed: &FixedMatch, tick| {
+        let mut heard = Heard::default();
+        let view = view.get(fixed.game());
+        bot.step(
+            Tick::new(tick),
+            slot,
+            &view,
+            &mut BotBuffers::default(),
+            &mut heard,
+        );
+        heard
+    };
+    let first = step(&fixed, 0);
+    assert_eq!(first.sent, Vec::<Vec<u8>>::new());
+    assert_eq!(first.unsent, [OrderUnsent::NoTarget]);
+    fixed.game_mut().run_tick_alone();
+    let second = step(&fixed, 1);
+    let cast = Order::one(
+        walker,
+        OrdersAction::Slot {
+            slot: 0,
+            target: ActionTarget::Unit(runner),
+        },
+    );
+    let mut payload = Vec::new();
+    cast.write_payload(&mut Vec::new(), &mut payload);
+    assert_eq!(second.sent, [payload]);
+    assert_eq!(
+        second.unsent,
+        [
+            OrderUnsent::NoSlot,
+            OrderUnsent::NoTarget,
+            OrderUnsent::NoUnit
+        ]
+    );
+}
 
 /// Where the server's hero of `slot` walks to.
 fn destination(local: &mut InProcessMatch, slot: PlayerSlot) -> Destination {
@@ -41,7 +128,7 @@ fn a_server_bot_plays_its_orders_and_its_pick_in_their_ticks_and_its_log_verifie
     // (3, 2) in tick 10.
     let mut setup = MatchSetup::SOLO;
     setup.bots = &["[[input]]\ntick = 5\nname = \"pick\"\nvalue = \"runner\"\n\
-         [[order]]\ntick = 10\nmove = [3, 2]\n"];
+         [[order]]\ntick = 10\naction.orders.move.to = [3, 2]\n"];
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let bot = PlayerSlot::new(1);
@@ -105,7 +192,7 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
         grace: Duration::from_secs(1),
         restore_window: Duration::from_secs(1),
     };
-    setup.takeover = Some("[[order]]\ntick = 2\nmove = [-3, 2]\n");
+    setup.takeover = Some("[[order]]\ntick = 2\naction.orders.move.to = [-3, 2]\n");
     let mut local = InProcessMatch::new(setup);
     local.start_match();
     let world = local.server().world();
@@ -144,10 +231,10 @@ fn a_leavers_slot_under_bot_plays_the_takeover_bots_orders() {
 
 /// The bot's seven moves of tick 10, to x = 1 to 7 m: the session takes four inputs of a slot a
 /// tick, so the last three spill into tick 11.
-const BURST: &str = "[[order]]\ntick = 10\nmove = [1, 0]\n[[order]]\ntick = 10\nmove = [2, 0]\n\
-     [[order]]\ntick = 10\nmove = [3, 0]\n[[order]]\ntick = 10\nmove = [4, 0]\n\
-     [[order]]\ntick = 10\nmove = [5, 0]\n[[order]]\ntick = 10\nmove = [6, 0]\n\
-     [[order]]\ntick = 10\nmove = [7, 0]\n";
+const BURST: &str = "[[order]]\ntick = 10\naction.orders.move.to = [1, 0]\n[[order]]\ntick = 10\naction.orders.move.to = [2, 0]\n\
+     [[order]]\ntick = 10\naction.orders.move.to = [3, 0]\n[[order]]\ntick = 10\naction.orders.move.to = [4, 0]\n\
+     [[order]]\ntick = 10\naction.orders.move.to = [5, 0]\n[[order]]\ntick = 10\naction.orders.move.to = [6, 0]\n\
+     [[order]]\ntick = 10\naction.orders.move.to = [7, 0]\n";
 
 /// What a match of the bot of `BURST` ran: the bot's inputs the log holds, the state hash after
 /// each tick, and where the bot's hero walks after ticks 10 and 11.
@@ -225,15 +312,20 @@ fn a_plan_bot_plays_its_script_until_its_slot_changes_hands() {
         autosave_ms: None,
     };
     let packages = InProcessMatch::lane_mode(rules, saves);
+    let script =
+        OrderScript::parse("[[order]]\ntick = 2\naction.orders.move.to = [1, 0]\n").unwrap();
+    let script = BotScript::new(&script, &BotNames::new(&packages.name_books())).unwrap();
     let tick_hz = packages.manifest().tick_hz.default();
     let plan = [SlotPlan::Player, SlotPlan::Bot];
     let mut fixed = FixedSession::planned(packages, tick_hz, InputRules::LAN, plan).start();
-    let script = OrderScript::parse("[[order]]\ntick = 2\nmove = [1, 0]\n").unwrap();
+    let slot = PlayerSlot::new(1);
     let planned = |fixed: &FixedMatch| {
-        let slots = vec![SlotBot::new(1, script.clone())];
+        let slots = vec![SlotBot {
+            slot,
+            script: script.clone(),
+        }];
         fixed.game().planned_bots(slots, Tick::new(0))
     };
-    let slot = PlayerSlot::new(1);
     assert_eq!(planned(&fixed), [slot]);
     fixed.join(1).unwrap();
     fixed

@@ -1,10 +1,11 @@
 use std::num::NonZeroU32;
 
-use bevy_app::{App, Plugin, PluginGroup, PluginGroupBuilder, TaskPoolPlugin};
-use bevy_ecs::schedule::{Schedules, SingleThreadedExecutor};
+use bevy_app::{App, FixedUpdate, Plugin, PluginGroup, PluginGroupBuilder, TaskPoolPlugin, Update};
+use bevy_ecs::schedule::{ScheduleLabel, Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
 use campfire_declare::CapabilitySet;
+use campfire_schedule::StrictSchedule;
 use campfire_sim::TickRate;
 
 use crate::hosting::Hosting;
@@ -41,7 +42,8 @@ impl PluginGroup for SimServerPlugins {
 /// starts, sets its own. A build turns Bevy's `multi_threaded` on wherever one of its members
 /// enables it: without this, a server built beside the client runs its systems in parallel, and
 /// one built alone does not, and systems with no order between them run in an order that timing
-/// sets (02-engine-core.md, Bevy).
+/// sets (02-engine-core.md, Bevy). The schedules of the server's frame, `Update` and
+/// `FixedUpdate`, are strict, so the executor's own order decides nothing there.
 #[derive(Debug)]
 struct OneThread;
 
@@ -50,8 +52,12 @@ impl Plugin for OneThread {
 
     fn cleanup(&self, app: &mut App) {
         let mut schedules = app.world_mut().resource_mut::<Schedules>();
+        let frame = [Update.intern(), FixedUpdate.intern()];
         for (_, schedule) in schedules.iter_mut() {
             schedule.set_executor(SingleThreadedExecutor::new());
+            if frame.contains(&schedule.label()) {
+                StrictSchedule::apply(schedule);
+            }
         }
     }
 }
@@ -60,11 +66,13 @@ impl Plugin for OneThread {
 mod tests {
     use std::thread::{self, ThreadId};
 
-    use bevy_app::{First, Last, PostUpdate, PreUpdate, Update};
+    use bevy_app::{First, Last, PostUpdate, PreUpdate};
     use bevy_ecs::resource::Resource;
+    use bevy_ecs::schedule::IntoScheduleConfigs;
     use bevy_ecs::system::ResMut;
 
     use super::*;
+    use crate::sim_server::ServerFrameSystems;
 
     /// The thread each system of the test ran on.
     #[derive(Resource, Debug, Default)]
@@ -88,7 +96,7 @@ mod tests {
         app.init_resource::<Ran>();
         app.add_systems(First, record)
             .add_systems(PreUpdate, record)
-            .add_systems(Update, record)
+            .add_systems(Update, record.after(ServerFrameSystems::Saves))
             .add_systems(PostUpdate, record)
             .add_systems(Last, record);
         app.finish();

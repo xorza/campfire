@@ -1,8 +1,10 @@
+use crate::cell_levels::CellLevels;
+
 /// A cell of a layer's level of `CellLevels`, packed into one number so that cells order as their
 /// layer, level, row and column do, and a sort or a search compares one number: the layer in the
 /// top 8 bits, the level in the next 6, and the row and the column, each offset by 2²⁴, in 25 bits
 /// each. A base cell of at least `CellLevels::MIN_BASE` holds the rows and columns of positions
-/// within `Position::BOUND` to ±2²³, and so of the cells beside them; a search's rows and columns
+/// within `Vec3::BOUND` to ±2²³, and so of the cells beside them; a search's rows and columns
 /// past ±2²⁴ clamp to the ends, where no body is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CellKey(u64);
@@ -70,12 +72,12 @@ impl CellKey {
         )
     }
 
-    /// The cell of `level`, at or above this one's, that holds this one, as a halving's floor
-    /// nests a level's cells in the next one's.
+    /// The cell of `level`, at or above this one's, that holds this one, as the floor of a
+    /// division by `CellLevels`' ratio nests a level's cells in the next one's.
     #[must_use]
     pub const fn within(self, level: u8) -> Self {
         debug_assert!(level >= self.level());
-        let up = level - self.level();
+        let up = (level - self.level()) as u32 * CellLevels::RATIO_BITS;
         Self::new(self.layer(), level, self.row() >> up, self.column() >> up)
     }
 

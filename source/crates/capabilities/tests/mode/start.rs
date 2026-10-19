@@ -1,7 +1,12 @@
+use campfire_common::Tick;
+use campfire_mode::internals::MarkerOf;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Position;
-use campfire_units::{CellSplit, CoarseSpan, Ground, GroundError, HeightGrid, MapBook};
-use campfire_vision::VisionBook;
+use campfire_units::{
+    CellSplit, CoarseSpan, Ground, GroundData, GroundError, GroundLoadError, HeightGrid,
+};
+use campfire_values::Named;
+use campfire_vision::VisionDataError;
 
 use super::*;
 
@@ -26,6 +31,13 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         game.get::<OnPath>(tower).map(|path| path.get()),
         Some(PathId::new(0))
     );
+    // The match's map gives the camp's point by its tag and its param, as the script read it;
+    // none for another param's value, a param no marker of the tag holds, or no such tag.
+    let point = |tag, param, value| Mode::marker_point(&game, MarkerOf { tag, param, value });
+    assert_eq!(point("camp", "unit_type", "grunt"), Some(Vec3::ZERO));
+    assert_eq!(point("camp", "unit_type", "tower"), None);
+    assert_eq!(point("spawn", "unit_type", "grunt"), None);
+    assert_eq!(point("lair", "unit_type", "grunt"), None);
     // Each holds its stats from its spawn, before any refresh: a value for each stat the mode
     // declares, its type's at level 1, with no modifiers, as its first refresh derives them.
     let tower_type = *game.get::<UnitType>(tower).unwrap();
@@ -69,9 +81,9 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     assert_eq!(game.player_entity(PlayerSlot::new(3)), None);
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
     let vision = game.resource::<VisionBook>().grid().unwrap();
-    let grid = Grid::new(Num::int(1), map().bounds).unwrap();
+    let grid = Grid::new(Num::int(1), map().bounds()).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
-    assert_eq!(game.resource::<MapBook>().bounds, map().bounds);
+    assert_eq!(game.resource::<MapBook>().bounds, map().bounds());
     // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
     // the grunt, with no body, the first's, `ground`.
     let tags = |id| {
@@ -79,7 +91,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
             .unwrap()
             .tags
     };
-    let tag = |name| game.non_send::<View>().names().tags().named(name).unwrap();
+    let tag = |name| game.resource::<MatchNames>().tags().named(name).unwrap();
     let layer_tags = [0, 1].map(|id| [tag("ground"), tag("air")].map(|tag| tags(id).contains(tag)));
     assert_eq!(layer_tags, [[false, true], [true, false]]);
     assert_eq!(Mode::tracked_state(&game), state("start", 0, 0, 0));
@@ -112,7 +124,7 @@ fn a_mode_whose_start_fails_starts_no_match() {
         let failed = start_match(&failing, ScriptLimits::ROOMY, &mode_files()).err();
         assert_eq!(
             failed.as_ref().map(CallError::kind),
-            Some(FailureKind::Api(ApiError::Unknown(NameKind::UnitType))),
+            Some(FailureKind::Api(ApiError::Unknown(UnitType::NAMES))),
             "{unit_type}: {failed:?}"
         );
     }
@@ -130,7 +142,7 @@ fn on_match_start(ctx) {
     ctx.spawn_group("neutral", "mid", PathEnd::named("start"), ["grunt"]);
 }
 
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     if value == "named" {
         ctx.spawn_group("a", "mid", PathEnd::named("middle"), ["grunt"]);
     } else {
@@ -174,8 +186,7 @@ fn on_mode_input(ctx, player, name, value) {
 
 #[test]
 fn a_map_with_vision_holds_at_most_64_teams() {
-    // The test mode's map has a vision grid. Its teams are checked before its units, so a map
-    // of 64 teams fails later, on the units of the teams it lacks, and one of 65 at once.
+    // The test mode's map has a vision grid, which holds 64 teams and refuses a 65th.
     let files = mode_files();
     let teams = |count: usize| -> Vec<TeamManifest> {
         (0..count)
@@ -185,20 +196,14 @@ fn a_map_with_vision_holds_at_most_64_teams() {
             })
             .collect()
     };
-    let layers = Names::default();
+    let map = files.map.sections();
+    let ground = MapBook::of(map, None).unwrap();
     let resolve = |count| {
-        let teams = teams(count);
-        let input = MapInput {
-            map: &files.map,
-            heights: None,
-            teams: &teams,
-            relations: &[],
-            layers: &layers,
-        };
-        ModeMap::resolve(input, |_| None).err()
+        let teams = ModeMap::team_names(&teams(count)).unwrap();
+        VisionBook::of(&ground, map, teams.len()).err()
     };
-    assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
-    assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
+    assert_eq!(resolve(64), None);
+    assert_eq!(resolve(65), Some(VisionDataError::TooManyTeams));
 }
 
 #[test]
@@ -207,8 +212,6 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
     // `[ground]` with no grid is refused; with one, its split and coarse cells are those of its
     // `[ground]`, the grid's own cells with none, and coarse cells smaller than its cells are
     // refused.
-    let files = mode_files();
-    let layers = Names::default();
     let grid = HeightGrid::new(
         [Num::ZERO; 2],
         Num::int(10),
@@ -223,18 +226,12 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
         to: [Num::int(20); 2],
     };
     let resolve = |ground: Option<GroundData>, heights: Option<&HeightGrid>| {
-        let map = MapData {
-            ground,
-            ..MapData::planar(Bounds::new([Num::int(-50); 2], [Num::int(50); 2]).unwrap())
+        let map = MapData::planar(Bounds::new([Num::int(-50); 2], [Num::int(50); 2]).unwrap());
+        let map = match ground {
+            Some(ground) => map.with(ground),
+            None => map,
         };
-        let input = MapInput {
-            map: &map,
-            heights,
-            teams: &files.teams,
-            relations: &[],
-            layers: &layers,
-        };
-        ModeMap::resolve(input, |_| None).map(|resolved| resolved.ground.ground)
+        MapBook::of(map.sections(), heights).map(|book| book.ground)
     };
     let read = |split, cell| GroundData {
         split,
@@ -243,7 +240,7 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
     assert_eq!(resolve(None, None), Ok(Ground::default()));
     assert_eq!(
         resolve(Some(GroundData::default()), None),
-        Err(ModeError::NoHeights)
+        Err(GroundLoadError::NoHeights)
     );
     let own = Ground::new(grid.clone(), CellSplit::ZeroTwo, None).unwrap();
     assert_eq!(resolve(None, Some(&grid)), Ok(own));
@@ -254,7 +251,7 @@ fn a_maps_ground_is_its_height_grid_as_its_ground_section_reads_it() {
     );
     assert_eq!(
         resolve(Some(read(CellSplit::OneThree, 5)), Some(&grid)),
-        Err(ModeError::Ground(GroundError::CoarseCell))
+        Err(GroundLoadError::Ground(GroundError::CoarseCell))
     );
 }
 
@@ -276,7 +273,7 @@ fn on_match_start(ctx) {
     crate_at(ctx, "c0");
 }
 
-fn on_input(ctx, player, name, value) {
+fn take_input(ctx, player, name, value) {
     if value == "twice" {
         crate_at(ctx, "c4");
         crate_at(ctx, "c5");
@@ -372,13 +369,13 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
 
     // A height past the world's bound; and on a spatial map, whose points hold their own, any
     // height but 0.
-    let mut map = mode_files().map;
+    let map = mode_files().map;
     let ground = MapPoint::ground(0, 0);
     assert_eq!(
         map.placed_at(&ground, Num::int(1 << 21)),
         Err(ModeError::OutOfBounds)
     );
-    map.metric = Metric::Spatial;
+    let map = map.with(MetricData(Metric::Spatial));
     let space = MapPoint::Space([Num::ZERO, Num::ONE, Num::ZERO]);
     let lifted = Vec3::new(Num::ZERO, Num::int(1), Num::ZERO);
     assert_eq!(map.placed_at(&space, Num::ZERO), Ok(lifted));
@@ -386,4 +383,44 @@ fn a_placed_unit_stands_at_its_height_and_faces_its_angle() {
         map.placed_at(&space, Num::int(3)),
         Err(ModeError::SpatialHeight)
     );
+}
+
+#[test]
+fn a_cancel_ends_every_timer_of_its_name_and_no_other() {
+    // Two repeating `every` timers, of 1 tick and of 2, and `once`, due in 3. The input of tick 2
+    // sets one more `every`, then cancels its name, which ends all three.
+    let script = r#"
+fn on_match_start(ctx) {
+    ctx.every("every", 100);
+    ctx.every("every", 200);
+    ctx.after("once", 300, 5);
+}
+
+fn on_timer(ctx, name, data) {
+    if name == "every" {
+        ctx.state.count += 1;
+    } else {
+        ctx.state.seen = data;
+    }
+}
+
+fn on_input(ctx, player, name, value) {
+    ctx.every("every", 100);
+    ctx.cancel_timer("every");
+}
+"#;
+    // The first fires at the ends of ticks 0 and 1, the second at the end of tick 1: 3.
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    Mode::tick_inputs(&mut game, &[]);
+    Mode::tick_inputs(&mut game, &[]);
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(3));
+    // Then no `every` fires, and `once` does, at the end of tick 2, with its data.
+    Mode::tick_inputs(&mut game, &[(0, input("probe", ""))]);
+    for _ in 0..3 {
+        Mode::tick_inputs(&mut game, &[]);
+    }
+    assert_eq!(Mode::failures(&game), []);
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(3));
+    assert_eq!(Mode::field(&game, "seen"), StateValue::Int(5));
+    assert!(game.resource::<Timers>().due(Tick::new(u64::MAX)).is_none());
 }

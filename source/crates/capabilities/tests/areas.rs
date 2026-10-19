@@ -1,12 +1,13 @@
-use campfire_actions::{Actions, LaunchId};
+use campfire_actions::LaunchId;
 use campfire_areas::*;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
-use campfire_common::{Tick, Ticks};
+use campfire_common::{DeclaredName, Tick, Ticks};
 use campfire_deliveries::{Deliveries, Delivering};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
+use campfire_production::Production;
 use campfire_projectiles::Projectiles;
 use campfire_script::Filter;
 use campfire_sim::internals::SimWorldInternals;
@@ -14,8 +15,7 @@ use campfire_sim::{Capability, SimComponent};
 use campfire_stats::{ModifierData, Stats};
 use campfire_units::{UnitTypeCore, UnitTypes, Units};
 use campfire_values::{
-    DeclaredName, EngineTag, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, TagSet,
-    Team, TypeScope,
+    EngineTag, Number, PackageIndex, ParamRef, Rank, Relation, RelationSet, TagSet, Team, TypeScope,
 };
 
 #[test]
@@ -82,7 +82,7 @@ fn an_area_is_state_and_restores() {
             inside: AreaInsideData::default(),
         };
         Areas::load_type(game, field, PackageIndex::MODE, &area);
-        let action = Actions::add_train(game, field, Ticks::ZERO, None);
+        let action = Production::add_train(game, field, Ticks::ZERO, None);
         let ward = DeclaredName::new("ward").unwrap();
         let rally = ModifierData {
             shield: Some(Number::Param(ParamRef { param: ward })),

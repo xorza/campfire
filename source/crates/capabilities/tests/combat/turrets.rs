@@ -8,11 +8,8 @@ use super::*;
 fn turret_fight(game: &mut Match, slot: u8) -> [StableId; 2] {
     let [gunner, target] = arm(game, [combatant(100, 8, 2, 5, 30), dummy()]);
     let rate = *game.resource::<TickRate>();
-    let data = TurretData {
-        turn_rate: Num::int(180),
-        tolerance_deg: Num::int(2),
-        slot: DeclaredName::new("weapon").unwrap(),
-    };
+    let slot_kind = DeclaredName::new("weapon").unwrap();
+    let data = TurretData::new(Num::int(180), Num::int(2), slot_kind).unwrap();
     Units::give_type(game, gunner, Turret::of(&data, SlotKind::new(slot), rate));
     let gunner = Mode::spawn(game, gunner, (0, 0, 0), Team::new(0), ());
     let target = Mode::spawn(game, target, (0, 0, -5), Team::new(1), ());

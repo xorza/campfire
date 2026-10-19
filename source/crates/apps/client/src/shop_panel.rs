@@ -5,33 +5,31 @@ use bevy::camera::visibility::Visibility;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::{ChildOf, Children};
+use bevy::ecs::hierarchy::Children;
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{Allow, With};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
-use bevy::input::common_conditions::input_just_pressed;
-use bevy::input::keyboard::KeyCode;
 use bevy::picking::events::{Click, Pointer};
 use bevy::picking::pointer::PointerButton;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
-use bevy::ui::{BackgroundColor, FlexDirection, Node, PositionType, UiRect, Val};
 use campfire_capabilities::Order;
-use campfire_items::{Inventory, ItemId, ItemsAction, Purchase, Shopping};
+use campfire_items::{Inventory, ItemsAction, Purchase, Shopping};
 use campfire_net::PendingOrders;
-use campfire_players::{PlayerResources, PlayerRows};
 use campfire_sim::{StableId, Unpredicted};
-use campfire_units::Owner;
+use campfire_values::ItemId;
 
+use crate::input_map::{Act, InputMap};
 use crate::item_names::ItemTexts;
 use crate::own_player::OwnPlayer;
-use crate::ui_style::{self, BACK, DIMMED, TEXT};
+use crate::ui_style::{self, Corner, DIMMED, Panel, PanelRow, TEXT};
 use crate::view::ViewSystems;
 
-/// The shop panel, as League of Legends' : P opens and closes it; it shows the
-/// nearest living shop unit whose buyers select the own avatar, its items in their order, each
+/// The shop panel, as League of Legends': the shop chord, P of the engine's, opens and closes
+/// it; it shows the nearest living shop unit whose buyers select the own avatar, its items in
+/// their order, each
 /// with its name and its price for the avatar now, and the player's amount of the shop's
 /// resource above; an item the avatar cannot buy now is dimmed, and a click buys it.
 #[derive(Debug)]
@@ -67,10 +65,7 @@ impl Plugin for ShopPanel {
         app.add_systems(Startup, Self::spawn);
         app.add_systems(
             Update,
-            (
-                Self::toggle.run_if(input_just_pressed(KeyCode::KeyP)),
-                Self::show,
-            )
+            (Self::toggle.run_if(InputMap::on(Act::Shop)), Self::show)
                 .chain()
                 .after(ViewSystems),
         );
@@ -79,27 +74,10 @@ impl Plugin for ShopPanel {
 
 impl ShopPanel {
     fn spawn(mut commands: Commands<'_, '_>) {
-        let root = Node {
-            position_type: PositionType::Absolute,
-            right: Val::Px(12.0),
-            top: Val::Px(12.0),
-            width: Val::Px(280.0),
-            flex_direction: FlexDirection::Column,
-            padding: UiRect::all(Val::Px(8.0)),
-            row_gap: Val::Px(4.0),
-            ..Node::default()
-        };
-        commands
-            .spawn((PanelRoot, root, BackgroundColor(BACK), Visibility::Hidden))
-            .with_children(|panel| {
-                panel.spawn((Funds, Text::default(), ui_style::font(), TextColor(TEXT)));
-                let rows = Node {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(2.0),
-                    ..Node::default()
-                };
-                panel.spawn((Rows, rows));
-            });
+        let panel = Panel::spawn(&mut commands, Corner::TopRight, 280.0);
+        commands.entity(panel.root).insert(PanelRoot);
+        commands.entity(panel.funds).insert(Funds);
+        commands.entity(panel.rows).insert(Rows);
     }
 
     fn toggle(mut panel: Single<'_, '_, &mut Visibility, With<PanelRoot>>) {
@@ -122,8 +100,7 @@ impl ShopPanel {
         panel: Single<'_, '_, &Visibility, With<PanelRoot>>,
         own: OwnPlayer<'_, '_>,
         shopping: Shopping<'_, '_>,
-        carriers: Query<'_, '_, (&Inventory, Option<&Owner>), Allow<Unpredicted>>,
-        funds_rows: PlayerRows<'_, '_, PlayerResources>,
+        carriers: Query<'_, '_, &Inventory, Allow<Unpredicted>>,
         (mut shown, names): (ResMut<'_, Shown>, Res<'_, ItemTexts>),
         (rows, mut texts): (Single<'_, '_, Entity, With<Rows>>, Query<'_, '_, &mut Text>),
         (funds, mut colors, row_items): (
@@ -143,17 +120,25 @@ impl ShopPanel {
             shown.0 = shop;
             commands.entity(*rows).despawn_related::<Children>();
             let sold = shop.and_then(|shop| shopping.shop(shop));
+            // A row of each item, which a click buys one of at the shop the panel shows.
             for &item in sold.map_or(&[][..], |sold| sold.items()) {
-                Self::spawn_row(&mut commands, *rows, item, names.of(item));
+                let PanelRow { row, name, value } =
+                    PanelRow::spawn(&mut commands, *rows, names.of(item));
+                commands
+                    .entity(row)
+                    .insert(ShopRow {
+                        item,
+                        name,
+                        price: value,
+                    })
+                    .observe(Self::buy);
             }
             return;
         }
         let (Some(avatar), Some(shop)) = (avatar, shop) else {
             return;
         };
-        let (Some(sold), Ok((inventory, owner))) =
-            (shopping.shop(shop), carriers.get(avatar.entity))
-        else {
+        let (Some(sold), Ok(inventory)) = (shopping.shop(shop), carriers.get(avatar.entity)) else {
             return;
         };
         let service = if shopping.serving(shop, avatar.id).is_some() {
@@ -161,9 +146,7 @@ impl ShopPanel {
         } else {
             Service::Refuses
         };
-        let amount = funds_rows
-            .of(owner)
-            .map_or(0, |held| held.amount(sold.resource()));
+        let amount = own.amount(sold.resource());
         line.clear();
         write!(line, "{amount}").expect("a String takes any text");
         ui_style::set_text(&mut texts, *funds, &line);
@@ -185,36 +168,6 @@ impl ShopPanel {
                 }
             }
         }
-    }
-
-    /// A row of `item`, named `name`, in `rows`: a click buys one at the shop the panel shows.
-    fn spawn_row(commands: &mut Commands<'_, '_>, rows: Entity, item: ItemId, name: &str) {
-        let line = Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(12.0),
-            ..Node::default()
-        };
-        let row = commands.spawn((line, ChildOf(rows))).id();
-        let name = commands
-            .spawn((
-                Text::new(name),
-                ui_style::font(),
-                TextColor(TEXT),
-                ChildOf(row),
-            ))
-            .id();
-        let price = commands
-            .spawn((
-                Text::default(),
-                ui_style::font(),
-                TextColor(TEXT),
-                ChildOf(row),
-            ))
-            .id();
-        commands
-            .entity(row)
-            .insert(ShopRow { item, name, price })
-            .observe(Self::buy);
     }
 
     /// A left click on a row buys its item at the shop the panel shows.

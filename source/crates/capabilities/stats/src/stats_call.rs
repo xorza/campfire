@@ -33,11 +33,15 @@ pub struct StatsCall {
 impl CallPart for StatsCall {
     const COMMITS: Commit = Commit::AfterEffects;
 
-    fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
+    /// The book of params, which the load and the mode give, not a call.
+    fn begin_batch(&mut self, world: &World) {
         let params = world.resource::<ParamBook>();
         if !params.same(&self.params) {
             self.params = params.clone();
         }
+    }
+
+    fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         self.action = start.action;
         self.modifier = start.modifier;
         let unshared = self.handles.drain(..).filter(ModifierHandle::unshared);
@@ -92,6 +96,11 @@ impl CallParams for StatsCall {
         });
         value.map(ScriptValue::from)
     }
+
+    /// Its ability's param at `at`, at the call's rank.
+    fn param_at(&self, at: usize) -> Option<Scalar> {
+        self.values.get(at).copied()
+    }
 }
 
 impl StatsCall {
@@ -140,11 +149,6 @@ impl StatsCall {
     /// What the calls' effects add modifiers by.
     pub(crate) const fn adds(&mut self) -> &mut HeldModifierAdds {
         &mut self.adds
-    }
-
-    /// The running call's ability's param at `at`, at its rank.
-    pub fn ability_value(frame: &Frame, at: usize) -> Scalar {
-        Self::of(frame).values[at]
     }
 }
 

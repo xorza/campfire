@@ -2,7 +2,6 @@ use std::hint::black_box;
 use std::ops::ControlFlow;
 
 use campfire_math::{Num, Vec3};
-use campfire_sim::IdAllocator;
 use criterion::{Criterion, Throughput};
 
 use crate::body_box::bench::COUNT;
@@ -16,12 +15,12 @@ use crate::placed::Placed;
 /// bodies it visits.
 pub(crate) fn body_grid(c: &mut Criterion) {
     let span = Density::Crowded.span();
-    let mut ids = IdAllocator::default();
-    let bodies: Vec<Indexed<()>> = KernelScene::new(9)
+    let bodies: Vec<Indexed<(), u64>> = KernelScene::new(9)
         .bodies(KernelScene::UNITS, span, 1, false)
         .iter()
-        .map(|body| Indexed {
-            id: ids.allocate(),
+        .zip(1..)
+        .map(|(body, id)| Indexed {
+            id,
             key: (),
             body: Placed::new(body.point, body.shape),
         })

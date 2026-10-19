@@ -1,13 +1,12 @@
-use campfire_bots::BotScript;
-use campfire_capabilities::{Match, Order};
+use campfire_bots::{BotBuffers, BotScript, BotSink, HeldBotView, Named, OrderUnsent};
+use campfire_capabilities::{Action, Match, Order};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_harness::{FixedMatch, MatchUnits};
 use campfire_math::{Num, Vec3};
 use campfire_protocol::ServerInput;
 use campfire_runner::SessionWorld;
 use campfire_sim::{Position, StableId};
-use campfire_stats::Life;
-use campfire_units::{HeldPlayerUnits, Units};
+use campfire_units::{Life, Units};
 use campfire_values::UnitType;
 
 use crate::failure::Failure;
@@ -27,17 +26,32 @@ pub(crate) struct MatchPlay {
     bot: Option<MatchBot>,
 }
 
-/// A bot a play drives as a server's bot driver drives it: its slot, its script, the lookup of its
-/// units the driver's is and a scratch for it, the point its command center stands at, and the
-/// farthest any of its units stood from there.
+/// A bot a play drives by the step a server's bot driver takes: its slot, its script, the view of
+/// the match its step reads, as the driver's does, and the step's buffers, the payloads a step
+/// gives, the point its command center stands at, and the farthest any of its units stood from
+/// there.
 #[derive(Debug)]
 struct MatchBot {
     slot: u32,
     script: BotScript,
-    players: HeldPlayerUnits,
-    scratch: Vec<StableId>,
+    view: HeldBotView,
+    buffers: BotBuffers,
+    due: DuePayloads,
     home: Vec3,
     farthest: Num,
+}
+
+/// The payloads a bot's step gives in a tick, which the play serves once the step, which reads
+/// the match, is done; an order of no unit the server's driver drops goes unsent here too.
+#[derive(Debug, Default)]
+struct DuePayloads(Vec<Vec<u8>>);
+
+impl BotSink for DuePayloads {
+    fn send(&mut self, _: PlayerSlot, payload: &[u8]) {
+        self.0.push(payload.to_vec());
+    }
+
+    fn unsent(&mut self, _: PlayerSlot, _: &Action<Named>, _: OrderUnsent) {}
 }
 
 impl MatchPlay {
@@ -61,8 +75,9 @@ impl MatchPlay {
         self.bot = Some(MatchBot {
             slot,
             script,
-            players: HeldPlayerUnits::new(self.fixed.game_mut()),
-            scratch: Vec::new(),
+            view: HeldBotView::new(self.fixed.game_mut()),
+            buffers: BotBuffers::default(),
+            due: DuePayloads::default(),
             home,
             farthest: Num::ZERO,
         });
@@ -108,33 +123,28 @@ impl MatchPlay {
         }
     }
 
-    /// Logs each order `bot`'s script has due by the tick it runs next, for the bot's units it
-    /// names, by the server's bot driver's own lookup; an order of no such unit is none, as the
-    /// driver drops it.
+    /// Logs what `bot`'s script has due by the tick it runs next, as the server's bot driver's
+    /// step gives it: its mode inputs, then its orders, each for the bot's units it names.
     fn serve_bot(&mut self, bot: &mut MatchBot) {
         let MatchBot {
             slot,
             script,
-            players,
-            scratch,
+            view,
+            buffers,
+            due,
             ..
         } = bot;
-        let units = players.get(self.fixed.game());
         let slot = PlayerSlot::new(*slot);
-        let orders: Vec<Order> = script
-            .due_orders(self.tick)
-            .iter()
-            .filter_map(|scripted| scripted.order(slot, &units, scratch).ok())
-            .collect();
-        for order in orders {
-            let payload = Order::payload(&[order]);
+        let view = view.get(self.fixed.game());
+        script.step(self.tick, slot, &view, buffers, due);
+        for payload in due.0.drain(..) {
             let input = ServerInput::Bot {
                 slot,
                 payload: &payload,
             };
             self.fixed
                 .serve(input)
-                .expect("a bot's order within the session's limits");
+                .expect("a bot's input within the session's limits");
         }
     }
 

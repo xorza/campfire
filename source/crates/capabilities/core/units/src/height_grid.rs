@@ -1,6 +1,5 @@
 use campfire_common::MapName;
 use campfire_math::{Num, Vec3};
-use campfire_sim::Position;
 use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -55,7 +54,7 @@ impl HeightGrid {
         };
         let far = grid.checked_far_corner()?;
         let top = step.checked_mul_int(u8::MAX.into())?;
-        let within = |[x, z]: [Num; 2]| Position::from(Vec3::new(x, top, z)).within_bound();
+        let within = |[x, z]: [Num; 2]| Vec3::new(x, top, z).within_bound();
         (within(origin) && within(far)).then_some(grid)
     }
 
@@ -170,7 +169,7 @@ mod tests {
 
         // A cell or a step of 0, a ragged or a single row, one column, and a grid past the
         // world's bound, 2²⁰ m, at its far corner or at its highest.
-        let bound = Position::BOUND;
+        let bound = Vec3::BOUND;
         let refused = [
             HeightGrid::new([Num::ZERO; 2], Num::ZERO, half, 2, vec![0; 4]),
             HeightGrid::new([Num::ZERO; 2], Num::ONE, Num::ZERO, 2, vec![0; 4]),

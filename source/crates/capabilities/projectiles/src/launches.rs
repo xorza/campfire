@@ -2,7 +2,7 @@ use std::slice;
 
 use bevy_ecs::resource::Resource;
 use campfire_actions::ShotDamage;
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_math::Vec3;
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ActionStart, Rank, UnitType};
@@ -10,7 +10,7 @@ use campfire_values::{ActionId, ActionStart, Rank, UnitType};
 use crate::projectile::Flight;
 
 /// The projectiles that launch this tick: those ranged attacks fire, those actions deliver, and
-/// those scripts launch, which spawn in `Phase::Launch`. Not state: it empties within the
+/// those scripts launch, which spawn at `ProjectilesSet::Launch`. Not state: it empties within the
 /// tick.
 #[derive(Resource, Debug, Default)]
 pub struct Launches {
@@ -86,6 +86,10 @@ impl Launches {
 }
 
 impl Scratch for Launches {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         self.launches.is_empty() && self.casts == 0
     }

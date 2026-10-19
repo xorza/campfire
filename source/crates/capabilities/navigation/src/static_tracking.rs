@@ -1,17 +1,18 @@
 use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemId};
 use campfire_common::Tick;
 use campfire_declare::OneShot;
-use campfire_sim::SimTick;
+use campfire_sim::{DueIndex, SimTick, StableId};
 use campfire_units::{Body, Dead, Destination, Tracking};
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::{Route, RouteAsk};
+use crate::route::{Route, RouteAsk, RouteDues, RouteMut};
 use crate::static_bodies::StaticBodies;
 use crate::walker::Walker;
 
@@ -27,6 +28,7 @@ pub struct StaticTrackingRun(pub(super) SystemId);
 
 impl OneShot for StaticTrackingRun {
     type In = ();
+    type Out = ();
 
     fn new(id: SystemId) -> Self {
         Self(id)
@@ -38,8 +40,9 @@ type RoutedWalkers<'w, 's> = Query<
     'w,
     's,
     (
+        (Entity, &'static StableId),
         &'static mut Destination,
-        &'static mut Route,
+        RouteMut,
         &'static mut Progress,
         Option<&'static Body>,
         Option<&'static PathWalker>,
@@ -63,7 +66,7 @@ impl StaticTracking {
         grid: Option<ResMut<'_, PathingGrid>>,
         mut statics: Tracking<'_, '_, StaticBodies>,
         mut walkers: RoutedWalkers<'_, '_>,
-        mut taken: Local<'_, Vec<IndexedBody>>,
+        (mut taken, mut asks): (Local<'_, Vec<IndexedBody>>, ResMut<'_, DueIndex<Route>>),
     ) {
         if !statics.stale() {
             return;
@@ -84,7 +87,7 @@ impl StaticTracking {
         };
         grid.update(&index);
         if filled {
-            Self::follow_statics(tick.start(), &index, &mut walkers);
+            Self::follow_statics(tick.start(), &index, &mut walkers, &mut asks);
         }
     }
 
@@ -95,27 +98,38 @@ impl StaticTracking {
     /// again. A route reads its own legs, from where the leg to its next waypoint began, so the
     /// outcome holds wherever its walker stands. One with an ask waiting keeps it. A walker that
     /// asks forgets its progress; one on its path asks as one of its spawn group's party.
-    fn follow_statics(now: Tick, statics: &BodyIndex, walkers: &mut RoutedWalkers<'_, '_>) {
+    fn follow_statics(
+        now: Tick,
+        statics: &BodyIndex,
+        walkers: &mut RoutedWalkers<'_, '_>,
+        asks: &mut DueIndex<Route>,
+    ) {
         let opened = !statics.removed().is_empty();
         let added = !statics.added().is_empty();
-        for (mut destination, mut route, mut progress, body, path) in walkers.iter_mut() {
+        for ((entity, &id), mut destination, mut route, mut progress, body, path) in
+            walkers.iter_mut()
+        {
+            let dues = &mut RouteDues::new(asks, id, entity);
             let ask = |goal| RouteAsk {
                 goal,
                 tick: now,
                 party: path.and_then(|path| path.party(goal)),
             };
             match destination.get() {
-                None if opened && route.arrived_short() => {
+                None if opened && route.read().arrived_short() => {
                     let goal = route.goal().expect("a route that arrived short has a goal");
                     destination.set_if_neq(Destination::to(Some(goal)));
-                    route.ask(ask(goal), &mut progress);
+                    route.ask(ask(goal), &mut progress, dues);
                 }
                 Some(goal) if route.goal() == Some(goal) && route.asked().is_none() => {
                     let walker = Walker::walking(body);
-                    let blocked =
-                        added && route.legs().any(|leg| statics.added_blocks(leg, walker));
+                    let blocked = added
+                        && route
+                            .read()
+                            .legs()
+                            .any(|leg| statics.added_blocks(leg, walker));
                     if blocked || (opened && !route.reached()) {
-                        route.ask(ask(goal), &mut progress);
+                        route.ask(ask(goal), &mut progress, dues);
                     }
                 }
                 _ => {}

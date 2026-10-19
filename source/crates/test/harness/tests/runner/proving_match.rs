@@ -8,9 +8,9 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::{EntityRef, World};
 use campfire_actions::{ActionProgress, ActionSlots, ActionTarget};
 use campfire_areas::Area;
-use campfire_capabilities::{Order, Release};
-use campfire_common::PlayerSlot;
-use campfire_declare::CapabilitySet;
+use campfire_capabilities::{MatchKind, MatchSpec, Order, Release};
+use campfire_common::{PlayerSlot, SegmentSeed};
+use campfire_declare::{CapabilitySet, MatchFacts, Role};
 use campfire_harness::{ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, ProvingMatch};
 use campfire_math::{Num, Vec3};
 use campfire_mode::ModeWorld;
@@ -21,11 +21,11 @@ use campfire_projectiles::Projectile;
 use campfire_runner::{MatchBuild, Session, SessionWorld};
 use campfire_script::{ScriptFailures, StateValue};
 use campfire_sim::internals::{Draws, Mutation, SimWorldInternals, StageClock};
-use campfire_sim::{EntityIndex, Position, SimWorld, StableId};
+use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
 use campfire_stats::{Level, Modifiers};
-use campfire_units::{Body, Dead, Lifespan, MoveStep, Owner};
+use campfire_test_packages::TestMode;
+use campfire_units::{Body, Dead, Lifespan, MoveStep, Owner, SeenBy};
 use campfire_values::{Team, TeamSet};
-use campfire_vision::SeenBy;
 
 /// What the match showed over its ticks.
 #[derive(Debug, Default)]
@@ -93,7 +93,7 @@ fn hero(world: &World, slot: u32) -> (StableId, EntityRef<'_>) {
 /// entity is of a kind.
 fn assert_sound(fixed: &FixedMatch, tick: u64, set: CapabilitySet) {
     let world = fixed.game();
-    let failures = world.non_send::<ScriptFailures>();
+    let failures = world.resource::<ScriptFailures>();
     assert!(
         failures.get().is_empty(),
         "tick {tick}: {:?}",
@@ -224,7 +224,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     // The match's setup clears none, so the first tick's messages hold its removals too.
     let start = Removals::of(fixed.game());
     let (mut written, mut removed) = (start.written - start.held, false);
-    let mut watch = ArchetypeWatch::of(fixed.game());
+    let mut watch = ArchetypeWatch::of(fixed.game_mut());
     for tick in 0..ProvingMatch::TICKS {
         proving.play_tick(&mut fixed, tick);
         // The removed-component messages hold this tick's removals alone, as an `App`'s update
@@ -564,14 +564,33 @@ fn a_snapshot_with_a_value_moved_or_an_option_dropped_restores_or_is_refused_and
 }
 
 #[test]
-fn every_order_the_proving_match_relies_on_is_stated() {
+fn every_order_each_mode_relies_on_in_each_role_is_stated() {
     // Bevy's sync points order the systems they lie between, so a pair that only one of them
-    // keeps apart passes the ambiguity check until the systems around it change.
+    // keeps apart passes the ambiguity check until the systems around it change: each mode of
+    // the workspace, in each role, builds its tick with none, which panics on such a pair: a
+    // server's with its mode, the rules alone, and a predicting client's, each of its own books.
+    for mode in TestMode::ALL {
+        let packages = mode.packages();
+        let slots = u32::try_from(packages.manifest().slots()).unwrap();
+        drop(MatchBuild::test_target_without_sync_points(
+            &packages, slots,
+        ));
+        let manifest = packages.manifest();
+        let rate = TickRate::new(manifest.tick_hz.default());
+        for (role, kind) in [
+            (Role::Rules, MatchKind::Rules),
+            (Role::Client, MatchKind::Predicting),
+        ] {
+            let spec = MatchSpec::new(SegmentSeed::ZERO, rate, role).set(manifest.capabilities);
+            let books = packages.books(rate);
+            Release::build(&mut World::new(), spec.without_sync_points(), books, kind);
+        }
+    }
     let proving = ProvingMatch::load();
     let mut target =
         MatchBuild::test_target_without_sync_points(proving.packages(), ProvingMatch::PLAYERS);
     // Each game system sits in a set its module declares: one ordered by hand runs where Bevy
     // picks, and one between two stages before or after the probe there.
-    let sets = Release::module_sets(*target.resource::<CapabilitySet>());
+    let sets = Release::module_sets(target.resource::<MatchFacts>().set);
     assert_eq!(target.systems_outside(&sets), Vec::<String>::new());
 }

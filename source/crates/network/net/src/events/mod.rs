@@ -1,7 +1,7 @@
 //! The events a tool reads back from the JSON logs of the server and the client.
 
+pub(crate) mod bot_order_unsent;
 pub(crate) mod bot_payload_dropped;
-pub(crate) mod bot_units_missing;
 pub(crate) mod checkpoint_failed;
 pub(crate) mod checkpoint_taken;
 pub(crate) mod client_frame;
@@ -12,6 +12,7 @@ pub(crate) mod input_message_unfit;
 pub(crate) mod input_never_applied;
 pub(crate) mod inputs_discarded;
 pub(crate) mod join_refused;
+pub(crate) mod journal_cut;
 pub(crate) mod journal_failed;
 pub(crate) mod journal_sync_slow;
 pub(crate) mod link_lost;
@@ -24,6 +25,7 @@ pub(crate) mod orders_sent;
 pub(crate) mod receipt_refused;
 pub(crate) mod receipt_unsaved;
 pub(crate) mod save_refused;
+pub(crate) mod script_printed;
 pub(crate) mod seeds_ran_out;
 pub(crate) mod server_frame;
 pub(crate) mod session_aborted;

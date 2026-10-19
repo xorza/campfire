@@ -2,6 +2,7 @@ use campfire_common::Tick;
 use campfire_progression::ProgressionRefusal;
 use campfire_script::CapabilityRefusal;
 use campfire_units::TagData;
+use campfire_values::Named;
 
 use super::*;
 
@@ -9,7 +10,7 @@ use super::*;
 fn a_mode_learns_a_hero_ability_up_to_its_last_rank_and_a_failed_call_learns_nothing() {
     // Hero X holds its ability in slot 0, of 2 ranks, and the spell in slot 1, of 1.
     let learner = r#"
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     if name == "spells" {
         ctx.choose(player, "spells", value);
         return;
@@ -85,7 +86,7 @@ fn on_mode_input(ctx, player, name, value) {
 #[test]
 fn experience_raises_levels_and_each_level_reached_runs_on_level_up_in_the_tick() {
     let leveler = r#"
-fn on_input(ctx, player, name, value) {
+fn take_input(ctx, player, name, value) {
     let hero = ctx.avatars()[0];
     if value == "99" {
         ctx.add_xp(hero, "level", 99);
@@ -159,7 +160,7 @@ fn on_level_up(ctx, unit, track, level) {
     // the call, and change nothing.
     let refused = [
         ("tower", ProgressionRefusal::NoTrack.refused()),
-        ("fame", ApiError::Unknown(NameKind::Track)),
+        ("fame", ApiError::Unknown(TrackId::NAMES)),
         ("negative", ProgressionRefusal::NegativeXp.refused()),
     ];
     for (value, error) in refused {
@@ -180,7 +181,7 @@ fn on_level_up(ctx, unit, track, level) {
     let unread = [
         ("tower points", ProgressionRefusal::NoTrack.refused()),
         ("tower level", ProgressionRefusal::NoTrack.refused()),
-        ("fame level", ApiError::Unknown(NameKind::Track)),
+        ("fame level", ApiError::Unknown(TrackId::NAMES)),
     ];
     for (value, error) in unread {
         Mode::tick_inputs(&mut game, &[(0, input("probe", value))]);
@@ -190,19 +191,21 @@ fn on_level_up(ctx, unit, track, level) {
 
 #[test]
 fn a_hero_dead_beside_an_enemy_hero_gives_it_experience_and_comes_back() {
-    // The 3v3's `on_unit_died` as it is: hero Y, 10 m from hero X, dies to the mode's damage,
+    // The 3v3's `on_unit_death` as it is: hero Y, 10 m from hero X, dies to the mode's damage,
     // with no killer. X takes all of Y's 150 + 25 × 1 experience, past level 2's 100, and Y
     // comes back after 1000 + 500 × 1 ms, as the call that gave the experience did not fail.
     let killer = r#"
-fn on_input(ctx, player, name, value) {
-    ctx.damage(ctx.avatars("b")[0], 1000, "physical");
+fn take_input(ctx, player, name, value) {
+    ctx.damage(ctx.avatars("b")[0], "physical", 1000);
 }
 "#;
     let script = format!("{killer}{DEATHS_3V3}");
-    // The 3v3's tag of its cores, which `on_unit_died` reads first.
+    // The 3v3's tag of its cores, which `on_unit_death` reads first.
     let mut files = mode_files();
     let core = DeclaredName::new("core").unwrap();
-    files.data.tags.insert(core, TagData::default());
+    let mut tags = files.data.section_or_default::<ModeTagsData>().into_owned();
+    tags.0.insert(core, TagData::default());
+    files.data = files.data.with(tags);
     let script = format!("{script}{PICKING}");
     let mut game = start_match(&script, ScriptLimits::ROOMY, &files).unwrap();
     Mode::tick_inputs(

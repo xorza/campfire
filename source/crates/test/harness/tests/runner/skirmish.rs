@@ -12,9 +12,8 @@ use campfire_players::{HeldOut, PlayersWorld};
 use campfire_protocol::{InputRules, Outcome, SessionLog, SlotPlan};
 use campfire_runner::{Replay, SessionWorld};
 use campfire_sim::StableId;
-use campfire_stats::Life;
-use campfire_test_packages::TestMode;
-use campfire_units::{Dead, Units, UnitsWorld};
+use campfire_test_packages::{Edit, PackageTree, TestMode};
+use campfire_units::{Dead, Life, Units, UnitsWorld};
 use campfire_values::{Names, ResourceId, UnitType};
 
 /// The units of the type `name` that player `slot` owns, by stable id.
@@ -150,4 +149,54 @@ fn every_player_starts_with_the_money_the_host_picked_and_a_replay_plays_with_it
     let mut replay = Replay::of(SessionLog::decode(&bytes).unwrap(), &packages).unwrap();
     replay.run().unwrap();
     assert_eq!(money(replay.game(), 0), 5000);
+}
+
+#[test]
+fn a_kill_pays_its_killers_player_its_share_of_the_victims_cost_rounded_up() {
+    // The center costs 1,001 money, and the start raises player 1's share to a quarter: its
+    // dozer's kill of the second's center pays it 250.25 rounded up, 251; a share of none, the
+    // rules' start, pays nothing.
+    let mut tree = PackageTree::of(TestMode::Skirmish);
+    tree.edit(
+        "test/modes/skirmish/data/units.toml",
+        Edit::Replace(
+            "combat = { on_death = \"despawn\" }",
+            "combat = { on_death = \"despawn\" }\nbounty = { resource = \"money\", cost = 1001 }",
+        ),
+    );
+    tree.edit(
+        "zero-hour/scripts/mode.rhai",
+        Edit::Replace(
+            "fn on_match_start(ctx) {\n",
+            "fn on_match_start(ctx) {\n    ctx.set_bounty_share(ctx.players[0], num(1) / 4);\n",
+        ),
+    );
+    let rate = NonZeroU32::new(30).unwrap();
+    let plan = [SlotPlan::Player, SlotPlan::Bot, SlotPlan::Bot];
+    let mut fixed =
+        FixedSession::planned(tree.load().unwrap(), rate, InputRules::ROOMY, plan).start();
+    let dozer = one(&fixed, "dozer", 0);
+    let center = one(&fixed, "center", 1);
+    Combat::damage(
+        fixed.game_mut(),
+        Some(dozer),
+        center,
+        10,
+        DamageCause::Effect,
+    );
+    fixed.game_mut().run_tick_alone();
+    let moneys = |fixed: &FixedMatch| [0, 1, 2].map(|slot| money(fixed.game(), slot));
+    assert_eq!(moneys(&fixed), [100 + 251, 100, 100]);
+    // The third's dozer kills the first's center: its share of none pays nothing.
+    let dozer = one(&fixed, "dozer", 2);
+    let center = one(&fixed, "center", 0);
+    Combat::damage(
+        fixed.game_mut(),
+        Some(dozer),
+        center,
+        10,
+        DamageCause::Effect,
+    );
+    fixed.game_mut().run_tick_alone();
+    assert_eq!(moneys(&fixed), [351, 100, 100]);
 }

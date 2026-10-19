@@ -10,23 +10,31 @@ use campfire_sim::{Position, StableId};
 use campfire_units::*;
 use campfire_values::Team;
 
-/// What a reader finds within 2 m of the origin, each unit by its id and its body's bound, and
-/// the run of the build it read.
+/// What a reader finds within 2 m of the origin after a refresh, each unit by its id and its
+/// body's bound, and the run of the build it read.
 fn near_origin(game: &mut Match) -> (Vec<(StableId, Num)>, Tick) {
-    game.run_system_once(|mut near: UnitsNear<'_, '_>| {
-        let mut found = Vec::new();
-        near.current().visit_near(Vec3::ZERO, Num::int(2), |entry| {
-            found.push((entry.id, entry.body.shape.bound()));
-            ControlFlow::Continue(())
-        });
-        found.sort_unstable_by_key(|&(id, _)| id);
-        (found, near.built_at().unwrap())
-    })
-    .unwrap()
+    let built = game
+        .run_system_once(|mut build: GridBuild<'_, '_>| {
+            build.refresh();
+            build.built_at().unwrap()
+        })
+        .unwrap();
+    let found = game
+        .run_system_once(|near: UnitsNear<'_>| {
+            let mut found = Vec::new();
+            near.current().visit_near(Vec3::ZERO, Num::int(2), |entry| {
+                found.push((entry.id, entry.body.shape.bound()));
+                ControlFlow::Continue(())
+            });
+            found.sort_unstable_by_key(|&(id, _)| id);
+            found
+        })
+        .unwrap();
+    (found, built)
 }
 
 #[test]
-fn readers_share_one_build_until_a_unit_comes_goes_moves_or_changes_its_body() {
+fn refreshes_share_one_build_until_a_unit_comes_goes_moves_or_changes_its_body() {
     let mut game = Match::unscripted(&[]);
     let unit_type = Units::load_next_type(&mut game, &UnitTypeCore::default());
     Units::give_type(&mut game, unit_type, BodyForm::circle(Num::HALF).unwrap());
@@ -35,7 +43,8 @@ fn readers_share_one_build_until_a_unit_comes_goes_moves_or_changes_its_body() {
     let (first, second) = (spawn(&mut game, 0), spawn(&mut game, 10));
     let half = Num::HALF;
 
-    // The first read builds; the second, in another run with nothing changed, reads that build.
+    // The first refresh builds; the second, in another run with nothing changed, keeps that
+    // build, which its reader reads.
     let (found, built) = near_origin(&mut game);
     assert_eq!(found, [(first, half)]);
     assert_eq!(near_origin(&mut game), (vec![(first, half)], built));

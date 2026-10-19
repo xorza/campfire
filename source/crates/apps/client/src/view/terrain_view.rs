@@ -2,14 +2,13 @@ use std::sync::Arc;
 
 use bevy::app::{App, Plugin, Startup};
 use bevy::asset::Assets;
-use bevy::ecs::resource::Resource;
 use bevy::ecs::world::{Mut, World};
 use bevy::image::Image;
 use bevy::material::AlphaMode;
 use bevy::mesh::{Mesh, Mesh3d};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
-use campfire_package::{ModePackages, PackageReader};
 
+use crate::client_packages::ClientPackages;
 use crate::view::client_data::ClientData;
 use crate::view::terrain_image::TerrainImage;
 use crate::view::terrain_meshes::TerrainMeshes;
@@ -19,27 +18,13 @@ use crate::view::terrain_meshes::TerrainMeshes;
 /// ground and its overlays over the map's heights, lit by the map's lights as every model is. A map
 /// with no terrain draws none.
 #[derive(Debug)]
-pub(crate) struct TerrainView {
-    pub(crate) packages: Arc<ModePackages>,
-}
-
-/// The mode's own package, whose textures a terrain's copies name.
-#[derive(Resource, Debug)]
-struct ModeFiles(PackageReader);
+pub(crate) struct TerrainView;
 
 /// The overlays' lift over the ground, so they draw over the quads they share a depth with.
 const OVERLAY_BIAS: f32 = 1.0;
 
 impl Plugin for TerrainView {
     fn build(&self, app: &mut App) {
-        let files = &self
-            .packages
-            .packages()
-            .next()
-            .expect("a mode has its own package")
-            .package
-            .files;
-        app.insert_resource(ModeFiles(files.clone()));
         app.add_systems(Startup, Self::draw);
     }
 }
@@ -48,15 +33,14 @@ impl TerrainView {
     /// Composes the map's terrain's texture, builds its meshes, and spawns the ground and its
     /// overlays, each of the file's surface.
     fn draw(world: &mut World) {
-        let ModeFiles(files) = world
-            .remove_resource::<ModeFiles>()
-            .expect("the plugin inserts the mode's files");
+        let packages = Arc::clone(&world.resource::<ClientPackages>().packages);
+        let files = &packages.mode().package.files;
         world.resource_scope(|world, data: Mut<'_, ClientData>| {
             let (Some(file), Some(heights)) = (&data.terrain, &data.heights) else {
                 return;
             };
             let grid = heights.grid();
-            let image = TerrainImage::compose(file.texture(), &files);
+            let image = TerrainImage::compose(file.texture(), files);
             let TerrainMeshes { ground, overlay } =
                 TerrainMeshes::of(file.quads(), file.texture().size, grid);
             let texture = world
@@ -64,7 +48,7 @@ impl TerrainView {
                 .add(image.into_image());
             let surface = file.surface();
             // The surface's reflectance is half its specular factor, as Bevy's glTF loader reads
-            // `KHR_materials_specular` and the client reads a material file's.
+            // `KHR_materials_specular`.
             let ground_material = StandardMaterial {
                 base_color_texture: Some(texture),
                 metallic: surface.metallic,

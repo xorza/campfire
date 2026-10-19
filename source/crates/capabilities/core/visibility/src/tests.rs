@@ -253,9 +253,12 @@ fn a_host_sets_only_what_the_mode_leaves_it_each_once() {
 #[test]
 fn a_visibility_encodes_as_its_bytes_and_reads_back_only_from_them() {
     // The kinds a mode may set, in their order: life, pools, modifiers, cooldowns, progression,
-    // inventory, mode_state, resources, supply, queues, player_modifiers, and the three unit
-    // state fields' classes; then the fog, what a player out of play sees, and the spectators.
-    let default = [7, 0, 7, 0, 0, 0, 7, 0, 0, 0, 7, 0, 1, 7, 0, 0, 0, 0, 0, 0];
+    // inventory, mode_state, resources, supply, queues, player_modifiers, the three unit state
+    // fields' classes and the three player state fields'; then the fog, what a player out of
+    // play sees, and the spectators.
+    let default = [
+        7, 0, 7, 0, 0, 0, 7, 0, 0, 0, 7, 0, 1, 7, 0, 1, 7, 0, 0, 0, 0, 0, 0,
+    ];
     assert_eq!(Visibility::DEFAULT.encode(), default);
     assert_eq!(Visibility::decode(&default), Ok(Visibility::DEFAULT));
 
@@ -276,7 +279,9 @@ host = ["spectators", "out"]
     let bytes = session.encode();
     assert_eq!(
         bytes,
-        [5, 0, 7, 0, 0, 5, 7, 0, 0, 0, 7, 0, 1, 7, 1, 1, 2, 1, 0, 0]
+        [
+            5, 0, 7, 0, 0, 5, 7, 0, 0, 0, 7, 0, 1, 7, 0, 1, 7, 1, 1, 2, 1, 0, 0
+        ]
     );
     assert_eq!(Visibility::decode(&bytes), Ok(session));
 
@@ -285,8 +290,8 @@ host = ["spectators", "out"]
         bytes[at] = byte;
         Visibility::decode(&bytes)
     };
-    // Life without its allies, which no mode takes; a unit field of the owner's to allies; a bit
-    // past the spectators'.
+    // Life without its allies, which no mode takes; a unit field of the owner's to allies, and a
+    // player's; a bit past the spectators'.
     assert_eq!(
         flawed(0, 6),
         Err(VisibilityDecodeError::Audience(DataKind::Life))
@@ -299,14 +304,18 @@ host = ["spectators", "out"]
         flawed(1, 8),
         Err(VisibilityDecodeError::Audience(DataKind::Pools))
     );
-    assert_eq!(flawed(14, 2), Err(VisibilityDecodeError::Spectators));
-    assert_eq!(flawed(15, 2), Err(VisibilityDecodeError::Out));
     assert_eq!(
-        Visibility::decode(&default[..19]),
-        Err(VisibilityDecodeError::Length(19))
+        flawed(14, 1),
+        Err(VisibilityDecodeError::Audience(DataKind::PlayerStateOwner))
+    );
+    assert_eq!(flawed(17, 2), Err(VisibilityDecodeError::Spectators));
+    assert_eq!(flawed(18, 2), Err(VisibilityDecodeError::Out));
+    assert_eq!(
+        Visibility::decode(&default[..22]),
+        Err(VisibilityDecodeError::Length(22))
     );
     assert_eq!(
         Visibility::decode(&[default.as_slice(), &[0]].concat()),
-        Err(VisibilityDecodeError::Length(21))
+        Err(VisibilityDecodeError::Length(24))
     );
 }

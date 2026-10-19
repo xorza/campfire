@@ -17,7 +17,7 @@ pub(crate) fn server_seeds(c: &mut Criterion) {
     let mut group = c.benchmark_group("atomic/server_seeds");
     group.sample_size(10);
     group.bench_function("derive", |b| {
-        b.iter(|| black_box(chain).seeds());
+        b.iter(|| black_box(&chain).seeds());
     });
     group.throughput(Throughput::Elements(NonZeroU64::from(SEGMENTS).get()));
     group.bench_function("segment_starts", |b| {

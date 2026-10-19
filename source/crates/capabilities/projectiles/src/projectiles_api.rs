@@ -1,25 +1,22 @@
-use campfire_actions::{ActionDataField, DeliveryData, DeliveryShape};
+use campfire_actions::{DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
 use campfire_script::{
-    ApiBuilder, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, RoleSet, ScriptPosition,
-    Unit,
+    ApiBuilder, CapabilityRefusal, Checked, Ctx, MemberSpec, RoleSet, ScriptPosition, Status, Unit,
 };
-use campfire_sim::Capability;
-use campfire_units::NewUnit;
 
 use crate::error::ProjectilesRefusal;
 use crate::projectile_data::ProjectileData;
 use crate::projectiles_effect::{ProjectilesEffect, Toward};
 
-/// The script API of `projectiles`: `ctx.projectile`, and the data of a projectile type.
+/// The script API of `projectiles`: `ctx.launch`, and the data of a projectile type.
 #[derive(Debug)]
 pub struct ProjectilesApi;
 
 impl ProjectilesApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let projectile = MemberSpec::call(
-            "projectile",
+            "launch",
             &[&["from", "direction"], &["from", "unit"]],
             "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, homing on `unit` for a homing type, or on a curve to `unit`'s center for a curve type; the new projectile, which spawns later in the tick",
         )
@@ -36,28 +33,14 @@ impl ProjectilesApi {
                 Self::launch(ctx, from.get(), Toward::Unit(unit.id))
             },
         )
-        .action_fields(ActionDataField::of(Some(Capability::Projectiles)))
-        .data::<DeliveryData>(&["projectile", "count", "spread_deg"], &[])
-        .shared_data(DataTable::UnitType, &["projectile"], &[])
-        .data::<ProjectileData>(
-            &[
-                "speed",
-                "width",
-                "range",
-                "homing",
-                "stop_on_hit",
-                "once_per_cast",
-                "hits",
-                "curve",
-            ],
-            &["gravity"],
-        );
+        .own_fields::<DeliveryData>(&["projectile", "count", "spread_deg"])
+        .data::<ProjectileData>(&[("gravity", Status::Planned)]);
     }
 
     /// Queues a projectile of the running action, which delivers projectiles, from its acting
     /// unit: the new projectile, with the id the call takes for it; an error for a form its type
     /// does not fly in.
-    fn launch(ctx: &Ctx, from: Vec3, toward: Toward) -> Checked<NewUnit> {
+    fn launch(ctx: &Ctx, from: Vec3, toward: Toward) -> Checked<Unit> {
         let launcher = Launcher::of(ctx, |shape| {
             matches!(shape, DeliveryShape::Projectile { .. })
         })?;
@@ -77,6 +60,6 @@ impl ProjectilesApi {
             from,
             toward,
         });
-        Ok(NewUnit { id, unit_type })
+        Ok(Unit::created(id, unit_type, ctx.view().clone()))
     }
 }

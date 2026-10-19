@@ -1,7 +1,5 @@
 use std::collections::BTreeSet;
 
-use campfire_client_files::MaterialFile;
-
 use crate::gltf::glb_builder::GlbBuilder;
 use crate::zero_hour::error::{ModelError, ZeroHourError};
 use crate::zero_hour::format::w3d::hierarchy::Hierarchy;
@@ -17,13 +15,12 @@ mod model_builder;
 mod model_textures;
 mod w3d_material;
 
-/// A model the objects name, converted: its glTF, the material files its shaders need, the
-/// parts its default look reads, the textures its meshes name that no archive holds, which it
-/// draws as the game's `MissingTexture`, and its HLOD's aggregates, which it does not draw.
+/// A model the objects name, converted: its glTF, the parts its default look reads, the textures
+/// its meshes name that no archive holds, which it draws as the game's `MissingTexture`, and its
+/// HLOD's aggregates, which it does not draw.
 #[derive(Debug)]
 pub(crate) struct ModelImport {
     pub(crate) glb: GlbBuilder,
-    pub(crate) materials: Vec<NamedMaterial>,
     pub(crate) parts: ModelParts,
     pub(crate) missing_textures: BTreeSet<String>,
     pub(crate) aggregates: Vec<String>,
@@ -39,13 +36,6 @@ pub(crate) enum Converted {
     Emitter,
     /// No file of the install holds it.
     Missing,
-}
-
-/// A material file, by the name of the glTF material it overrides.
-#[derive(Debug)]
-pub(crate) struct NamedMaterial {
-    pub(crate) name: String,
-    pub(crate) file: MaterialFile,
 }
 
 /// The render object `Find_Prototype` always has, which draws nothing.
@@ -146,7 +136,6 @@ impl ModelImport {
         };
         Ok(Self {
             glb: builder.glb,
-            materials: builder.materials,
             parts,
             missing_textures: builder.missing_textures,
             aggregates,
@@ -332,11 +321,11 @@ pub(crate) mod internals {
         [hull, turret, flash, skin]
     }
 
-    /// `Rock01.w3d`: one mesh of an empty container, a triangle.
+    /// `Rock01.w3d`: one mesh of an empty container, a triangle 1 m tall.
     pub(crate) fn rock() -> Vec<u8> {
         W3dMesh {
-            positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
-            normals: vec![[0.0, 0.0, 1.0]; 3],
+            positions: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+            normals: vec![[0.0, -1.0, 0.0]; 3],
             triangles: vec![[0, 1, 2]],
             ..W3dMesh::named("ROCK01")
         }

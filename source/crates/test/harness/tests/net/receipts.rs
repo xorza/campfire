@@ -18,6 +18,7 @@ use campfire_protocol::{Controller, ServerInput, SignedReceipt, Verifier};
 use campfire_runner::Session;
 use campfire_store::internals::Scratch;
 use campfire_store::{EntryKind, InputFile};
+use campfire_units::GroundPoint;
 
 /// The most bytes a test reads of a receipt file: one receipt, a few hundred.
 const RECEIPT_LEN: usize = 4096;
@@ -161,8 +162,10 @@ fn a_client_that_left_keeps_a_receipt_that_crosses_its_leave() {
     local.order(
         0,
         OrdersAction::Move {
-            x: Num::int(3),
-            z: Num::int(-2),
+            to: GroundPoint {
+                x: Num::int(3),
+                z: Num::int(-2),
+            },
         },
     );
     settle(&mut local);

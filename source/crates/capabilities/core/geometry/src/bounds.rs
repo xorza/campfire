@@ -1,5 +1,4 @@
 use campfire_math::{Num, Rounding, Vec3};
-use campfire_sim::Position;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -14,16 +13,16 @@ pub struct Bounds {
 }
 
 impl Bounds {
-    /// The whole world, within `Position::BOUND`: the bounds of a match without a map.
+    /// The whole world, within `Vec3::BOUND`: the bounds of a match without a map.
     pub const WORLD: Self = Self {
-        min: [Num::from_bits(-Position::BOUND.to_bits()); 2],
-        max: [Position::BOUND; 2],
+        min: [Num::from_bits(-Vec3::BOUND.to_bits()); 2],
+        max: [Vec3::BOUND; 2],
     };
 
     /// The bounds from `min` to `max`; `None` unless `min` is below `max` on both axes and both
     /// are within the world's bound.
     pub const fn new(min: [Num; 2], max: [Num; 2]) -> Option<Self> {
-        let bound = Position::BOUND.to_bits();
+        let bound = Vec3::BOUND.to_bits();
         let mut axis = 0;
         while axis < 2 {
             let (low, high) = (min[axis].to_bits(), max[axis].to_bits());
@@ -50,7 +49,7 @@ impl Bounds {
             && pos.x.to_bits() <= self.max[0].to_bits()
             && self.min[1].to_bits() <= pos.z.to_bits()
             && pos.z.to_bits() <= self.max[1].to_bits()
-            && pos.y.to_bits().unsigned_abs() <= Position::BOUND.to_bits().unsigned_abs()
+            && pos.y.to_bits().unsigned_abs() <= Vec3::BOUND.to_bits().unsigned_abs()
     }
 
     /// Whether the box `body` at `pos` lies within the bounds on the ground plane, its edges on
@@ -77,7 +76,7 @@ impl Bounds {
         if !self.contains(from) {
             return Num::ZERO;
         }
-        let height = Position::BOUND;
+        let height = Vec3::BOUND;
         [
             (from.x, direction.x, self.min[0], self.max[0]),
             (from.y, direction.y, -height, height),
@@ -169,7 +168,7 @@ mod tests {
             Vec3::from((4, 6, -1))
         );
 
-        let past = Position::BOUND + e;
+        let past = Vec3::BOUND + e;
         for (min, max) in [
             ([Num::int(0), Num::int(0)], [Num::int(0), Num::int(1)]),
             ([Num::int(1), Num::int(0)], [Num::int(0), Num::int(1)]),
@@ -178,7 +177,7 @@ mod tests {
         ] {
             assert_eq!(Bounds::new(min, max), None, "{min:?} {max:?}");
         }
-        assert!(Bounds::WORLD.contains(Vec3::from((-Position::BOUND, 0, Position::BOUND))));
+        assert!(Bounds::WORLD.contains(Vec3::from((-Vec3::BOUND, 0, Vec3::BOUND))));
         // A box of 2 × 1 m, half extents of 1 and 0.5, lies within them from x = −1 to 3 and
         // z = −0.5 to 2.5, its edges on theirs; a bit past either end is out.
         let boxed = BodyBox::new([Num::int(2), Num::ONE], Num::ZERO).unwrap();
@@ -194,7 +193,7 @@ mod tests {
             let pos = Vec3::new(x, Num::ZERO, z);
             assert_eq!(bounds.holds_box(pos, &boxed), held, "{x:?} {z:?}");
         }
-        for height in [Position::BOUND, -Position::BOUND] {
+        for height in [Vec3::BOUND, -Vec3::BOUND] {
             assert!(bounds.contains(Vec3::new(Num::ZERO, height, Num::ZERO)));
         }
         for height in [past, -past] {
@@ -216,7 +215,7 @@ mod tests {
         for direction in [x, -x, up] {
             assert_eq!(bounds.exit(past, direction), Num::ZERO, "{direction:?}");
         }
-        assert_eq!(bounds.exit(origin, up), Position::BOUND);
+        assert_eq!(bounds.exit(origin, up), Vec3::BOUND);
         // Along (0.6, 0, 0.8), each rounded once, the right edge lies 3 / 0.600 000 02 =
         // 4.999 999 8 m on, 3 · 2⁴⁸ / 10 066 330 = 83 886 076.67 bits, rounded down, as the
         // nearest, 83 886 077, would carry the path a hair past it: the distance times the

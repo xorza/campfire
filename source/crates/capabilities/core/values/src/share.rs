@@ -1,6 +1,6 @@
 use campfire_math::{Num, Rounding};
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A share from 0 to 1, exactly as data writes it: the integer 0 or 1, or a decimal string of at
 /// most nine fractional digits, kept in billionths, so `"0.7"` of 300 is 210, and `"0.5"` and
@@ -32,6 +32,14 @@ impl Share {
             .expect("a share of at most 1 of a value fits")
     }
 
+    /// The share of `parts` billionths; `None` past 1.
+    pub const fn billionths(parts: u32) -> Option<Self> {
+        if parts > Self::WHOLE {
+            return None;
+        }
+        Some(Self(parts))
+    }
+
     /// Whether it is no share at all.
     pub const fn is_zero(self) -> bool {
         self.0 == 0
@@ -56,6 +64,21 @@ impl Share {
         };
         let parts = u32::from(int == "1") * Self::WHOLE + frac * scale;
         (parts <= Self::WHOLE).then_some(Self(parts))
+    }
+}
+
+/// As data writes it, what `Deserialize` reads: the integer 0 or 1 for no share or all, else the
+/// decimal string of its billionths, of no trailing zero.
+impl Serialize for Share {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self.0 {
+            0 => serializer.serialize_u8(0),
+            Self::WHOLE => serializer.serialize_u8(1),
+            parts => {
+                let digits = format!("{parts:09}");
+                serializer.collect_str(&format_args!("0.{}", digits.trim_end_matches('0')))
+            }
+        }
     }
 }
 
@@ -84,6 +107,30 @@ mod tests {
     use campfire_codec::Toml;
 
     use super::*;
+
+    #[test]
+    fn a_share_writes_what_it_reads_back() {
+        /// A field of data that holds a share.
+        #[derive(Debug, PartialEq, Eq, Deserialize, Serialize)]
+        struct Field {
+            share: Share,
+        }
+        // None and all write as integers, a part as its digits of no trailing zero.
+        for (parts, written) in [
+            (0, "share = 0\n"),
+            (1_000_000_000, "share = 1\n"),
+            (200_000, "share = \"0.0002\"\n"),
+            (833_334, "share = \"0.000833334\"\n"),
+            (500_000_000, "share = \"0.5\"\n"),
+        ] {
+            let field = Field {
+                share: Share::billionths(parts).unwrap(),
+            };
+            assert_eq!(Toml::write(&field), written);
+            assert_eq!(Toml::parse::<Field>(written).unwrap(), field);
+        }
+        assert_eq!(Share::billionths(1_000_000_001), None);
+    }
 
     #[test]
     fn a_share_is_exactly_the_decimal_data_writes() {

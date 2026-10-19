@@ -4,6 +4,7 @@ use bevy_ecs::world::Mut;
 use campfire_common::Tick;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::{Position, SimEdge, SimSet, SimUpdate};
+use campfire_values::Named;
 
 use super::*;
 
@@ -16,11 +17,11 @@ fn on_match_start(ctx) {
     for camp in ctx.map.markers("camp") {
         ctx.spawn_unit(camp.params.unit_type, "neutral", camp.pos);
     }
-    ctx.spawn_group("a", "mid", PathEnd::Start, ctx.p.group);
+    ctx.spawn_group("a", "mid", PathEnd::Start, ctx.params.group);
     ctx.spawn_group("b", "mid", PathEnd::End, ["grunt"]);
 }
 
-fn on_unit_died(ctx, unit, killer, assisters) {
+fn on_unit_death(ctx, unit, killer, assisters) {
     ctx.state.count += 1;
     ctx.state.kind = unit.unit_type;
     ctx.state.team = killer.team;
@@ -29,8 +30,8 @@ fn on_unit_died(ctx, unit, killer, assisters) {
     ctx.respawn(unit, 250);
 }
 
-fn on_mode_input(ctx, player, name, value) {
-    ctx.respawn(ctx.units_tagged(value)[0], 100);
+fn on_input(ctx, player, name, value) {
+    ctx.respawn(ctx.all_units_tagged(value)[0], 100);
 }
 "#;
     let mut game = mode_match(script, ScriptLimits::ROOMY);
@@ -103,7 +104,7 @@ fn on_mode_input(ctx, player, name, value) {
         [FailureKind::Api(ModeRefusal::RespawnAlive.refused())]
     );
     let tower = Mode::entity_by_id(&game, 0);
-    game.entity_mut(tower).insert((Dead, OnDeath::Despawn));
+    game.entity_mut(tower).insert(Dead);
     Mode::tick_inputs(&mut game, &[(0, input("probe", "tower"))]);
     assert_eq!(
         Mode::failures(&game),
@@ -121,7 +122,7 @@ fn a_match_ends_once_and_then_no_stage_and_no_pass_between_them_runs() {
     // A timer counts every tick; inputs end the match.
     let script = r#"
 fn on_match_start(ctx) {
-    ctx.timer("every", 100, true, ());
+    ctx.every("every", 100);
     ctx.spawn_group("a", "mid", PathEnd::Start, ["grunt"]);
 }
 
@@ -129,29 +130,46 @@ fn on_timer(ctx, name, data) {
     ctx.state.count += 1;
 }
 
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     if name == "probe" {
-        ctx.end(value);
-        ctx.end(value);
+        let running = ctx.result == ();
+        ctx.win(value);
+        let won = ctx.result;
+        if running && !won.is_draw && won.winner == "a" {
+            ctx.state.count += 10;
+        }
+        ctx.draw();
+        if ctx.result.winner == "a" {
+            ctx.state.count += 100;
+        }
     } else if name == "hero" {
-        ctx.end(value);
+        ctx.win(value);
     } else {
-        ctx.end(());
+        ctx.draw();
+        if ctx.result.is_draw && ctx.result.winner == () {
+            ctx.state.count += 1000;
+        }
     }
 }
 "#;
+    // The first end of a call names the result, which `ctx.result` reads from then on, `()`
+    // before; a second end does nothing, so the call's other effects apply: team a wins in tick
+    // 0, the count takes its 10 and 100, and the timer, of a stage past the end, counts nothing.
     let mut game = mode_match(script, ScriptLimits::ROOMY);
-    // A second end in the same call fails the call, which ends nothing; so does a team the mode
-    // does not have. The timer fires at the end of ticks 0 and 1.
     Mode::tick_inputs(&mut game, &[(0, input("probe", "a"))]);
-    assert_eq!(
-        Mode::failures(&game),
-        [FailureKind::Api(ModeRefusal::Ended.refused())]
-    );
+    assert!(Mode::failures(&game).is_empty());
+    let end = MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(0)));
+    assert_eq!(game.match_end(), Some(end));
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(110));
+
+    // A team the mode does not have fails the call, which ends nothing. The timer fires at the
+    // end of ticks 0 and 1.
+    let mut game = mode_match(script, ScriptLimits::ROOMY);
+    Mode::tick_inputs(&mut game, &[]);
     Mode::tick_inputs(&mut game, &[(0, input("hero", "z"))]);
     assert_eq!(
         Mode::failures(&game),
-        [FailureKind::Api(ApiError::Unknown(NameKind::Team))]
+        [FailureKind::Api(ApiError::Unknown(Team::NAMES))]
     );
     assert!(game.match_end().is_none());
     assert_eq!(Mode::field(&game, "count"), StateValue::Int(2));
@@ -195,11 +213,12 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(game.get::<Position>(grunt).map(|pos| pos.get()), Some(away));
     assert_eq!(game.resource::<GapRuns>().0, 2);
 
-    // `end(())` is a draw.
+    // A draw has no winner: the count takes its 1000.
     let mut game = mode_match(script, ScriptLimits::ROOMY);
     Mode::tick_inputs(&mut game, &[(0, input("phase", "draw"))]);
     let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
     assert_eq!(game.match_end(), Some(draw));
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(1000));
 }
 
 #[test]
@@ -210,14 +229,14 @@ fn a_save_asks_for_the_boundary_that_ends_its_tick() {
     let script = r#"
 fn on_match_start(ctx) {
     ctx.save();
-    ctx.timer("later", 1, false, ());
+    ctx.after("later", 1);
 }
 
 fn on_timer(ctx, name, data) {
     ctx.save();
 }
 
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     ctx.save();
 }
 "#;
@@ -228,4 +247,24 @@ fn on_mode_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(0, input("hero", "a"))]);
     assert_eq!(Mode::failures(&game), []);
     assert_eq!(game.save_asked(), Some(Tick::new(2)));
+}
+
+#[test]
+fn a_bounty_share_is_0_or_more_and_of_a_mode_of_a_bounty() {
+    // The test mode gives no `[bounty]`: a share fails its call, one below 0 first for its sign.
+    let start = |share: &str| {
+        let script =
+            format!("fn on_match_start(ctx) {{ ctx.set_bounty_share(ctx.players[0], {share}); }}");
+        start_match(&script, ScriptLimits::ROOMY, &mode_files())
+            .unwrap_err()
+            .kind()
+    };
+    assert_eq!(
+        start("num(-1)"),
+        FailureKind::Api(ModeRefusal::NegativeShare.refused())
+    );
+    assert_eq!(
+        start("num(1) / 2"),
+        FailureKind::Api(ModeRefusal::NoBounty.refused())
+    );
 }

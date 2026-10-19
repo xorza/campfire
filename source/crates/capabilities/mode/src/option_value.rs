@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use campfire_values::{DeclaredName, Scalar};
+use campfire_common::DeclaredName;
+use campfire_values::Scalar;
 
 use crate::error::OptionValueError;
 

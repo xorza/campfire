@@ -1,5 +1,6 @@
+use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// The mode's `[navigation]` section: the layers bodies move on, the first the default, and the
@@ -15,5 +16,10 @@ pub struct ModeNavigationData {
 }
 
 impl DataSection for ModeNavigationData {
-    const TABLE: DataTable = DataTable::ModeNavigation;
+    const TABLE: DataTable = DataTable::new("The mode's `[navigation]`");
+}
+
+impl Section for ModeNavigationData {
+    const TABLE: SectionTable = SectionTable::Mode;
+    const KEY: &'static str = "navigation";
 }

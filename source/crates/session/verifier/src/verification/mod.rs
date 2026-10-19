@@ -1,7 +1,7 @@
 use std::path::Path;
 
+use campfire_common::ErrorReport;
 use campfire_common::StateHash;
-use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageStore;
 use campfire_protocol::{Checkpoint, SessionLog, SessionTerms, SnapshotFingerprint};
@@ -33,7 +33,7 @@ impl SnapshotSource for () {
 
 /// The snapshots of a directory, each named by its fingerprint in hex.
 #[derive(Debug, Clone, Copy)]
-pub struct SnapshotFiles<'p>(pub &'p Path);
+pub(crate) struct SnapshotFiles<'p>(pub &'p Path);
 
 impl SnapshotSource for SnapshotFiles<'_> {
     fn snapshot(

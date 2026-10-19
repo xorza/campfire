@@ -1,6 +1,6 @@
 use std::ptr;
 
-use campfire_values::EngineEnum;
+use campfire_values::{EngineEnum, ModifierId, Named};
 use derive_more::Display;
 use rhai::{AST, ASTNode, Expr, FnCallExpr, ScriptFnMetadata, Stmt};
 
@@ -11,17 +11,14 @@ use crate::scripts::applies::Applies;
 use crate::scripts::error::CtxMisuse;
 use crate::scripts::member_kind::MemberKind;
 use crate::scripts::member_spec::MemberSpec;
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::ScriptApi;
+use campfire_values::NameKind;
 
 /// The variable every script API call goes through, by the script API's convention
 /// (08-script-api.md, `ctx` stays visible).
 const CTX: &str = "ctx";
-/// Rhai's call that makes a function pointer of a function's name, which its optimizer folds
-/// into a constant when the name is a literal, and the start of the name it gives each anonymous
-/// function a script defines, which it does not export.
-const FN_POINTER: &str = "Fn";
-const ANONYMOUS: &str = "anon$";
+/// The function Rhai calls for `a in b`, `contains(b, a)`.
+const CONTAINS: &str = "contains";
 
 /// What the package load checks read from a script: its functions, the names it uses on `ctx`,
 /// and the string literals it gives the arguments the registry marks as names.
@@ -30,18 +27,24 @@ pub struct ScriptFacts {
     /// Sorted by name, then by parameter count.
     pub functions: Vec<ScriptFunction>,
     pub ctx_names: Vec<CtxUse>,
-    /// Each `ctx.p.<name>` it reads.
+    /// Each `ctx.params.<name>` it reads.
     pub params: Vec<String>,
+    /// Each name it reads after a handle's `.params`, a unit type's param or a map marker's.
+    pub handle_params: Vec<String>,
     /// Each field it reads or writes after `.state`, of the mode, a modifier or a unit.
     pub state_fields: Vec<String>,
     /// Each literal it gives an argument the registry marks as a name, in the script's order.
     pub names: Vec<ScriptName>,
+    /// Each string literal it compares with a name the API returns, in the script's order.
+    pub compared: Vec<ComparedName>,
+    /// Each member that returns a name whose value a `switch` reads, whose cases no check reads.
+    pub switched: Vec<String>,
     /// Each string literal it gives an argument that takes an engine enum.
     pub enum_strings: Vec<EnumString>,
     /// Each `Module::name` it reads or calls, in the script's order.
     pub enum_paths: Vec<EnumPath>,
-    /// Whether it makes a function pointer: a closure, an anonymous function or a call of `Fn`.
-    pub function_pointer: bool,
+    /// Whether it holds statements outside its functions, which no call runs.
+    pub top_level: bool,
     /// Each field or method it reads on a value other than `ctx`, a call of no namespace that is
     /// not its own and gives `ctx` no first argument among them, but the names after a member
     /// that leads to data; and the keys of its object-map literals.
@@ -59,11 +62,13 @@ pub struct ScriptFunction {
     pub ctx_first: bool,
 }
 
-/// A name used on `ctx`, as a value or as a call.
+/// A name used on `ctx`, as a value or as a call, and the count of arguments it gives a call,
+/// `ctx` aside.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CtxUse {
     pub name: String,
     pub kind: MemberKind,
+    pub args: usize,
 }
 
 /// A literal a script gives an argument that names something of `kind`, and, for a modifier,
@@ -73,6 +78,15 @@ pub struct ScriptName {
     pub kind: NameKind,
     pub name: String,
     pub applies: Option<Applies>,
+}
+
+/// A string literal a script compares, by `==`, `!=` or `in`, with the name of `kind` that the
+/// member `member` returns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ComparedName {
+    pub member: String,
+    pub kind: NameKind,
+    pub name: String,
 }
 
 /// A string literal a script gives `call`'s argument that takes a member of `engine_enum`.
@@ -92,15 +106,17 @@ pub struct EnumPath {
     pub kind: MemberKind,
 }
 
-/// A name read on a value, as a field or as a method.
+/// A name read on a value, as a field or as a method, and the count of arguments it gives a
+/// method, the receiver aside.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MemberUse {
     pub name: String,
     pub kind: MemberKind,
+    pub args: usize,
 }
 
 /// What the first link of a chain names: a member of a value, a name of `ctx`, or data, as after
-/// `ctx.p`; only a member is recorded as one.
+/// `ctx.params`; only a member is recorded as one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ChainHead {
     Member,
@@ -132,10 +148,7 @@ impl ScriptFacts {
         facts
             .functions
             .sort_unstable_by(|a, b| (&a.name, a.params).cmp(&(&b.name, b.params)));
-        facts.function_pointer = facts
-            .functions
-            .iter()
-            .any(|function| function.name.starts_with(ANONYMOUS));
+        facts.top_level = !ast.statements().is_empty();
         ast.walk(&mut |path: &[ASTNode<'_>]| {
             match path.last() {
                 Some(ASTNode::Expr(Expr::Map(map, _))) => {
@@ -180,14 +193,19 @@ impl ScriptFacts {
                 }
                 Some(
                     ASTNode::Expr(Expr::FnCall(call, _)) | ASTNode::Stmt(Stmt::FnCall(call, _)),
-                ) if call.name == FN_POINTER => facts.function_pointer = true,
-                Some(
-                    ASTNode::Expr(Expr::FnCall(call, _)) | ASTNode::Stmt(Stmt::FnCall(call, _)),
                 ) if !call.is_operator_call() && own_function(ast, call).is_none() => {
+                    facts.read_comparison(ast, call, api);
                     facts.read_call(call, api);
                 }
-                Some(ASTNode::Expr(Expr::DynamicConstant(value, _))) if value.is_fnptr() => {
-                    facts.function_pointer = true;
+                Some(
+                    ASTNode::Expr(Expr::FnCall(call, _)) | ASTNode::Stmt(Stmt::FnCall(call, _)),
+                ) if call.is_operator_call() => {
+                    facts.read_comparison(ast, call, api);
+                }
+                Some(ASTNode::Stmt(Stmt::Switch(switch, _))) => {
+                    if let Some(returned) = returned(ast, &switch.0, api) {
+                        facts.switched.push(returned.member);
+                    }
                 }
                 Some(ASTNode::Expr(expr)) if variable(expr) == Some(CTX) => {
                     let parent = path.len().checked_sub(2).map(|at| &path[at]);
@@ -221,7 +239,7 @@ impl ScriptFacts {
                 self.value(name);
                 let data = data_name(&inner.rhs);
                 match name {
-                    "p" => self.params.extend(data),
+                    "params" => self.params.extend(data),
                     "state" => self.state_fields.extend(data),
                     _ => {}
                 }
@@ -239,11 +257,12 @@ impl ScriptFacts {
                 self.read_ctx_call(&call.name, args, api);
             }
             _ => {
+                let args = call.args.get(1..).unwrap_or_default();
                 self.members.push(MemberUse {
                     name: call.name.to_string(),
                     kind: MemberKind::Method,
+                    args: args.len(),
                 });
-                let args = call.args.get(1..).unwrap_or_default();
                 self.read_args(api.method(&call.name), args);
             }
         }
@@ -254,8 +273,9 @@ impl ScriptFacts {
         self.ctx_names.push(CtxUse {
             name: name.to_owned(),
             kind: MemberKind::Call,
+            args: args.len(),
         });
-        let member = api.member(ApiOwner::Ctx, name);
+        let member = api.member(ApiOwner::CTX, name);
         let spec = member
             .map(|member| &member.spec)
             .filter(|spec| spec.kind == MemberKind::Call);
@@ -266,15 +286,18 @@ impl ScriptFacts {
     fn read_chain(&mut self, link: &Expr, head: ChainHead, api: &ScriptApi) {
         let member = head == ChainHead::Member;
         let read = |facts: &mut Self, link: &Expr| -> bool {
-            let (name, kind) = match link {
-                Expr::Property(property, _) => (property.2.as_str(), MemberKind::Field),
-                Expr::MethodCall(call, _) => (call.name.as_str(), MemberKind::Method),
+            let (name, kind, args) = match link {
+                Expr::Property(property, _) => (property.2.as_str(), MemberKind::Field, 0),
+                Expr::MethodCall(call, _) => {
+                    (call.name.as_str(), MemberKind::Method, call.args.len())
+                }
                 _ => return false,
             };
             if member {
                 facts.members.push(MemberUse {
                     name: name.to_owned(),
                     kind,
+                    args,
                 });
             }
             kind == MemberKind::Field && api.leads_to_data(name)
@@ -286,15 +309,23 @@ impl ScriptFacts {
                 } else {
                     ChainHead::Member
                 };
-                if member && property(&next.lhs) == Some("state") {
-                    self.state_fields.extend(data_name(&next.rhs));
+                if member {
+                    match property(&next.lhs) {
+                        Some("state") => self.state_fields.extend(data_name(&next.rhs)),
+                        Some("params") => self.handle_params.extend(data_name(&next.rhs)),
+                        _ => {}
+                    }
                 }
                 self.read_chain(&next.rhs, rest, api);
             }
             Expr::Index(next, ..) => {
                 read(self, &next.lhs);
-                if member && property(&next.lhs) == Some("state") {
-                    self.state_fields.extend(data_name(&next.rhs));
+                if member {
+                    match property(&next.lhs) {
+                        Some("state") => self.state_fields.extend(data_name(&next.rhs)),
+                        Some("params") => self.handle_params.extend(data_name(&next.rhs)),
+                        _ => {}
+                    }
                 }
                 if let Expr::Dot(element, ..) = &next.rhs {
                     self.read_chain(&element.rhs, ChainHead::Member, api);
@@ -323,7 +354,7 @@ impl ScriptFacts {
                 });
             }
             if let Some(kind) = kinds.names[at] {
-                let applies = spec.applies.filter(|_| kind == NameKind::Modifier);
+                let applies = spec.applies.filter(|_| kind == ModifierId::NAMES);
                 self.names.push(ScriptName {
                     kind,
                     name: literal,
@@ -331,6 +362,35 @@ impl ScriptFacts {
                 });
             }
         }
+    }
+
+    /// The literals the call `call` compares with a name the API returns: `a == b` and `a != b`
+    /// either way round, and `a in [b, c]`, which Rhai calls as `contains` with the list first.
+    /// A list not written in place holds no literal the check reads.
+    fn read_comparison(&mut self, ast: &AST, call: &FnCallExpr, api: &ScriptApi) {
+        let [left, right] = &*call.args else {
+            return;
+        };
+        let (returned, literals) = match call.name.as_str() {
+            "==" | "!=" => match (returned(ast, left, api), returned(ast, right, api)) {
+                (Some(returned), _) => (returned, string(right).into_iter().collect()),
+                (None, Some(returned)) => (returned, string(left).into_iter().collect()),
+                (None, None) => return,
+            },
+            CONTAINS => {
+                let Some(returned) = returned(ast, right, api) else {
+                    return;
+                };
+                (returned, strings(left))
+            }
+            _ => return,
+        };
+        self.compared
+            .extend(literals.into_iter().map(|name| ComparedName {
+                member: returned.member.clone(),
+                kind: returned.kind,
+                name,
+            }));
     }
 
     /// The modifiers it applies by a literal name, each with how its call applies it.
@@ -345,6 +405,7 @@ impl ScriptFacts {
             self.ctx_names.push(CtxUse {
                 name: name.to_owned(),
                 kind: MemberKind::Value,
+                args: 0,
             });
         }
     }
@@ -409,6 +470,82 @@ fn property(expr: &Expr) -> Option<&str> {
     match expr {
         Expr::Property(property, _) => Some(&property.2),
         _ => None,
+    }
+}
+
+/// The member that returns a name, and its kind, whose value `expr` reads: the last link of a
+/// chain, none after a member that leads to data, or a call as a function, of `ctx` when it
+/// gives `ctx` first.
+fn returned(ast: &AST, expr: &Expr, api: &ScriptApi) -> Option<Returned> {
+    let (name, kind, on_ctx) = match expr {
+        Expr::Dot(dot, ..) => {
+            let mut on_ctx = variable(&dot.lhs) == Some(CTX);
+            let mut link = &dot.rhs;
+            loop {
+                let (head, rest) = match link {
+                    Expr::Property(property, _) => {
+                        break (property.2.as_str(), MemberKind::Field, on_ctx);
+                    }
+                    Expr::MethodCall(call, _) => {
+                        break (call.name.as_str(), MemberKind::Method, on_ctx);
+                    }
+                    Expr::Dot(next, ..) => (&next.lhs, &next.rhs),
+                    Expr::Index(next, ..) => match &next.rhs {
+                        Expr::Dot(element, ..) => (&next.lhs, &element.rhs),
+                        _ => return None,
+                    },
+                    _ => return None,
+                };
+                if property(head).is_some_and(|name| api.leads_to_data(name)) {
+                    return None;
+                }
+                (link, on_ctx) = (rest, false);
+            }
+        }
+        Expr::FnCall(call, _)
+            if call.namespace.is_empty()
+                && !call.is_operator_call()
+                && own_function(ast, call).is_none() =>
+        {
+            let on_ctx = call.args.first().and_then(variable) == Some(CTX);
+            (call.name.as_str(), MemberKind::Method, on_ctx)
+        }
+        _ => return None,
+    };
+    let kind = if on_ctx {
+        api.member(ApiOwner::CTX, name)?.output?.names?
+    } else {
+        api.returned(name, kind)?
+    };
+    Some(Returned {
+        member: name.to_owned(),
+        kind,
+    })
+}
+
+/// A member that returns a name of `kind`.
+#[derive(Debug)]
+struct Returned {
+    member: String,
+    kind: NameKind,
+}
+
+/// The string literals of a list written in place, as the parse gives it, or folded into a
+/// constant.
+fn strings(expr: &Expr) -> Vec<String> {
+    match expr {
+        Expr::Array(items, _) => items.iter().filter_map(string).collect(),
+        Expr::DynamicConstant(value, _) => value.clone().into_array().map_or_else(
+            |_| Vec::new(),
+            |items| {
+                items
+                    .into_iter()
+                    .filter_map(|item| item.into_immutable_string().ok())
+                    .map(|text| text.to_string())
+                    .collect()
+            },
+        ),
+        _ => Vec::new(),
     }
 }
 

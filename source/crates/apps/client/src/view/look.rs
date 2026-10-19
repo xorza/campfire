@@ -20,8 +20,8 @@ pub(crate) struct Look {
 }
 
 /// On every unit's drawing root, the shape of the unit, which the pointer picks it by and the HUD
-/// stands over, whether its figure or its models draw it: a player's avatar, a creep that walks,
-/// or a structure that does not, each as tall as its kind, and a model drawing as tall as its
+/// stands over, whether its figure or its models draw it: a player's avatar, a creep that walks, or
+/// a structure that does not, each of its kind's proportions, and a model drawing as tall as its
 /// models. A capsule of `radius`, `height` tall, or, for a box body, a cuboid as tall standing on
 /// its `footing`.
 #[derive(Component, Debug, Clone, Copy, PartialEq)]
@@ -128,8 +128,9 @@ impl Look {
 }
 
 impl Shape {
-    /// The shape of a unit of `kind` that has `body`: its kind's, at its body's radius, its
-    /// kind's length between the caps, or on its box, or its kind's own with no body.
+    /// The shape of a unit of `kind` that has `body`, of its kind's proportions at its body's
+    /// size, whatever the scale of its game: as wide as its body's circle, or as its box's
+    /// shorter half edge, and as tall as its kind for that width; its kind's own with no body.
     pub(crate) fn of(kind: ShapeKind, body: Option<&Body>) -> Self {
         let kind = kind.shape();
         let footing = match (
@@ -148,11 +149,11 @@ impl Shape {
         };
         let radius = match footing {
             Footing::Circle(radius) => radius,
-            Footing::Box { .. } => kind.radius,
+            Footing::Box { half, .. } => half[0].min(half[1]),
         };
         Self {
             radius,
-            height: kind.length() + 2.0 * radius,
+            height: kind.height / kind.radius * radius,
             footing,
         }
     }
@@ -180,10 +181,10 @@ mod tests {
     #[test]
     fn a_unit_is_drawn_at_its_bodys_radius_and_its_kinds_height_and_lies_down_dead() {
         let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
-        // A radius of 0.75 m, and the avatar's length of 1 m between the caps: 2.5 m tall.
+        // A radius of 0.75 m, of an avatar's proportions, 2 m tall at 0.5 m: 3 m tall.
         let avatar = Shape {
             radius: 0.75,
-            height: 2.5,
+            height: 3.0,
             footing: Footing::Circle(0.75),
         };
         assert_eq!(Shape::of(ShapeKind::Avatar, Some(&body)), avatar);
@@ -191,7 +192,7 @@ mod tests {
         assert_eq!(Shape::of(ShapeKind::Structure, None), STRUCTURE);
         // A box of 4 × 2 m turned a quarter: its first half edge points along −z, which Bevy's
         // turn of π/2 about y takes x to, as the unit's facing of 90° turns its model; it stands
-        // as tall as a structure, and reaches √5 m.
+        // as tall as a structure 1 m wide, its shorter half edge, and reaches √5 m.
         let form = BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap();
         let boxed = Shape::of(ShapeKind::Structure, Some(&form.at(Num::int(90))));
         let expected = Footing::Box {
@@ -199,7 +200,10 @@ mod tests {
             yaw: FRAC_PI_2,
         };
         assert_eq!(boxed.footing, expected);
-        assert_eq!(boxed.height, STRUCTURE.height);
+        assert_eq!(
+            (boxed.radius, boxed.height),
+            (1.0, STRUCTURE.height / STRUCTURE.radius)
+        );
         let figure = World::new().spawn_empty().id();
         let look = Look {
             figure,
@@ -212,14 +216,14 @@ mod tests {
                 .abs_diff_eq(Vec3::Z, 1e-6)
         );
         // It covers a point 1.9 m along z and 0.9 m along x from its center, and not 1.1 m along x.
-        assert!(expected.covers(Vec2::new(0.9, 1.9)));
-        assert!(!expected.covers(Vec2::new(1.1, 0.0)));
-        // The avatar's capsule stands its half length over its radius, 0.75 + 0.5; dead, it lies
-        // on its side, its axis its radius over the ground. The box stands as it stood.
+        assert!(expected.crossed(Vec2::new(0.9, 1.9), Vec2::ZERO).is_some());
+        assert!(expected.crossed(Vec2::new(1.1, 0.0), Vec2::ZERO).is_none());
+        // The avatar's capsule stands its half height up, 1.5 m; dead, it lies on its side, its
+        // axis its radius over the ground. The box stands as it stood.
         let dead = Handle::default();
         let standing = look.pose(avatar, Condition::Alive, &dead).transform;
         let lying = look.pose(avatar, Condition::Dead, &dead).transform;
-        assert_eq!(standing.translation, Vec3::Y * 1.25);
+        assert_eq!(standing.translation, Vec3::Y * 1.5);
         assert_eq!(
             (lying.translation, lying.rotation),
             (Vec3::Y * 0.75, Quat::from_rotation_z(FRAC_PI_2))

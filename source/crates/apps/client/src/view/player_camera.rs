@@ -1,6 +1,7 @@
 use bevy::app::{App, Plugin, Startup, Update};
 use bevy::camera::{Camera3d, PerspectiveProjection, Projection};
 use bevy::core_pipeline::tonemapping::Tonemapping;
+use bevy::ecs::change_detection::DetectChanges;
 use bevy::ecs::message::MessageReader;
 use bevy::ecs::query::{Changed, With};
 use bevy::ecs::schedule::IntoScheduleConfigs;
@@ -13,22 +14,22 @@ use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::{CursorGrabMode, CursorOptions, PrimaryWindow, Window};
 
+use crate::input_map::{Act, InputMap};
 use crate::view::ViewSystems;
-use crate::view::camera_rig::{CameraRig, Turn, Zoom};
+use crate::view::camera_rig::{CameraRig, ScreenPoint, Turn, Zoom};
 use crate::view::client_data::ClientData;
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
 use crate::view::scene_lights::EXPOSURE;
 
-/// The player's camera, as its package's camera file and the client's controls move it: the
-/// arrow keys and the window's edges scroll it, the wheel, the keypad's 8 and 2 and Alt with Up
-/// and Down zoom it, the keypad's 4 and 6 and Alt with Left and Right turn it, a drag of the
-/// middle button pans it, keeping the ground it grabbed under the cursor, as an editor's and an
-/// RTS's do, and with Ctrl orbits it, turning and tilting; a click of the middle button, the
-/// keypad's 5 or Alt with Backspace sets it back. It starts over the middle of the map's
-/// heightmap, or the origin, and stays over the heightmap. The window keeps the cursor within it
-/// while it has the focus, so the cursor reaches the edges that scroll, and lets it go when it
-/// loses the focus.
+/// The player's camera, as its package's camera file and the key map move it: the scroll chords
+/// and the window's edges scroll it, the wheel and the zoom chords zoom it, the turn chords turn
+/// it, a drag of the middle button pans it, keeping the ground it grabbed under the cursor, as an
+/// editor's and an RTS's do, and with the orbit's modifiers orbits it, turning and tilting; a
+/// click of the middle button or the reset chord sets it back. It starts over the middle of the
+/// map's heightmap, or the origin, and stays over the heightmap. The window keeps the cursor
+/// within it while it has the focus, so the cursor reaches the edges that scroll, and lets it go
+/// when it loses the focus.
 #[derive(Debug)]
 pub(crate) struct PlayerCamera;
 
@@ -40,8 +41,6 @@ type FocusChanged<'w, 's> = Query<
     (With<PrimaryWindow>, Changed<Window>),
 >;
 
-/// The pixels from the window's edge within which the cursor scrolls, as the game's 3.
-const EDGE: f32 = 3.0;
 /// The pixels of a trackpad's scroll that count as a notch of a wheel.
 const PIXELS_PER_NOTCH: f32 = 50.0;
 
@@ -50,7 +49,9 @@ impl Plugin for PlayerCamera {
         app.add_systems(Startup, Self::spawn);
         app.add_systems(
             Update,
-            (Self::steer, Self::place).chain().before(ViewSystems),
+            (Self::steer, Self::place.run_if(Self::moved))
+                .chain()
+                .before(ViewSystems),
         );
         app.add_systems(Update, Self::confine);
     }
@@ -82,7 +83,7 @@ impl PlayerCamera {
 
     /// Moves the camera by this frame's keys, wheel and cursor.
     fn steer(
-        keys: Res<'_, ButtonInput<KeyCode>>,
+        (keys, input): (Res<'_, ButtonInput<KeyCode>>, Res<'_, InputMap>),
         buttons: Res<'_, ButtonInput<MouseButton>>,
         mut wheel: MessageReader<'_, '_, MouseWheel>,
         window: Single<'_, '_, &Window, With<PrimaryWindow>>,
@@ -92,26 +93,20 @@ impl PlayerCamera {
     ) {
         let seconds = time.delta_secs();
         let now = time.elapsed_secs_f64();
-        let held = |key| keys.pressed(key);
-        // Alt turns the arrows from scrolling to turning and zooming, for a keyboard with no
-        // keypad (02-engine-core.md, Every key on a keyboard with no keypad).
-        let alt = keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]);
-        let arrow = |key| !alt && held(key);
-        let alt_arrow = |key| alt && held(key);
+        let held = |act| input.held(act, &keys);
         let axis = |minus: bool, plus: bool| f32::from(i8::from(plus) - i8::from(minus));
         let cursor = window.cursor_position();
-        let edge =
-            |at: Option<f32>, size: f32| at.map_or([false; 2], |at| [at < EDGE, at >= size - EDGE]);
+        let width = rig.edge();
+        let edge = |at: Option<f32>, size: f32| {
+            at.map_or([false; 2], |at| [at < width, at >= size - width])
+        };
         let [left, right] = edge(cursor.map(|cursor| cursor.x), window.width());
         let [top, bottom] = edge(cursor.map(|cursor| cursor.y), window.height());
         let across = axis(
-            arrow(KeyCode::ArrowLeft) || left,
-            arrow(KeyCode::ArrowRight) || right,
+            held(Act::ScrollLeft) || left,
+            held(Act::ScrollRight) || right,
         );
-        let along = axis(
-            arrow(KeyCode::ArrowDown) || bottom,
-            arrow(KeyCode::ArrowUp) || top,
-        );
+        let along = axis(held(Act::ScrollDown) || bottom, held(Act::ScrollUp) || top);
         if across != 0.0 || along != 0.0 {
             rig.scroll(across, along, seconds);
         }
@@ -125,26 +120,22 @@ impl PlayerCamera {
         if notches != 0.0 {
             rig.wheel(notches);
         }
-        let zoom_in = held(KeyCode::Numpad8) || alt_arrow(KeyCode::ArrowUp);
-        let zoom_out = held(KeyCode::Numpad2) || alt_arrow(KeyCode::ArrowDown);
-        match (zoom_in, zoom_out) {
+        match (held(Act::ZoomIn), held(Act::ZoomOut)) {
             (true, false) => rig.zoom_key(Zoom::In, seconds),
             (false, true) => rig.zoom_key(Zoom::Out, seconds),
             _ => {}
         }
-        let turn_left = held(KeyCode::Numpad4) || alt_arrow(KeyCode::ArrowLeft);
-        let turn_right = held(KeyCode::Numpad6) || alt_arrow(KeyCode::ArrowRight);
-        match (turn_left, turn_right) {
+        match (held(Act::TurnLeft), held(Act::TurnRight)) {
             (true, false) => rig.turn_key(Turn::Clockwise, seconds),
             (false, true) => rig.turn_key(Turn::Counterclockwise, seconds),
             _ => {}
         }
-        if keys.just_pressed(KeyCode::Numpad5) || alt && keys.just_pressed(KeyCode::Backspace) {
+        if input.pressed(Act::ResetCamera, &keys) {
             rig.reset();
         }
         if let Some(cursor) = cursor {
             if buttons.just_pressed(MouseButton::Middle) {
-                if keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]) {
+                if input.orbits(&keys) {
                     rig.press_orbit(cursor, now);
                 } else {
                     let pivot = rig.pivot();
@@ -153,14 +144,26 @@ impl PlayerCamera {
                         .as_ref()
                         .map_or(0.0, |heights| heights.at(pivot.x, pivot.y));
                     let screen = Vec2::new(window.width(), window.height());
-                    rig.press_pan(cursor, screen, ground, now);
+                    rig.press_pan(ScreenPoint { cursor, screen }, ground, now);
                 }
             }
-            rig.drag_to(cursor);
+            // A rig changes only as it moves, so the camera is placed only then.
+            if rig.dragging() {
+                rig.drag_to(cursor);
+            }
         }
-        if buttons.just_released(MouseButton::Middle) {
+        if buttons.just_released(MouseButton::Middle) && rig.dragging() {
             rig.release(now);
         }
+    }
+
+    /// Whether the camera's place or field of view may differ from the rig's: the rig moved, or
+    /// the window changed its shape.
+    fn moved(
+        rig: Res<'_, CameraRig>,
+        resized: Query<'_, '_, (), (Changed<Window>, With<PrimaryWindow>)>,
+    ) -> bool {
+        rig.is_changed() || !resized.is_empty()
     }
 
     /// Keeps the cursor within the window while the window has the focus, and lets it go when

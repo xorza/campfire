@@ -12,7 +12,7 @@ fn mode_sequence(game: &Match) -> Rng {
 #[test]
 fn the_modes_draws_follow_on_through_its_calls_in_a_tick_and_start_again_in_the_next() {
     let drawer = r#"
-fn on_input(ctx, player, name, value) {
+fn take_input(ctx, player, name, value) {
     if value == "draw" {
         ctx.state.kind += `${ctx.pick([10, 20, 30])} ${ctx.chance(num(1) / 2)};`;
     } else if value == "below" {

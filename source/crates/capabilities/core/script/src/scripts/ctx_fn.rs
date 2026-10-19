@@ -8,10 +8,11 @@ use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
 use crate::scripts::member_spec::{ArgKinds, MemberSpec};
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_arg::ScriptArg;
-use crate::scripts::script_value::{ScriptType, ScriptValue};
+use crate::scripts::script_output::ScriptOutput;
+use crate::scripts::script_value::ScriptType;
+use campfire_values::NameKind;
 
 /// A form of a call or a value of `ctx`, which takes `ctx` first and then its arguments, each a
 /// `ScriptArg`. Rhai calls it with each argument as the script gives it, and a second time, its
@@ -21,8 +22,14 @@ pub trait CtxFn<Args, R> {
     /// How many arguments it takes, `ctx` aside.
     const ARITY: usize;
 
+    /// The name of each argument's type, by place, as the reference shows it.
+    const TYPES: &'static [&'static str];
+
     /// What each argument names, and the engine enum each takes, by place.
     fn args() -> ArgKinds;
+
+    /// The kind of name the value it gives is; none for a value that names nothing.
+    const NAME_KIND: Option<NameKind>;
 
     /// The type of the value it gives.
     fn output() -> TypeId;
@@ -37,8 +44,14 @@ pub trait MethodFn<M, H, Args, R> {
     /// How many arguments it takes, the handle and `ctx` aside.
     const ARITY: usize;
 
+    /// The name of each argument's type, by place, as the reference shows it.
+    const TYPES: &'static [&'static str];
+
     /// What each argument names, and the engine enum each takes, by place.
     fn args() -> ArgKinds;
+
+    /// The kind of name the value it gives is; none for a value that names nothing.
+    const NAME_KIND: Option<NameKind>;
 
     /// The type of the value it gives.
     fn output() -> TypeId;
@@ -50,6 +63,9 @@ pub trait MethodFn<M, H, Args, R> {
 /// call's `ctx` before it when its marker `M` is `WithCtx`. It gives its value `O`: a value, or
 /// one that fails the call when its marker `K` is `Fallible`.
 pub trait GetFn<M, H, O, K> {
+    /// The kind of name the value it gives is; none for a value that names nothing.
+    const NAME_KIND: Option<NameKind>;
+
     /// The type of the value it gives.
     fn output() -> TypeId;
 
@@ -59,8 +75,8 @@ pub trait GetFn<M, H, O, K> {
 /// What a form gives: its value, or with the marker `Fallible`, its value or the error that
 /// fails the call.
 pub(crate) trait ScriptReturn<K> {
-    /// The type of the value.
-    type Value: 'static;
+    /// The value.
+    type Output: ScriptOutput;
 
     /// The value in the engine's form, or the error.
     fn checked(self) -> Checked<Dynamic>;
@@ -74,19 +90,19 @@ pub struct Plain;
 #[derive(Debug)]
 pub struct Fallible;
 
-impl<R: ScriptType> ScriptReturn<Plain> for R {
-    type Value = R;
+impl<R: ScriptOutput> ScriptReturn<Plain> for R {
+    type Output = R;
 
     fn checked(self) -> Checked<Dynamic> {
-        Ok(ScriptValue::engine(self))
+        Ok(self.into_engine())
     }
 }
 
-impl<R: ScriptType> ScriptReturn<Fallible> for Checked<R> {
-    type Value = R;
+impl<R: ScriptOutput> ScriptReturn<Fallible> for Checked<R> {
+    type Output = R;
 
     fn checked(self) -> Checked<Dynamic> {
-        self.map(ScriptValue::engine)
+        self.map(R::into_engine)
     }
 }
 
@@ -96,8 +112,10 @@ where
     H: ScriptType,
     O: ScriptReturn<K>,
 {
+    const NAME_KIND: Option<NameKind> = <O::Output as ScriptOutput>::NAME_KIND;
+
     fn output() -> TypeId {
-        TypeId::of::<O::Value>()
+        TypeId::of::<<O::Output as ScriptOutput>::Value>()
     }
 
     fn register(self, engine: &mut Engine, name: &str) {
@@ -111,8 +129,10 @@ where
     H: ScriptType,
     O: ScriptReturn<K>,
 {
+    const NAME_KIND: Option<NameKind> = <O::Output as ScriptOutput>::NAME_KIND;
+
     fn output() -> TypeId {
-        TypeId::of::<O::Value>()
+        TypeId::of::<<O::Output as ScriptOutput>::Value>()
     }
 
     fn register(self, engine: &mut Engine, name: &str) {
@@ -146,17 +166,15 @@ const fn numbers(flags: &[bool]) -> usize {
 /// What arguments that name `names` and take `enums` name and take, by place, among the
 /// arguments a spec records.
 fn args_of(names: &[Option<NameKind>], enums: &[Option<EngineEnum>]) -> ArgKinds {
-    let recorded =
-        |at: usize| at < MemberSpec::ARGS || (names[at].is_none() && enums[at].is_none());
     assert!(
-        (0..names.len()).all(recorded),
-        "what an argument names is among the arguments a spec records"
+        names.len() <= MemberSpec::ARGS,
+        "a form takes at most the arguments a spec records"
     );
     let mut args = ArgKinds {
         names: [None; MemberSpec::ARGS],
         enums: [None; MemberSpec::ARGS],
     };
-    for (at, (&name, &taken)) in names.iter().zip(enums).enumerate().take(MemberSpec::ARGS) {
+    for (at, (&name, &taken)) in names.iter().zip(enums).enumerate() {
         args.names[at] = name;
         args.enums[at] = taken;
     }
@@ -170,7 +188,7 @@ macro_rules! script_fn {
         impl<F, R, $($arg),*> CtxFn<($($arg,)*), R> for F
         where
             F: Fn(&mut Ctx, $($arg),*) -> Checked<R> + 'static,
-            R: ScriptType,
+            R: ScriptOutput,
             $($arg: ScriptArg,)*
         {
             const ARITY: usize = {
@@ -178,12 +196,16 @@ macro_rules! script_fn {
                 args.len()
             };
 
+            const TYPES: &'static [&'static str] = &[$($arg::TYPE),*];
+
             fn args() -> ArgKinds {
-                args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+                args_of(&[$($arg::NAME_KIND),*], &[$($arg::ENUM),*])
             }
 
+            const NAME_KIND: Option<NameKind> = R::NAME_KIND;
+
             fn output() -> TypeId {
-                TypeId::of::<R>()
+                TypeId::of::<R::Value>()
             }
 
             #[expect(
@@ -204,7 +226,7 @@ macro_rules! script_fn {
                     }
                     let args = ArgCtx::Ctx(ctx);
                     $(let $arg = $arg::take($arg, &args)?;)*
-                    each(ctx, $($arg),*).map(ScriptValue::engine)
+                    each(ctx, $($arg),*).map(R::into_engine)
                 });
                 const {
                     assert!(
@@ -219,7 +241,7 @@ macro_rules! script_fn {
                         }
                         let args = ArgCtx::Ctx(ctx);
                         $(let $arg = $arg::take_int($arg, &args)?;)*
-                        int(ctx, $($arg),*).map(ScriptValue::engine)
+                        int(ctx, $($arg),*).map(R::into_engine)
                     });
                 }
             }
@@ -228,7 +250,7 @@ macro_rules! script_fn {
         impl<F, R, H, $($arg),*> MethodFn<WithoutCtx, H, ($($arg,)*), R> for F
         where
             F: Fn(H, $($arg),*) -> Checked<R> + 'static,
-            R: ScriptType,
+            R: ScriptOutput,
             H: ScriptArg,
             $($arg: ScriptArg,)*
         {
@@ -237,12 +259,16 @@ macro_rules! script_fn {
                 args.len()
             };
 
+            const TYPES: &'static [&'static str] = &[$($arg::TYPE),*];
+
             fn args() -> ArgKinds {
-                args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+                args_of(&[$($arg::NAME_KIND),*], &[$($arg::ENUM),*])
             }
 
+            const NAME_KIND: Option<NameKind> = R::NAME_KIND;
+
             fn output() -> TypeId {
-                TypeId::of::<R>()
+                TypeId::of::<R::Value>()
             }
 
             #[expect(
@@ -262,7 +288,7 @@ macro_rules! script_fn {
                         let args = ArgCtx::of_call(&call);
                         let handle = H::take(handle, &args)?;
                         $(let $arg = $arg::take($arg, &args)?;)*
-                        each(handle, $($arg),*).map(ScriptValue::engine)
+                        each(handle, $($arg),*).map(R::into_engine)
                     },
                 );
                 const {
@@ -278,7 +304,7 @@ macro_rules! script_fn {
                             let args = ArgCtx::of_call(&call);
                             let handle = H::take_int(handle, &args)?;
                             $(let $arg = $arg::take_int($arg, &args)?;)*
-                            int(handle, $($arg),*).map(ScriptValue::engine)
+                            int(handle, $($arg),*).map(R::into_engine)
                         },
                     );
                 }
@@ -288,7 +314,7 @@ macro_rules! script_fn {
         impl<F, R, H, $($arg),*> MethodFn<WithCtx, H, ($($arg,)*), R> for F
         where
             F: Fn(&Ctx, H, $($arg),*) -> Checked<R> + 'static,
-            R: ScriptType,
+            R: ScriptOutput,
             H: ScriptArg,
             $($arg: ScriptArg,)*
         {
@@ -297,12 +323,16 @@ macro_rules! script_fn {
                 args.len()
             };
 
+            const TYPES: &'static [&'static str] = &[$($arg::TYPE),*];
+
             fn args() -> ArgKinds {
-                args_of(&[$($arg::NAMES),*], &[$($arg::ENUM),*])
+                args_of(&[$($arg::NAME_KIND),*], &[$($arg::ENUM),*])
             }
 
+            const NAME_KIND: Option<NameKind> = R::NAME_KIND;
+
             fn output() -> TypeId {
-                TypeId::of::<R>()
+                TypeId::of::<R::Value>()
             }
 
             #[expect(
@@ -322,7 +352,7 @@ macro_rules! script_fn {
                         let args = ArgCtx::of_call(&call);
                         let handle = H::take(handle, &args)?;
                         $(let $arg = $arg::take($arg, &args)?;)*
-                        each(args.get(), handle, $($arg),*).map(ScriptValue::engine)
+                        each(args.get(), handle, $($arg),*).map(R::into_engine)
                     },
                 );
                 const {
@@ -338,7 +368,7 @@ macro_rules! script_fn {
                             let args = ArgCtx::of_call(&call);
                             let handle = H::take_int(handle, &args)?;
                             $(let $arg = $arg::take_int($arg, &args)?;)*
-                            int(args.get(), handle, $($arg),*).map(ScriptValue::engine)
+                            int(args.get(), handle, $($arg),*).map(R::into_engine)
                         },
                     );
                 }

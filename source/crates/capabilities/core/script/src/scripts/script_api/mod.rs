@@ -1,14 +1,11 @@
 use std::any::TypeId;
 use std::collections::BTreeSet;
 
-use campfire_sim::Capability;
 use campfire_values::{EngineEnum, TagProperty};
 use rhai::Engine;
 
 use crate::script_host::ScriptHost;
 use crate::scripts::api_owner::ApiOwner;
-use crate::scripts::api_version::ApiVersion;
-use crate::scripts::data_table::DataTable;
 use crate::scripts::hook::Hook;
 use crate::scripts::member_kind::MemberKind;
 use crate::scripts::member_spec::{ArgKinds, MemberSpec};
@@ -20,6 +17,7 @@ use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::hook_status::HookStatus;
 use crate::scripts::script_api::tag_property_status::TagPropertyStatus;
 use crate::scripts::status::Status;
+use campfire_values::NameKind;
 
 pub(crate) mod api_builder;
 pub(crate) mod api_member;
@@ -42,7 +40,7 @@ pub struct ScriptApi {
     pub(super) data: Vec<DataField>,
     /// The engine enums, in the order they bind.
     pub(super) enums: Vec<EnumRecord>,
-    /// The types whose indexers read names the data declares, as `ctx.p` gives one.
+    /// The types whose indexers read names the data declares, as `ctx.params` gives one.
     indexed: Vec<TypeId>,
     /// The names of the functions the engine has before the API binds: Rhai's packages and
     /// `Num`'s, getters as `get$<field>`.
@@ -93,7 +91,13 @@ impl ScriptApi {
 
     /// Whether the release calls `hook`, and its owner; none for a hook it does not record.
     pub fn hook(&self, hook: Hook) -> Option<&HookStatus> {
-        self.hooks.iter().find(|held| held.hook == hook)
+        self.hook_named(hook.name)
+    }
+
+    /// The hook a script function named `name` defines, and whether the release calls it; none
+    /// for a name no module's hook has.
+    pub fn hook_named(&self, name: &str) -> Option<&HookStatus> {
+        self.hooks.iter().find(|held| held.hook.name == name)
     }
 
     pub fn tag_properties(&self) -> &[TagPropertyStatus] {
@@ -125,7 +129,7 @@ impl ScriptApi {
                 && matches!(member.spec.kind, MemberKind::Field | MemberKind::Value)
                 && member
                     .output
-                    .is_some_and(|output| self.indexed.contains(&output))
+                    .is_some_and(|output| self.indexed.contains(&output.ty))
         })
     }
 
@@ -164,9 +168,11 @@ impl ScriptApi {
     /// Records whether the release calls a hook.
     pub(crate) fn record_hook(&mut self, hook: HookStatus) {
         assert!(
-            self.hooks.iter().all(|held| held.hook != hook.hook),
-            "{:?} is recorded once",
-            hook.hook
+            self.hooks
+                .iter()
+                .all(|held| held.hook.name != hook.hook.name),
+            "{} is recorded once",
+            hook.hook.name
         );
         self.hooks.push(hook);
     }
@@ -183,29 +189,6 @@ impl ScriptApi {
             .push(TagPropertyStatus { property, status });
     }
 
-    /// Records the fields of `table`: `runs`, which the release reads, and `planned`.
-    pub(crate) fn record_data(
-        &mut self,
-        table: DataTable,
-        runs: &[&'static str],
-        planned: &[&'static str],
-        capability: Option<Capability>,
-    ) {
-        for (names, status) in [
-            (runs, Status::Runs(ApiVersion::FIRST)),
-            (planned, Status::Planned),
-        ] {
-            for &name in names {
-                self.record_field(DataField {
-                    table,
-                    name,
-                    status,
-                    capability,
-                });
-            }
-        }
-    }
-
     /// Records `field`.
     pub(crate) fn record_field(&mut self, field: DataField) {
         let DataField { table, name, .. } = field;
@@ -218,16 +201,6 @@ impl ScriptApi {
         self.data.push(field);
     }
 
-    /// The capability that reads the field `name` of `table`, which the API records; none for
-    /// the core's.
-    pub fn data_owner(&self, table: DataTable, name: &str) -> Option<Capability> {
-        self.data
-            .iter()
-            .find(|held| (held.table, held.name) == (table, name))
-            .unwrap_or_else(|| panic!("{table:?}.{name} is recorded"))
-            .capability
-    }
-
     /// The member `name` of `owner`.
     pub fn member(&self, owner: ApiOwner, name: &str) -> Option<&ApiMember> {
         let at = self
@@ -237,11 +210,26 @@ impl ScriptApi {
         Some(&self.members[at])
     }
 
+    /// The kind of name the field or method `name` of any handle gives, as `kind` says which;
+    /// none for a value that names nothing: every handle with a getter or method of that name
+    /// gives the same kind, so a script's comparison is checked whatever value it reads it on.
+    pub fn returned(&self, name: &str, kind: MemberKind) -> Option<NameKind> {
+        self.members
+            .iter()
+            .filter(|member| {
+                member.spec.owner != ApiOwner::CTX
+                    && member.spec.kind == kind
+                    && member.spec.name == name
+            })
+            .find_map(|member| member.output)?
+            .names
+    }
+
     /// The spec of the method `name` of any handle: every handle with a method of that name
     /// gives the same arguments, so a script's literal is checked whatever value it calls it on.
     pub fn method(&self, name: &str) -> Option<&MemberSpec> {
         self.members.iter().map(|member| &member.spec).find(|spec| {
-            spec.owner != ApiOwner::Ctx && spec.kind == MemberKind::Method && spec.name == name
+            spec.owner != ApiOwner::CTX && spec.kind == MemberKind::Method && spec.name == name
         })
     }
 
@@ -258,7 +246,23 @@ impl ScriptApi {
             writable,
             status,
             output,
+            ref types,
         } = member;
+        if let Some(output) = output
+            && spec.owner != ApiOwner::CTX
+        {
+            let others = self.members.iter().filter(|held| {
+                held.spec.owner != ApiOwner::CTX
+                    && (held.spec.kind, held.spec.name) == (spec.kind, spec.name)
+            });
+            for held in others.filter_map(|held| held.output) {
+                assert_eq!(
+                    held.names, output.names,
+                    "every handle's `{}` gives the same kind of name",
+                    spec.name
+                );
+            }
+        }
         let key = (spec.owner, spec.name);
         match self
             .members
@@ -272,19 +276,20 @@ impl ScriptApi {
                 };
                 assert!(
                     held.spec.with_args(args) == spec.with_args(args) && held.status == status,
-                    "the bindings of {:?}.{} agree",
-                    spec.owner,
+                    "the bindings of {}.{} agree",
+                    spec.owner.name(),
                     spec.name
                 );
                 assert!(
                     held.output.is_none() || output.is_none() || held.output == output,
-                    "the forms of {:?}.{} give one type",
-                    spec.owner,
+                    "the forms of {}.{} give one type",
+                    spec.owner.name(),
                     spec.name
                 );
                 held.spec = held.spec.with_args(args);
                 held.writable |= writable;
                 held.output = held.output.or(output);
+                held.take_types(types);
             }
             Err(at) => self.members.insert(at, member),
         }
@@ -302,8 +307,8 @@ fn merged<T: Copy + PartialEq>(
     for (merged, &said) in merged.iter_mut().zip(form) {
         assert!(
             merged.is_none() || said.is_none() || *merged == said,
-            "the forms of {:?}.{} say alike what an argument is",
-            spec.owner,
+            "the forms of {}.{} say alike what an argument is",
+            spec.owner.name(),
             spec.name
         );
         *merged = merged.or(said);

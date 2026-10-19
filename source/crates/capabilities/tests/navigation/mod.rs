@@ -1,20 +1,19 @@
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
-use campfire_common::Tick;
+use campfire_common::{DeclaredName, Tick};
 use campfire_geometry::{Bounds, Polygon, PolygonError, Shape};
 use campfire_math::{Num, Vec3};
-use campfire_mode::{
-    MapData, MapInput, MapNavigationData, MapPoint, MarkerData, ModeError, ModeMap, PathData,
-    PlacedUnitData, ResolvedMap, TeamManifest, WallData,
-};
+use campfire_mode::{MapData, MapInput, MarkerData, ModeMap, PlacedUnitData, TeamManifest};
+use campfire_navigation::internals::PlannedRoute;
 use campfire_navigation::*;
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId, Unpredicted};
 use campfire_units::{
-    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, TurnStep, Units,
+    ArrivedShort, Body, BodyForm, Dead, Destination, Facing, Layer, MapBook, MapPoint,
+    MapPointError, TurnStep, Units, Wall,
 };
-use campfire_values::{Block, DeclaredName, NameId, Names, PathId, Team, UnitType};
+use campfire_values::{Block, NameId, Names, PathId, Team, UnitType};
 
 const ONE: i64 = 1 << 24;
 
@@ -413,7 +412,7 @@ fn a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it() {
     let point = |x: i64, z: i64| Vec3::new(half * x, Num::ZERO, half * z);
     game.step();
     let corners = [point(7, 9), point(13, 9), point(16, 2)];
-    assert_eq!(game.part::<Route>(walker).ahead(), corners);
+    assert_eq!(Navigation::ahead(&game, walker), corners);
     // It walks √14.5 ≈ 3.81 m, 3 m and √14.5 m, a meter a tick, never into the wall's square,
     // and arrives in its eleventh tick.
     let mut steps = 1;
@@ -641,8 +640,7 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
     // The last three ask in tick 0; the second does 31 and meets the limit.
     game.step();
     assert_eq!(waiting(&game), [false, false, true, true]);
-    let second = game.unit_entity(units[1]);
-    assert_eq!(game.get::<Route>(second).unwrap().ahead(), [far]);
+    assert_eq!(Navigation::ahead(&game, units[1]), [far]);
     // The first, of the lowest id, asks in tick 1, after the rest. The last asks again in tick
     // 1, for x = 14.5, and keeps its place of tick 0. So the third and the last go first, 7 and
     // 29, which meets the limit, and the first waits; had the last's ask moved to tick 1, the
@@ -681,14 +679,14 @@ fn a_walker_steers_with_the_work_the_routes_left() {
         );
         let walker = Navigation::body(&mut game, place(0, 1), Some(goal), Some(quarter), quarter);
         game.step();
-        assert_eq!(game.part::<Route>(walker).ahead(), [goal]);
+        assert_eq!(Navigation::ahead(&game, walker), [goal]);
         Navigation::body(&mut game, place(3, 1), None, Some(quarter), quarter);
         for _ in 0..askers {
             Navigation::unit(&mut game, place(0, 0), Some(place(11, 0)));
         }
         let ticks = [(); 2].map(|()| {
             game.step();
-            game.part::<Route>(walker).ahead() != [goal]
+            Navigation::ahead(&game, walker) != [goal]
         });
         assert_eq!(ticks, steered, "{askers}");
     }
@@ -719,10 +717,10 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     Navigation::body(&mut game, place(5, 0), None, None, half);
     game.step();
     assert_eq!(changed(&game), planned);
-    assert_eq!(game.part::<Route>(walker).ahead(), [goal]);
+    assert_eq!(Navigation::ahead(&game, walker), [goal]);
     Navigation::body(&mut game, place(5, 1), None, None, half);
     game.step();
-    assert_ne!(game.part::<Route>(walker).ahead(), [goal]);
+    assert_ne!(Navigation::ahead(&game, walker), [goal]);
     assert!(game.part::<Route>(walker).reached());
 
     // Pressed against that tower, 0.7 m from its center, closer than the two radii, on a route
@@ -730,8 +728,8 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     // plays as the match does. Its new index's first fill puts no body in, so no route is asked
     // again for the towers that stood there before.
     let pressed = Vec3::new(Num::int(48) / 10, Num::ZERO, Num::int(1) + half);
-    let through = Route::planned(goal, pressed, &[goal]);
-    game.insert_parts(walker, (Position::from(pressed), through));
+    let through = PlannedRoute::new(goal, pressed, &[goal]);
+    game.insert_parts(walker, (Position::from(pressed), through.parts()));
     let mut restored = walk_match();
     Navigation::load_open_pathing(&mut restored, Num::ONE, [0, 0], [8, 3], [ground(quarter)]);
     Release::restore_into(&game, &mut restored);
@@ -817,25 +815,24 @@ fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
     let point = MapPoint::ground;
     let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
     let marker = |name, (x, z)| MarkerData::tagged(name, &[name], point(x, z));
-    MapData {
-        navigation: Some(MapNavigationData {
+    let bounds = Bounds::new([Num::int(0), Num::int(0)], [Num::int(10), Num::int(4)]).unwrap();
+    let mut map = MapData::planar(bounds)
+        .with(MapNavigationData {
             cell: Num::HALF,
             walls: Vec::new(),
-        }),
-        paths: vec![PathData {
+        })
+        .with(MapPathsData(vec![PathData {
             name: DeclaredName::new("lane").unwrap(),
             points: vec![point(1, 2), point(9, 2)],
-        }],
-        units: towers
-            .iter()
-            .map(|&at| placed("tower", at))
-            .chain([placed("creep", (1, 1))])
-            .collect(),
-        markers: vec![marker("spawn", (1, 1)), marker("camp", camp)],
-        ..MapData::planar(
-            Bounds::new([Num::int(0), Num::int(0)], [Num::int(10), Num::int(4)]).unwrap(),
-        )
-    }
+            walk: PathWalk::Once,
+        }]));
+    map.units = towers
+        .iter()
+        .map(|&at| placed("tower", at))
+        .chain([placed("creep", (1, 1))])
+        .collect();
+    map.markers = vec![marker("spawn", (1, 1)), marker("camp", camp)];
+    map
 }
 
 /// The layers `rules` declares, by layer.
@@ -861,20 +858,16 @@ fn check_walkable(
         slots: 0,
     }];
     let layers = layer_table(rules);
+    let ground = MapBook::of(map.sections(), None).unwrap();
+    let navigation = NavigationBook::of(&ground, map.sections()).unwrap();
+    let walls = Navigation::walls_of(&ground, map.sections(), Some(&layers)).unwrap();
     let input = MapInput {
         map,
-        heights: None,
-        teams: &teams,
         relations: &[],
-        layers: &layers,
+        teams: ModeMap::team_names(&teams).unwrap(),
+        paths: Some(&navigation.paths),
     };
-    let resolved = ModeMap::resolve(input, unit_type).unwrap();
-    let ResolvedMap {
-        map,
-        ground,
-        navigation,
-        ..
-    } = resolved;
+    let map = ModeMap::of(input, unit_type).unwrap();
     let name = |unit_type: UnitType| TYPES[unit_type.index()];
     let named = |unit_type| DeclaredName::new(name(unit_type)).unwrap();
     let body = |unit_type| body_of(name(unit_type));
@@ -882,7 +875,7 @@ fn check_walkable(
     let check = WalkCheck {
         ground: &ground,
         navigation: &navigation,
-        cells: map.pathing,
+        walls: &walls,
         walkers: &kinds,
         placed: &map.placed_bodies(body),
         spawns: &map.spawn_points(&rules.spawn_tags),
@@ -1006,7 +999,8 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
     };
     let walled = |walls: Vec<WallData>| {
         let mut walled = corridor(&[], (8, 3));
-        walled.navigation.as_mut().unwrap().walls = walls;
+        let navigation = walled.section_mut::<MapNavigationData>();
+        navigation.unwrap().walls = walls;
         walled
     };
     let across = walled(vec![wall(None, &[(5, 0), (6, 0), (6, 4), (5, 4)])]);
@@ -1041,17 +1035,17 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
         (
             wall(Some("air"), &[(5, 0), (6, 0), (6, 4)]),
             &rules,
-            ModeError::UnknownLayer(air),
+            NavigationDataError::UnknownLayer(air),
         ),
         (
             wall(None, &[(5, 0), (6, 0), (6, 5)]),
             &rules,
-            ModeError::OutOfBounds,
+            NavigationDataError::Point(MapPointError::OutOfBounds),
         ),
         (
             wall(None, &[(5, 0), (6, 0)]),
             &rules,
-            ModeError::Wall {
+            NavigationDataError::Wall {
                 wall: 0,
                 problem: PolygonError::TooFewPoints,
             },
@@ -1059,7 +1053,7 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
         (
             wall(Some("air"), &[(5, 0), (6, 4), (6, 0), (5, 4)]),
             &layered,
-            ModeError::Wall {
+            NavigationDataError::Wall {
                 wall: 0,
                 problem: PolygonError::EdgesMeet {
                     first: 0,
@@ -1068,13 +1062,21 @@ fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() 
             },
         ),
     ];
+    let walls = |map: &MapData, rules| {
+        let ground = MapBook::of(map.sections(), None).unwrap();
+        Navigation::walls_of(&ground, map.sections(), Some(&layer_table(rules)))
+    };
     for (wall, rules, error) in refused {
-        assert_eq!(walled(vec![wall]).walls(&layer_table(rules)), Err(error));
+        assert_eq!(walls(&walled(vec![wall]), rules), Err(error));
     }
     let lifted = walled(vec![wall(Some("air"), &[(5, 0), (6, 0), (6, 4)])]);
-    let walls = lifted.walls(&layer_table(&layered)).unwrap();
+    let walls = walls(&lifted, &layered).unwrap();
     assert_eq!(
-        walls.iter().map(|wall| wall.layer).collect::<Vec<_>>(),
+        walls
+            .walls()
+            .iter()
+            .map(|wall| wall.layer)
+            .collect::<Vec<_>>(),
         [AIR]
     );
 }

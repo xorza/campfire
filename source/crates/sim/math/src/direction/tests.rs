@@ -106,7 +106,7 @@ fn a_direction_is_the_exact_division() {
             }
         }
     }
-    let wide = (1 << 47) - 1;
+    let wide = WIDEST - 1;
     let vectors = [
         [wide, 0, 0],
         [0, -wide, 0],
@@ -171,7 +171,7 @@ fn a_direction_measures_by_hand() {
     assert_eq!(Direction::of([0, 0, 0]), None);
     // At the widest axes no product overflows: the diagonal of the cube 2⁴⁷ − 1 on a side lies
     // along itself its length, each rounded, so within a unit of it, and not apart from itself.
-    let wide = (1 << 47) - 1;
+    let wide = WIDEST - 1;
     let cube = Direction::of([wide; 3]).unwrap();
     assert!((cube.along([wide; 3]) - cube.length()).abs() <= 1);
     assert_eq!(cube.apart([wide; 3]), 0);
@@ -185,7 +185,7 @@ proptest! {
     fn each_measure_is_its_rounded_product(
         vector in prop::array::uniform3(axis()),
         off in prop::array::uniform3(axis()),
-        length in 0_i128..1 << 47,
+        length in 0_i128..WIDEST,
     ) {
         let (Some(space), Some(flat)) = (Direction::of(vector), Direction::of([vector[0], vector[2]]))
         else {

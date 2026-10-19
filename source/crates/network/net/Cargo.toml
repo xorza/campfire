@@ -8,7 +8,6 @@ license.workspace = true
 internals = [
     "campfire-capabilities/internals",
     "campfire-codec/internals",
-    "campfire-combat/internals",
     "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-log/internals",
@@ -18,6 +17,8 @@ internals = [
     "campfire-protocol/internals",
     "campfire-quic/internals",
     "campfire-runner/internals",
+    "campfire-schedule/internals",
+    "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
     "campfire-store/internals",
@@ -31,7 +32,6 @@ internals = [
 campfire-bots.workspace = true
 campfire-capabilities.workspace = true
 campfire-codec.workspace = true
-campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
 campfire-log.workspace = true
@@ -41,6 +41,8 @@ campfire-players.workspace = true
 campfire-protocol.workspace = true
 campfire-quic.workspace = true
 campfire-runner.workspace = true
+campfire-schedule.workspace = true
+campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true
 campfire-store.workspace = true

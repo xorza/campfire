@@ -34,8 +34,9 @@ pub fn derive_enum_idents(input: TokenStream) -> TokenStream {
 
 /// `campfire_common::NamedEnum`, from the name each variant has, which data writes and reads it
 /// by: its identifier in snake case, as serde's `rename_all = "snake_case"` writes it, or the
-/// name `#[name = "<name>"]` gives it in its place. An empty name, or two variants of one name,
-/// fail to compile.
+/// name `#[name = "<name>"]` gives it in its place; and `ALL`, as `EnumAll` gives it, the one
+/// list of its members, whose place is each one's discriminant. An empty name, two variants of
+/// one name, or a discriminant of its own, fail to compile.
 #[proc_macro_derive(NamedEnum, attributes(name))]
 pub fn derive_named_enum(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -82,6 +83,15 @@ fn enum_idents(input: &DeriveInput) -> syn::Result<Tokens> {
 
 fn named_enum(input: &DeriveInput) -> syn::Result<Tokens> {
     let variants = variants(input)?;
+    if let Some((_, discriminant)) = variants
+        .iter()
+        .find_map(|variant| variant.discriminant.as_ref())
+    {
+        return Err(Error::new(
+            discriminant.span(),
+            "a member of no discriminant of its own, so its place is its discriminant",
+        ));
+    }
     let mut names: Vec<LitStr> = Vec::with_capacity(variants.len());
     for variant in &variants {
         let name = name_of(variant)?
@@ -95,12 +105,18 @@ fn named_enum(input: &DeriveInput) -> syn::Result<Tokens> {
     }
     let name = &input.ident;
     let type_name = name.to_string();
-    let members = variants.iter().map(|variant| &variant.ident);
+    let all = enum_all(input)?;
     Ok(quote! {
+        #all
+
         impl ::campfire_common::NamedEnum for #name {
             const TYPE: &'static str = #type_name;
-            const ALL: &'static [Self] = &[#(Self::#members),*];
+            const ALL: &'static [Self] = &Self::ALL;
             const NAMES: &'static [&'static str] = &[#(#names),*];
+
+            fn index(self) -> usize {
+                self as usize
+            }
         }
     })
 }
@@ -184,7 +200,7 @@ mod tests {
     }
 
     #[test]
-    fn a_named_enum_refuses_an_empty_name_two_of_one_name_and_a_variant_of_data() {
+    fn a_named_enum_refuses_an_empty_name_two_of_one_name_a_variant_of_data_and_a_discriminant() {
         let refused = |input: DeriveInput| named_enum(&input).err().map(|error| error.to_string());
         assert_eq!(
             refused(parse_quote!(
@@ -218,6 +234,18 @@ mod tests {
                 struct Side;
             )),
             Some("an enum".to_owned())
+        );
+        assert_eq!(
+            refused(parse_quote!(
+                enum Side {
+                    North,
+                    South = 4,
+                }
+            )),
+            Some(
+                "a member of no discriminant of its own, so its place is its discriminant"
+                    .to_owned()
+            )
         );
         let named = parse_quote!(
             enum Side {

@@ -1,36 +1,43 @@
 use std::any::TypeId;
-use std::cell::RefCell;
-use std::error::Error;
+use std::env;
 use std::num::NonZeroU64;
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
-use std::{env, fmt};
 
-use campfire_actions::{ActionData, DeliveryData, EffectData, RequiresData, SlotKindData};
+use campfire_actions::{
+    ActionData, DeliveryData, EffectData, KindSections, ListedEffects, PlannedEffect, SlotKindData,
+};
 use campfire_areas::{AreaData, AreaInsideData};
-use campfire_capabilities::{Release, UnitTypeData};
-use campfire_codec::Toml;
-use campfire_combat::{CombatData, LeechData, ModeCombatData, TurretData};
+use campfire_capabilities::Release;
+use campfire_codec::StructFields;
+use campfire_combat::{
+    AttackData, CombatData, DamageHandle, HealHandle, LeechData, ModeCombatData, TurretData,
+};
+use campfire_declare::{ListedSet, SectionTable};
 use campfire_interaction::{UseData, UsesData};
 use campfire_items::{InventoryData, ItemData, ShopData};
 use campfire_math::Num;
 use campfire_mode::{
-    ChoiceData, ModeData, OptionData, PlayersData, RelationData, SavesData, TeamData,
+    BountyData, ChoiceData, ModeBountyData, ModeData, OptionData, PlayersData, RelationData,
+    SavesData, TeamData, VictoryData,
 };
 use campfire_navigation::ModeNavigationData;
 use campfire_orders::AiData;
-use campfire_production::{DropOffData, ModeSupplyData, NodeData, ProductionData, SupplyData};
+use campfire_production::{
+    BuildData, DropOffData, GatherData, ModeSupplyData, NodeData, ProductionData, RequiresData,
+    SupplyData, TrainData,
+};
 use campfire_progression::TrackData;
 use campfire_projectiles::ProjectileData;
 use campfire_script::*;
 use campfire_sim::Capability;
-use campfire_stats::{AuraData, ModifierData};
+use campfire_stats::{AuraData, ModifierData, ModifierHandle};
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
-use campfire_units::{CollisionData, TagData};
-use campfire_values::TagProperty;
+use campfire_units::{CollisionData, PoolId, TagData};
+use campfire_values::{ActionId, DamageKind, Named, PathId, TagProperty, Team};
 use campfire_vision::VisionData;
-use serde::de::{self, Deserialize, Deserializer, Visitor};
+use serde::Deserialize;
 
 /// Each function `host`'s engine binds: its name, and the type of its first parameter.
 fn functions(host: &ScriptHost) -> Vec<(String, Option<TypeId>)> {
@@ -122,9 +129,18 @@ fn each_form_that_takes_a_num_takes_an_integer_in_its_place_too() {
 #[test]
 fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     let api = Release::script_api();
+    // The registry records each hook a module declares, once, in their order, and the hooks of
+    // every role: 5 of an action, 6 of a modifier, 15 of the mode, and the AI's `on_think`.
     let hooks: Vec<_> = api.hooks().iter().map(|status| status.hook).collect();
-    assert!(Hook::ALL.iter().all(|hook| hooks.contains(hook)));
-    assert_eq!(hooks.len(), Hook::ALL.len());
+    assert_eq!(hooks, Release::hooks());
+    let of_role = |role| hooks.iter().filter(|hook| hook.role == role).count();
+    let roles = [
+        ScriptRole::Action,
+        ScriptRole::Modifier,
+        ScriptRole::Mode,
+        ScriptRole::Ai,
+    ];
+    assert_eq!(roles.map(of_role), [5, 6, 15, 1]);
     let effects: Vec<_> = api
         .tag_properties()
         .iter()
@@ -136,7 +152,7 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
             .all(|effect| effects.contains(effect))
     );
     assert_eq!(effects.len(), TagProperty::ALL.len());
-    let damage = api.member(ApiOwner::Ctx, "damage").unwrap();
+    let damage = api.member(ApiOwner::CTX, "damage").unwrap();
     assert_eq!(
         (damage.spec.roles, damage.spec.capability, damage.status),
         (
@@ -145,12 +161,60 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
             Status::Runs(ApiVersion::FIRST)
         )
     );
-    assert_eq!(damage.spec.forms, [["target", "amount", "kind"]]);
-    let timer = api.member(ApiOwner::Ctx, "timer").unwrap();
+    assert_eq!(
+        damage.spec.forms,
+        [
+            &["unit", "kind", "amount"][..],
+            &["unit", "kind", "amount", "source"]
+        ]
+    );
+    // Its closures' signatures name the types: a unit, a damage kind's name, a number, and the
+    // unit of its source.
+    assert_eq!(damage.types, [["Unit"], ["text"], ["Num"], ["Unit"]]);
+    // A call bound once for each type an argument takes lists them all at its place, in the
+    // order bound: a dash goes to a point or after a unit.
+    let dash = api.member(ApiOwner::CTX, "dash").unwrap();
+    assert_eq!(dash.types[1], ["Vector", "Unit"]);
+    // A form's value says the kind of name it is: a team's from a call or a field, a damage
+    // kind's, an action's, or a path's, which may be none; a number names nothing.
+    let names = |owner, name| api.member(owner, name).unwrap().output.unwrap().names;
+    assert_eq!(
+        [
+            names(ApiOwner::of::<PlayerHandle>(), "team"),
+            names(ApiOwner::of::<Unit>(), "team"),
+            names(ApiOwner::of::<DamageHandle>(), "kind"),
+            names(ApiOwner::of::<HealHandle>(), "action"),
+            names(ApiOwner::of::<Unit>(), "path"),
+            names(ApiOwner::CTX, "damage"),
+        ],
+        [
+            Some(Team::NAMES),
+            Some(Team::NAMES),
+            Some(DamageKind::NAMES),
+            Some(ActionId::NAMES),
+            Some(PathId::NAMES),
+            None,
+        ]
+    );
+    // A handle's member gives the same kind of name on every handle, so a field's name gives it.
+    let (field, method) = (MemberKind::Field, MemberKind::Method);
+    assert_eq!(
+        [
+            api.returned("team", field),
+            api.returned("action", field),
+            api.returned("amount", field),
+            api.returned("team", method),
+            api.returned("is_action", method),
+        ],
+        [Some(Team::NAMES), Some(ActionId::NAMES), None, None, None]
+    );
+    let timer = api.member(ApiOwner::CTX, "after").unwrap();
     assert_eq!(timer.spec.roles, RoleSet::MODE);
-    let stacks = api.member(ApiOwner::Modifier, "stacks").unwrap();
+    let stacks = api
+        .member(ApiOwner::of::<ModifierHandle>(), "stacks")
+        .unwrap();
     assert!(stacks.writable);
-    let points = api.member(ApiOwner::Unit, "points").unwrap();
+    let points = api.member(ApiOwner::of::<Unit>(), "points").unwrap();
     assert_eq!(
         (points.spec.capability, points.status),
         (
@@ -158,34 +222,39 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
             Status::Runs(ApiVersion::FIRST)
         )
     );
-    let perk = api.member(ApiOwner::Unit, "has_perk").unwrap();
+    let perk = api.member(ApiOwner::of::<Unit>(), "has_perk").unwrap();
     assert_eq!(
         (perk.spec.capability, perk.status),
         (Some(Capability::Progression), Status::Planned)
     );
     // A name takes the capability of the module that binds it, as `damage` and `points` do; the
     // mode's are the core's but one that names another capability, as `respawn` names combat.
-    let capability = |name| api.member(ApiOwner::Ctx, name).unwrap().spec.capability;
-    assert_eq!(capability("timer"), None);
+    let capability = |name| api.member(ApiOwner::CTX, name).unwrap().spec.capability;
+    assert_eq!(capability("after"), None);
     assert_eq!(capability("respawn"), Some(Capability::Combat));
-    // A data field is the capability's whose module records it: the mode's sections each of
-    // the capability that reads them, the mode's script the core's.
+    // A section is the capability's whose module registers it: the mode's sections each of the
+    // capability that reads them, and the mode's scripts, which no section holds, no module's.
+    let sections = Release::sections();
     let owners = [
-        (DataTable::Mode, "script", None),
-        (DataTable::Mode, "combat", Some(Capability::Combat)),
-        (DataTable::Mode, "stats", Some(Capability::Stats)),
-        (DataTable::Mode, "tracks", Some(Capability::Progression)),
+        (SectionTable::Mode, "scripts", None),
+        (SectionTable::Mode, "combat", Some(Capability::Combat)),
+        (SectionTable::Mode, "stats", Some(Capability::Stats)),
+        (SectionTable::Mode, "tracks", Some(Capability::Progression)),
         (
-            DataTable::ModeNavigation,
-            "layers",
+            SectionTable::Mode,
+            "navigation",
             Some(Capability::Navigation),
         ),
-        (DataTable::UnitType, "shop", Some(Capability::Items)),
-        (DataTable::UnitType, "use", Some(Capability::Interaction)),
-        (DataTable::UnitType, "uses", Some(Capability::Interaction)),
+        (SectionTable::UnitType, "shop", Some(Capability::Items)),
+        (SectionTable::UnitType, "use", Some(Capability::Interaction)),
+        (
+            SectionTable::UnitType,
+            "uses",
+            Some(Capability::Interaction),
+        ),
     ];
-    for (table, field, owner) in owners {
-        assert_eq!(api.data_owner(table, field), owner, "{table:?}.{field}");
+    for (table, key, owner) in owners {
+        assert_eq!(sections.owner(table, key), owner, "{table:?}.{key}");
     }
     let method = MemberKind::Method;
     assert!(api.builtin("len", method) && api.builtin("max", method));
@@ -195,29 +264,36 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
 /// A misuse of the registry, and the panic it ends in.
 type Misuse = (fn(&mut ScriptApi), &'static str);
 
-/// A binding of `spec`, not written, of `status`, of no output.
+/// A misuse of the builder as a module binds, and the panic it ends in.
+type BindMisuse = (fn(&mut ApiBuilder<'_>), &'static str);
+
+/// A binding of `spec`, not written, of `status`, of no output and no types.
 const fn binding(spec: MemberSpec, status: Status) -> ApiMember {
     ApiMember {
         spec,
         writable: false,
         status,
         output: None,
+        types: Vec::new(),
     }
 }
 
 #[test]
 fn a_binding_records_its_spec_once_and_whole() {
     let mut api = Release::script_api();
-    let stacks = api.member(ApiOwner::Modifier, "stacks").unwrap().clone();
-    let damage = api.member(ApiOwner::Ctx, "damage").unwrap().clone();
+    let stacks = api
+        .member(ApiOwner::of::<ModifierHandle>(), "stacks")
+        .unwrap()
+        .clone();
+    let damage = api.member(ApiOwner::CTX, "damage").unwrap().clone();
     // Another binding of the same spec adds only its writing; one of no output keeps the
     // output held.
     api.record_binding(ApiMember {
         writable: true,
         output: None,
-        ..damage
+        ..damage.clone()
     });
-    let held = api.member(ApiOwner::Ctx, "damage").unwrap();
+    let held = api.member(ApiOwner::CTX, "damage").unwrap();
     assert_eq!(
         held,
         &ApiMember {
@@ -229,11 +305,15 @@ fn a_binding_records_its_spec_once_and_whole() {
         writable: false,
         ..stacks
     });
-    assert!(api.member(ApiOwner::Modifier, "stacks").unwrap().writable);
-    let misuses: [Misuse; 5] = [
+    assert!(
+        api.member(ApiOwner::of::<ModifierHandle>(), "stacks")
+            .unwrap()
+            .writable
+    );
+    let misuses: [Misuse; 6] = [
         (
             |api| {
-                let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
+                let damage = api.member(ApiOwner::CTX, "damage").unwrap().spec;
                 let spec = MemberSpec {
                     description: "another",
                     ..damage
@@ -244,19 +324,19 @@ fn a_binding_records_its_spec_once_and_whole() {
         ),
         (
             |api| {
-                let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
+                let damage = api.member(ApiOwner::CTX, "damage").unwrap().spec;
                 api.record_binding(binding(damage, Status::Planned));
             },
             "the bindings of Ctx.damage agree",
         ),
         (
             |api| {
-                let damage = api.member(ApiOwner::Ctx, "damage").unwrap().spec;
+                let damage = api.member(ApiOwner::CTX, "damage").unwrap().spec;
                 let mut names = damage.names;
-                names[2] = Some(NameKind::Pool);
+                names[1] = Some(PoolId::NAMES);
                 let args = ArgKinds {
                     names,
-                    enums: damage.enums,
+                    ..damage.args()
                 };
                 let status = Status::Runs(ApiVersion::FIRST);
                 api.record_binding(binding(damage.with_args(args), status));
@@ -265,13 +345,34 @@ fn a_binding_records_its_spec_once_and_whole() {
         ),
         (
             |api| {
-                let damage = api.member(ApiOwner::Ctx, "damage").unwrap().clone();
+                let damage = api.member(ApiOwner::CTX, "damage").unwrap().clone();
                 api.record_binding(ApiMember {
-                    output: Some(TypeId::of::<u8>()),
+                    output: Some(FormOutput {
+                        ty: TypeId::of::<u8>(),
+                        names: None,
+                    }),
                     ..damage
                 });
             },
             "the forms of Ctx.damage give one type",
+        ),
+        (
+            |api| {
+                let team = api.member(ApiOwner::of::<Unit>(), "team").unwrap().clone();
+                let output = team.output.unwrap();
+                api.record_binding(ApiMember {
+                    spec: MemberSpec {
+                        owner: ApiOwner::of::<DamageHandle>(),
+                        ..team.spec
+                    },
+                    output: Some(FormOutput {
+                        names: Some(PoolId::NAMES),
+                        ..output
+                    }),
+                    ..team
+                });
+            },
+            "every handle's `team` gives the same kind of name",
         ),
         (
             |api| {
@@ -287,23 +388,65 @@ fn a_binding_records_its_spec_once_and_whole() {
         let said = panic.downcast_ref::<String>().unwrap();
         assert!(said.contains(message), "{said}");
     }
-    // A capability's module that names its own capability on a name says what it already is.
+    // A capability's module that names its own capability on a name says what it already is; a
+    // planned field, and a field a module owns of a shared type, are fields serde reads of it.
+    let binds: [BindMisuse; 3] = [
+        (
+            |api| {
+                api.module(Some(Capability::Combat));
+                let spec = MemberSpec::value("strength", "a test's").capability(Capability::Combat);
+                api.bind(spec, |_: &mut Ctx| 1_i64);
+            },
+            "names the capability of the module that binds it",
+        ),
+        (
+            |api| {
+                api.data::<TeamData>(&[("colour", Status::Planned)]);
+            },
+            "the fields of A team, `[teams.<team>]` given a status are fields of its type",
+        ),
+        (
+            |api| {
+                api.own_fields::<DeliveryData>(&["areas"]);
+            },
+            "the fields of An action's `delivery` a module owns are fields of its type",
+        ),
+    ];
+    for (bind, message) in binds {
+        let mut host = ScriptHost::new(NonZeroU64::MIN);
+        let panic = panic::catch_unwind(AssertUnwindSafe(|| ScriptApi::bind(&mut host, bind)));
+        let said = panic
+            .unwrap_err()
+            .downcast_ref::<String>()
+            .cloned()
+            .unwrap();
+        assert!(said.contains(message), "{said}");
+    }
+    // The planned field is recorded so, and the rest of its type's fields as the release reads
+    // them.
     let mut host = ScriptHost::new(NonZeroU64::MIN);
-    let redundant = panic::catch_unwind(AssertUnwindSafe(|| {
-        ScriptApi::bind(&mut host, |api| {
-            api.module(Some(Capability::Combat));
-            let spec = MemberSpec::value("strength", "a test's").capability(Capability::Combat);
-            api.bind(spec, |_: &mut Ctx| 1_i64);
-        });
-    }));
-    let said = redundant
-        .unwrap_err()
-        .downcast_ref::<String>()
-        .cloned()
-        .unwrap();
-    assert!(
-        said.contains("names the capability of the module that binds it"),
-        "{said}"
+    let api = ScriptApi::release(&mut host, |api| {
+        api.data::<OptionData>(&[("default", Status::Planned)]);
+    });
+    let fields: Vec<_> = api
+        .data()
+        .iter()
+        .map(|field| (field.name, field.status))
+        .collect();
+    let runs = Status::Runs(ApiVersion::FIRST);
+    assert_eq!(fields, [("values", runs), ("default", Status::Planned)]);
+    // A member runs since the version its spec gives, the first unless said otherwise.
+    let later = ApiVersion { major: 1, minor: 1 };
+    let mut host = ScriptHost::new(NonZeroU64::MIN);
+    let api = ScriptApi::release(&mut host, |api| {
+        let spec = |name| MemberSpec::value(name, "a test's");
+        api.bind(spec("strength").since(later), |_: &mut Ctx| 1_i64)
+            .bind(spec("weight"), |_: &mut Ctx| 2_i64);
+    });
+    let status = |name| api.member(ApiOwner::CTX, name).unwrap().status;
+    assert_eq!(
+        [status("strength"), status("weight")],
+        [Status::Runs(later), runs]
     );
 }
 
@@ -312,59 +455,11 @@ fn table<T: DataSection>() -> (DataTable, Vec<&'static str>) {
     (T::TABLE, serde_fields::<T>())
 }
 
-/// The names serde reads for `T`'s fields, as its derive or its own impl gives them.
+/// The names serde reads for `T`'s fields, as its derive or its own impl gives them, sorted.
 fn serde_fields<'de, T: Deserialize<'de>>() -> Vec<&'static str> {
-    let fields = RefCell::new(Vec::new());
-    let read = T::deserialize(FieldNames(&fields));
-    assert!(read.is_err(), "a field name reader reads no value");
-    let mut fields = fields.into_inner();
+    let mut fields = StructFields::of::<T>().to_vec();
     fields.sort_unstable();
     fields
-}
-
-/// A deserializer that reads only the field names of the struct it is asked for.
-#[derive(Debug)]
-struct FieldNames<'a>(&'a RefCell<Vec<&'static str>>);
-
-#[derive(Debug)]
-struct Read;
-
-impl fmt::Display for Read {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("read")
-    }
-}
-
-impl Error for Read {}
-
-impl de::Error for Read {
-    fn custom<T: fmt::Display>(_: T) -> Self {
-        Self
-    }
-}
-
-impl<'de> Deserializer<'de> for FieldNames<'_> {
-    type Error = Read;
-
-    fn deserialize_any<V: Visitor<'de>>(self, _: V) -> Result<V::Value, Read> {
-        Err(Read)
-    }
-
-    fn deserialize_struct<V: Visitor<'de>>(
-        self,
-        _: &'static str,
-        fields: &'static [&'static str],
-        _: V,
-    ) -> Result<V::Value, Read> {
-        self.0.borrow_mut().extend_from_slice(fields);
-        Err(Read)
-    }
-
-    serde::forward_to_deserialize_any! {
-        bool i8 i16 i32 i64 i128 u8 u16 u32 u64 u128 f32 f64 char str string bytes
-        byte_buf option unit unit_struct newtype_struct seq tuple tuple_struct map enum
-        identifier ignored_any
-    }
 }
 
 /// The most bytes a test reads of the reference: far past the few hundred kilobytes it holds.
@@ -393,7 +488,7 @@ fn the_reference_is_what_the_registry_writes() {
     // A script's literal is checked by a method's name alone, so every handle's method of a
     // name marks the same names.
     let methods = api.members().iter().filter(|member| {
-        member.spec.owner != ApiOwner::Ctx && member.spec.kind == MemberKind::Method
+        member.spec.owner != ApiOwner::CTX && member.spec.kind == MemberKind::Method
     });
     for member in methods {
         assert_eq!(
@@ -408,19 +503,37 @@ fn the_reference_is_what_the_registry_writes() {
 #[test]
 fn the_data_fields_are_the_schemas() {
     let api = Release::script_api();
-    // The mode's file holds its script and its package's actions, modifiers and item types
-    // beside `ModeData`, which the package load reads apart.
+    // The mode's file holds its scripts, its unit types' defaults and its package's actions,
+    // modifiers and item types beside `ModeData`, which the package load reads apart.
+    // A table's keys are its own fields and the sections its modules register.
+    let sections = Release::sections();
     let mut mode = serde_fields::<ModeData>();
-    mode.extend(["actions", "modifiers", "items", "script"]);
+    mode.extend(["actions", "modifiers", "items", "scripts", "defaults"]);
+    mode.extend(sections.keys(SectionTable::Mode));
     mode.sort_unstable();
-    let empty = Toml::parse::<UnitTypeData>("").unwrap();
-    let mut unit_type = empty.fields().map(|(name, _)| name).to_vec();
+    let mut unit_type: Vec<&str> = sections.keys(SectionTable::UnitType).collect();
     unit_type.sort_unstable();
-    // Its fields as `given` names them are those its table reads.
-    assert_eq!(unit_type, serde_fields::<UnitTypeData>());
+    // An action's pipeline keys and its lists are every kind's, and the rest its kind's own,
+    // each field once.
+    let mut action: Vec<&str> = ActionData::pipeline_keys().collect();
+    let kinds = [
+        StructFields::of::<AttackData>(),
+        StructFields::of::<TrainData>(),
+        StructFields::of::<BuildData>(),
+        StructFields::of::<GatherData>(),
+    ];
+    action.extend(kinds.into_iter().flatten());
+    action.sort_unstable();
+    action.dedup();
+    let mut kind: Vec<&str> = sections.listed_keys::<KindSections>().collect();
+    kind.sort_unstable();
+    let mut effect: Vec<&str> = sections.listed_keys::<ListedEffects>().collect();
+    effect.extend(PlannedEffect::ALL.map(PlannedEffect::name));
+    effect.push(EffectData::TO);
+    effect.sort_unstable();
     let tables = [
-        (DataTable::Mode, mode),
-        (DataTable::UnitType, unit_type),
+        (DataTable::MODE, mode),
+        (DataTable::UNIT_TYPE, unit_type),
         table::<ModeCombatData>(),
         table::<ModeNavigationData>(),
         table::<SlotKindData>(),
@@ -431,8 +544,12 @@ fn the_data_fields_are_the_schemas() {
         table::<TeamData>(),
         table::<PlayersData>(),
         table::<SavesData>(),
-        table::<ActionData>(),
-        table::<EffectData>(),
+        table::<VictoryData>(),
+        table::<ModeBountyData>(),
+        table::<BountyData>(),
+        (ActionData::TABLE, action),
+        (KindSections::TABLE, kind),
+        (ListedEffects::TABLE, effect),
         table::<DeliveryData>(),
         table::<ProjectileData>(),
         table::<AreaData>(),
@@ -461,7 +578,10 @@ fn the_data_fields_are_the_schemas() {
     // Each table once, its type the one its section names.
     let mut held: Vec<DataTable> = tables.iter().map(|&(table, _)| table).collect();
     held.sort_unstable();
-    assert_eq!(held, DataTable::ALL);
+    let mut recorded: Vec<DataTable> = api.data().iter().map(|field| field.table).collect();
+    recorded.sort_unstable();
+    recorded.dedup();
+    assert_eq!(held, recorded);
     for (table, schema) in tables {
         let mut recorded: Vec<_> = api
             .data()

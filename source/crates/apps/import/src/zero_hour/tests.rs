@@ -1,9 +1,8 @@
-use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale};
-use campfire_common::ContentHash;
-use campfire_package_disk::PackageDir;
+use campfire_client_files::{ClientModel, ClientUnit, LookVariant, ModelScale, ModelTop};
+use campfire_codec::TomlTable;
+use campfire_common::{ContentHash, DeclaredName};
 use campfire_sim::Capability;
 use campfire_store::internals::Scratch;
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 use super::*;
@@ -48,16 +47,17 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // Its terrain's sand of 2 × 1 texels holds no tile, and its grass has no texture, so each
     // of the 3 × 2 cells the game draws is untextured.
     let named = MapName::parse("fixture_map").unwrap();
-    assert_eq!(
-        imported.maps,
-        [(
-            named.clone(),
-            ImportedMap {
-                untextured_cells: 6,
-                dropped_waypoints: Vec::new(),
-            }
-        )]
-        .into()
+    assert_eq!(imported.maps, std::slice::from_ref(&named));
+    let untextured = ImportLoss::UntexturedCells {
+        map: named.clone(),
+        cells: 6,
+    };
+    assert!(imported.losses.contains(&untextured));
+    assert!(
+        !imported
+            .losses
+            .iter()
+            .any(|loss| matches!(loss, ImportLoss::Waypoint { .. }))
     );
     // Beside it, the rules package as the workspace holds it, which the imported mode, of
     // its manifest and mode data, depends on and loads with.
@@ -77,10 +77,10 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         scratch.read("one/zero-hour/package.index"),
         include_bytes!("../../../../../packages/zero-hour/package.index")
     );
-    // The package's own reader takes its units file: the tank, the wall and the rocks the
-    // map places, America's start objects, the barracks and the ranger their command sets
-    // make, and the shell the tank's cannon fires. Its units drive, by stats, orders and navigation, no faster than the tank's
-    // 30.5 m a second.
+    // The package's own reader takes its units file: the tank, the wall and the rocks the map
+    // places, America's start objects, the barracks and the ranger their command sets make, and the
+    // shell the tank's cannon fires. Its units drive, by stats, orders and navigation, no faster
+    // than the tank's 30.5 m a second.
     let mode = PackageDir::new(scratch.path("one/game"))
         .mode_packages(Some(&named))
         .unwrap();
@@ -107,7 +107,12 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // sphere of 25 m, 12.5 m, along +z where a map has no rally, at the markers tagged
     // `start`, which the load checks a walker can stand on, and with the money its host picks of
     // the fixture's three choices, 10,000 by default.
-    let data: ModeView = Toml::parse(&scratch.read_text("one/game/data/mode.toml")).unwrap();
+    // Its mode data lies over the rules package's, as the load lays them.
+    let mut data: TomlTable = Toml::parse(&scratch.read_text("one/game/data/mode.toml")).unwrap();
+    let rules: TomlTable =
+        Toml::parse(&scratch.read_text("one/zero-hour/data/rules.toml")).unwrap();
+    data.lay_over(rules);
+    let data: ModeView = data.read().unwrap();
     assert_eq!(data.navigation.spawn_tags, ["start"]);
     assert_eq!(
         data.params,
@@ -286,8 +291,9 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             unit.combat.as_ref(),
         )
     };
+    // A type's death and its turret's tolerance and slot kind are Zero Hour's rules data, which
+    // lies under each type's own.
     let combat = |armor: Option<&str>| UnitCombatView {
-        on_death: "despawn".to_owned(),
         armor: armor.map(str::to_owned),
     };
     let lives = Some(vec!["life".to_owned()]);
@@ -321,16 +327,13 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     assert_eq!(tags("americabarracks"), named(&["structure"]));
     assert_eq!(tags("americainfantryranger"), named(&["infantry"]));
     assert_eq!(tags("americatankcrusader"), None);
-    // The crusader's turret turns 180° a second, its weapons within 0.035 radians,
-    // 33,644,228 · 2⁻²⁴°; its shell, of no life or body, flies at its cannon's 400 m/s, 2 m
-    // wide, on its curve of 50% and 90%, the latter 15,099,494 · 2⁻²⁴, 10 m up, detonating on
-    // what is no player's own structure and on walls, for 10 s.
+    // The crusader's turret turns 180° a second; its shell, of no life or body, flies at its
+    // cannon's 400 m/s, 2 m wide, on its curve of 50% and 90%, the latter 15,099,494 · 2⁻²⁴, 10 m
+    // up, detonating on what is no player's own structure and on walls, for 10 s.
     assert_eq!(
         units.units["americatankcrusader"].turret,
         Some(TurretView {
             turn_rate: Num::int(180),
-            tolerance_deg: Num::from_bits(33_644_228),
-            slot: "weapon".to_owned(),
         })
     );
     let shell = &units.units["tankshell"];
@@ -357,9 +360,12 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // ranger's upgraded set is never read. The wall's highlander
     // body gives no life; the dozer starts at 200 of its 250, which the engine starts full.
     let dropped: Vec<(&str, WeaponDrop)> = imported
-        .dropped_weapons
+        .losses
         .iter()
-        .map(|dropped| (dropped.weapon.as_str(), dropped.cause))
+        .filter_map(|loss| match loss {
+            ImportLoss::Weapon(dropped) => Some((dropped.weapon.as_str(), dropped.cause)),
+            _ => None,
+        })
         .collect();
     assert_eq!(
         dropped,
@@ -368,8 +374,21 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
             ("Railgun", WeaponDrop::NoWeapon),
         ]
     );
-    assert_eq!(imported.unliving, ["FortressWall"]);
-    assert_eq!(imported.wounded, ["AmericaVehicleDozer"]);
+    let named_by = |kind: fn(&ImportLoss) -> Option<&str>| {
+        imported.losses.iter().filter_map(kind).collect::<Vec<_>>()
+    };
+    let unliving = named_by(|loss| match loss {
+        ImportLoss::Unliving(object) => Some(object.as_str()),
+        _ => None,
+    });
+    let wounded = named_by(|loss| match loss {
+        ImportLoss::Wounded(object) => Some(object.as_str()),
+        _ => None,
+    });
+    assert_eq!(
+        (unliving, wounded),
+        (vec!["FortressWall"], vec!["AmericaVehicleDozer"])
+    );
     let point = |x: i64, z: i64| Some([Num::int(x), Num::int(z)]);
     assert_eq!(
         units.units["americacommandcenter"].production,
@@ -405,9 +424,12 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // the dozer's, then the barracks', which the dozer's set makes; the power plant, in both the
     // dozer's and the barracks' sets, once.
     let dropped: Vec<(&str, DropCause)> = imported
-        .dropped_buttons
+        .losses
         .iter()
-        .map(|dropped| (dropped.button.as_str(), dropped.cause))
+        .filter_map(|loss| match loss {
+            ImportLoss::Button(dropped) => Some((dropped.button.as_str(), dropped.cause)),
+            _ => None,
+        })
         .collect();
     assert_eq!(
         dropped,
@@ -463,17 +485,21 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
         path: PackagePath::parse("client/textures/art/terrain/tsand.ktx2").unwrap(),
         size: UVec2::new(2, 1),
     });
-    let mut ini = ObjectIni::default();
+    let mut rules = ZeroHourRules::default();
     for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
-        ini.read(objects.as_bytes()).unwrap();
+        rules.objects.read(objects.as_bytes()).unwrap();
     }
-    let mut locomotors = LocomotorIni::default();
-    locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+    rules.templates.read(PLAYER_TEMPLATES.as_bytes()).unwrap();
+    rules.sets.read(COMMAND_SETS.as_bytes()).unwrap();
+    rules.buttons.read(COMMAND_BUTTONS.as_bytes()).unwrap();
+    rules.strings = StringTable::read(&strings()).unwrap();
+    rules.weapons.read(WEAPONS.as_bytes()).unwrap();
+    rules.armors.read(ARMORS.as_bytes()).unwrap();
     let looks = Toml::parse(&scratch.read_text("one/game/client/units.toml")).unwrap();
     let mut names = ImportNames::default();
     let sources = MapSources {
-        ini: &ini,
-        locomotors: &locomotors,
+        rules: &rules,
         names: &mut names,
         looks: &looks,
         lights: 3,
@@ -511,32 +537,11 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     // The units file holds the map's types and the start's, which the start's own reading
     // of the templates adds, those the command sets make, as the import adds them, their
     // weapons, and the shell the crusader's cannon fires.
-    let mut templates = PlayerTemplateIni::default();
-    templates.read(PLAYER_TEMPLATES.as_bytes()).unwrap();
-    SkirmishStart::of(&templates, &ini, &locomotors, &mut names).unwrap();
-    let mut sets = CommandSetIni::default();
-    sets.read(COMMAND_SETS.as_bytes()).unwrap();
-    let mut buttons = CommandButtonIni::default();
-    buttons.read(COMMAND_BUTTONS.as_bytes()).unwrap();
-    let strings = StringTable::read(&strings()).unwrap();
-    let sources = CommandSources {
-        ini: &ini,
-        sets: &sets,
-        buttons: &buttons,
-        locomotors: &locomotors,
-        strings: &strings,
-    };
-    let production = ProductionImport::of(sources, &mut names);
-    let mut weapons = WeaponIni::default();
-    weapons.read(WEAPONS.as_bytes()).unwrap();
-    let mut armors = ArmorIni::default();
-    armors.read(ARMORS.as_bytes()).unwrap();
-    let combat = CombatSources {
-        ini: &ini,
-        weapons: &weapons,
-        armors: &armors,
-    };
-    let combat = CombatImport::of(combat, &mut names).unwrap();
+    SkirmishStart::of(&rules, &mut names).unwrap();
+    let mut names = names.into_production();
+    let production = ProductionImport::of(&rules, &mut names);
+    let mut names = names.into_shells();
+    let combat = CombatImport::of(&rules, &mut names).unwrap();
     let types = names.close();
     let units = types.units_file(TypeAdditions {
         weapon: &combat.weapons,
@@ -545,7 +550,13 @@ fn an_install_of_a_known_version_imports_its_maps_and_another_does_not() {
     });
     assert_eq!(scratch.read_text("one/game/data/units.toml"), units.text);
     let camera = Toml::parse::<CameraFile>(&scratch.read_text("one/game/client/camera.toml"));
-    assert_eq!(camera.unwrap().field_of_view, 50.0);
+    let camera = camera.unwrap();
+    assert_eq!((camera.field_of_view, camera.click), (50.0, 0.167));
+    let hud = Toml::parse::<HudFile>(&scratch.read_text("one/game/client/hud.toml")).unwrap();
+    assert_eq!(hud.bars, ShownBars::Selected);
+    let colors = scratch.read_text("one/game/client/team_colors.toml");
+    let colors = Toml::parse::<TeamColors>(&colors).unwrap();
+    assert_eq!(colors.colors(), [[255, 200, 0], [255, 0, 0]]);
     // Each texture once, at its path in the archives, as its conversion gives it.
     let [rock, sign] = ktx2();
     assert_eq!(
@@ -626,14 +637,22 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     let known = version_of(&scratch);
     let zero_hour = ZeroHour::open_among(&scratch.path("zh"), known).unwrap();
     let imported = zero_hour.write(&scratch.path("one")).unwrap();
-    // Each model the objects name once, as its conversion gives it; its material file; and
+    // Each model the objects name once, as its conversion gives it; and
     // each object's models with the nodes its default look hides. The tank's turret is hidden
     // with the flash on the bone below it, which its muzzle flash hides as well; the crate's
     // box and the marker's `NULL` draw nothing; the tank's aggregate, the emitter, the absent
     // model and the tree's, which the fixture install lacks, are skipped, in the order of their
     // objects' names.
+    let skipped: Vec<SkippedModel> = imported
+        .losses
+        .iter()
+        .filter_map(|loss| match loss {
+            ImportLoss::Model(skipped) => Some(skipped.clone()),
+            _ => None,
+        })
+        .collect();
     assert_eq!(
-        imported.skipped_models,
+        skipped,
         [
             SkippedModel {
                 name: "tank.smoke".to_owned(),
@@ -654,7 +673,15 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
         ]
     );
     // The flash's texture is in no archive: its triangle is untextured, and the import says so.
-    assert_eq!(imported.missing_textures, ["gone.tga"]);
+    let textures: Vec<&str> = imported
+        .losses
+        .iter()
+        .filter_map(|loss| match loss {
+            ImportLoss::Texture(texture) => Some(texture.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(textures, ["gone.tga"]);
     assert_eq!(
         scratch.names("one/game/client/models"),
         ["rock01.glb", "tank.glb"]
@@ -664,19 +691,24 @@ fn an_import_writes_each_model_once_and_each_object_s_models() {
     let Ok(Converted::Model(tank)) = ModelImport::convert("tank", &mut assets) else {
         panic!("the tank converts");
     };
-    assert_eq!(scratch.names("one/game/client/materials"), ["tank_3.toml"]);
-    assert_eq!(
-        scratch.read_text("one/game/client/materials/tank_3.toml"),
-        Toml::write(&tank.materials[0].file)
-    );
     assert_eq!(
         scratch.read("one/game/client/models/tank.glb"),
         tank.glb.encode()
     );
+    // Each model's top, at its scale, on glTF's axes, `(x, y, z)` as `(x, z, −y)`. The tank's:
+    // its hull flat at 0; its turret's pivot 3 up, its half turn about `y` keeping heights, and
+    // its mesh's vertex no triangle uses 5 up in it, so 8; the flash on the turret's bone, 3 up,
+    // its triangle flat; its skin's vertices 3, 3 and 4 up. So 8 whole, and 4 of its turret and
+    // flash hidden. The rock's triangle is 1 m tall.
     let scaled = |name: &str, scale: f32, hide: &[&str]| ClientModel {
         model: PackagePath::parse(&format!("client/models/{name}.glb")).unwrap(),
         scale: ModelScale::new(scale).unwrap(),
         hide: hide.iter().map(|&node| node.to_owned()).collect(),
+        top: ModelTop::new(match (name, hide.is_empty()) {
+            ("tank", true) => 8.0,
+            ("tank", false) => 4.0,
+            _ => scale,
+        }),
     };
     let model = |name: &str, hide: &[&str]| scaled(name, 1.0, hide);
     let unit = ClientUnit::new;
@@ -916,8 +948,6 @@ struct UnitView {
 #[serde(deny_unknown_fields)]
 struct TurretView {
     turn_rate: Num,
-    tolerance_deg: Num,
-    slot: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
@@ -949,8 +979,8 @@ struct BaseView {
 }
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct UnitCombatView {
-    on_death: String,
     armor: Option<String>,
 }
 

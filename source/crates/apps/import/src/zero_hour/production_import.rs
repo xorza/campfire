@@ -1,41 +1,30 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::num::NonZeroU8;
 
-use campfire_common::EnumAll;
+use campfire_actions::{ActionKind, ActionRange, RangeField, Targeting};
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_math::{Num, Rounding};
-use campfire_values::DeclaredName;
+use campfire_production::{BuildData, BuildStart, ConstructData, RequiresData, TrainData};
+use campfire_values::{MessageId, Number, Ranked, Share};
 use serde::Serialize;
 
 use crate::zero_hour::format::csf::string_table::StringTable;
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::command_button_ini::{
-    ButtonCommand, CommandButton, CommandButtonIni,
-};
-use crate::zero_hour::format::ini::command_set_ini::CommandSetIni;
-use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
-use crate::zero_hour::format::ini::object_ini::build_data::{BuildData, Prerequisite};
-use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
+use crate::zero_hour::format::ini::command_button_ini::{ButtonCommand, CommandButton};
+use crate::zero_hour::format::ini::object_ini::IniObject;
+use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, Prerequisite};
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::imported_type::ImportedType;
+use crate::zero_hour::import_names::ProductionNames;
+use crate::zero_hour::imported_type::{ImportedType, MONEY};
 use crate::zero_hour::unit_types::ProductionSection;
-
-/// What the production import reads: the objects, their command sets and buttons, the
-/// locomotors that decide whether a type walks, and the string table of the buttons' names.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CommandSources<'a> {
-    pub(crate) ini: &'a ObjectIni,
-    pub(crate) sets: &'a CommandSetIni,
-    pub(crate) buttons: &'a CommandButtonIni,
-    pub(crate) locomotors: &'a LocomotorIni,
-    pub(crate) strings: &'a StringTable,
-}
+use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's trains and builds (12-zero-hour.md, Every command set's trains and builds are
 /// imported): each `UNIT_BUILD` and `DOZER_CONSTRUCT` button of the command set of each unit type,
-/// and of each type a converted button makes, once for the whole import; the names of their actions, as the string table gives their labels; the buttons dropped,
-/// each once for each cause, in the order the sets are read; and what it gives each producer, its
-/// actions of the slot kind `command` and its `production` section.
+/// and of each type a converted button makes, once for the whole import; the names of their
+/// actions, as the string table gives their labels; the buttons dropped, each once for each cause,
+/// in the order the sets are read; and what it gives each producer, its actions of the slot kind
+/// `command` and its `production` section.
 #[derive(Debug, Default)]
 pub(crate) struct ProductionImport {
     pub(crate) actions: BTreeMap<DeclaredName, ImportedAction>,
@@ -48,32 +37,28 @@ pub(crate) struct ProductionImport {
     pub(crate) sections: BTreeMap<ImportName, ProductionSection>,
 }
 
-/// A train or a build as the mode's data writes it, `[actions.<id>]`.
+/// A train or a build as the mode's data writes it, `[actions.<id>]`: the pipeline's fields it
+/// gives, and its kind's section.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedAction {
-    name: String,
-    kind: &'static str,
-    targeting: &'static str,
-    unit_type: DeclaredName,
+    name: MessageId,
+    kind: ActionKind,
+    targeting: Targeting,
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    cost: BTreeMap<&'static str, u16>,
-    windup_ms: u64,
+    cost: BTreeMap<DeclaredName, Ranked<Number>>,
+    windup_ms: Ranked<Number>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    requires: Option<Requires>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    range: Option<Num>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    start: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    construct: Option<&'static str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    start_life: Option<String>,
+    range: Option<Ranked<RangeField>>,
+    #[serde(flatten)]
+    made: MadeSection,
 }
 
-/// What an action requires, its unit types.
+/// The section of what a train or a build makes, of its kind.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct Requires {
-    units: Vec<DeclaredName>,
+#[serde(untagged)]
+enum MadeSection {
+    Train(TrainData),
+    Build(BuildData),
 }
 
 /// A button the import drops, by its name, and why.
@@ -111,12 +96,6 @@ enum Making {
     Build,
 }
 
-/// The slot kind of the converted buttons, of every producer's and builder's.
-pub(crate) const COMMAND: &str = "command";
-
-/// The player resource every cost is in.
-pub(crate) const MONEY: &str = "money";
-
 /// How near a builder comes to its building's box, 10 m, the pathfinder's cell: the dozer docks in
 /// the free cell beside the building nearest it (12-zero-hour.md, Every command set's trains and
 /// builds are imported).
@@ -126,25 +105,25 @@ const BUILD_RANGE: Num = Num::int(10);
 const FRAMES: f32 = 30.0;
 
 impl ProductionImport {
-    /// The trains and builds of `sources`, from the unit types `names` holds, each type a
+    /// The trains and builds of `rules`, from the unit types `names` holds, each type a
     /// converted button makes, or its object's prerequisites name, named there, and its own
     /// command set's buttons converted in turn.
-    pub(crate) fn of(sources: CommandSources<'_>, names: &mut ImportNames) -> Self {
+    pub(crate) fn of(rules: &ZeroHourRules, names: &mut ProductionNames) -> Self {
         let mut import = Self::default();
         let mut queued: VecDeque<String> = names.typed_objects().into();
         let mut seen: BTreeSet<String> = queued.iter().cloned().collect();
         while let Some(name) = queued.pop_front() {
-            let Some(producer) = sources.ini.object(name.as_bytes()) else {
+            let Some(producer) = rules.objects.object(name.as_bytes()) else {
                 continue;
             };
             let Some(set) = producer.build().command_set.as_deref() else {
                 continue;
             };
-            let Some(buttons) = sources.sets.buttons(set) else {
+            let Some(buttons) = rules.sets.buttons(set) else {
                 continue;
             };
             for button_name in buttons {
-                let made = import.button(sources, producer, button_name, names);
+                let made = import.button(rules, producer, button_name, names);
                 if let Some(object) = made
                     && seen.insert(object.clone())
                 {
@@ -160,10 +139,10 @@ impl ProductionImport {
     /// button is no train or build.
     fn button(
         &mut self,
-        sources: CommandSources<'_>,
+        rules: &ZeroHourRules,
         producer: &IniObject,
         button_name: &str,
-        names: &mut ImportNames,
+        names: &mut ProductionNames,
     ) -> Option<String> {
         // A button in several sets is reported once for each cause it drops by.
         let mut drop = |cause| {
@@ -176,7 +155,7 @@ impl ProductionImport {
             }
             None
         };
-        let Some(button) = sources.buttons.get(button_name) else {
+        let Some(button) = rules.buttons.get(button_name) else {
             return drop(DropCause::NoObject);
         };
         let making = match button.command {
@@ -187,16 +166,16 @@ impl ProductionImport {
         let made = button
             .object
             .as_deref()
-            .and_then(|object| sources.ini.object(object.as_bytes()));
+            .and_then(|object| rules.objects.object(object.as_bytes()));
         let Some(made) = made else {
             return drop(DropCause::NoObject);
         };
         let build = made.build();
-        let requires = match Self::requires(sources, build) {
+        let requires = match Self::requires(rules, build) {
             Ok(requires) => requires,
             Err(cause) => return drop(cause),
         };
-        let Ok(imported) = ImportedType::of(made, sources.locomotors) else {
+        let Ok(imported) = ImportedType::of(made, &rules.locomotors) else {
             return drop(DropCause::NoType);
         };
         match making {
@@ -216,48 +195,60 @@ impl ProductionImport {
         };
         let mut units = Vec::with_capacity(requires.len());
         for required in requires {
-            let Ok(typed) = names.unit_type(required, sources.locomotors) else {
+            let Ok(typed) = names.unit_type(required, &rules.locomotors) else {
                 return drop(DropCause::NoType);
             };
             units.push(typed.name);
         }
-        let Ok(typed) = names.unit_type(made, sources.locomotors) else {
+        let Ok(typed) = names.unit_type(made, &rules.locomotors) else {
             return drop(DropCause::NoType);
         };
         let kind = match making {
-            Making::Train => "train",
-            Making::Build => "build",
+            Making::Train => ActionKind::Train,
+            Making::Build => ActionKind::Build,
         };
-        let id = DeclaredName::new(&format!("{kind}_{}", typed.name))
+        let id = DeclaredName::new(&format!("{}_{}", kind.name(), typed.name))
             .expect("a kind and a type's name make a declared name");
         let message = format!("action-{}", id.as_str().replace('_', "-"));
         self.texts
             .entry(message.clone())
-            .or_insert_with(|| Self::text(sources.strings, button, made));
+            .or_insert_with(|| Self::text(&rules.strings, button, made));
+        let requires = (!units.is_empty()).then(|| RequiresData {
+            units,
+            modifiers: Vec::new(),
+        });
+        let made_section = match making {
+            Making::Train => MadeSection::Train(TrainData {
+                unit_type: typed.name,
+                requires,
+            }),
+            Making::Build => MadeSection::Build(BuildData {
+                start_life: typed.imported.life().map(Self::one_life),
+                unit_type: typed.name,
+                requires,
+                construct: ConstructData::Builder,
+                start: BuildStart::Order,
+                cancel_refund: None,
+                placement: None,
+            }),
+        };
+        let money = DeclaredName::new(MONEY).expect("a resource is a declared name");
+        let cost = (build.cost > 0).then(|| (money, Self::number(i64::from(build.cost))));
+        let windup_ms = i64::try_from(windup_ms).expect("a windup of an `Int` of frames fits");
         self.actions
             .entry(id.clone())
             .or_insert_with(|| ImportedAction {
-                name: message,
+                name: MessageId::new(&message).expect("an action's message is a message id"),
                 kind,
                 targeting: match making {
-                    Making::Train => "none",
-                    Making::Build => "point",
+                    Making::Train => Targeting::None,
+                    Making::Build => Targeting::Point,
                 },
-                unit_type: typed.name,
-                cost: (build.cost > 0)
-                    .then_some((MONEY, build.cost))
-                    .into_iter()
-                    .collect(),
-                windup_ms,
-                requires: (!units.is_empty()).then_some(Requires { units }),
-                range: (making == Making::Build).then_some(BUILD_RANGE),
-                start: (making == Making::Build).then_some("order"),
-                construct: (making == Making::Build).then_some("builder"),
-                start_life: typed
-                    .imported
-                    .life()
-                    .filter(|_| making == Making::Build)
-                    .map(Self::one_life),
+                cost: cost.into_iter().collect(),
+                windup_ms: Self::number(windup_ms),
+                range: (making == Making::Build)
+                    .then(|| Ranked::One(RangeField::Range(ActionRange::meters(BUILD_RANGE)))),
+                made: made_section,
             });
         let commands = self
             .commands
@@ -275,8 +266,8 @@ impl ProductionImport {
     /// The objects `build`'s prerequisites require, a line of one object each; a cause for a
     /// line of a science, of several objects, or of an object no file defines.
     fn requires<'a>(
-        sources: CommandSources<'a>,
-        build: &BuildData,
+        rules: &'a ZeroHourRules,
+        build: &IniBuild,
     ) -> Result<Vec<&'a IniObject>, DropCause> {
         build
             .prerequisites
@@ -284,8 +275,8 @@ impl ProductionImport {
             .map(|line| match line {
                 Prerequisite::Science(_) => Err(DropCause::Science),
                 Prerequisite::Objects(objects) => match objects.as_slice() {
-                    [object] => sources
-                        .ini
+                    [object] => rules
+                        .objects
                         .object(object.as_bytes())
                         .ok_or(DropCause::NoObject),
                     _ => Err(DropCause::EitherOr),
@@ -297,7 +288,7 @@ impl ProductionImport {
     /// The `production` section of a producer of `build`: its queue, and its exit's points in
     /// the engine's frame, the game's `y` its `−z`, as a map's places turn; none for no
     /// `ProductionUpdate`, or a queue past 1 to 255.
-    fn section(build: &BuildData) -> Option<ProductionSection> {
+    fn section(build: &IniBuild) -> Option<ProductionSection> {
         let queue = u8::try_from(build.queue?).ok().and_then(NonZeroU8::new)?;
         let frame = |[x, y]: [f32; 2]| {
             let x = game_float::to_num(x).ok()?;
@@ -315,15 +306,18 @@ impl ProductionImport {
     /// The share of a life of `most` that is 1 life, as the original's site starts at 1 hit point
     /// (`DozerAIUpdate::construct`): rounded up to the billionths a share holds, so the life it
     /// gives is at least 1 and past it by less than `most / 10⁹`; all of a life of at most 1.
-    fn one_life(most: Num) -> String {
+    fn one_life(most: Num) -> Share {
         const BILLION: i128 = 1_000_000_000;
         let bits = i128::from(most.to_bits());
         let one = 1_i128 << Num::FRAC_BITS;
-        let billionths = Rounding::Ceiling.divide(BILLION * one, bits);
-        if billionths >= BILLION {
-            return "1".to_owned();
-        }
-        format!("0.{billionths:09}")
+        let billionths = Rounding::Ceiling.divide(BILLION * one, bits).min(BILLION);
+        let billionths = u32::try_from(billionths).expect("a share's billionths fit u32");
+        Share::billionths(billionths).expect("a share of at most a billion billionths")
+    }
+
+    /// `value` at every rank.
+    fn number(value: i64) -> Ranked<Number> {
+        Ranked::One(Number::from(value))
     }
 
     /// The milliseconds of a build time of `seconds` the engine turns into the original's count
@@ -380,11 +374,12 @@ mod tests {
         // gives 1.0000008; of 180, 5,555,555.5… up to 5,555,556; a life of 1 or less starts
         // whole.
         let share = |most: Num| ProductionImport::one_life(most);
-        assert_eq!(share(Num::int(5000)), "0.000200000");
-        assert_eq!(share(Num::int(1200)), "0.000833334");
-        assert_eq!(share(Num::int(180)), "0.005555556");
-        assert_eq!(share(Num::ONE), "1");
-        assert_eq!(share(Num::HALF), "1");
+        let billionths = |parts| Share::billionths(parts).unwrap();
+        assert_eq!(share(Num::int(5000)), billionths(200_000));
+        assert_eq!(share(Num::int(1200)), billionths(833_334));
+        assert_eq!(share(Num::int(180)), billionths(5_555_556));
+        assert_eq!(share(Num::ONE), Share::ALL);
+        assert_eq!(share(Num::HALF), Share::ALL);
     }
 
     #[test]

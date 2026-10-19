@@ -1,10 +1,10 @@
 use std::net::Ipv4Addr;
 
 use serde::Serialize;
-use tracing::info;
+use tracing::{info, info_span};
 
 use super::*;
-use crate::json_layer::internals::round_trip;
+use crate::json_layer::internals::{capture, round_trip};
 use crate::json_text::JsonText;
 
 #[derive(Debug, PartialEq, Eq, Deserialize)]
@@ -57,5 +57,16 @@ fn a_line_reads_as_the_event_of_its_message_only() {
     let flawed = line(r#"{"message":"opened","port":1,"address":"1.2.3.4.5"}"#);
     assert!(matches!(flawed.read::<Opened>(), Some(Err(_))));
     assert!(LogLine::parse("{").is_err());
+    // A line names the spans it was logged in, root first: a field of each reads by its span.
+    let lines = capture(|| {
+        let _session = info_span!("session", id = "s1").entered();
+        let _tick = info_span!("tick", n = 7).entered();
+        info!("ran");
+    });
+    let ran = LogLine::parse(&lines[0]).unwrap();
+    assert_eq!(ran.span_text("session", "id"), Some("s1"));
+    assert_eq!(ran.span_text("tick", "id"), None);
+    assert_eq!(ran.span_text("frame", "id"), None);
+    assert_eq!(other.span_text("session", "id"), None);
     assert!(LogLevel::Warn > LogLevel::Info && LogLevel::Error > LogLevel::Warn);
 }

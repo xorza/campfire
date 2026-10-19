@@ -2,15 +2,13 @@ use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::world::World;
 use campfire_geometry::Shape;
 use campfire_math::Vec3;
-use campfire_script::{AnyKeptRows, KeptRows, RowFill, ScriptValue, Unit, View, ViewColumn};
+use campfire_script::{AnyKeptRows, Checked, KeptRows, MaybeName, RowFill, Unit, View, ViewColumn};
 use campfire_sim::StableId;
-use campfire_units::{Body, Layer, MoveStep};
+use campfire_units::{Body, Layer, MoveStep, WallBook};
 use campfire_values::PathId;
 
 use crate::body_index::IndexedBody;
-use crate::navigation_book::NavigationBook;
 use crate::on_path::OnPath;
-use crate::walls::Walls;
 
 /// The parts of a unit navigation reads into its row: the path it is on, whether it walks, and
 /// its body, for its layer.
@@ -26,7 +24,7 @@ pub(crate) type RowReads = (
 #[derive(Debug, Default)]
 pub struct NavigationColumn {
     rows: KeptRows<Vec<NavigationRow>>,
-    walls: Walls,
+    walls: WallBook,
 }
 
 /// A unit's row of the navigation column.
@@ -47,7 +45,7 @@ impl ViewColumn for NavigationColumn {
     }
 
     fn begin(&mut self, world: &World) -> bool {
-        let walls = &world.resource::<NavigationBook>().walls;
+        let walls = world.resource::<WallBook>();
         if !walls.same(&self.walls) {
             self.walls = walls.clone();
         }
@@ -100,11 +98,13 @@ impl NavigationColumn {
 
     /// `unit.path`: the name of the path `unit` walks or stands on, `()` with none, or in a view
     /// with no navigation.
-    pub(crate) fn path(unit: &Unit) -> ScriptValue {
+    pub(crate) fn path(unit: &Unit) -> Checked<MaybeName<PathId>> {
         let view = unit.view();
-        let path = view.column(|column: &Self| column.rows.now()[unit.row_index()].path);
-        let name = path.flatten().map(|path| view.names().name(path));
-        name.map_or(ScriptValue::UNIT, ScriptValue::of)
+        let row = unit.row_index()?;
+        let path = view.column(|column: &Self| column.rows.now()[row].path);
+        Ok(MaybeName::from(
+            path.flatten().map(|path| view.names().name(path)),
+        ))
     }
 
     /// Whether unit `id`, which `view` read, walks; none does in a view with no navigation.

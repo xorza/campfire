@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, NotSent, Replication};
 use campfire_units::DeliveryEntity;
 use serde::de::Error;
@@ -86,7 +86,7 @@ impl SimComponent for FlightState {
                     !lost && flown <= range
                 }
                 (Flight::Curve { points, .. }, Self::Curve { steps, end, .. }) => {
-                    steps <= points && Position::from(end).within_bound()
+                    steps <= points && end.within_bound()
                 }
                 _ => false,
             }

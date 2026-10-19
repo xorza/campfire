@@ -104,12 +104,12 @@ fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_
     assert_eq!(route_searches(&game) - before, 1);
     let [first, second, goal] = over_the_wall();
     for (member, own) in members.into_iter().zip([7, 8, 9]) {
-        let route = game.part::<Route>(member);
         assert_eq!(
-            route.ahead(),
+            Navigation::ahead(&game, member),
             [first, second, Vec3::from((own, 0, 1))],
             "{own}"
         );
+        let route = game.part::<Route>(member);
         assert!(route.reached() && route.asked().is_none());
     }
 
@@ -126,7 +126,7 @@ fn a_party_searches_once_and_each_member_takes_the_route_from_the_last_waypoint_
     .map(|at| member(&mut game, at, goal, party));
     game.step();
     assert_eq!(route_searches(&game), 1);
-    let routes = ids.map(|id| game.part::<Route>(id).ahead().to_vec());
+    let routes = ids.map(|id| Navigation::ahead(&game, id).to_vec());
     assert_eq!(
         routes,
         [
@@ -178,7 +178,7 @@ fn a_member_whose_ask_waited_from_an_earlier_tick_plans_with_its_party() {
     game.step();
     assert_eq!(route_searches(&game), 1);
     for id in [early, late] {
-        assert_eq!(game.part::<Route>(id).ahead(), over_the_wall());
+        assert_eq!(Navigation::ahead(&game, id), over_the_wall());
     }
 }
 
@@ -197,12 +197,12 @@ fn a_member_that_sees_no_waypoint_plans_its_own_route() {
     assert_eq!(route_searches(&game), 2);
     let [first, second, _] = over_the_wall();
     assert_eq!(
-        game.part::<Route>(near).ahead(),
+        Navigation::ahead(&game, near),
         [first, second, halves(17, 0)]
     );
-    let own = game.part::<Route>(hidden);
-    assert_eq!(own.ahead().last(), Some(&halves(15, 6)));
-    assert!(own.reached() && !own.ahead().contains(&first));
+    let own = Navigation::ahead(&game, hidden);
+    assert_eq!(own.last(), Some(&halves(15, 6)));
+    assert!(game.part::<Route>(hidden).reached() && !own.contains(&first));
 }
 
 #[test]
@@ -231,10 +231,10 @@ fn a_party_searches_once_for_each_layer_it_moves_on() {
     game.step();
     assert_eq!(route_searches(&game), 2);
     for id in ground {
-        assert_eq!(game.part::<Route>(id).ahead(), over_the_wall());
+        assert_eq!(Navigation::ahead(&game, id), over_the_wall());
     }
     for id in air {
-        assert_eq!(game.part::<Route>(id).ahead(), [goal]);
+        assert_eq!(Navigation::ahead(&game, id), [goal]);
     }
 }
 
@@ -277,15 +277,17 @@ fn a_party_whose_tests_pass_the_ticks_limit_finishes_in_the_next_tick() {
 
 #[test]
 fn a_spawn_group_on_its_path_shares_a_route_and_a_unit_off_it_plans_its_own() {
-    // Three walkers at (2, 1) on their path, bound for (8, 1). As one spawn group they search
-    // once; each of a group of its own, three times; one of the group that left its path, by
-    // itself.
+    // Three walkers at (2, 1) on their path from there to (8, 1), bound for (8, 1). As one spawn
+    // group they search once; each of a group of its own, three times; one of the group that left
+    // its path, by itself.
+    let lane = [Vec3::from((2, 0, 1)), Vec3::from((8, 0, 1))];
     for (groups, left, searches) in [
         ([0, 0, 0], false, 1),
         ([0, 1, 2], false, 3),
         ([0, 0, 0], true, 2),
     ] {
         let mut game = walled(&[]);
+        Navigation::load_paths(&mut game, Paths::new([("lane", &lane[..])]));
         let ids: Vec<StableId> = (0..3)
             .map(|_| Navigation::unit(&mut game, (2, 0, 1), Some(Vec3::from((8, 0, 1)))))
             .collect();
@@ -299,7 +301,7 @@ fn a_spawn_group_on_its_path_shares_a_route_and_a_unit_off_it_plans_its_own() {
         game.step();
         assert_eq!(route_searches(&game), searches, "{groups:?} {left}");
         for id in ids {
-            assert_eq!(game.part::<Route>(id).ahead(), over_the_wall());
+            assert_eq!(Navigation::ahead(&game, id), over_the_wall());
         }
     }
 }

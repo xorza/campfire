@@ -37,9 +37,12 @@ impl Facing {
         Self(Num::from_bits(angle.to_bits().rem_euclid(FULL)))
     }
 
-    /// The angle in degrees the unit of `at` faces, which its spawn gives; 0 for an entity that
-    /// faces none.
+    /// The angle in degrees the unit of `at` faces: its spawn's core's, or, for a restored unit,
+    /// its own facing's; 0 for one that faces none.
     pub(crate) fn angle_of<H>(at: &KindSpawn<'_, H>) -> Num {
+        if let Some(core) = at.core() {
+            return core.angle;
+        }
         let facing = at.world().get::<Self>(at.entity());
         facing.map_or(Num::ZERO, |facing| facing.degrees())
     }

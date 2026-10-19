@@ -1,5 +1,5 @@
 use campfire_common::Ticks;
-use campfire_deliveries::Deliveries;
+use campfire_deliveries::{DashDelivering, DeliveryQueue};
 use campfire_script::{Effect, Frame};
 use campfire_sim::{SimComponent, SnapshotError};
 use campfire_units::{DashTo, ForcedMove, MoveStep};
@@ -38,7 +38,6 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
         ForcedMove::Dash {
             to,
             step: Num::int(2),
-            delivers: None,
         },
     );
     // A walker of 0.5 m walks a meter a tick along x from (10, 0, 20); a chaser of 0.5 m dashes 3
@@ -59,7 +58,6 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
         ForcedMove::Dash {
             to,
             step: Num::int(3),
-            delivers: None,
         },
     );
     let mut dash_path = Vec::new();
@@ -102,10 +100,9 @@ fn a_restore_refuses_a_forced_move_whose_unit_cannot_take_it_or_whose_numbers_ov
         game.insert_parts(id, forced);
         (Release::refusal_into(&game, &mut walk_match()), id)
     };
-    let dash = |step: Num, delivers: Option<DashDelivery>| ForcedMove::Dash {
+    let dash = |step: Num| ForcedMove::Dash {
         to: DashTo::Point(Vec3::from((5, 0, 0))),
         step,
-        delivers,
     };
     let knock_back = |left: u64| ForcedMove::KnockBack {
         to: Vec3::from((Num::int(3), Num::ZERO, Num::ZERO)),
@@ -120,17 +117,17 @@ fn a_restore_refuses_a_forced_move_whose_unit_cannot_take_it_or_whose_numbers_ov
     // A dash of twice the world's bound a tick, 2²¹ m, and a knock back of `Tick::LIMIT` ticks
     // restore; one bit or one tick more is refused, as a step past a body's reach and a share of
     // the way would overflow.
-    let reach = Num::from_bits(2 * Position::BOUND.to_bits());
+    let reach = Num::from_bits(2 * Vec3::BOUND.to_bits());
     let past = Num::from_bits(reach.to_bits() + 1);
-    assert_eq!(refusal(true, dash(reach, None)).0, None);
-    let (refused, id) = refusal(true, dash(past, None));
+    assert_eq!(refusal(true, dash(reach)).0, None);
+    let (refused, id) = refusal(true, dash(past));
     assert_eq!(refused, invalid(id));
     assert_eq!(refusal(true, knock_back(Tick::LIMIT.get())).0, None);
     let (refused, id) = refusal(true, knock_back(Tick::LIMIT.get() + 1));
     assert_eq!(refused, invalid(id));
     // A unit that does not walk takes no forced move: it lacks the move step one moves in place
     // of.
-    let (refused, id) = refusal(false, dash(Num::ONE, None));
+    let (refused, id) = refusal(false, dash(Num::ONE));
     let lacks = SnapshotError::Lacks {
         holder: ForcedMove::NAME,
         needs: MoveStep::NAME,
@@ -139,15 +136,22 @@ fn a_restore_refuses_a_forced_move_whose_unit_cannot_take_it_or_whose_numbers_ov
     assert_eq!(refused, Some(lacks));
     // A dash that delivers an action the book lacks, as this match's empty book lacks the first,
     // has no hooks for its end to run.
-    let delivery = |source| DashDelivery::new(source, ActionId::new(0), Rank::FIRST, None);
+    let delivery = |source| {
+        DashDelivering::new(DashDelivery {
+            source,
+            action: ActionId::new(0),
+            rank: Rank::FIRST,
+            start: None,
+        })
+    };
     let mut game = walk_match();
     let id = Navigation::body(&mut game, (0, 0, 0), None, Some(Num::ONE), HALF);
-    game.insert_parts(id, dash(Num::ONE, Some(delivery(id))));
+    game.insert_parts(id, (dash(Num::ONE), delivery(id)));
     let refused = Release::refusal_into(&game, &mut walk_match());
     assert_eq!(
         refused,
         Some(SnapshotError::Invalid {
-            ty: ForcedMove::NAME,
+            ty: DashDelivering::NAME,
             id: Some(id),
         })
     );
@@ -218,6 +222,37 @@ fn a_knock_back_moves_its_unit_away_by_equal_shares_and_a_new_move_replaces_it()
         moved.push(at(&game, thirds).x.to_bits());
     }
     assert_eq!(moved, [5_592_405, 5_592_405 + 5_592_406, ONE]);
+
+    // A dash that delivers an action holds its delivery beside it; a knock back in its place
+    // drops it, and a dash that delivers nothing holds none.
+    let delivered = DashDelivery {
+        source: thirds,
+        action: ActionId::new(0),
+        rank: Rank::FIRST,
+        start: None,
+    };
+    let dash = |delivers| NavigationEffect::Dash {
+        id: thirds,
+        to: DashTo::Point(Vec3::from((5, 0, 10))),
+        step: Num::ONE,
+        delivers,
+    };
+    let delivering = |game: &Match| game.try_part::<DashDelivering>(thirds).copied();
+    apply(&mut game, dash(Some(delivered)));
+    assert_eq!(delivering(&game), Some(DashDelivering::new(delivered)));
+    apply(
+        &mut game,
+        NavigationEffect::KnockBack {
+            id: thirds,
+            from: Vec3::from((0, 0, 9)),
+            distance: Num::ONE,
+            ticks: Ticks::new(2),
+        },
+    );
+    assert_eq!(delivering(&game), None);
+    apply(&mut game, dash(Some(delivered)));
+    apply(&mut game, dash(None));
+    assert_eq!(delivering(&game), None);
 }
 
 #[test]
@@ -235,7 +270,6 @@ fn a_forced_move_stops_before_a_static_body_and_on_the_bounds() {
         ForcedMove::Dash {
             to: DashTo::Point(Vec3::from((4, 0, 0))),
             step: Num::int(2),
-            delivers: None,
         },
     );
     // A knock back of 9 m over 3 ticks from (−2, 0, 2) along x: 1, then 4, on the bound, then
@@ -292,7 +326,6 @@ fn a_teleport_puts_its_unit_where_it_may_stand_at_once_and_ends_its_move() {
         ForcedMove::Dash {
             to: DashTo::Point(Vec3::from((3, 0, -3))),
             step: HALF,
-            delivers: None,
         },
     );
     game.step();
@@ -341,7 +374,7 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
         vec![ground(three_quarters)],
         &[barrier],
     );
-    game.insert_resource(Deliveries::default());
+    game.insert_resource(DeliveryQueue::default());
     let point = |x: i64, z: i64| Vec3::new(HALF * x, Num::ZERO, HALF * z);
     let unit = |game: &mut Match, x: i64, z: i64| {
         Navigation::body(game, point(x, z), None, Some(Num::ONE), three_quarters)
@@ -379,7 +412,6 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
         ForcedMove::Dash {
             to: DashTo::Point(point(21, 11)),
             step: Num::int(2),
-            delivers: None,
         },
     );
     // A dash of 2 m a tick from (2.5, 1.5) to (6, 1.5) ends there in tick 1, in column 6. The
@@ -387,14 +419,21 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
     // lower numbered, (3.5, 1.5), takes it. The action it delivers ends there: the way its steps
     // went, 2 m and 1.5 m, along x.
     let short = unit(&mut game, 5, 3);
-    let delivery = DashDelivery::new(short, ActionId::new(0), Rank::FIRST, None);
+    let delivery = DashDelivery {
+        source: short,
+        action: ActionId::new(0),
+        rank: Rank::FIRST,
+        start: None,
+    };
     game.insert_parts(
         short,
-        ForcedMove::Dash {
-            to: DashTo::Point(point(12, 3)),
-            step: Num::int(2),
-            delivers: Some(delivery),
-        },
+        (
+            ForcedMove::Dash {
+                to: DashTo::Point(point(12, 3)),
+                step: Num::int(2),
+            },
+            DashDelivering::new(delivery),
+        ),
     );
     let mut seen = Vec::new();
     for _ in 0..4 {
@@ -404,7 +443,7 @@ fn a_knock_back_stops_before_a_wall_and_a_dash_crosses_one_to_a_cell_it_may_stan
             units.map(|id| at(&game, id)),
             units.map(|id| forced(&game, id).is_some()),
         ));
-        let mut deliveries = game.resource_mut::<Deliveries>();
+        let mut deliveries = game.resource_mut::<DeliveryQueue>();
         let ended = deliveries.delivered_mut();
         if let Some(end) = ended.pop() {
             assert_eq!(end.hit.pos, point(7, 3));

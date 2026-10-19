@@ -4,7 +4,7 @@ use std::process::Child;
 use std::thread;
 use std::time::{Duration, Instant};
 
-use campfire_log::ErrorReport;
+use campfire_common::ErrorReport;
 use tracing::error;
 
 use crate::error::CheckError;

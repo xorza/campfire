@@ -4,12 +4,12 @@ use campfire_client_files::ModelScale;
 
 use crate::zero_hour::format::ini::error::IniError;
 use crate::zero_hour::format::ini::ini_text::{FlagList, FlagSet, IniLine, IniText};
-use crate::zero_hour::format::ini::object_ini::build_data::{BuildData, ProductionModule};
 use crate::zero_hour::format::ini::object_ini::fight_data::{FightBlock, FightData};
+use crate::zero_hour::format::ini::object_ini::ini_build::{IniBuild, ProductionModule};
 use crate::zero_hour::format::look_conditions::LookConditions;
 
-pub(crate) mod build_data;
 pub(crate) mod fight_data;
+pub(crate) mod ini_build;
 
 /// The objects of Zero Hour's object INI files, as `ThingFactory` reads them, each with what its
 /// draw modules show by default.
@@ -35,7 +35,7 @@ pub(crate) struct IniObject {
     geometry: Geometry,
     /// The locomotors of its `SET_NORMAL`, in the order its line names them.
     locomotors: Vec<String>,
-    build: BuildData,
+    build: IniBuild,
     fight: FightData,
 }
 
@@ -333,7 +333,7 @@ impl ObjectIni {
                 is_bridge: false,
                 geometry: Geometry::DEFAULT,
                 locomotors: Vec::new(),
-                build: BuildData::default(),
+                build: IniBuild::default(),
                 fight: FightData::default(),
             },
             Some(base) => IniObject {
@@ -659,7 +659,7 @@ impl IniObject {
     }
 
     /// What it gives production: its cost, time, command set, prerequisites and modules.
-    pub(crate) const fn build(&self) -> &BuildData {
+    pub(crate) const fn build(&self) -> &IniBuild {
         &self.build
     }
 

@@ -1,4 +1,6 @@
-use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale};
+use campfire_client_files::{
+    ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale, ModelTop,
+};
 
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::ini::object_ini::{
@@ -93,7 +95,8 @@ impl LookWriter<'_, '_, '_> {
             let (Some(model), Some(bone)) = (&draw.model, &draw.turret) else {
                 continue;
             };
-            if let WrittenModel::Parts(parts) = self.models.model(&model.to_ascii_lowercase())?
+            if let WrittenModel::Parts { parts, .. } =
+                self.models.model(&model.to_ascii_lowercase())?
                 && let Some(pivot) = parts.pivot_name(bone)
             {
                 return Ok(Some(pivot.to_owned()));
@@ -157,11 +160,18 @@ impl LookWriter<'_, '_, '_> {
             };
             let name = model.to_ascii_lowercase();
             match self.models.model(&name)? {
-                WrittenModel::Parts(parts) => looked.models.push(ClientModel {
-                    model: game_path::model(&name)?,
-                    scale,
-                    hide: parts.hidden(look),
-                }),
+                WrittenModel::Parts { parts, bounds } => {
+                    let hide = parts.hidden(look);
+                    let top = bounds
+                        .top(&hide)
+                        .and_then(|top| ModelTop::new(top * scale.get()));
+                    looked.models.push(ClientModel {
+                        model: game_path::model(&name)?,
+                        scale,
+                        hide,
+                        top,
+                    });
+                }
                 WrittenModel::Nothing => {}
                 WrittenModel::Skipped => looked.skipped = true,
             }

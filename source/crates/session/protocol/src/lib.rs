@@ -2,12 +2,14 @@
 //! binds a player's identity to the transport; and the text of a key file. The crate does no IO:
 //! the log frames its journal's records into a sink it is given.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 mod bytes;
 mod checkpoint;
 mod connect;
-mod controller;
+mod control;
 mod delegation;
 mod entropy;
 #[cfg(feature = "internals")]
@@ -47,7 +49,7 @@ pub use crate::checkpoint::error::CheckpointDecodeError;
 pub use crate::checkpoint::log_carry::LogCarry;
 pub use crate::connect::error::ConnectError;
 pub use crate::connect::{ConnectAnswer, ConnectChallenge, ConnectChallengeMeaning};
-pub use crate::controller::Controller;
+pub use crate::control::{Control, Controller};
 pub use crate::delegation::delegation_id::{DelegationId, DelegationIdMeaning};
 pub use crate::delegation::delegation_tag::DelegationTag;
 pub use crate::delegation::error::{DelegationError, EventError, ScopeError};
@@ -57,7 +59,7 @@ pub use crate::entropy::Entropy;
 pub use crate::input_chain::{InputChain, SignedHead};
 pub use crate::input_hash::{InputHash, InputHashMeaning};
 pub use crate::input_rules::InputRules;
-pub use crate::journal::error::NotJournal;
+pub use crate::journal::error::{JournalStreamError, NotJournal};
 pub use crate::journal::journal_frames::JournalFrames;
 pub use crate::journal::record_sink::RecordSink;
 pub use crate::main_key::{MainKey, MainKeyMeaning};
@@ -68,7 +70,7 @@ pub use crate::receipt::{Receipt, SignedReceipt};
 pub use crate::seed_chain::SeedChain;
 pub use crate::seed_commitment::{SeedCommitment, SeedCommitmentMeaning};
 pub use crate::server_input::error::ServerInputDecodeError;
-pub use crate::server_input::{InputPlace, LeaveReason, PlacedInput, ServerInput};
+pub use crate::server_input::{InputPlace, LeaveReason, ServerInput};
 pub use crate::server_seed::ServerSeed;
 pub use crate::server_seeds::ServerSeeds;
 pub use crate::session_id::{SessionId, SessionIdMeaning};
@@ -77,15 +79,17 @@ pub use crate::session_log::applied::Applied;
 pub use crate::session_log::durable_head::DurableHead;
 pub use crate::session_log::error::{
     CheckpointError, HeaderError, InputError, JournalReplayError, LogError, LogLoadError,
-    ResultError, SeedError, ServerInputError,
+    PublishError, ResultError, SeedError, ServerInputError,
 };
+pub use crate::session_log::journal::Journal;
+pub use crate::session_log::log_replay::LogReplay;
 pub use crate::session_log::player_packet::PlayerPacket;
 pub use crate::session_log::session_header::SessionHeader;
 pub use crate::session_private::SessionPrivate;
 pub use crate::session_result::{Outcome, SessionResult};
 pub use crate::session_terms::SessionTerms;
 pub use crate::signature::Signature;
-pub use crate::signed::{InSession, SignatureDomain, Signed};
+pub use crate::signed::{SignatureDomain, Signed};
 pub use crate::signer::Signer;
 pub use crate::slot_change::{SlotChange, SlotChangeKind, Taken};
 pub use crate::slot_plan::SlotPlan;
@@ -103,12 +107,13 @@ pub mod internals {
 pub mod bench {
     use criterion::Criterion;
 
-    use crate::{input_chain, server_seeds};
+    use crate::{input_chain, server_seeds, session_log};
 
     /// Runs each bench of the crate whose id criterion's filter takes.
     pub fn run(c: &mut Criterion) {
         input_chain::bench::chain_head(c);
         server_seeds::bench::server_seeds(c);
+        session_log::bench::record_tick(c);
     }
 }
 

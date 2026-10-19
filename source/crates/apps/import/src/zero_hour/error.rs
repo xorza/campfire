@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 
 use campfire_client_files::TerrainFileError;
+use campfire_common::MapName;
+use campfire_package::LoadError;
 use campfire_package_disk::WriteError;
 use campfire_store::PathError;
 use campfire_store::ReadError;
@@ -68,6 +70,13 @@ pub enum ZeroHourError {
     /// The game data gives a camera no view takes: a height not above 0, or a value not finite.
     #[error("the game data gives a camera no view takes")]
     Camera,
+    /// The package the import wrote does not load on one of its maps, as a match would load it.
+    #[error("the package does not load on its map {map}")]
+    Load {
+        map: MapName,
+        #[source]
+        error: Box<LoadError>,
+    },
     /// An INI file is none the game reads, by its path.
     #[error("{path} is no INI file the game reads")]
     Ini {
@@ -155,6 +164,9 @@ pub enum TypeError {
     /// Its body is a circle or a box no unit type of the engine may have.
     #[error("its body is none the engine holds")]
     Body,
+    /// Its turret turns at a rate no unit type of the engine may have.
+    #[error("its turret is none the engine holds")]
+    Turret,
 }
 
 /// How an install's archive differs from a version's.

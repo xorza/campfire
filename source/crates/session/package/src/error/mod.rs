@@ -11,20 +11,10 @@ use thiserror::Error;
 use crate::error::load_problem::LoadProblem;
 use crate::files::package_name::PackageName;
 
-pub(crate) mod box_problem;
-pub(crate) mod build_problem;
-pub(crate) mod choice_problem;
-pub(crate) mod delivery_problem;
-pub(crate) mod effect_problem;
-pub(crate) mod gather_problem;
-pub(crate) mod item_problem;
-pub(crate) mod limit;
 pub(crate) mod load_problem;
 pub(crate) mod locale_problem;
 pub(crate) mod place;
 pub(crate) mod script_problem;
-pub(crate) mod use_problem;
-pub(crate) mod way;
 
 /// Why a package file does not load. Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Error)]
@@ -139,11 +129,14 @@ impl LoadError {
 
 #[cfg(test)]
 mod tests {
-    use campfire_stats::ModifierProblem;
-    use campfire_values::DeclaredName;
+    use campfire_actions::ActionProblem;
+    use campfire_common::DeclaredName;
+    use campfire_declare::{BookError, BookPlace, Problem};
+    use campfire_values::PackageIndex;
 
     use super::*;
     use crate::error::locale_problem::LocaleProblem;
+    use crate::error::place::Place;
     use crate::error::script_problem::ScriptProblem;
 
     /// The message of `error` and of each error under it, down to the root.
@@ -157,6 +150,14 @@ mod tests {
         messages
     }
 
+    /// The problem of a module's rule that `error` gives.
+    fn rule(error: ActionProblem) -> Problem {
+        match BookError::rule(PackageIndex::MODE, BookPlace::Map, error) {
+            BookError::Rule { problem, .. } => problem,
+            other => panic!("a rule's error, not {other:?}"),
+        }
+    }
+
     #[test]
     fn a_load_error_names_its_package_and_its_problem_and_the_error_under_it() {
         let hero = PackageName::new("hero").unwrap();
@@ -166,14 +167,17 @@ mod tests {
         // error itself, so no step shows twice.
         let cases = [
             (
-                LoadProblem::Modifier {
-                    modifier: DeclaredName::new("haste").unwrap(),
-                    problem: ModifierProblem::Time,
+                LoadProblem::Rule {
+                    at: Place::Entry {
+                        table: "actions",
+                        name: DeclaredName::new("haste").unwrap(),
+                    },
+                    problem: rule(ActionProblem::SlottedRanks),
                 },
                 &[
                     "package hero",
-                    "modifier \"haste\"",
-                    "a time negative or too large to count in ticks",
+                    "[actions.haste]",
+                    "placed in slot kinds of different ranks",
                 ][..],
             ),
             (

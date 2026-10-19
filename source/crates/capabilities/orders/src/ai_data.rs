@@ -1,3 +1,4 @@
+use campfire_declare::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
 use campfire_values::PackagePath;
 use serde::Deserialize;
@@ -12,5 +13,10 @@ pub struct AiData {
 }
 
 impl DataSection for AiData {
-    const TABLE: DataTable = DataTable::Ai;
+    const TABLE: DataTable = DataTable::new("A unit type's `orders`");
+}
+
+impl Section for AiData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "orders";
 }

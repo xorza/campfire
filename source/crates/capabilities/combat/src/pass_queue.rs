@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::Tick;
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
@@ -74,7 +74,7 @@ impl PassQueue {
 
     /// Puts the queue in the order the pass applies it, the entries `carried` from the tick
     /// before first, and starts the pass.
-    pub(crate) fn begin(&mut self, carried: Vec<PassEntry>) {
+    pub(crate) fn begin(&mut self, carried: impl IntoIterator<Item = PassEntry>) {
         debug_assert!(!self.running, "one pass at a time");
         self.entries
             .sort_unstable_by_key(|queued| (queued.entry.source(), queued.order));
@@ -98,14 +98,14 @@ impl PassQueue {
         debug_assert!(self.given.is_empty(), "the pass deals every heal it gave");
         self.running = false;
         self.dealt = Some(now);
-        self.clear();
+        self.empty();
     }
 
     pub(crate) const fn is_empty(&self) -> bool {
         self.entries.is_empty()
     }
 
-    pub fn clear(&mut self) {
+    fn empty(&mut self) {
         self.entries.clear();
         self.given.clear();
         self.at = 0;
@@ -122,6 +122,10 @@ impl PassEntry {
 }
 
 impl Scratch for PassQueue {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         !self.running && self.entries.is_empty() && self.given.is_empty() && self.at == 0
     }
@@ -135,6 +139,11 @@ pub(crate) mod internals {
         /// The entry at `at` of the queue as it was queued, or as the pass sorted it.
         pub fn get(&self, at: usize) -> Option<PassEntry> {
             self.entries.get(at).map(|queued| queued.entry)
+        }
+
+        /// Empties the queue, as a test that strikes again starts from none.
+        pub fn clear(&mut self) {
+            self.empty();
         }
     }
 }

@@ -3,7 +3,8 @@ use std::arch::asm;
 use crate::wide_division::WideDivision;
 
 /// A divisor and a quotient that fit 64 bits take one `div` instruction inline, which divides
-/// 128 bits by 64; others Rust's `u128` division, a library call.
+/// 128 bits by 64; others Rust's `u128` division, a library call (09-determinism-core.md, One div
+/// instruction for a wide division on x86-64).
 #[expect(clippy::cast_possible_truncation, reason = "the divisor fits 64 bits")]
 #[inline]
 pub(super) fn divide(numerator: u128, divisor: u128) -> WideDivision {

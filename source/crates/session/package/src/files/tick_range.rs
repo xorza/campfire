@@ -24,6 +24,11 @@ impl TickRange {
         self.min.get() <= hz.get() && hz.get() <= self.max.get()
     }
 
+    /// The slowest rate.
+    pub const fn slowest(self) -> NonZeroU32 {
+        self.min
+    }
+
     pub const fn default(self) -> NonZeroU32 {
         self.default
     }

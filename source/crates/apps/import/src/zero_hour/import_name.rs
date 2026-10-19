@@ -1,5 +1,4 @@
-use campfire_common::MapName;
-use campfire_values::DeclaredName;
+use campfire_common::{DeclaredName, MapName};
 
 use crate::zero_hour::format::ini::object_ini::IniObject;
 

@@ -1,9 +1,9 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::Ticks;
 use campfire_declare::Book;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_sim::TickRate;
-use campfire_stats::StatId;
+use campfire_units::StatId;
 use campfire_values::Stat;
 
 use crate::mode_combat_data::ModeCombatData;
@@ -42,7 +42,7 @@ impl CombatBook {
 impl Book for CombatBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(feature = "internals")]

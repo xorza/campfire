@@ -12,6 +12,7 @@ internals = [
     "campfire-math/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
+    "campfire-state-types/internals",
     "campfire-units/internals",
     "campfire-values/internals",
 ]
@@ -23,6 +24,7 @@ campfire-declare.workspace = true
 campfire-math.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
+campfire-state-types.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
 

@@ -1,42 +1,47 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU16;
 
-use bevy_ecs::bundle::Bundle;
+use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::component::Component;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
-use bevy_ecs::system::RunSystemOnce;
+use bevy_ecs::observer::On;
+use bevy_ecs::resource::Resource;
+use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::system::{ResMut, RunSystemOnce};
 use bevy_ecs::world::World;
-use campfire_actions::internals::TestWeapon;
+use campfire_actions::internals::LooseDues;
 use campfire_actions::{
-    ActionProgress, ActionRange, ActionSlot, ActionSlots, Actions, ClipRule, InProgress, SlotKind,
-    SlotTimes, Source, Targets, TimedSlots,
+    ActionProgress, ActionRange, ActionSlot, ActionSlots, Actions, InProgress, ProgressDues,
+    SlotKind, SlotTimes, Targets, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
-use campfire_combat::internals::{Armed, Attack};
+use campfire_combat::internals::{Armed, Attack, TestWeapon};
 use campfire_combat::*;
-use campfire_common::{PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_common::{DeclaredName, PlayerSlot, SegmentSeed, Tick, Ticks};
+use campfire_deliveries::{Died, Teleported};
 use campfire_geometry::Metric;
 use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
-use campfire_script::{Filter, ScriptBudgets, ScriptLimits, View};
+use campfire_script::{Filter, MatchNames, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimTick, SimUpdate,
-    SimWorld, StableId, Unpredicted,
+    Capability, EntityIndex, Position, SimComponent, SimEdge, SimRng, SimSet, SimTick, SimWorld,
+    StableId, Unpredicted,
 };
 use campfire_stats::{
-    Application, Ends, Life, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance,
-    PoolBook, PoolCost, PoolId, Pools, StatBook, StatId, StatRule, Stats, StatsSet,
+    Application, Ends, Lifetime, ModifierClocks, ModifierData, Modifiers, NewInstance, PoolBook,
+    Pools, StatBook, StatRule, Stats, StatsSet,
 };
-use campfire_units::{BodyForm, Dead, MapBook, Owner, SpawnPoint, UnitTypeCore, Units, UnitsWorld};
+use campfire_units::{
+    BodyForm, Dead, Deaths, Fallen, Life, MapBook, Owner, PoolCost, PoolId, SpawnPoint, StatId,
+    UnitTypeCore, Units, UnitsWorld,
+};
 use campfire_values::{
-    ActionId, Block, DamageKind, DeclaredName, FilterData, ModifierId, NameId, Names, PackageIndex,
-    Rank, Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType,
-    VisionShare,
+    ActionId, Block, DamageKind, FilterData, ModifierId, NameId, Names, PackageIndex, Rank,
+    Relation, RelationSet, ResourceId, Stat, Team, TypeScope, UnitTags, UnitType, VisionShare,
 };
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
@@ -62,7 +67,10 @@ const fn dummy() -> Armed {
 
 /// A match of stats and combat, with the stat book a weapon reads.
 fn fight_match() -> Match {
-    let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+    let budgets = ScriptPools {
+        limits: ScriptLimits::ROOMY,
+        players: 1,
+    };
     let mut game = Match::server(&[Capability::Stats, Capability::Combat], budgets);
     Combat::load_weapon_stats(&mut game);
     game
@@ -163,24 +171,22 @@ fn an_attack_winds_up_and_strikes_each_period() {
 /// Spawns a unit of a rifle of 5 damage every 3 ticks, 100 ms at 30 ticks a second, in a clip of
 /// 3 shots that reloads in 21 ticks, 700 ms, at (4, 0), and a dummy of team 1 with `held` at
 /// (6, 0), which the rifle attacks; the two.
-fn rifle_fight(game: &mut Match, held: impl Bundle) -> [StableId; 2] {
+fn rifle_fight(game: &mut Match, held: impl Bundle<Effect: NoBundleEffect>) -> [StableId; 2] {
     let [dummy] = arm(game, [dummy()]);
     let weapon = TestWeapon {
-        rate: Source::Own,
-        damage: Source::Own,
-        period: Some(Ticks::new(3)),
-        amount: Some(Num::int(5)),
+        rate: Rate::Period(Box::new([Ticks::new(3)])),
+        damage: WeaponDamage::Amount(Box::new([Num::int(5)])),
         clip: Some(ClipRule {
             shots: NonZeroU16::new(3).unwrap(),
             reload: Ticks::new(21),
         }),
         ..TestWeapon::new(
             Filter::of_match_relations(game, RelationSet::Enemies),
-            ActionRange::Meters(Num::int(2)),
+            ActionRange::meters(Num::int(2)),
             Ticks::ZERO,
         )
     };
-    let rifle = Actions::add_weapon(game, weapon);
+    let rifle = Combat::add_weapon(game, weapon);
     let slots = ActionSlots::new([(rifle, SlotKind::new(0), Rank::new(1))]);
     let shooter = wielder(game, slots, &[]);
     let shooter = Mode::spawn(game, shooter, (4, 0, 0), Team::new(0), ());
@@ -313,28 +319,34 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     let hover = UnitTypeCore::tagged(&["ground", "air"]);
     let hover = Units::load_type(&mut game, TypeScope::Mode, "hover", &hover);
     let weapon = |game: &mut Match, aim: &str, range, windup, damage| {
-        let view = game.non_send::<View>().clone();
-        let aim = view
+        let aim = game
+            .resource::<MatchNames>()
             .resolve_filter(&FilterData::parse(aim).unwrap())
             .unwrap();
         let weapon = TestWeapon {
             damage,
             ..TestWeapon::new(
                 aim,
-                ActionRange::Meters(Num::int(range)),
+                ActionRange::meters(Num::int(range)),
                 Ticks::new(windup),
             )
         };
-        Actions::add_weapon(game, weapon)
+        Combat::add_weapon(game, weapon)
     };
     let ground = weapon(
         &mut game,
         "enemies:ground",
         1,
         0,
-        Source::Stat(StatId::new(1)),
+        WeaponDamage::Stat(StatId::new(1)),
     );
-    let air = weapon(&mut game, "enemies:air", 5, 1, Source::Stat(StatId::new(2)));
+    let air = weapon(
+        &mut game,
+        "enemies:air",
+        5,
+        1,
+        WeaponDamage::Stat(StatId::new(2)),
+    );
     // Two units of the RTS weapons: the first with both learned, the second with its ground
     // weapon at rank 0.
     let kind = SlotKind::new(0);
@@ -462,11 +474,11 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
         }),
         ..TestWeapon::new(
             Filter::of_release_relations(RelationSet::Enemies),
-            ActionRange::Meters(Num::int(2)),
+            ActionRange::meters(Num::int(2)),
             Ticks::new(2),
         )
     };
-    let weapon = Actions::add_weapon(&mut game, weapon);
+    let weapon = Combat::add_weapon(&mut game, weapon);
     let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(1))]);
     let paying = wielder(&mut game, slots, &[Num::int(6), Num::int(10)]);
     let dummy = dummy().load(&mut game);
@@ -530,11 +542,11 @@ fn a_toggle_an_attack_cannot_pay_with_its_own_cost_turns_off_and_the_attack_stri
         cost: PoolCost::new([(mana, Num::int(4))]),
         ..TestWeapon::new(
             Filter::of_release_relations(RelationSet::Enemies),
-            ActionRange::Meters(Num::int(2)),
+            ActionRange::meters(Num::int(2)),
             Ticks::new(2),
         )
     };
-    let weapon = Actions::add_weapon(&mut game, weapon);
+    let weapon = Combat::add_weapon(&mut game, weapon);
     let toggle = Actions::add_attack_toggle(&mut game, PoolCost::new([(mana, Num::int(3))]));
     let slots = ActionSlots::new([
         (weapon, SlotKind::new(0), Rank::new(1)),
@@ -702,7 +714,7 @@ fn targets_are_living_enemies() {
         let reached = game
             .run_system_once(move |targets: Targets<'_, '_>| targets.living_at(entity).is_some())
             .unwrap();
-        let alive = Units::read(game, "of.alive", spent).unwrap();
+        let alive = Units::read(game, "of.is_alive", spent).unwrap();
         let enemy = enemy_at(game, Team::new(1), spent).is_some();
         [enemy, reached, alive.as_bool().unwrap()]
     };
@@ -747,8 +759,9 @@ fn every_combat_type_is_state_and_restores() {
     let slots = |resolves_at: u64, ready_at: u64| {
         let slots = restored.part::<ActionSlots>(fighter).clone();
         let mut progress = *restored.part::<ActionProgress>(fighter);
-        progress.set_attack_target(Some(doomed));
-        progress.start_attack(0, Tick::new(resolves_at));
+        let loose = &mut LooseDues::default();
+        progress.set_attack_target(Some(doomed), &mut loose.dues());
+        progress.start_attack(0, Tick::new(resolves_at), &mut loose.dues());
         let mut times = restored.part::<SlotTimes>(fighter).clone();
         times.cool_down(0, Tick::new(ready_at));
         let checked = slots.check(&restored, entity) && progress.check_against(&slots, &restored);
@@ -768,8 +781,9 @@ fn every_combat_type_is_state_and_restores() {
     let ranked = |rank| {
         let slots = ActionSlots::new([(weapon, SlotKind::new(0), Rank::new(rank))]);
         let mut progress = ActionProgress::default();
-        progress.set_attack_target(Some(doomed));
-        progress.start_attack(0, Tick::new(2));
+        let loose = &mut LooseDues::default();
+        progress.set_attack_target(Some(doomed), &mut loose.dues());
+        progress.start_attack(0, Tick::new(2), &mut loose.dues());
         slots.check(&restored, entity) && progress.check_against(&slots, &restored)
     };
     assert!(ranked(1) && !ranked(0) && !ranked(30));
@@ -926,8 +940,18 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     }
 
     // The hero comes back at the start of its respawn tick, 10, at its spawn point with full
-    // health and no attacker on record; the attackers dropped it when it died.
+    // health and no attacker on record; the attackers dropped it when it died. Its death and its
+    // respawn each tell what aims at it, once.
     let mut game = fight_match();
+    game.insert_resource(Heard::default());
+    game.add_observer(|died: On<'_, '_, Died>, mut heard: ResMut<'_, Heard>| {
+        heard.0.push(("died", died.id));
+    });
+    game.add_observer(
+        |teleported: On<'_, '_, Teleported>, mut heard: ResMut<'_, Heard>| {
+            heard.0.push(("teleported", teleported.id));
+        },
+    );
     let stays = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
     let [fighter, stays] = arm(&mut game, [fighter(), stays]);
     let attacker = Mode::spawn(&mut game, fighter, (4, 0, 0), Team::new(0), ());
@@ -961,7 +985,15 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     assert_eq!(Stats::health(&game, hero), 30);
     assert_eq!(attackers(&game), Some(0));
     assert_eq!(Attack::of(&game, attacker).target(), None);
+    assert_eq!(
+        game.resource::<Heard>().0,
+        [("died", hero), ("teleported", hero)]
+    );
 }
+
+/// The units each event of a death or a teleport named, in the order heard.
+#[derive(Resource, Debug, Default)]
+struct Heard(Vec<(&'static str, StableId)>);
 
 /// Loads a book of the stats `[combat]` binds, with no limits, and binds them: the heal scale
 /// `healing_received_pct`, and leech `life_steal` from attacks and `spell_vamp` from the rest,
@@ -1114,8 +1146,7 @@ fn damage_after_the_pass_waits_for_the_next_and_a_life_at_zero_acts_no_more() {
     let hook = hook
         .in_set(SimEdge::After(SimSet::Mode))
         .after(StatsSet::Refresh(SimEdge::After(SimSet::Mode)));
-    game.resource_mut::<Schedules>()
-        .add_systems(SimUpdate, hook);
+    game.add_tick_systems(hook);
     game.run_until(2);
     assert_eq!(Stats::health(&game, target), 100);
     assert!(game.try_part::<Dead>(attacker).is_none());
@@ -1246,13 +1277,13 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     // and the life pool keeps its 60; one of the life pool's id reaches the life, which takes 15
     // more, unscaled, to 75, and the second pool keeps its 70.
     game.part_mut::<Pools>(source).take(mana, Num::int(50));
-    DamagePass::restore(&mut game, source, mana, Num::int(20));
+    Stats::restore(&mut game, source, mana, Num::int(20));
     let held = |game: &Match| {
         let mana = game.try_part::<Pools>(source).unwrap().current(mana);
         (game.part::<Life>(source).current(), mana)
     };
     assert_eq!(held(&game), (Num::int(60), Some(Num::int(70))));
-    DamagePass::restore(&mut game, source, PoolId::FIRST, Num::int(15));
+    Stats::restore(&mut game, source, PoolId::FIRST, Num::int(15));
     assert_eq!(held(&game), (Num::int(75), Some(Num::int(70))));
 }
 
@@ -1267,9 +1298,10 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     // Each attacker's windup ends in tick 0; the roll of each, by the attackers' order.
     let rolls = |game: &mut Match| {
         for &attacker in &attackers {
-            let mut progress = game.part_mut::<ActionProgress>(attacker);
-            progress.set_attack_target(Some(dummy));
-            progress.start_attack(0, Tick::new(0));
+            ProgressDues::change_unit(game, attacker, |progress, dues| {
+                progress.set_attack_target(Some(dummy), dues);
+                progress.start_attack(0, Tick::new(0), dues);
+            });
         }
         game.resource_mut::<PassQueue>().clear();
         Combat::strike_now(game);
@@ -1355,8 +1387,7 @@ fn a_read_of_what_the_client_lacks_fails_the_sync_test() {
         };
         let peek = peek.in_set(SimEdge::After(SimSet::Mode));
         let after = peek.after(StatsSet::Refresh(SimEdge::After(SimSet::Mode)));
-        game.resource_mut::<Schedules>()
-            .add_systems(SimUpdate, after);
+        game.add_tick_systems(after);
     });
 }
 

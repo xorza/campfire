@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 
 /// A player resource, by its place in the mode's `resources`.
@@ -26,6 +27,10 @@ impl NameId for ResourceId {
     fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+impl Named for ResourceId {
+    const NAMES: NameKind = NameKind::new("player resource", Article::A, NameScope::Match);
 }
 
 #[cfg(feature = "internals")]

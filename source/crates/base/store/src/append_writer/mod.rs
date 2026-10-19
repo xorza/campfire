@@ -27,7 +27,11 @@ pub(crate) mod slow_sync;
 /// or sync is never retried, as the data a failed sync held may be lost and a retry can succeed
 /// over the loss: the worker stops, and keeps the failure for its owner to take once, through
 /// the writer's watch or its `close`. A sync slower than `SLOW_SYNC` is kept for the caller to
-/// see. Closing or dropping the writer writes and syncs what it holds, then ends the worker.
+/// see. The writer fails, as a failed sync does, when a write and its sync run past `HUNG_SYNC`
+/// as the watch sees it, or when the caller's records the worker has not taken pass
+/// `MAX_BEHIND`, so a disk that stops or falls behind ends the writer rather than grows its
+/// memory without a bound. Closing or dropping the writer writes and syncs what it holds, then
+/// ends the worker.
 #[derive(Debug)]
 pub struct AppendWriter {
     shared: Arc<AppendShared>,
@@ -42,9 +46,21 @@ struct AppendShared {
     wake: Condvar,
     durable: AtomicU64,
     failure: Failure<AppendError>,
+    bounds: AppendBounds,
+    slow: WorkerLock<Option<SlowSync>>,
+    /// When the write and the sync that run now began.
+    running: WorkerLock<Option<Instant>>,
+}
+
+/// The bounds a writer keeps: `AppendWriter::BOUNDS`, or shorter ones under test.
+#[derive(Debug, Clone, Copy)]
+struct AppendBounds {
     /// A sync longer than this is slow.
     slow_after: Duration,
-    slow: WorkerLock<Option<SlowSync>>,
+    /// A write and its sync that run longer than this are hung.
+    hung_after: Duration,
+    /// The most bytes of records the worker has not taken.
+    max_behind: usize,
 }
 
 /// The records the caller appended and the worker has not taken yet.
@@ -63,6 +79,20 @@ impl AppendWriter {
     /// a few records takes milliseconds on a healthy disk, and a second is far past what a
     /// burst of them costs.
     pub const SLOW_SYNC: Duration = Duration::from_secs(1);
+
+    /// How long a write and its sync run before they are hung: two minutes, as long as Linux's
+    /// hung task detector lets a task wait on the disk before it reports it.
+    pub const HUNG_SYNC: Duration = Duration::from_secs(120);
+
+    /// The most bytes of records the worker has not taken: 64 MiB, minutes of a busy match's
+    /// journal at tens of kilobytes a second, so only a disk far behind its writer comes to it.
+    pub const MAX_BEHIND: usize = 64 << 20;
+
+    const BOUNDS: AppendBounds = AppendBounds {
+        slow_after: Self::SLOW_SYNC,
+        hung_after: Self::HUNG_SYNC,
+        max_behind: Self::MAX_BEHIND,
+    };
 
     /// A new file at `path`, holding `head` alone, written durably as a whole file, and open to
     /// append on the worker `name`.
@@ -104,18 +134,19 @@ impl AppendWriter {
 
     /// A writer that appends to `file` on the worker `name`.
     fn start<F: AppendFile>(name: &str, file: F) -> Self {
-        Self::start_slow_after(name, file, Self::SLOW_SYNC)
+        Self::start_bounded(name, file, Self::BOUNDS)
     }
 
-    /// A writer whose syncs longer than `slow_after` are slow.
-    fn start_slow_after<F: AppendFile>(name: &str, file: F, slow_after: Duration) -> Self {
+    /// A writer that keeps `bounds`.
+    fn start_bounded<F: AppendFile>(name: &str, file: F, bounds: AppendBounds) -> Self {
         let shared = Arc::new(AppendShared {
             pending: WorkerLock::default(),
             wake: Condvar::new(),
             durable: AtomicU64::new(0),
             failure: Failure::new(),
-            slow_after,
+            bounds,
             slow: WorkerLock::default(),
+            running: WorkerLock::default(),
         });
         let writing = Arc::clone(&shared);
         let worker = Worker::start(name, move || writing.write(file));
@@ -125,15 +156,22 @@ impl AppendWriter {
         }
     }
 
-    /// Appends the record `write` puts in the buffer it is given, at its end, for the worker;
-    /// nothing once the worker stopped at a failure.
-    pub fn append(&self, write: impl FnOnce(&mut Vec<u8>)) {
+    /// Appends the `records` records `write` puts in the buffer it is given, at its end, for the
+    /// worker, which one wake hands it; nothing once the worker stopped at a failure. Records that
+    /// take the buffer past `MAX_BEHIND` stop the writer.
+    pub fn append(&self, records: u64, write: impl FnOnce(&mut Vec<u8>)) {
         let mut pending = self.shared.pending.lock();
         if pending.stopped {
             return;
         }
         write(&mut pending.bytes);
-        pending.records += 1;
+        pending.records += records;
+        let bytes = pending.bytes.len();
+        if bytes > self.shared.bounds.max_behind {
+            self.shared
+                .stop(&mut pending, AppendError::Behind { bytes });
+            return;
+        }
         drop(pending);
         self.shared.wake.notify_one();
     }
@@ -167,6 +205,7 @@ impl AppendShared {
             mem::swap(&mut pending.bytes, &mut taken);
             let records = pending.records;
             drop(pending);
+            *self.running.lock() = Some(Instant::now());
             let written = file
                 .append(&taken)
                 .map_err(AppendError::Write)
@@ -176,11 +215,9 @@ impl AppendShared {
                     self.note_sync(start.elapsed());
                     synced
                 });
+            *self.running.lock() = None;
             if let Err(error) = written {
-                self.failure.keep(error);
-                let mut pending = self.pending.lock();
-                pending.stopped = true;
-                pending.bytes = Vec::new();
+                self.stop(&mut self.pending.lock(), error);
                 return;
             }
             self.durable.store(records, Ordering::Release);
@@ -188,9 +225,32 @@ impl AppendShared {
         }
     }
 
+    /// Stops the writer at `error`, with `pending` its records held, unless it stopped at a failure
+    /// before: it keeps no record more, and keeps the failure for its owner. The failure is kept
+    /// before the lock goes, so an owner that sees the writer settled finds it.
+    fn stop(&self, pending: &mut Pending, error: AppendError) {
+        if pending.stopped {
+            return;
+        }
+        pending.stopped = true;
+        pending.bytes = Vec::new();
+        self.failure.keep(error);
+    }
+
+    /// Stops the writer when the write and the sync that run now run past `hung_after`.
+    fn check_hung(&self) {
+        let Some(since) = *self.running.lock() else {
+            return;
+        };
+        let running = since.elapsed();
+        if running > self.bounds.hung_after {
+            self.stop(&mut self.pending.lock(), AppendError::Hung { running });
+        }
+    }
+
     /// Keeps a sync that took `took` when it is slow, and slower than one kept.
     fn note_sync(&self, took: Duration) {
-        if took <= self.slow_after {
+        if took <= self.bounds.slow_after {
             return;
         }
         let mut slow = self.slow.lock();

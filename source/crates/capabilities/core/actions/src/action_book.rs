@@ -1,8 +1,9 @@
+use std::slice;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_declare::Book;
-use campfire_script::{ScriptId, ScriptRole, View};
+use campfire_script::{MatchNames, ScriptId, ScriptRole};
 use campfire_units::ScriptBook;
 use campfire_values::{ActionId, NameId, Names, PackageIndex, Rank};
 
@@ -53,7 +54,6 @@ impl ActionBook {
             parts,
         } = action;
         let ActionParts {
-            kind,
             passive,
             hold,
             aim,
@@ -69,7 +69,7 @@ impl ActionBook {
         let id = Arc::make_mut(&mut self.names).add((package, name));
         Arc::make_mut(&mut self.actions).push(Action {
             package,
-            kind,
+            kind: data.kind(),
             passive,
             hold,
             aim,
@@ -91,10 +91,24 @@ impl ActionBook {
         self.actions.get(id.index())
     }
 
+    /// Each action, in the order of its id.
+    pub fn iter(&self) -> slice::Iter<'_, Action> {
+        self.actions.iter()
+    }
+
     /// Whether the book holds `id` with `rank` among its ranks, as a restored value that names an
     /// action at a rank needs.
     pub fn ranked(&self, id: ActionId, rank: Rank) -> bool {
         self.get(id).is_some_and(|action| action.has_rank(rank))
+    }
+}
+
+impl<'a> IntoIterator for &'a ActionBook {
+    type Item = &'a Action;
+    type IntoIter = slice::Iter<'a, Action>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -103,8 +117,8 @@ impl Book for ActionBook {
 
     /// Names the actions to scripts; the actions column takes the book from the match at each
     /// read.
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(self.names()));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(self.names()));
     }
 }
 

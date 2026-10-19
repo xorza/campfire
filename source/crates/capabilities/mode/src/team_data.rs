@@ -11,5 +11,5 @@ pub struct TeamData {
 }
 
 impl DataSection for TeamData {
-    const TABLE: DataTable = DataTable::Team;
+    const TABLE: DataTable = DataTable::new("A team, `[teams.<team>]`");
 }

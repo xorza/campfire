@@ -1,12 +1,15 @@
 use bevy_ecs::resource::Resource;
-use bevy_ecs::world::World;
-use campfire_combat::DeathView;
-use campfire_script::PendingCalls;
-use campfire_sim::{SimResource, StableId};
+use bevy_ecs::world::{Mut, World};
+use campfire_combat::Kept;
+use campfire_script::{Ctx, Hook, ModeAnswer, ModeEvents, PendingCalls, ScriptList, ScriptValue};
+use campfire_sim::{EntityIndex, SimResource, StableId};
+use campfire_units::{DeathView, Deaths};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// The deaths whose `on_unit_died` has yet to run, in the order the units died. The Mode stage
+use crate::mode_hooks::OnUnitDeath;
+
+/// The deaths whose `on_unit_death` has yet to run, in the order the units died. The Mode stage
 /// adds its tick's deaths and runs the calls from the front; the deaths whose call found the mode
 /// pool spent stay, and run first in a later tick's Mode stage. So a tick ends with only those.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize)]
@@ -33,10 +36,6 @@ pub struct DeathCall<'a> {
 }
 
 impl UnansweredDeaths {
-    pub(crate) const fn is_empty(&self) -> bool {
-        self.deaths.is_empty()
-    }
-
     /// Adds `deaths` at the end.
     pub(crate) fn extend<'a>(&mut self, deaths: impl IntoIterator<Item = DeathView<'a>>) {
         for death in deaths {
@@ -63,13 +62,74 @@ impl UnansweredDeaths {
             }
         })
     }
+}
 
-    /// Removes the first `count` deaths, whose calls ran.
-    pub(crate) fn answered(&mut self, count: usize) {
+/// A death runs `on_unit_death`, from the mode's pool, with the unit, its killer or `()`, and its
+/// assisters: a killer gone by then is `()`, and an assister gone by then is left out; a death
+/// whose unit is gone runs no call. A death that waits keeps its unit, dead, until its call runs.
+impl ModeEvents for UnansweredDeaths {
+    const HOOKS: &'static [Hook] = &[Hook::of::<OnUnitDeath>()];
+
+    fn arrive(world: &mut World) {
+        if world.resource::<Deaths>().is_empty() {
+            return;
+        }
+        world.resource_scope(|world, mut deaths: Mut<'_, Self>| {
+            deaths.extend(world.resource::<Deaths>().iter());
+        });
+    }
+
+    fn len(&self) -> usize {
+        self.deaths.len()
+    }
+
+    fn partial(&self) -> u8 {
+        self.deaths.partial()
+    }
+
+    fn answer(&self, answer: &mut ModeAnswer<'_, '_>) -> usize {
+        self.iter()
+            .take_while(|death| {
+                let args = |ctx: &Ctx| {
+                    let view = ctx.view();
+                    let unit = view.unit(death.id)?;
+                    let killer = death.killer.and_then(|id| view.unit(id));
+                    let killer = killer.map_or(ScriptValue::UNIT, ScriptValue::of);
+                    let assisters = death.assisters.iter().filter_map(|&id| view.unit(id));
+                    let assisters: ScriptList = assisters.map(ScriptValue::of).collect();
+                    Some((ctx.clone(), ScriptValue::of(unit), killer, assisters))
+                };
+                answer
+                    .call::<OnUnitDeath>(Some(death.id), args)
+                    .is_continue()
+            })
+            .count()
+    }
+
+    fn answered(&mut self, count: usize, partial: u8) {
         let runs = self.deaths.iter().take(count);
         let assisters: usize = runs.map(|death| death.assisters as usize).sum();
-        self.deaths.answered(count);
+        self.deaths.answered(count, partial);
         self.assisters.drain(..assisters);
+    }
+
+    fn append(&mut self, later: &mut Self) {
+        self.deaths.append(&mut later.deaths);
+        self.assisters.append(&mut later.assisters);
+    }
+
+    fn hold(&self, answered: usize, world: &mut World) {
+        for (at, death) in self.iter().enumerate() {
+            let Some(entity) = world.resource::<EntityIndex>().get(death.id) else {
+                continue;
+            };
+            let mut unit = world.entity_mut(entity);
+            if at < answered {
+                unit.remove::<Kept>();
+            } else {
+                unit.insert(Kept);
+            }
+        }
     }
 }
 

@@ -8,14 +8,15 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
-use bevy_ecs::bundle::Bundle;
+use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use campfire_actions::{
     ActionRange, ActionSlots, ActionTarget, RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_areas::Area;
 use campfire_capabilities::{Match, Order, PackageContent};
 use campfire_combat::Combat;
-use campfire_common::PlayerSlot;
+use campfire_common::{DeclaredName, PlayerSlot};
+use campfire_deliveries::DashDelivering;
 use campfire_harness::Arena;
 use campfire_math::{Num, Vec3};
 use campfire_navigation::Navigation;
@@ -24,13 +25,12 @@ use campfire_package::{ModePackages, PackageFiles};
 use campfire_package_disk::PackageDir;
 use campfire_projectiles::Projectile;
 use campfire_sim::{Position, SimWorld, StableId, TickRate};
-use campfire_stats::{Life, PoolMeters, Pools, Stats};
+use campfire_stats::{PoolMeters, Pools, Stats};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::{Body, ForcedMove, MoveStep, Owner};
+use campfire_units::{Body, ForcedMove, Life, MoveStep, Owner, SeenBy};
 use campfire_values::{
-    ActionId, DeclaredName, ModifierId, Number, Param, Rank, Ranked, Scalar, Scaling, Stat, Team,
+    ActionId, ModifierId, Number, Param, Rank, Ranked, Scalar, Scaling, Stat, Team,
 };
-use campfire_vision::SeenBy;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -197,7 +197,7 @@ fn spawn_with(
     x: i16,
     team: Team,
     kit: Kit,
-    parts: impl Bundle,
+    parts: impl Bundle<Effect: NoBundleEffect>,
 ) -> StableId {
     spawn_at(arena, game, (x, 0, 0), team, kit, parts)
 }
@@ -209,13 +209,19 @@ fn spawn_at(
     pos: impl Into<Vec3>,
     team: Team,
     kit: Kit,
-    parts: impl Bundle,
+    parts: impl Bundle<Effect: NoBundleEffect>,
 ) -> StableId {
     arena.spawn(game, kit.unit_type(), pos.into(), team, parts)
 }
 
 /// A unit of 500 health and no other pool, as `spawn_with` gives.
-fn spawn(arena: &Arena, game: &mut Match, x: i16, team: Team, parts: impl Bundle) -> StableId {
+fn spawn(
+    arena: &Arena,
+    game: &mut Match,
+    x: i16,
+    team: Team,
+    parts: impl Bundle<Effect: NoBundleEffect>,
+) -> StableId {
     spawn_with(arena, game, x, team, Kit::Bare, parts)
 }
 
@@ -245,7 +251,7 @@ fn caster(
     action: ActionId,
     rank: u8,
     kit: Kit,
-    parts: impl Bundle,
+    parts: impl Bundle<Effect: NoBundleEffect>,
 ) -> StableId {
     let slots = TimedSlots::new(ActionSlots::new([(
         action,
@@ -284,7 +290,7 @@ fn every_moba_ability_reads_into_the_schema() {
     let mut read = 0;
     for name in HEROES {
         let data = abilities(name);
-        for (action, data) in &data.actions {
+        for (action, data) in data.actions() {
             if let Some(script) = &data.script {
                 assert!(hero(name).read_text(script).is_ok(), "{name}.{action}");
             }
@@ -296,7 +302,7 @@ fn every_moba_ability_reads_into_the_schema() {
 
     // Husk's Lash Out reads exactly as its file writes it.
     let husk = abilities("husk");
-    let lash_out = &husk.actions["lash_out"];
+    let lash_out = &husk.actions()["lash_out"];
     assert_eq!(lash_out.targeting, Targeting::None);
     assert_eq!(lash_out.range, None);
     let int = |value| Number::Value(Scalar::Int(value));
@@ -330,7 +336,7 @@ fn every_moba_ability_reads_into_the_schema() {
     // 28 018.
     let veil = abilities("veil");
     let Param::Scaling(Scaling { bonus, ratios, .. }) =
-        &veil.modifiers["dual_path"].params["spell_vamp"]
+        &veil.modifiers()["dual_path"].params["spell_vamp"]
     else {
         panic!("spell vamp scales");
     };
@@ -340,13 +346,13 @@ fn every_moba_ability_reads_into_the_schema() {
     assert!(ratios.is_empty());
     // Rime's Snow Owl reaches farther at each rank.
     let rime = abilities("rime");
-    let Some(Ranked::PerRank(ranges)) = &rime.actions["snow_owl"].range else {
+    let Some(Ranked::PerRank(ranges)) = &rime.actions()["snow_owl"].range else {
         panic!("a range per rank");
     };
-    assert_eq!(ranges[1], RangeField::Range(ActionRange::Meters(half * 65)));
-    let wraps = &husk.actions["grasping_wraps"];
+    assert_eq!(ranges[1], RangeField::Range(ActionRange::meters(half * 65)));
+    let wraps = &husk.actions()["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
-    let eleven = RangeField::Range(ActionRange::Meters(Num::int(11)));
+    let eleven = RangeField::Range(ActionRange::meters(Num::int(11)));
     assert_eq!(wraps.range, Some(Ranked::One(eleven)));
 }
 
@@ -632,7 +638,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let mut game = arena.start(RATE, 1);
     // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
     assert_eq!(
-        abilities(arena.packages(), "rime").actions["fan_of_frost"].script,
+        abilities(arena.packages(), "rime").actions()["fan_of_frost"].script,
         None
     );
     let fan = arena.action(&game, "hero-rime", "fan_of_frost");
@@ -692,8 +698,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
 #[test]
 fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
     let arena = arena();
-    let mut game = arena.start(RATE, 1);
-    arena.load_vision(&mut game, 2);
+    let mut game = arena.start_seeing(RATE, 1, 2);
     let snow_owl = arena.action(&game, "hero-rime", "snow_owl");
     let caster = caster(&arena, &mut game, snow_owl, 1, Kit::Bare, ());
     // An enemy at (10, 0): its cell's center (10.5, 0.5) is √12.5 ≈ 3.54 m from the point, within
@@ -746,8 +751,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
 #[test]
 fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
     let arena = arena();
-    let mut game = arena.start(RATE, 1);
-    arena.load_vision(&mut game, 3);
+    let mut game = arena.start_seeing(RATE, 1, 3);
     let farsight = arena.action(&game, "player-spells", "farsight");
     let caster = caster(&arena, &mut game, farsight, 1, Kit::Bare, ());
     // Revealed 6 m round (20, 0): the cell of (25, 0), its center (25.5, 0.5) √30.5 ≈ 5.52 m
@@ -912,7 +916,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let arena = arena();
     let mut game = arena.start(RATE, 1);
     assert_eq!(
-        abilities(arena.packages(), "veil").actions["smoke_ring"].script,
+        abilities(arena.packages(), "veil").actions()["smoke_ring"].script,
         None
     );
     let ring = arena.action(&game, "hero-veil", "smoke_ring");
@@ -972,7 +976,7 @@ fn body() -> Body {
 }
 
 /// A body of half a meter that walks a meter a tick.
-fn walker() -> impl Bundle {
+fn walker() -> impl Bundle<Effect: NoBundleEffect> {
     let step = MoveStep::new(Num::ONE).unwrap();
     (body(), Navigation::walker(step))
 }
@@ -982,6 +986,12 @@ fn forced(game: &Match, id: StableId) -> (Num, Option<ForcedMove>) {
     let entity = game.entity_of(id).unwrap();
     let x = game.get::<Position>(entity).unwrap().x;
     (x, game.get::<ForcedMove>(entity).copied())
+}
+
+/// Whether the unit `id`'s dash delivers an action.
+fn delivering(game: &Match, id: StableId) -> bool {
+    let entity = game.entity_of(id).unwrap();
+    game.get::<DashDelivering>(entity).is_some()
 }
 
 #[test]
@@ -1003,13 +1013,7 @@ fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it(
     let (x, dash) = forced(&game, veil);
     let step = Num::int(22) / 30;
     assert_eq!((x, health(&arena, &game, enemy)), (step * 6, 500));
-    assert!(matches!(
-        dash,
-        Some(ForcedMove::Dash {
-            delivers: Some(_),
-            ..
-        })
-    ));
+    assert!(matches!(dash, Some(ForcedMove::Dash { .. })) && delivering(&game, veil));
     arena.step(&mut game);
     assert_eq!(forced(&game, veil), (Num::int(5), None));
     assert_eq!(health(&arena, &game, enemy), 400);
@@ -1046,12 +1050,16 @@ fn husks_grasping_wraps_pulls_him_to_the_enemy_hit_and_its_pull_delivers_nothing
     for tick in 1..=40 {
         arena.step(&mut game);
         if pulled.is_none() && forced(&game, husk).1.is_some() {
-            pulled = Some((tick, forced(&game, husk).1.unwrap()));
+            pulled = Some((
+                tick,
+                forced(&game, husk).1.unwrap(),
+                delivering(&game, husk),
+            ));
         }
     }
-    let (tick, pull) = pulled.unwrap();
+    let (tick, pull, delivers) = pulled.unwrap();
     assert_eq!(tick, 14);
-    assert!(matches!(pull, ForcedMove::Dash { delivers: None, .. }));
+    assert!(matches!(pull, ForcedMove::Dash { .. }) && !delivers);
     // The pull ends with the bodies touching, Husk on 4 m, and the enemy took the hit alone.
     assert_eq!(forced(&game, husk), (Num::int(4), None));
     assert_eq!(health(&arena, &game, enemy), 420);

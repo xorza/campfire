@@ -4,35 +4,36 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
+use bevy_app::{App, First, PostUpdate, TaskPoolPlugin};
 use bevy_ecs::change_detection::Mut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor};
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_bots::{BotScript, OrderScript};
+use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::{Action, Order};
 use campfire_codec::Toml;
-use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
+use campfire_common::{ChannelBinding, TlsKey};
 use campfire_log::internals::LogCheck;
 use campfire_mode::{PlayersData, SaveBy, SavesData};
+use campfire_net::internals::TickHashes;
 use campfire_net::internals::{SimClientWorldInternals, SimServerWorldInternals};
 use campfire_net::{
     ClientDir, Clock, Hosting, JoinRole, JoinState, Lobby, LobbyOpening, LobbySetup, LocalPace,
     MatchClock, Os, Pace, PendingOrders, PendingRestore, ServerBots, ServerDir, ServerPin,
-    ServerSetup, SessionDir, SessionTimes, SimClient, SimServerPlugins, SimServerWorld, SlotBot,
-    TickHashes,
+    ServerSetup, SessionDir, SessionOpening, SessionTimes, SimClient, SimServerPlugins,
+    SimServerWorld, SlotScript, UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Entropy, InputRules, SeedChain, ServerInput};
+use campfire_protocol::{Entropy, InputRules, SeedChain, ServerInput, Signer};
 use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId, TickRate};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
 use campfire_units::internals::UnitsWorldInternals;
-use campfire_units::{Body, MoveStep, Owner, UnitTypeBook};
+use campfire_units::{Body, MoveStep, Owner};
 use campfire_values::{NameId, Team};
 use campfire_visibility::HostVisibility;
 use lightyear::crossbeam::CrossbeamIo;
@@ -57,7 +58,7 @@ const TLS_KEY: TlsKey = TlsKey::new([3; 32]);
 const BINDING: LinkBinding = LinkBinding(ChannelBinding::new([3; 32]));
 
 /// What an `InProcessMatch` runs: how many players join, and how.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct MatchSetup {
     /// The players, a client each, in the slots from 0: one or two in the lane mode, a slot a
     /// side, and at most `MAX_PLAYERS`.
@@ -161,7 +162,7 @@ impl MatchSetup {
 
     /// Two players through `link`, whose clients roll back only on a misprediction, with a
     /// server that runs 3 frames a tick.
-    pub const fn duo(link: LinkModel, seed_chain: SeedChain) -> Self {
+    pub fn duo(link: LinkModel, seed_chain: SeedChain) -> Self {
         Self {
             players: 2,
             link,
@@ -214,8 +215,8 @@ impl InProcessMatch {
     /// The first order waits for the clients' lead on the server to settle: Lightyear brings it to
     /// its target by 5 % of a tick a frame.
     pub const SCENARIO_SCRIPTS: [&str; 2] = [
-        "[[order]]\ntick = 60\nmove = [4, -2]\n[[order]]\ntick = 450\nmove = [-3, -2]\n",
-        "[[order]]\ntick = 60\nmove = [-4, 3]\n[[order]]\ntick = 450\nmove = [3, 4]\n",
+        "[[order]]\ntick = 60\naction.orders.move.to = [4, -2]\n[[order]]\ntick = 450\naction.orders.move.to = [-3, -2]\n",
+        "[[order]]\ntick = 60\naction.orders.move.to = [-4, 3]\n[[order]]\ntick = 450\naction.orders.move.to = [3, 4]\n",
     ];
 
     /// A match of the test lane mode at its default rate, its clients connected and synced.
@@ -224,7 +225,8 @@ impl InProcessMatch {
             (1..=2).contains(&setup.players),
             "the lane mode takes 1 or 2 players"
         );
-        Self::of_mode(setup, Self::lane_mode(setup.rules, setup.saves))
+        let packages = Self::lane_mode(setup.rules, setup.saves);
+        Self::of_mode(setup, packages)
     }
 
     /// A match of `packages` at their default rate, its clients connected and synced.
@@ -252,6 +254,7 @@ impl InProcessMatch {
             clients: Vec::with_capacity(setup.players),
             client_entities: Vec::with_capacity(setup.players),
             links: Vec::with_capacity(setup.players),
+            link_rows: Vec::with_capacity(setup.players),
             links_made: 0,
             spectators: 0,
             setup,
@@ -260,13 +263,13 @@ impl InProcessMatch {
             pace,
             clock: Clock::manual(TestKey::NOW),
             step_cost: StepCost::default(),
-            link_rows: Vec::with_capacity(setup.players),
             log,
         };
-        for client in 0..setup.players {
-            let player = match setup.links {
+        let MatchSetup { players, links, .. } = local.setup;
+        for client in 0..players {
+            let player = match links {
                 LinkLayout::InOrder => client,
-                LinkLayout::Reversed => setup.players - 1 - client,
+                LinkLayout::Reversed => players - 1 - client,
             };
             local.add_client(player);
         }
@@ -419,11 +422,11 @@ impl InProcessMatch {
             .packages()
     }
 
-    /// What the server opens or restores its session with: its key, the setup's times, a fixed
-    /// clock and fixed random bytes.
+    /// What the server opens or restores its session with: the signer of its key, the setup's
+    /// times, a fixed clock and fixed random bytes.
     fn server_setup(&self) -> ServerSetup {
         ServerSetup {
-            key: TestKey::server(),
+            signer: Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(5))),
             times: self.setup.times,
             os: Os {
                 clock: self.clock.clone(),
@@ -437,14 +440,12 @@ impl InProcessMatch {
         let script = |text| OrderScript::parse(text).expect("a test's bot script reads");
         let slots = (self.setup.players..)
             .zip(self.setup.bots)
-            .map(|(slot, &text)| SlotBot {
-                slot: PlayerSlot::new(u32::try_from(slot).expect("a small count")),
-                script: script(text),
+            .map(|(slot, &text)| {
+                SlotScript::new(u32::try_from(slot).expect("a small count"), script(text))
             });
-        ServerBots {
-            slots: slots.collect(),
-            takeover: self.setup.takeover.map(script),
-        }
+        let takeover = self.setup.takeover.map(script);
+        ServerBots::new(slots, takeover.as_ref(), &self.packages)
+            .expect("a test's bots name what its mode has")
     }
 
     /// Gives the server the data directory `dir`, which it holds locked while it runs, where the
@@ -496,12 +497,16 @@ impl InProcessMatch {
         server.finish();
         server.cleanup();
         server.world_mut().insert_resource(data);
-        server.world_mut().insert_resource(PendingRestore {
+        let restore = PendingRestore::check(UncheckedRestore {
             session,
             packages: Arc::clone(&self.packages),
             server: self.server_setup(),
             bots: self.server_bots(),
-        });
+        })
+        .unwrap();
+        server
+            .world_mut()
+            .open_session(SessionOpening::Restored(Box::new(restore)));
         server.update();
         assert!(
             server.world().contains_resource::<MatchClock>(),
@@ -545,7 +550,7 @@ impl InProcessMatch {
         let mut lobby = Lobby::new(LobbySetup {
             opening,
             tick_hz: packages.manifest().tick_hz.default(),
-            seed_chain: self.setup.seed_chain,
+            seed_chain: self.setup.seed_chain.clone(),
             inputs: InputRules::LAN,
             slots: self.setup.players + self.setup.bots.len(),
         })
@@ -553,7 +558,9 @@ impl InProcessMatch {
         if let Some(data) = self.server.world().get_resource::<ServerDir>() {
             lobby.keep_files(data).unwrap();
         }
-        self.server.world_mut().insert_resource(lobby);
+        self.server
+            .world_mut()
+            .open_session(SessionOpening::New(Box::new(lobby)));
         for _ in 0..CONNECT_FRAMES {
             let playing = |client: &App| {
                 client
@@ -695,10 +702,10 @@ impl InProcessMatch {
 
     /// Makes `client` play `script`, as a bot does.
     pub fn play(&mut self, client: usize, script: &OrderScript) {
-        let world = self.clients[client].world_mut();
-        let types = world.resource::<UnitTypeBook>().types();
-        let bot = BotScript::new(script, types).expect("a test's bot names its mode's types");
-        world.insert_resource(bot);
+        let books = self.packages.name_books();
+        let bot = BotScript::new(script, &BotNames::new(&books))
+            .expect("a test's bot names what its mode has");
+        self.clients[client].world_mut().insert_resource(bot);
     }
 
     /// `client`'s player's avatar, as the server holds it.
@@ -866,7 +873,7 @@ impl ClientApp {
             ),
         };
         let sim_client = SimClient {
-            main_key: keys.main,
+            main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
             session_key: keys.session,
             server: ServerPin {
                 key: TestKey::server().x_only_public_key().0,
@@ -929,7 +936,6 @@ fn pass_through_delay_lines(app: &mut App) {
         ),
     );
     app.add_systems(First, DelayLine::pin_round_trip);
-    app.add_systems(Update, DelayLine::pin_round_trip);
 }
 
 pub(crate) mod bench {
@@ -943,6 +949,7 @@ pub(crate) mod bench {
     use campfire_sim::{Position, SimWorld};
     use campfire_store::DurableDir;
     use campfire_test_packages::TestMode;
+    use campfire_units::GroundPoint;
     use lightyear::prelude::RollbackMode;
 
     use crate::in_process_match::link_model::LinkModel;
@@ -1072,7 +1079,12 @@ pub(crate) mod bench {
                     let side = Num::from_int(side).expect("a small integer");
                     for (client, point) in around.iter().enumerate() {
                         let (x, z) = (point.x, point.z + side);
-                        self.order(client, OrdersAction::Move { x, z });
+                        self.order(
+                            client,
+                            OrdersAction::Move {
+                                to: GroundPoint { x, z },
+                            },
+                        );
                     }
                 }
                 self.step();

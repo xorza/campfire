@@ -3,18 +3,21 @@
 
 use std::num::{NonZeroU8, NonZeroU32};
 
-use campfire_capabilities::UnitTypeData;
-use campfire_codec::Toml;
+use campfire_actions::{SlotError, SlotKind};
+use campfire_capabilities::Release;
+use campfire_codec::{Toml, TomlTable};
+use campfire_common::DeclaredName;
+use campfire_declare::{UnitDefaults, UnitTypeData};
+use campfire_items::{InventoryData, ItemError, ItemsDataError, ShopData};
 use campfire_math::Num;
-use campfire_package::{
-    ContentError, ItemProblem, LoadError, LoadProblem, ModePackages, PackageRef, Place,
-};
-use campfire_script::NameKind;
+use campfire_package::{ContentError, LoadError, LoadProblem, ModePackages, PackageRef, Place};
+use campfire_script::Filter;
 use campfire_sim::Capability;
 use campfire_test_packages::Edit;
-use campfire_values::DeclaredName;
+use campfire_values::{ActionId, ItemId, MessageId, ModifierId, NameKind, Named, ResourceId};
 
 use crate::package::moba::{edited, load};
+use crate::package::module_rules::{entry, rule, rule_at, rule_of};
 
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
@@ -33,7 +36,7 @@ fn name(text: &str) -> DeclaredName {
 #[test]
 fn the_3v3s_items_read_as_their_data_holds_them() {
     let packages = with_items(&[]).unwrap();
-    let items = &packages.content().items;
+    let items = packages.content().items();
     assert_eq!(items.len(), 11);
     // A health potion of 50, five to a slot, of one use, drunk by its action.
     let potion = &items[&name("health_potion")];
@@ -56,7 +59,7 @@ fn the_3v3s_items_read_as_their_data_holds_them() {
     assert_eq!(warblade.cost[&name("gold")], 1100);
     // The fountain sells the 11 for gold, to its allies within 8 m.
     let fountain = &packages.content().units[&name("fountain")];
-    let shop = fountain.shop.as_ref().unwrap();
+    let shop = fountain.section::<ShopData>().unwrap();
     assert_eq!(shop.items.len(), 11);
     assert_eq!(shop.resource.as_str(), "gold");
     assert_eq!(shop.reach, Num::int(8));
@@ -64,11 +67,17 @@ fn the_3v3s_items_read_as_their_data_holds_them() {
     // 70% of a warblade's 1100 is 770.
     assert_eq!(shop.sell_share.of(1100), 770);
     // A unit type's inventory, as every hero's reads.
-    let unit: UnitTypeData = Toml::parse("inventory = { slots = 6, kind = \"item\" }").unwrap();
-    let inventory = unit.inventory.unwrap();
+    let raw = Toml::parse::<TomlTable>("inventory = { slots = 6, kind = \"item\" }").unwrap();
+    let unit: UnitTypeData = raw
+        .read_with(UnitTypeData::seed(
+            &Release::sections(),
+            &UnitDefaults::default(),
+        ))
+        .unwrap();
+    let inventory = unit.section::<InventoryData>().unwrap();
     assert_eq!(
-        (inventory.slots, inventory.kind),
-        (NonZeroU8::new(6).unwrap(), name("item"))
+        (inventory.slots, &inventory.kind),
+        (NonZeroU8::new(6).unwrap(), &name("item"))
     );
 }
 
@@ -93,7 +102,10 @@ fn unread(problem: &LoadProblem, file: &str, message: &str) -> bool {
 }
 
 fn item(id: &str) -> Place {
-    Place::Item(name(id))
+    Place::Entry {
+        table: "items",
+        name: name(id),
+    }
 }
 
 /// The 3v3's fountain, its shop type.
@@ -118,7 +130,7 @@ const FLAWS: [Flaw; 23] = [
             unknown(
                 problem,
                 &item("health_potion"),
-                NameKind::Message,
+                MessageId::NAMES,
                 "item-health-potion",
             )
         },
@@ -130,7 +142,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.long_sword.cost", "{ silver = 350 }"),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("long_sword"), NameKind::Resource, "silver"),
+        refused: |problem| unknown(problem, &item("long_sword"), ResourceId::NAMES, "silver"),
     },
     // An item is built from the mode's items, never from itself.
     Flaw {
@@ -139,7 +151,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.warblade.components", r#"["sword"]"#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("warblade"), NameKind::Item, "sword"),
+        refused: |problem| unknown(problem, &item("warblade"), ItemId::NAMES, "sword"),
     },
     Flaw {
         edits: &[(
@@ -147,7 +159,13 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.long_sword.components", r#"["warblade"]"#),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "long_sword"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("items", "long_sword"),
+                &ItemsDataError::ComponentLoop,
+            )
+        },
     },
     Flaw {
         edits: &[(
@@ -155,7 +173,13 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.long_sword.components", r#"["long_sword"]"#),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "long_sword"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("items", "long_sword"),
+                &ItemsDataError::ComponentLoop,
+            )
+        },
     },
     // An item costs at least what its components cost: 350 + 400 = 750.
     Flaw {
@@ -164,7 +188,12 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.warblade.cost", "{ gold = 749 }"),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::CheaperThanComponents(item)) if item == "warblade"),
+        refused: |problem| {
+            rule_of(problem, |at, error: &ItemError| {
+                *at == entry("items", "warblade")
+                    && matches!(error, ItemError::CheaperThanComponents(_))
+            })
+        },
     },
     // A full stack's cost is what an amount holds: (2³² − 1)², about 1.8 · 10¹⁹, is past 2⁶³ − 1.
     Flaw {
@@ -179,7 +208,11 @@ const FLAWS: [Flaw; 23] = [
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::StackCost(item)) if item == "health_potion"),
+        refused: |problem| {
+            rule_of(problem, |at, error: &ItemError| {
+                *at == entry("items", "health_potion") && matches!(error, ItemError::StackCost(_))
+            })
+        },
     },
     // A stack and uses of at least one.
     Flaw {
@@ -199,7 +232,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.warblade.modifiers", r#"["sharp"]"#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("warblade"), NameKind::Modifier, "sharp"),
+        refused: |problem| unknown(problem, &item("warblade"), ModifierId::NAMES, "sharp"),
     },
     Flaw {
         edits: &[(
@@ -207,14 +240,14 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("items.health_potion.action", r#""sip""#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("health_potion"), NameKind::Ability, "sip"),
+        refused: |problem| unknown(problem, &item("health_potion"), ActionId::NAMES, "sip"),
     },
     // An inventory fills a slot kind of the mode of one rank, with a slot at least, that no unit
     // type or choice puts other actions in.
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.kind", r#""bag""#))],
         package: "hero-husk",
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, name, .. } if name == "bag"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: SlotKind::NAMES, name, .. } if name == "bag"),
     },
     Flaw {
         edits: &[
@@ -228,12 +261,18 @@ const FLAWS: [Flaw; 23] = [
             (HUSK, Edit::Set("inventory.kind", r#""relics""#)),
         ],
         package: "hero-husk",
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::RankedInventory { kind, .. }) if kind == "relics"),
+        refused: |problem| rule(problem, &SlotError::RankedClaim(name("relics"))),
     },
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.kind", r#""spell""#))],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::InventoryKindSlotted { at: Place::Choice(choice), kind }) if choice == "spells" && kind == "spell"),
+        refused: |problem| {
+            let problem_ = SlotError::ClaimedSlotted {
+                kind: name("spell"),
+                by: Capability::Items,
+            };
+            rule_at(problem, &entry("choices", "spells"), &problem_)
+        },
     },
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.slots", "0"))],
@@ -248,7 +287,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("units.fountain.shop.items", r#"["health_potion", "sword"]"#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &fountain(), NameKind::Item, "sword"),
+        refused: |problem| unknown(problem, &fountain(), ItemId::NAMES, "sword"),
     },
     Flaw {
         edits: &[(
@@ -256,7 +295,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("units.fountain.shop.resource", r#""silver""#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &fountain(), NameKind::Resource, "silver"),
+        refused: |problem| unknown(problem, &fountain(), ResourceId::NAMES, "silver"),
     },
     Flaw {
         edits: &[(
@@ -264,7 +303,7 @@ const FLAWS: [Flaw; 23] = [
             Edit::Set("units.fountain.shop.buyers", r#""allies:shopper""#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &fountain(), NameKind::Filter, "allies:shopper"),
+        refused: |problem| unknown(problem, &fountain(), Filter::NAMES, "allies:shopper"),
     },
     Flaw {
         edits: &[
@@ -275,7 +314,10 @@ const FLAWS: [Flaw; 23] = [
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopResource { at, item }) if *at == fountain() && item == "health_potion"),
+        refused: |problem| {
+            let sells = ItemsDataError::ShopResource(name("health_potion"));
+            rule_at(problem, &fountain(), &sells)
+        },
     },
     Flaw {
         edits: &[(UNITS, Edit::Set("units.fountain.shop.reach", r#""-1.0""#))],
@@ -338,7 +380,7 @@ fn every_flaw_of_the_items_fails_the_load_with_its_own_problem() {
     )];
     let error = with_items(&carried).unwrap_err();
     assert!(
-        matches!(*error.problem, LoadProblem::Item(ItemProblem::OutsideMode)),
+        rule(&error.problem, &ItemsDataError::OutsideMode),
         "{error:?}"
     );
 }

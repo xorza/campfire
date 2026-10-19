@@ -6,7 +6,7 @@ use tracing::warn;
 /// The client refused the offered `session`, whose terms do not fit, which ends the link;
 /// `mismatch` says why.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct SessionRefused {
+pub(crate) struct SessionRefused {
     #[serde(deserialize_with = "LogLine::text")]
     pub session: SessionId,
     pub mismatch: String,

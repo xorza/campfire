@@ -1,7 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 
-use campfire_bots::{OrderScriptReadError, UnknownUnitType};
+use campfire_bots::{BotScriptError, OrderScriptReadError};
 use campfire_common::ExitStatus;
 use campfire_net::{KeyFileError, LobbyOpenError};
 use campfire_package::LoadError;
@@ -37,8 +37,8 @@ pub(crate) enum StartError {
     },
     #[error("the mode does not load")]
     Mode(#[from] LoadError),
-    #[error("a bot's orders name a unit type the mode does not have")]
-    BotTypes(#[from] UnknownUnitType),
+    #[error("a bot's orders name what the mode does not have")]
+    BotNames(#[from] BotScriptError),
 }
 
 impl StartError {
@@ -47,7 +47,7 @@ impl StartError {
     pub(crate) const fn status(&self) -> ExitStatus {
         match self {
             Self::CommandLine(status) => *status,
-            Self::BotOrders(_) | Self::BotTypes(_) => ExitStatus::Usage,
+            Self::BotOrders(_) | Self::BotNames(_) => ExitStatus::Usage,
             Self::Session {
                 error: OpeningError::Open(LobbyOpenError::KeepFiles(_)),
                 ..

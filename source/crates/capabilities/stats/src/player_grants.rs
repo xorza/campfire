@@ -1,14 +1,11 @@
-use std::fmt;
-
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
 use campfire_common::PlayerSlot;
-use campfire_players::PlayerRows;
-use campfire_sim::StableId;
-use campfire_units::{Dead, Owner, Player};
+use campfire_players::{Player, PlayerRows};
+use campfire_sim::{Removals, StableId};
+use campfire_units::{Dead, Owner};
 use campfire_values::{ModifierId, Rank, Relation, TagSet, UnitTags};
 
 use crate::grants::{Grant, GrantFrom, Grants};
@@ -24,17 +21,10 @@ pub(crate) struct PlayerGrants;
 
 /// The units whose player grants a run visits again though no part of theirs changed: those
 /// that lost their owner, or came back to life, since the last run.
-#[derive(SystemParam)]
+#[derive(SystemParam, Debug)]
 pub(crate) struct Revisits<'w, 's> {
-    unowned: RemovedComponents<'w, 's, Owner>,
-    revived: RemovedComponents<'w, 's, Dead>,
-}
-
-/// Its removals print nothing: `RemovedComponents` has no `Debug`.
-impl fmt::Debug for Revisits<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Revisits").finish_non_exhaustive()
-    }
+    unowned: Removals<'w, 's, Owner>,
+    revived: Removals<'w, 's, Dead>,
 }
 
 /// The parts of a unit its player's grants read.

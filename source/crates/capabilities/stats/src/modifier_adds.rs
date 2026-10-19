@@ -12,6 +12,7 @@ use crate::application::{Adding, ApplyAt};
 use crate::applier::Applier;
 use crate::carried_mut::CarriedMut;
 use crate::modifier_book::ModifierBook;
+use crate::modifier_dues::ModifierIndexes;
 use crate::modifier_params::ModifierParams;
 use crate::modifiers::Modifiers;
 use crate::modifiers::modifier_clocks::ModifierClocks;
@@ -41,6 +42,7 @@ pub(crate) struct ModifierAdds<'w, 's> {
         (&'static mut Modifiers, &'static mut ModifierClocks),
         (Without<Dead>, Allow<Unpredicted>),
     >,
+    indexes: ModifierIndexes<'w>,
 }
 
 /// `ModifierAdds` for the effects of a call, which hold the world itself: its queries made as
@@ -60,12 +62,14 @@ impl HeldModifierAdds {
             clock,
             index,
             mut carriers,
+            mut indexes,
         } = state
             .get_mut(world)
             .expect("the adds of modifiers are always valid");
-        let Some(Ok((modifiers, clocks))) =
-            index.get(add.target).map(|entity| carriers.get_mut(entity))
-        else {
+        let Some(entity) = index.get(add.target) else {
+            return;
+        };
+        let Ok((modifiers, clocks)) = carriers.get_mut(entity) else {
             return;
         };
         let at = ApplyAt {
@@ -80,7 +84,8 @@ impl HeldModifierAdds {
             source: source.as_ref(),
             duration: add.duration,
         };
-        CarriedMut::new(modifiers, clocks).add(&book, at, adding);
+        let dues = indexes.of(add.target, entity);
+        CarriedMut::new(modifiers, clocks, dues).add(&book, at, adding);
     }
 }
 

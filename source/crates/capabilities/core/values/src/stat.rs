@@ -1,8 +1,8 @@
-use campfire_common::{EnumAll, NamedEnum};
+use campfire_common::NamedEnum;
 use derive_more::Display;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use crate::declared_name::DeclaredName;
+use campfire_common::DeclaredName;
 
 /// A stat, as data and `unit.stat(name)` name it: one a capability reads, or one the mode
 /// declares for its own scripts and modifiers.
@@ -20,7 +20,7 @@ pub enum Stat {
 pub struct DeclaredStat(DeclaredName);
 
 /// A stat a capability reads, whatever the mode, by the name data and scripts give it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll, NamedEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, NamedEnum)]
 pub enum EngineStat {
     MoveSpeed,
     TurnRate,
@@ -49,6 +49,13 @@ impl Stat {
             Self::Engine(_) => None,
             Self::Declared(declared) => Some(&declared.0),
         }
+    }
+}
+
+/// As data names it, the name `Deserialize` reads.
+impl Serialize for Stat {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.name())
     }
 }
 

@@ -1,5 +1,5 @@
 fn on_hit(ctx, caster, target, hit) {
-    ctx.damage(target, ctx.p.damage, "magic");
-    ctx.add_modifier(target, "stun", ctx.p.stun_ms);
-    ctx.dash(caster, target, ctx.p.pull_speed);
+    ctx.damage(target, "magic", ctx.params.damage);
+    ctx.add_modifier(target, "stun", ctx.params.stun_ms);
+    ctx.dash(caster, target, ctx.params.pull_speed);
 }

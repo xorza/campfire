@@ -1,22 +1,43 @@
 use std::sync::{Arc, Mutex};
 
-use super::*;
-use crate::journal::error::NotJournal;
-use crate::journal::journal_frames::JournalFrames;
-use crate::journal::journal_frames::MAX_RECORD;
+use crate::journal::error::{JournalStreamError, NotJournal};
+use crate::journal::journal_frames::{self, JournalFrames, MAX_RECORD};
+use crate::journal::record_sink::RecordSink;
 
-/// A journal's file in memory, which a test reads back as it likes.
+/// A journal's file in memory, which a test reads back as it likes, and how many appends made
+/// it.
 #[derive(Debug, Clone)]
-pub(crate) struct MemorySink(pub(crate) Arc<Mutex<Vec<u8>>>);
+pub(crate) struct MemorySink(Arc<Mutex<Written>>);
+
+#[derive(Debug)]
+struct Written {
+    bytes: Vec<u8>,
+    appends: u64,
+    records: u64,
+}
 
 impl MemorySink {
     /// A file that holds the journal's tag alone, as a new journal does.
     pub(crate) fn new() -> Self {
-        Self(Arc::new(Mutex::new(JournalFrames::TAG.to_vec())))
+        Self(Arc::new(Mutex::new(Written {
+            bytes: JournalFrames::TAG.to_vec(),
+            appends: 0,
+            records: 0,
+        })))
     }
 
     pub(crate) fn bytes(&self) -> Vec<u8> {
-        self.0.lock().unwrap().clone()
+        self.0.lock().unwrap().bytes.clone()
+    }
+
+    /// How many appends the sink took.
+    pub(crate) fn appends(&self) -> u64 {
+        self.0.lock().unwrap().appends
+    }
+
+    /// How many records its appends counted.
+    pub(crate) fn records(&self) -> u64 {
+        self.0.lock().unwrap().records
     }
 
     /// A box of a sink into the same bytes, for a log to keep.
@@ -26,36 +47,42 @@ impl MemorySink {
 }
 
 impl RecordSink for MemorySink {
-    fn append(&self, write: &mut dyn FnMut(&mut Vec<u8>)) {
-        write(&mut self.0.lock().unwrap());
+    fn append(&self, records: u64, write: &mut dyn FnMut(&mut Vec<u8>)) {
+        let mut written = self.0.lock().unwrap();
+        write(&mut written.bytes);
+        written.appends += 1;
+        written.records += records;
     }
-}
-
-fn len(len: usize) -> u64 {
-    u64::try_from(len).unwrap()
 }
 
 /// Three records, the second empty.
-const RECORDS: [&[u8]; 3] = [b"first", b"", b"third record"];
+pub(crate) const RECORDS: [&[u8]; 3] = [b"first", b"", b"third record"];
 
-/// The journal file of `RECORDS`, written in turn.
-fn journal_of_records() -> Vec<u8> {
-    let file = MemorySink::new();
-    let mut journal = Journal::new(file.boxed(), len(JournalFrames::TAG.len()));
+/// The journal file of `RECORDS`, framed in turn.
+pub(crate) fn journal_of_records() -> Vec<u8> {
+    let mut bytes = JournalFrames::TAG.to_vec();
     for record in RECORDS {
-        journal.append(|out| out.extend_from_slice(record));
+        let start = journal_frames::open(&mut bytes);
+        bytes.extend_from_slice(record);
+        journal_frames::seal(&mut bytes, start);
     }
-    assert_eq!(journal.written(), 3);
     // The tag, then each record's 4 + 32 bytes beside its own: 19 + 41 + 36 + 48.
-    assert_eq!(journal.len(), 144);
-    assert_eq!(journal.len(), len(file.bytes().len()));
-    file.bytes()
+    assert_eq!(bytes.len(), 144);
+    bytes
 }
 
-/// The records a read of `bytes` gives, and where it stops.
+/// The records a read of `bytes` gives, and where it stops; a stream of the bytes gives the same
+/// records.
 fn read(bytes: &[u8]) -> Option<(Vec<&[u8]>, usize)> {
-    let mut frames = JournalFrames::new(bytes).ok()?;
-    let records = frames.by_ref().collect();
+    let Ok(mut frames) = JournalFrames::new(bytes) else {
+        let streamed = JournalFrames::stream(bytes, &mut |_| {});
+        assert!(matches!(streamed, Err(JournalStreamError::NotJournal(_))));
+        return None;
+    };
+    let records: Vec<&[u8]> = frames.by_ref().collect();
+    let mut streamed = Vec::new();
+    JournalFrames::stream(bytes, &mut |record| streamed.push(record.to_vec())).unwrap();
+    assert_eq!(streamed, records);
     Some((records, frames.whole()))
 }
 

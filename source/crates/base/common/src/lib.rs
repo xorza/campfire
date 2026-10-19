@@ -6,12 +6,15 @@
 //! A type enters only when two crates that do not depend on each other both name it, and only as a
 //! plain value: construction, parsing, display and serde, no other logic. The exceptions are
 //! `NamedEnum`, which names an enum's members from one table, with the derives
-//! `campfire-common-derive` holds for it; the hashers, SHA-256 and domain-tagged BLAKE3, which construct the 32-byte
-//! values (05-protocol-spec.md, Hashes, ids and keys); and, behind `internals`, the allocation
-//! audit every crate's `tests/alloc` suite runs on. The crate depends on nothing but `serde`,
-//! `derive_more`, `sha2`, `blake3` and its derives, and, for the audit, `backtrace`.
+//! `campfire-common-derive` holds for it; the hashers, SHA-256 and domain-tagged BLAKE3, which
+//! construct the 32-byte values (05-protocol-spec.md, Hashes, ids and keys); and, behind
+//! `internals`, the allocation audit every crate's `tests/alloc` suite runs on. The crate depends
+//! on nothing but `serde`, `derive_more`, `sha2`, `blake3` and its derives, and, for the audit,
+//! `backtrace`.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 // The derives name the trait by its crate, as every caller does.
 #[cfg(test)]
@@ -23,7 +26,9 @@ mod alloc_audit;
 mod bytes32;
 mod channel_binding;
 mod content_hash;
+mod declared_name;
 mod domain_hasher;
+mod error_report;
 mod exit_status;
 mod map_name;
 mod named_enum;
@@ -42,7 +47,9 @@ pub use crate::bytes32::Bytes32;
 pub use crate::bytes32::error::NotHex;
 pub use crate::channel_binding::{ChannelBinding, ChannelBindingMeaning};
 pub use crate::content_hash::{ContentHash, ContentHashMeaning, ContentHasher};
+pub use crate::declared_name::DeclaredName;
 pub use crate::domain_hasher::{DomainHasher, HashDomain, HashOutput};
+pub use crate::error_report::ErrorReport;
 pub use crate::exit_status::ExitStatus;
 pub use crate::map_name::MapName;
 pub use crate::map_name::error::NotMapName;

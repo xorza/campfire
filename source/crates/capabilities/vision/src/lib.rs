@@ -1,4 +1,6 @@
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
@@ -10,19 +12,20 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_sim::Capability;
-use campfire_units::UnitEntity;
+use campfire_units::{SeenBy, UnitEntity, UnitsSet};
 
 use crate::vision_column::RowReads;
 
 #[cfg(feature = "internals")]
 pub mod bench;
 mod brush_map;
+mod error;
 mod fog;
+mod grid_data;
 mod reveals;
 mod seeing;
-mod seen_by;
 mod seen_targets;
 mod sight;
 mod sight_cache;
@@ -30,6 +33,7 @@ mod sight_maps;
 mod team_sight;
 mod vision_api;
 mod vision_book;
+mod vision_books;
 mod vision_column;
 mod vision_data;
 mod vision_effect;
@@ -37,10 +41,11 @@ mod vision_grid;
 mod vision_groups;
 
 pub use crate::brush_map::BrushMap;
+pub use crate::error::VisionDataError;
 pub use crate::fog::Fog;
+pub use crate::grid_data::{BrushData, GridData};
 pub use crate::reveals::{Reveal, Reveals};
 pub use crate::seeing::Seeing;
-pub use crate::seen_by::SeenBy;
 pub use crate::seen_targets::SeenTargets;
 pub use crate::sight::Sight;
 pub use crate::team_sight::{ByHolding, ByVision, TeamSight};
@@ -58,19 +63,21 @@ pub struct Vision;
 
 /// The steps of `vision`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum VisionSet {
+pub enum VisionSet {
+    /// A fog that holds no Vision stage's sight, a new or a restored match's, is filled.
+    Refill,
     /// Each team marks what it may see.
     See,
 }
 
 impl ModuleSet for VisionSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Vision);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::See => Phase::End,
-        })
+        match self {
+            Self::Refill => SetPlace::at(UnitsSet::Begin),
+            Self::See => SetPlace::at(UnitsSet::End),
+        }
     }
 }
 
@@ -78,14 +85,18 @@ impl Module for Vision {
     const CAPABILITY: Option<Capability> = Some(Capability::Vision);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = VisionSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<VisionSet>();
+        d.section::<VisionData>();
+        d.section::<GridData>();
         d.resource::<Reveals>();
+        d.cache::<Fog>();
         d.component::<SeenBy>();
         d.component::<Sight>();
-        d.book::<ByType<Sight>>();
-        d.book::<VisionBook>();
+        d.book::<ByType<Sight>>(Sight::book);
+        d.book::<VisionBook>(VisionBook::build);
+        d.rule(VisionBook::grid_rule);
         d.column::<VisionColumn, RowReads>(VisionColumn::fill_row);
         d.api(VisionApi::register);
         d.part::<UnitEntity, Sight>(|at| at.of_type::<Sight>().copied());
@@ -94,36 +105,36 @@ impl Module for Vision {
         d.server_part::<UnitEntity, SeenBy>();
     }
 
-    /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
-    /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
-    /// teams that see it, with the reveals under way. A match sees nothing until its mode gives
-    /// the grid. What a team sees is the server's: a predicting client holds the units its team sees, as
-    /// the server sends them, and reveals nothing.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.server(
-            Seeing::see
-                .run_if(VisionBook::has_grid)
-                .in_set(VisionSet::See),
-        );
+    /// Adds vision to a match, on combat, when its map has a grid: in Vision, the last stage of a
+    /// tick, each living unit with a sight reveals the grid cells around it to its vision group,
+    /// and each unit learns the teams that see it, with the reveals under way. A match of no grid
+    /// sees nothing. What a team sees is the server's: a predicting client holds the units its
+    /// team sees, as the server sends them, and reveals nothing.
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        if !cx.book::<VisionBook>().is_some_and(VisionBook::has_grid) {
+            return;
+        }
+        cx.server(VisionSet::Refill, Seeing::refill.run_if(Seeing::unfilled));
+        cx.server(VisionSet::See, Seeing::see);
     }
 }
 
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
-    use campfire_declare::Book;
+
+    use campfire_declare::internals::BookLoad;
     use campfire_geometry::{Bounds, Grid, Polygon};
     use campfire_math::Num;
-    use campfire_script::internals::FailureKind;
+    use campfire_script::FailureKind;
     use campfire_script::{Budget, CallError, CallStart, Ctx, ScriptHost, ScriptRole};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimTick, StableId};
-    use campfire_units::UnitsWorld;
-    use campfire_values::{Team, TeamSet};
+    use campfire_units::{SeenBy, UnitsWorld};
+    use campfire_values::{ActionId, PackageIndex, Rank, Team, TeamSet};
 
     use crate::Vision;
     use crate::brush_map::BrushMap;
-    use crate::seen_by::SeenBy;
     use crate::vision_book::VisionBook;
     use crate::vision_column::VisionColumn;
     use crate::vision_grid::VisionGrid;
@@ -138,16 +149,6 @@ pub mod internals {
             );
             let brush = BrushMap::new(&grid, brush);
             (VisionBook(Some(VisionGrid { grid, brush, teams }))).load_into(world);
-        }
-
-        /// Takes the map's vision grid out of a match that holds one, so no Vision stage runs
-        /// until a test loads a grid: a unit keeps the teams the last stage found, and one no
-        /// stage spoke of is seen by its own vision group alone, or by every team when it has
-        /// none.
-        pub fn clear_grid(world: &mut World) {
-            if world.contains_resource::<VisionBook>() {
-                VisionBook::default().load_into(world);
-            }
         }
     }
 
@@ -181,7 +182,7 @@ pub mod internals {
             sight.map_or_else(|| "blind".to_owned(), |range| format!("seer of {range}"))
         }
 
-        /// Runs `ctx.reveal(at.pos, radius, ms)` as `actor` thinks, or as the mode with no actor,
+        /// Runs `ctx.reveal(at.pos, radius, ms)` as `actor` casts, or as the mode with no actor,
         /// then applies what it queued; why it failed, when it did.
         pub fn reveal(
             world: &mut World,
@@ -194,10 +195,16 @@ pub mod internals {
             ctx.view().read(world);
             let now = world.resource::<SimTick>().start();
             let start = match actor {
-                Some(actor) => CallStart::think(actor, now),
+                Some(actor) => CallStart::cast(
+                    ActionId::new(0),
+                    Rank::FIRST,
+                    actor,
+                    PackageIndex::MODE,
+                    now,
+                ),
                 None => CallStart::mode(ScriptRole::Mode, now),
             };
-            ctx.frame().begin(world, start).unwrap();
+            ctx.frame().begin_alone(world, start).unwrap();
             let at = ctx.view().unit(at).unwrap();
             let source = format!("fn probe(ctx, at) {{ ctx.reveal(at.pos, {radius}, {ms}) }}");
             let returned = {

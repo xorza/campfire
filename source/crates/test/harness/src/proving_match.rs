@@ -6,6 +6,7 @@ use campfire_production::TrainQueue;
 use campfire_protocol::{InputRules, SlotPlan};
 use campfire_sim::StableId;
 use campfire_test_packages::TestMode;
+use campfire_units::GroundPoint;
 use campfire_values::Team;
 
 use crate::fixed_session::FixedSession;
@@ -125,8 +126,10 @@ impl Plan for ProvingMatch {
             Self::Move { x, z } => (
                 hero,
                 OrdersAction::Move {
-                    x: Num::int(x),
-                    z: Num::int(z),
+                    to: GroundPoint {
+                        x: Num::int(x),
+                        z: Num::int(z),
+                    },
                 },
             ),
             Self::AttackBoulder => (

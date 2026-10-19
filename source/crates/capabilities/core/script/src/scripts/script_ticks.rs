@@ -4,8 +4,8 @@ use campfire_values::EngineEnum;
 
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_arg::ScriptArg;
+use campfire_values::NameKind;
 
 /// A time a script gives in milliseconds, as how long something waits or lasts: in ticks at the
 /// match's rate, rounded up, a tick at the least, so what starts also takes effect. A negative
@@ -28,9 +28,10 @@ impl ScriptTicks {
 impl ScriptArg for ScriptTicks {
     type Raw = i64;
     type Int = i64;
-    const NAMES: Option<NameKind> = None;
+    const NAME_KIND: Option<NameKind> = None;
     const ENUM: Option<EngineEnum> = None;
     const NUMBER: bool = false;
+    const TYPE: &'static str = "ms";
 
     fn take(ms: i64, ctx: &ArgCtx<'_>) -> Checked<Self> {
         Ok(Self::of(ctx.get().view().rate(), ms).map_err(ApiError::fail)?)

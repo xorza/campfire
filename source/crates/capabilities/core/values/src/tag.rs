@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::bits256::Bits256;
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 
 /// A tag, by its place in the match's list of tag names, in the order they were declared.
@@ -32,4 +33,8 @@ impl NameId for Tag {
     fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+impl Named for Tag {
+    const NAMES: NameKind = NameKind::new("tag", Article::A, NameScope::Match);
 }

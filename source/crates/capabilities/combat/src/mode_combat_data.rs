@@ -1,8 +1,10 @@
+use campfire_declare::{Section, SectionTable};
 use std::collections::BTreeMap;
 
-use campfire_script::{DataSection, DataTable, NameKind, UnknownName};
-use campfire_stats::PoolId;
-use campfire_values::{DeclaredName, Names, Stat};
+use campfire_common::DeclaredName;
+use campfire_script::{DataSection, DataTable, UnknownName};
+use campfire_units::PoolId;
+use campfire_values::{Named, Names, Stat};
 use serde::Deserialize;
 
 use crate::armor::ArmorShare;
@@ -45,7 +47,7 @@ impl ModeCombatData {
         };
         let pool = pools.named(life.as_str());
         Ok(Some(
-            pool.ok_or_else(|| UnknownName::new(NameKind::Pool, life))?,
+            pool.ok_or_else(|| UnknownName::new(PoolId::NAMES, life))?,
         ))
     }
 
@@ -63,9 +65,14 @@ impl ModeCombatData {
 }
 
 impl DataSection for ModeCombatData {
-    const TABLE: DataTable = DataTable::ModeCombat;
+    const TABLE: DataTable = DataTable::new("The mode's `[combat]`");
 }
 
 impl DataSection for LeechData {
-    const TABLE: DataTable = DataTable::Leech;
+    const TABLE: DataTable = DataTable::new("The mode's `[combat] leech`");
+}
+
+impl Section for ModeCombatData {
+    const TABLE: SectionTable = SectionTable::Mode;
+    const KEY: &'static str = "combat";
 }

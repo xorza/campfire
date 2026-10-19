@@ -1,7 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_capabilities::Match;
 use campfire_common::Tick;
-use campfire_mode::OptionPicks;
 use campfire_package::ModePackages;
 use campfire_protocol::{Checkpoint, SeedError, SessionLog};
 use campfire_sim::{SimWorld, TickRate};
@@ -10,7 +9,7 @@ use crate::match_build::MatchBuild;
 use crate::replay::error::ReplayError;
 use crate::session::Session;
 use crate::session::error::{SnapshotCheckError, StartError};
-use crate::session::session_source::SessionSource;
+use crate::session::session_source::{SessionSource, UncheckedSource};
 use crate::session::session_world::SessionWorld;
 
 pub(crate) mod error;
@@ -41,11 +40,15 @@ impl<'p> Replay<'p> {
             .ok_or(StartError::Seed(SeedError::NotRevealed))?;
         let ticks = published.next_tick();
         Ok(Replay {
-            game: Session::start_match(SessionSource {
-                log: published.rewound(),
-                seeds,
-                packages,
-            })?,
+            game: Session::start_match(
+                SessionSource::check(UncheckedSource {
+                    log: published,
+                    seeds,
+                    packages,
+                    signer: None,
+                })
+                .map_err(StartError::Terms)?,
+            )?,
             target: None,
             packages,
             ticks,
@@ -60,9 +63,9 @@ impl<'p> Replay<'p> {
     /// Runs every tick the log holds after those that ran, as `run` does, and gives `ran` the
     /// world after each.
     pub fn run_each(&mut self, mut ran: impl FnMut(&World)) -> Result<(), ReplayError> {
-        let start = self.game.session().log().next_tick();
+        let start = self.game.session().next_tick();
         self.game.replay_to(self.ticks, |world| {
-            if world.session().log().next_tick() > start {
+            if world.session().next_tick() > start {
                 ran(world);
             }
             Replay::check_checkpoint(world)
@@ -73,7 +76,7 @@ impl<'p> Replay<'p> {
     /// Whether the state of `world` at its boundary is the one the checkpoint there, if the log
     /// holds one, records.
     fn check_checkpoint(world: &World) -> Result<(), ReplayError> {
-        let next = world.session().log().next_tick();
+        let next = world.session().next_tick();
         let Some(record) = world.session().log().checkpoint_at(next) else {
             return Ok(());
         };
@@ -103,17 +106,16 @@ impl<'p> Replay<'p> {
                 target
             }
             empty => {
-                let header = self.game.session().log().header();
+                let session = self.game.session();
+                let header = session.log().header();
                 let slots = u32::try_from(header.slots.len()).expect("the log counts slots in u32");
                 let rate = TickRate::new(header.terms.tick_hz);
-                let options = &self.packages.data().options;
-                let picks = OptionPicks::checked(options, &header.terms.options)
-                    .expect("the replay's session checked its terms");
+                let picks = &session.checked().picks;
                 empty.insert(MatchBuild::restore_target(
                     self.packages,
                     rate,
                     slots,
-                    &picks,
+                    picks,
                 ))
             }
         };
@@ -141,7 +143,7 @@ pub(crate) mod internals {
         /// a segment starts is not the one its checkpoint records, or the result does not hold.
         pub fn run_tick(&mut self) -> Result<bool, ReplayError> {
             Replay::check_checkpoint(&self.game)?;
-            if self.game.session().log().next_tick() == self.ticks {
+            if self.game.session().next_tick() == self.ticks {
                 self.game.check_result().map_err(ReplayError::Result)?;
                 return Ok(false);
             }

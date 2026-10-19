@@ -35,7 +35,6 @@ campfire-sim = { workspace = true, features = ["internals"] }
 name = "tests"
 path = "tests/mod.rs"
 
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]
 bench = false
 

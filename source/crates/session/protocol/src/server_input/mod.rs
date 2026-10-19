@@ -80,10 +80,20 @@ enum Wire<'a> {
 
 /// A server input as the server key signs it, logged at `place` in session `session_id`.
 #[derive(Debug, Clone, Copy)]
-pub struct PlacedInput<'i> {
+pub(crate) struct PlacedInput<'i> {
     pub input: &'i ServerInput<'i>,
     pub session_id: SessionId,
     pub place: InputPlace,
+}
+
+/// A server input as `PlacedInput` signs it, of its encoding `input`, which the log wrote once:
+/// the same message, with no second encode of the input (10-sessions.md, A record is encoded
+/// once).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct EncodedPlace<'a> {
+    pub(crate) session_id: SessionId,
+    pub(crate) place: InputPlace,
+    pub(crate) input: &'a [u8],
 }
 
 /// `domain ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, little-endian.
@@ -91,11 +101,25 @@ impl Signed for PlacedInput<'_> {
     const DOMAIN: SignatureDomain = SignatureDomain::new("campfire/server-input/v1");
 
     fn write_body(&self, message: &mut Vec<u8>) {
-        message.extend_from_slice(self.session_id.as_bytes());
-        message.extend_from_slice(&self.place.tick.get().to_le_bytes());
-        message.extend_from_slice(&self.place.index.to_le_bytes());
+        write_place(message, self.session_id, self.place);
         self.input.encode(message);
     }
+}
+
+impl Signed for EncodedPlace<'_> {
+    const DOMAIN: SignatureDomain = PlacedInput::DOMAIN;
+
+    fn write_body(&self, message: &mut Vec<u8>) {
+        write_place(message, self.session_id, self.place);
+        message.extend_from_slice(self.input);
+    }
+}
+
+/// Writes the session id and the place a server input's message holds before the input.
+fn write_place(message: &mut Vec<u8>, session_id: SessionId, place: InputPlace) {
+    message.extend_from_slice(session_id.as_bytes());
+    message.extend_from_slice(&place.tick.get().to_le_bytes());
+    message.extend_from_slice(&place.index.to_le_bytes());
 }
 
 impl<'a> ServerInput<'a> {

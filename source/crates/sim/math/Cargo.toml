@@ -23,7 +23,6 @@ campfire-codec = { workspace = true, features = ["internals"] }
 campfire-math = { workspace = true, features = ["internals"] }
 proptest.workspace = true
 
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]
 bench = false
 

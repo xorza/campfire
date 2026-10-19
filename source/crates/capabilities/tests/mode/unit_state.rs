@@ -5,7 +5,12 @@ use super::*;
 #[test]
 fn a_call_reads_its_unit_state_writes_back_and_the_next_call_of_the_stage_reads_them() {
     let script = r#"
-fn on_mode_input(ctx, player, name, value) {
+fn on_timer(ctx, name, data) {
+    ctx.state.kind = data.state.mark;
+    ctx.state.seen = data.state.hits;
+}
+
+fn on_input(ctx, player, name, value) {
     if value == "spawn" {
         ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
         return;
@@ -16,6 +21,12 @@ fn on_mode_input(ctx, player, name, value) {
         if id.state.mark != "new" || id.state.hits != 2 {
             throw "a new unit reads its defaults but what the call wrote";
         }
+        ctx.after("once", 100, id);
+        return;
+    }
+    if value == "spawn_read" {
+        let id = ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
+        id.pos;
         return;
     }
     let grunt = ctx.units_tagged("grunt")[0];
@@ -40,8 +51,7 @@ fn on_mode_input(ctx, player, name, value) {
     Mode::tick_inputs(&mut game, &[(1, input("probe", "spawn"))]);
     let grunt = |game: &Match| {
         let grunt_type = game
-            .non_send::<View>()
-            .names()
+            .resource::<MatchNames>()
             .named((TypeScope::Mode, "grunt"))
             .unwrap();
         let grunts = game
@@ -102,12 +112,22 @@ fn on_mode_input(ctx, player, name, value) {
     Release::restore_into(&game, &mut fresh);
     assert_eq!(grunt(&fresh), at(6));
     // A unit a call spawns is a handle whose state the call writes and reads back, at its type's
-    // defaults but what it wrote; the unit spawns with what it wrote.
+    // defaults but what it wrote; the unit spawns with what it wrote. The handle is a unit's,
+    // which a timer's data holds, and the timer's call reads it spawned.
     Mode::tick_inputs(&mut game, &[(1, input("probe", "spawn_marked"))]);
+    Mode::tick_inputs(&mut game, &[]);
     assert_eq!(Mode::failures(&game), []);
     let marked = (
         vec![StateValue::Int(2)],
         vec![StateValue::Text("new".into())],
     );
     assert_eq!(grunt(&game), marked);
+    assert_eq!(Mode::field(&game, "kind"), StateValue::Text("new".into()));
+    assert_eq!(Mode::field(&game, "seen"), StateValue::Int(2));
+    // Its other fields have no values until it spawns: a read of one fails the call.
+    Mode::tick_inputs(&mut game, &[(1, input("probe", "spawn_read"))]);
+    assert_eq!(
+        Mode::failures(&game),
+        [FailureKind::Api(ApiError::Unspawned)]
+    );
 }

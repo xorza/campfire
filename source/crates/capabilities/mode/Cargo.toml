@@ -24,7 +24,6 @@ internals = [
     "campfire-units/internals",
     "campfire-values/internals",
     "campfire-visibility/internals",
-    "campfire-vision/internals",
 ]
 
 [dependencies]
@@ -42,11 +41,10 @@ campfire-progression.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true
-campfire-stats.workspace = true
+campfire-stats = { workspace = true, optional = true }
 campfire-units.workspace = true
 campfire-values.workspace = true
 campfire-visibility.workspace = true
-campfire-vision.workspace = true
 
 bevy_ecs.workspace = true
 serde.workspace = true
@@ -54,6 +52,7 @@ thiserror.workspace = true
 
 [dev-dependencies]
 campfire-mode = { workspace = true, features = ["internals"] }
+campfire-vision = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true

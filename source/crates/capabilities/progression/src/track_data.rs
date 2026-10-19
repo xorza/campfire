@@ -46,5 +46,5 @@ impl<'de> Deserialize<'de> for Thresholds {
 }
 
 impl DataSection for TrackData {
-    const TABLE: DataTable = DataTable::Track;
+    const TABLE: DataTable = DataTable::new("A track, `[tracks.<name>]`");
 }

@@ -1,41 +1,42 @@
 use bevy_ecs::change_detection::CheckChangeTicks;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::observer::On;
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::NonSend;
 use bevy_ecs::world::World;
 use campfire_common::EnumAll;
 use campfire_declare::{
-    ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, Phase, SetPlace,
+    ByType, Declarations, InstallCx, KindVisitor, Module, ModuleSet, SetPlace, StateFields,
 };
 use campfire_script::{
-    CoreApi, Ctx, ScriptCall, ScriptError, ScriptFailures, ScriptHost, ScriptId, ScriptList,
-    StatePlace, StateSchema, View, ViewApi,
+    CoreApi, Ctx, Listing, MatchNames, ScriptBudgets, ScriptCall, ScriptError, ScriptFailures,
+    ScriptHost, ScriptId, ScriptList, ScriptPrints, StatePlace, StateSchema, View, ViewApi,
 };
-use campfire_sim::{Breach, Capability, Either, Position, SimEdge, SimSet, TickRate};
+use campfire_sim::{Breach, Capability, Position, SimEdge, SimSet, TickRate};
 use campfire_values::{Relations, Team, UnitTags, UnitType};
 
 use crate::arrived_short::ArrivedShort;
 use crate::avatar::Avatar;
 use crate::body::Body;
 use crate::body_form::BodyForm;
+use crate::collision_data::CollisionData;
 use crate::dead::Dead;
+use crate::declared_tags::DeclaredTags;
 use crate::destination::Destination;
 use crate::facing::Facing;
 use crate::forced_move::ForcedMove;
+use crate::ground_data::GroundData;
 use crate::lifespan::Lifespan;
-use crate::map_book::MapBook;
-use crate::match_entity::MatchEntity;
+use crate::map_book::{BoundsData, MapBook, MetricData};
 use crate::move_step::MoveStep;
-use crate::new_unit::NewUnit;
 use crate::new_unit_states::NewUnitStates;
 use crate::owner::Owner;
-use crate::player::Player;
 use crate::script_book::ScriptBook;
 use crate::spawn_hooks::SpawnHooks;
 use crate::spawn_point::SpawnPoint;
 use crate::status_tags::StatusTags;
 use crate::tag_book::TagBook;
+use crate::tag_data::ModeTagsData;
 use crate::turn_step::TurnStep;
 use crate::type_origin_book::TypeOriginBook;
 use crate::unit_entity::UnitEntity;
@@ -44,34 +45,38 @@ use crate::unit_entity::delivery_entity::DeliveryEntity;
 use crate::unit_grid::{GridUnits, UnitGrid};
 use crate::unit_state::{StateSync, SyncAll, SyncCall, SyncNone, SyncOwner, SyncTeam, UnitState};
 use crate::unit_state_book::UnitStateBook;
+use crate::unit_steps::UnitSteps;
 use crate::unit_ticks::UnitTicks;
 use crate::unit_tracker::UnitTracker;
 use crate::unit_type_book::UnitTypeBook;
+use crate::unit_type_core::{TypeParamsData, TypeStateData, TypeTagsData};
+use crate::unit_types::UnitTypes;
 use crate::units_api::UnitsApi;
 use crate::units_call::UnitsCall;
 use crate::units_column::{StateRowReads, UnitsColumn};
 use crate::view_reader::ViewReader;
 
-/// The core's steps.
+/// The core's steps, the first and the last of each tick, which every module's start and end of
+/// the tick sit at.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum UnitsSet {
-    /// Every pool starts full.
-    BeginTick,
-    /// The units whose lifespan ended despawn.
-    EndLifespans,
-    /// The script states of units that never spawned are dropped.
-    DropUnspawned,
+pub enum UnitsSet {
+    /// The tick begins: every pool starts full, and the last tick's failures clear.
+    Begin,
+    /// The tick ends: the units whose lifespan ended despawn.
+    End,
+    /// The tick closes: the script states of units that never spawned are dropped, and what the
+    /// scripts printed reaches its report.
+    Close,
 }
 
 impl ModuleSet for UnitsSet {
-    const CAPABILITY: Option<Capability> = None;
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
         match self {
-            Self::BeginTick => SetPlace::Phase(Phase::Begin),
-            Self::EndLifespans => SetPlace::Phase(Phase::End),
-            Self::DropUnspawned => SetPlace::Gap(SimEdge::After(SimSet::Vision)),
+            Self::Begin => SetPlace::stage(SimSet::Inputs),
+            Self::End => SetPlace::stage(SimSet::Vision),
+            Self::Close => SetPlace::gap(SimEdge::After(SimSet::Vision)),
         }
     }
 }
@@ -86,12 +91,23 @@ impl Module for Units {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = UnitsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        // Before every book, which shares its names into it as it installs.
+        d.cache::<MatchNames>();
         Self::runtime(d);
-        d.sets::<UnitsSet>();
         d.calls::<SpawnHooks>();
         d.engine_tags(&[Avatar::TAG, Dead::TAG]);
+        d.section::<TypeTagsData>();
+        d.section::<TypeParamsData>();
+        d.section::<TypeStateData>();
+        d.extend::<StateFields>(Self::state_fields);
+        d.section::<CollisionData>();
+        d.section::<ModeTagsData>();
+        d.section::<MetricData>();
+        d.section::<BoundsData>();
+        d.section::<GroundData>();
         Self::kinds(d);
         d.component::<Body>();
         d.component::<BodyUnit>();
@@ -100,6 +116,7 @@ impl Module for Units {
         d.component::<Facing>();
         d.component::<ForcedMove>();
         d.component::<Lifespan>();
+        d.timed::<Lifespan>();
         d.component::<MoveStep>();
         d.component::<TurnStep>();
         d.sim_component::<Position>();
@@ -119,6 +136,9 @@ impl Module for Units {
         d.derived::<ArrivedShort>();
         d.component::<Relations>();
         d.scratch::<NewUnitStates>();
+        d.report::<ScriptBudgets>();
+        d.report::<ScriptPrints>();
+        d.report::<ScriptFailures>();
         d.on_insert::<UnitType>(TagBook::give_tags);
         d.cache::<UnitGrid>();
         d.cache::<UnitTracker<GridUnits>>();
@@ -128,36 +148,35 @@ impl Module for Units {
         d.check::<Position>(Self::within_bounds);
         d.host::<Position, UnitEntity>();
         d.check::<Team>(Self::teams_known);
-        d.host::<Team, Either<UnitEntity, Player>>();
         d.check::<UnitType>(Self::types_known);
         d.host::<UnitType, UnitEntity>();
         d.check::<Relations>(Self::relations_known);
-        d.host::<Relations, MatchEntity>();
         d.require::<UnitEntity, Position>();
         d.require::<UnitEntity, Team>();
         // A forced move moves a unit that walks, in place of its step.
         d.require::<ForcedMove, MoveStep>();
-        d.book::<UnitTypeBook>();
-        d.book::<UnitStateBook>();
-        d.book::<TypeOriginBook>();
-        d.book::<TagBook>();
-        d.book::<MapBook>();
-        d.book::<ScriptBook>();
+        d.fact::<DeclaredTags>(DeclaredTags::build);
+        d.fact::<UnitTypes>(UnitTypes::build);
+        d.extend::<UnitTypes>(UnitTypes::tag_bodies);
+        d.book::<UnitTypeBook>(UnitTypes::build_type_book);
+        d.book::<UnitStateBook>(UnitTypes::build_state_book);
+        d.book::<TypeOriginBook>(UnitTypes::build_origin_book);
+        d.book::<TagBook>(UnitTypes::build_tag_book);
+        d.rule(Self::rule);
+        d.book::<MapBook>(MapBook::build);
+        d.book::<ScriptBook>(ScriptBook::build);
         d.column::<UnitsColumn, StateRowReads>(UnitsColumn::fill_state);
         d.call_part::<UnitsCall>();
         d.call_part::<ScriptCall>();
         d.api(CoreApi::register);
         d.api(ViewApi::register_unit);
-        d.api(NewUnit::register);
         d.api(UnitsApi::register);
         d.api(ViewApi::register_queries);
-        d.book::<ByType<MoveStep>>();
-        d.book::<ByType<TurnStep>>();
-        d.book::<ByType<BodyForm>>();
-        // The spawner gives a unit the facing of its angle, which its body turns by; this part
-        // holds every unit to one.
+        d.book::<ByType<MoveStep>>(UnitSteps::steps);
+        d.book::<ByType<TurnStep>>(UnitSteps::turns);
+        d.book::<ByType<BodyForm>>(CollisionData::bodies);
+        // A unit faces its spawn's angle, which its body turns by.
         d.part::<BodyUnit, Facing>(|at| Some(Facing::of(Facing::angle_of(at))));
-        d.part::<BodyUnit, StatusTags>(|_| Some(StatusTags::default()));
         d.part::<BodyUnit, SpawnPoint>(|at| at.pos().map(SpawnPoint::new));
         d.part::<BodyUnit, Body>(|at| {
             at.of_type::<BodyForm>()
@@ -174,19 +193,22 @@ impl Module for Units {
     /// Adds the core to a match: the grid of its body units, empty, which its readers build. With
     /// scripts, in Inputs, every pool starts full and the last tick's failures clear, and as the
     /// tick ends, its writes to units that never spawned drop.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.scripted((
-            UnitTicks::begin_tick.in_set(UnitsSet::BeginTick),
-            UnitTicks::end_lifespans.in_set(UnitsSet::EndLifespans),
-            UnitTicks::drop_unspawned_states.in_set(UnitsSet::DropUnspawned),
-        ));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.scripted(UnitsSet::Begin, UnitTicks::begin_tick);
+        cx.scripted(UnitsSet::End, UnitTicks::end_lifespans);
+        cx.scripted(
+            UnitsSet::Close,
+            (UnitTicks::drop_unspawned_states, UnitTicks::report_prints),
+        );
     }
 }
 
 impl Units {
     /// Every avatar of `view`, living or dead, of `team` or of every team, by stable id.
-    pub fn avatars(view: &View, team: Option<Team>) -> ScriptList {
-        view.units_where(|row| Avatar::tagged(row) && team.is_none_or(|team| row.team == team))
+    pub fn avatars(view: &View, team: Option<Team>, listing: Listing) -> ScriptList {
+        view.units_where(|row| {
+            listing.lists(row) && Avatar::tagged(row) && team.is_none_or(|team| row.team == team)
+        })
     }
 
     /// The observer of Bevy's check of change ticks: the script view's next read fills every
@@ -206,7 +228,7 @@ impl Units {
     /// Whether every unit's team is one the mode has, as a team the mode lacks has no place in
     /// the vision groups and the mode's tables; the first that is not.
     fn teams_known(world: &World) -> Result<(), Breach> {
-        let names = world.non_send::<View>().names();
+        let names = world.resource::<MatchNames>();
         Breach::first(world, |entity| {
             world
                 .get::<Team>(entity)
@@ -234,7 +256,7 @@ impl Units {
 
     /// A relation of a team the mode lacks would join it to a vision group of the mode's teams.
     fn relations_known(world: &World) -> Result<(), Breach> {
-        let names = world.non_send::<View>().names();
+        let names = world.resource::<MatchNames>();
         Breach::first(world, |entity| {
             world
                 .get::<Relations>(entity)
@@ -263,7 +285,7 @@ impl Units {
     /// calls, the script host they run in within the role's budgets, and their failures. A client
     /// runs no scripts.
     fn runtime<D: Declarations>(d: &mut D) {
-        d.non_send::<ViewReader>(|_, _| Some(ViewReader::default()));
+        d.cache::<ViewReader>();
         d.non_send::<View>(|world, _| {
             Some(View::new(*world.resource::<TickRate>(), ViewReader::read))
         });
@@ -272,12 +294,11 @@ impl Units {
                 .then(|| Ctx::new(world.non_send::<View>().clone()))
         });
         d.non_send::<ScriptHost>(|world, role| {
-            let budgets = role.budgets()?;
-            let mut host = ScriptHost::new(budgets.limits().per_call);
+            let pools = role.pools()?;
+            let mut host = ScriptHost::new(pools.limits.per_call);
             world.non_send::<Ctx>().tag(&mut host);
             Some(host)
         });
-        d.non_send::<ScriptFailures>(|_, role| role.scripts().then(ScriptFailures::default));
     }
 }
 
@@ -302,13 +323,14 @@ pub(crate) mod internals {
 
     use bevy_ecs::change_detection::Mut;
     use bevy_ecs::world::World;
-    use campfire_common::NamedEnum;
-    use campfire_declare::{Book, ByType};
-    use campfire_script::{CallError, Ctx, ScriptError, ScriptHost, ScriptId, ScriptValue, View};
-    use campfire_sim::StableId;
-    use campfire_values::{
-        Block, DeclaredName, PackageIndex, Relation, Scalar, Team, TypeScope, UnitType,
+    use campfire_common::{DeclaredName, NamedEnum};
+    use campfire_declare::ByType;
+    use campfire_declare::internals::BookLoad;
+    use campfire_script::{
+        CallError, Ctx, MatchNames, ScriptError, ScriptHost, ScriptId, ScriptValue,
     };
+    use campfire_sim::StableId;
+    use campfire_values::{Block, PackageIndex, Relation, Scalar, Team, TypeScope, UnitType};
 
     use crate::script_book::ScriptBook;
     use crate::tag_book::TagBook;
@@ -324,8 +346,7 @@ pub(crate) mod internals {
         /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
         pub fn type_named(world: &World, name: &str) -> Option<UnitType> {
             world
-                .non_send::<View>()
-                .names()
+                .resource::<MatchNames>()
                 .named((TypeScope::Mode, name))
         }
 

@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
 use campfire_math::{Num, Vec3};
-use campfire_script::{Effect, Frame};
+use campfire_script::{Effect, EffectKind, Frame};
 use campfire_values::Team;
 
 use crate::reveals::{Reveal, Reveals};
@@ -18,6 +18,8 @@ pub(crate) struct VisionEffect {
 }
 
 impl Effect for VisionEffect {
+    const KIND: EffectKind = EffectKind::Change;
+
     // A match with no grid sees nothing, so it keeps no reveal.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();

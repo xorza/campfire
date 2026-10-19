@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use campfire_math::Vec3;
-use campfire_script::{ScriptMap, ScriptText};
+use campfire_script::{ScriptHandle, ScriptMap, ScriptText};
 use campfire_values::Team;
 
 /// A marker of the map, as `ctx.map.markers(tag)` lists it: a handle on its names resolved.
@@ -26,4 +26,9 @@ impl Marker {
     pub(crate) fn info(&self) -> &MarkerInfo {
         &self.0
     }
+}
+
+impl ScriptHandle for Marker {
+    const NAME: &'static str = "Marker";
+    const TITLE: &'static str = "Marker, of `ctx.map.markers(tag)`";
 }

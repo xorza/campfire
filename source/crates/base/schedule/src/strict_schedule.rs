@@ -10,12 +10,18 @@ impl StrictSchedule {
     /// A schedule of `label` with the strict build settings.
     pub fn of(label: impl ScheduleLabel) -> Schedule {
         let mut schedule = Schedule::new(label);
+        Self::apply(&mut schedule);
+        schedule
+    }
+
+    /// Gives `schedule`, which another plugin may have made, the strict build settings, its
+    /// automatic sync points kept.
+    pub fn apply(schedule: &mut Schedule) {
         schedule.set_build_settings(ScheduleBuildSettings {
             ambiguity_detection: LogLevel::Error,
             hierarchy_detection: LogLevel::Error,
-            ..ScheduleBuildSettings::new()
+            ..schedule.get_build_settings()
         });
-        schedule
     }
 }
 
@@ -49,7 +55,7 @@ mod tests {
     struct Probe;
 
     #[test]
-    fn a_strict_schedule_fails_on_ambiguity_and_redundant_edges_and_drops_only_its_sync_points() {
+    fn a_strict_schedule_fails_on_ambiguity_and_redundant_edges_and_keeps_its_other_settings() {
         let mut schedule = StrictSchedule::of(Probe);
         let strict = schedule.get_build_settings();
         assert_eq!(strict.ambiguity_detection, LogLevel::Error);
@@ -60,5 +66,16 @@ mod tests {
         assert!(!probed.auto_insert_apply_deferred);
         assert_eq!(probed.ambiguity_detection, LogLevel::Error);
         assert_eq!(probed.hierarchy_detection, LogLevel::Error);
+        // A schedule another plugin made becomes strict and keeps its other settings.
+        let mut made = Schedule::new(Probe);
+        made.set_build_settings(ScheduleBuildSettings {
+            auto_insert_apply_deferred: false,
+            ..ScheduleBuildSettings::new()
+        });
+        StrictSchedule::apply(&mut made);
+        let applied = made.get_build_settings();
+        assert_eq!(applied.ambiguity_detection, LogLevel::Error);
+        assert_eq!(applied.hierarchy_detection, LogLevel::Error);
+        assert!(!applied.auto_insert_apply_deferred);
     }
 }

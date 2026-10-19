@@ -75,8 +75,9 @@ Every check, test and bench runs through `source/drive.py` ([The driver](docs/de
 | `./drive.py index` | each workspace package's `package.index`, after a change to a package |
 | `./drive.py test [--bless] [nextest arguments]` | the suite or a part of it; `--bless` writes the pinned files again |
 | `./drive.py bench [cargo bench arguments]` | the benches, only when the task asks for them |
-| `./drive.py lan`, `./drive.py zero-hour [out]` | the LAN check and the Zero Hour check, on request |
-| `./drive.py gate` | every step CI runs, and the Windows lint on Linux |
+| `./drive.py lan`, `./drive.py zero-hour [--bless] [out]` | the LAN check and the Zero Hour check, on request; `--bless` writes the Zero Hour check's golden file again |
+| `./drive.py gate` | every step CI runs, each bench case once among them, and the Windows lint on Linux |
+| `./drive.py package` | the release build of the shipped binaries, stripped, each with its debug info beside it in `target/package` |
 
 Each step prints one line; a failed step names its log, `target/drive/log/<step>.log`. Read the log, rather than run cargo again or pipe the driver through `grep` or `head`.
 

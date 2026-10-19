@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::collections::VecDeque;
 
 use bevy_ecs::change_detection::{CheckChangeTicks, DetectChanges, Ref, Tick as ChangeTick};
 use bevy_ecs::entity_disabling::Disabled;
@@ -15,24 +16,27 @@ use serde::de::DeserializeOwned;
 
 use crate::host_rule::HostRule;
 use crate::id_allocator::IdAllocator;
-use crate::position::Position;
 use crate::restoring::Restoring;
 use crate::sim_state::{SimComponent, SimResource};
-use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
 use crate::stable_id::entity_index::EntityIndex;
 use crate::stable_id::state_changes::{Removal, StateChanges};
 use crate::state_registry::breach::Breach;
+use crate::state_registry::builder::StateRegistryBuilder;
 use crate::state_registry::copy_queries::CopyQueries;
+use crate::state_registry::decoded_state::DecodedState;
 use crate::state_registry::error::SnapshotError;
 use crate::state_registry::hash_sink::HashSink;
 use crate::state_registry::state_delta::StateDelta;
+use crate::state_rewritten::StateRewritten;
 use crate::unpredicted::Unpredicted;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
 pub(crate) mod breach;
+pub(crate) mod builder;
 pub(crate) mod copy_queries;
+mod decoded_state;
 pub(crate) mod error;
 mod hash_sink;
 pub(crate) mod state_delta;
@@ -53,14 +57,12 @@ const BODY_LEN_BYTES: usize = size_of::<u64>();
 /// The types that make up the simulated state, and what is done with them: hash, snapshot,
 /// restore, and copy what changed to another world. Each type walks entities in stable-id order,
 /// and a snapshot's section for a type holds exactly the bytes its hash consumes, so a snapshot
-/// and its hash cannot disagree.
+/// and its hash cannot disagree. Its types are fixed, as its `StateRegistryBuilder` built it: a
+/// record of a world's changes holds each type by its place among them.
 #[derive(Resource, Debug, Clone)]
 pub struct StateRegistry {
     entries: Vec<Entry>,
     foreign: Vec<ForeignCheck>,
-    /// Whether a world's changes are recorded by it: the record holds each type by its place in
-    /// `entries`, so no type joins them from then on.
-    tracking: bool,
 }
 
 /// A rule of a registered state type that a capability other than its owner knows, checked as
@@ -75,11 +77,20 @@ enum ForeignCheck {
     Shape(fn(&World) -> Result<(), SnapshotError>),
 }
 
+/// How a restore decodes a type's section: the entities' ids, a resource it inserts at once, or
+/// a component's values it keeps for the write of each entity.
+#[derive(Debug, Clone, Copy)]
+enum Decode {
+    Entities,
+    Resource(fn(&mut World, &[u8]) -> Result<(), SnapshotError>),
+    Component(fn(&mut World, &[u8], &mut DecodedState) -> Result<(), SnapshotError>),
+}
+
 #[derive(Debug, Clone)]
 struct Entry {
     name: &'static str,
     encode: fn(&World, &mut dyn Sink),
-    decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
+    decode: Decode,
     /// Whether every value of the type keeps its rules, once everything is decoded; the error
     /// that names the first that breaks them.
     check: fn(&World) -> Result<(), SnapshotError>,
@@ -102,6 +113,68 @@ struct Entry {
     /// layout fingerprint digests.
     #[cfg(feature = "internals")]
     layout: fn(&mut internals::Draws, &mut Vec<u8>),
+}
+
+impl Entry {
+    /// The entry of the built-in list of every live stable id.
+    fn entities() -> Self {
+        Self {
+            name: ENTITIES,
+            encode: encode_entities,
+            decode: Decode::Entities,
+            check: |_| Ok(()),
+            copy: |_, _, _, _| {},
+            copy_query: None,
+            apply: |_, _, _| {},
+            watch: |_, _| {},
+            #[cfg(feature = "internals")]
+            scramble: internals::Draws::scramble_entities,
+            #[cfg(feature = "internals")]
+            mutate: |_, _, _| false,
+            #[cfg(feature = "internals")]
+            layout: |_, _| {},
+        }
+    }
+
+    /// The entry of the component type `C`.
+    fn component<C: SimComponent>() -> Self {
+        Self {
+            name: C::NAME,
+            encode: encode_component::<C>,
+            decode: Decode::Component(decode_component::<C>),
+            check: check_component::<C>,
+            copy: copy_component::<C>,
+            copy_query: Some(copy_query::<C>),
+            apply: apply_component::<C>,
+            watch: watch_component::<C>,
+            #[cfg(feature = "internals")]
+            scramble: internals::Draws::scramble_component::<C>,
+            #[cfg(feature = "internals")]
+            mutate: internals::Draws::mutate_component::<C>,
+            #[cfg(feature = "internals")]
+            layout: internals::Draws::layout_of::<C>,
+        }
+    }
+
+    /// The entry of the resource type `R`.
+    fn resource<R: SimResource>() -> Self {
+        Self {
+            name: R::NAME,
+            encode: encode_resource::<R>,
+            decode: Decode::Resource(decode_resource::<R>),
+            check: check_resource::<R>,
+            copy: copy_resource::<R>,
+            copy_query: None,
+            apply: apply_resource::<R>,
+            watch: |_, _| {},
+            #[cfg(feature = "internals")]
+            scramble: internals::Draws::scramble_resource::<R>,
+            #[cfg(feature = "internals")]
+            mutate: internals::Draws::mutate_resource::<R>,
+            #[cfg(feature = "internals")]
+            layout: internals::Draws::layout_of::<R>,
+        }
+    }
 }
 
 /// What a type's copy takes: the world's change tick at the last copy, none for a first copy of
@@ -175,114 +248,12 @@ impl StateRegistry {
     /// changes their format, a type's layout included, as Minecraft's `DataVersion` is: a snapshot
     /// of another is refused, naming both, and the converter from the version before, which saves
     /// plan (02-engine-core.md, One-way converters), comes with the first release that raises it.
-    pub const DATA_VERSION: u32 = 30;
+    pub const DATA_VERSION: u32 = 40;
 
-    /// A registry with the sim's own state: the entity list, the id allocator, the tick and
-    /// positions.
-    pub fn new() -> Self {
-        let mut registry = Self {
-            entries: Vec::new(),
-            foreign: Vec::new(),
-            tracking: false,
-        };
-        let entities = Entry {
-            name: ENTITIES,
-            encode: encode_entities,
-            decode: decode_entities,
-            check: |_| Ok(()),
-            copy: |_, _, _, _| {},
-            copy_query: None,
-            apply: |_, _, _| {},
-            watch: |_, _| {},
-            #[cfg(feature = "internals")]
-            scramble: internals::Draws::scramble_entities,
-            #[cfg(feature = "internals")]
-            mutate: |_, _, _| false,
-            #[cfg(feature = "internals")]
-            layout: |_, _| {},
-        };
-        registry.register(entities);
-        registry.register_resource::<IdAllocator>();
-        registry.register_resource::<SimTick>();
-        registry.register_component::<Position>();
-        registry
-    }
-
-    pub fn register_component<C: SimComponent>(&mut self) {
-        self.register(Entry {
-            name: C::NAME,
-            encode: encode_component::<C>,
-            decode: decode_component::<C>,
-            check: check_component::<C>,
-            copy: copy_component::<C>,
-            copy_query: Some(copy_query::<C>),
-            apply: apply_component::<C>,
-            watch: watch_component::<C>,
-            #[cfg(feature = "internals")]
-            scramble: internals::Draws::scramble_component::<C>,
-            #[cfg(feature = "internals")]
-            mutate: internals::Draws::mutate_component::<C>,
-            #[cfg(feature = "internals")]
-            layout: internals::Draws::layout_of::<C>,
-        });
-    }
-
-    /// Requires that every entity holding `H` holds `C`, both registered types, as a restore
-    /// checks: a part a kind's entities all hold, or one another part of an entity always comes
-    /// with. A snapshot that breaks it fails as `SnapshotError::Lacks`.
-    pub fn require<H: SimComponent, C: SimComponent>(&mut self) {
-        self.assert_registered::<C>();
-        self.foreign.push(ForeignCheck::Shape(holders_hold::<H, C>));
-    }
-
-    /// Requires that `C`, a registered type of a crate that knows no kinds, sits on the entities
-    /// of `H` alone, as its own `Host` cannot say. A snapshot that breaks it fails as
-    /// `SnapshotError::WrongHost`.
-    pub fn host<C: SimComponent, H: HostRule>(&mut self) {
-        self.assert_registered::<C>();
-        self.foreign
-            .push(ForeignCheck::Shape(holders_hosted::<C, H>));
-    }
-
-    /// Adds `check` to the restore checks of `C`, a registered type: a rule of it that a
-    /// capability other than its owner knows, which `C::check` cannot see. A breach on an entity
-    /// fails as `SnapshotError::Invalid` of that entity; one of the whole match, of none.
-    pub fn add_check<C: SimComponent>(&mut self, check: fn(&World) -> Result<(), Breach>) {
-        self.assert_registered::<C>();
-        self.foreign.push(ForeignCheck::Rule {
-            name: C::NAME,
-            check,
-        });
-    }
-
-    fn assert_registered<C: SimComponent>(&self) {
-        assert!(
-            self.entries.iter().any(|entry| entry.name == C::NAME),
-            "{} is registered before a check is added to it",
-            C::NAME
-        );
-    }
-
-    /// Registers `R` as a resource every state holds, as the sim's own are: the match's install
-    /// inserts it, and a snapshot that records it absent does not restore, so no system finds it
-    /// missing.
-    pub fn register_resource<R: SimResource>(&mut self) {
-        self.register(Entry {
-            name: R::NAME,
-            encode: encode_resource::<R>,
-            decode: decode_resource::<R>,
-            check: check_resource::<R>,
-            copy: copy_resource::<R>,
-            copy_query: None,
-            apply: apply_resource::<R>,
-            watch: |_, _| {},
-            #[cfg(feature = "internals")]
-            scramble: internals::Draws::scramble_resource::<R>,
-            #[cfg(feature = "internals")]
-            mutate: internals::Draws::mutate_resource::<R>,
-            #[cfg(feature = "internals")]
-            layout: internals::Draws::layout_of::<R>,
-        });
+    /// The builder of a registry with the sim's own state: the entity list, the id allocator,
+    /// the tick and positions.
+    pub fn builder() -> StateRegistryBuilder {
+        StateRegistryBuilder::new()
     }
 
     /// Whether `C` is registered.
@@ -387,6 +358,8 @@ impl StateRegistry {
         let restored = self.put_in(world, &bodies);
         world.remove_resource::<Restoring>();
         restored?;
+        // The caches that follow the state's changes build again from the restored state.
+        world.trigger(StateRewritten);
         // Postcard accepts some encodings that are not its own, such as an overlong varint, so
         // only a second encoding shows that no other bytes restore to this state.
         let mut canonical = Vec::with_capacity(snapshot.len());
@@ -397,20 +370,19 @@ impl StateRegistry {
         Ok(())
     }
 
-    /// Puts each type's section of `bodies` in `world`, the entities first, and checks the
-    /// state.
+    /// Puts each type's section of `bodies` in `world`, and checks the state: each resource as
+    /// it decodes, then each entity once, with every value of it, once every section is decoded
+    /// (02-engine-core.md, A restore writes each entity once).
     fn put_in(&self, world: &mut World, bodies: &[&[u8]]) -> Result<(), SnapshotError> {
-        // The entities come first, so components find them whatever the order of the names.
+        let mut decoded = DecodedState::default();
         for (entry, body) in self.entries.iter().zip(bodies) {
-            if entry.name == ENTITIES {
-                (entry.decode)(world, body)?;
+            match entry.decode {
+                Decode::Entities => decoded.entities(decode_entities(body)?),
+                Decode::Resource(decode) => decode(world, body)?,
+                Decode::Component(decode) => decode(world, body, &mut decoded)?,
             }
         }
-        for (entry, body) in self.entries.iter().zip(bodies) {
-            if entry.name != ENTITIES {
-                (entry.decode)(world, body)?;
-            }
-        }
+        decoded.write(world)?;
 
         let last_id = world.resource::<EntityIndex>().last_allocated();
         if let Some(last_id) = last_id
@@ -452,9 +424,8 @@ impl StateRegistry {
 
     /// Starts recording the changes of the state of `world` for copies of it, and writes its
     /// whole state into `delta`, which an empty world takes as the base the later changes apply
-    /// to. The registry takes no more type from then on, as the record holds each by its place.
-    pub fn track(&mut self, world: &mut World, delta: &mut StateDelta) {
-        self.tracking = true;
+    /// to.
+    pub fn track(&self, world: &mut World, delta: &mut StateDelta) {
         assert!(
             !world.contains_resource::<StateChanges>(),
             "a world records its changes once"
@@ -531,18 +502,6 @@ impl StateRegistry {
         }
     }
 
-    fn register(&mut self, entry: Entry) {
-        let name = entry.name;
-        assert!(
-            !self.tracking,
-            "state type {name:?} registered after its world's changes are tracked"
-        );
-        let Err(at) = self.entries.binary_search_by(|held| held.name.cmp(name)) else {
-            panic!("state type {name:?} registered twice");
-        };
-        self.entries.insert(at, entry);
-    }
-
     fn combine(&self, world: &World, mut per_type: Option<&mut Vec<TypeHash>>) -> StateHash {
         let mut total = DomainHasher::new(HASH_DOMAIN);
         let mut sink = HashSink::new();
@@ -563,7 +522,7 @@ impl StateRegistry {
 
 impl Default for StateRegistry {
     fn default() -> Self {
-        Self::new()
+        Self::builder().build()
     }
 }
 
@@ -625,18 +584,18 @@ fn encode_entities(world: &World, sink: &mut dyn Sink) {
     Binary::encode_each_to(ids, sink);
 }
 
-fn decode_entities(world: &mut World, mut body: &[u8]) -> Result<(), SnapshotError> {
-    let mut previous = None;
+/// The entities' stable ids, in order.
+fn decode_entities(mut body: &[u8]) -> Result<Vec<StableId>, SnapshotError> {
+    let mut ids: Vec<StableId> = Vec::new();
     while !body.is_empty() {
         let Taken { value: id, rest } = take::<StableId>(body)?;
-        if previous.is_some_and(|previous| previous >= id) {
+        if ids.last().is_some_and(|&previous| previous >= id) {
             return Err(SnapshotError::NotCanonical);
         }
-        world.spawn(id);
-        previous = Some(id);
+        ids.push(id);
         body = rest;
     }
-    Ok(())
+    Ok(ids)
 }
 
 fn encode_component<C: SimComponent>(world: &World, sink: &mut dyn Sink) {
@@ -659,27 +618,25 @@ fn held<C: SimComponent>(world: &World) -> bool {
     })
 }
 
+/// The values of `C`, each by its entity's id, in order, into `decoded`.
 fn decode_component<C: SimComponent>(
     world: &mut World,
     mut body: &[u8],
+    decoded: &mut DecodedState,
 ) -> Result<(), SnapshotError> {
-    let mut previous = None;
+    let mut values: VecDeque<(StableId, C)> = VecDeque::new();
     while !body.is_empty() {
         let Taken {
             value: (id, component),
             rest,
         } = take::<(StableId, C)>(body)?;
-        if previous.is_some_and(|previous| previous >= id) {
+        if values.back().is_some_and(|&(previous, _)| previous >= id) {
             return Err(SnapshotError::NotCanonical);
         }
-        let entity = world
-            .resource::<EntityIndex>()
-            .get(id)
-            .ok_or(SnapshotError::UnknownEntity)?;
-        world.entity_mut(entity).insert(component);
-        previous = Some(id);
+        values.push_back((id, component));
         body = rest;
     }
+    decoded.component(world, values);
     Ok(())
 }
 

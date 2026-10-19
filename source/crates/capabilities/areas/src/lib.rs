@@ -1,4 +1,6 @@
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
@@ -8,40 +10,43 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionTarget, EffectQueues};
+use campfire_actions::{ActionTarget, ActionsSet};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_deliveries::{Deliverers, Delivering, DeliveryKind, Launcher};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
-use campfire_sim::{Capability, StableId};
-use campfire_units::DeliveryEntity;
+use campfire_sim::{Capability, SimSet, StableId};
+use campfire_stats::{ModifierAppliers, StatsSet};
+use campfire_units::{DeliveryEntity, UnitGrid, UnitTypes};
 use campfire_values::{EngineTag, TagProperties, UnitType};
 
+use crate::area_launches::AreaLaunch;
+
 mod area;
+mod area_books;
 mod area_data;
 mod area_holds;
 mod area_launches;
 mod area_life;
 mod area_reach;
 mod area_spec;
-mod area_trigger;
 mod areas_api;
 mod areas_effect;
 mod error;
+mod land_effect_data;
 
-pub use crate::area::Area;
+pub use crate::area::{Area, AreaTrigger};
 pub use crate::area_data::{AreaData, AreaInsideData};
 pub use crate::area_holds::AreaHolds;
-pub use crate::area_launches::{AreaLaunch, AreaLaunches};
+pub use crate::area_launches::AreaLaunches;
 pub use crate::area_life::AreaLife;
 pub use crate::area_reach::AreaReach;
 pub use crate::area_spec::{AreaSpec, Inside};
-pub use crate::area_trigger::AreaTrigger;
 pub use crate::areas_api::AreasApi;
-pub use crate::areas_effect::AreasEffect;
-pub use crate::error::AreaError;
+pub use crate::error::{AreaDeliveryError, AreaError};
+pub use crate::land_effect_data::LandEffectData;
 
 /// The `areas` capability: area units, which actions deliver. It needs stats, whose modifiers an
 /// area holds on the units inside it.
@@ -50,7 +55,7 @@ pub struct Areas;
 
 /// The steps of `areas`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum AreasSet {
+pub enum AreasSet {
     /// Areas trigger and end.
     Trigger,
     /// The areas the tick's actions deliver land.
@@ -63,16 +68,17 @@ pub(crate) enum AreasSet {
 }
 
 impl ModuleSet for AreasSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Areas);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Trigger => Phase::Trigger,
-            Self::Land => Phase::Land,
-            Self::LandAtResolve => Phase::Resolve,
-            Self::HoldInside => Phase::HoldInside,
-        })
+        match self {
+            Self::Trigger => SetPlace::at(ActionsSet::Trigger),
+            Self::Land => SetPlace::at(ActionsSet::Land),
+            Self::LandAtResolve => SetPlace::at(ActionsSet::Resolve),
+            Self::HoldInside => {
+                (SetPlace::stage(SimSet::Resolve).after(StatsSet::ClearDead)).before(StatsSet::Hold)
+            }
+        }
     }
 }
 
@@ -80,17 +86,22 @@ impl Module for Areas {
     const CAPABILITY: Option<Capability> = Some(Capability::Areas);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = AreasSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<AreasSet>();
+        d.section::<AreaData>();
         d.engine_tags(&[Self::TAG]);
         d.component::<Area>();
+        d.timed::<Area>();
         d.component::<AreaTrigger>();
         d.state::<DeliveryEntity, AreaTrigger>();
         d.scratch::<AreaLaunches>();
-        d.callback::<Deliverers>(DeliveryKind::Area, Self::deliver);
-        d.callback::<EffectQueues>(Capability::Areas, AreasEffect::queue_listed);
-        d.book::<ByType<AreaSpec>>();
+        d.callback::<Deliverers>(Capability::Areas, Self::deliver);
+        d.listed::<LandEffectData>();
+        d.extend::<UnitTypes>(Self::tag_types);
+        d.book::<ByType<AreaSpec>>(AreaSpec::book);
+        d.rule(Self::deliveries_rule);
+        d.extend::<ModifierAppliers>(Self::inside_ways);
         d.api(AreasApi::register);
     }
 
@@ -99,14 +110,18 @@ impl Module for Areas {
     /// tick's projectiles launch, its areas land. In Resolve, the areas the damage pass launched
     /// land, and then, before stats hold their modifiers, each area lists those it holds on the
     /// units inside. A launch queues as an effect of `areas`. A predicting client predicts no
-    /// delivery, so it triggers none.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.server(AreaLife::trigger.in_set(AreasSet::Trigger));
-        cx.systems((
-            AreaLife::land.in_set(AreasSet::Land),
-            AreaLife::land.in_set(AreasSet::LandAtResolve),
-            AreaHolds::hold_inside.in_set(AreasSet::HoldInside),
-        ));
+    /// delivery, so it lands none and triggers none.
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.server(
+            AreasSet::Trigger,
+            UnitGrid::before_reading(AreaLife::trigger),
+        );
+        cx.server(AreasSet::Land, AreaLife::land);
+        cx.server(AreasSet::LandAtResolve, AreaLife::land);
+        cx.add(
+            AreasSet::HoldInside,
+            UnitGrid::before_reading(AreaHolds::hold_inside),
+        );
     }
 }
 
@@ -151,12 +166,13 @@ impl Areas {
 #[cfg(feature = "internals")]
 pub mod internals {
     use bevy_ecs::world::World;
+    use campfire_common::DeclaredName;
     use campfire_declare::ByType;
-    use campfire_script::{NameKind, UnknownName};
+    use campfire_script::UnknownName;
     use campfire_sim::TickRate;
     use campfire_stats::Stats;
     use campfire_units::{UnitTypeBook, Units};
-    use campfire_values::{DeclaredName, PackageIndex, UnitType};
+    use campfire_values::{ModifierId, Named, PackageIndex, UnitType};
 
     use crate::Areas;
     use crate::area_data::AreaData;
@@ -176,7 +192,7 @@ pub mod internals {
             Units::change_types(world, |_, types| types.give_tag(unit_type, Self::TAG.tag()));
             let modifier = |name: &DeclaredName| {
                 Stats::modifier(world, package, name.as_str())
-                    .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
+                    .ok_or_else(|| UnknownName::new(ModifierId::NAMES, name))
             };
             let tags = world.resource::<UnitTypeBook>().tags();
             let spec = AreaSpec::of(data, tags, rate, modifier)

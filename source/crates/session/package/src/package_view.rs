@@ -2,6 +2,7 @@ use campfire_capabilities::PackageContent;
 use campfire_values::PackageIndex;
 
 use crate::avatar_unit::AvatarUnit;
+use crate::files::script_list::ScriptSource;
 use crate::package::Package;
 
 /// One of a mode's packages, as every package is: its place, it, its content, and its kind.
@@ -20,4 +21,16 @@ pub enum ViewKind<'a> {
     Avatar(&'a AvatarUnit),
     Loadout,
     Rules,
+}
+
+impl PackageView<'_> {
+    /// Whether it holds `source`, a script of the mode's list: it is the mode's, or the rules
+    /// package `source` names.
+    pub(crate) fn holds(&self, source: &ScriptSource) -> bool {
+        match (source.package(), self.kind) {
+            (None, ViewKind::Mode) => true,
+            (Some(name), ViewKind::Rules) => self.package.header.name == *name,
+            _ => false,
+        }
+    }
 }

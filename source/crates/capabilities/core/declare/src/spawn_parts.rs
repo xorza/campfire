@@ -2,10 +2,10 @@ use std::alloc::Layout;
 use std::sync::Mutex;
 use std::{fmt, mem};
 
-use bevy_ecs::bundle::{BundleScratch, BundleWriter};
-use bevy_ecs::component::Component;
+use bevy_ecs::bundle::{Bundle, BundleScratch, BundleWriter, NoBundleEffect};
+use bevy_ecs::component::{Component, ComponentId};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::ptr::OwningPtr;
+use bevy_ecs::ptr::{OwningPtr, move_as_ptr};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{EntityWorldMut, World};
 
@@ -15,14 +15,23 @@ use bevy_ecs::world::{EntityWorldMut, World};
 /// exclusive access: it makes a resource of the scratch, whose allocator is not `Sync`. Not
 /// state.
 #[derive(Resource, Default)]
-pub struct SpawnParts(Mutex<BundleScratch>);
+pub struct SpawnParts(Mutex<SpawnScratch>);
+
+/// What a spawn writes its parts through: the scratch of their values, and the components it
+/// holds.
+#[derive(Default)]
+struct SpawnScratch {
+    bundle: BundleScratch,
+    held: Vec<ComponentId>,
+}
 
 /// The parts a spawning entity takes in its one write, as they are made: the world it is of, the
-/// entity, and the writer that holds them.
+/// entity, the writer that holds them, and the components they are of.
 pub struct PartWriter<'w, 's> {
     world: &'w World,
     entity: Entity,
     writer: BundleWriter<'s>,
+    held: &'s mut Vec<ComponentId>,
 }
 
 impl SpawnParts {
@@ -31,10 +40,12 @@ impl SpawnParts {
     pub fn give(entity: &mut EntityWorldMut<'_>, push: impl FnOnce(&mut PartWriter<'_, '_>)) {
         let held = entity.world_scope(Self::take);
         let mut scratch = held.unwrap_or_default();
+        scratch.held.clear();
         let mut parts = PartWriter {
             world: entity.world(),
             entity: entity.id(),
-            writer: scratch.writer(),
+            writer: scratch.bundle.writer(),
+            held: &mut scratch.held,
         };
         push(&mut parts);
         let writer = parts.writer;
@@ -51,7 +62,7 @@ impl SpawnParts {
     }
 
     /// The match's scratch, which it lends a spawn; none in a world that holds none.
-    fn take(world: &mut World) -> Option<BundleScratch> {
+    fn take(world: &mut World) -> Option<SpawnScratch> {
         let mut parts = world.get_resource_mut::<Self>()?;
         let scratch = parts.0.get_mut().expect("no spawn panicked holding it");
         Some(mem::take(scratch))
@@ -75,6 +86,14 @@ impl<'w> PartWriter<'w, '_> {
             .components()
             .component_id::<C>()
             .expect("a part's component is registered as its module declared it");
+        self.push_by_id(id, part);
+    }
+
+    /// Adds `part` to the write, its component `id` of the world, as a declared part knows it.
+    pub fn push_by_id<C: Component>(&mut self, id: ComponentId, part: C) {
+        debug_assert_eq!(self.world.components().component_id::<C>(), Some(id));
+        debug_assert!(!self.held.contains(&id), "a spawn takes each part once");
+        self.held.push(id);
         OwningPtr::make(part, |part| {
             // SAFETY: `part` holds a `C`, of the component `id` of the world whose entity the
             // writer writes.
@@ -83,6 +102,46 @@ impl<'w> PartWriter<'w, '_> {
                     .push_component_by_id(id, part, Layout::new::<C>());
             }
         });
+    }
+
+    /// Adds each part of `parts` to the write, as the caller of a spawn gives them; the spawn
+    /// registered each of its components in the world first.
+    pub fn push_bundle<B: Bundle<Effect: NoBundleEffect>>(&mut self, parts: B) {
+        let components = self.world.components();
+        let mut ids = B::get_component_ids(components);
+        let (writer, held) = (&mut self.writer, &mut *self.held);
+        move_as_ptr!(parts);
+        // SAFETY: `get_components` gives each component of the bundle once, in the order of
+        // `get_component_ids`, each a value of the component whose id and layout it pushes, of
+        // the world whose entity the writer writes; the bundle has no effect to apply after.
+        unsafe {
+            B::get_components(parts, &mut |_, part| {
+                let id = ids
+                    .next()
+                    .flatten()
+                    .expect("a spawn's parts are of registered components");
+                debug_assert!(!held.contains(&id), "a spawn takes each part once");
+                held.push(id);
+                let layout = components
+                    .get_info(id)
+                    .expect("a registered component has its info")
+                    .layout();
+                writer.push_component_by_id(id, part, layout);
+            });
+        }
+    }
+
+    /// Whether the write holds a part of the component `id`, as the spawn's caller gave it.
+    pub fn holds(&self, id: ComponentId) -> bool {
+        self.held.contains(&id)
+    }
+}
+
+impl fmt::Debug for SpawnScratch {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SpawnScratch")
+            .field("held", &self.held)
+            .finish_non_exhaustive()
     }
 }
 

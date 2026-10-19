@@ -2,6 +2,10 @@
 min = [-20, -20]
 max = [20, 20]
 
+# Units plan their routes over meter cells.
+[navigation]
+cell = "1.0"
+
 [[markers]]
 name = "w1"
 tags = ["start"]

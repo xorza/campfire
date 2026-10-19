@@ -4,9 +4,11 @@ use std::sync::Arc;
 use campfire_math::Vec3;
 use campfire_values::{NameId, Names, PathId};
 
+use crate::path_walk::PathWalk;
 use crate::path_walker::PathEnd;
 
-/// The map's paths, each a named list of waypoints that walkers go along forward or backward.
+/// The map's paths, each a named list of waypoints that walkers go along forward or backward,
+/// and how they go past its last.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Paths {
     /// Shared with the script view, which names paths to scripts.
@@ -14,18 +16,28 @@ pub struct Paths {
     points: Vec<Vec3>,
     /// Each path's waypoints in `points`.
     ranges: Vec<Range<u32>>,
+    walks: Vec<PathWalk>,
+}
+
+/// A path as the map gives it: its waypoints from its start, one at the least, and how its
+/// walkers go past the last.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct PathOf {
+    pub(crate) points: Vec<Vec3>,
+    pub(crate) walk: PathWalk,
 }
 
 impl Paths {
-    /// The paths named `names`, by id, of the waypoints `paths`, each of one at the least.
-    pub fn of(names: Names<PathId>, paths: &[Vec<Vec3>]) -> Self {
+    /// The paths named `names`, by id, of `paths`.
+    pub(crate) fn of(names: Names<PathId>, paths: &[PathOf]) -> Self {
         assert_eq!(names.len(), paths.len(), "a path has a name");
-        let mut points = Vec::with_capacity(paths.iter().map(Vec::len).sum());
+        let count = paths.iter().map(|path| path.points.len()).sum();
+        let mut points = Vec::with_capacity(count);
         let mut ranges = Vec::with_capacity(paths.len());
         for path in paths {
-            assert!(!path.is_empty(), "a path has a waypoint");
+            assert!(!path.points.is_empty(), "a path has a waypoint");
             let start = u32::try_from(points.len()).expect("waypoints fit u32");
-            points.extend_from_slice(path);
+            points.extend_from_slice(&path.points);
             let end = u32::try_from(points.len()).expect("waypoints fit u32");
             ranges.push(start..end);
         }
@@ -33,6 +45,7 @@ impl Paths {
             names: Arc::new(names),
             points,
             ranges,
+            walks: paths.iter().map(|path| path.walk).collect(),
         }
     }
 
@@ -60,6 +73,11 @@ impl Paths {
         &self.points[range.start as usize..range.end as usize]
     }
 
+    /// How the walkers of `path` go past its last waypoint.
+    pub fn walk(&self, path: PathId) -> PathWalk {
+        self.walks[path.index()]
+    }
+
     /// Waypoint `index` of `path` counted from its end `from`; `None` past the last.
     pub fn waypoint(&self, path: PathId, index: u32, from: PathEnd) -> Option<Vec3> {
         let range = self.ranges.get(path.index())?;
@@ -77,18 +95,34 @@ pub(crate) mod internals {
     use campfire_math::Vec3;
     use campfire_values::Names;
 
-    use crate::paths::Paths;
+    use crate::path_walk::PathWalk;
+    use crate::paths::{PathOf, Paths};
 
     impl Paths {
-        /// Paths of `(name, path)`, each path of at least one waypoint, each name its own.
+        /// Paths of `(name, path)`, each walked once, each path of at least one waypoint, each
+        /// name its own.
         pub fn new<'a>(paths: impl IntoIterator<Item = (&'a str, &'a [Vec3])>) -> Self {
+            Self::walked(
+                paths
+                    .into_iter()
+                    .map(|(name, path)| (name, path, PathWalk::Once)),
+            )
+        }
+
+        /// Paths of `(name, path, walk)`, as `new` takes them, each walked as `walk` says.
+        pub fn walked<'a>(
+            paths: impl IntoIterator<Item = (&'a str, &'a [Vec3], PathWalk)>,
+        ) -> Self {
             let mut names = Names::default();
-            let mut points = Vec::new();
-            for (name, path) in paths {
+            let mut of = Vec::new();
+            for (name, points, walk) in paths {
                 names.add(name);
-                points.push(path.to_vec());
+                of.push(PathOf {
+                    points: points.to_vec(),
+                    walk,
+                });
             }
-            Self::of(names, &points)
+            Self::of(names, &of)
         }
     }
 }

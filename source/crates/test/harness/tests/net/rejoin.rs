@@ -10,9 +10,10 @@ use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::Num;
 use campfire_mode::PlayersData;
 use campfire_net::internals::SimServerWorldInternals;
+use campfire_net::internals::TickHashes;
 use campfire_net::{
     CloseCode, InputsDiscarded, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss,
-    SessionTimes, TickHashes,
+    SessionTimes,
 };
 use campfire_orders::OrdersAction;
 use campfire_protocol::internals::TestKey;
@@ -20,7 +21,7 @@ use campfire_protocol::{Controller, LeaveReason, ServerInput};
 use campfire_runner::Session;
 use campfire_sim::StableId;
 use campfire_store::internals::Scratch;
-use campfire_units::{Destination, Owner};
+use campfire_units::{Destination, GroundPoint, Owner};
 use lightyear::prelude::Unlinked;
 
 /// Steps a client and the server may take to link, offer, join and play again.
@@ -28,8 +29,10 @@ const REJOIN_STEPS: usize = 300;
 
 const fn move_to(x: i64, z: i64) -> OrdersAction {
     OrdersAction::Move {
-        x: Num::int(x),
-        z: Num::int(z),
+        to: GroundPoint {
+            x: Num::int(x),
+            z: Num::int(z),
+        },
     }
 }
 
@@ -75,7 +78,7 @@ fn slot_of(local: &InProcessMatch, client: usize) -> PlayerSlot {
 }
 
 /// Who controls `slot` on the server.
-fn controller(local: &InProcessMatch, slot: PlayerSlot) -> Option<Controller> {
+fn controller(local: &InProcessMatch, slot: PlayerSlot) -> Option<Controller<'_>> {
     let session = local.server().world().resource::<Session>();
     session.log().controller(slot)
 }
@@ -174,6 +177,55 @@ fn a_second_login_takes_the_slot_and_ends_the_first_link() {
     );
     assert!(local.server_inputs().is_empty());
     assert!(local.server().world().link_slot(local.link(0)).is_none());
+}
+
+#[test]
+fn of_two_logins_in_one_frame_the_later_takes_the_slot() {
+    let mut local = InProcessMatch::new(MatchSetup::SOLO);
+    assert_eq!(local.setup().server_frames, 1, "a step is one server frame");
+    local.start_match();
+    for _ in 0..10 {
+        local.step();
+    }
+    let slot = slot_of(&local, 0);
+    // Two more clients of the same player log in through equal links, so the server checks both
+    // answers in one frame: the later one in its order takes the slot and dismisses the earlier,
+    // which it seated in the same frame, as `Seats` records the link it seated last.
+    let logins = [local.add_client(0), local.add_client(0)];
+    let seated = |local: &InProcessMatch, client: usize| {
+        local.server().world().link_slot(local.link(client))
+    };
+    step_until(&mut local, REJOIN_STEPS, |local| {
+        logins.iter().any(|&client| seated(local, client).is_some())
+    });
+    let held: Vec<usize> = logins
+        .into_iter()
+        .filter(|&client| seated(&local, client) == Some(slot))
+        .collect();
+    let [winner] = held[..] else {
+        panic!("one login holds the slot: {held:?}");
+    };
+    let loser = logins[usize::from(winner == logins[0])];
+    // No login held the slot in the step before, and the loser does not take it after: the
+    // server answered both in this one frame.
+    let loss = |local: &InProcessMatch, client: usize| {
+        local.client(client).world().resource::<JoinState>().loss()
+    };
+    step_until(&mut local, 20, |local| {
+        playing(local, winner)
+            && [0, loser]
+                .iter()
+                .all(|&client| loss(local, client).is_some())
+    });
+    assert_eq!(loss(&local, 0), Some(Loss::Superseded));
+    assert_eq!(loss(&local, loser), Some(Loss::Superseded));
+    let superseded = LinkLost {
+        cause: LinkLossCause::ClientClosed(CloseCode::Superseded),
+    };
+    assert_eq!(local.log().take::<LinkLost>(), [superseded, superseded]);
+    assert_eq!(seated(&local, winner), Some(slot));
+    assert_eq!(seated(&local, loser), None);
+    assert!(local.server_inputs().is_empty());
 }
 
 #[test]
@@ -354,7 +406,7 @@ fn every_client_rejoins_a_restored_server() {
     // restored server's ticks, which start from 0 again, and not the stopped server's, which run
     // ahead past the max input lead.
     let script = format!(
-        "[[order]]\ntick = {}\nmove = [3, -2]\n",
+        "[[order]]\ntick = {}\naction.orders.move.to = [3, -2]\n",
         local.next_tick(End::Server)
     );
     for client in [0, 1] {

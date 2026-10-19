@@ -7,7 +7,7 @@ use tracing::warn;
 /// The server logged an input of `slot`, stamped `stamp`, as it was to log `next_tick`, and the
 /// input never takes effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct InputNeverApplied {
+pub(crate) struct InputNeverApplied {
     pub slot: PlayerSlot,
     pub stamp: Tick,
     pub next_tick: Tick,
@@ -17,7 +17,7 @@ pub struct InputNeverApplied {
 
 /// Why a logged input never takes effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Unapplied {
+pub(crate) enum Unapplied {
     /// It arrived more than the max input delay after its stamp.
     Late,
     /// Its stamp was more than the max input lead ahead of the next tick.

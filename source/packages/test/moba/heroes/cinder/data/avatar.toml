@@ -113,3 +113,7 @@ projectile = { speed = "20", homing = true }
 
 [units.eruption]
 area = { radius = "2.4", delay_ms = 625, affects = "enemies" }
+
+# A hero's death gives 150 experience, and 25 for each level it holds.
+[experience]
+gives = { base = 150, per_level = 25 }

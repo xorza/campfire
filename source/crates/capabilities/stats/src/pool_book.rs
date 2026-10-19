@@ -2,17 +2,20 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
-use campfire_script::View;
-use campfire_values::{DeclaredName, Names, Stat};
+use campfire_common::DeclaredName;
+use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
+use campfire_script::MatchNames;
+use campfire_units::{PoolId, PoolNames, StatId};
+use campfire_values::{Names, PackageIndex, Stat};
 
+use crate::life_pool::LifePool;
+use crate::mode_pools_data::ModePoolsData;
 use crate::pool_data::PoolData;
-use crate::pool_id::PoolId;
-use crate::stat_id::StatId;
+use crate::stat_book::StatBook;
 
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
 /// of its regen. Package data, not state.
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug)]
 pub struct PoolBook {
     /// The pools' names, by id; shared with the script view, which names them to scripts.
     names: Arc<Names<PoolId>>,
@@ -61,6 +64,11 @@ impl PoolBook {
         self.life
     }
 
+    /// Whether a pool regenerates, by a stat of its regen.
+    pub(crate) fn regenerates(&self) -> bool {
+        self.pools.iter().any(|stats| stats.regen.is_some())
+    }
+
     /// Each pool, with its stats.
     pub fn iter(&self) -> impl Iterator<Item = (PoolId, PoolStats)> + '_ {
         (0..).zip(&self.pools).map(|(at, &stats)| {
@@ -70,18 +78,39 @@ impl PoolBook {
     }
 }
 
+impl PoolBook {
+    /// The mode's pools, each with its stats, and its life pool, as the module that kills units
+    /// names it; an error for a stat the mode does not declare.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let none = BTreeMap::new();
+        let pools = cx.mode_section::<ModePoolsData>();
+        let pools = pools.map_or(&none, |pools| &pools.0);
+        let names = Arc::clone(&cx.fact::<PoolNames>()?.0);
+        let life = cx.fact_if::<LifePool>()?.and_then(|life| life.0);
+        let stats = cx.book::<StatBook>()?;
+        Self::new(pools, names, life, |pool, stat| {
+            let at = BookPlace::Entry {
+                table: ModePoolsData::KEY,
+                name: pool.clone(),
+            };
+            stats.named_in(PackageIndex::MODE, at, stat)
+        })
+    }
+}
+
 impl Book for PoolBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(&self.names));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(&self.names));
     }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use campfire_units::PoolId;
+
     use crate::pool_book::PoolBook;
-    use crate::pool_id::PoolId;
 
     impl PoolBook {
         /// Makes `life` the life pool, as a test world with no mode needs.

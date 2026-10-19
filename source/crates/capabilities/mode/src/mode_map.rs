@@ -1,23 +1,32 @@
-use bevy_ecs::world::World;
-use campfire_geometry::Grid;
-use campfire_navigation::{
-    MarkerPoint, Navigation, NavigationBook, Paths, PlacedBody, WalkerKinds, Walls,
+use campfire_common::DeclaredName;
+use campfire_declare::{BookCx, BookError, BookPlace, Fact};
+use campfire_navigation::{MarkerPoint, NavigationBook, Paths, PlacedBody};
+use campfire_units::{BodyForm, MapPoint, TeamNames};
+use campfire_values::{
+    Names, NamesError, PackageIndex, Relations, Team, TypeScope, UnitType, VisionShare,
 };
-use campfire_units::{BodyForm, Ground, HeightGrid, Layer, MapBook};
-use campfire_values::{DeclaredName, Names, NamesError, Relations, Team, UnitType, VisionShare};
-use campfire_vision::{BrushMap, VisionBook, VisionGrid};
 
 use crate::error::ModeError;
-use crate::map_data::{GroundData, MapData};
-use crate::map_point::MapPoint;
+use crate::map_data::MapData;
 use crate::marker_spec::MarkerSpec;
+use crate::mode_data::ModeData;
+use crate::mode_teams::ModeTeams;
 use crate::placed_unit::{PlacedPath, PlacedUnit};
 use crate::relation_data::RelationData;
 use crate::team_manifest::TeamManifest;
 
-/// The mode's map and the relations of its teams, every name resolved once, as the book builder
-/// checks them, but what its books hold: the relations the match starts with, the units it
-/// places, its markers, and the cells units plan routes over, when it has them.
+/// What a mode's map resolves from: the map, the relations of the mode's teams, the teams' names,
+/// and the map's paths, when it has them.
+#[derive(Debug)]
+pub struct MapInput<'a> {
+    pub map: &'a MapData,
+    pub relations: &'a [RelationData],
+    pub teams: Names<Team>,
+    pub paths: Option<&'a Paths>,
+}
+
+/// The mode's map and the relations of its teams, every name resolved once: the teams' names, the
+/// relations the match starts with, the units it places and its markers.
 #[derive(Debug)]
 pub struct ModeMap {
     /// The mode's teams' names, by team.
@@ -25,29 +34,9 @@ pub struct ModeMap {
     pub relations: Relations,
     pub placed: Vec<PlacedUnit>,
     pub markers: Vec<MarkerSpec>,
-    pub pathing: Option<Grid>,
 }
 
-/// The mode's map as the book builder resolves it: the map a match starts from, and the books of
-/// its ground, of its paths and walls, and of its vision grid.
-#[derive(Debug)]
-pub struct ResolvedMap {
-    pub map: ModeMap,
-    pub ground: MapBook,
-    pub navigation: NavigationBook,
-    pub vision: VisionBook,
-}
-
-/// What a mode's map resolves from: the map and its height grid, if it has one, the mode's teams
-/// and their relations, and the names of the layers its walls stand on.
-#[derive(Debug, Clone, Copy)]
-pub struct MapInput<'a> {
-    pub map: &'a MapData,
-    pub heights: Option<&'a HeightGrid>,
-    pub teams: &'a [TeamManifest],
-    pub relations: &'a [RelationData],
-    pub layers: &'a Names<Layer>,
-}
+impl Fact for ModeMap {}
 
 impl ModeMap {
     /// The names of `teams`; an error for two of one name, or more than a team index counts.
@@ -65,29 +54,47 @@ impl ModeMap {
         Ok(names)
     }
 
+    /// The map the load gives, its placed units' types among the mode's that stand and their
+    /// paths among the map's, with the relations of the mode's teams; an error as `of` gives.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let data = cx
+            .given::<ModeData>()
+            .expect("the load gives the mode's data");
+        let map = cx
+            .given::<MapData>()
+            .expect("the load gives the mode's map");
+        let input = MapInput {
+            map,
+            relations: &data.relations,
+            teams: cx.fact::<TeamNames>()?.0.clone(),
+            paths: cx.book_if::<NavigationBook>()?.map(|book| &book.paths),
+        };
+        let unit_type = |name: &str| {
+            let unit_type = cx.unit_type(TypeScope::Mode, name);
+            unit_type.filter(|&unit_type| cx.type_of(unit_type).stands())
+        };
+        let map = Self::of(input, unit_type);
+        map.map_err(|error| BookError::rule(PackageIndex::MODE, BookPlace::Map, error))
+    }
+
     /// The map of `input`, its placed units' types resolved by `unit_type`, which knows the mode's
-    /// types that stand. An error for what it names that the mode does not have: teams that share a
-    /// name or more than `Team::LIMIT`, or more than `VisionGrid::MAX_TEAMS` with a vision grid; a
-    /// relation of a team to itself, of a team the mode lacks, or of a pair named before; and in
-    /// the map, grids that make no grid of its bounds, a wall on a layer of no name `layers` holds,
-    /// a wall or a brush with points that make no simple polygon, a path with no waypoint or
-    /// another's name, a placed unit of a type, team or path it lacks, or that walks from an end of
-    /// no path, a marker of another's name, a team it lacks, or with a point and a region or a
-    /// region outside the bounds, and any point that does not fit its metric or its bounds.
-    pub fn resolve(
+    /// types that stand. An error for what it names that the mode does not have: a relation of a
+    /// team to itself, of a team the mode lacks, or of a pair named before; a placed unit of a
+    /// type, team or path it lacks, or that walks from an end of no path; a marker of another's
+    /// name, a team it lacks, or with a point and a region or a region outside the bounds; and
+    /// any point that does not fit its metric or its bounds.
+    pub fn of(
         input: MapInput<'_>,
         unit_type: impl Fn(&str) -> Option<UnitType>,
-    ) -> Result<ResolvedMap, ModeError> {
+    ) -> Result<Self, ModeError> {
         let MapInput {
             map,
-            heights,
-            teams,
             relations,
-            layers,
+            teams,
+            paths,
         } = input;
-        let team_names = Self::team_names(teams)?;
         let team = |name: &DeclaredName| {
-            let team = team_names.named(name.as_str());
+            let team = teams.named(name.as_str());
             team.ok_or_else(|| ModeError::UnknownTeam(name.clone()))
         };
         let mut resolved = Relations::default();
@@ -108,34 +115,13 @@ impl ModeMap {
             };
             resolved.set(pair[0], pair[1], relation.relation, vision);
         }
-        let grid = map.grid()?;
-        let brush = map.brush()?;
-        if grid.is_some() && teams.len() > VisionGrid::MAX_TEAMS {
-            return Err(ModeError::TooManyVisionTeams);
-        }
-        let pathing = map.pathing()?;
-        let walls = map.walls(layers)?;
-        let point = |point: &MapPoint| map.pos(point);
-        let mut path_names = Names::default();
-        let mut points = Vec::with_capacity(map.paths.len());
-        for path in &map.paths {
-            if path_names.try_add(path.name.as_str()).is_err() {
-                return Err(ModeError::RepeatedPath(path.name.clone()));
-            }
-            if path.points.is_empty() {
-                return Err(ModeError::EmptyPath(path.name.clone()));
-            }
-            let path_points = path.points.iter().map(point);
-            points.push(path_points.collect::<Result<Vec<_>, _>>()?);
-        }
-        let paths = Paths::of(path_names, &points);
         let mut placed = Vec::with_capacity(map.units.len());
         for unit in &map.units {
             let of_type = unit_type(unit.unit_type.as_str())
                 .ok_or_else(|| ModeError::UnknownUnitType(unit.unit_type.clone()))?;
             let path = match (&unit.path, unit.from) {
                 (Some(path), from) => {
-                    let id = paths.names().named(path.as_str());
+                    let id = paths.and_then(|paths| paths.names().named(path.as_str()));
                     let path = id.ok_or_else(|| ModeError::UnknownPath(path.clone()))?;
                     Some(PlacedPath { path, from })
                 }
@@ -151,51 +137,24 @@ impl ModeMap {
             });
         }
         let markers = Self::markers(map, team)?;
-        let vision = grid.map(|grid| VisionGrid {
-            brush: BrushMap::new(&grid, &brush),
-            grid,
-            teams: team_names.len(),
-        });
-        Ok(ResolvedMap {
-            map: Self {
-                teams: team_names,
-                relations: resolved,
-                placed,
-                markers,
-                pathing,
-            },
-            ground: MapBook {
-                metric: map.metric,
-                bounds: map.bounds,
-                ground: Self::ground(map, heights)?,
-            },
-            navigation: NavigationBook {
-                paths,
-                walls: Walls::new(&walls),
-            },
-            vision: VisionBook(vision),
+        Ok(Self {
+            teams,
+            relations: resolved,
+            placed,
+            markers,
         })
     }
 
-    /// Gives `world` the map's pathing grid, when it has one, for the kinds of `walkers`, among the
-    /// walls of its navigation book.
-    pub fn install_pathing(&self, world: &mut World, walkers: WalkerKinds) {
-        if let Some(grid) = self.pathing {
-            Navigation::load_pathing(world, grid, walkers);
-        }
-    }
-
-    /// The ground of `map`, of its height grid `heights`, as its `[ground]` reads it; flat with no
-    /// grid. An error for a `[ground]` with no grid, or coarse cells that do not fit it.
-    fn ground(map: &MapData, heights: Option<&HeightGrid>) -> Result<Ground, ModeError> {
-        match (heights, map.ground) {
-            (None, None) => Ok(Ground::default()),
-            (None, Some(_)) => Err(ModeError::NoHeights),
-            (Some(grid), data) => {
-                let GroundData { split, high } = data.unwrap_or_default();
-                Ok(Ground::new(grid.clone(), split, high)?)
-            }
-        }
+    /// The names of the match's teams, in the manifest's order the load gives; an error for two
+    /// of one name, or more than a team index counts.
+    pub(crate) fn team_fact(cx: &BookCx<'_>) -> Result<TeamNames, BookError> {
+        let teams = cx
+            .given::<ModeTeams>()
+            .expect("the load gives the mode's teams");
+        let names = Self::team_names(&teams.0);
+        let names =
+            names.map_err(|error| BookError::rule(PackageIndex::MODE, BookPlace::Teams, error))?;
+        Ok(TeamNames(names))
     }
 
     /// The markers of `map`, each with its team as `team` resolves it; an error for two of one
@@ -217,7 +176,7 @@ impl ModeMap {
             let marker_team = marker.team.as_ref().map(&team).transpose()?;
             let region = marker.region.map(|region| {
                 region
-                    .region(map.metric, map.bounds)
+                    .region(map.metric(), map.bounds())
                     .filter(|_| marker.pos.is_none())
                     .ok_or_else(|| ModeError::Region(marker.name.clone()))
             });

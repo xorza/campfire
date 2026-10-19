@@ -1,22 +1,19 @@
-use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_production::*;
-use campfire_script::View;
-use campfire_sim::{IdAllocator, SimComponent, TickRate};
+use campfire_script::MatchNames;
+use campfire_sim::{IdAllocator, SimComponent};
 use campfire_values::{Names, ResourceId};
 
 #[test]
 fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
     // A match of gold alone: wood, the second of two resources, is not its own.
     let mut world = World::new();
-    // The world holds no units for the view to read.
-    let view = View::new(TickRate::new(NonZeroU32::new(30).unwrap()), |_| {});
-    view.names_mut()
-        .set_table(Arc::new(Names::<ResourceId>::from(["gold"])));
-    world.insert_non_send(view);
+    let mut names = MatchNames::default();
+    names.set_table(Arc::new(Names::<ResourceId>::from(["gold"])));
+    world.insert_resource(names);
     let entity = world.spawn_empty().id();
     let [gold, wood] = [0, 1].map(ResourceId::new);
     let mut ids = IdAllocator::default();
@@ -48,9 +45,9 @@ fn a_restored_gatherer_carries_a_known_resource_with_a_node_to_go_back_to() {
     };
     assert!(checks(Some(ordered), Some(load(gold)), Some(first)));
     let mut gatherer = Gatherer::default();
-    gatherer.set(Some(order(first)));
-    gatherer.set(Some(ordered));
+    gatherer.set_unindexed(Some(order(first)));
+    gatherer.set_unindexed(Some(ordered));
     assert_eq!(gatherer.last(), Some(first));
-    gatherer.set(Some(order(second)));
+    gatherer.set_unindexed(Some(order(second)));
     assert_eq!(gatherer.last(), Some(second));
 }

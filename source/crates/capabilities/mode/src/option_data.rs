@@ -67,7 +67,7 @@ impl<'de> Deserialize<'de> for OptionData {
 }
 
 impl DataSection for OptionData {
-    const TABLE: DataTable = DataTable::Option;
+    const TABLE: DataTable = DataTable::new("An option, `[options.<name>]`");
 }
 
 /// Whether `a` and `b` are one number: equal, or a decimal and an integer of one value.

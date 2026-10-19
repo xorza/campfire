@@ -1,6 +1,8 @@
 [units.melee_creep]
 tags = ["creep"]
-params = { gold = 20, xp = 59, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+experience = { gives = 59 }
+bounty = { resource = "gold", amount = 20 }
 pools = ["health"]
 stats = { health = { base = 445 }, attack_damage = { base = 12 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.25" } }
 combat = {}
@@ -11,7 +13,9 @@ collision = { radius = "0.35" }
 
 [units.caster_creep]
 tags = ["creep"]
-params = { gold = 15, xp = 29, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+experience = { gives = 29 }
+bounty = { resource = "gold", amount = 15 }
 pools = ["health"]
 stats = { health = { base = 280 }, attack_damage = { base = 23 }, attack_speed = { base = "0.67" }, move_speed = { base = "3.25" } }
 combat = {}
@@ -22,7 +26,9 @@ collision = { radius = "0.35" }
 
 [units.super_creep]
 tags = ["creep"]
-params = { gold = 40, xp = 97, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+experience = { gives = 97 }
+bounty = { resource = "gold", amount = 40 }
 pools = ["health"]
 stats = { health = { base = 1500 }, attack_damage = { base = 190 }, attack_speed = { base = "0.85" }, armor = { base = 30 }, move_speed = { base = "3.25" } }
 combat = {}
@@ -33,7 +39,8 @@ collision = { radius = "0.55" }
 
 [units.tower]
 tags = ["structure", "tower", "true_sight"]
-params = { gold = 150, xp = 0, help_window_ms = 2000 }
+params = { help_window_ms = 2000 }
+bounty = { resource = "gold", amount = 150 }
 pools = ["health"]
 stats = { health = { base = 1500 }, attack_damage = { base = 150 }, attack_speed = { base = "0.83" }, armor = { base = 60 }, magic_resist = { base = 60 } }
 combat = {}
@@ -44,7 +51,7 @@ collision = { radius = "0.9" }
 
 [units.inhibitor]
 tags = ["structure", "inhibitor"]
-params = { gold = 50, xp = 0 }
+bounty = { resource = "gold", amount = 50 }
 pools = ["health"]
 stats = { health = { base = 4000 }, armor = { base = 20 }, magic_resist = { base = 20 } }
 combat = { on_death = "stay" }
@@ -53,7 +60,6 @@ collision = { radius = "1.2" }
 
 [units.core]
 tags = ["structure", "core"]
-params = { gold = 0, xp = 0 }
 pools = ["health"]
 stats = { health = { base = 5500 }, armor = { base = 20 }, magic_resist = { base = 20 } }
 combat = {}
@@ -62,7 +68,9 @@ collision = { radius = "1.5" }
 
 [units.wolf]
 tags = ["camp"]
-params = { gold = 30, xp = 90, leash_range = "8.0", home_slack = "0.5", aggro_window_ms = 5000 }
+params = { leash_range = "8.0", home_slack = "0.5", aggro_window_ms = 5000 }
+experience = { gives = 90 }
+bounty = { resource = "gold", amount = 30 }
 pools = ["health"]
 stats = { health = { base = 900 }, attack_damage = { base = 35 }, attack_speed = { base = "0.68" }, armor = { base = 9 }, move_speed = { base = "4.4" } }
 combat = { on_death = "stay" }
@@ -73,7 +81,9 @@ collision = { radius = "0.4" }
 
 [units.warden]
 tags = ["camp", "objective"]
-params = { gold = 150, xp = 400, leash_range = "10.0", home_slack = "0.5", aggro_window_ms = 5000 }
+params = { leash_range = "10.0", home_slack = "0.5", aggro_window_ms = 5000 }
+experience = { gives = 400 }
+bounty = { resource = "gold", amount = 150 }
 pools = ["health"]
 stats = { health = { base = 5000 }, attack_damage = { base = 150 }, attack_speed = { base = "0.62" }, armor = { base = 60 }, magic_resist = { base = 30 }, move_speed = { base = "3.0" } }
 combat = { on_death = "stay" }
@@ -86,7 +96,7 @@ collision = { radius = "0.7" }
 # falls to a few hits, each of which deals it 1, whatever it was.
 [units.sight_ward]
 tags = ["ward", "stealthed"]
-params = { gold = 15, xp = 0 }
+bounty = { resource = "gold", amount = 15 }
 pools = ["health"]
 stats = { health = { base = 3 } }
 combat = {}
@@ -94,7 +104,7 @@ vision = { sight_range = "9.0" }
 
 [units.vision_ward]
 tags = ["ward", "true_sight"]
-params = { gold = 30, xp = 0 }
+bounty = { resource = "gold", amount = 30 }
 pools = ["health"]
 stats = { health = { base = 4 } }
 combat = {}

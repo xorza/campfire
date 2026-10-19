@@ -24,57 +24,38 @@ use std::env;
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use bevy::DefaultPlugins;
-use bevy::app::{App, PluginGroup, ScheduleRunnerPlugin, TaskPoolPlugin};
-use bevy::asset::AssetApp;
-use bevy::asset::io::AssetSourceBuilder;
-use bevy::log::LogPlugin;
-use bevy::state::app::StatesPlugin;
-use bevy::time::TimePlugin;
-use bevy::window::{Window, WindowPlugin};
-use campfire_bots::{BotScript, OrderScript};
+use bevy::app::App;
+use campfire_bots::{BotNames, BotScript, OrderScript};
+use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
-use campfire_log::{ErrorReport, Logging};
-use campfire_net::{
-    Hosting, JoinRole, KeyFile, NetProtocol, Os, Pace, SimClient, WatchRequest, exit_code,
-};
-use campfire_package::{ModePackages, Texts};
+use campfire_log::Logging;
+use campfire_net::{Hosting, KeyFile, Os, Pace, SimClient, WatchRequest, exit_code};
+use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
-use campfire_sim::{Capability, TickRate};
+use campfire_protocol::Signer;
+use campfire_sim::TickRate;
 use campfire_store::SecretFile;
-use campfire_values::{DeclaredName, Names, ResourceId, Team, TeamSet};
+use campfire_values::{Team, TeamSet};
 use lightyear::prelude::Connect;
-use secp256k1::Keypair;
 use tracing::error;
 
-use crate::action_names::ActionNames;
 use crate::args::{Args, CommandLine};
-use crate::bot::Bot;
-use crate::build_preview::BuildPreview;
-use crate::command_panel::CommandPanel;
+use crate::client_module::ClientEnd;
 use crate::connection::Connection;
-use crate::hud::Hud;
-use crate::inventory_bar::InventoryBar;
-use crate::item_names::ItemNames;
 use crate::link_watch::LinkWatch;
-use crate::local_keys::LocalKeys;
-use crate::orders::Orders;
-use crate::selecting::Selecting;
-use crate::shop_panel::ShopPanel;
-use crate::view::View;
-use crate::view::client_data::ClientFiles;
-use crate::view::package_source::PackageSource;
-use crate::view::player_camera::PlayerCamera;
-use crate::view::terrain_view::TerrainView;
-use crate::view::unit_models::UnitModels;
 
 mod action_names;
 mod args;
 mod bot;
 mod build_preview;
+mod client_module;
+mod client_packages;
 mod command_panel;
 mod connection;
+mod engine_text;
 mod hud;
+mod input_map;
+mod input_mode;
 mod inventory_bar;
 mod item_names;
 mod link_watch;
@@ -83,9 +64,12 @@ mod orders;
 mod own_player;
 mod placing;
 mod pointer;
+mod press;
 mod selecting;
 mod selection;
 mod shop_panel;
+#[cfg(test)]
+mod test_app;
 mod ui_style;
 mod view;
 
@@ -119,19 +103,18 @@ fn main() -> ExitCode {
             return ExitCode::from(ExitStatus::Failure);
         }
     };
-    let types = packages.unit_types();
     let script = match script
-        .map(|script| BotScript::new(&script, &types))
+        .map(|script| BotScript::new(&script, &BotNames::new(&packages.name_books())))
         .transpose()
     {
         Ok(script) => script,
         Err(error) => {
-            error!(error = %ErrorReport::of(&error), "the orders name a unit type the mode does not have");
+            error!(error = %ErrorReport::of(&error), "the orders name what the mode does not have");
             return ExitCode::from(ExitStatus::Usage);
         }
     };
-    let main_key = match main_key(&args) {
-        Ok(key) => key,
+    let main = match main_key(&args) {
+        Ok(signer) => Arc::new(signer),
         Err(code) => return code,
     };
     let watch = match watched_teams(&args, &packages) {
@@ -146,14 +129,10 @@ fn main() -> ExitCode {
     let pin = connection.pin();
     let tick = TickRate::new(pin.tick_hz).length();
     let sim_client = SimClient {
-        main_key,
+        main,
         session_key: Os::SYSTEM.entropy.keypair(),
         server: pin,
-        role: if args.spectate {
-            JoinRole::Watch
-        } else {
-            JoinRole::Play
-        },
+        role: args.role,
         hosting: match connection {
             Connection::Local { .. } => Hosting::Local,
             Connection::Remote { .. } => Hosting::Remote,
@@ -171,12 +150,13 @@ fn main() -> ExitCode {
     if let Some(teams) = watch {
         app.insert_resource(WatchRequest(teams));
     }
-    add_ends(
-        &mut app,
-        script,
-        (sim_client.hosting == Hosting::Local).then_some(&pace),
-        &packages,
-    );
+    let end = match script {
+        Some(script) => ClientEnd::Bot(script),
+        None => ClientEnd::Window {
+            local: (sim_client.hosting == Hosting::Local).then(|| Arc::clone(&pace)),
+        },
+    };
+    end.add(&mut app, &packages);
     app.add_plugins((sim_client, LinkWatch));
     let client = SimClient::spawn(app.world_mut());
     if let Err(code) = connection.link(&mut app, client, &pace, tick) {
@@ -189,99 +169,6 @@ fn main() -> ExitCode {
     exit_code(exit)
 }
 
-/// Adds the client's own end: a bot playing `script`, with no window, or the view, the HUD, the
-/// selection, the orders, the shop panel, the inventory bar, the command panel and the build
-/// preview, with the keys of a local match that `pace` follows, and the models and the item and
-/// action names of `packages`.
-fn add_ends(
-    app: &mut App,
-    script: Option<BotScript>,
-    pace: Option<&Arc<Pace>>,
-    packages: &Arc<ModePackages>,
-) {
-    if let Some(script) = script {
-        app.add_plugins((
-            TaskPoolPlugin::default(),
-            TimePlugin,
-            StatesPlugin,
-            ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
-            Bot { script },
-        ));
-        return;
-    }
-    if let Some(pace) = pace {
-        app.add_plugins(LocalKeys {
-            pace: Arc::clone(pace),
-        });
-    }
-    // Bevy builds its asset sources as its asset plugin is added, so the packages' goes first.
-    // Every reader the builder makes shares the one source's bound on the models that load.
-    let source = PackageSource::of(packages);
-    app.register_asset_source(
-        PackageSource::NAME,
-        AssetSourceBuilder::new(move || Box::new(source.clone())),
-    );
-    app.add_plugins((
-        DefaultPlugins
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Campfire".to_owned(),
-                    ..Window::default()
-                }),
-                ..WindowPlugin::default()
-            })
-            .disable::<LogPlugin>(),
-        ClientFiles {
-            packages: Arc::clone(packages),
-        },
-        View,
-        PlayerCamera,
-        UnitModels,
-        TerrainView {
-            packages: Arc::clone(packages),
-        },
-        Hud,
-        Selecting,
-        Orders,
-    ));
-    let texts =
-        Arc::new(Texts::new(packages, &[]).expect("a mode's own text, with no translation"));
-    // The item names, the shop and the inventory read the items' books, which a mode of no
-    // `items` has none of.
-    if packages.manifest().capabilities.contains(Capability::Items) {
-        app.add_plugins((
-            ItemNames {
-                packages: Arc::clone(packages),
-                texts: Arc::clone(&texts),
-            },
-            ShopPanel,
-            InventoryBar,
-        ));
-    }
-    // The command panel reads production's books; a build needs navigation, which the load
-    // holds, so only a mode of navigation has the preview of one.
-    let capabilities = &packages.manifest().capabilities;
-    if capabilities.contains(Capability::Production) {
-        let names: Names<ResourceId> = packages
-            .data()
-            .resources
-            .iter()
-            .map(DeclaredName::as_str)
-            .collect();
-        let resources = names.iter().map(|(resource, _)| resource).collect();
-        app.add_plugins((
-            ActionNames {
-                packages: Arc::clone(packages),
-                texts: Arc::clone(&texts),
-            },
-            CommandPanel { resources },
-        ));
-        if capabilities.contains(Capability::Navigation) {
-            app.add_plugins(BuildPreview);
-        }
-    }
-}
-
 /// The packages of the mode the arguments name; the exit code when they do not load.
 fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
     let mode = PackageDir::new(&args.mode);
@@ -292,14 +179,15 @@ fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
     Ok(packages)
 }
 
-/// The player's main key: the key file's, made when missing, or a new one with no file; the exit
-/// code when the file does not read.
-fn main_key(args: &Args) -> Result<Keypair, ExitCode> {
+/// The signer of the player's main key: the key file's, made when missing, or a new one with no
+/// file; the exit code when the file does not read.
+fn main_key(args: &Args) -> Result<Signer, ExitCode> {
+    let entropy = Os::SYSTEM.entropy;
     let Some(path) = &args.key else {
-        return Ok(Os::SYSTEM.entropy.keypair());
+        return Ok(Signer::new(entropy.keypair(), entropy));
     };
     let file = SecretFile::at(path.clone());
-    KeyFile::read_or_create(&file, Os::SYSTEM.entropy).map_err(|error| {
+    KeyFile::read_or_create(&file, entropy).map_err(|error| {
         error!(key = %file, error = %ErrorReport::of(&error), "the key file does not read");
         ExitCode::from(ExitStatus::Failure)
     })

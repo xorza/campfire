@@ -76,6 +76,18 @@ impl BodyForm {
             .expect("a form's height is one a body takes")
     }
 
+    /// The size of a box form, `[width, depth]`; `None` for a circle.
+    pub const fn box_size(self) -> Option<[Num; 2]> {
+        match self.form {
+            Form::Box(size) => Some(size),
+            Form::Circle(_) => None,
+        }
+    }
+
+    pub const fn height(self) -> Num {
+        self.height
+    }
+
     /// The radius of a circle form, as a walker sees it; `None` for a box, which never walks.
     pub const fn circle_radius(self) -> Option<Num> {
         match self.form {

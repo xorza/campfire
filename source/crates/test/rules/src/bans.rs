@@ -1,4 +1,6 @@
-use crate::workspace::{read, source, sources};
+use campfire_store::internals::CargoManifest;
+
+use crate::workspace::{crates, manifests, read, sim_closure, source, sources};
 
 /// A proxy crate: the one crate that makes the calls of its group of `clippy.toml`'s bans, through
 /// an `expect` of the lints at its crate root alone, and gives every other crate what it needs
@@ -479,4 +481,79 @@ fn the_ban_checks_fail_on_what_breaks_them() {
     for (path, text, lines) in cases {
         assert_eq!(misplaced_exemptions(path, &text), lines, "{text}");
     }
+}
+
+/// The crates whose code a tick runs, where a removal reaches its reader through `Removals` alone
+/// (02-engine-core.md, A tick's removals are the tick's).
+const TICK_CRATES: [&str; 2] = ["crates/sim/", "crates/capabilities/"];
+
+/// The line of each place where the code of `text` that every build holds, not a comment nor a
+/// test module, names Bevy's `RemovedComponents`.
+fn app_removals(text: &str) -> Vec<usize> {
+    let built = text
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(text);
+    (1..)
+        .zip(built.lines())
+        .filter(|(_, line)| {
+            let code = line.split_once("//").map_or(*line, |(code, _)| code);
+            code.contains("RemovedComponents")
+        })
+        .map(|(at, _)| at)
+        .collect()
+}
+
+#[test]
+fn no_tick_reads_removals_that_age_with_the_app() {
+    let found: Vec<String> = sources()
+        .iter()
+        .filter(|file| file.gate.is_none())
+        .filter(|file| TICK_CRATES.iter().any(|dir| file.path.starts_with(dir)))
+        .flat_map(|file| {
+            app_removals(&file.text)
+                .into_iter()
+                .map(move |line| format!("{}:{line}", file.path))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+    // A reader in code is found; a mention in a comment, and a test's reader, are not.
+    let sample = concat!(
+        "/// Unlike `RemovedComponents`.\n",
+        "fn f(gone: RemovedComponents<'_, '_, A>) {} // here\n",
+        "\n#[cfg(test)]\nmod tests {\n",
+        "    fn g(gone: RemovedComponents<'_, '_, A>) {}\n",
+        "}\n",
+    );
+    assert_eq!(app_removals(sample), [2]);
+}
+
+/// The line of a crate's root that bans floats from the sim, as clippy's `float_arithmetic` is
+/// in no group the workspace turns on (09-determinism-core.md, One step: an `i128`, rounded once).
+const FLOAT_BAN: &str = "#![warn(clippy::float_arithmetic)]";
+
+#[test]
+fn each_crate_a_match_runs_on_bans_floats() {
+    // A proc-macro crate's code runs in the compiler, not in a match.
+    let reached = sim_closure(&manifests());
+    let mut checked = 0;
+    let mut missing = Vec::new();
+    for krate in crates()
+        .iter()
+        .filter(|krate| reached.contains(&krate.name))
+    {
+        checked += 1;
+        let proc_macro =
+            CargoManifest::section(&krate.manifest, "lib").any(|line| line == "proc-macro = true");
+        if proc_macro {
+            continue;
+        }
+        let root = source().join(&krate.path).join("src/lib.rs");
+        let text = read(root.to_str().unwrap());
+        if !text.lines().any(|line| line == FLOAT_BAN) {
+            missing.push(krate.name.clone());
+        }
+    }
+    assert_eq!(missing, Vec::<String>::new());
+    assert_eq!(checked, reached.len());
 }

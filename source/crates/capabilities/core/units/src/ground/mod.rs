@@ -1,8 +1,7 @@
 use std::ops::RangeInclusive;
 
-use campfire_common::{EnumAll, NamedEnum};
+use campfire_common::NamedEnum;
 use campfire_math::{Num, Rounding, Vec3};
-use campfire_sim::Position;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::error::GroundError;
@@ -10,7 +9,7 @@ use crate::height_grid::HeightGrid;
 
 /// The diagonal every cell of a map's ground splits on, between its corners 0 to 3 at the
 /// samples `(u, v)`, `(u + 1, v)`, `(u + 1, v + 1)` and `(u, v + 1)`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, EnumAll, NamedEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, NamedEnum)]
 pub enum CellSplit {
     /// From corner 0 to 2.
     #[default]
@@ -90,8 +89,8 @@ impl Ground {
         if (0..2).any(|axis| span.from[axis] == span.to[axis]) {
             return Err(GroundError::CoarseSpan);
         }
-        let within = |[x, z]: [Num; 2]| Position::from(Vec3::new(x, Num::ZERO, z)).within_bound();
-        if span.cell > Position::BOUND || !within(span.from) || !within(span.to) {
+        let within = |[x, z]: [Num; 2]| Vec3::new(x, Num::ZERO, z).within_bound();
+        if span.cell > Vec3::BOUND || !within(span.from) || !within(span.to) {
             return Err(GroundError::CoarseBound);
         }
         let [across, along] = [0, 1].map(|axis| {

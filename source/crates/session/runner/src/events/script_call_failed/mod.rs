@@ -1,17 +1,16 @@
 use campfire_common::Tick;
 use campfire_log::LogEvent;
-use campfire_script::Hook;
 use campfire_sim::StableId;
 use serde::Deserialize;
 use tracing::warn;
 
-/// A script call of `hook` failed in `tick` and changed nothing: for `unit`, when it ran for one;
-/// `error` says why.
+/// A script call of `hook`, by the name of its function, failed in `tick` and changed nothing:
+/// for `unit`, when it ran for one; `error` says why.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct ScriptCallFailed {
     pub tick: Tick,
     pub unit: Option<StableId>,
-    pub hook: Hook,
+    pub hook: String,
     pub error: String,
 }
 
@@ -22,7 +21,7 @@ impl LogEvent for ScriptCallFailed {
         warn!(
             tick = self.tick.get(),
             unit = self.unit.map(StableId::get),
-            hook = ?self.hook,
+            hook = %self.hook,
             error = %self.error,
             "{}",
             Self::MESSAGE

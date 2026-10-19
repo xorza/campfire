@@ -1,11 +1,13 @@
 use campfire_geometry::Shape;
-use campfire_values::Tag;
+use campfire_values::{Named, Param, Tag, Team, UnitType};
 
 use crate::scripts::api_owner::ApiOwner;
+use crate::scripts::api_owner::ScriptHandle;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::id_name::IdName;
 use crate::scripts::member_spec::MemberSpec;
-use crate::scripts::name_kind::NameKind;
+use crate::scripts::player_handle::PlayerHandle;
 use crate::scripts::script_api::api_builder::ApiBuilder;
 use crate::scripts::script_position::ScriptPosition;
 use crate::scripts::script_radius::ScriptRadius;
@@ -30,8 +32,9 @@ impl ViewApi {
     }
 
     fn unit_fields(api: &mut ApiBuilder<'_>) {
-        let field = |name, description| MemberSpec::field(ApiOwner::Unit, name, description);
-        api.ty::<Unit>("Unit")
+        let field =
+            |name, description| MemberSpec::field(ApiOwner::of::<Unit>(), name, description);
+        api.ty::<Unit>()
             .bind(field("pos", "where it stands"), |unit: &mut Unit| {
                 unit.read(|row| row.pos)
             })
@@ -40,32 +43,39 @@ impl ViewApi {
                     "radius",
                     "its body's radius, 0 with no body, `()` for a box",
                 ),
-                |unit: &mut Unit| match unit.read(|row| row.shape) {
-                    Shape::Circle(radius) => ScriptValue::of(radius.get()),
-                    Shape::Box(_) => ScriptValue::UNIT,
+                |unit: &mut Unit| -> Checked<ScriptValue> {
+                    Ok(match unit.read(|row| row.shape)? {
+                        Shape::Circle(radius) => ScriptValue::of(radius.get()),
+                        Shape::Box(_) => ScriptValue::UNIT,
+                    })
                 },
             )
-            .bind(field("alive", "whether it lives"), |unit: &mut Unit| {
+            .bind(field("is_alive", "whether it lives"), |unit: &mut Unit| {
                 unit.read(|row| row.alive)
             })
             .bind(
                 field("params", "its unit type's params, unresolved"),
                 |unit: &mut Unit| UnitParams(unit.clone()),
             )
-            .bind(field("team", "its team's name"), |unit: &mut Unit| {
-                unit.view().names().name(unit.read(|row| row.team))
-            })
             .bind(
-                field("unit_type", "its unit type's name"),
-                |unit: &mut Unit| unit.view().names().name(unit.read(|row| row.unit_type)),
+                field("team", "its team's name"),
+                |unit: &mut Unit| -> Checked<IdName<Team>> {
+                    Ok(unit.view().names().name(unit.read(|row| row.team)?))
+                },
             )
             .bind(
-                field("owner", "its player's slot, `()` with none"),
-                |unit: &mut Unit| {
-                    unit.read(|row| row.owner)
-                        .map_or(ScriptValue::UNIT, |slot| {
-                            ScriptValue::of(i64::from(slot.get()))
-                        })
+                field("unit_type", "its unit type's name"),
+                |unit: &mut Unit| -> Checked<IdName<UnitType>> {
+                    Ok(unit.view().names().name(unit.read(|row| row.unit_type)?))
+                },
+            )
+            .bind(
+                field("owner", "its player, `()` with none"),
+                |unit: &mut Unit| -> Checked<ScriptValue> {
+                    let owner = unit.read(|row| row.owner)?;
+                    Ok(owner.map_or(ScriptValue::UNIT, |slot| {
+                        ScriptValue::of(PlayerHandle::new(slot))
+                    }))
                 },
             )
             .bind(
@@ -73,18 +83,18 @@ impl ViewApi {
                     "spawn_pos",
                     "where it spawned, where it respawns; `()` with none",
                 ),
-                |unit: &mut Unit| {
-                    unit.read(|row| row.spawn)
-                        .map_or(ScriptValue::UNIT, ScriptValue::of)
+                |unit: &mut Unit| -> Checked<ScriptValue> {
+                    let spawn = unit.read(|row| row.spawn)?;
+                    Ok(spawn.map_or(ScriptValue::UNIT, ScriptValue::of))
                 },
             );
-        api.ty::<UnitParams>("UnitParams")
+        api.ty::<UnitParams>()
             .index(|_, params: &mut UnitParams, name: &str| params.get(name));
     }
 
     fn unit_methods(api: &mut ApiBuilder<'_>) {
         let method = |name, signature, description| {
-            MemberSpec::method(ApiOwner::Unit, name, signature, description)
+            MemberSpec::method(ApiOwner::of::<Unit>(), name, signature, description)
         };
         api.method(
             method(
@@ -92,7 +102,7 @@ impl ViewApi {
                 &[&["tag"]],
                 "whether it has the tag, of its type or a modifier",
             ),
-            |unit: Unit, tag: Tag| Ok(unit.read(|row| row.tags.tags.contains(tag))),
+            |unit: Unit, tag: Tag| unit.read(|row| row.tags.tags.contains(tag)),
         )
         .method(
             method(
@@ -101,17 +111,21 @@ impl ViewApi {
                 "whether its team may attack the other's, hostile or neutral",
             ),
             |unit: Unit, other: Unit| {
-                let teams = [&unit, &other].map(|unit| unit.read(|row| row.team));
-                let relation = unit.view().relation(teams[0], teams[1]);
+                let (team, other) = (unit.read(|row| row.team)?, other.read(|row| row.team)?);
+                let relation = unit.view().relation(team, other);
                 Ok(relation.may_attack())
             },
         )
         .method(
-            MemberSpec::operator(ApiOwner::Unit, "==", "whether the two are one unit"),
+            MemberSpec::operator(ApiOwner::of::<Unit>(), "==", "whether the two are one unit"),
             |a: Unit, b: Unit| Ok(a.id == b.id),
         )
         .method(
-            MemberSpec::operator(ApiOwner::Unit, "!=", "whether the two are two units"),
+            MemberSpec::operator(
+                ApiOwner::of::<Unit>(),
+                "!=",
+                "whether the two are two units",
+            ),
             |a: Unit, b: Unit| Ok(a.id != b.id),
         );
     }
@@ -126,9 +140,8 @@ impl ViewApi {
         api.call(
             find,
             |ctx: &mut Ctx, of: Unit, pos: ScriptPosition, radius: ScriptRadius, filter: Filter| {
-                Ok(ctx
-                    .view()
-                    .find(&of, pos.get(), radius.get(), &filter, |_, _| true))
+                ctx.view()
+                    .find(&of, pos.get(), radius.get(), &filter, |_, _| true)
             },
         );
     }
@@ -138,9 +151,14 @@ impl UnitParams {
     /// The param `name`; one the unit's type does not declare fails the call.
     fn get(&self, name: &str) -> Checked<ScriptValue> {
         let unit = &self.0;
-        let unit_type = unit.read(|row| row.unit_type);
+        let unit_type = unit.read(|row| row.unit_type)?;
         let param = unit.view().names().param(unit_type, name);
-        let param = param.ok_or_else(|| ApiError::Unknown(NameKind::Param).fail())?;
+        let param = param.ok_or_else(|| ApiError::Unknown(Param::NAMES).fail())?;
         Ok(ScriptValue::from(param))
     }
+}
+
+impl ScriptHandle for UnitParams {
+    const NAME: &'static str = "UnitParams";
+    const TITLE: &'static str = "A unit's params";
 }

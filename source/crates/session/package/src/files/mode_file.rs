@@ -1,19 +1,30 @@
-use campfire_capabilities::PackageContent;
+use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
+use campfire_declare::UnitDefaults;
 use campfire_mode::ModeData;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::files::content_table::ContentTable;
-use crate::files::mode_script::ModeScript;
+use crate::files::script_list::ScriptList;
 
-/// The mode's `data/mode.toml`: its script, the mode's own data, and its actions and modifiers,
-/// which its content holds beside the unit types of `data/units.toml`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The mode's `data/mode.toml`: its scripts, the defaults of its unit types' sections, the mode's
+/// own data, and its actions and modifiers, which its content holds beside the unit types of
+/// `data/units.toml`.
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct ModeFile {
-    pub(crate) script: ModeScript,
+    pub(crate) scripts: ScriptList,
+    pub(crate) defaults: UnitDefaults,
     pub(crate) data: ModeData,
     pub(crate) content: PackageContent,
+}
+
+impl ModeFile {
+    /// The key of its list of scripts, the mode's alone: no rules package's data gives it.
+    pub(crate) const SCRIPTS: &'static str = "scripts";
+
+    /// The key of the defaults of its unit types' sections.
+    const DEFAULTS: &'static str = "defaults";
 }
 
 impl<'de> Deserialize<'de> for ModeFile {
@@ -22,14 +33,21 @@ impl<'de> Deserialize<'de> for ModeFile {
         if table.holds("units") {
             return Err(D::Error::custom("units are in data/units.toml"));
         }
-        let script: ModeScript = table
-            .take("script")
-            .ok_or_else(|| D::Error::missing_field("script"))?
+        let scripts: ScriptList = table
+            .take(Self::SCRIPTS)
+            .ok_or_else(|| D::Error::missing_field(Self::SCRIPTS))?
             .map_err(D::Error::custom)?;
-        let content = ContentTable::take(&mut table)?;
-        let data: ModeData = table.read().map_err(D::Error::custom)?;
+        let readers = Release::sections();
+        let defaults = match table.take_value(Self::DEFAULTS) {
+            Some(value) => UnitDefaults::read(value, &readers).map_err(D::Error::custom)?,
+            None => UnitDefaults::default(),
+        };
+        let content = ContentTable::take(&mut table, &defaults)?;
+        let data = table.read_with(ModeData::seed(&readers));
+        let data = data.map_err(D::Error::custom)?;
         Ok(Self {
-            script,
+            scripts,
+            defaults,
             data,
             content,
         })

@@ -7,7 +7,7 @@ use tracing::info;
 /// The server restored a session, the one a stop ended as it started again, or the one a load
 /// went back to: it replayed the log, and runs the match on from sim tick `tick`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct SessionRestored {
+pub(crate) struct SessionRestored {
     #[serde(deserialize_with = "LogLine::text")]
     pub session: SessionId,
     pub tick: Tick,

@@ -1,9 +1,9 @@
-use campfire_common::Ticks;
+use campfire_common::{DeclaredName, Ticks};
 use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_script::{Filter, TagNames, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::{DeclaredName, ModifierId, TimeTooLarge};
+use campfire_values::{ModifierId, TimeTooLarge};
 
 use crate::area_data::AreaData;
 use crate::error::AreaError;

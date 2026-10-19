@@ -2,12 +2,11 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::world::World;
 use campfire_math::Vec3;
 use campfire_script::{
-    AnyKeptRows, Filter, KeptRows, RowFill, ScriptList, ScriptRadius, ScriptValue, Unit,
+    AnyKeptRows, Checked, Filter, KeptRows, RowFill, ScriptList, ScriptRadius, ScriptValue, Unit,
     ViewColumn, ViewColumns,
 };
+use campfire_units::SeenBy;
 use campfire_values::{Relations, Team, TeamSet};
-
-use crate::seen_by::SeenBy;
 
 /// The parts of a unit vision reads into its row: the teams that saw it, and its team.
 pub(crate) type RowReads = (Option<&'static SeenBy>, Option<&'static Team>);
@@ -46,14 +45,23 @@ impl VisionColumn {
     }
 
     /// `unit.can_see(other)`: whether `unit`'s team sees `other`.
-    pub(crate) fn can_see(unit: &Unit, other: &Unit) -> bool {
-        let team = unit.read(|row| row.team);
-        Self::sees(unit.view().rows().columns(), other.row_index(), team)
+    pub(crate) fn can_see(unit: &Unit, other: &Unit) -> Checked<bool> {
+        let team = unit.read(|row| row.team)?;
+        Ok(Self::sees(
+            unit.view().rows().columns(),
+            other.row_index()?,
+            team,
+        ))
     }
 
     /// `ctx.find_visible`: `ctx.find`, of the units `of`'s team sees.
-    pub(crate) fn find(of: &Unit, pos: Vec3, radius: ScriptRadius, filter: &Filter) -> ScriptList {
-        let team = of.read(|row| row.team);
+    pub(crate) fn find(
+        of: &Unit,
+        pos: Vec3,
+        radius: ScriptRadius,
+        filter: &Filter,
+    ) -> Checked<ScriptList> {
+        let team = of.read(|row| row.team)?;
         of.view()
             .find(of, pos, radius.get(), filter, |columns, row| {
                 Self::sees(columns, row, team)
@@ -62,8 +70,12 @@ impl VisionColumn {
 
     /// `ctx.nearest_visible`: the nearest living target `radius` from the edge of `of`'s body
     /// reaches that `filter` selects and `of`'s team sees.
-    pub(crate) fn nearest(of: &Unit, radius: ScriptRadius, filter: &Filter) -> ScriptValue {
-        let team = of.read(|row| row.team);
+    pub(crate) fn nearest(
+        of: &Unit,
+        radius: ScriptRadius,
+        filter: &Filter,
+    ) -> Checked<ScriptValue> {
+        let team = of.read(|row| row.team)?;
         of.view().nearest(of, radius.get(), filter, |columns, row| {
             Self::sees(columns, row, team)
         })

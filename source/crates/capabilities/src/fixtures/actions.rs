@@ -4,63 +4,47 @@ use campfire_actions::{
     ActionBook, ActionData, ActionError, ActionNames, ActionParts, Actions, CostTarget,
     PackageAction, ProjectileFlight,
 };
+use campfire_combat::Combat;
+use campfire_common::DeclaredName;
 use campfire_declare::{Book, ByType};
+use campfire_production::Production;
 use campfire_projectiles::ProjectileSpec;
-use campfire_script::{Filter, NameKind, ScriptId, UnknownName, View};
+use campfire_script::{Filter, MatchNames, ScriptId, UnknownName};
 use campfire_sim::TickRate;
-use campfire_stats::{ModifierBook, StatId, Stats};
+use campfire_stats::{ModifierBook, Stats};
 use campfire_units::ScriptBook;
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, FilterData, ModifierId, PackageIndex, Param, Stat, Tag,
-    TypeScope, UnitType,
+    ActionId, FilterData, ModifierId, Named, PackageIndex, Param, TypeScope, UnitType,
 };
 
 use crate::fixtures::units::ViewFixtures;
 
-/// The names of an action's data as a match's world resolves them: its view, its book of
+/// The names of an action's data as a match's world resolves them: its names, its book of
 /// modifiers, and the world's projectile specs.
 #[derive(Debug)]
-pub struct MatchNames<'w> {
+pub struct WorldActionNames<'w> {
     world: &'w World,
-    view: &'w View,
+    names: &'w MatchNames,
     modifiers: &'w ModifierBook,
 }
 
-impl<'w> MatchNames<'w> {
-    pub const fn new(world: &'w World, view: &'w View, modifiers: &'w ModifierBook) -> Self {
-        MatchNames {
+impl<'w> WorldActionNames<'w> {
+    pub fn new(world: &'w World) -> Self {
+        WorldActionNames {
             world,
-            view,
-            modifiers,
+            names: world.resource::<MatchNames>(),
+            modifiers: world.resource::<ModifierBook>(),
         }
     }
 }
 
-impl ActionNames for MatchNames<'_> {
-    fn stat(&self, stat: &Stat) -> Result<StatId, UnknownName> {
-        self.view
-            .stat_index(stat)
-            .ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
-    }
-
-    fn damage_kind(&self, name: &DeclaredName) -> Result<DamageKind, UnknownName> {
-        self.view
-            .names()
-            .named(name.as_str())
-            .ok_or_else(|| UnknownName::new(NameKind::DamageKind, name))
-    }
-
+impl ActionNames for WorldActionNames<'_> {
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
-        self.view.cost_target(name.as_str())
+        self.names.cost_target(name.as_str())
     }
 
     fn filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
-        self.view.resolve_filter(filter)
-    }
-
-    fn tag(&self, name: &DeclaredName) -> Result<Tag, UnknownName> {
-        let tag = self.view.names().tags().named(name.as_str());
-        tag.ok_or_else(|| UnknownName::new(NameKind::Tag, name))
+        self.names.resolve_filter(filter)
     }
 
     fn modifier(
@@ -71,7 +55,7 @@ impl ActionNames for MatchNames<'_> {
         self.modifiers
             .names()
             .named((package, name.as_str()))
-            .ok_or_else(|| UnknownName::new(NameKind::Modifier, name))
+            .ok_or_else(|| UnknownName::new(ModifierId::NAMES, name))
     }
 
     fn flight(&self, package: PackageIndex, name: &DeclaredName) -> Option<ProjectileFlight> {
@@ -92,10 +76,9 @@ impl ActionNames for MatchNames<'_> {
         name: &DeclaredName,
     ) -> Result<UnitType, UnknownName> {
         let scope = TypeScope::of_package(package);
-        self.view
-            .names()
+        self.names
             .named((scope, name.as_str()))
-            .ok_or_else(|| UnknownName::new(NameKind::UnitType, name))
+            .ok_or_else(|| UnknownName::new(UnitType::NAMES, name))
     }
 }
 
@@ -104,7 +87,7 @@ pub trait ActionsFixtures {
     /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
     /// package load checked, with its compiled script exactly when its data names one: its
     /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
-    /// rounded up.
+    /// rounded up, and an attack's weapon and a train's unit type into their books.
     fn load(
         world: &mut World,
         package: PackageIndex,
@@ -125,8 +108,7 @@ impl ActionsFixtures for Actions {
         ranks: u8,
     ) -> Result<ActionId, ActionError> {
         let rate = *world.resource::<TickRate>();
-        let view = world.non_send::<View>().clone();
-        let names = MatchNames::new(world, &view, world.resource::<ModifierBook>());
+        let names = WorldActionNames::new(world);
         let parts = ActionParts::of(data, package, ranks, rate, &names)?;
         let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {
             // A match that runs no scripts holds no script book, and its actions none.
@@ -141,6 +123,9 @@ impl ActionsFixtures for Actions {
             };
             actions.load(scripts, action)
         });
+        let id_name = DeclaredName::new(name).expect("a test's action is named as data names it");
+        Combat::load_weapon(world, id, data, &id_name);
+        Production::load_train(world, id, data, package);
         let places = Stats::stat_places(world, data.params.values().flat_map(Param::stats));
         Stats::load_action_params(world, id, &data.params, |stat| places[stat]);
         ActionBook::share_in(world);

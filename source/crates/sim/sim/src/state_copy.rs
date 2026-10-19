@@ -21,7 +21,7 @@ impl StateCopy {
         let mut delta = StateDelta::default();
         let mut copy = World::new();
         copy.init_resource::<EntityIndex>();
-        world.resource_scope(|world, mut registry: Mut<'_, StateRegistry>| {
+        world.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
             registry.track(world, &mut delta);
             registry.apply(&delta, &mut copy);
         });

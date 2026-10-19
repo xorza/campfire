@@ -1,3 +1,4 @@
+use campfire_client_files::MaterialExtras;
 use serde::Serialize;
 
 /// The subset of glTF 2.0's JSON a model of the importer uses: one scene, nodes, meshes of
@@ -127,7 +128,8 @@ pub(crate) struct Material {
     pub(crate) extensions: MaterialExtensions,
 }
 
-/// A material's extensions: its specular strength, and whether it is lit.
+/// A material's extensions: its specular strength, whether it is lit, and its extras, when glTF's
+/// own material says less than it draws by.
 #[derive(Debug, Serialize)]
 pub(crate) struct MaterialExtensions {
     #[serde(rename = "KHR_materials_specular")]
@@ -137,6 +139,12 @@ pub(crate) struct MaterialExtensions {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) unlit: Option<Unlit>,
+    /// `MaterialExtras::EXTENSION`, which serde names by its literal.
+    #[serde(
+        rename = "CAMPFIRE_material_extras",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) extras: Option<MaterialExtras>,
 }
 
 /// `KHR_materials_specular`: the strength of the specular reflection, 1 a dielectric's usual.

@@ -1,11 +1,11 @@
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{SimWorld, StableId};
+use campfire_units::StatId;
 use campfire_values::{NameId, UnitType};
 
 use crate::level::Level;
 use crate::stat_book::StatBook;
-use crate::stat_id::StatId;
 use crate::unit_stats::UnitStats;
 
 /// What a scaling param reads of its source: the source's level, its stats, and its type's

@@ -1,16 +1,16 @@
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{Position, SimTick, Unpredicted};
+use campfire_common::Tick;
+use campfire_sim::{DueIndex, DueUnit, Position, Removals, SimTick, StableId, Unpredicted};
 use campfire_units::{Body, Dead, Destination};
 
 use crate::body_index::BodyIndex;
 use crate::path_walker::PathWalker;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::{Route, RouteAsk};
+use crate::route::{Route, RouteAsk, RouteDues, RouteMut};
 use crate::route_asks::{Ask, AskingUnits, Member, RouteAsks, RouteSearch};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
@@ -40,10 +40,10 @@ impl Routing {
             '_,
             '_,
             (
-                Entity,
+                (Entity, &StableId),
                 &Position,
                 Ref<'_, Destination>,
-                &mut Route,
+                RouteMut,
                 &mut Progress,
                 Option<&Body>,
                 Option<&PathWalker>,
@@ -51,23 +51,24 @@ impl Routing {
             Without<Dead>,
         >,
         (mut lived, mut predicted, mut returned): (
-            RemovedComponents<'_, '_, Dead>,
-            RemovedComponents<'_, '_, Unpredicted>,
+            Removals<'_, '_, Dead>,
+            Removals<'_, '_, Unpredicted>,
             Local<'_, Vec<Entity>>,
         ),
+        mut asks: ResMut<'_, DueIndex<Route>>,
     ) {
         let now = tick.start();
         returned.clear();
         returned.extend(lived.read().chain(predicted.read()));
         returned.sort_unstable();
-        for (entity, &at, destination, mut route, mut progress, body, path) in &mut units {
+        for ((entity, &id), &at, destination, mut route, mut progress, body, path) in &mut units {
             let changed = destination.is_changed() || route.is_changed();
             if !(changed || returned.binary_search(&entity).is_ok()) {
                 continue;
             }
             let walker = Walker::walking(body);
             match destination.get() {
-                None if route.arrived_short() => {}
+                None if route.read().arrived_short() => {}
                 None => {
                     if route.goal().is_some() {
                         route.clear();
@@ -76,7 +77,7 @@ impl Routing {
                 }
                 Some(goal) if route.goal() == Some(goal) => {}
                 Some(goal) => {
-                    let from = match route.ahead() {
+                    let from = match route.read().ahead() {
                         [.., before, _] => Some(*before),
                         [_] => Some(at.get()),
                         [] => None,
@@ -98,7 +99,11 @@ impl Routing {
                             tick: now,
                             party: path.and_then(|path| path.party(goal)),
                         };
-                        route.ask(ask, &mut progress);
+                        route.ask(
+                            ask,
+                            &mut progress,
+                            &mut RouteDues::new(&mut asks, id, entity),
+                        );
                     }
                 }
             }
@@ -106,18 +111,34 @@ impl Routing {
     }
 
     /// Plans the asked routes as the tick's work begins, as `RouteAsks::plan` says, and gives
-    /// each unit the route planned for it. Every tick reads the asks into `asks`, buffers it
-    /// keeps.
+    /// each unit the route planned for it. Every tick reads the asks of the walkers the index of
+    /// the asks holds into `asks`, buffers it keeps, and forgets each answered, or whose ask
+    /// ended or that is gone.
     pub(super) fn plan_routes(
-        grid: Option<Res<'_, PathingGrid>>,
-        statics: Res<'_, BodyIndex>,
+        (grid, statics): (Option<Res<'_, PathingGrid>>, Res<'_, BodyIndex>),
         mut planner: Option<ResMut<'_, RoutePlanner>>,
         mut units: AskingUnits<'_, '_>,
-        mut asks: Local<'_, RouteAsks>,
+        (mut asks, mut index, mut held): (
+            Local<'_, RouteAsks>,
+            ResMut<'_, DueIndex<Route>>,
+            Local<'_, Vec<DueUnit>>,
+        ),
     ) {
-        asks.read(units.iter().filter_map(|(entity, &id, &at, route, body)| {
-            Some(Ask {
-                tick: route.asked()?,
+        held.clear();
+        held.extend(index.peek_due(Tick::ZERO));
+        held.retain(|unit| {
+            let asking = units
+                .get(unit.entity)
+                .is_ok_and(|(.., route, _)| route.asked().is_some());
+            if !asking {
+                index.forget(unit.id);
+            }
+            asking
+        });
+        asks.read(held.iter().map(|&DueUnit { id, entity }| {
+            let (_, _, &at, route, body) = units.get(entity).expect("a walker that asks");
+            Ask {
+                tick: route.asked().expect("a walker that asks"),
                 party: route.party(),
                 member: Member {
                     id,
@@ -126,7 +147,7 @@ impl Routing {
                     walker: Walker::walking(body),
                     goal: route.goal().expect("a unit that asked a route has a goal"),
                 },
-            })
+            }
         }));
         let search = grid
             .as_deref()
@@ -140,6 +161,7 @@ impl Routing {
             let units = units.get_mut(member.entity);
             let (.., mut route, _) = units.expect("a unit read this tick");
             route.answer(member.pos, waypoints, reached);
+            index.forget(member.id);
         });
     }
 }

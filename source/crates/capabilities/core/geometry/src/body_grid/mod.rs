@@ -1,7 +1,6 @@
 use std::ops::ControlFlow;
 
 use campfire_math::{Num, Vec3};
-use campfire_sim::StableId;
 
 use crate::cell_key::CellKey;
 use crate::cell_levels::CellLevels;
@@ -24,17 +23,17 @@ pub(crate) mod bench;
 /// whose rows spread far wider than its bodies keeps no row starts, and a query searches all its
 /// bodies for each row.
 #[derive(Debug)]
-pub struct BodyGrid<K> {
+pub struct BodyGrid<K, I> {
     levels: CellLevels,
     /// Each level that holds a body, in order, with its widest bound.
     widest: Vec<LevelWidest>,
-    /// Sorted by level, row, column, then stable id, and where each level's rows start.
-    entries: Vec<Indexed<K>>,
+    /// Sorted by level, row, column, then id, and where each level's rows start.
+    entries: Vec<Indexed<K, I>>,
     /// Each entry's cell, beside it: a search runs over these dense keys, not over the bodies.
     cells: Vec<CellKey>,
     rows: RowDirectory<u8>,
     /// The bodies of a build and their order, kept between builds.
-    placed: Vec<Indexed<K>>,
+    placed: Vec<Indexed<K, I>>,
     order: Vec<Order>,
 }
 
@@ -45,16 +44,17 @@ struct LevelWidest {
     widest: Num,
 }
 
-/// A body to index: its unit, the key its reader finds the unit by, and the body where it
+/// A body to index: its unit's id, whose number orders it, the key its reader finds the unit by,
+/// and the body where it
 /// stands, a point for a unit with no body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Indexed<K> {
-    pub id: StableId,
+pub struct Indexed<K, I> {
+    pub id: I,
     pub key: K,
     pub body: Placed,
 }
 
-/// A body's place in a build's order: its cell's key above its stable id, so a sort compares one
+/// A body's place in a build's order: its cell's key above its id's number, so a sort compares one
 /// number, and where it lies among the bodies placed. A sort of these moves 32 bytes an entry,
 /// where one of the bodies moves each whole body. Every cell is of layer 0.
 #[derive(Debug, Clone, Copy)]
@@ -70,7 +70,7 @@ impl Order {
     }
 }
 
-impl<K> Default for BodyGrid<K> {
+impl<K, I> Default for BodyGrid<K, I> {
     fn default() -> Self {
         Self {
             levels: CellLevels::new(Num::ONE),
@@ -84,9 +84,9 @@ impl<K> Default for BodyGrid<K> {
     }
 }
 
-impl<K: Copy> BodyGrid<K> {
+impl<K: Copy, I: Copy + Into<u64>> BodyGrid<K, I> {
     /// Indexes `bodies` in place of what it held.
-    pub fn rebuild(&mut self, bodies: impl IntoIterator<Item = Indexed<K>>) {
+    pub fn rebuild(&mut self, bodies: impl IntoIterator<Item = Indexed<K, I>>) {
         self.placed.clear();
         self.placed.extend(bodies);
         let narrowest = self
@@ -109,7 +109,7 @@ impl<K: Copy> BodyGrid<K> {
                 let (row, column) = (levels.index(level, row), levels.index(level, column));
                 let cell = CellKey::new(0, level, row, column);
                 Order {
-                    key: (u128::from(cell.to_bits()) << 64) | u128::from(entry.id.get()),
+                    key: (u128::from(cell.to_bits()) << 64) | u128::from(entry.id.into()),
                     placed: u32::try_from(placed).expect("bodies fit u32"),
                 }
             }));
@@ -143,7 +143,7 @@ impl<K: Copy> BodyGrid<K> {
         &self,
         low: [Num; 2],
         high: [Num; 2],
-        mut visit: impl FnMut(&Indexed<K>) -> ControlFlow<()>,
+        mut visit: impl FnMut(&Indexed<K, I>) -> ControlFlow<()>,
     ) {
         for (rows, &LevelWidest { level, widest }) in self.rows.layers().zip(&self.widest) {
             debug_assert_eq!(rows.layer(), level);
@@ -199,7 +199,7 @@ impl<K: Copy> BodyGrid<K> {
         &self,
         pos: Vec3,
         reach: Num,
-        visit: impl FnMut(&Indexed<K>) -> ControlFlow<()>,
+        visit: impl FnMut(&Indexed<K, I>) -> ControlFlow<()>,
     ) {
         let low = [pos.x, pos.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
         let high = [pos.x, pos.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));

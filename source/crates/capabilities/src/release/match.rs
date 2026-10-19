@@ -1,10 +1,12 @@
 use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::world::World;
-use campfire_declare::CapabilitySet;
+use campfire_declare::MatchFacts;
 use campfire_sim::StateRegistry;
 
+use crate::books::Books;
 use crate::release::Release;
+use crate::release::match_kind::MatchKind;
 use crate::release::match_spec::MatchSpec;
 
 /// A match in a world of its own, which campfire holds wherever no `App` must: a test's, a
@@ -25,10 +27,10 @@ pub struct Match {
 }
 
 impl Match {
-    /// The match of `spec`, built in a new world.
-    pub fn new(spec: MatchSpec) -> Self {
+    /// The match of `spec`, of `books`, of `kind`, built in a new world.
+    pub fn new(spec: MatchSpec, books: Books, kind: MatchKind<'_>) -> Self {
         let mut world = World::new();
-        Release::build(&mut world, spec);
+        Release::build(&mut world, spec, books, kind);
         Self {
             world,
             #[cfg(feature = "internals")]
@@ -40,8 +42,7 @@ impl Match {
     /// builds it from its log.
     pub fn from_built(world: World) -> Self {
         assert!(
-            world.contains_resource::<StateRegistry>()
-                && world.contains_resource::<CapabilitySet>(),
+            world.contains_resource::<StateRegistry>() && world.contains_resource::<MatchFacts>(),
             "a match is a world the release built"
         );
         Self {
@@ -75,20 +76,20 @@ pub(crate) mod internals {
     use campfire_actions::{SlotKindBook, SlotKindData, SlotKinds};
     use campfire_codec::Binary;
     use campfire_combat::Combat;
-    use campfire_common::SegmentSeed;
-    use campfire_declare::{Book, Role};
+    use campfire_common::{DeclaredName, SegmentSeed};
+    use campfire_declare::Role;
+    use campfire_declare::internals::BookLoad;
     use campfire_log::internals::LogCheck;
-    use campfire_mode::Mode;
     use campfire_players::Players;
-    use campfire_script::ScriptBudgets;
+    use campfire_script::ScriptPools;
     use campfire_sim::{Capability, TickRate};
-    use campfire_stats::PoolId;
-    use campfire_values::DeclaredName;
+    use campfire_units::PoolId;
     use serde::Serialize;
     use serde::de::DeserializeOwned;
 
     use crate::release::Release;
     use crate::release::r#match::Match;
+    use crate::release::match_kind::MatchKind;
     use crate::release::match_spec::MatchSpec;
 
     impl Match {
@@ -114,12 +115,8 @@ pub(crate) mod internals {
         /// within `budgets`, or none; with combat, its life pool the first. It has no mode
         /// to start it, so it starts with the match's entity, as a start spawns it. It fails the
         /// test on any warning it logs.
-        pub fn test(
-            declared: &[Capability],
-            rate: TickRate,
-            budgets: Option<ScriptBudgets>,
-        ) -> Self {
-            let mut started = Self::test_unstarted(declared, rate, budgets);
+        pub fn test(declared: &[Capability], rate: TickRate, pools: Option<ScriptPools>) -> Self {
+            let mut started = Self::test_unstarted(declared, rate, pools);
             Players::start_without_mode(&mut started, [], 0);
             started
         }
@@ -128,10 +125,10 @@ pub(crate) mod internals {
         pub fn test_unstarted(
             declared: &[Capability],
             rate: TickRate,
-            budgets: Option<ScriptBudgets>,
+            pools: Option<ScriptPools>,
         ) -> Self {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
-            let role = budgets.map_or(Role::Rules, Role::Server);
+            let role = pools.map_or(Role::Rules, Role::Server);
             let spec = MatchSpec::new(SegmentSeed::ZERO, rate, role).set(set);
             Self::test_of(spec)
         }
@@ -140,8 +137,9 @@ pub(crate) mod internals {
         fn test_of(spec: MatchSpec) -> Self {
             let log = LogCheck::start();
             let set = spec.set;
+            let books = Release::empty_books(spec.rate());
             let mut world = World::new();
-            Release::build(&mut world, spec);
+            Release::build(&mut world, spec.open(), books, MatchKind::Rules);
             // A mode declares the kinds its units' slots are of: here one, whose one rank comes
             // with the spawn, which a test that needs others replaces.
             let basic = SlotKindData {
@@ -171,14 +169,13 @@ pub(crate) mod internals {
             let set = Release::capability_set(declared).expect("a test declares a valid set");
             let spec = MatchSpec::new(SegmentSeed::ZERO, Self::TEST_RATE, Role::Client).set(set);
             let mut started = Self::test_of(spec);
-            Mode::keep_no_spawner(&mut started);
             Players::start_without_mode(&mut started, [], 0);
             started
         }
 
         /// A server's match at `TEST_RATE` of `declared`, running scripts within `budgets`.
-        pub fn server(declared: &[Capability], budgets: ScriptBudgets) -> Self {
-            Self::test(declared, Self::TEST_RATE, Some(budgets))
+        pub fn server(declared: &[Capability], pools: ScriptPools) -> Self {
+            Self::test(declared, Self::TEST_RATE, Some(pools))
         }
 
         /// Whether `value`, encoded as a snapshot holds it, decodes again: a decode keeps the

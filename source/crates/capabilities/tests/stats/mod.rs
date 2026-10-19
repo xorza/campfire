@@ -6,26 +6,26 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Toml;
-use campfire_common::{Tick, Ticks};
-use campfire_declare::Book;
+use campfire_common::{DeclaredName, Tick, Ticks};
+use campfire_declare::internals::BookLoad;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_script::{ScriptBudgets, ScriptLimits};
+use campfire_script::{ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
-    Capability, IdAllocator, Position, SimComponent, SimUpdate, SimWorld, StableId, Unpredicted,
+    Capability, IdAllocator, Position, SimComponent, SimWorld, StableId, Unpredicted,
 };
 use campfire_stats::*;
 use campfire_units::{
-    Body, BodyUnit, Dead, DeliveryEntity, MoveStep, TagBook, TagData, TurnStep, UnitTypeCore, Units,
+    Body, BodyUnit, Dead, DeliveryEntity, Life, MoveStep, PoolId, TagBook, TagData, TurnStep,
+    UnitTypeCore, Units,
 };
 use campfire_values::{
     Block, ModifierId, NameId, PackageIndex, Tag, TagProperties, TagSet, Team, TypeScope, UnitTags,
     UnitType,
 };
 use campfire_values::{
-    DeclaredName, EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling,
-    Stat,
+    EngineStat, FilterData, Number, Param, ParamRef, Rank, Ranked, Scalar, Scaling, Stat,
 };
 
 /// `value` sixteenths.
@@ -281,6 +281,27 @@ fn share(id: u16, source: Option<StableId>, value: Num, reapply: Reapply) -> App
 }
 
 #[test]
+fn a_restore_reaches_a_living_unit_with_no_life_and_no_dead_one() {
+    // A mode that names no life pool gives a unit health and mana as plain pools, and no life: it
+    // lives until it dies. Of its 250 mana, 100 spent leaves 150; a restore of 30 brings it to
+    // 180, unscaled. Once dead, a restore of 30 leaves it at 180.
+    let caster = stats(&[(stat("mana"), Num::int(250), Num::ZERO)]);
+    let mut game = stat_match(&[caster]);
+    let entity = unit(&mut game, 0);
+    game.step();
+    assert!(game.get::<Life>(entity).is_none());
+    let id = *game.get::<StableId>(entity).unwrap();
+    game.get_mut::<Pools>(entity)
+        .unwrap()
+        .take(MANA, Num::int(100));
+    Stats::restore(&mut game, id, MANA, Num::int(30));
+    assert_eq!(amounts(&game, entity, MANA), (Num::int(180), Num::int(250)));
+    game.entity_mut(entity).insert(Dead);
+    Stats::restore(&mut game, id, MANA, Num::int(30));
+    assert_eq!(amounts(&game, entity, MANA), (Num::int(180), Num::int(250)));
+}
+
+#[test]
 fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
     // Armor 10 + 2 a level, at level 3: 10 + 2 × 2 = 14.
     let armored = StatsData::from([(
@@ -376,13 +397,15 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let slowing = |source, value| share(0, source, value, Reapply::Refresh);
     // Cuts of 0.25 and 0.5 from two sources, each `slowed`: only the larger counts. An add of
     // 0.5 that stacks, twice: +1.
-    let mut carried = CarriedMut::of(&mut game, unit).unwrap();
-    carried.apply(slowing(first, sixteenths(4)));
-    carried.apply(slowing(second, sixteenths(8)));
-    for _ in 0..2 {
-        let add = share(1, first, sixteenths(8), Reapply::Stack);
-        carried.apply(add);
-    }
+    CarriedMut::with(&mut game, unit, |carried| {
+        carried.apply(slowing(first, sixteenths(4)));
+        carried.apply(slowing(second, sixteenths(8)));
+        for _ in 0..2 {
+            let add = share(1, first, sixteenths(8), Reapply::Stack);
+            carried.apply(add);
+        }
+    })
+    .unwrap();
     game.step();
     // (4 + 1) × (1 − 0.5) = 2.5 m/s, 2.5 × 2²⁴ ÷ 30 = 1 398 101.33 bits a tick, to 1 398 101.
     let step = |game: &Match| game.get::<MoveStep>(unit).unwrap().get();
@@ -393,12 +416,12 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
 
     // A pct of 0.25: 5 × 1.25 × 0.5 = 3.125 m/s, 3.125 × 2²⁴ ÷ 30 = 1 747 626.67 bits, to
     // 1 747 627. An untagged cut of 1.5 counts as 1: no step at all.
-    let mut carried = CarriedMut::of(&mut game, unit).unwrap();
-    carried.apply(share(2, first, sixteenths(4), Reapply::Refresh));
+    let refreshed = share(2, first, sixteenths(4), Reapply::Refresh);
+    CarriedMut::with(&mut game, unit, |carried| carried.apply(refreshed)).unwrap();
     game.step();
     assert_eq!(step(&game), Num::from_bits(1_747_627));
-    let mut carried = CarriedMut::of(&mut game, unit).unwrap();
-    carried.apply(share(3, first, sixteenths(24), Reapply::Refresh));
+    let refreshed = share(3, first, sixteenths(24), Reapply::Refresh);
+    CarriedMut::with(&mut game, unit, |carried| carried.apply(refreshed)).unwrap();
     game.step();
     assert_eq!(step(&game), Num::ZERO);
 
@@ -406,11 +429,13 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // every `slowed` modifier without effect, so no cut counts: 5 × 1.25 = 6.25, past the limit
     // of 5: 5 × 2²⁴ ÷ 30 = 2 796 202.67 bits, to 2 796 203. `slowed` leaves the unit's tags, and
     // the immunity joins them.
-    let mut carried = CarriedMut::of(&mut game, unit).unwrap();
-    carried.remove(ModifierId::new(3), first);
     let immune = share(4, first, Num::ZERO, Reapply::Stack);
-    carried.apply(immune.clone());
-    carried.apply(immune);
+    CarriedMut::with(&mut game, unit, |carried| {
+        carried.remove(ModifierId::new(3), first);
+        carried.apply(immune.clone());
+        carried.apply(immune);
+    })
+    .unwrap();
     game.step();
     assert_eq!(step(&game), Num::from_bits(2_796_203));
     assert_eq!(tags(&game).tags, TagSet::from([sight, slow_immune]));
@@ -420,15 +445,17 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // cut of 0.25 counts, whatever order the modifiers are in. 6.25 × 0.75 = 4.6875 m/s, 4.6875
     // × 2²⁴ ÷ 30 = 2 621 440 bits exactly.
     let both = share(5, second, sixteenths(4), Reapply::Refresh);
-    CarriedMut::of(&mut game, unit).unwrap().apply(both);
+    CarriedMut::with(&mut game, unit, |carried| carried.apply(both)).unwrap();
     game.step();
     assert_eq!(step(&game), Num::from_bits(2_621_440));
     assert_eq!(tags(&game).tags, TagSet::from([sight, slowed, slow_immune]));
 
     // The immunity ends: the held cuts act again, the larger 0.5: 3.125 m/s.
-    let mut carried = CarriedMut::of(&mut game, unit).unwrap();
-    carried.remove(ModifierId::new(4), first);
-    carried.remove(ModifierId::new(5), second);
+    CarriedMut::with(&mut game, unit, |carried| {
+        carried.remove(ModifierId::new(4), first);
+        carried.remove(ModifierId::new(5), second);
+    })
+    .unwrap();
     game.step();
     assert_eq!(step(&game), Num::from_bits(1_747_627));
     assert_eq!(tags(&game).immune, TagSet::NONE);
@@ -588,7 +615,7 @@ fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_
 #[test]
 fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let mut game = Match::server(&[Capability::Stats], scripts);
     // Before any system builds its queries, as a predicting client registers it, so that a unit
     // it holds can be marked below.
@@ -645,8 +672,8 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
             .unwrap()
     });
     let holder = entity(&game, carrier);
-    let mut presence_carrier = CarriedMut::of(&mut game, holder).unwrap();
-    presence_carrier.apply(aura(presence, carrier, Num::int(2)));
+    let presence_aura = aura(presence, carrier, Num::int(2));
+    CarriedMut::with(&mut game, holder, |carried| carried.apply(presence_aura)).unwrap();
     let holds = |game: &Match, id: StableId| {
         let modifiers = game.get::<Modifiers>(entity(game, id)).unwrap();
         modifiers
@@ -690,9 +717,10 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     game.step();
     assert!(!holds(&game, far));
     let carrier_entity = entity(&game, carrier);
-    CarriedMut::of(&mut game, carrier_entity)
-        .unwrap()
-        .remove(ward, None);
+    CarriedMut::with(&mut game, carrier_entity, |carried| {
+        carried.remove(ward, None);
+    })
+    .unwrap();
     // As on a predicting client, whose sim runs only on the units it predicts: a carrier it only
     // holds, as the server sent it, carries its aura still to the ally it predicts, and the pass
     // writes none of the held carrier's own modifiers.
@@ -704,12 +732,14 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     assert_eq!(game.get::<Modifiers>(held), Some(&as_sent));
     game.entity_mut(held).remove::<Unpredicted>();
     // The carrier's aura ends, and the far ally holds it no more; applied again, it holds it.
-    let mut presence_carrier = CarriedMut::of(&mut game, held).unwrap();
-    presence_carrier.remove(presence, Some(carrier));
+    CarriedMut::with(&mut game, held, |carried| {
+        carried.remove(presence, Some(carrier));
+    })
+    .unwrap();
     game.step();
     assert!(!holds(&game, far));
-    let mut presence_carrier = CarriedMut::of(&mut game, held).unwrap();
-    presence_carrier.apply(aura(presence, carrier, Num::int(2)));
+    let presence_aura = aura(presence, carrier, Num::int(2));
+    CarriedMut::with(&mut game, held, |carried| carried.apply(presence_aura)).unwrap();
     game.step();
     assert!(holds(&game, far));
     // The carrier dies: its aura goes, with its own modifiers.
@@ -722,7 +752,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
 #[test]
 fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let mut game = Match::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);
@@ -765,7 +795,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
 #[test]
 fn a_grant_holds_its_modifier_at_its_rank_until_granted_no_more() {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let mut game = Match::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), Num::int(6));
     book.load_into(&mut game);
@@ -886,7 +916,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     assert_eq!(restored.get::<UnitStats>(copy), Some(&UnitStats::default()));
     assert_eq!(restored.get::<UnitTags>(copy), Some(&UnitTags::default()));
     game.step();
-    restored.run_schedule(SimUpdate);
+    restored.step();
     for (world, entity) in [(&game, walker), (&restored, copy)] {
         let stats = world.get::<UnitStats>(entity).unwrap();
         assert_eq!(stats.values()[speed.index()], Num::int(2));

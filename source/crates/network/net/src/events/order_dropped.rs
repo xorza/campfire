@@ -7,7 +7,7 @@ use tracing::warn;
 /// The client dropped an order to `units` units, the first of them `unit`, whose payload passes
 /// the session's max length, with its action.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct OrderDropped {
+pub(crate) struct OrderDropped {
     pub unit: StableId,
     pub units: usize,
     #[serde(deserialize_with = "LogLine::json")]

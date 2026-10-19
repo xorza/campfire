@@ -13,6 +13,7 @@ use std::env;
 use std::net::SocketAddr;
 use std::path::Path;
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
@@ -22,27 +23,26 @@ use bevy_ecs::query::With;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
+use campfire_common::ErrorReport;
 use campfire_common::{ExitStatus, TlsKey};
 use campfire_declare::CapabilitySet;
-use campfire_log::{ErrorReport, LogEvent, Logging};
+use campfire_log::{LogEvent, Logging};
 use campfire_net::{
-    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, PendingRestore,
-    Publisher, RestoredSession, ServerDir, ServerSetup, SimServerPlugins, SimServerWorld,
-    StopRequest, exit_code,
+    Hosting, JournalFailed, KeyFile, Listening, LobbyOpenError, NetProtocol, Os, Publisher,
+    RestoredSession, ServerBots, ServerDir, ServerFrameSystems, ServerSetup, SessionOpening,
+    SimServerPlugins, SimServerWorld, StopRequest, exit_code,
 };
 use campfire_package_disk::PackageDir;
-use campfire_protocol::Signer;
 use campfire_quic::{AddressLimit, LinkTimes, PortMap, ServerSocket};
 use campfire_store::StopSignals;
 use lightyear::prelude::Linked;
 use lightyear::prelude::server::{RawServer, Start};
 use tracing::{error, info};
-use zeroize::Zeroizing;
 
 use crate::args::{Args, CommandLine};
 use crate::error::StartError;
 use crate::opening::error::OpeningError;
-use crate::opening::{Opened, Opening, OpeningSetup, RestoreWindow};
+use crate::opening::{Opening, OpeningSetup, RestoreWindow};
 
 mod args;
 mod error;
@@ -77,7 +77,7 @@ fn run() -> Result<ExitCode, StartError> {
     let line =
         Logging::command_line::<CommandLine>(env::args_os()).map_err(StartError::CommandLine)?;
     let args = Args::from(line);
-    let bots = args.server_bots()?;
+    let scripts = args.bot_scripts()?;
     let Args {
         data,
         times,
@@ -90,10 +90,13 @@ fn run() -> Result<ExitCode, StartError> {
         ..
     } = args;
     let data = ServerDir::open(&data)?;
-    let key = KeyFile::read_or_create(&data.layout().key_file(), Os::SYSTEM.entropy)?;
+    let signer = Arc::new(KeyFile::read_or_create(
+        &data.layout().key_file(),
+        Os::SYSTEM.entropy,
+    )?);
     // The socket binds before any session opens, so a port in use ends the start and leaves the
     // data as it was.
-    let secret = Zeroizing::new(key.secret_bytes());
+    let secret = signer.secret_bytes();
     let socket = ServerSocket::bind(address, &secret, LinkTimes::CAMPFIRE)?;
     drop(secret);
     let tls_key = socket.tls_key();
@@ -103,16 +106,16 @@ fn run() -> Result<ExitCode, StartError> {
     };
     // A waiting session names its own map, which its restore, or its end, replays.
     let waiting = Opening::waiting(&data).map_err(no_session)?;
-    let journal = waiting.as_ref().map(|session| &session.private.terms.map);
+    let journal = waiting.as_ref().map(|session| &session.terms().map);
     let map = Opening::map(journal, map).map_err(no_session)?;
     let packages = PackageDir::new(&mode).mode_packages(map.as_ref())?;
-    bots.check(&packages.unit_types())?;
+    let bots = ServerBots::new(scripts.slots, scripts.takeover.as_ref(), &packages)?;
     let capabilities = packages.manifest().capabilities;
     let setup = OpeningSetup {
         data: &data,
         packages,
         server: ServerSetup {
-            key,
+            signer,
             times,
             os: Os::SYSTEM,
         },
@@ -124,11 +127,12 @@ fn run() -> Result<ExitCode, StartError> {
     let local = socket.local_address();
     let limit = AddressLimit::new(opening.seats(), opening.server().times.grace);
     let listening = announce(&opening, &mode, local, tls_key);
+    let session = opening.session.span();
     let mut app = server_app(opening, data, listening, capabilities, stop);
     let port_map = port_map.then(|| PortMap::start(local)).flatten();
     let server = app.world_mut().spawn((RawServer, socket.serve(limit))).id();
     app.world_mut().trigger(Start { entity: server });
-    let exit = app.run();
+    let exit = session.in_scope(|| app.run());
     // The endpoint closes each link before the mapping goes, whose delete can wait a UPnP
     // request's 10 s, which no client waits for (15-quic-transport.md, A server maps its own port).
     drop(app);
@@ -158,11 +162,10 @@ fn open(
     waiting: Option<RestoredSession>,
     setup: OpeningSetup<'_>,
 ) -> Result<Opening, OpeningError> {
-    let signer = Signer::new(setup.server.key, Os::SYSTEM.entropy);
     let publisher = Publisher {
         data: setup.data,
         packages: &setup.packages,
-        signer: &signer,
+        signer: &setup.server.signer,
     };
     let window = RestoreWindow {
         length: setup.server.times.restore_window,
@@ -192,10 +195,7 @@ fn server_app(
         },
         ScheduleRunnerPlugin::run_loop(NetProtocol::FRAME),
     ));
-    match opening.session {
-        Opened::New(lobby) => app.insert_resource(*lobby),
-        Opened::Restored(restore) => app.insert_resource(*restore),
-    };
+    app.world_mut().open_session(opening.session);
     app.insert_resource(data);
     app.add_observer(
         move |added: On<'_, '_, Add, Linked>, servers: Query<'_, '_, (), With<RawServer>>| {
@@ -212,7 +212,7 @@ fn server_app(
             }
         })
             .chain()
-            .after(PendingRestore::run),
+            .after(ServerFrameSystems::Saves),
     );
     app
 }
@@ -222,7 +222,7 @@ fn server_app(
 /// now, for a new session, that it opened, of the mode `mode`.
 fn announce(opening: &Opening, mode: &Path, address: SocketAddr, tls_key: TlsKey) -> Listening {
     let terms = opening.terms();
-    if let Opened::New(_) = opening.session {
+    if let SessionOpening::New(_) = opening.session {
         info!(
             session = %terms.session_id(),
             %address,

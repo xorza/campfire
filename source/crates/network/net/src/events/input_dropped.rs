@@ -4,7 +4,7 @@ use tracing::warn;
 
 /// A bot dropped its mode input `name`, whose payload passes the session's max length.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct InputDropped {
+pub(crate) struct InputDropped {
     pub name: String,
 }
 

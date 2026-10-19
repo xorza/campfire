@@ -1,7 +1,6 @@
-use campfire_client_files::{Blend, MaterialTexture};
+use campfire_client_files::{Blend, MaterialExtras, TeamPaint};
 use campfire_codec::Json;
 use campfire_store::internals::Scratch;
-use campfire_values::PackagePath;
 
 use super::*;
 use crate::gltf::glb_builder::{CLAMP_TO_EDGE, REPEAT};
@@ -164,7 +163,7 @@ fn an_hlod_s_materials_are_its_shaders_and_its_parts_what_its_look_reads() {
     let document = &tank.glb.document;
     // The materials, each of the model's name and its index: the hull's diffuse (255, 128,
     // 0) as linear light; its texture `Rock.tga` is the archives' `Rock.dds`, clamped in
-    // `u`; the flash adds, which glTF's material cannot say, so it has a material file, and
+    // `u`; the flash adds, which glTF's material cannot say, so it has its extras, and
     // its texture `Gone.tga` is in no archive, so its white is `MissingTexture`'s
     // `0x7FFF00FF`: red and blue 1, green 0, alpha 127 / 255.
     let half = f32::from(u16::try_from(srgb::light(128)).unwrap()) / 65_536.0;
@@ -206,7 +205,9 @@ fn an_hlod_s_materials_are_its_shaders_and_its_parts_what_its_look_reads() {
             ),
         ]
     );
-    // Each is rough, not metallic and of no specular, and lit, as each shader modulates.
+    // Each is rough, not metallic and of no specular, and lit, as each shader modulates; the
+    // flash alone has extras, of its additive blend and no depth write, which its extension
+    // names.
     for material in &document.materials {
         let pbr = &material.pbr;
         let extensions = &material.extensions;
@@ -214,7 +215,20 @@ fn an_hlod_s_materials_are_its_shaders_and_its_parts_what_its_look_reads() {
         assert_eq!(extensions.specular.factor, 0.0);
         assert!(extensions.unlit.is_none());
     }
-    assert_eq!(document.extensions_used, ["KHR_materials_specular"]);
+    let extras: Vec<Option<MaterialExtras>> = (document.materials.iter())
+        .map(|material| material.extensions.extras)
+        .collect();
+    let flash = MaterialExtras {
+        blend: Blend::Add,
+        depth_write: false,
+        depth_bias: 0,
+        team: TeamPaint::NONE,
+    };
+    assert_eq!(extras, [None, None, None, Some(flash)]);
+    assert_eq!(
+        document.extensions_used,
+        ["CAMPFIRE_material_extras", "KHR_materials_specular"]
+    );
     assert_eq!(document.images[0].uri, "../textures/art/textures/rock.ktx2");
     assert_eq!(
         (document.samplers[0].wrap_s, document.samplers[0].wrap_t),
@@ -225,24 +239,6 @@ fn an_hlod_s_materials_are_its_shaders_and_its_parts_what_its_look_reads() {
     assert_eq!(
         tank.missing_textures,
         BTreeSet::from(["gone.tga".to_owned()])
-    );
-    assert_eq!(tank.materials.len(), 1);
-    assert_eq!(tank.materials[0].name, "tank_3");
-    assert_eq!(
-        tank.materials[0].file,
-        MaterialFile {
-            base_color: [1.0, 0.0, 1.0, 127.0 / 255.0],
-            texture: None,
-            emissive: [1.0, 0.0, 0.0],
-            metallic: 0.0,
-            roughness: 1.0,
-            specular: 0.0,
-            unlit: false,
-            blend: Blend::Add,
-            depth_write: false,
-            depth_bias: 0,
-            double_sided: true,
-        }
     );
 
     // What the default look reads: each sub-object the HLOD keeps, the box with no node.
@@ -724,50 +720,41 @@ fn each_pass_and_detail_stage_is_a_layer_over_the_one_before() {
         glow.iter()
             .all(|primitive| primitive.attributes.color.is_none())
     );
-    // Each layer's material has its file, of its blend and its depth bias over the one
+    // Each layer's material has its extras, of its blend and its depth bias over the one
     // under it: the detail stage's, white and unlit, multiplying for scale and adding for
     // add, 1 up; the second pass's, lit by its white vertex material, additive, 2 up. The
     // first pass's two say all in glTF.
-    let file = |name: &str| {
-        builder
+    let document = &builder.glb.document;
+    let material = |name: &str| {
+        let at = document
             .materials
             .iter()
-            .find(|material| material.name == name)
-            .map(|material| &material.file)
+            .position(|material| material.name == name);
+        &document.materials[at.unwrap()]
     };
-    let layer = |blend, unlit, depth_bias| MaterialFile {
-        base_color: [1.0; 4],
-        texture: Some(MaterialTexture {
-            path: PackagePath::parse("client/textures/art/textures/rock.ktx2").unwrap(),
-            clamp_u: false,
-            clamp_v: false,
-        }),
-        emissive: [0.0; 3],
-        metallic: 0.0,
-        roughness: 1.0,
-        specular: 0.0,
-        unlit,
+    let extras = |name: &str| material(name).extensions.extras;
+    let unlit = |name: &str| material(name).extensions.unlit.is_some();
+    let layer = |blend, depth_bias| MaterialExtras {
         blend,
         depth_write: false,
         depth_bias,
-        double_sided: false,
+        team: TeamPaint::NONE,
     };
     let materials: Vec<usize> = glow.iter().map(|primitive| primitive.material).collect();
     assert_eq!(materials, [0, 1, 2, 3, 4]);
-    assert_eq!((file("layers_0"), file("layers_1")), (None, None));
-    assert_eq!(file("layers_2"), Some(&layer(Blend::Multiply, true, 1)));
-    assert_eq!(file("layers_3"), Some(&layer(Blend::Add, true, 1)));
-    assert_eq!(file("layers_4"), Some(&layer(Blend::Add, false, 2)));
+    assert_eq!((extras("layers_0"), extras("layers_1")), (None, None));
+    assert_eq!(extras("layers_2"), Some(layer(Blend::Multiply, 1)));
+    assert_eq!(extras("layers_3"), Some(layer(Blend::Add, 1)));
+    assert_eq!(extras("layers_4"), Some(layer(Blend::Add, 2)));
+    let lit = ["layers_2", "layers_3", "layers_4"].map(unlit);
+    assert_eq!(lit, [true, true, false]);
     // The fade: its first pass of no colors; its second of its own, alpha 64 of 255, by
     // alpha, 1 up.
     assert_eq!(fade[0].attributes.color, None);
     let colors = builder.glb.colors_of(fade[1].attributes.color.unwrap());
     assert_eq!(colors, [255, 255, 255, 64].repeat(3));
-    let alpha = MaterialFile {
-        texture: None,
-        ..layer(Blend::Alpha, false, 1)
-    };
-    assert_eq!(file("layers_6"), Some(&alpha));
+    assert_eq!(extras("layers_6"), Some(layer(Blend::Alpha, 1)));
+    assert!(material("layers_6").pbr.texture.is_none());
     // A detail function no shipped shader uses is refused.
     let mut odd = glow_mesh;
     odd.shaders[0].detail_color = 3;

@@ -1,3 +1,4 @@
+use crate::coordinate;
 use crate::direction::FRACTION;
 use crate::wide_division::WideDivision;
 
@@ -28,7 +29,7 @@ impl UnitDivisor {
     )]
     #[inline(always)]
     pub(crate) fn unit(self, axis: i128) -> i64 {
-        debug_assert!(axis.unsigned_abs() < 1 << 47);
+        debug_assert!(axis.unsigned_abs() < coordinate::WIDEST.unsigned_abs());
         let magnitude = u128::from(axis.unsigned_abs() as u64) << self.shift;
         let WideDivision { quotient, rest } = WideDivision::of(magnitude, u128::from(self.root));
         let (quotient, twice) = (quotient as u64, (rest as u64) << 1);

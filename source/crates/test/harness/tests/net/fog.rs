@@ -7,14 +7,14 @@ use campfire_common::Tick;
 use campfire_harness::{InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
 use campfire_navigation::{Progress, Route};
+use campfire_net::internals::TickHashes;
 use campfire_net::{
-    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock, TickHashes,
+    CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, MatchClock,
 };
 use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
-use campfire_units::{Owner, SpawnPoint, Units, UnitsWorld};
+use campfire_units::{GroundPoint, Owner, SeenBy, SpawnPoint, Units, UnitsWorld};
 use campfire_values::{Relation, Relations, Team};
-use campfire_vision::SeenBy;
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
 /// Frames of match: one tick each.
@@ -22,8 +22,10 @@ const MATCH_FRAMES: usize = 90;
 /// A move along the hero's line from its spawn, z = −2.
 const fn move_to(x: i64) -> OrdersAction {
     OrdersAction::Move {
-        x: Num::int(x),
-        z: Num::int(-2),
+        to: GroundPoint {
+            x: Num::int(x),
+            z: Num::int(-2),
+        },
     }
 }
 

@@ -1,30 +1,33 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
+use std::sync::Arc;
 
 use bevy_ecs::system::{Query, RunSystemOnce};
 use bevy_ecs::world::World;
+use campfire_abilities::CastData;
 use campfire_actions::{
-    ActionData, ActionSlots, ActionTarget, Actions, DoesData, EffectData, EffectTo, HealFields,
-    SlotKind, SlotTimes, Targeting, UseGroup,
+    ActionData, ActionSlots, ActionTarget, Actions, EffectData, EffectTo, SlotKind, SlotTimes,
+    Targeting, UseGroup,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Action, Match, Order};
-use campfire_combat::OnDeath;
+use campfire_combat::{HealEffectData, OnDeath};
 use campfire_common::{PlayerSlot, Tick};
+use campfire_declare::MatchFacts;
 use campfire_items::*;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
 use campfire_players::{OutOfPlay, Players, PlayersWorld, ResourceAmount};
-use campfire_script::{Filter, ScriptBudgets, ScriptLimits};
+use campfire_script::{Filter, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, StableId};
-use campfire_stats::{Hold, Life, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
-use campfire_units::{Dead, Owner, UnitTypeCore, Units};
+use campfire_stats::{Hold, ModifierData, Modifiers, StatChange, StatOp, StatRule, Stats};
+use campfire_units::{Dead, Life, Owner, UnitTypeCore, Units};
 use campfire_values::{
     ActionId, Block, ModifierId, NameId, PackageIndex, ResourceId, Team, UnitType,
 };
-use campfire_values::{Number, Ranked, Scalar, Share, Stat};
+use campfire_values::{ItemId, Number, Ranked, Scalar, Share, Stat};
 use campfire_visibility::OutView;
 use serde::Deserialize;
 use serde::de::{IntoDeserializer, value};
@@ -77,18 +80,18 @@ impl Carrier {
         Stats::load_modifier(game, PackageIndex::MODE, "might", &might, None);
         let might = Stats::modifier(game, PackageIndex::MODE, "might").unwrap();
         let heal = EffectData {
-            does: DoesData::Heal(HealFields {
+            does: Arc::new(HealEffectData {
                 amount: Number::Value(Scalar::Int(50)),
             }),
             to: EffectTo::Source,
         };
         let drink = ActionData {
             on_resolve: vec![heal],
-            ..ActionData::cast(Targeting::None)
+            ..ActionData::of(Targeting::None, CastData::default())
         };
         let flash = ActionData {
             cooldown_ms: Some(Ranked::One(Number::Value(Scalar::Int(1000)))),
-            ..ActionData::cast(Targeting::None)
+            ..ActionData::of(Targeting::None, CastData::default())
         };
         let mut load = |name: &str, data: &ActionData| {
             let id = Actions::load(game, PackageIndex::MODE, name, data, None, 1).unwrap();
@@ -164,7 +167,10 @@ impl Carrier {
 fn carrier_match() -> Match {
     Match::server(
         &Carrier::CAPABILITIES,
-        ScriptBudgets::new(ScriptLimits::ROOMY, 1),
+        ScriptPools {
+            limits: ScriptLimits::ROOMY,
+            players: 1,
+        },
     )
 }
 
@@ -419,7 +425,13 @@ struct ShopMatch {
 
 fn shop_match() -> ShopMatch {
     let declared = [Capability::Stats, Capability::Items];
-    let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 2));
+    let mut game = Match::server(
+        &declared,
+        ScriptPools {
+            limits: ScriptLimits::ROOMY,
+            players: 2,
+        },
+    );
     let gold = ResourceId::new(0);
     let item = |cost: i64, components: &[u32], stack: u32| ItemSpec {
         cost: vec![ResourceAmount {
@@ -603,10 +615,10 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
     // sees, and none once it sees what a spectator sees, as each capability's orders refuse it.
     let out = game.player_entity(PlayerSlot::new(0)).unwrap();
     game.entity_mut(out).insert(OutOfPlay);
-    game.insert_resource(OutView::Spectators);
+    game.resource_mut::<MatchFacts>().out = OutView::Spectators;
     step(&mut game, &[buy(2, shop)]);
     assert_eq!(gold(&game), 300);
-    game.insert_resource(OutView::Team);
+    game.resource_mut::<MatchFacts>().out = OutView::Team;
     step(&mut game, &[buy(2, shop)]);
     assert_eq!(gold(&game), 250);
 
@@ -628,11 +640,15 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
 
     // The nearest shop whose buyers select the hero, in its reach or not, as a panel shows it:
     // of the two at the origin, 5 m and a bit away, the lower stable id; then one at (8, 0, 0),
-    // 3 m away; and once the hero is dead, the one that serves the dead.
+    // 3 m away, which spawned after the first search; the two at the origin again once it
+    // despawns; and once the hero is dead, the one that serves the dead.
     let nearest = |game: &mut Match| ShopRead::nearest(game, hero);
     assert_eq!(nearest(&mut game), Some(shop));
     let near = Mode::spawn(&mut game, living, (8, 0, 0), Team::new(0), ());
     assert_eq!(nearest(&mut game), Some(near));
+    let entity = game.unit_entity(near);
+    game.entity_mut(entity).despawn();
+    assert_eq!(nearest(&mut game), Some(shop));
     game.insert_parts(hero, Dead);
     assert_eq!(nearest(&mut game), Some(shop));
 }

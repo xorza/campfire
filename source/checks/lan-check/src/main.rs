@@ -27,12 +27,13 @@ use std::process::{Command, ExitCode, Stdio};
 use std::time::SystemTime;
 
 use campfire_bots::OrderScript;
+use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
-use campfire_log::{ErrorReport, Logging};
+use campfire_log::Logging;
 use campfire_net::{
     ClientLayout, LinkLost, Listening, ServerLayout, SessionWritten, TicksCaughtUp,
 };
-use campfire_protocol::SessionLog;
+use campfire_protocol::{LogReplay, SessionLog};
 use campfire_store::{DurableFile, InputFile, RunDir};
 use campfire_verifier::Verified;
 use tracing::{error, info};
@@ -74,10 +75,12 @@ const PACKAGES: &str = "test";
 /// its script ends. The walker's cast hits whoever stands within 2 m; the runner's names no
 /// target, which its ability needs, so the sim refuses it, but the order is an input all the same.
 const SCRIPTS: [&str; 2] = [
-    "end = 330\n[[order]]\ntick = 20\nmove = [2, 0]\n[[order]]\ntick = 50\nmove = [-1, 2]\n\
-     [[order]]\ntick = 70\ncast = 0\n[[order]]\ntick = 300\nmove = [0, 1]\n",
-    "end = 330\n[[order]]\ntick = 20\nmove = [-2, 0]\n[[order]]\ntick = 50\nmove = [1, -2]\n\
-     [[order]]\ntick = 70\ncast = 0\n[[order]]\ntick = 300\nmove = [0, -1]\n",
+    "end = 330\n[[order]]\ntick = 20\naction.orders.move.to = [2, 0]\n[[order]]\ntick = 50\naction.orders.move.to = [-1, 2]\n\
+     [[order]]\ntick = 70\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 300\naction.orders.move.to = [0, 1]\n",
+    "end = 330\n[[order]]\ntick = 20\naction.orders.move.to = [-2, 0]\n[[order]]\ntick = 50\naction.orders.move.to = [1, -2]\n\
+     [[order]]\ntick = 70\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 300\naction.orders.move.to = [0, -1]\n",
 ];
 
 fn main() -> ExitCode {
@@ -204,12 +207,13 @@ fn published_inputs(dir: &Path, server: &ProcessLog) -> Result<Vec<LoggedInput>,
     let path = host_layout(dir, SessionKind::Lan).published_log(written.session);
     let bytes = InputFile::read(&path, SessionLog::MAX_FILE_LEN).map_err(CheckError::Read)?;
     let published = SessionLog::decode(&bytes).map_err(CheckError::SessionLog)?;
-    let ticks = published.next_tick();
-    let mut log = published.rewound();
     let mut inputs = Vec::new();
-    while log.next_tick() < ticks {
-        let tick = log.next_tick();
-        inputs.extend(log.seal_tick().map(|input| LoggedInput {
+    let Some(mut replay) = LogReplay::of(&published) else {
+        return Ok(inputs);
+    };
+    while !replay.done(&published) {
+        let tick = replay.next_tick();
+        inputs.extend(replay.seal_tick(&published).map(|input| LoggedInput {
             slot: input.slot,
             stamp: input.stamp,
             tick,

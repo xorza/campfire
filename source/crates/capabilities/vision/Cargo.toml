@@ -34,6 +34,7 @@ campfire-values.workspace = true
 bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
 serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 campfire-vision = { workspace = true, features = ["internals"] }
@@ -41,7 +42,6 @@ campfire-vision = { workspace = true, features = ["internals"] }
 [lints]
 workspace = true
 
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]
 bench = false
 

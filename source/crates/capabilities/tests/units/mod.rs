@@ -1,36 +1,37 @@
 use std::collections::BTreeMap;
 use std::panic::{self, AssertUnwindSafe};
 
-use bevy_ecs::bundle::Bundle;
+use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::change_detection::{CHECK_TICK_THRESHOLD, DetectChangesMut};
 use bevy_ecs::component::ComponentId;
-use campfire_actions::{ActionProgress, ActionSlots};
+use campfire_actions::{ActionSlots, ProgressDues};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_combat::internals::Armed;
-use campfire_combat::{Combat, RecentAttackers};
+use campfire_combat::{Combat, CombatRefusal, RecentAttackers};
 use campfire_common::{PlayerSlot, Tick};
 use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Metric};
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::OnPath;
-use campfire_script::internals::FailureKind;
+use campfire_script::MatchNames;
 use campfire_script::{
-    ApiError, CapabilityRefusal, NameKind, NumError, ScriptBudgets, ScriptLimits, ScriptList,
-    ScriptValue, Unit, View,
+    ApiError, CapabilityRefusal, NumError, ScriptLimits, ScriptList, ScriptPools, ScriptValue,
+    Unit, View,
 };
+use campfire_script::{FailureKind, Filter};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, Restoring, SimComponent, SimTick, SimWorld,
     SnapshotError, StableId,
 };
-use campfire_stats::{Level, Life, StatRule, Stats, StatsRefusal};
+use campfire_stats::{Level, StatRule, Stats, StatsRefusal};
 use campfire_units::*;
 use campfire_values::{
-    Block, PackageIndex, PathId, Scalar, Stat, Team, TeamSet, TypeScope, UnitTags, UnitType,
+    Block, Named, PackageIndex, Param, PathId, Scalar, Stat, Tag, Team, TeamSet, TypeScope,
+    UnitTags, UnitType,
 };
-use campfire_vision::SeenBy;
 
 /// A match of stats, combat and vision, with no grid, so the teams that see each unit are the
 /// `SeenBy` a test sets, its own team's else; with the stat book a weapon reads, and its types:
@@ -38,10 +39,10 @@ use campfire_vision::SeenBy;
 /// `bare`, of 1 life and no slot.
 fn units_match() -> Match {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
     let mut game = Match::server(&declared, scripts);
-    Units::name_kinds(&game, &[], &["health", "mana"], &[]);
+    Units::name_kinds(&mut game, &[], &["health", "mana"], &[]);
     Combat::load_weapon_stats(&mut game);
     let core = UnitTypeCore::default();
     let melee = Units::load_type(&mut game, TypeScope::Mode, "melee", &core);
@@ -53,7 +54,12 @@ fn units_match() -> Match {
 }
 
 /// A `melee` unit of `team` at `pos` with `parts`.
-fn melee(game: &mut Match, pos: impl Into<Vec3>, team: Team, parts: impl Bundle) -> StableId {
+fn melee(
+    game: &mut Match,
+    pos: impl Into<Vec3>,
+    team: Team,
+    parts: impl Bundle<Effect: NoBundleEffect>,
+) -> StableId {
     Mode::spawn_named(game, "melee", pos, team, parts)
 }
 
@@ -155,11 +161,11 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     let refusals = [
         (
             r#"ctx.find(of, of.pos, 5, "friends")"#,
-            ApiError::Unknown(NameKind::Filter),
+            ApiError::Unknown(Filter::NAMES),
         ),
         (
             r#"ctx.find(of, of.pos, 5, "enemies:boss")"#,
-            ApiError::Unknown(NameKind::Tag),
+            ApiError::Unknown(Tag::NAMES),
         ),
         (
             r#"ctx.find(of, of.pos, -1, "all")"#,
@@ -272,6 +278,24 @@ fn vectors_add_subtract_and_scale_each_rounded_once() {
     let read: Vec<Vec3> = read.into_iter().map(ScriptValue::cast::<Vec3>).collect();
     assert_eq!(read[0], vector(13_421_773, -10_066_330));
     assert_eq!(read[1], read[2]);
+    // A vector reads its components, (1, 2.5, −3), and is equal only to a vector of the same.
+    let parts = Units::read(
+        &mut game,
+        "let v = vector(1, num(5) / 2, -3); [v.x, v.y, v.z, v == vector(1, num(5) / 2, -3), v != v, v == vector(1, 2, -3)]",
+        of,
+    )
+    .unwrap()
+    .cast::<ScriptList>();
+    let components: Vec<Num> = parts[..3].iter().map(|part| part.clone().cast()).collect();
+    assert_eq!(
+        components,
+        [Num::ONE, Num::int(5) / Num::int(2), Num::int(-3)]
+    );
+    let compared: Vec<_> = parts[3..]
+        .iter()
+        .map(|part| part.as_bool().unwrap())
+        .collect();
+    assert_eq!(compared, [true, false, false]);
     // 0.8 × 2³⁹ is about 4.4 × 10¹¹, within a number's 5.5 × 10¹¹; its double is past it, and
     // the sum fails the call.
     let error = Units::read(&mut game,
@@ -338,19 +362,19 @@ fn a_read_fills_again_the_rows_whose_parts_changed_came_or_went() {
     let enemies =
         |game: &mut Match| Unit::ids(value(game, of, r#"ctx.find(of, of.pos, 100, "enemies")"#));
     assert_eq!(enemies(&mut game), [other]);
-    assert!(value(&mut game, other, "of.alive").as_bool().unwrap());
+    assert!(value(&mut game, other, "of.is_alive").as_bool().unwrap());
 
     let entity = game.unit_entity(other);
     game.entity_mut(entity).insert(Dead);
-    assert!(!value(&mut game, other, "of.alive").as_bool().unwrap());
+    assert!(!value(&mut game, other, "of.is_alive").as_bool().unwrap());
     assert_eq!(enemies(&mut game), []);
     game.entity_mut(entity).remove::<Dead>();
-    assert!(value(&mut game, other, "of.alive").as_bool().unwrap());
+    assert!(value(&mut game, other, "of.is_alive").as_bool().unwrap());
     assert_eq!(enemies(&mut game), [other]);
 
     // The entity with no team is no unit until it gains one; one that loses its team is none.
     game.entity_mut(loose_entity).insert(Team::new(1));
-    assert!(value(&mut game, loose, "of.alive").as_bool().unwrap());
+    assert!(value(&mut game, loose, "of.is_alive").as_bool().unwrap());
     game.entity_mut(entity).remove::<Team>();
     assert_eq!(enemies(&mut game), []);
     assert!(game.non_send::<View>().row(other).is_none());
@@ -395,9 +419,9 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let fallen = melee(&mut game, (9, 0, 1), Team::new(1), Dead);
     let bare = spawn_named(&mut game, "bare", (9, 0, 2), Team::new(1));
     let entity = game.unit_entity(of);
-    game.get_mut::<ActionProgress>(entity)
-        .unwrap()
-        .set_attack_target(Some(near));
+    ProgressDues::change_unit(&mut game, of, |progress, dues| {
+        progress.set_attack_target(Some(near), dues);
+    });
 
     // At 30 ticks a second, 2000 ms is 60 ticks: in tick 100, a strike in tick 40 is recent, and
     // one in tick 39 is not; a dead attacker is never returned.
@@ -413,8 +437,8 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let read = |game: &mut Match, expression: &str| Units::read(game, expression, of);
     let value = |game: &mut Match, expression: &str| read(game, expression).unwrap();
     assert!(value(&mut game, "of.is_avatar").as_bool().unwrap());
-    assert!(value(&mut game, "of.alive").as_bool().unwrap());
-    assert_eq!(value(&mut game, "of.owner").as_int(), Some(2));
+    assert!(value(&mut game, "of.is_alive").as_bool().unwrap());
+    assert_eq!(value(&mut game, "of.owner.slot").as_int(), Some(2));
     // A match with no `navigation` binds no `unit.path`.
     assert!(read(&mut game, "of.path").is_err());
     // A unit's own team sees it.
@@ -448,13 +472,17 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
         Num::int(2)
     );
     assert!(
-        value(&mut game, "of.target.is_enemy_of(of)")
+        value(&mut game, "of.attack_target.is_enemy_of(of)")
             .as_bool()
             .unwrap()
     );
-    assert!(!value(&mut game, "of.target.is_avatar").as_bool().unwrap());
     assert!(
-        value(&mut game, "of.target != () && of != ()")
+        !value(&mut game, "of.attack_target.is_avatar")
+            .as_bool()
+            .unwrap()
+    );
+    assert!(
+        value(&mut game, "of.attack_target != () && of != ()")
             .as_bool()
             .unwrap()
     );
@@ -465,7 +493,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert_eq!(Unit::ids(attackers), [near, recent]);
 
     let refusals = [
-        ("of.params.gold", ApiError::Unknown(NameKind::Param)),
+        ("of.params.gold", ApiError::Unknown(Param::NAMES)),
         ("of.recent_attackers(-1)", ApiError::NegativeTime),
     ];
     for (expression, refusal) in refusals {
@@ -475,14 +503,18 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let error = Units::probe(&mut game, "fn probe(ctx, of) { of.attack_range }", bare).unwrap_err();
     assert_eq!(
         error.kind(),
-        FailureKind::Api(ApiError::NoAttack),
+        FailureKind::Api(CombatRefusal::NoAttack.refused()),
         "{error:?}"
     );
 
     // A target the view did not read is `()`.
     let entity = game.unit_entity(near);
     game.despawn(entity);
-    assert!(value(&mut game, "of.target == ()").as_bool().unwrap());
+    assert!(
+        value(&mut game, "of.attack_target == ()")
+            .as_bool()
+            .unwrap()
+    );
 }
 
 #[test]
@@ -525,18 +557,14 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     );
 
     let refusals = [
-        (
-            of,
-            r#"of.stat("spirit")"#,
-            ApiError::Unknown(NameKind::Stat),
-        ),
+        (of, r#"of.stat("spirit")"#, ApiError::Unknown(StatId::NAMES)),
         (bare, "of.level", StatsRefusal::NoStats.refused()),
         (bare, r#"of.stat("armor")"#, StatsRefusal::NoStats.refused()),
         (of, r#"of.pool("mana")"#, StatsRefusal::NoPool.refused()),
         (
             of,
             r#"of.pool_max("rage")"#,
-            ApiError::Unknown(NameKind::Pool),
+            ApiError::Unknown(PoolId::NAMES),
         ),
         (
             shell,
@@ -578,19 +606,15 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
         types.load(scope, origin, &data)
     });
     assert_eq!(repeated, Err(TypesError::Repeated("grunt".to_owned())));
-    let view = game.non_send::<View>();
+    let names = game.resource::<MatchNames>();
     assert_eq!(
         (
-            view.names().named((TypeScope::Mode, "grunt")),
-            view.names().named((TypeScope::Mode, "tower"))
+            names.named((TypeScope::Mode, "grunt")),
+            names.named((TypeScope::Mode, "tower"))
         ),
         (Some(first), Some(second))
     );
-    assert_eq!(
-        view.names().named::<UnitType>((TypeScope::Mode, "wolf")),
-        None
-    );
-    let names = view.names();
+    assert_eq!(names.named::<UnitType>((TypeScope::Mode, "wolf")), None);
     let types = names.table::<UnitType>().unwrap();
     assert_eq!(
         types.named((TypeScope::Package(PackageIndex::new(1)), "grunt")),
@@ -601,7 +625,6 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
         None
     );
     assert_ne!(theirs, first);
-    drop(names);
     // Each type's origin: its package and its name there.
     Units::seal_once(&mut game);
     let origins = game.resource::<TypeOriginBook>();
@@ -718,3 +741,38 @@ mod status_tags;
 mod tag_book;
 mod unit_grid;
 mod unit_types;
+
+#[test]
+fn a_timed_life_ends_with_the_tick_before_its_end_also_after_a_restore() {
+    // A life that ends at time 3 despawns as tick 2 ends: it lives through ticks 0, 1 and 2. The
+    // index of the lives that end gives the unit due at tick 2 alone.
+    let lived = |restore: bool| {
+        let mut game = units_match();
+        let id = Mode::spawn_named(
+            &mut game,
+            "unit",
+            (0, 0, 0),
+            Team::new(0),
+            Lifespan::until(Tick::new(3)),
+        );
+        game.step();
+        if restore {
+            // A restore's write of the unit pushes it as a spawn's does.
+            let mut snapshot = Vec::new();
+            game.snapshot(&mut snapshot);
+            let mut fresh = units_match();
+            Release::clear(&mut fresh);
+            fresh.restore(&snapshot).unwrap();
+            game = fresh;
+        }
+        let mut alive = Vec::new();
+        for _ in 1..5 {
+            alive.push(game.entity_of(id).is_some());
+            game.step();
+        }
+        alive
+    };
+    // Before ticks 1, 2, 3 and 4: alive, alive, gone, gone.
+    assert_eq!(lived(false), [true, true, false, false]);
+    assert_eq!(lived(true), [true, true, false, false]);
+}

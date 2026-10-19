@@ -4,7 +4,7 @@ use crate::domain_hasher::HashOutput;
 use crate::secret::Secret;
 
 /// The seed of one log segment. It stays secret until the segment is published.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SegmentSeed(Secret<32>);
 

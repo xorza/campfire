@@ -1,3 +1,3 @@
 fn on_interval(ctx, m) {
-    ctx.damage(m.carrier, m.carrier.pool_max("health") * ctx.p.burn_share, "magic");
+    ctx.damage(m.carrier, "magic", m.carrier.pool_max("health") * ctx.params.burn_share);
 }

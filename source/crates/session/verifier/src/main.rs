@@ -6,8 +6,9 @@
 use std::env;
 use std::process::ExitCode;
 
+use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
-use campfire_log::{ErrorReport, LogEvent, Logging};
+use campfire_log::{LogEvent, Logging};
 use campfire_verifier::{Verified, verify_file};
 use tracing::error;
 

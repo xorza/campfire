@@ -1,8 +1,10 @@
+use campfire_declare::{Section, SectionTable};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
-use campfire_stats::Level;
-use campfire_values::{DeclaredName, NameId, Names, NamesError, Rank};
+use campfire_common::DeclaredName;
+use campfire_units::NeededLevel;
+use campfire_values::{NameId, Names, NamesError, Rank};
 use serde::Deserialize;
 
 use crate::error::SlotKindsError;
@@ -102,7 +104,7 @@ impl SlotKinds {
 
     /// The level of the `level` track that `rank`, from 1, of an action in `kind` needs; none
     /// when the kind gives its ranks no levels.
-    pub fn level_of(&self, kind: SlotKind, rank: Rank) -> Option<Level> {
+    pub fn level_of(&self, kind: SlotKind, rank: Rank) -> Option<NeededLevel> {
         let levels = self.kinds[kind.index()].ranks.as_ref()?.levels()?;
         Some(levels[rank.index()])
     }
@@ -115,6 +117,11 @@ impl SlotKinds {
             .is_none()
             .then_some(Rank::FIRST)
     }
+}
+
+impl Section for SlotKinds {
+    const TABLE: SectionTable = SectionTable::Mode;
+    const KEY: &'static str = "slots";
 }
 
 #[cfg(test)]

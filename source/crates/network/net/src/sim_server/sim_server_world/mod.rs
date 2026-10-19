@@ -1,25 +1,32 @@
 use bevy_app::AppExit;
-use bevy_ecs::world::{Mut, World};
-use campfire_log::{ErrorReport, LogEvent};
+use bevy_ecs::world::World;
+use campfire_common::ErrorReport;
+use campfire_log::LogEvent;
+use campfire_protocol::SessionTerms;
 use campfire_runner::{Session, SessionWorld};
 use campfire_sim::SimWorld;
-use tracing::error;
+use tracing::{Span, error, info_span};
 
 use crate::events::session_written::SessionWritten;
 use crate::faults::Faults;
 use crate::faults::error::SnapshotWriteError;
 use crate::faults::fault::Fault;
-use crate::match_clock::MatchClock;
-use crate::sim_server::Reload;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::door::Door;
 use crate::sim_server::journal_watch::JournalWatch;
+use crate::sim_server::lobby::Lobby;
+use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::server_signer::ServerSigner;
+use crate::sim_server::server_phase::ServerPhase;
+use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::SessionDir;
 
 /// What the sim server module gives a world, for every crate.
 pub trait SimServerWorld {
+    /// Opens the server's session: `opening`'s lobby, open to its players from the next frame
+    /// on, or the session it restores in the next frame.
+    fn open_session(&mut self, opening: SessionOpening);
+
     /// Ends the session before the next tick, as the mode ended the match or aborted when it did
     /// not: logs the record of the checkpoint on its thread first; then the result, which the
     /// server key signs; reveals the seed; and from then on runs no tick and logs nothing, as each
@@ -42,6 +49,39 @@ pub trait SimServerWorld {
     fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit>;
 }
 
+/// The session a server opens: a new one, its lobby open to its players, or the one a stop
+/// ended, to restore. A session past the restore window, or one that ended, has its log
+/// published instead, and a new one opens.
+#[derive(Debug)]
+pub enum SessionOpening {
+    New(Box<Lobby>),
+    Restored(Box<PendingRestore>),
+}
+
+impl SessionOpening {
+    /// The session's terms.
+    pub fn terms(&self) -> &SessionTerms {
+        match self {
+            Self::New(lobby) => lobby.terms(),
+            Self::Restored(restore) => restore.session.terms(),
+        }
+    }
+
+    /// The root span of the session's server, which names the session in each line its thread
+    /// logs inside it, as its app runs there.
+    pub fn span(&self) -> Span {
+        info_span!("session", id = %self.terms().session_id())
+    }
+
+    /// The setup of the server that opens it.
+    pub fn server(&self) -> &ServerSetup {
+        match self {
+            Self::New(lobby) => lobby.server(),
+            Self::Restored(restore) => &restore.server,
+        }
+    }
+}
+
 /// Whether the server's owner asked it to stop, as a local server's client does as it ends.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StopRequest {
@@ -60,24 +100,36 @@ pub(crate) trait SimServerWorldCrate {
 }
 
 impl SimServerWorld for World {
+    fn open_session(&mut self, opening: SessionOpening) {
+        let phase = match opening {
+            SessionOpening::New(lobby) => {
+                self.insert_resource(*lobby);
+                ServerPhase::Lobby
+            }
+            SessionOpening::Restored(restore) => {
+                self.insert_resource(*restore);
+                ServerPhase::Restoring
+            }
+        };
+        ServerPhase::go(self, phase);
+    }
+
     fn end_session(&mut self) -> Result<(), SnapshotWriteError> {
         if self.contains_resource::<Checkpoints>() {
             Checkpoints::settle(self)?;
             self.remove_resource::<Checkpoints>();
         }
         let result = self.session_result();
-        self.resource_scope(|world, mut session: Mut<'_, Session>| {
-            let signer = &world.resource::<ServerSigner>().0;
-            session
-                .record_result(result, signer)
-                .expect("the server's own result holds");
-            session.reveal_seed();
-        });
+        let mut session = self.resource_mut::<Session>();
+        session
+            .record_result(result)
+            .expect("the server's own result holds");
+        session.reveal_seed();
         Ok(())
     }
 
     fn reload_wanted(&self) -> bool {
-        self.contains_resource::<Reload>()
+        ServerPhase::now(self) == ServerPhase::Reloading
     }
 
     fn exit_due(&mut self, stop: StopRequest) -> Option<AppExit> {
@@ -85,7 +137,10 @@ impl SimServerWorld for World {
         if let Some(exit) = Faults::apply(self) {
             return Some(exit);
         }
-        if !self.contains_resource::<MatchClock>() {
+        if !matches!(
+            ServerPhase::now(self),
+            ServerPhase::Running | ServerPhase::Reloading
+        ) {
             return (stop == StopRequest::Asked).then_some(AppExit::Success);
         }
         if self.resource::<Session>().log().result().is_none() {
@@ -103,11 +158,17 @@ impl SimServerWorld for World {
         if let Some(exit) = Faults::apply(self) {
             return Some(exit);
         }
-        let session = self.resource::<Session>();
-        let id = session.log().session_id();
+        let log = self.resource::<Session>().log();
+        let id = log.session_id();
+        let revealed = log
+            .revealed_seeds()
+            .expect("a session that ends reveals its seed");
+        let last = revealed
+            .seed(log.segment())
+            .expect("the seeds reach the last segment");
         let hash = self.state_hash();
         let data = self.resource::<ServerDir>();
-        Some(match SessionDir::publish(data, session.log()) {
+        Some(match SessionDir::publish(data, id, last) {
             Ok(file) => {
                 SessionWritten {
                     session: id,
@@ -131,7 +192,7 @@ impl SimServerWorldCrate for World {
         self.resource_mut::<Session>()
             .load(segment)
             .expect("a save of the session's log");
-        self.insert_resource(Reload);
+        ServerPhase::go(self, ServerPhase::Reloading);
         Ok(())
     }
 }
@@ -140,10 +201,8 @@ impl SimServerWorldCrate for World {
 pub(crate) mod internals {
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
-    use campfire_bots::{BotScript, OrderScript};
     use campfire_common::{PlayerSlot, Tick};
     use campfire_runner::SessionWorld;
-    use campfire_units::UnitTypeBook;
 
     use crate::faults::Faults;
     use crate::faults::fault::Fault;
@@ -193,9 +252,7 @@ pub(crate) mod internals {
         }
 
         fn planned_bots(&self, slots: Vec<SlotBot>, next: Tick) -> Vec<PlayerSlot> {
-            let types = self.resource::<UnitTypeBook>().types();
-            let script = |script: &OrderScript| BotScript::new(script, types).unwrap();
-            let planned = BotDriver::planned(slots, self.session().log(), next, script);
+            let planned = BotDriver::planned(slots, self.session().log(), next);
             planned.iter().map(|driven| driven.slot).collect()
         }
 

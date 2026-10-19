@@ -15,7 +15,7 @@ pub struct PlacedUnit {
 
 /// The path a placed unit is on, and the end it walks it from, if it walks it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct PlacedPath {
+pub(crate) struct PlacedPath {
     pub(crate) path: PathId,
     pub(crate) from: Option<PathEnd>,
 }

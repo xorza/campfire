@@ -1,14 +1,14 @@
 use bevy_ecs::system::{Local, Query, Res};
-use campfire_actions::{ActionProgress, ActionSlots, SlotTimes, SlotsMut, UseGroup};
+use campfire_actions::{ProgressIndexes, SlotsMut, UseGroup};
 use campfire_players::{PlayerResources, PlayerRowsMut, TickCommands};
 use campfire_sim::EntityIndex;
 use campfire_units::Owner;
 
 use crate::inventory::{CarrierSlots, Inventory};
 use crate::item_book::ItemBook;
-use crate::item_id::ItemId;
 use crate::items_action::ItemsAction;
 use crate::shopping::Shopping;
+use campfire_values::ItemId;
 
 /// The tick's orders that buy, sell or swap items.
 #[derive(Debug)]
@@ -22,11 +22,7 @@ type Carriers<'w, 's> = Query<
         &'static Owner,
         &'static mut Inventory,
         &'static UseGroup,
-        Option<(
-            &'static mut ActionSlots,
-            &'static mut SlotTimes,
-            &'static mut ActionProgress,
-        )>,
+        Option<SlotsMut>,
     ),
 >;
 
@@ -50,14 +46,16 @@ impl TradeOrders {
         shopping: Shopping<'_, '_>,
         mut resources: PlayerRowsMut<'_, '_, PlayerResources>,
         mut units: Carriers<'_, '_>,
+        mut indexes: ProgressIndexes<'_>,
         (mut given_up, mut before): (Local<'_, Vec<u32>>, Local<'_, Vec<Option<ItemId>>>),
     ) {
         orders.for_each(|order| {
             let action = order.action;
             for &unit in order.units {
-                let Some(Ok((owner, mut inventory, &group, mut slots))) =
-                    index.get(unit).map(|entity| units.get_mut(entity))
-                else {
+                let Some(entity) = index.get(unit) else {
+                    continue;
+                };
+                let Ok((owner, mut inventory, &group, slots)) = units.get_mut(entity) else {
                     continue;
                 };
                 if !order.controls(*owner) {
@@ -69,12 +67,9 @@ impl TradeOrders {
                 inventory.note(&mut before);
                 match action {
                     ItemsAction::Swap { from, to } => {
-                        let carrier = slots.as_mut().map(|(slots, times, progress)| CarrierSlots {
-                            unit: SlotsMut {
-                                slots,
-                                times,
-                                progress,
-                            },
+                        let carrier = slots.map(|held| CarrierSlots {
+                            unit: held,
+                            dues: indexes.of(unit, entity),
                             group,
                         });
                         inventory.swap_with(from, to, carrier);
@@ -114,13 +109,10 @@ impl TradeOrders {
                         }
                     }
                 }
-                if let Some((slots, times, progress)) = &mut slots {
+                if let Some(held) = slots {
                     let carrier = CarrierSlots {
-                        unit: SlotsMut {
-                            slots,
-                            times,
-                            progress,
-                        },
+                        unit: held,
+                        dues: indexes.of(unit, entity),
                         group,
                     };
                     inventory.follow(&book, carrier, &before);

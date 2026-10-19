@@ -1,15 +1,16 @@
 use std::ffi::OsString;
 use std::fs::{self, FileType};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use crate::durable_dir::DurableDir;
 use crate::input_file::error::ReadError;
 use crate::path_error::PathError;
 
 /// A directory's entries, sorted by their names' bytes, so a walk meets them in the same order
 /// on every OS, each with its kind as the entry itself is, a link not followed. No call asks
 /// whether a path exists: a caller lists the directory once, and every name it finds comes from
-/// one moment.
+/// one moment. A directory that `DurableDir::remove` is removing is gone from a listing.
 #[derive(Debug)]
 pub struct DirEntries;
 
@@ -31,6 +32,21 @@ pub enum EntryKind {
 }
 
 impl DirEntries {
+    /// The path of the file or directory the link at `link` leads to, through every link on the
+    /// way, for a caller that means a link's target, as a read follows none; `Missing` when it
+    /// leads nowhere.
+    pub fn link_target(link: &Path) -> Result<PathBuf, PathError<ReadError>> {
+        fs::canonicalize(link)
+            .map_err(|error| {
+                if error.kind() == io::ErrorKind::NotFound {
+                    ReadError::Missing
+                } else {
+                    ReadError::Read(error)
+                }
+            })
+            .map_err(PathError::at(link))
+    }
+
     /// The entries of the directory at `path`; `Missing` when there is none, `NotDir` when the
     /// path names another kind of entry.
     pub fn read(path: &Path) -> Result<Vec<DirEntry>, PathError<ReadError>> {
@@ -51,11 +67,12 @@ impl DirEntries {
         let mut read = Vec::new();
         for entry in entries {
             let entry = entry.map_err(ReadError::Read)?;
+            let name = entry.file_name();
+            if DurableDir::is_tombstone(&name) {
+                continue;
+            }
             let kind = EntryKind::of(entry.file_type().map_err(ReadError::Read)?);
-            read.push(DirEntry {
-                name: entry.file_name(),
-                kind,
-            });
+            read.push(DirEntry { name, kind });
         }
         read.sort_unstable_by(|a, b| a.name.cmp(&b.name));
         Ok(read)

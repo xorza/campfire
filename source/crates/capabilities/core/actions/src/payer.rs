@@ -1,18 +1,18 @@
 use campfire_players::{PlayerResources, ResourceAmount};
-use campfire_stats::{PoolCost, PoolMetersMut};
+use campfire_units::{PoolCost, PoolPayer};
 
 /// What a unit pays an action's cost with, as its `Purse` reads it: its pools, and the resources
 /// of the player that owns it, when the match keeps players' resources.
 #[derive(Debug)]
-pub struct Payer<'a> {
-    pools: PoolMetersMut<'a>,
+pub struct Payer<'a, P> {
+    pools: P,
     resources: Option<&'a mut PlayerResources>,
 }
 
-impl<'a> Payer<'a> {
+impl<'a, P: PoolPayer> Payer<'a, P> {
     /// The payer of a unit of `pools`, whose player holds `resources`: none for a unit no player
     /// owns, or in a match that keeps no players' resources.
-    pub const fn of(pools: PoolMetersMut<'a>, resources: Option<&'a mut PlayerResources>) -> Self {
+    pub const fn of(pools: P, resources: Option<&'a mut PlayerResources>) -> Self {
         Payer { pools, resources }
     }
 

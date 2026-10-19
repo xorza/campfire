@@ -1,4 +1,5 @@
 use std::any::TypeId;
+use std::num::NonZeroU32;
 
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
@@ -12,7 +13,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use super::*;
 use crate::host_rule::{Either, OnAny};
+use crate::sim_tick::SimTick;
 use crate::sim_world::SimWorld;
+use crate::sim_world_builder::SimWorldBuilder;
+use crate::tick_rate::TickRate;
+use campfire_common::SegmentSeed;
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
 struct Health(Num);
@@ -51,10 +56,15 @@ fn new_world() -> World {
 }
 
 fn registry() -> StateRegistry {
-    let mut registry = StateRegistry::new();
-    registry.register_component::<Position>();
-    registry.register_component::<Health>();
-    registry
+    types().build()
+}
+
+/// The types of `registry`, to register more.
+fn types() -> StateRegistryBuilder {
+    let mut types = StateRegistry::builder();
+    types.register_component::<Position>();
+    types.register_component::<Health>();
+    types
 }
 
 fn allocate(world: &mut World) -> StableId {
@@ -400,10 +410,11 @@ fn flawed_snapshots_are_refused() {
     }
 
     // "test.extra" sorts between the others; "zz.last" sorts after all of them.
-    let registers: [fn(&mut StateRegistry); 2] = [Extra::register, Last::register];
+    let registers: [fn(&mut StateRegistryBuilder); 2] = [Extra::register, Last::register];
     for extra in registers {
-        let mut wider = registry();
+        let mut wider = types();
         extra(&mut wider);
+        let wider = wider.build();
         let mut world = World::new();
         assert_eq!(
             wider.restore(&valid, &mut world).err(),
@@ -461,11 +472,12 @@ impl SimComponent for Mark {
 fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
     // Armor sits on an entity with health alone, its own `Host`; a mark too, as `host` says of a
     // type whose own host is any; and armor needs a position beside it.
-    let mut hosts = registry();
+    let mut hosts = types();
     hosts.register_component::<Armor>();
     hosts.register_component::<Mark>();
     hosts.host::<Mark, Healthy>();
     hosts.require::<Armor, Position>();
+    let hosts = hosts.build();
     // A kind's rule names its kind; one of two kinds names both; any entity names none.
     let mut kinds = Vec::new();
     assert!(!OnAny::kinds(&mut kinds) && kinds.is_empty());
@@ -516,9 +528,10 @@ fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
     );
     // A rule another module checks names the entity it finds, or none for the whole match.
     let ruled = |check: fn(&World) -> Result<(), Breach>| {
-        let mut ruled = registry();
+        let mut ruled = types();
         ruled.register_component::<Armor>();
         ruled.add_check::<Armor>(check);
+        let ruled = ruled.build();
         let mut world = new_world();
         world.init_resource::<SimTick>();
         let id = allocate(&mut world);
@@ -555,8 +568,9 @@ fn a_value_off_its_kind_or_without_a_part_its_holder_needs_fails_its_restore() {
 fn a_resource_the_snapshot_lacks_is_refused() {
     // A world without `Extra` snapshots it as absent, and every state holds each resource, so no
     // world restores it: no system meets the resource missing.
-    let mut with_extra = registry();
+    let mut with_extra = types();
     Extra::register(&mut with_extra);
+    let with_extra = with_extra.build();
     let mut plain = plain_world();
     plain.init_resource::<SimTick>();
     let mut bytes = Vec::new();
@@ -590,11 +604,11 @@ impl SimResource for Last {
 }
 
 trait Register {
-    fn register(registry: &mut StateRegistry);
+    fn register(registry: &mut StateRegistryBuilder);
 }
 
 impl<R: SimResource> Register for R {
-    fn register(registry: &mut StateRegistry) {
+    fn register(registry: &mut StateRegistryBuilder) {
         registry.register_resource::<R>();
     }
 }
@@ -623,7 +637,7 @@ fn a_hash_sink_takes_a_values_encoding_as_its_bytes() {
 #[test]
 #[should_panic(expected = "state type \"test.health\" registered twice")]
 fn duplicate_names_are_refused() {
-    let mut registry = registry();
+    let mut registry = types();
     registry.register_component::<Health>();
 }
 
@@ -633,9 +647,18 @@ fn duplicate_names_are_refused() {
 )]
 fn a_type_registered_once_its_world_tracks_its_changes_is_refused() {
     // The tracking holds each type by its place, which a type registered later would move.
-    let mut registry = registry();
-    registry.track(&mut plain_world(), &mut StateDelta::default());
-    registry.register_component::<Clock>();
+    let mut world = World::new();
+    SimWorldBuilder::new(
+        &mut world,
+        SegmentSeed::ZERO,
+        TickRate::new(NonZeroU32::new(30).unwrap()),
+    )
+    .build();
+    world.track(&mut StateDelta::default());
+    SimWorldBuilder::reopen(&mut world)
+        .parts()
+        .registry
+        .register_component::<Clock>();
 }
 
 #[test]
@@ -910,13 +933,13 @@ impl SimComponent for Clock {
 
 #[test]
 fn a_copy_keeps_a_required_component_removed_before_its_requirer_changes() {
-    let mut registry = StateRegistry::new();
+    let mut registry = StateRegistry::builder();
     registry.register_component::<Timed>();
     registry.register_component::<Clock>();
     let mut world = new_world();
     let id = allocate(&mut world);
     world.spawn((id, Timed(1)));
-    let mut following = Following::new(registry, world);
+    let mut following = Following::new(registry.build(), world);
     following.step(|world| {
         world.entity_mut(entity(world, id)).remove::<Clock>();
     });
@@ -995,10 +1018,10 @@ fn a_types_layout_fingerprint_moves_with_its_encoding_alone() {
     // variants in another order, and a wider number in a decode that refuses every draw, each
     // move its fingerprint; the same layout under another type keeps it, and the others keep
     // theirs.
-    let layout = |register: fn(&mut StateRegistry)| {
-        let mut registry = StateRegistry::new();
+    let layout = |register: fn(&mut StateRegistryBuilder)| {
+        let mut registry = StateRegistry::builder();
         register(&mut registry);
-        registry.layout()
+        registry.build().layout()
     };
     let of = |layout: &[(&'static str, StateHash)], name| {
         layout
@@ -1007,25 +1030,25 @@ fn a_types_layout_fingerprint_moves_with_its_encoding_alone() {
             .map(|&(_, fingerprint)| fingerprint)
             .unwrap()
     };
-    let narrow = layout(StateRegistry::register_component::<Held<u32>>);
-    let again = layout(StateRegistry::register_component::<Held<Again>>);
+    let narrow = layout(StateRegistryBuilder::register_component::<Held<u32>>);
+    let again = layout(StateRegistryBuilder::register_component::<Held<Again>>);
     assert_eq!(of(&narrow, "test.layout"), of(&again, "test.layout"));
     let changes = [
         (
             narrow,
-            layout(StateRegistry::register_component::<Held<(u32, bool)>>),
+            layout(StateRegistryBuilder::register_component::<Held<(u32, bool)>>),
         ),
         (
-            layout(StateRegistry::register_component::<Held<Point>>),
-            layout(StateRegistry::register_component::<Held<Turned>>),
+            layout(StateRegistryBuilder::register_component::<Held<Point>>),
+            layout(StateRegistryBuilder::register_component::<Held<Turned>>),
         ),
         (
-            layout(StateRegistry::register_component::<Held<Pick>>),
-            layout(StateRegistry::register_component::<Held<Swapped>>),
+            layout(StateRegistryBuilder::register_component::<Held<Pick>>),
+            layout(StateRegistryBuilder::register_component::<Held<Swapped>>),
         ),
         (
-            layout(StateRegistry::register_component::<Held<Refused<u32>>>),
-            layout(StateRegistry::register_component::<Held<Refused<u64>>>),
+            layout(StateRegistryBuilder::register_component::<Held<Refused<u32>>>),
+            layout(StateRegistryBuilder::register_component::<Held<Refused<u64>>>),
         ),
     ];
     for (at, (before, after)) in changes.iter().enumerate() {

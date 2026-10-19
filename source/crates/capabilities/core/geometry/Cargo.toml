@@ -8,14 +8,12 @@ license.workspace = true
 internals = [
     "campfire-common/internals",
     "campfire-math/internals",
-    "campfire-sim/internals",
     "dep:criterion",
 ]
 
 [dependencies]
 campfire-common = { workspace = true, optional = true }
 campfire-math.workspace = true
-campfire-sim.workspace = true
 
 criterion = { workspace = true, optional = true }
 serde.workspace = true
@@ -28,7 +26,6 @@ campfire-geometry = { workspace = true, features = ["internals"] }
 [lints]
 workspace = true
 
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]
 bench = false
 

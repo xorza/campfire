@@ -1,5 +1,6 @@
 use std::ops::ControlFlow;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::system::{Local, Query, Res, ResMut, SystemParam};
 use campfire_declare::RoleForm;
@@ -15,6 +16,7 @@ use crate::aura_carriers::AuraCarriers;
 use crate::carried_mut::CarriedMut;
 use crate::held_modifiers::{Held, HeldModifiers};
 use crate::lifetime::Hold;
+use crate::modifier_dues::ModifierIndexes;
 use crate::modifier_params::ModifierParams;
 use crate::modifiers::Modifiers;
 use crate::modifiers::modifier_clocks::ModifierClocks;
@@ -32,6 +34,7 @@ type HeldUnits<'w, 's> = Query<
         Option<&'static UnitTags>,
         Option<&'static Owner>,
         (&'static mut Modifiers, &'static mut ModifierClocks),
+        Entity,
     ),
     (Without<Dead>, Without<Unpredicted>),
 >;
@@ -91,8 +94,9 @@ impl HeldPass {
         carriers: HeldCarriers<'_, '_>,
         unseen: UnseenSources<'_, '_>,
         mut held: Local<'_, Vec<Held>>,
-        mut near: UnitsNear<'_, '_>,
+        near: UnitsNear<'_>,
         auras: Res<'_, AuraCarriers>,
+        mut indexes: ModifierIndexes<'_>,
     ) {
         let StatBooks {
             modifiers: book,
@@ -150,8 +154,8 @@ impl HeldPass {
             }
         }
         held.sort_unstable();
-        for (&id, _, _, _, _, (modifiers, clocks), ..) in &mut units {
-            let mut carried = CarriedMut::new(modifiers, clocks);
+        for (&id, _, _, _, _, (modifiers, clocks), entity) in &mut units {
+            let mut carried = CarriedMut::new(modifiers, clocks, indexes.of(id, entity));
             let first = held.partition_point(|entry| entry.target < id);
             let mine = held[first..].iter().take_while(|entry| entry.target == id);
             let kept = |modifier, source| {

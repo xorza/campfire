@@ -1,5 +1,5 @@
 fn on_resolve(ctx, caster, target) {
-    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {
-        ctx.damage(unit, ctx.p.damage, "physical");
+    for unit in ctx.find(caster, caster.pos, ctx.params.radius, "enemies") {
+        ctx.damage(unit, "physical", ctx.params.damage);
     }
 }

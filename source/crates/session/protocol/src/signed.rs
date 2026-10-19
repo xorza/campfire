@@ -17,7 +17,7 @@ impl SignatureDomain {
 
 /// A record of session `session_id`, as its server signs it: the session's id, then the record.
 #[derive(Debug, Clone, Copy)]
-pub struct InSession<'a, T> {
+pub(crate) struct InSession<'a, T> {
     pub session_id: SessionId,
     pub record: &'a T,
 }

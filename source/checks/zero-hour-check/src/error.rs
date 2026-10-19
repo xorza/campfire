@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
-use campfire_codec::BinaryError;
+use campfire_codec::{BinaryError, TomlError};
 use campfire_import::ZeroHourError;
 use campfire_package::{ContentError, LoadError};
-use campfire_store::{DurableDirError, PathError, ReadError};
+use campfire_store::{DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
 /// Why the check did not run to its verdict.
@@ -33,4 +33,13 @@ pub(crate) enum CheckError {
     Read(#[from] ContentError),
     #[error("a grid of the imported package does not decode")]
     Decode(#[source] BinaryError),
+    #[error("the golden file does not read")]
+    GoldenRead(#[source] PathError<ReadError>),
+    /// The golden file's bytes are no UTF-8 text.
+    #[error("the golden file is no text")]
+    GoldenText,
+    #[error("the golden file is none the check reads")]
+    GoldenParse(#[source] TomlError),
+    #[error("the golden file does not write")]
+    GoldenWrite(#[source] PathError<DurableError>),
 }

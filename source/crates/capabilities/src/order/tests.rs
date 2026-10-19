@@ -1,5 +1,6 @@
-use campfire_items::ItemId;
 use campfire_math::Num;
+use campfire_units::GroundPoint;
+use campfire_values::ItemId;
 
 use super::*;
 
@@ -18,8 +19,10 @@ fn decode<A: CapabilityAction>(body: &[u8]) -> Option<(Vec<StableId>, A)> {
 #[test]
 fn orders_decode_exactly() {
     let walk = OrdersAction::Move {
-        x: Num::int(-3),
-        z: Num::from_bits(5),
+        to: GroundPoint {
+            x: Num::int(-3),
+            z: Num::from_bits(5),
+        },
     };
     let order = Order::one(id(4), walk);
     let body = order.encode();
@@ -86,14 +89,14 @@ fn orders_decode_exactly() {
     assert_eq!(commands[4].body, orders[4].encode());
 
     // A written payload follows what the buffer holds: 1 command, of capability 5 (`orders`),
-    // its 6 body bytes; then the learn's, of capability 13 (`progression`), its 4 bytes; then the
+    // its 6 body bytes; then the learn's, of capability 9 (`progression`), its 4 bytes; then the
     // move's payload, the body buffer reused.
     let mut out = vec![9];
     let mut body = Vec::new();
     attack.write_payload(&mut body, &mut out);
     assert_eq!(out, [9, 1, 5, 6, 1, 0xAC, 0x02, 1, 0xAC, 0x02]);
     orders[2].write_payload(&mut body, &mut out);
-    assert_eq!(out[10..], [1, 13, 4, 1, 4, 0, 2]);
+    assert_eq!(out[10..], [1, 9, 4, 1, 4, 0, 2]);
     order.write_payload(&mut body, &mut out);
     assert_eq!(out[17..], Order::payload(&[order]));
 }

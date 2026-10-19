@@ -15,6 +15,7 @@
 ## Planned
 
 - **Perks** grant modifiers and actions, each unit type listing those it may take, as Dota 2 gives each hero its talents, with one perk of a group, as its talent pairs.
+- **Tracks as data, planned.** With the slice that needs each: a track's points for each level as its data, and tracks on players as well as on units.
 
 ## Network
 

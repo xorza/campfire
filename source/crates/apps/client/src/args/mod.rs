@@ -2,24 +2,23 @@ use std::net::SocketAddr;
 use std::num::NonZeroU32;
 use std::path::PathBuf;
 
-use campfire_common::{MapName, PlayerSlot, TlsKey};
+use campfire_common::{DeclaredName, MapName, PlayerSlot, TlsKey};
 use campfire_mode::OptionValue;
-use campfire_net::SlotBotFile;
-use campfire_values::DeclaredName;
+use campfire_net::{JoinRole, SlotBotFile};
 use clap::Parser;
 use secp256k1::XOnlyPublicKey;
 
-use crate::args::error::{ServerAddressError, ServerBotError};
+use crate::args::error::{ServerAddressError, ServerBotError, TeamNameError};
 
 mod error;
 
 /// What the command line names: the orders file a bot plays, the player's key file, whether the
-/// player watches and the teams it watches, the mode to play and its map, and the server: as its
-/// listing gives it, or a local one, each with the data directory.
+/// player plays or watches and the teams it watches, the mode to play and its map, and the server:
+/// as its listing gives it, or a local one, each with the data directory.
 #[derive(Debug)]
 pub(crate) struct Args {
     pub(crate) bot: Option<PathBuf>,
-    pub(crate) spectate: bool,
+    pub(crate) role: JoinRole,
     pub(crate) watch: Vec<DeclaredName>,
     pub(crate) key: Option<PathBuf>,
     pub(crate) mode: PathBuf,
@@ -130,9 +129,14 @@ impl From<CommandLine> for Args {
                 data: line.data.expect("clap takes --local only with --data"),
             },
         };
+        let role = if line.spectate {
+            JoinRole::Watch
+        } else {
+            JoinRole::Play
+        };
         Self {
             bot: line.bot,
-            spectate: line.spectate,
+            role,
             watch: line.watch,
             key: line.key,
             mode: line.mode,
@@ -156,8 +160,8 @@ impl CommandLine {
     }
 
     /// The team `text` names, as the mode's teams are named.
-    fn team(text: &str) -> Result<DeclaredName, &'static str> {
-        DeclaredName::new(text).ok_or("no team's name")
+    fn team(text: &str) -> Result<DeclaredName, TeamNameError> {
+        DeclaredName::new(text).ok_or(TeamNameError)
     }
 
     /// The server bot `text` names; an error for a bot in slot 0, which the client plays.

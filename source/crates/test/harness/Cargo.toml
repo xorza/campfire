@@ -56,6 +56,8 @@ lightyear.workspace = true
 secp256k1.workspace = true
 
 [dev-dependencies]
+campfire-deliveries = { workspace = true, features = ["internals"] }
+campfire-interaction = { workspace = true, features = ["internals"] }
 campfire-verifier = { workspace = true, features = ["internals"] }
 
 [lints]
@@ -65,10 +67,14 @@ workspace = true
 name = "tests"
 path = "tests/mod.rs"
 
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]
 bench = false
 
 [[bench]]
 name = "harness"
+harness = false
+
+# Its own binary, as its counting allocator is the process's.
+[[bench]]
+name = "allocations"
 harness = false

@@ -1,4 +1,3 @@
-use std::any::TypeId;
 use std::mem::ManuallyDrop;
 use std::{fmt, thread};
 
@@ -8,26 +7,28 @@ use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
 
 use crate::id_allocator::IdAllocator;
+use crate::own_resources::OwnResources;
 use crate::sim_rng::SimRng;
 use crate::sim_tick::SimTick;
 use crate::sim_update::SimUpdate;
 use crate::stable_id::entity_index::EntityIndex;
 use crate::stable_id::state_changes::StateChanges;
 use crate::state_registry::StateRegistry;
+use crate::state_registry::builder::StateRegistryBuilder;
 use crate::state_registry::copy_queries::CopyQueries;
 use crate::tick_inputs::TickInputs;
 use crate::tick_rate::TickRate;
 
 /// A sim's world as it is built: the sim's resources in place, and the tick's schedule and the
 /// state registry that the installs fill. `build` puts both in the world, which then holds the
-/// whole match; a builder dropped before it panics, as its world would hold neither. Every sim world is built
-/// through one, a match's through the capabilities' match builder, so none lacks a part of the
-/// sim.
+/// whole match; a builder dropped before it panics, as its world would hold neither. Every sim
+/// world is built through one, a match's through the capabilities' match builder, so none lacks a
+/// part of the sim.
 #[must_use = "a match's build ends with `build`, which puts its schedule in its world"]
 pub struct SimWorldBuilder<'w> {
     world: &'w mut World,
     schedule: Schedule,
-    registry: StateRegistry,
+    registry: StateRegistryBuilder,
     unbuilt: Unbuilt,
 }
 
@@ -43,27 +44,25 @@ struct Unbuilt;
 pub struct SimParts<'a> {
     pub world: &'a mut World,
     pub schedule: &'a mut Schedule,
-    pub registry: &'a mut StateRegistry,
+    pub registry: &'a mut StateRegistryBuilder,
 }
 
 impl SimWorldBuilder<'_> {
-    /// The resources a match holds of its own, whatever its modules install: the sim's, those a
-    /// server's state registry puts in as it tracks the state's changes, and Bevy's world and
-    /// schedules.
-    pub const fn sim_resources() -> [TypeId; 11] {
-        [
-            TypeId::of::<SimTick>(),
-            TypeId::of::<TickRate>(),
-            TypeId::of::<SimRng>(),
-            TypeId::of::<IdAllocator>(),
-            TypeId::of::<EntityIndex>(),
-            TypeId::of::<TickInputs>(),
-            TypeId::of::<StateRegistry>(),
-            TypeId::of::<StateChanges>(),
-            TypeId::of::<CopyQueries>(),
-            TypeId::of::<Schedules>(),
-            TypeId::of::<DefaultQueryFilters>(),
-        ]
+    /// Visits, with `v`, the resources a match holds of its own, whatever its modules install:
+    /// the sim's, those a server's state registry puts in as it tracks the state's changes, and
+    /// Bevy's world and schedules.
+    pub fn own_resources<V: OwnResources + ?Sized>(v: &mut V) {
+        v.own::<SimTick>();
+        v.own::<TickRate>();
+        v.own::<SimRng>();
+        v.own::<IdAllocator>();
+        v.own::<EntityIndex>();
+        v.own::<TickInputs>();
+        v.own::<StateRegistry>();
+        v.own::<StateChanges>();
+        v.own::<CopyQueries>();
+        v.own::<Schedules>();
+        v.own::<DefaultQueryFilters>();
     }
 }
 
@@ -74,25 +73,7 @@ impl<'w> SimWorldBuilder<'w> {
         SimWorldBuilder {
             world,
             schedule: SimUpdate::schedule(),
-            registry: StateRegistry::new(),
-            unbuilt: Unbuilt,
-        }
-    }
-
-    /// Opens `world`, a sim world built before, again, for an install after the build, as a mode
-    /// installs into a match whose capabilities are in place.
-    pub fn reopen(world: &'w mut World) -> Self {
-        let schedule = world
-            .resource_mut::<Schedules>()
-            .remove(SimUpdate)
-            .expect("a built match holds the tick's schedule");
-        let registry = world
-            .remove_resource::<StateRegistry>()
-            .expect("a built match holds its state registry");
-        SimWorldBuilder {
-            world,
-            schedule,
-            registry,
+            registry: StateRegistry::builder(),
             unbuilt: Unbuilt,
         }
     }
@@ -125,7 +106,7 @@ impl<'w> SimWorldBuilder<'w> {
             panic!("the installs order the tick's systems: {problem}");
         }
         world.add_schedule(schedule);
-        world.insert_resource(registry);
+        world.insert_resource(registry.build());
     }
 }
 
@@ -163,11 +144,107 @@ impl fmt::Debug for SimParts<'_> {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use std::fmt;
+
+    use bevy_ecs::resource::Resource;
+    use bevy_ecs::schedule::{Schedule, Schedules};
+    use bevy_ecs::world::World;
     use campfire_schedule::StrictSchedule;
 
-    use crate::sim_world_builder::SimWorldBuilder;
+    use crate::sim_update::SimUpdate;
+    use crate::sim_world_builder::{SimWorldBuilder, Unbuilt};
+    use crate::stable_id::state_changes::StateChanges;
+    use crate::state_registry::StateRegistry;
+    use crate::state_registry::builder::StateRegistryBuilder;
 
-    impl SimWorldBuilder<'_> {
+    /// The build of a test's match left open after its declarations: its tick's schedule, which
+    /// holds none of its systems yet, and the end of its build, which installs those its books
+    /// call for once the test loaded them.
+    #[derive(Resource)]
+    pub(crate) struct OpenBuild {
+        schedule: Schedule,
+        finish: for<'a> fn(SimWorldBuilder<'a>),
+    }
+
+    impl OpenBuild {
+        pub(crate) const fn schedule_mut(&mut self) -> &mut Schedule {
+            &mut self.schedule
+        }
+    }
+
+    impl fmt::Debug for OpenBuild {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.debug_struct("OpenBuild")
+                .field("schedule", &self.schedule.label())
+                .finish_non_exhaustive()
+        }
+    }
+
+    impl<'w> SimWorldBuilder<'w> {
+        /// Ends the build with the tick's schedule left open, for a test that loads its books and
+        /// types after its declarations: `finish`, which ends with `build`, ends it as the first
+        /// tick begins, or as `finish_open` asks. The world holds the state registry meanwhile,
+        /// and no tick schedule, so nothing runs a tick of no system.
+        pub fn leave_open(self, finish: for<'a> fn(SimWorldBuilder<'a>)) {
+            let SimWorldBuilder {
+                world,
+                schedule,
+                registry,
+                unbuilt,
+            } = self;
+            unbuilt.defuse();
+            world.insert_resource(registry.build());
+            world.insert_resource(OpenBuild { schedule, finish });
+        }
+
+        /// Ends the build of `world` as its `finish` does, when `leave_open` left it open.
+        pub fn finish_open(world: &'w mut World) {
+            let Some(OpenBuild { schedule, finish }) = world.remove_resource::<OpenBuild>() else {
+                return;
+            };
+            let registry = SimWorldBuilder::registry_of(world);
+            finish(SimWorldBuilder {
+                world,
+                schedule,
+                registry,
+                unbuilt: Unbuilt,
+            });
+        }
+
+        /// The state types of `world`'s registry, which it gives up, to register more unless a
+        /// record of its changes holds them.
+        fn registry_of(world: &mut World) -> StateRegistryBuilder {
+            let recorded = world.contains_resource::<StateChanges>();
+            let registry = world.remove_resource::<StateRegistry>();
+            let registry = registry.expect("a sim world holds its state registry");
+            StateRegistryBuilder::reopened(registry, recorded)
+        }
+
+        /// Whether the build of `world` is open, as `leave_open` leaves it.
+        pub fn is_open(world: &World) -> bool {
+            world.contains_resource::<OpenBuild>()
+        }
+
+        /// Opens `world`, a sim world built before or left open, again, for an install after the
+        /// build, as a test's mode installs into a match whose books the test loaded piece by
+        /// piece.
+        pub fn reopen(world: &'w mut World) -> Self {
+            let schedule = match world.remove_resource::<OpenBuild>() {
+                Some(open) => open.schedule,
+                None => world
+                    .resource_mut::<Schedules>()
+                    .remove(SimUpdate)
+                    .expect("a built match holds the tick's schedule"),
+            };
+            let registry = SimWorldBuilder::registry_of(world);
+            SimWorldBuilder {
+                world,
+                schedule,
+                registry,
+                unbuilt: Unbuilt,
+            }
+        }
+
         /// Leaves Bevy's automatic sync points out of the tick's schedule: one orders the systems
         /// it lies between, so `build` then panics on every pair of systems that only a sync
         /// point keeps in order. A schedule keeps it through a reopen.
@@ -186,20 +263,44 @@ pub(crate) mod internals {
             } = self;
             unbuilt.defuse();
             world.add_schedule(schedule);
-            world.insert_resource(registry);
+            world.insert_resource(registry.build());
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::any::TypeId;
     use std::num::NonZeroU32;
     use std::panic;
 
+    use bevy_ecs::resource::Resource;
+
     use super::*;
+    use crate::sim_world::SimWorld;
     use crate::state_registry::state_delta::StateDelta;
 
+    /// The resources a visit of a build's own lists, by their ids.
+    #[derive(Debug, Default)]
+    struct OwnIds(Vec<TypeId>);
+
+    impl OwnResources for OwnIds {
+        fn own<R: Resource>(&mut self) {
+            self.0.push(TypeId::of::<R>());
+        }
+    }
+
     const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
+
+    /// What the end of an open build puts in, before its first tick runs.
+    #[derive(Resource, Debug)]
+    struct Finished;
+
+    /// The end of an open build, which marks its world.
+    fn finish(mut builder: SimWorldBuilder<'_>) {
+        builder.world().insert_resource(Finished);
+        builder.build();
+    }
 
     #[test]
     fn a_build_puts_its_schedule_in_the_world_and_one_dropped_unbuilt_panics() {
@@ -233,10 +334,26 @@ mod tests {
             .iter_resources()
             .filter_map(|(info, _)| info.type_id())
             .collect();
-        let mut own = SimWorldBuilder::sim_resources().to_vec();
+        let mut own = OwnIds::default();
+        SimWorldBuilder::own_resources(&mut own);
         held.sort_unstable();
-        own.sort_unstable();
-        assert_eq!(held, own);
+        own.0.sort_unstable();
+        assert_eq!(held, own.0);
+
+        // A build left open holds the registry and no tick schedule, until its first tick ends
+        // it as its `finish` says, before the tick runs.
+        let mut open = World::new();
+        SimWorldBuilder::new(&mut open, SegmentSeed::ZERO, RATE).leave_open(finish);
+        assert!(SimWorldBuilder::is_open(&open));
+        let ticks = |world: &World| {
+            let schedules = world.get_resource::<Schedules>();
+            schedules.is_some_and(|schedules| schedules.contains(SimUpdate))
+        };
+        assert!(!ticks(&open) && open.contains_resource::<StateRegistry>());
+        open.step();
+        assert!(!SimWorldBuilder::is_open(&open) && open.contains_resource::<Finished>());
+        assert!(ticks(&open));
+        assert_eq!(open.resource::<SimTick>().start().get(), 1);
 
         // A builder dropped before `build` would leave its world with no schedule: it panics.
         let dropped = panic::catch_unwind(|| {

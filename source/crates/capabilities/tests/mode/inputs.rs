@@ -2,13 +2,12 @@ use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, ResMut};
-use campfire_combat::Deaths;
 use campfire_players::Seating;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_units::BodyUnit;
 use campfire_units::internals::UnitsWorldInternals;
-use campfire_values::NameId;
+use campfire_units::{BodyUnit, Deaths};
+use campfire_values::{NameId, Named};
 
 use super::*;
 
@@ -159,13 +158,14 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         Mode::failures(&game),
         [
             FailureKind::Api(ModeRefusal::ResourceOverflow.refused()),
-            FailureKind::Api(ApiError::Unknown(NameKind::Resource)),
-            FailureKind::Api(ApiError::Unknown(NameKind::MarkerTag)),
+            FailureKind::Api(ApiError::Unknown(ResourceId::NAMES)),
+            FailureKind::Api(ApiError::Unknown(MarkerTag::NAMES)),
         ]
     );
-    // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
-    // players, the path and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the path
-    // of the tower, which stands on it as grunt 2 walks it, and grunt 2's unit type.
+    // The enemy of a, the 4 grunts with the dead one and the 3 living, 4 · 10 + 3, b's one hero,
+    // the 2 playing teams, the 3 players, the path and team of grunt 2, the neutral grunt 1's team,
+    // hero 5's owner, the path of the tower, which stands on it as grunt 2 walks it, and grunt 2's
+    // unit type.
     let text = |text: &str| StateValue::Text(text.into());
     let seen = [
         "enemy",
@@ -185,7 +185,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         seen,
         [
             text("b"),
-            StateValue::Int(4),
+            StateValue::Int(43),
             StateValue::Int(1),
             StateValue::Int(2),
             StateValue::Int(3),
@@ -202,12 +202,12 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
 #[test]
 fn choices_hold_each_players_values_and_grants_fill_a_slot_kind() {
     let script = r#"
-fn on_input(ctx, player, name, value) {
+fn take_input(ctx, player, name, value) {
     if value == "read" {
         let duo = ctx.chosen(player, "duo");
         ctx.state.kind = if duo.is_empty() { "none" } else { duo[0] + "," + duo[1] };
-        ctx.state.seen = if ctx.available(player, "hero", "hero-x") { 1 } else { 0 };
-        ctx.state.team = ctx.team_of(player);
+        ctx.state.seen = if ctx.can_choose(player, "hero", "hero-x") { 1 } else { 0 };
+        ctx.state.team = player.team;
     } else if value == "duo" {
         ctx.choose(player, "duo", ["hero-y", "hero-x"]);
     } else if value == "swap" {
@@ -278,7 +278,7 @@ fn on_input(ctx, player, name, value) {
         ModeRefusal::ChoiceCount.refused(),
         ModeRefusal::RepeatedChoiceValue.refused(),
         ModeRefusal::UnknownChoiceValue.refused(),
-        ApiError::Unknown(NameKind::Choice),
+        ApiError::Unknown(ChoiceId::NAMES),
     ];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
     assert_eq!(Mode::field(&game, "kind"), text("hero-x,hero-y"));
@@ -298,8 +298,8 @@ fn on_input(ctx, player, name, value) {
     );
     let refused = [
         ModeRefusal::SlotKindRanks.refused(),
-        ApiError::Unknown(NameKind::SlotKind),
-        ApiError::Unknown(NameKind::Ability),
+        ApiError::Unknown(SlotKind::NAMES),
+        ApiError::Unknown(ActionId::NAMES),
     ];
     assert_eq!(Mode::failures(&game), refused.map(FailureKind::Api));
     assert_eq!(
@@ -318,7 +318,7 @@ fn a_grant_to_a_fresh_unit_counts_its_inventory_slots() {
     // spawns, it would hold 257 slots, past the 256 a unit holds: the grant fails, and its call's
     // spawn with it. Granted one, it holds 256, the spell after the inventory's slots.
     let script = r#"
-fn on_input(ctx, player, name, value) {
+fn take_input(ctx, player, name, value) {
     let id = ctx.spawn_unit("hero-y", "a", ctx.map.markers("camp")[0].pos, player);
     ctx.grant(id, "spell", if value == "two" { ["blink", "blink"] } else { ["blink"] });
 }
@@ -431,27 +431,44 @@ fn a_players_avatar_is_the_unit_it_owns_of_an_avatar_type() {
 }
 
 #[test]
-fn a_script_reads_the_held_slots_and_a_players_units_and_kills_them() {
+fn a_script_reads_each_players_seat_units_play_and_resources_and_kills_and_spends() {
     // Slot 1 is open as the match starts, and every other held: `on_match_start` reads it so.
-    // Player 0 owns two grunts and player 1 one: `units_of(0)` gives player 0's two, by stable
+    // Player 0 owns two grunts and player 1 one: player 0's `units` gives its two, by stable
     // id, and `kill` takes each one's life whole, so both die in the tick of the call, which
     // runs before the tick's deaths, with no killer; player 1's lives.
     let script = r#"
 fn on_match_start(ctx) {
     let seats = "";
-    for player in 0..ctx.players {
-        seats += if ctx.held(player) { "h" } else { "o" };
+    for player in ctx.players {
+        seats += if player.seated { "h" } else { "o" };
     }
     ctx.state.kind = seats;
 }
 
-fn on_input(ctx, player, name, value) {
+fn take_input(ctx, player, name, value) {
+    let first = ctx.players[0];
+    let last = ctx.players[2];
     if value == "count" {
-        ctx.state.seen = ctx.units_of(0).len();
+        ctx.state.seen = first.units.len();
     } else if value == "kill" {
-        for unit in ctx.units_of(0) {
+        for unit in first.units {
             ctx.kill(unit);
         }
+    } else if value == "spend" {
+        ctx.add_resource(player, "gold", 10);
+        ctx.take_resource(player, "gold", 4);
+        ctx.state.seen = player.resource("gold");
+    } else if value == "short" {
+        ctx.take_resource(player, "gold", 7);
+    } else if value == "below" {
+        ctx.add_resource(player, "gold", -1);
+    } else if value == "back" {
+        ctx.take_resource(player, "gold", -1);
+    } else if value == "out" {
+        ctx.set_out(last, true);
+        ctx.state.count = if last.is_out { 1 } else { 0 };
+    } else if value == "read" {
+        ctx.state.count = if last.is_out { 1 } else { 0 };
     }
 }
 "#;
@@ -484,4 +501,26 @@ fn on_input(ctx, player, name, value) {
     // A unit no longer living is killed by nothing: a second kill of the dead changes nothing.
     Mode::tick_inputs(&mut game, &[(0, input("probe", "count"))]);
     assert_eq!(Mode::field(&game, "seen"), StateValue::Int(0));
+    // 10 gold added and 4 taken reads 6 within the call. A take of 7 of the 6, and an amount
+    // below 0 to add or to take, fail, and the gold stays 6.
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "spend"))]);
+    assert_eq!(Mode::field(&game, "seen"), StateValue::Int(6));
+    let probes = ["short", "below", "back"].map(|value| (0, input("probe", value)));
+    Mode::tick_inputs(&mut game, &probes);
+    let refused = [
+        ModeRefusal::ResourceShort,
+        ModeRefusal::NegativeAmount,
+        ModeRefusal::NegativeAmount,
+    ];
+    assert_eq!(
+        Mode::failures(&game),
+        refused.map(|refusal| FailureKind::Api(refusal.refused()))
+    );
+    let gold = game.player_resources(PlayerSlot::new(0));
+    assert_eq!(gold.unwrap().amount(resource("gold").unwrap()), 6);
+    // Player 2 held out reads in play within the call, and out of play from the tick's end.
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "out"))]);
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(0));
+    Mode::tick_inputs(&mut game, &[(0, input("probe", "read"))]);
+    assert_eq!(Mode::field(&game, "count"), StateValue::Int(1));
 }

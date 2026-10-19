@@ -3,7 +3,8 @@ use std::num::NonZeroUsize;
 use std::ops::Range;
 use std::sync::Arc;
 
-use campfire_values::{DeclaredName, NameId, Names};
+use campfire_common::DeclaredName;
+use campfire_values::{NameId, Names};
 
 use crate::choice_data::{ChoiceData, Offers};
 use crate::choice_id::ChoiceId;

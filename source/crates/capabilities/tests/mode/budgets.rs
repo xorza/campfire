@@ -4,7 +4,6 @@ use campfire_codec::Binary;
 use campfire_combat::Kept;
 use campfire_common::Tick;
 use campfire_progression::LevelUps;
-use campfire_script::ScriptError;
 
 use super::*;
 
@@ -14,7 +13,7 @@ fn a_player_spends_only_their_own_pool() {
     // which spends its pool, so its next input fails unrun; player 1's input in the same tick
     // runs from its own pool.
     let spin = r#"
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     ctx.state.inputs += 1;
     if name == "fail" {
         loop {}
@@ -36,22 +35,9 @@ fn on_mode_input(ctx, player, name, value) {
             (1, input("phase", "")),
         ],
     );
-    let failures = game.non_send::<ScriptFailures>();
-    let errors: Vec<_> = failures
-        .get()
-        .iter()
-        .map(|failure| &failure.error)
-        .collect();
-    assert!(
-        matches!(
-            errors[..],
-            [
-                CallError::Script(ScriptError::CallLimit),
-                CallError::PoolSpent
-            ]
-        ),
-        "{errors:?}"
-    );
+    let failures = game.resource::<ScriptFailures>();
+    let errors: Vec<_> = failures.get().iter().map(|failure| failure.kind).collect();
+    assert_eq!(errors, [FailureKind::CallLimit, FailureKind::PoolSpent]);
     assert_eq!(inputs(&game), StateValue::Int(1));
     // Every pool starts full in the next tick.
     Mode::tick_inputs(&mut game, &[(0, input("phase", ""))]);
@@ -64,8 +50,8 @@ fn a_timer_whose_call_finds_the_mode_pool_spent_stays_due() {
     // 500; the second ends past those, and its timer waits for the next tick.
     let spin = r#"
 fn on_match_start(ctx) {
-    ctx.timer("a", 100, false, ());
-    ctx.timer("b", 100, false, ());
+    ctx.after("a", 100);
+    ctx.after("b", 100);
 }
 
 fn on_timer(ctx, name, data) {
@@ -82,9 +68,10 @@ fn on_timer(ctx, name, data) {
     let due = |game: &Match| {
         let timers = game.resource::<Timers>();
         (
-            timers
-                .due(Tick::new(u64::MAX))
-                .map(|timer| timer.name.clone()),
+            timers.due(Tick::new(u64::MAX)).map(|timer| {
+                let names = game.resource::<MatchNames>().table::<TimerId>();
+                names.unwrap().name(timer.name).unwrap().to_owned()
+            }),
             timers.due(Tick::ZERO).is_some(),
         )
     };
@@ -105,7 +92,7 @@ fn on_match_start(ctx) {
     ctx.spawn_group("b", "mid", PathEnd::End, ["grunt", "grunt", "grunt"]);
 }
 
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     if name == "hero" {
         pick(ctx, player, value);
     } else {
@@ -113,7 +100,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 
-fn on_unit_died(ctx, unit, killer, assisters) {
+fn on_unit_death(ctx, unit, killer, assisters) {
     ctx.state.kind += `${unit.team} by ${killer.team};`;
     let spun = 0;
     for i in 0..50 { spun += i; }
@@ -127,14 +114,15 @@ fn on_level_up(ctx, unit, track, level) {
         mode: 500,
         ..ScriptLimits::ROOMY
     };
-    let mut game = mode_match(script, limits);
+    // The grunts despawn when they die.
+    let despawn = |types: &mut [TestType]| types[0].on_death = OnDeath::Despawn;
+    let mut game = start_match_setup(script, limits, &mode_files(), despawn).unwrap();
     Mode::tick_inputs(&mut game, &[(0, input("hero", "hero-x"))]);
     // Units: the tower 0 of a, b's grunts 1 to 3, which despawn when they die, and the hero 4.
     // The tower's damage kills the three grunts in tick 1, as the hero reaches level 2.
     let grunts = [1, 2, 3].map(|at| Mode::entity_by_id(&game, at));
     let tower = game.get::<StableId>(Mode::entity_by_id(&game, 0)).copied();
     for grunt in grunts {
-        game.entity_mut(grunt).insert(OnDeath::Despawn);
         let target = *game.get::<StableId>(grunt).unwrap();
         DamagePass::queue(
             &mut game,
@@ -194,13 +182,13 @@ fn a_join_or_a_leave_whose_call_finds_the_mode_pool_spent_waits() {
     // Each call spins 50 additions: a mode pool of 500 operations holds two of them, not three.
     let script = "
 fn on_player_join(ctx, player) {
-    ctx.state.kind += `join ${player};`;
+    ctx.state.kind += `join ${player.slot};`;
     let spun = 0;
     for i in 0..50 { spun += i; }
 }
 
 fn on_player_leave(ctx, player) {
-    ctx.state.kind += `leave ${player};`;
+    ctx.state.kind += `leave ${player.slot};`;
     let spun = 0;
     for i in 0..50 { spun += i; }
 }
@@ -243,7 +231,7 @@ fn a_method_of_a_value_read_through_a_field_costs_no_write_back() {
     // Rhai does not feed it back through a setter of `map`, which `Ctx` lacks, and then through
     // an indexer: those would cost one operation more each, 10 in all.
     let script = r#"
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     if name == "rich" {
         ctx.map.markers("spawn");
         ctx.map.markers("spawn");

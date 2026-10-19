@@ -1,0 +1,107 @@
+# Zero Hour's fixed mode data, which each imported Zero Hour mode's own lies over: what is the
+# same in every install, as the game's code fixes it.
+
+# What its players earn and spend.
+resources = ["money"]
+# The param of a waypoint's marker, its name, which its script reads of the start markers, and
+# which a map of no waypoint has on no marker.
+marker_params = ["name"]
+
+# The stats its units drive by, and the life they live by.
+[stats]
+move_speed = {}
+turn_rate = {}
+life = {}
+
+[pools.life]
+max = "life"
+
+# The game's damage types, as its INI names them, in lower case, in the order of its
+# `DamageType`, and the pool a damage takes.
+[combat]
+damage_kinds = [
+    "explosion",
+    "crush",
+    "armor_piercing",
+    "small_arms",
+    "gattling",
+    "radiation",
+    "flame",
+    "laser",
+    "sniper",
+    "poison",
+    "healing",
+    "unresistable",
+    "water",
+    "deploy",
+    "surrender",
+    "hack",
+    "kill_pilot",
+    "penalty",
+    "falling",
+    "melee",
+    "disarm",
+    "hazard_cleanup",
+    "particle_beam",
+    "toppling",
+    "infantry_missile",
+    "aurora_bomb",
+    "land_mine",
+    "jet_missiles",
+    "stealthjet_missiles",
+    "molotov_cocktail",
+    "comanche_vulcan",
+    "subdual_missile",
+    "subdual_vehicle",
+    "subdual_building",
+    "subdual_unresistable",
+    "microwave",
+    "kill_garrisoned",
+    "status",
+]
+life = "life"
+
+# The tags its rules name: of a building that counts for victory, of a structure, of a wall, and
+# of infantry.
+[tags.counts_for_victory]
+
+[tags.structure]
+
+[tags.wall]
+
+[tags.infantry]
+
+# The tag of the markers its players start at.
+[navigation]
+spawn_tags = ["start"]
+
+# A skirmish's end, as the original's `VictoryConditions` keeps it: a player whose last living
+# building that counts for victory dies is out of play, and its other units die, as
+# `Player::killPlayer` kills them; the last team with such buildings wins.
+[victory]
+counts = "counts_for_victory"
+defeat = "kill_all"
+
+# A kill pays the killer's player its share of the victim's build cost, rounded up, as the
+# original's `Player::doBountyForKill` does; the share starts at none, until a Cash Bounty raises it.
+[bounty]
+killer = "enemies"
+
+# The slot kinds of its units' weapons and of their command buttons.
+[[slots]]
+name = "weapon"
+
+[[slots]]
+name = "command"
+
+# What every unit type of the game shares, as its code fixes it, under each type's own section.
+# A unit despawns as it dies.
+[defaults.combat]
+on_death = "despawn"
+
+# A turret turns the weapons of the weapon slot kind, and starts an attack within the original's
+# tolerance of its aim, 0.035 radians (`TurretAIAimTurretState::update`), in degrees, which reads
+# to the nearest bit.
+[defaults.turret]
+tolerance_deg = "2.0053522829578814"
+slot = "weapon"

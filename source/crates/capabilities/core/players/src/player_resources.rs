@@ -1,13 +1,13 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_units::Player;
 use campfire_values::{NameId, ResourceId};
 use serde::{Deserialize, Serialize};
 
+use crate::player::Player;
 use crate::resource_amount::ResourceAmount;
 
 /// A player's resources, such as gold, on its entity: an amount for each resource the mode
@@ -85,10 +85,7 @@ impl SimComponent for PlayerResources {
 
     // A row of another width would place an amount under another resource.
     fn check(&self, world: &World, _: Entity) -> bool {
-        world
-            .non_send::<View>()
-            .names()
-            .fits_resources(self.0.len())
+        world.resource::<MatchNames>().fits_resources(self.0.len())
     }
 }
 

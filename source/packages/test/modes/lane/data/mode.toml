@@ -1,7 +1,9 @@
 # The name players see.
 name = "mode-name"
 
-script = "scripts/mode.rhai"
+scripts = ["scripts/mode.rhai"]
+# The names its script's timers take.
+timers = ["first_wave", "wave"]
 
 [combat]
 damage_kinds = ["true"]
@@ -32,9 +34,6 @@ wave_ms = 30000
 # A hero comes back at its spawn this long after it dies.
 respawn_ms = 5000
 wave = ["creep", "creep"]
-# The experience a hero takes for a creep it fells, and for the enemy hero.
-creep_xp = 60
-hero_xp = 150
 
 # A hero's levels, 1 to 5, for a match of a few minutes: each gives a point to learn a rank with.
 [tracks.level]
@@ -106,3 +105,8 @@ name = "team-east"
 # stand on.
 [navigation]
 spawn_tags = ["spawn"]
+
+# A death's experience goes to its killer, of the level track.
+[experience]
+track = "level"
+to = "killer"

@@ -3,8 +3,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_units::Player;
 use serde::{Deserialize, Serialize};
+
+use crate::player::Player;
 
 /// Marks a player out of play, on its entity (14-replication-audiences.md, A player out of play
 /// sees what its team sees, or what a spectator sees): while it holds avatars and every one is

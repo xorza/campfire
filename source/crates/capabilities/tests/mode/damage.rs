@@ -114,7 +114,7 @@ fn calc_damage_and_calc_heal_are_pure_outside_the_pools_and_a_failure_keeps_the_
     let script = r#"
 fn calc_damage(ctx, d) {
     if d.kind == "magic" {
-        ctx.timer("late", 100, false, ());
+        ctx.after("late", 100);
     }
     if d.kind == "true" {
         return "none";
@@ -123,7 +123,7 @@ fn calc_damage(ctx, d) {
 }
 
 fn calc_heal(ctx, h) {
-    if h.leech { h.amount } else { h.amount / 2 }
+    if h.is_leech { h.amount } else { h.amount / 2 }
 }
 "#;
     // A mode pool of one operation, which no call of `calc_damage` draws from.

@@ -1,7 +1,9 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::system::ResMut;
 use bevy_ecs::world::{Mut, World};
+use campfire_common::ErrorReport;
 use campfire_common::{Tick, Ticks};
-use campfire_log::{ErrorReport, LogEvent};
+use campfire_log::LogEvent;
 use campfire_mode::SaveBy;
 use campfire_protocol::{Checkpoint, CheckpointBegun, CheckpointError};
 use campfire_runner::{CheckpointBeginError, Session, SessionWorld};
@@ -16,7 +18,6 @@ use crate::faults::fault::Fault;
 use crate::hosting::Hosting;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::sim_server::checkpoint_thread::{CheckpointThread, Returned};
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::snapshot_dir::SnapshotDir;
 
 /// A session's checkpoints on its server: the boundaries it checkpoints at, and the thread that
@@ -56,10 +57,10 @@ impl Checkpoints {
     /// At the boundary before the next tick: begins the checkpoint due there, as the plan or a
     /// save of the mode's says, and sends it with the state changed since the last delta, queued
     /// behind the delta on the thread, if one is; `true` instead when the session ends there, the
-    /// checkpoint due past the seed chain's last segment. The log begins one checkpoint at a time,
-    /// so one due while the last one's record is still to come waits for it. With none due,
-    /// sends the state changed whenever the thread is free, so each delta holds the ticks since
-    /// the last, few unless a snapshot kept the thread.
+    /// checkpoint due past the seed chain's last segment. One due while the last one's record is
+    /// still to come begins at once, its record logged after that one's. With none due, sends
+    /// the state changed whenever the thread is free, so each delta holds the ticks since the
+    /// last, few unless a snapshot kept the thread.
     pub(crate) fn begin(world: &mut World) -> bool {
         let next = world.session().log().next_tick();
         let saved = world.save_due();
@@ -70,17 +71,6 @@ impl Checkpoints {
             if !checkpoints.thread.pending() {
                 Self::send(world, None);
             }
-            return false;
-        }
-        let recording = world
-            .resource::<Session>()
-            .log()
-            .begun_checkpoint()
-            .is_some();
-        if recording && let Err(error) = Self::settle(world) {
-            world
-                .resource_mut::<Faults>()
-                .report(Fault::Snapshot(error));
             return false;
         }
         match world.resource_mut::<Session>().begin_checkpoint() {
@@ -98,25 +88,31 @@ impl Checkpoints {
 
     /// Logs the record of the checkpoint the thread finished, when it did; reports its fault
     /// when its snapshot was not written.
-    pub(crate) fn finish(world: &mut World) {
-        let returned = world.resource_mut::<Self>().thread.take();
-        if let Err(error) = Self::record(world, returned) {
-            world
-                .resource_mut::<Faults>()
-                .report(Fault::Snapshot(error));
+    pub(crate) fn finish(
+        mut checkpoints: ResMut<'_, Self>,
+        mut session: ResMut<'_, Session>,
+        mut faults: ResMut<'_, Faults>,
+    ) {
+        let returned = checkpoints.thread.take();
+        if let Err(error) = Self::record(&mut session, returned) {
+            faults.report(Fault::Snapshot(error));
         }
     }
 
     /// Waits for every delta on the thread and queued for it, and logs the record of each
-    /// checkpoint among them; an error when a snapshot was not written.
+    /// checkpoint among them into the session of `world`; an error when a snapshot was not
+    /// written.
     pub(super) fn settle(world: &mut World) -> Result<(), SnapshotWriteError> {
-        loop {
-            let returned = world.resource_mut::<Self>().thread.wait();
-            if returned.is_none() {
-                return Ok(());
+        world.resource_scope(|world, mut checkpoints: Mut<'_, Self>| {
+            let mut session = world.resource_mut::<Session>();
+            loop {
+                let returned = checkpoints.thread.wait();
+                if returned.is_none() {
+                    return Ok(());
+                }
+                Self::record(&mut session, returned)?;
             }
-            Self::record(world, returned)?;
-        }
+        })
     }
 
     /// Takes `command` of a seated player: on a local server, a save makes a checkpoint due at
@@ -164,7 +160,7 @@ impl Checkpoints {
         snapshots: &SnapshotDir,
     ) -> Result<(), SnapshotWriteError> {
         let session = world.resource::<Session>();
-        let next = session.log().next_tick();
+        let next = session.next_tick();
         if session
             .log()
             .begun_checkpoint()
@@ -175,7 +171,7 @@ impl Checkpoints {
         let mut snapshot = Vec::new();
         let record = world.checkpoint(&mut snapshot).expect("a checkpoint begun");
         snapshots.write(&snapshot)?;
-        Self::log(world, record);
+        Self::log(&mut world.resource_mut::<Session>(), record);
         Ok(())
     }
 
@@ -187,31 +183,28 @@ impl Checkpoints {
         });
     }
 
-    /// Logs the record `returned` brings, when it brings one; an error when its snapshot was
-    /// not written.
-    fn record(world: &mut World, returned: Option<Returned>) -> Result<(), SnapshotWriteError> {
+    /// Logs into `session` the record `returned` brings, when it brings one; an error when its
+    /// snapshot was not written.
+    fn record(session: &mut Session, returned: Option<Returned>) -> Result<(), SnapshotWriteError> {
         match returned {
             None | Some(Returned::Applied) => Ok(()),
             Some(Returned::Taken(record)) => {
-                Self::log(world, record);
+                Self::log(session, record);
                 Ok(())
             }
             Some(Returned::Failed(error)) => Err(error),
         }
     }
 
-    /// Logs `record`, which the session signs.
-    fn log(world: &mut World, record: Checkpoint) {
+    /// Logs `record` into `session`, which signs it.
+    fn log(session: &mut Session, record: Checkpoint) {
         let taken = CheckpointTaken {
             segment: record.segment,
             tick: record.tick,
         };
-        world.resource_scope(|world, mut session: Mut<'_, Session>| {
-            let signer = &world.resource::<ServerSigner>().0;
-            session
-                .record_checkpoint(record, signer)
-                .expect("the server's own checkpoint holds");
-        });
+        session
+            .record_checkpoint(record)
+            .expect("the server's own checkpoint holds");
         taken.log();
     }
 }

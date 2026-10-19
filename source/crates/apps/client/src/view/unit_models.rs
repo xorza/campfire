@@ -1,30 +1,36 @@
 use std::collections::BTreeMap;
+use std::collections::btree_map::Entry;
 
 use bevy::app::{App, Plugin, Startup, Update};
-use bevy::asset::{AssetServer, Assets, Handle, embedded_asset};
+use bevy::asset::{AssetServer, Handle, LoadContext, embedded_asset};
 use bevy::camera::visibility::Visibility;
+use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::name::Name;
 use bevy::ecs::observer::On;
-use bevy::ecs::query::{Added, Allow, Changed};
-use bevy::ecs::resource::Resource;
-use bevy::ecs::system::{Commands, Query, Res, ResMut};
-use bevy::gltf::GltfMaterialName;
-use bevy::image::{
-    Image, ImageAddressMode, ImageLoaderSettings, ImageSampler, ImageSamplerDescriptor,
+use bevy::ecs::query::{Added, Allow, Changed, With};
+use bevy::ecs::schedule::IntoScheduleConfigs;
+use bevy::ecs::system::{Commands, Query, Res};
+use bevy::ecs::world::EntityWorldMut;
+use bevy::gltf::GltfMaterial;
+use bevy::gltf::extensions::{
+    ErasedGltfExtensionHandler, GltfExtensionHandler, GltfExtensionHandlers,
 };
-use bevy::math::{Quat, Vec3};
+use bevy::gltf::gltf::{Material, Mesh, Primitive};
+use bevy::math::Quat;
+use bevy::mesh::Mesh3d;
 use bevy::pbr::{MaterialPlugin, MeshMaterial3d, StandardMaterial};
 use bevy::transform::components::Transform;
-use bevy::world_serialization::{WorldAssetRoot, WorldInstanceReady};
-use campfire_client_files::{ClientObject, MaterialFile};
+use bevy::world_serialization::WorldInstanceReady;
+use campfire_client_files::{ClientObject, MaterialExtras};
 use campfire_combat::TurretAngle;
+use campfire_common::DeclaredName;
 use campfire_sim::Unpredicted;
 use campfire_units::TypeOriginBook;
-use campfire_values::PackageIndex;
-
+use campfire_values::{PackageIndex, Team};
+use serde::Deserialize;
 use tracing::error;
 
 use crate::view::client_data::ClientData;
@@ -32,13 +38,16 @@ use crate::view::drawing::{Drawing, DrawingOf};
 use crate::view::file_material::{FileBlend, FileMaterial};
 use crate::view::float_num::FloatNum;
 use crate::view::ground_heights::GroundHeights;
-use crate::view::package_source::PackageSource;
+use crate::view::match_colors::{MatchColors, Paint};
 use crate::view::unit_looks::{LookModel, ModelParts, UnitLooks};
 
 /// Draws units and the map's client objects with their packages' models: loads each unit type's
-/// models, places each client object still, and dresses each model once its scene spawns: the
-/// nodes its default look hides hidden, and each primitive whose glTF material has a material
-/// file in that file's material.
+/// models, each primitive in the file material of its glTF material and its extras, once for each
+/// model as it loads, places each client object still, and dresses each model once its scene
+/// spawns: the nodes its look hides hidden, the node its turret angle turns found, as a look's
+/// hidden nodes are its own, and each mesh tagged with its paint, which it paints again as its
+/// paint changes (02-engine-core.md, Material extras in a glTF extension;
+/// 02-engine-core.md, Team colors in the one material).
 #[derive(Debug)]
 pub(crate) struct UnitModels;
 
@@ -46,25 +55,33 @@ pub(crate) struct UnitModels;
 #[derive(Component, Debug)]
 pub(crate) struct StillObject;
 
-/// On a model whose scene spawned and was dressed, so its nodes show as its look says.
-#[derive(Component, Debug)]
-pub(crate) struct Dressed;
-
-/// The material of each material file once a primitive takes it, by its name, each by its
-/// package's place.
-#[derive(Resource, Debug, Default)]
-struct FileMaterials {
-    made: BTreeMap<PackageIndex, BTreeMap<String, Handle<FileMaterial>>>,
-}
+/// The glTF loader's part that gives each primitive the file material of its glTF material, as a
+/// model loads.
+#[derive(Debug, Default, Clone)]
+struct ExtrasHandler;
 
 impl Plugin for UnitModels {
     fn build(&self, app: &mut App) {
         embedded_asset!(app, "file_material.wgsl");
         app.add_plugins(MaterialPlugin::<FileMaterial>::default());
-        app.init_resource::<FileMaterials>();
-        app.add_systems(Startup, (Self::load_looks, Self::place_objects));
+        // The glTF loader takes its handlers as it is finished, after every plugin's build.
+        app.world_mut()
+            .resource_mut::<GltfExtensionHandlers>()
+            .0
+            .write_blocking()
+            .push(Box::new(ExtrasHandler));
+        app.add_systems(
+            Startup,
+            (MatchColors::upload, (Self::load_looks, Self::place_objects)).chain(),
+        );
         app.add_observer(Self::dress);
-        app.add_systems(Update, Self::turn_turrets);
+        app.add_systems(
+            Update,
+            (
+                Self::turn_turrets,
+                (Self::follow_teams, Self::repaint).chain(),
+            ),
+        );
     }
 }
 
@@ -88,15 +105,23 @@ impl UnitModels {
         assets: Res<'_, AssetServer>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Some(looks) = data.units.first() else {
+        let Some(looks) = data.packages.first().map(|package| &package.units) else {
             return;
         };
         let heights = data.heights.as_ref();
+        // Each look's models resolve once, for every object of it.
+        let mut resolved: BTreeMap<&DeclaredName, Vec<LookModel>> = BTreeMap::new();
         for object in &data.objects.objects {
-            let Some(look) = looks.objects.get(&object.look) else {
-                let look = object.look.as_str();
-                error!(look, "a client object's look is none of its package's");
-                continue;
+            let models = match resolved.entry(&object.look) {
+                Entry::Occupied(models) => models.into_mut(),
+                Entry::Vacant(new) => {
+                    let Some(look) = looks.objects.get(&object.look) else {
+                        let look = object.look.as_str();
+                        error!(look, "a client object's look is none of its package's");
+                        continue;
+                    };
+                    new.insert(LookModel::all(PackageIndex::MODE, look, &assets))
+                }
             };
             let root = commands
                 .spawn((
@@ -105,13 +130,8 @@ impl UnitModels {
                     Visibility::default(),
                 ))
                 .id();
-            for model in LookModel::all(PackageIndex::MODE, look, &assets) {
-                commands.spawn((
-                    WorldAssetRoot(model.scene),
-                    model.parts,
-                    Transform::from_scale(Vec3::splat(model.scale)),
-                    ChildOf(root),
-                ));
+            for model in &*models {
+                commands.spawn((model.bundle(Paint::default()), ChildOf(root)));
             }
         }
     }
@@ -154,40 +174,72 @@ impl UnitModels {
         }
     }
 
-    /// Dresses the model whose scene spawned, as its dressing says, and marks it dressed.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "a system takes each resource and query it reads"
-    )]
-    fn dress(
-        ready: On<'_, '_, WorldInstanceReady>,
-        models: Query<'_, '_, &ModelParts>,
-        children: Query<'_, '_, &Children>,
-        nodes: Query<'_, '_, (Option<&Name>, Option<&GltfMaterialName>)>,
-        (parents, transforms): (Query<'_, '_, &ChildOf>, Query<'_, '_, &Transform>),
-        data: Res<'_, ClientData>,
-        assets: Res<'_, AssetServer>,
-        mut made: ResMut<'_, FileMaterials>,
-        mut materials: ResMut<'_, Assets<FileMaterial>>,
+    /// Paints the models of each unit whose team changed, as a change of owner moves it to
+    /// another team.
+    fn follow_teams(
+        units: Recolored<'_, '_>,
+        roots: Query<'_, '_, &Children>,
+        mut paints: Query<'_, '_, &mut Paint>,
+    ) {
+        for (&team, drawing) in &units {
+            let Ok(models) = roots.get(drawing.root()) else {
+                continue;
+            };
+            let mut models = paints.iter_many_mut(models);
+            while let Some(paint) = models.fetch_next() {
+                paint
+                    .map_unchanged(|paint| &mut paint.team)
+                    .set_if_neq(Some(team));
+            }
+        }
+    }
+
+    /// Tags each mesh of each model whose paint changed, once its scene spawned; a model whose
+    /// scene spawns after is tagged as it is dressed.
+    fn repaint(
+        models: Query<'_, '_, (Entity, &Paint), Changed<Paint>>,
+        (children, meshes): (Query<'_, '_, &Children>, Query<'_, '_, (), With<Mesh3d>>),
+        colors: Res<'_, MatchColors>,
         mut commands: Commands<'_, '_>,
     ) {
-        let Ok(parts) = models.get(ready.entity) else {
+        for (model, &paint) in &models {
+            let tag = colors.tag(paint);
+            for node in children.iter_descendants(model) {
+                if meshes.contains(node) {
+                    commands.entity(node).insert(tag.clone());
+                }
+            }
+        }
+    }
+
+    /// Dresses the model whose scene spawned, as its dressing says, and tags its meshes with its
+    /// paint.
+    fn dress(
+        ready: On<'_, '_, WorldInstanceReady>,
+        models: Query<'_, '_, (&ModelParts, &Paint)>,
+        (children, names, meshes): (
+            Query<'_, '_, &Children>,
+            Query<'_, '_, &Name>,
+            Query<'_, '_, (), With<Mesh3d>>,
+        ),
+        (parents, transforms): (Query<'_, '_, &ChildOf>, Query<'_, '_, &Transform>),
+        colors: Res<'_, MatchColors>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        let Ok((parts, &paint)) = models.get(ready.entity) else {
             return;
         };
-        let spawned = children.iter_descendants(ready.entity).filter_map(|node| {
-            let (name, material) = nodes.get(node).ok()?;
-            Some(Node {
-                entity: node,
-                name: name.map(Name::as_str),
-                material: material.map(|material| material.0.as_str()),
-            })
+        let tag = colors.tag(paint);
+        for node in children.iter_descendants(ready.entity) {
+            if meshes.contains(node) {
+                commands.entity(node).insert(tag.clone());
+            }
+        }
+        let spawned = children.iter_descendants(ready.entity).map(|node| Node {
+            entity: node,
+            name: names.get(node).ok().map(Name::as_str),
         });
-        let files = data.materials_of(parts.package);
-        let Dressing {
-            hidden,
-            filed,
-            turret,
-        } = Dressing::of(parts, spawned, files);
+        let Dressing { hidden, turret } = Dressing::of(parts, spawned);
         for node in hidden {
             commands.entity(node).insert(Visibility::Hidden);
         }
@@ -200,51 +252,68 @@ impl UnitModels {
                 rest: rest.rotation,
             });
         }
-        commands.entity(ready.entity).insert(Dressed);
-        let made = made.made.entry(parts.package).or_default();
-        for (node, name) in filed {
-            let handle = if let Some(handle) = made.get(name) {
-                handle.clone()
-            } else {
-                let file = &files[name];
-                let handle = materials.add(Self::material(parts.package, file, &assets));
-                made.insert(name.to_owned(), handle.clone());
-                handle
-            };
-            commands
-                .entity(node)
-                .remove::<MeshMaterial3d<StandardMaterial>>()
-                .insert(MeshMaterial3d(handle));
-        }
-    }
-
-    /// The material of `file` of the package at `package`, its texture loaded as the glTF loads a
-    /// base color: sRGB, wrapped as the file says.
-    fn material(package: PackageIndex, file: &MaterialFile, assets: &AssetServer) -> FileMaterial {
-        let texture = file.texture.as_ref().map(|texture| {
-            let wrap = |clamp: bool| {
-                if clamp {
-                    ImageAddressMode::ClampToEdge
-                } else {
-                    ImageAddressMode::Repeat
-                }
-            };
-            let (clamp_u, clamp_v) = (texture.clamp_u, texture.clamp_v);
-            assets
-                .load_builder()
-                .with_settings(move |settings: &mut ImageLoaderSettings| {
-                    settings.is_srgb = true;
-                    settings.sampler = ImageSampler::Descriptor(ImageSamplerDescriptor {
-                        address_mode_u: wrap(clamp_u),
-                        address_mode_v: wrap(clamp_v),
-                        ..ImageSamplerDescriptor::linear()
-                    });
-                })
-                .load::<Image>(PackageSource::asset_path(package, &texture.path))
-        });
-        FileBlend::material(file, texture)
     }
 }
+
+impl ExtrasHandler {
+    /// The extras of `material`, which its extension holds; none for a material of no extras, and
+    /// none, logged, for extras that do not read.
+    fn extras_of(material: &Material<'_>) -> Option<MaterialExtras> {
+        let value = material.extension_value(MaterialExtras::EXTENSION)?;
+        MaterialExtras::deserialize(value)
+            .map_err(|problem| error!(error = %problem, "a material's extras do not read"))
+            .ok()
+    }
+
+    /// The label of the file material of the glTF material of `label`.
+    fn file_label(label: &str) -> String {
+        format!("{label}/file")
+    }
+}
+
+impl GltfExtensionHandler for ExtrasHandler {
+    fn dyn_clone(&self) -> Box<dyn ErasedGltfExtensionHandler> {
+        Box::new(Self)
+    }
+
+    /// Adds the file material of a glTF material, of the material as Bevy reads it and its
+    /// extras, or the extras of its alpha mode for a material of none.
+    fn on_material(
+        &mut self,
+        load_context: &mut LoadContext<'_>,
+        gltf_material: &Material<'_>,
+        _material: Handle<GltfMaterial>,
+        material_asset: &GltfMaterial,
+        material_label: &str,
+    ) {
+        let extras =
+            Self::extras_of(gltf_material).unwrap_or_else(|| FileBlend::plain(material_asset));
+        let file = FileBlend::material(material_asset, extras);
+        load_context.add_labeled_asset(Self::file_label(material_label), file);
+    }
+
+    /// Draws a primitive by its file material, in place of the standard material Bevy's own part
+    /// gives it.
+    fn on_spawn_mesh_and_material(
+        &mut self,
+        load_context: &mut LoadContext<'_>,
+        _primitive: &Primitive<'_>,
+        _mesh: &Mesh<'_>,
+        _material: &Material<'_>,
+        entity: &mut EntityWorldMut<'_>,
+        material_label: &str,
+    ) {
+        let file: Handle<FileMaterial> =
+            load_context.get_label_handle(Self::file_label(material_label));
+        entity
+            .remove::<MeshMaterial3d<StandardMaterial>>()
+            .insert(MeshMaterial3d(file));
+    }
+}
+
+/// The units whose team changed, each with its drawing.
+type Recolored<'w, 's> =
+    Query<'w, 's, (&'static Team, &'static Drawing), (Changed<Team>, Allow<Unpredicted>)>;
 
 /// The units whose turret angle changed, the client's own and those it only receives, each with
 /// its drawing.
@@ -255,20 +324,18 @@ type TurnedTurrets<'w, 's> = Query<
     (Changed<TurretAngle>, Allow<Unpredicted>),
 >;
 
-/// A node of a spawned model: its entity, its name, and its glTF material's name, if it draws one.
+/// A node of a spawned model: its entity, and its name.
 #[derive(Debug, Clone, Copy)]
 struct Node<'a> {
     entity: Entity,
     name: Option<&'a str>,
-    material: Option<&'a str>,
 }
 
-/// What a spawned model's dressing does: the nodes it hides, the nodes whose material a material
-/// file replaces, each with the file's name, and the node its unit's turret angle turns.
+/// What a spawned model's dressing does: the nodes it hides, and the node its unit's turret angle
+/// turns.
 #[derive(Debug, Default, PartialEq, Eq)]
-struct Dressing<'f> {
+struct Dressing {
     hidden: Vec<Entity>,
-    filed: Vec<(Entity, &'f str)>,
     turret: Option<Entity>,
 }
 
@@ -288,16 +355,11 @@ impl TurretNode {
     }
 }
 
-impl<'f> Dressing<'f> {
+impl Dressing {
     /// The dressing of a model of `parts`, whose scene spawned `nodes`: each node of a name it
-    /// hides, each node whose glTF material has a file among `files`, its model's package's, and
-    /// the first node of its turret's name.
-    fn of<'a>(
-        parts: &ModelParts,
-        nodes: impl Iterator<Item = Node<'a>>,
-        files: &'f BTreeMap<String, MaterialFile>,
-    ) -> Self {
-        let mut dressing = Dressing::default();
+    /// hides, and the first node of its turret's name.
+    fn of<'a>(parts: &ModelParts, nodes: impl Iterator<Item = Node<'a>>) -> Self {
+        let mut dressing = Self::default();
         for node in nodes {
             if node
                 .name
@@ -308,12 +370,6 @@ impl<'f> Dressing<'f> {
             let turret = parts.turret.as_deref();
             if dressing.turret.is_none() && node.name.is_some_and(|name| Some(name) == turret) {
                 dressing.turret = Some(node.entity);
-            }
-            if let Some((name, _)) = node
-                .material
-                .and_then(|material| files.get_key_value(material))
-            {
-                dressing.filed.push((node.entity, name.as_str()));
             }
         }
         dressing
@@ -326,38 +382,78 @@ mod tests {
     use std::path::Path;
 
     use bevy::app::TaskPoolPlugin;
+    use bevy::asset::Assets;
     use bevy::asset::io::memory::{Dir, MemoryAssetReader};
     use bevy::asset::io::{AssetSourceBuilder, AssetSourceId};
     use bevy::asset::{AssetApp, AssetPlugin, LoadState};
-    use bevy::ecs::query::With;
     use bevy::ecs::world::World;
-    use bevy::gltf::{Gltf, GltfMaterial, GltfPlugin};
+    use bevy::gltf::{Gltf, GltfPlugin};
+    use bevy::math::Vec3;
     use bevy::mesh::MeshPlugin;
-    use bevy::world_serialization::{WorldAsset, WorldSerializationPlugin};
+    use bevy::mesh::MeshTag;
+    use bevy::world_serialization::{WorldAsset, WorldAssetRoot, WorldSerializationPlugin};
     use campfire_client_files::{
-        Blend, ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale,
+        ClientModel, ClientObjects, ClientUnit, ClientUnits, ModelScale, TeamColors,
     };
     use campfire_math::Num;
     use campfire_units::HeightGrid;
-    use campfire_values::{DeclaredName, PackagePath};
+    use campfire_values::PackagePath;
 
     use super::*;
+    use crate::view::file_material::Factors;
 
     /// Two materials as the import writes them, each rough, not metallic and of a specular factor
-    /// of 0, the second unlit.
+    /// of 0, the second unlit and of extras: an additive blend, no depth write, 2 up; and a
+    /// triangle of each, whose scene holds its material.
     const MATERIALS: &str = r#"{"asset":{"version":"2.0","generator":"campfire-import"},
-"extensionsUsed":["KHR_materials_specular","KHR_materials_unlit"],
-"scene":0,"scenes":[{"nodes":[]}],"nodes":[],
+"extensionsUsed":["CAMPFIRE_material_extras","KHR_materials_specular","KHR_materials_unlit"],
+"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],
+"meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":1},
+{"attributes":{"POSITION":0},"material":0}]}],
+"accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0.0,0.0,0.0],
+"max":[0.0,0.0,0.0]}],"bufferViews":[{"buffer":0,"byteLength":36}],
+"buffers":[{"byteLength":36,"uri":"data:application/octet-stream;base64,AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"}],
 "materials":[
 {"name":"m_0","pbrMetallicRoughness":{"baseColorFactor":[1.0,0.5,0.0,1.0],"metallicFactor":0.0,
 "roughnessFactor":1.0},"emissiveFactor":[0.0,0.0,0.0],"alphaMode":"OPAQUE","doubleSided":false,
 "extensions":{"KHR_materials_specular":{"specularFactor":0.0}}},
 {"name":"m_1","pbrMetallicRoughness":{"baseColorFactor":[1.0,1.0,1.0,1.0],"metallicFactor":0.0,
 "roughnessFactor":1.0},"emissiveFactor":[0.0,0.0,0.0],"alphaMode":"BLEND","doubleSided":true,
-"extensions":{"KHR_materials_specular":{"specularFactor":0.0},"KHR_materials_unlit":{}}}]}"#;
+"extensions":{"KHR_materials_specular":{"specularFactor":0.0},"KHR_materials_unlit":{},
+"CAMPFIRE_material_extras":{"blend":{"mode":"add"},"depth_write":false,"depth_bias":2}}}]}"#;
 
     #[test]
-    fn the_imports_materials_load_in_bevy_rough_of_no_reflectance_and_unlit_where_they_say() {
+    fn a_model_s_meshes_take_its_paint_s_tag_and_follow_its_unit_s_team() {
+        // Red for team 0 and blue for team 1: a model of team 0's unit tags its mesh, two levels
+        // down, with the first place, 1, and leaves a node of no mesh untagged; its unit moved to
+        // team 1, the second place.
+        let mut app = App::new();
+        let teams = TeamColors::new(vec![[255, 0, 0], [0, 0, 255]]).unwrap();
+        app.insert_resource(MatchColors::new(teams));
+        app.add_systems(
+            Update,
+            (UnitModels::follow_teams, UnitModels::repaint).chain(),
+        );
+        let world = app.world_mut();
+        let unit = world.spawn(Team::new(0)).id();
+        let root = world.spawn(DrawingOf(unit)).id();
+        let model = world.spawn((Paint::of(Team::new(0)), ChildOf(root))).id();
+        let node = world.spawn(ChildOf(model)).id();
+        let mesh = world.spawn((Mesh3d::default(), ChildOf(node))).id();
+        app.update();
+        let tag = |app: &App, entity| app.world().get::<MeshTag>(entity).map(|tag| tag.0);
+        assert_eq!((tag(&app, mesh), tag(&app, node)), (Some(1), None));
+        app.world_mut().entity_mut(unit).insert(Team::new(1));
+        app.update();
+        assert_eq!(tag(&app, mesh), Some(2));
+        assert_eq!(
+            app.world().get::<Paint>(model),
+            Some(&Paint::of(Team::new(1)))
+        );
+    }
+
+    #[test]
+    fn the_imports_materials_load_rough_of_no_reflectance_unlit_and_of_extras_where_they_say() {
         let dir = Dir::default();
         dir.insert_asset_text(Path::new("model.gltf"), MATERIALS);
         let mut app = App::new();
@@ -373,6 +469,12 @@ mod tests {
             MeshPlugin,
             GltfPlugin::default(),
         ));
+        app.init_asset::<FileMaterial>();
+        app.world_mut()
+            .resource_mut::<GltfExtensionHandlers>()
+            .0
+            .write_blocking()
+            .push(Box::new(ExtrasHandler));
         app.finish();
         app.cleanup();
         let server = app.world().resource::<AssetServer>().clone();
@@ -400,6 +502,26 @@ mod tests {
             })
             .collect();
         assert_eq!(read, [(0.0, 1.0, 0.0, false), (0.0, 1.0, 0.0, true)]);
+        // Each has its file material as the model loads, which its triangle draws by: the second
+        // of its extras over its glTF material; the first, of no extras, opaque and writing depth
+        // as Bevy draws its alpha mode.
+        let files = world.resource::<Assets<FileMaterial>>();
+        let file = |at: usize| {
+            let handle =
+                server.get_handle::<FileMaterial>(format!("model.gltf#Material{at}/file"))?;
+            files.get(&handle)
+        };
+        let plain = file(0).unwrap();
+        assert_eq!(
+            (plain.extension.factors, plain.extension.depth_write),
+            (Factors::Replace, true)
+        );
+        let flash = file(1).unwrap();
+        assert_eq!(
+            (flash.extension.factors, flash.extension.depth_write),
+            (Factors::Add, false)
+        );
+        assert_eq!((flash.base.depth_bias, flash.base.unlit), (2.0, true));
     }
 
     #[test]
@@ -421,6 +543,7 @@ mod tests {
             model: PackagePath::parse(path).unwrap(),
             scale: ModelScale::new(scale).unwrap(),
             hide: hide.iter().map(|&node| node.to_owned()).collect(),
+            top: None,
         };
         // An oak of two models, one at 1.5 and one hiding its stump; a bush of one.
         let looks = ClientUnits {
@@ -449,7 +572,6 @@ mod tests {
             angle: Num::int(angle),
         };
         let data = ClientData {
-            units: vec![looks],
             heights: Some(GroundHeights::of(grid, None)),
             objects: ClientObjects {
                 objects: vec![
@@ -458,7 +580,7 @@ mod tests {
                     object("ghost", 1, 1, 0, 0),
                 ],
             },
-            ..ClientData::default()
+            ..ClientData::of_looks([looks])
         };
         app.insert_resource(data);
         app.add_systems(Startup, UnitModels::place_objects);
@@ -486,7 +608,6 @@ mod tests {
         // The bush at the ground's 4 m, unturned; the oak at 4 + 1 = 5 m, turned a quarter about
         // y; each model at its own scale, with the nodes its look hides; the ghost is none.
         let parts = |hide: &[&str]| ModelParts {
-            package: PackageIndex::MODE,
             hide: hide.iter().map(|&node| node.to_owned()).collect(),
             turret: None,
         };
@@ -510,57 +631,25 @@ mod tests {
     }
 
     #[test]
-    fn a_dressing_hides_the_named_nodes_and_gives_filed_materials_their_files() {
+    fn a_dressing_hides_the_named_nodes_and_finds_the_turret() {
         let mut world = World::new();
         let [turret, flash, hull, other] = [(); 4].map(|()| world.spawn_empty().id());
-        let file = MaterialFile {
-            base_color: [1.0; 4],
-            texture: None,
-            emissive: [0.0; 3],
-            metallic: 0.0,
-            roughness: 1.0,
-            specular: 0.0,
-            unlit: false,
-            blend: Blend::Add,
-            depth_write: false,
-            depth_bias: 0,
-            double_sided: false,
-        };
-        // The files of the model's package: `tank_3`'s, and not `tank_0`'s.
-        let files = BTreeMap::from([("tank_3".to_owned(), file)]);
         // It hides the flash and a decal, and turns the turret.
         let parts = ModelParts {
-            package: PackageIndex::MODE,
             hide: ["tank.decal".to_owned(), "tank.flash".to_owned()].into(),
             turret: Some("tank.turret".into()),
         };
+        let node = |entity, name| Node { entity, name };
         let nodes = [
-            Node {
-                entity: turret,
-                name: Some("tank.turret"),
-                material: None,
-            },
-            Node {
-                entity: flash,
-                name: Some("tank.flash"),
-                material: Some("tank_3"),
-            },
-            Node {
-                entity: hull,
-                name: Some("tank.hull"),
-                material: Some("tank_0"),
-            },
-            Node {
-                entity: other,
-                name: None,
-                material: Some("tank_3"),
-            },
+            node(turret, Some("tank.turret")),
+            node(flash, Some("tank.flash")),
+            node(hull, Some("tank.hull")),
+            node(other, None),
         ];
         assert_eq!(
-            Dressing::of(&parts, nodes.into_iter(), &files),
+            Dressing::of(&parts, nodes.into_iter()),
             Dressing {
                 hidden: vec![flash],
-                filed: vec![(flash, "tank_3"), (other, "tank_3")],
                 turret: Some(turret),
             }
         );
@@ -569,7 +658,7 @@ mod tests {
             turret: None,
             ..parts
         };
-        assert_eq!(Dressing::of(&still, nodes.into_iter(), &files).turret, None);
+        assert_eq!(Dressing::of(&still, nodes.into_iter()).turret, None);
     }
 
     #[test]

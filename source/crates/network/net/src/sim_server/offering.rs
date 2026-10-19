@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use bevy_ecs::component::Component;
@@ -45,7 +46,7 @@ const ANSWER_WINDOW: Duration = Duration::from_secs(10);
 /// lobby offers it before the start, and the door after it.
 #[derive(Debug)]
 pub(crate) struct Offering {
-    pub(crate) terms: SessionTerms,
+    pub(crate) terms: Arc<SessionTerms>,
     pub(crate) times: SessionTimes,
     clock: Clock,
     entropy: Entropy,
@@ -214,7 +215,7 @@ impl Offering {
     /// The offering of a session of `terms` on the server of `server`.
     pub(crate) fn new(terms: SessionTerms, server: &ServerSetup) -> Self {
         Self {
-            terms,
+            terms: Arc::new(terms),
             times: server.times,
             clock: server.os.clock.clone(),
             entropy: server.os.entropy,
@@ -257,7 +258,7 @@ impl Offering {
                 }
             };
             sender.send::<MatchChannel>(Offer {
-                terms: self.terms.clone(),
+                terms: Arc::clone(&self.terms),
                 times: self.times,
                 challenge,
             });

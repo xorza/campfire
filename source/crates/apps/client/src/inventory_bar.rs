@@ -20,6 +20,7 @@ use campfire_items::{Inventory, ItemStack, ItemsAction, Shopping};
 use campfire_net::PendingOrders;
 use campfire_sim::{SimTick, TickRate, Unpredicted};
 
+use crate::input_map::{InputMap, Row};
 use crate::item_names::ItemTexts;
 use crate::own_player::OwnPlayer;
 use crate::ui_style::{self, BACK, TEXT};
@@ -49,9 +50,6 @@ type Carriers<'w, 's> = Query<
     Allow<Unpredicted>,
 >;
 
-/// The bar's slots, as many as the keys that cast an inventory slot's action.
-const SLOTS: u8 = 6;
-
 impl Plugin for InventoryBar {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::spawn);
@@ -60,7 +58,7 @@ impl Plugin for InventoryBar {
 }
 
 impl InventoryBar {
-    fn spawn(mut commands: Commands<'_, '_>) {
+    fn spawn(input: Res<'_, InputMap>, mut commands: Commands<'_, '_>) {
         let bar = Node {
             position_type: PositionType::Absolute,
             bottom: Val::Px(12.0),
@@ -70,7 +68,8 @@ impl InventoryBar {
             ..Node::default()
         };
         let bar = commands.spawn(bar).id();
-        for at in 0..SLOTS {
+        // A slot for each chord that casts an inventory slot's action.
+        for at in (0..=u8::MAX).take(input.row(Row::Items).len()) {
             let slot = Node {
                 width: Val::Px(120.0),
                 height: Val::Px(64.0),
@@ -98,24 +97,22 @@ impl InventoryBar {
     fn show(
         own: OwnPlayer<'_, '_>,
         carriers: Carriers<'_, '_>,
-        (names, tick, rate): (
-            Res<'_, ItemTexts>,
-            Option<Res<'_, SimTick>>,
-            Option<Res<'_, TickRate>>,
-        ),
+        (names, tick, rate): (Res<'_, ItemTexts>, Res<'_, SimTick>, Res<'_, TickRate>),
+        input: Res<'_, InputMap>,
         (slots, mut texts): (Query<'_, '_, (Entity, &BarSlot)>, Query<'_, '_, &mut Text>),
         mut line: Local<'_, String>,
     ) {
         let avatar = own.avatar();
         let carrier = avatar.and_then(|avatar| carriers.get(avatar.entity).ok());
         let first = carrier.and_then(|(_, group, _, held)| Some(held?.first_of(group?.kind())));
-        let clock = tick.zip(rate).map(|(tick, rate)| BarClock {
+        let clock = BarClock {
             now: tick.start(),
             hz: rate.hz().get(),
-        });
+        };
         for (entity, &BarSlot(at)) in &slots {
             line.clear();
-            write!(line, "{}", at + 1).expect("a String takes any text");
+            let chord = input.row(Row::Items)[usize::from(at)];
+            write!(line, "{}", chord.label()).expect("a String takes any text");
             let carried = carrier
                 .and_then(|(inventory, ..)| inventory.slots().get(usize::from(at)).copied())
                 .flatten();
@@ -194,7 +191,7 @@ struct BarClock {
 
 /// Writes after a slot's key the item `slot` carries: its name, its stack past one, its uses
 /// left, and, by `clock`, the whole seconds until its action is ready, rounded up.
-fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: Option<BarClock>) {
+fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: BarClock) {
     let ShownSlot {
         name,
         carried,
@@ -207,7 +204,8 @@ fn write_slot(line: &mut String, slot: ShownSlot<'_>, clock: Option<BarClock>) {
     if let Some(uses) = carried.uses {
         write!(line, " ({uses})").expect("a String takes any text");
     }
-    if let (Some(ready), Some(BarClock { now, hz })) = (ready, clock)
+    let BarClock { now, hz } = clock;
+    if let Some(ready) = ready
         && ready > now
     {
         let left = ready.get() - now.get();
@@ -222,7 +220,7 @@ mod tests {
 
     use bevy::ecs::system::{IntoSystem, System};
     use bevy::ecs::world::World;
-    use campfire_items::ItemId;
+    use campfire_values::ItemId;
 
     use super::*;
 
@@ -252,10 +250,10 @@ mod tests {
             uses: Some(NonZeroU32::new(1).unwrap()),
         };
         // At 30 ticks a second, ready 31 ticks on: 2 s, rounded up; ready now: no cooldown.
-        let clock = Some(BarClock {
+        let clock = BarClock {
             now: Tick::new(100),
             hz: 30,
-        });
+        };
         assert_eq!(
             line(potions, Some(Tick::new(131)), clock),
             "2 Health Potion x3 (1)\n2 s"
@@ -269,6 +267,6 @@ mod tests {
             uses: None,
             ..potions
         };
-        assert_eq!(line(sword, None, None), "2 Health Potion");
+        assert_eq!(line(sword, None, clock), "2 Health Potion");
     }
 }

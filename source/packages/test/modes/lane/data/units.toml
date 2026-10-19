@@ -3,6 +3,8 @@
 # time between waves, so a wave that wins walks on before the next comes. A tower kills it in two
 # strikes, a hero in five.
 [units.creep]
+# A hero that fells it takes 60 experience.
+experience = { gives = 60 }
 tags = ["creep"]
 params = { aggro_range = "6.0", help_range = "5.0", help_window_ms = 2000 }
 pools = ["health"]

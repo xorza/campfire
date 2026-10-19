@@ -5,11 +5,11 @@ use bevy::color::Color;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::ChildOf;
+use bevy::ecs::hierarchy::{ChildOf, Children};
 use bevy::ecs::query::{Allow, Without};
 use bevy::ecs::resource::Resource;
-use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::schedule::common_conditions::resource_exists;
+use bevy::ecs::schedule::common_conditions::{resource_exists_and_changed, resource_removed};
+use bevy::ecs::schedule::{IntoScheduleConfigs, SystemCondition};
 use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
@@ -19,30 +19,36 @@ use bevy::math::primitives::Cuboid;
 use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
+use bevy::state::condition::in_state;
+use bevy::state::state::{NextState, OnExit};
 use bevy::transform::components::Transform;
-use bevy::world_serialization::WorldAssetRoot;
 use campfire_capabilities::Order;
 use campfire_math::{Num, Vec3 as SimVec3};
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
-use campfire_production::{BuildBook, BuildTarget, Placement};
+use campfire_production::{BuildBook, Placement};
 use campfire_sim::{EntityIndex, Position, Unpredicted};
+use campfire_units::{BuildTarget, GroundPoint, UnitGrid};
 use campfire_values::Team;
 use campfire_vision::ByHolding;
 
+use crate::input_map::{Act, InputMap};
+use crate::input_mode::InputMode;
 use crate::orders::OrderSystems;
 use crate::placing::Placing;
 use crate::pointer::Pointer;
 use crate::selection::SelectionSystems;
 use crate::view::float_num::{self, FloatNum};
 use crate::view::look::Shape;
+use crate::view::match_colors::{Paint, Tint};
 use crate::view::unit_looks::UnitLooks;
 
 /// The build preview (02-engine-core.md, A command panel from the actions): while the player places
 /// a build, its building's look follows the ground point under the cursor, at its type's angle,
 /// over its box drawn green where it may stand and red where it overlaps a wall or a body the
-/// client holds; a left click on green orders the build there, and a right click or Esc drops it.
-/// It reads the clicks before the selection and the orders, which leave them to it while it places.
+/// client holds; a left click on green orders the build there, and a right click or the key map's
+/// drop chord, Esc of the engine's, drops it. It takes the clicks in `InputMode::Place`, which the
+/// selection and the orders leave to it, and ends the placing as the mode leaves.
 #[derive(Debug)]
 pub(crate) struct BuildPreview;
 
@@ -63,6 +69,17 @@ enum Fit {
     Blocked,
 }
 
+impl Fit {
+    /// The paint of the preview's look for the builder's `team`: tinted red where the building
+    /// may not stand, as Zero Hour tints its placement's drawable.
+    fn paint(self, team: Option<Team>) -> Paint {
+        Paint {
+            team,
+            tint: (self == Self::Blocked).then_some(Tint::Blocked),
+        }
+    }
+}
+
 /// The see-through tints of the preview's box, by its fit.
 #[derive(Resource, Debug)]
 struct Tints {
@@ -73,19 +90,26 @@ struct Tints {
 /// The height of the preview's box, which marks the ground the building takes.
 const FOOTPRINT_HEIGHT: f32 = 0.5;
 
-/// The key that drops a build.
-const DROP_KEY: KeyCode = KeyCode::Escape;
-
 impl Plugin for BuildPreview {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, Self::add_tints);
+        app.add_systems(OnExit(InputMode::Place), Self::end_placing);
         app.add_systems(
             Update,
             (
-                Self::show,
-                (Self::follow, Self::judge, Self::tint, Self::click)
+                Self::show.run_if(
+                    resource_exists_and_changed::<Placing>.or_eager(resource_removed::<Placing>),
+                ),
+                (
+                    Self::drop_lost,
+                    Self::follow,
+                    UnitGrid::refresh,
+                    Self::judge,
+                    Self::tint,
+                    Self::click,
+                )
                     .chain()
-                    .run_if(resource_exists::<Placing>),
+                    .run_if(in_state(InputMode::Place)),
             )
                 .chain()
                 .after(SelectionSystems)
@@ -113,23 +137,28 @@ impl BuildPreview {
         });
     }
 
+    /// Ends the placing as its builder leaves the client.
+    fn drop_lost(
+        placing: Res<'_, Placing>,
+        index: Res<'_, EntityIndex>,
+        mut mode: ResMut<'_, NextState<InputMode>>,
+    ) {
+        if index.get(placing.builder).is_none() {
+            NextState::set_if_neq(&mut mode, InputMode::Select);
+        }
+    }
+
     /// Spawns the preview's drawing as the player starts placing a build, and again for another
-    /// build; despawns it as the placing ends, or as its builder leaves the client.
+    /// build; despawns it as the placing ends.
     fn show(
         placing: Option<Res<'_, Placing>>,
         ghost: Option<Single<'_, '_, (Entity, &Ghost)>>,
-        index: Res<'_, EntityIndex>,
-        (builds, looks): (Res<'_, BuildBook>, Option<Res<'_, UnitLooks>>),
+        (builds, looks): (Res<'_, BuildBook>, Res<'_, UnitLooks>),
         tints: Res<'_, Tints>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
         mut commands: Commands<'_, '_>,
     ) {
         let placing = placing.map(|placing| *placing);
-        if let Some(placing) = placing
-            && index.get(placing.builder).is_none()
-        {
-            commands.remove_resource::<Placing>();
-        }
         let shown = ghost.as_deref().map(|&(_, ghost)| ghost.placing);
         if shown == placing {
             return;
@@ -171,16 +200,8 @@ impl BuildPreview {
             ))
             .add_child(footprint)
             .id();
-        let models = looks
-            .as_deref()
-            .and_then(|looks| looks.look(placing.building));
-        for model in models.unwrap_or_default() {
-            commands.spawn((
-                WorldAssetRoot(model.scene.clone()),
-                model.parts.clone(),
-                Transform::from_scale(Vec3::splat(model.scale)),
-                ChildOf(root),
-            ));
+        for model in looks.look(placing.building).unwrap_or_default() {
+            commands.spawn((model.bundle(Paint::default()), ChildOf(root)));
         }
     }
 
@@ -241,12 +262,19 @@ impl BuildPreview {
         ghost.fit = fit;
     }
 
-    /// Gives the preview's box the tint of its fit.
+    /// Gives the preview's box the tint of its fit, and its look the builder's team and, where
+    /// the building may not stand, the blocked tint.
     fn tint(
         tints: Res<'_, Tints>,
-        ghost: Single<'_, '_, &Ghost>,
+        (index, builders): (
+            Res<'_, EntityIndex>,
+            Query<'_, '_, &Team, Allow<Unpredicted>>,
+        ),
+        ghost: Single<'_, '_, (&Ghost, &Children)>,
         mut figures: Query<'_, '_, &mut MeshMaterial3d<StandardMaterial>>,
+        mut paints: Query<'_, '_, &mut Paint>,
     ) {
+        let (ghost, models) = ghost.into_inner();
         let tint = match ghost.fit {
             Fit::Clear => &tints.clear,
             Fit::Blocked => &tints.blocked,
@@ -256,20 +284,29 @@ impl BuildPreview {
         {
             figure.0 = tint.clone();
         }
+        let team = index
+            .get(ghost.placing.builder)
+            .and_then(|builder| builders.get(builder).ok())
+            .copied();
+        let paint = ghost.fit.paint(team);
+        let mut models = paints.iter_many_mut(models);
+        while let Some(mut model) = models.fetch_next() {
+            model.set_if_neq(paint);
+        }
     }
 
     /// A left click over the ground, where the building may stand, orders the build there and
-    /// ends the placing; a right click or Esc ends it.
+    /// ends the placing; a right click or a chord that drops the build ends it.
     fn click(
         buttons: Res<'_, ButtonInput<MouseButton>>,
-        keys: Res<'_, ButtonInput<KeyCode>>,
+        (keys, input): (Res<'_, ButtonInput<KeyCode>>, Res<'_, InputMap>),
         pointer: Pointer<'_, '_>,
         ghost: Single<'_, '_, &Ghost>,
         mut orders: ResMut<'_, PendingOrders>,
-        mut commands: Commands<'_, '_>,
+        mut mode: ResMut<'_, NextState<InputMode>>,
     ) {
-        if buttons.just_pressed(MouseButton::Right) || keys.just_pressed(DROP_KEY) {
-            commands.remove_resource::<Placing>();
+        if buttons.just_pressed(MouseButton::Right) || input.pressed(Act::DropBuild, &keys) {
+            NextState::set_if_neq(&mut mode, InputMode::Select);
             return;
         }
         if !buttons.just_pressed(MouseButton::Left) || pointer.over_ui() {
@@ -285,11 +322,16 @@ impl BuildPreview {
             ..
         } = ghost.placing;
         let target = BuildTarget::Point {
-            x: at.x,
-            z: at.z,
+            at: GroundPoint { x: at.x, z: at.z },
             angle,
         };
         orders.push(Order::one(builder, OrdersAction::Build { slot, target }));
+        NextState::set_if_neq(&mut mode, InputMode::Select);
+    }
+
+    /// Ends the placing as the input's mode leaves `InputMode::Place`, so the preview's drawing
+    /// goes.
+    fn end_placing(mut commands: Commands<'_, '_>) {
         commands.remove_resource::<Placing>();
     }
 }
@@ -298,11 +340,12 @@ impl BuildPreview {
 mod tests {
     use bevy::ecs::system::{IntoSystem, RunSystemOnce, System};
     use bevy::ecs::world::World;
-    use campfire_actions::BuildStart;
+    use bevy::state::app::{AppExtStates, StatesPlugin};
+    use bevy::state::state::State;
     use campfire_capabilities::Match;
     use campfire_capabilities::internals::ProductionFixtures;
-    use campfire_production::{NewBuild, Production, Style};
-    use campfire_sim::Capability;
+    use campfire_production::{BuildStart, NewBuild, Production, Style};
+    use campfire_sim::{Capability, IdAllocator};
     use campfire_units::BodyForm;
     use campfire_values::{ActionId, Share, UnitType};
 
@@ -320,6 +363,38 @@ mod tests {
     }
 
     #[test]
+    fn the_placing_lasts_while_the_input_places_and_goes_as_it_selects_again() {
+        let mut app = App::new();
+        app.add_plugins(StatesPlugin);
+        app.init_state::<InputMode>();
+        app.add_systems(OnExit(InputMode::Place), BuildPreview::end_placing);
+        let placing = Placing {
+            builder: IdAllocator::default().allocate(),
+            slot: 0,
+            action: ActionId::new(0),
+            building: UnitType::new(0),
+            angle: Num::ZERO,
+        };
+        let mode = |app: &App| *app.world().resource::<State<InputMode>>().get();
+        let set = |app: &mut App, mode| {
+            let mut next = app.world_mut().resource_mut::<NextState<InputMode>>();
+            NextState::set_if_neq(&mut next, mode);
+        };
+        app.insert_resource(placing);
+        set(&mut app, InputMode::Place);
+        app.update();
+        assert_eq!(mode(&app), InputMode::Place);
+        // Another build placed keeps the mode, and its placing with it.
+        set(&mut app, InputMode::Place);
+        app.update();
+        assert!(app.world().contains_resource::<Placing>());
+        set(&mut app, InputMode::Select);
+        app.update();
+        assert_eq!(mode(&app), InputMode::Select);
+        assert!(!app.world().contains_resource::<Placing>());
+    }
+
+    #[test]
     fn the_preview_is_red_over_an_enemys_body_and_green_clear_of_it() {
         // Walkers of a half meter: a builder of team 0 at the origin, an enemy at (10, 0), and a
         // friend at (−10, 0).
@@ -332,6 +407,7 @@ mod tests {
         let action = ActionId::new(0);
         let mut builds = BuildBook::default();
         let build = NewBuild {
+            unit_type: UnitType::new(0),
             form: BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
             start: BuildStart::Order,
             style: Style::Builder,
@@ -358,6 +434,7 @@ mod tests {
                 fit: Fit::Clear,
             };
             let ghost = game.spawn(ghost).id();
+            game.run_system_once(UnitGrid::refresh).unwrap();
             game.run_system_once(BuildPreview::judge).unwrap();
             let fit = game.get::<Ghost>(ghost).unwrap().fit;
             game.despawn(ghost);
@@ -372,5 +449,17 @@ mod tests {
         assert_eq!(fit(8, 0), Fit::Blocked);
         assert_eq!(fit(8, 90), Fit::Clear);
         assert_eq!(fit(-10, 0), Fit::Clear);
+        // Its look takes the builder's team, and red where it may not stand.
+        let team = Some(Team::new(1));
+        assert_eq!(
+            [Fit::Clear.paint(team), Fit::Blocked.paint(team)],
+            [
+                Paint { team, tint: None },
+                Paint {
+                    team,
+                    tint: Some(Tint::Blocked)
+                }
+            ]
+        );
     }
 }

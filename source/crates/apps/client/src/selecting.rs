@@ -7,18 +7,20 @@ use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::SystemCondition;
-use bevy::ecs::schedule::common_conditions::{not, resource_exists};
 use bevy::ecs::system::{Commands, Local, Res, ResMut, Single};
 use bevy::input::common_conditions::{input_just_pressed, input_just_released};
 use bevy::input::mouse::MouseButton;
 use bevy::math::{Rect, Vec2};
 use bevy::picking::Pickable;
+use bevy::state::app::AppExtStates;
+use bevy::state::condition::in_state;
 use bevy::ui::{BackgroundColor, BorderColor, Node, PositionType, UiRect, Val};
 use campfire_sim::{EntityIndex, StableId};
 
+use crate::input_mode::InputMode;
 use crate::own_player::OwnPlayer;
-use crate::placing::Placing;
 use crate::pointer::Pointer;
+use crate::press;
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::ViewSystems;
 
@@ -47,11 +49,6 @@ struct Held(Option<Press>);
 #[derive(Component, Debug)]
 struct DragBox;
 
-/// How far the cursor moves from where the button went down before a press drags, in logical
-/// pixels along either axis: Windows' default `SM_CXDRAG` and `SM_CYDRAG`, so a hand that shakes
-/// as it clicks still clicks.
-const DRAG_PIXELS: f32 = 4.0;
-
 /// The drawn rectangle's edge and its see-through fill.
 const BOX_EDGE: Color = Color::srgb(0.3, 0.95, 0.4);
 const BOX_FILL: Color = Color::srgba(0.3, 0.95, 0.4, 0.12);
@@ -60,13 +57,14 @@ impl Plugin for Selecting {
     fn build(&self, app: &mut App) {
         app.init_resource::<Selection>();
         app.init_resource::<Held>();
+        app.init_state::<InputMode>();
         app.add_systems(Startup, Self::add_box);
         app.add_systems(
             Update,
             (
                 Self::keep,
                 Self::press.run_if(
-                    input_just_pressed(MouseButton::Left).and_then(not(resource_exists::<Placing>)),
+                    input_just_pressed(MouseButton::Left).and_then(in_state(InputMode::Select)),
                 ),
                 Self::follow,
                 Self::release.run_if(input_just_released(MouseButton::Left)),
@@ -144,9 +142,7 @@ impl Selecting {
         if press.drags {
             pointer.own_units_within(press.rect(), &mut picked);
         } else {
-            let unit = pointer
-                .ground()
-                .and_then(|point| pointer.own_unit_at(point));
+            let unit = pointer.own_unit_under();
             picked.extend(unit);
         }
         if selection.bypass_change_detection().pick(&picked) {
@@ -174,12 +170,11 @@ impl Selecting {
 }
 
 impl Press {
-    /// Moves its cursor to `at`; once the cursor goes past `DRAG_PIXELS` from where the button
-    /// went down, the press drags until it ends, wherever the cursor goes back to.
+    /// Moves its cursor to `at`; once the press drags, it drags until it ends, wherever the
+    /// cursor goes back to.
     fn follow(&mut self, at: Vec2) {
         self.to = at;
-        let moved = (at - self.from).abs();
-        self.drags |= moved.max_element() > DRAG_PIXELS;
+        self.drags |= press::drags(self.from, at);
     }
 
     /// The rectangle from where the button went down to the cursor.

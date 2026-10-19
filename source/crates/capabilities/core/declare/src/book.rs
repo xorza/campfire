@@ -1,21 +1,20 @@
-use std::any::type_name;
-
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
-use campfire_script::View;
+use campfire_script::MatchNames;
 
 use crate::role::Role;
 
-/// Package data a module reads, which its declaration puts in a match empty, and the install
-/// fills from the packages, each book through `Book::load_into`. The module that declares it is its
-/// owner, which the install knows.
-pub trait Book: Resource + Default {
+/// Package data a module reads, which its builder makes from the packages before the match is
+/// built, and which the build puts in as its owner declares it, before its owner installs. The
+/// module that declares it is its owner, which the install knows.
+pub trait Book: Resource + Sized {
     /// Whether only a match that runs scripts reads it, so a client holds none.
     const SCRIPTS_ONLY: bool;
 
-    /// Gives the script view what it copies of it: a call part or a view column takes its book
-    /// from the match as it begins.
-    fn share(&self, view: &View);
+    /// Gives the match's names the tables it holds, which the script view and the match's checks
+    /// read; a call part or a view column takes its book from the match as it begins.
+    fn share(&self, names: &mut MatchNames);
 
     /// Whether a match of `role`, which installs its owner, holds it: one that runs scripts, when
     /// only scripts read it.
@@ -23,21 +22,46 @@ pub trait Book: Resource + Default {
         role.scripts() || !Self::SCRIPTS_ONLY
     }
 
-    /// Puts the book in place of the empty one its owner's declaration put in `world`, and gives
-    /// the script view what it copies of it: the step of the install for each book, which a test
-    /// that loads a book alone takes too.
-    fn load_into(self, world: &mut World) {
-        assert!(
-            world.contains_resource::<Self>(),
-            "{} is declared by its owner",
-            type_name::<Self>()
-        );
-        world.insert_resource(self);
-        Self::share_in(world);
+    /// Gives the match's names what `world`'s book holds, as it stands.
+    fn share_in(world: &mut World) {
+        world.resource_scope(|world, mut names: Mut<'_, MatchNames>| {
+            world.resource::<Self>().share(&mut names);
+        });
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::any::type_name;
+
+    use bevy_ecs::schedule::Schedules;
+    use bevy_ecs::world::World;
+    use campfire_sim::SimUpdate;
+
+    use crate::book::Book;
+
+    /// A test's load of a book in place of the one its match's build put in.
+    pub trait BookLoad: Book {
+        /// Puts the book in place of the one the build put in `world`, as a test that loads a
+        /// book alone does, and gives the script view what it copies of it, before the match's
+        /// systems install, as their install reads the books (02-engine-core.md, A test's match
+        /// installs at its first tick).
+        fn load_into(self, world: &mut World) {
+            assert!(
+                world.contains_resource::<Self>(),
+                "{} is declared by its owner",
+                type_name::<Self>()
+            );
+            let built = world.get_resource::<Schedules>();
+            assert!(
+                !built.is_some_and(|schedules| schedules.contains(SimUpdate)),
+                "{} loads before its match's systems install",
+                type_name::<Self>()
+            );
+            world.insert_resource(self);
+            Self::share_in(world);
+        }
     }
 
-    /// Gives the script view what it copies of `world`'s book, as it stands.
-    fn share_in(world: &World) {
-        world.resource::<Self>().share(world.non_send::<View>());
-    }
+    impl<B: Book> BookLoad for B {}
 }

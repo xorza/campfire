@@ -2,11 +2,12 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use campfire_common::DeclaredName;
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_stats::Level;
-use campfire_values::{DeclaredName, NameId, Names, TrackId};
+use campfire_values::{NameId, Names, TrackId};
 
 use crate::error::TrackError;
 use crate::track_data::TrackData;
@@ -29,11 +30,6 @@ struct Tracks {
 }
 
 impl TrackBook {
-    /// Whether `other` is this book as one load made it, not a book of another load.
-    pub(crate) fn same(&self, other: &Self) -> bool {
-        Arc::ptr_eq(&self.0, &other.0)
-    }
-
     /// The book of `tracks`; an error for more than `TrackId::LIMIT`, or more than one the
     /// `level` track.
     pub fn new(tracks: &BTreeMap<DeclaredName, TrackData>) -> Result<Self, TrackError> {
@@ -73,6 +69,12 @@ impl TrackBook {
         self.0.level
     }
 
+    /// How many levels `track` has: 1, and one for each threshold.
+    pub fn levels(&self, track: TrackId) -> usize {
+        let at = track.index();
+        (self.0.starts[at + 1] - self.0.starts[at]) as usize + 1
+    }
+
     /// The level `xp` reaches on `track`: 1, and one more for each threshold it meets.
     pub fn level_at(&self, track: TrackId, xp: Num) -> Level {
         let at = track.index();
@@ -100,7 +102,7 @@ impl Book for TrackBook {
 
     /// Names the tracks to scripts; the progression column takes the book from the match at each
     /// read.
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(self.names()));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(self.names()));
     }
 }

@@ -22,6 +22,13 @@ pub(crate) mod state_changes;
 #[serde(transparent)]
 pub struct StableId(u64);
 
+/// Its number, by which a geometry index orders it.
+impl From<StableId> for u64 {
+    fn from(id: StableId) -> Self {
+        id.0
+    }
+}
+
 impl StableId {
     /// The first named id, past `Tick::LIMIT`, which bounds the allocator: the match's entity's.
     pub const MATCH: Self = Self(1 << 63);

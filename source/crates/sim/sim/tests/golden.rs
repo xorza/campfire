@@ -207,9 +207,10 @@ fn state_section(hasher: &mut Hasher) {
     for entity in entities.into_iter().step_by(7) {
         world.despawn(entity);
     }
-    let mut state = StateRegistry::new();
+    let mut state = StateRegistry::builder();
     state.register_component::<Place>();
     state.register_component::<Life>();
+    let state = state.build();
     let mut per_type = Vec::new();
     let state_hash = state.hash_by_type(&world, &mut per_type);
     hasher.update(state_hash.as_bytes());
@@ -270,7 +271,11 @@ fn tick_section(hasher: &mut Hasher) {
         *chunk = inputs.next().to_le_bytes();
     }
     let mut world = World::new();
-    SimWorldBuilder::new(&mut world, SegmentSeed::new(seed), RATE).build();
+    let mut built = SimWorldBuilder::new(&mut world, SegmentSeed::new(seed), RATE);
+    let registry = built.parts().registry;
+    registry.register_component::<Place>();
+    registry.register_component::<Life>();
+    built.build();
     world.resource_mut::<Schedules>().add_systems(
         SimUpdate,
         (
@@ -279,9 +284,6 @@ fn tick_section(hasher: &mut Hasher) {
             wear.in_set(SimSet::Resolve),
         ),
     );
-    let mut registry = world.resource_mut::<StateRegistry>();
-    registry.register_component::<Place>();
-    registry.register_component::<Life>();
     for _ in 0..TICKS {
         world.run_schedule(SimUpdate);
         hasher.update(world.state_hash().as_bytes());
@@ -323,7 +325,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "13c217250fe464d10ac77a678ac0378bf1c3afa309e527e1adc7ae7a5f8e55ba",
+            digest: "98cddb17a957fb26c4aa198f80ce961562d7afc21b3c71e7f875dd64e86ae521",
         },
         Section {
             name: "tick",

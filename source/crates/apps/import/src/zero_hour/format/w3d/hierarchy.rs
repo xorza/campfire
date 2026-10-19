@@ -1,3 +1,4 @@
+use crate::pose::Pose;
 use crate::zero_hour::format::w3d::error::W3dError;
 use crate::zero_hour::format::w3d::w3d_chunks::W3dChunks;
 use crate::zero_hour::format::w3d::w3d_fields::W3dFields;
@@ -30,6 +31,20 @@ const NAME: usize = 16;
 const PIVOT: usize = NAME + 4 + 12 + 12 + 16;
 
 impl Hierarchy {
+    /// The placement of each pivot in the model's frame: its parent's, then its own.
+    pub(crate) fn poses(&self) -> Vec<Pose> {
+        let mut poses: Vec<Pose> = Vec::with_capacity(self.pivots.len());
+        for pivot in &self.pivots {
+            let local = pivot.pose();
+            let pose = match pivot.parent {
+                Some(parent) => poses[parent].then(local),
+                None => local,
+            };
+            poses.push(pose);
+        }
+        poses
+    }
+
     pub(crate) fn read(body: &[u8]) -> Result<Self, W3dError> {
         let mut name = None;
         let mut pivots = Vec::new();
@@ -84,6 +99,16 @@ impl Hierarchy {
             name: name.ok_or(W3dError::Missing)?,
             pivots,
         })
+    }
+}
+
+impl Pivot {
+    /// Its placement in its parent's frame.
+    pub(crate) const fn pose(&self) -> Pose {
+        Pose {
+            translation: self.translation,
+            rotation: self.rotation,
+        }
     }
 }
 

@@ -1,7 +1,8 @@
 use std::str::FromStr;
 
-use campfire_script::{NameKind, UnknownName};
-use campfire_values::{EngineStat, NameId, UnitType};
+use campfire_script::UnknownName;
+use campfire_units::StatId;
+use campfire_values::{NameId, Named, UnitType};
 
 use super::*;
 use crate::stat_book::StatBook;
@@ -48,7 +49,7 @@ fn a_stat_grows_by_its_per_level_from_level_1() {
     unknown.0.insert(mana, value(Num::ONE, Num::ZERO));
     assert_eq!(
         book.add_type(other, &unknown),
-        Err(UnknownName::new(NameKind::Stat, "mana"))
+        Err(UnknownName::new(StatId::NAMES, "mana"))
     );
     let gives = |unit_type, stat: &Stat| book.gives(unit_type, book.named(stat).unwrap());
     assert!(!gives(other, &health) && gives(unit_type, &health));

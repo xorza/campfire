@@ -19,9 +19,11 @@ mod tests {
     use crate::camera_file::CameraFile;
     use crate::client_objects::ClientObjects;
     use crate::client_units::ClientUnits;
+    use crate::hud_file::HudFile;
+    use crate::input_file::InputFile;
     use crate::map_conditions::MapConditions;
     use crate::map_lights::MapLights;
-    use crate::material_file::MaterialFile;
+    use crate::team_colors::TeamColors;
     use crate::terrain_file::TerrainFile;
 
     #[test]
@@ -35,6 +37,9 @@ mod tests {
             TerrainFile::path(&map),
             ClientUnits::path(),
             CameraFile::path(),
+            InputFile::path(),
+            HudFile::path(),
+            TeamColors::path(),
         ];
         assert_eq!(
             paths.each_ref().map(PackagePath::as_str),
@@ -45,24 +50,10 @@ mod tests {
                 "client/maps/tournament_desert/terrain.bin",
                 "client/units.toml",
                 "client/camera.toml",
+                "client/input.toml",
+                "client/hud.toml",
+                "client/team_colors.toml",
             ]
         );
-        // A material's file by its name, and its name by its file; a name no path holds, and a
-        // file elsewhere or of another kind, are none.
-        let flash = MaterialFile::path("tank_3").unwrap();
-        assert_eq!(flash.as_str(), "client/materials/tank_3.toml");
-        assert_eq!(MaterialFile::name_of(&flash), Some("tank_3"));
-        assert_eq!(MaterialFile::path("a:b"), None);
-        for other in [
-            "client/materials/notes.txt",
-            "client/units.toml",
-            "client/materialsx/a.toml",
-        ] {
-            assert_eq!(
-                MaterialFile::name_of(&PackagePath::parse(other).unwrap()),
-                None,
-                "{other}"
-            );
-        }
     }
 }

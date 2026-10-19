@@ -1,12 +1,14 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_actions::{ActionBook, ActionSlots, BuildStart, KindSpec};
+use campfire_actions::{ActionBook, ActionSlots};
 use campfire_declare::Book;
 use campfire_math::Num;
-use campfire_script::{Filter, View};
+use campfire_script::{Filter, MatchNames};
 use campfire_units::BodyForm;
 use campfire_values::{ActionId, Share, UnitType};
+
+use crate::build_start::BuildStart;
 
 /// What each build places, when it starts and how its site grows, by action, its rates and its
 /// placement's rules one run after another: package data, not state.
@@ -21,6 +23,7 @@ pub struct BuildBook {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Stored {
     action: ActionId,
+    unit_type: UnitType,
     form: BodyForm,
     start: BuildStart,
     style: StoredStyle,
@@ -58,6 +61,8 @@ pub struct PlacementCheck {
 /// One build's spec, as `BuildBook` holds it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BuildSpec<'a> {
+    /// The building's type, a type of its action's package that stands.
+    pub unit_type: UnitType,
     /// The building's box, before its angle turns it.
     pub(crate) form: BodyForm,
     pub(crate) start: BuildStart,
@@ -70,10 +75,9 @@ pub struct BuildSpec<'a> {
     pub(crate) away: &'a [PlacementCheck],
 }
 
-/// A builder's build of a slot: the building's type, its spec, and its range.
+/// A builder's build of a slot: its spec, the building's type among it, and its range.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Building<'a> {
-    pub(crate) unit_type: UnitType,
     pub(crate) spec: BuildSpec<'a>,
     pub(crate) range: Num,
 }
@@ -81,6 +85,7 @@ pub(crate) struct Building<'a> {
 /// What one build loads with.
 #[derive(Debug, Clone)]
 pub struct NewBuild<'a> {
+    pub unit_type: UnitType,
     pub form: BodyForm,
     pub start: BuildStart,
     pub style: Style<'a>,
@@ -111,6 +116,7 @@ impl BuildBook {
         self.rules.extend(build.away);
         self.specs.push(Stored {
             action,
+            unit_type: build.unit_type,
             form: build.form,
             start: build.start,
             style,
@@ -129,16 +135,10 @@ impl BuildBook {
         slots: &ActionSlots,
         slot: u8,
     ) -> Option<Building<'_>> {
-        let action = slots.slot(slot)?.action?;
-        let KindSpec::Build(unit_type) = book.get(action)?.kind else {
-            return None;
-        };
-        let range = slots.meters_in(book, slot);
-        let spec = self.of(action).expect("a build's spec is in the book");
+        let spec = self.of(slots.slot(slot)?.action?)?;
         Some(Building {
-            unit_type,
             spec,
-            range,
+            range: slots.meters_in(book, slot),
         })
     }
 
@@ -156,6 +156,7 @@ impl BuildBook {
             StoredStyle::Builders(rates) => Style::Builders(&self.rates[range(rates)]),
         };
         Some(BuildSpec {
+            unit_type: spec.unit_type,
             form: spec.form,
             start: spec.start,
             style,
@@ -188,7 +189,7 @@ impl BuildSpec<'_> {
 impl Book for BuildBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(test)]
@@ -205,6 +206,7 @@ mod tests {
             .enumerate()
         {
             let build = NewBuild {
+                unit_type: UnitType::new(0),
                 form: BodyForm::box_sized([Num::ONE, Num::ONE]).unwrap(),
                 start: BuildStart::Arrival,
                 style,

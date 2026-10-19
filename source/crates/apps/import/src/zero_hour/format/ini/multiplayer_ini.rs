@@ -1,14 +1,17 @@
 use campfire_mode::OptionData;
 
 use crate::zero_hour::format::ini::error::{IniError, MoneyError};
-use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniText};
+use crate::zero_hour::format::ini::ini_text::{BlockKinds, IniLine, IniText};
 
 /// What the import reads of Zero Hour's `Multiplayer.ini` files: the choices of starting money,
 /// as `parseMultiplayerStartingMoneyChoiceDefinition` adds them, each with whether it is the
-/// default a skirmish starts with.
+/// default a skirmish starts with; and the players' colors, each `MultiplayerColor`'s `RGBColor`
+/// as `parseMultiplayerColorDefinition` adds them, in the files' order, as its search by name
+/// matches a tooltip's name and finds none.
 #[derive(Debug, Default)]
 pub(crate) struct MultiplayerIni {
     money: Vec<MoneyChoice>,
+    colors: Vec<[u8; 3]>,
 }
 
 /// The starting money a skirmish's host picks among, in the order the files give them, and the
@@ -27,13 +30,18 @@ struct MoneyChoice {
 }
 
 impl MultiplayerIni {
-    /// Reads one INI file, adding its choices of starting money to those read before; its other
-    /// blocks, each of no inner block, it passes over.
+    /// Reads one INI file, adding its choices of starting money and its colors to those read
+    /// before; its other blocks, each of no inner block, it passes over.
     pub(crate) fn read(&mut self, bytes: &[u8]) -> Result<(), IniError> {
         for block in IniText::of(bytes).blocks(BlockKinds::Any) {
             let block = block?;
-            if block.head.word() != "multiplayerstartingmoneychoice" {
-                continue;
+            match block.head.word().as_str() {
+                "multiplayerstartingmoneychoice" => {}
+                "multiplayercolor" => {
+                    self.colors.push(Self::color(&block.fields)?);
+                    continue;
+                }
+                _ => continue,
             }
             let mut choice = MoneyChoice::default();
             for line in &block.fields {
@@ -50,6 +58,28 @@ impl MultiplayerIni {
             self.money.push(choice);
         }
         Ok(())
+    }
+
+    /// The players' colors, in the files' order.
+    pub(crate) fn colors(&self) -> &[[u8; 3]] {
+        &self.colors
+    }
+
+    /// A color's `RGBColor`, as `INI::parseRGBColor` reads it: each channel a whole number from
+    /// 0 to 255; black for a color of none, as the game's definition starts.
+    fn color(fields: &[IniLine<'_>]) -> Result<[u8; 3], IniError> {
+        let mut color = [0; 3];
+        for line in fields {
+            if line.word() != "rgbcolor" {
+                continue;
+            }
+            let channels = line.int_coord(["R", "G", "B"])?;
+            for (channel, value) in color.iter_mut().zip(channels) {
+                *channel =
+                    u8::try_from(value).map_err(|_| IniError::Range { line: line.number })?;
+            }
+        }
+        Ok(color)
     }
 
     /// The choices of starting money, the default the one marked `Default`; an error unless
@@ -74,13 +104,17 @@ impl MultiplayerIni {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    /// `Data\INI\Multiplayer.ini` of the fixture install: settings and a color, which the import
-    /// passes over, and three choices of starting money, the second the default.
+    /// `Data\INI\Multiplayer.ini` of the fixture install: settings, which the import passes over,
+    /// two colors, and three choices of starting money, the second the default.
     pub(crate) const MULTIPLAYER: &str = "MultiplayerSettings\r
   StartCountdownTimer = 5\r
 End\r
 MultiplayerColor ColorGold\r
   RGBColor = R:255 G:200 B:0\r
+  TooltipName = Color:Gold\r
+End\r
+MultiplayerColor ColorRed\r
+  RGBColor = R:255 G:0 B:0\r
 End\r
 MultiplayerStartingMoneyChoice\r
   Value = 5000\r
@@ -105,6 +139,19 @@ mod tests {
     fn a_skirmish_starts_with_the_one_choice_marked_default() {
         let mut ini = MultiplayerIni::default();
         ini.read(MULTIPLAYER.as_bytes()).unwrap();
+        // The colors in their order, a channel of a fraction its whole part, as `scanInt` reads
+        // it; a channel past 255 or below 0 is refused.
+        assert_eq!(ini.colors(), [[255, 200, 0], [255, 0, 0]]);
+        let mut whole = MultiplayerIni::default();
+        whole
+            .read(b"MultiplayerColor Half\n RGBColor = R:1.5 G:2 B:3\nEnd\n")
+            .unwrap();
+        assert_eq!(whole.colors(), [[1, 2, 3]]);
+        for wrong in ["R:256 G:0 B:0", "R:-1 G:0 B:0"] {
+            let text = format!("MultiplayerColor Wrong\n RGBColor = {wrong}\nEnd\n");
+            let read = MultiplayerIni::default().read(text.as_bytes());
+            assert!(matches!(read, Err(IniError::Range { line: 2 })), "{wrong}");
+        }
         assert_eq!(
             ini.money(),
             Ok(MoneyChoices {

@@ -2,7 +2,7 @@ use campfire_geometry::Placed;
 use campfire_math::{Num, SinCos, Vec3};
 use campfire_script::{
     ApiBuilder, ApiOwner, Checked, Ctx, MemberSpec, NumError, Raised, ScriptPosition, ScriptRadius,
-    ScriptValue, Unit,
+    ScriptValue, Unit, UnitAt,
 };
 
 use crate::avatar::Avatar;
@@ -19,7 +19,8 @@ pub struct UnitsApi;
 impl UnitsApi {
     /// `Vector`, and `Unit`'s `is_avatar` and `state`.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let field = |name, description| MemberSpec::field(ApiOwner::Unit, name, description);
+        let field =
+            |name, description| MemberSpec::field(ApiOwner::of::<Unit>(), name, description);
         api.bind(
             field("is_avatar", "whether it is an avatar"),
             |unit: &mut Unit| unit.read(Avatar::tagged),
@@ -29,16 +30,18 @@ impl UnitsApi {
                 "state",
                 "its script state, by name, which a call may write and read back",
             ),
-            |unit: &mut Unit| {
-                let unit_type = unit.read(|row| row.unit_type);
-                UnitStateAccess::of_row(unit.id, unit_type, unit.row_index())
+            |unit: &mut Unit| match unit.at() {
+                UnitAt::Row(row) => {
+                    let unit_type = unit.view().read_row(row, |row| row.unit_type);
+                    UnitStateAccess::of_row(unit.id, unit_type, row)
+                }
+                UnitAt::Created(unit_type) => UnitStateAccess::of_new(unit.id, unit_type),
             },
         );
         UnitStateAccess::register(api);
-        api.data::<CollisionData>(&["radius", "box", "height", "layer"], &[])
-            .data::<TagData>(&["blocks", "hidden", "detects", "immune"], &[]);
+        api.data::<CollisionData>(&[]).data::<TagData>(&[]);
         let vector = |name, signature, description| {
-            MemberSpec::method(ApiOwner::Vector, name, signature, description)
+            MemberSpec::method(ApiOwner::of::<Vec3>(), name, signature, description)
         };
         let within = vector(
             "within",
@@ -60,7 +63,7 @@ impl UnitsApi {
             &[&["degrees"]],
             "the vector turned by `degrees` about the vertical, counter-clockwise seen from above",
         );
-        api.ty::<Vec3>("Vector")
+        api.ty::<Vec3>()
             .method(rotated, |vector: Vec3, degrees: Num| {
                 Self::rotated(vector, degrees)
             })
@@ -92,16 +95,16 @@ impl UnitsApi {
                 },
             );
         let scaled = MemberSpec::operator(
-            ApiOwner::Vector,
+            ApiOwner::of::<Vec3>(),
             "*",
             "the vector scaled by a number, on either side",
         );
         api.method(
-            MemberSpec::operator(ApiOwner::Vector, "+", "the sum of two vectors"),
+            MemberSpec::operator(ApiOwner::of::<Vec3>(), "+", "the sum of two vectors"),
             |a: Vec3, b: Vec3| Self::exact(a.checked_add(b)),
         )
         .method(
-            MemberSpec::operator(ApiOwner::Vector, "-", "the difference of two vectors"),
+            MemberSpec::operator(ApiOwner::of::<Vec3>(), "-", "the difference of two vectors"),
             |a: Vec3, b: Vec3| Self::exact(a.checked_sub(b)),
         )
         .method(scaled, |vector: Vec3, factor: Num| {
@@ -109,7 +112,34 @@ impl UnitsApi {
         })
         .method(scaled, |factor: Num, vector: Vec3| {
             Self::exact(vector.checked_mul(factor))
-        });
+        })
+        .method(
+            MemberSpec::operator(
+                ApiOwner::of::<Vec3>(),
+                "==",
+                "whether the two are one vector",
+            ),
+            |a: Vec3, b: Vec3| Ok(a == b),
+        )
+        .method(
+            MemberSpec::operator(
+                ApiOwner::of::<Vec3>(),
+                "!=",
+                "whether the two are two vectors",
+            ),
+            |a: Vec3, b: Vec3| Ok(a != b),
+        );
+        let component =
+            |name, description| MemberSpec::field(ApiOwner::of::<Vec3>(), name, description);
+        api.bind(
+            component("x", "its first component, across the ground"),
+            |vector: &mut Vec3| vector.x,
+        )
+        .bind(component("y", "its height"), |vector: &mut Vec3| vector.y)
+        .bind(
+            component("z", "its third component, across the ground"),
+            |vector: &mut Vec3| vector.z,
+        );
     }
 
     /// The vector a checked operation gave; one past what a number holds fails the call.

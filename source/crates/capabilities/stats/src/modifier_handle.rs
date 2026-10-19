@@ -3,8 +3,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use campfire_script::{
-    ApiBuilder, ApiError, ApiOwner, CapabilityRefusal, Checked, MemberSpec, ScriptValue,
-    StateField, StateSchema, StateValue, View, plain_script_arg,
+    ApiBuilder, ApiError, ApiOwner, CapabilityRefusal, Checked, MemberSpec, ScriptHandle,
+    ScriptValue, StateField, StateSchema, StateValue, View, plain_script_arg,
 };
 use campfire_sim::StableId;
 use campfire_values::{ModifierId, NameId};
@@ -108,9 +108,10 @@ impl ModifierHandle {
 
     /// The `Modifier` handle's fields, and `m.state`.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        let field = |name, description| MemberSpec::field(ApiOwner::Modifier, name, description);
+        let field =
+            |name, description| MemberSpec::field(ApiOwner::of::<Self>(), name, description);
         let stacks = field("stacks", "its stacks, which a call may write and read back");
-        api.ty::<Self>("Modifier")
+        api.ty::<Self>()
             .bind(
                 field("carrier", "the unit that carries it"),
                 |handle: &mut Self| {
@@ -142,7 +143,7 @@ impl ModifierHandle {
                 ),
                 |handle: &mut Self| ModifierState(handle.clone()),
             );
-        api.ty::<ModifierState>("ModifierState")
+        api.ty::<ModifierState>()
             .index(|_, state: &mut ModifierState, name: &str| {
                 let data = state.0.data();
                 let field = data.field(name)?;
@@ -152,7 +153,7 @@ impl ModifierHandle {
                 |_, state: &mut ModifierState, name: &str, value: ScriptValue| -> Checked<()> {
                     let mut data = state.0.data();
                     let field = data.field(name)?;
-                    let value = StateValue::from_value(data.schema.kind(field), &value)?;
+                    let value = data.schema.take(field, &value)?;
                     data.state[field.index()] = value;
                     data.written = true;
                     Ok(())
@@ -170,3 +171,13 @@ impl HandleData {
 }
 
 plain_script_arg!(ModifierHandle);
+
+impl ScriptHandle for ModifierHandle {
+    const NAME: &'static str = "Modifier";
+    const TITLE: &'static str = "Modifier `m`";
+}
+
+impl ScriptHandle for ModifierState {
+    const NAME: &'static str = "ModifierState";
+    const TITLE: &'static str = "A modifier's state";
+}

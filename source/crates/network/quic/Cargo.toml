@@ -7,14 +7,12 @@ license.workspace = true
 [features]
 internals = [
     "campfire-common/internals",
-    "campfire-log/internals",
     "campfire-store/internals",
     "dep:criterion",
 ]
 
 [dependencies]
 campfire-common.workspace = true
-campfire-log.workspace = true
 campfire-store.workspace = true
 
 attohttpc.workspace = true
@@ -42,7 +40,6 @@ bevy_time.workspace = true
 campfire-quic = { workspace = true, features = ["internals"] }
 lightyear_serde.workspace = true
 
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]
 bench = false
 

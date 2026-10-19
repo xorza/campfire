@@ -4,7 +4,7 @@ The engine's capabilities and the core under them, a crate each: the core's crat
 
 ## Where a thing goes
 
-- **A new module** is a crate on a layer above everything it depends on, a row of `LAYERS`, and one entry of the release's module list, after the modules it builds on. Its crate depends on another capability exactly as its `NEEDS` and `USES` say.
+- **A new module** is a crate on a layer above everything it depends on, its layer read from its manifest, and one entry of the release's module list, after the modules it builds on. Its crate depends on another capability exactly as its `NEEDS` and `USES` say.
 - **The core names no capability.** A capability adds to the core through its seams: a column of the script view, a call part, an effect type, a row of the script API.
 - **Roles by name.** A module's effect is `<Module>Effect`, its script view column `<Module>Column`, its call part `<Module>Call`, its script API `<Module>Api`, each in the file of its name.
 - **Systems** are associated functions of unit structs, one struct for each concern in its own file. A capability's `lib.rs` holds its type, its declarations and install, its system sets and its published surface, and no system.

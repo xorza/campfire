@@ -5,8 +5,8 @@ use bevy_ecs::entity::Entity;
 #[derive(Debug, Default)]
 pub(crate) struct RowMarks {
     bits: Vec<u32>,
-    /// The entity index of each unit marked, to clear.
-    marked: Vec<u32>,
+    /// Each unit marked, to visit and to clear.
+    marked: Vec<Entity>,
 }
 
 impl RowMarks {
@@ -22,7 +22,7 @@ impl RowMarks {
             self.bits.resize(index + 1, 0);
         }
         if self.bits[index] == 0 {
-            self.marked.push(at);
+            self.marked.push(entity);
         }
         self.bits[index] |= 1 << source;
     }
@@ -33,17 +33,15 @@ impl RowMarks {
         bits.unwrap_or(0) & (1 << source) != 0
     }
 
-    /// Whether `entity`'s row is marked for any source.
-    pub(crate) fn any(&self, entity: Entity) -> bool {
-        self.bits
-            .get(entity.index_u32() as usize)
-            .is_some_and(|&bits| bits != 0)
+    /// Each unit marked for any source, in the order first marked.
+    pub(crate) fn entities(&self) -> &[Entity] {
+        &self.marked
     }
 
     /// Clears every mark.
     pub(crate) fn clear(&mut self) {
-        for &at in &self.marked {
-            self.bits[at as usize] = 0;
+        for &entity in &self.marked {
+            self.bits[entity.index_u32() as usize] = 0;
         }
         self.marked.clear();
     }

@@ -6,12 +6,12 @@ use campfire_common::MapName;
 use campfire_mode::{OptionPicks, OptionValue};
 use campfire_net::{
     Lobby, LobbyOpening, PendingRestore, Publisher, RestoredSession, ServerBots, ServerDir,
-    ServerSetup, SessionDir,
+    ServerSetup, SessionDir, SessionOpening, UncheckedRestore,
 };
 use campfire_package::ModePackages;
 use campfire_protocol::SessionTerms;
 use campfire_runner::SessionRules;
-use campfire_visibility::HostVisibility;
+use campfire_visibility::{HostVisibility, Visibility};
 
 use crate::opening::error::OpeningError;
 
@@ -21,17 +21,8 @@ pub(crate) mod error;
 /// of that session.
 #[derive(Debug)]
 pub(crate) struct Opening {
-    pub(crate) session: Opened,
+    pub(crate) session: SessionOpening,
     seats: NonZeroU32,
-}
-
-/// The session a server starts: a new one, open to its players, or the one a stop ended, to
-/// restore. A session past the restore window, or one that ended, has its log published
-/// instead, and a new one opens.
-#[derive(Debug)]
-pub(crate) enum Opened {
-    New(Box<Lobby>),
-    Restored(Box<PendingRestore>),
 }
 
 /// What `Opening::of` needs.
@@ -41,7 +32,8 @@ pub(crate) struct OpeningSetup<'a> {
     pub(crate) packages: ModePackages,
     pub(crate) server: ServerSetup,
     pub(crate) bots: ServerBots,
-    /// What the host sets of a new session's visibility; a restored session keeps its own.
+    /// What the host sets of a new session's visibility; a restored session keeps its own, and
+    /// refuses another.
     pub(crate) host: HostVisibility,
     /// The values the host picks of a new session's options; a restored session keeps its own.
     pub(crate) options: Vec<OptionValue>,
@@ -57,29 +49,32 @@ pub(crate) struct RestoreWindow {
 
 impl Opening {
     /// What the server starts: `found`, the session to restore that `find` gave, or a new one,
-    /// its directory, private record and journal made. An error for a session or a journal not
-    /// made, for a restored session whose terms the mode's rules do not admit, as a journal
-    /// another release wrote holds, and for one of other picks than the host asks.
+    /// its directory, private record and journal made, its terms checked once. An error for a
+    /// session or a journal not made, for a restored session whose terms the mode's rules do not
+    /// admit, and for one of other picks or another visibility than the host asks.
     pub(crate) fn of(
         found: Option<RestoredSession>,
         setup: OpeningSetup<'_>,
     ) -> Result<Self, OpeningError> {
-        let rules = SessionRules::of(&setup.packages);
-        let session = match found {
-            Some(session) => {
-                let options = &session.private.terms.options;
-                Self::picks(&rules, options, &setup.options)?;
-                Opened::Restored(Box::new(PendingRestore {
-                    session,
-                    packages: Arc::new(setup.packages),
-                    server: setup.server,
-                    bots: setup.bots,
-                }))
-            }
-            None => Opened::New(Box::new(Self::open(setup)?)),
+        let (session, visibility) = if let Some(session) = found {
+            let restore = PendingRestore::check(UncheckedRestore {
+                session,
+                packages: Arc::new(setup.packages),
+                server: setup.server,
+                bots: setup.bots,
+            })
+            .map_err(OpeningError::Terms)?;
+            let visibility = restore.checked().visibility;
+            let rules = SessionRules::of(&restore.packages);
+            Self::picks(rules, &restore.session.terms().options, &setup.options)?;
+            Self::visibility(rules, &visibility, &setup.host)?;
+            (SessionOpening::Restored(Box::new(restore)), visibility)
+        } else {
+            let lobby = Self::open(setup)?;
+            let visibility = lobby.checked().visibility;
+            (SessionOpening::New(Box::new(lobby)), visibility)
         };
         let terms = session.terms();
-        let visibility = rules.check(terms).map_err(OpeningError::Terms)?.visibility;
         let slots = u32::try_from(terms.slots.len()).expect("a session's slots fit u32");
         let seats = slots
             .checked_add(visibility.max_spectators())
@@ -95,10 +90,7 @@ impl Opening {
 
     /// The setup of the server that starts it.
     pub(crate) fn server(&self) -> &ServerSetup {
-        match &self.session {
-            Opened::New(lobby) => lobby.server(),
-            Opened::Restored(restore) => &restore.server,
-        }
+        self.session.server()
     }
 
     /// The seats of the session it starts: its slots and the most spectators it admits, which no
@@ -138,7 +130,7 @@ impl Opening {
     /// `journal`'s, the picks a waiting session's terms hold, which it restores with, as its map
     /// is checked (10-sessions.md, A pick is given by its value).
     fn picks(
-        rules: &SessionRules,
+        rules: SessionRules<'_>,
         journal: &[u8],
         asked: &[OptionValue],
     ) -> Result<(), OpeningError> {
@@ -148,6 +140,27 @@ impl Opening {
         let asked = OptionPicks::named(rules.options(), asked).map_err(OpeningError::Options)?;
         if asked.places() != journal {
             return Err(OpeningError::OtherPicks);
+        }
+        Ok(())
+    }
+
+    /// An error when the host `asked` settings of the visibility the mode leaves it, or a most of
+    /// spectators, and they do not give `journal`, the visibility a waiting session's terms hold,
+    /// which it restores with, as its picks are checked.
+    fn visibility(
+        rules: SessionRules<'_>,
+        journal: &Visibility,
+        asked: &HostVisibility,
+    ) -> Result<(), OpeningError> {
+        if *asked == HostVisibility::default() {
+            return Ok(());
+        }
+        let asked = rules
+            .visibility()
+            .session(asked)
+            .map_err(OpeningError::Visibility)?;
+        if &asked != journal {
+            return Err(OpeningError::OtherVisibility);
         }
         Ok(())
     }
@@ -193,16 +206,6 @@ impl RestoreWindow {
     }
 }
 
-impl Opened {
-    /// The session's terms.
-    fn terms(&self) -> &SessionTerms {
-        match self {
-            Self::New(lobby) => lobby.terms(),
-            Self::Restored(restore) => &restore.session.log.header().terms,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use campfire_test_packages::TestMode;
@@ -233,21 +236,56 @@ mod tests {
 
     #[test]
     fn a_waiting_sessions_picks_are_kept_and_others_asked_are_refused() {
-        let rules = SessionRules::of(&TestMode::Skirmish.packages());
+        let packages = TestMode::Skirmish.packages();
+        let rules = SessionRules::of(&packages);
         let asked = |values: &[&str]| -> Vec<OptionValue> {
             values.iter().map(|value| value.parse().unwrap()).collect()
         };
         // A session of the skirmish's 5,000, its second value, waits: no pick asked, and its
         // own, restore it; the default asked, a value of none, and a value it lacks, are refused.
-        assert!(Opening::picks(&rules, &[1], &[]).is_ok());
-        assert!(Opening::picks(&rules, &[1], &asked(&["start_money=5000"])).is_ok());
+        assert!(Opening::picks(rules, &[1], &[]).is_ok());
+        assert!(Opening::picks(rules, &[1], &asked(&["start_money=5000"])).is_ok());
         assert!(matches!(
-            Opening::picks(&rules, &[1], &asked(&["start_money=100"])),
+            Opening::picks(rules, &[1], &asked(&["start_money=100"])),
             Err(OpeningError::OtherPicks)
         ));
         assert!(matches!(
-            Opening::picks(&rules, &[1], &asked(&["start_money=7"])),
+            Opening::picks(rules, &[1], &asked(&["start_money=7"])),
             Err(OpeningError::Options(_))
+        ));
+    }
+
+    #[test]
+    fn a_waiting_sessions_visibility_is_kept_and_another_asked_is_refused() {
+        let packages = TestMode::Skirmish.packages();
+        let rules = SessionRules::of(&packages);
+        let hosted = |settings: &[&str], max_spectators| HostVisibility {
+            settings: settings
+                .iter()
+                .map(|value| value.parse().unwrap())
+                .collect(),
+            max_spectators,
+        };
+        let session = |host: &HostVisibility| rules.visibility().session(host).unwrap();
+        // A session of two spectators who see all waits: nothing asked, and its own, restore it;
+        // another most of spectators, or another fog of theirs, is refused.
+        let own = hosted(&["spectators=all"], 2);
+        let journal = session(&own);
+        assert!(Opening::visibility(rules, &journal, &HostVisibility::default()).is_ok());
+        assert!(Opening::visibility(rules, &journal, &own).is_ok());
+        for other in [
+            hosted(&["spectators=all"], 3),
+            hosted(&["spectators=teams"], 2),
+        ] {
+            assert!(matches!(
+                Opening::visibility(rules, &journal, &other),
+                Err(OpeningError::OtherVisibility)
+            ));
+        }
+        // A setting the mode does not leave the host is refused as the visibility asked.
+        assert!(matches!(
+            Opening::visibility(rules, &journal, &hosted(&["inventory=allies"], 2)),
+            Err(OpeningError::Visibility(_))
         ));
     }
 }

@@ -1,7 +1,8 @@
+use campfire_declare::{Section, SectionTable};
 use std::num::NonZeroU32;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// A unit type's `node` section: a node of the mode's player resource `resource`, holding
@@ -14,5 +15,10 @@ pub struct NodeData {
 }
 
 impl DataSection for NodeData {
-    const TABLE: DataTable = DataTable::Node;
+    const TABLE: DataTable = DataTable::new("A unit type's `node`");
+}
+
+impl Section for NodeData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "node";
 }

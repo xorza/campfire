@@ -1,13 +1,12 @@
 use std::num::NonZeroU32;
 
-use campfire_actions::GatherSpec;
 use campfire_capabilities::Order;
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersAction;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
-use campfire_units::{Layer, MapBook};
+use campfire_units::{GroundPoint, Layer, MapBook};
 use campfire_values::{Block, RelationSet};
 
 use super::*;
@@ -22,8 +21,8 @@ struct Mine {
 
 impl Mine {
     /// A match of production and its orders over 1 m cells from (−20, −20) to (20, 20), for walkers
-    /// of a half meter. Its minerals are nodes of gold, boxes of 2 by 1 m of the neutral team 2; its
-    /// hall, player 0's, a box of 4 by 2 m, takes gold. A worker's gather takes 5 a trip in 3
+    /// of a half meter. Its minerals are nodes of gold, boxes of 2 by 1 m of the neutral team 2;
+    /// its hall, player 0's, a box of 4 by 2 m, takes gold. A worker's gather takes 5 a trip in 3
     /// ticks, within 1 m of its body's edge, and looks 4 m from its node for another.
     fn place(game: &mut Match, shop: Shop) -> Self {
         let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
@@ -47,7 +46,7 @@ impl Mine {
             bounce: Num::int(4),
         };
         let all = Filter::of_release_relations(RelationSet::All);
-        let gather = Actions::add_gather(game, spec, all, Num::ONE, Ticks::new(3));
+        let gather = Production::add_gather(game, spec, all, Num::ONE, Ticks::new(3));
         // Minerals are boxes of 2 by 1 m; workers, of a half meter, walk a meter a tick.
         let mineral_body = BodyForm::box_sized([Num::int(2), Num::ONE]).unwrap();
         Units::give_type(game, mineral, mineral_body);
@@ -55,7 +54,6 @@ impl Mine {
         Units::give_type(game, worker, BodyForm::circle(Num::HALF).unwrap());
         Units::give_type(game, worker, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, worker, Gatherer::default());
-        Mode::load_test_units(game);
         Self {
             gather,
             mineral,
@@ -268,8 +266,10 @@ fn a_node_frees_to_its_waiting_worker_as_its_holder_dies_or_takes_another_order(
             game.step();
         } else {
             let away = OrdersAction::Move {
-                x: Num::int(10),
-                z: Num::ZERO,
+                to: GroundPoint {
+                    x: Num::int(10),
+                    z: Num::ZERO,
+                },
             };
             let payload = Order::payload(&[Order::one(first, away)]);
             game.step_with(&[(PlayerSlot::new(0), &payload)]);
@@ -383,7 +383,7 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     }
     let nearer = mine.mineral(&mut game, halves(5, 8), 100);
     let mut gatherer = game.part_mut::<Gatherer>(worker);
-    gatherer.set(None);
+    gatherer.set_unindexed(None);
     gatherer.carry(Some(Load {
         resource: shop.gold,
         amount: 5,
@@ -397,7 +397,7 @@ fn a_worker_sent_to_a_drop_off_returns_its_load_then_goes_back_and_drops_another
     // A load of another resource, sent to gather gold, is dropped.
     let wood = ResourceId::new(1);
     let mut gatherer = game.part_mut::<Gatherer>(worker);
-    gatherer.set(None);
+    gatherer.set_unindexed(None);
     gatherer.carry(Some(Load {
         resource: wood,
         amount: 3,
@@ -453,7 +453,7 @@ fn a_unit_trained_toward_a_node_gathers_there_by_its_first_gather() {
     let slots = ActionSlots::new([(gather, SlotKind::new(0), Rank::new(1))]);
     Shop::give(&mut game, worker_type, slots);
     Shop::give(&mut game, worker_type, Gatherer::default());
-    let train = Actions::add_train(&mut game, worker_type, Ticks::ZERO, None);
+    let train = Production::add_train(&mut game, worker_type, Ticks::ZERO, None);
     let barracks = Production::allocate_id(&mut game);
     let player = Some(PlayerSlot::new(0));
     shop.producer(

@@ -2,7 +2,7 @@ use std::io::ErrorKind;
 use std::sync::Arc;
 use std::time::Instant;
 
-use campfire_log::ErrorReport;
+use campfire_common::ErrorReport;
 use polling::Events;
 use tracing::{error, warn};
 

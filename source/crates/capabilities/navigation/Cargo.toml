@@ -45,7 +45,6 @@ campfire-navigation = { workspace = true, features = ["internals"] }
 [lints]
 workspace = true
 
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]
 bench = false
 

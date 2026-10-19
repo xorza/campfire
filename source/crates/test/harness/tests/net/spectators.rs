@@ -12,8 +12,7 @@ use campfire_net::{
     CloseCode, JoinError, JoinRefused, JoinState, LinkLossCause, LinkLost, Loss, WatchRequest,
 };
 use campfire_sim::{EntityIndex, StableId, Unpredicted};
-use campfire_stats::Life;
-use campfire_units::{SpawnPoint, UnitsWorld};
+use campfire_units::{Life, SpawnPoint, UnitsWorld};
 use campfire_values::{Relations, Team, TeamSet};
 use lightyear::prelude::Replicate;
 
@@ -21,7 +20,7 @@ use lightyear::prelude::Replicate;
 const JOIN_STEPS: usize = 300;
 
 /// A duo of the lane mode whose host gives `visibility` and admits `spectators`.
-const fn duo(visibility: &'static [&'static str], spectators: u32) -> MatchSetup {
+fn duo(visibility: &'static [&'static str], spectators: u32) -> MatchSetup {
     MatchSetup {
         visibility,
         max_spectators: spectators,

@@ -1,23 +1,15 @@
-use std::fmt;
-
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
-use bevy_ecs::query::{Added, Changed, Or};
-use bevy_ecs::system::{Local, Query, Res, SystemParam};
+use bevy_ecs::system::{Query, Res, ResMut};
 use bevy_ecs::world::World;
+use campfire_players::Player;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_units::{Dead, Owner, Player};
-use campfire_values::UnitType;
 use serde::{Deserialize, Serialize};
 
-use crate::site::Site;
-use crate::supply::{Counted, Supply};
+use crate::holdings::{Holdings, OwnedUnits};
 use crate::supply_book::SupplyBook;
-use crate::supply_cost_book::SupplyCostBook;
-use crate::train_queue::TrainQueue;
 
 /// A player's supply, on its entity, as its kind's audience sees it (14-replication-audiences.md,
 /// The match and each player are entities): what its living units and queued trains use, and its
@@ -38,75 +30,23 @@ impl PlayerSupply {
         self.cap
     }
 
-    /// Counts each player's supply anew, in a mode that counts it, when a part it counts or a
-    /// player changed since the last run, and writes it on each player's entity where it
-    /// changed. Only the server counts it, which a client receives.
+    /// Writes each player's supply on its entity, where it changed, in a mode that counts it, as
+    /// the holdings follow the units. Only the server counts it, which a client receives.
     pub(super) fn refresh(
-        (rules, costs): (Res<'_, SupplyBook>, Res<'_, SupplyCostBook>),
-        units: Query<'_, '_, Counted>,
+        rules: Res<'_, SupplyBook>,
+        owned: OwnedUnits<'_, '_>,
+        mut holdings: ResMut<'_, Holdings>,
         mut players: Query<'_, '_, (&Player, &mut Self)>,
-        mut changes: SupplyChanges<'_, '_>,
-        mut supply: Local<'_, Supply>,
     ) {
-        if !changes.any() {
-            return;
-        }
         let rules = rules.0.expect("supply is counted in a mode that counts it");
-        supply.count(&costs, rules, units.iter());
+        holdings.follow(&owned);
+        let max = u64::from(rules.max);
         for (player, mut held) in &mut players {
             held.set_if_neq(Self {
-                used: supply.used(player.slot()),
-                cap: supply.cap(player.slot()),
+                used: holdings.used(player.slot()),
+                cap: holdings.cap(player.slot(), max),
             });
         }
-    }
-}
-
-/// What changes a player's supply: a unit's owner, type or queue that changed, or one that died,
-/// came back, became a site or completed, or went; and a player that joined. No `Debug`:
-/// `RemovedComponents` has none.
-#[derive(SystemParam)]
-pub(super) struct SupplyChanges<'w, 's> {
-    changed: Query<
-        'w,
-        's,
-        (),
-        Or<(
-            Changed<Owner>,
-            Changed<UnitType>,
-            Changed<TrainQueue>,
-            Added<Dead>,
-            Added<Site>,
-        )>,
-    >,
-    players: Query<'w, 's, (), Added<Player>>,
-    lived: RemovedComponents<'w, 's, Dead>,
-    completed: RemovedComponents<'w, 's, Site>,
-    unowned: RemovedComponents<'w, 's, Owner>,
-    untyped: RemovedComponents<'w, 's, UnitType>,
-    unqueued: RemovedComponents<'w, 's, TrainQueue>,
-}
-
-impl fmt::Debug for SupplyChanges<'_, '_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SupplyChanges").finish_non_exhaustive()
-    }
-}
-
-impl SupplyChanges<'_, '_> {
-    /// Whether anything supply counts changed since the last run; it reads every removal, so
-    /// the next run reads only those after it.
-    fn any(&mut self) -> bool {
-        let removed = [
-            self.lived.read().count(),
-            self.completed.read().count(),
-            self.unowned.read().count(),
-            self.untyped.read().count(),
-            self.unqueued.read().count(),
-        ];
-        removed.iter().any(|&count| count != 0)
-            || !self.changed.is_empty()
-            || !self.players.is_empty()
     }
 }
 

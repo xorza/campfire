@@ -1,6 +1,6 @@
-//! The prototype of milestone 1: the sim schedule in Lightyear's `World`, a server and one predicting
-//! client over in-process channels, and the server's session log replayed in a bare `World`
-//! with the same state hash after every tick.
+//! The prototype of milestone 1: the sim schedule in Lightyear's `World`, a server and one
+//! predicting client over in-process channels, and the server's session log replayed in a bare
+//! `World` with the same state hash after every tick.
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
@@ -9,29 +9,30 @@ use bevy_ecs::world::EntityRef;
 use campfire_actions::ActionProgress;
 use campfire_capabilities::Order;
 use campfire_combat::Respawn;
-use campfire_common::{PlayerSlot, Tick, Ticks};
-use campfire_harness::{End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
+use campfire_common::{DeclaredName, PlayerSlot, Tick, Ticks};
+use campfire_harness::{ArchetypeWatch, End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
 use campfire_mode::{MatchResult, ModeState, ModeWorld};
 use campfire_net::internals::SimServerWorldInternals;
+use campfire_net::internals::TickHashes;
 use campfire_net::{
-    InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders, TickHashes,
+    InputChannel, InputMessage, InputMessageRefused, JoinState, LinkLost, PendingOrders,
 };
 use campfire_orders::OrdersAction;
-use campfire_players::{PlayerResources, PlayersWorld};
+use campfire_players::{PlayerResources, PlayersWorld, ResourcesData};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputError, SessionLog, Signature};
 use campfire_quic::LINK_MIN_MTU;
 use campfire_runner::{Replay, Session};
 use campfire_script::StateValue;
 use campfire_sim::{EntityIndex, Position, SimTick, SimWorld, StableId, Unpredicted};
-use campfire_stats::{Life, Modifiers, PoolId, Stats, StatsWorld};
+use campfire_stats::{Modifiers, Stats, StatsWorld};
 use campfire_test_packages::TestMode;
 use campfire_units::{
-    DashTo, Dead, Destination, ForcedMove, MapBook, MoveStep, Owner, SyncAll, SyncNone, Units,
-    UnitsWorld,
+    DashTo, Dead, Destination, ForcedMove, GroundPoint, Life, MapBook, MoveStep, Owner, PoolId,
+    SyncAll, SyncNone, Units, UnitsWorld,
 };
-use campfire_values::{DeclaredName, Names, PackageIndex, Relation, Relations, ResourceId, Team};
+use campfire_values::{Names, PackageIndex, Relation, Relations, ResourceId, Team};
 use lightyear::prelude::{
     Client, Connected, Link, MessageSender, Predicted, PredictionManager, PredictionTarget,
     Replicate, RollbackMode,
@@ -41,8 +42,10 @@ use lightyear::prelude::{
 const MATCH_FRAMES: usize = 120;
 const fn move_to(x: i64, z: i64) -> OrdersAction {
     OrdersAction::Move {
-        x: Num::int(x),
-        z: Num::int(z),
+        to: GroundPoint {
+            x: Num::int(x),
+            z: Num::int(z),
+        },
     }
 }
 
@@ -83,7 +86,8 @@ fn server_and_replay_agree_on_every_tick() {
     // so the client runs the sim again from the server's state many times. A server of 3 frames a
     // tick receives an input in the step's first frame, and runs the tick in one of the three, as
     // the frames it ran alone before shift it: in two of the three, the input arrives in a frame
-    // that runs no tick, and must be logged all the same.
+    // that runs no tick, and must be logged all the same. On the server, each unit spawns whole,
+    // the parts its replication takes among them, which its kind's marker requires.
     for (rollback, server_frames, shift) in [
         (RollbackMode::Check, 1, 0),
         (RollbackMode::Always, 1, 0),
@@ -100,6 +104,7 @@ fn server_and_replay_agree_on_every_tick() {
         for _ in 0..shift {
             local.server_frame();
         }
+        let mut watch = ArchetypeWatch::of(local.server_mut().world_mut());
         local.start_match();
         // The ticks the server ran while the client learned the match started.
         let started = local.server().world().resource::<SimTick>().start().get();
@@ -110,7 +115,9 @@ fn server_and_replay_agree_on_every_tick() {
                 _ => {}
             }
             local.step();
+            watch.tick(local.server().world(), u64::try_from(frame).unwrap());
         }
+        watch.assert_kept();
 
         let arrived = Hero {
             pos: Vec3::from((-2, 0, 5)),
@@ -485,7 +492,6 @@ fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
     world.entity_mut(entity).insert(ForcedMove::Dash {
         to: DashTo::Point(to),
         step,
-        delivers: None,
     });
     let mut frames = 0;
     while !dashing(local.client(0)) {
@@ -542,8 +548,8 @@ fn each_link_holds_its_own_players_resources_and_every_link_the_match_and_its_pl
     // gold from the start, and 100 more every 5 s, 100 ticks at its 20 Hz; its state's `joined`
     // goes to every client, and `left` to none.
     let packages = TestMode::Proving.packages();
-    let resources = packages.data().resources.iter();
-    let resources: Names<ResourceId> = resources.map(DeclaredName::as_str).collect();
+    let resources = packages.data().section_or_default::<ResourcesData>();
+    let resources: Names<ResourceId> = resources.0.iter().map(DeclaredName::as_str).collect();
     let gold = resources.named("gold").unwrap();
     let mut setup = MatchSetup::solo(RollbackMode::Check, 1, InProcessMatch::SEED_CHAIN);
     setup.players = 2;
@@ -764,5 +770,6 @@ fn a_unit_whose_owner_changes_mid_match_is_predicted_by_its_new_owners_client_al
     game.step_first_until(|game| game.held(0) == Held::Unpredicted);
     let server = game.local.server();
     let unit = server.world().entity(game.entity_in(server));
-    assert!(unit.contains::<Replicate>() && !unit.contains::<PredictionTarget>());
+    let none = PredictionTarget::manual(Vec::new());
+    assert!(unit.contains::<Replicate>() && unit.get::<PredictionTarget>() == Some(&none));
 }

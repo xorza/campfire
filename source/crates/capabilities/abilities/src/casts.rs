@@ -1,25 +1,28 @@
 use std::mem;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, QueryState, Without};
-use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::query::QueryData;
+use bevy_ecs::query::{Has, Without};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use campfire_actions::{
     ActionBook, ActionCall, ActionCheck, ActionKind, ActionProgress, ActionSlots, CastSpends,
-    Caster, EffectListBook, InProgress, ListCall, ListHook, ListsOf, OrderPhase, Purse,
-    ResolvedCast, SlotTimes, Targets, UseGroup,
+    Caster, EffectListBook, InProgress, ListCall, ListHook, ListsOf, OnResolve, OrderPhase,
+    ProgressDues, ProgressIndexes, Purse, ResolveKind, ResolvedCast, SlotCommit, SlotTimes,
+    StartChecked, StartFrom, Targets, UseGroup,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_deliveries::{Deliverers, Delivering, Launcher};
 use campfire_math::Vec3;
 use campfire_players::{PlayerResources, PlayerRows, PlayersCall, PlayersWorld};
 use campfire_script::{
-    CallError, CallStart, Ctx, Hook, HookCall, Pool, ScriptBatch, ScriptId, ScriptValue,
-    ScriptsWorld, Unit,
+    Answered, CallError, CallStart, Ctx, ScriptBatch, ScriptId, ScriptValue, ScriptsWorld, Unit,
 };
-use campfire_sim::{Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
+use campfire_sim::{DueUnit, Keyed, Ordered, Position, SimTick, StableId, TickClock, TickRate};
 use campfire_stats::{PoolBook, StatsWorld, UnitPools, UnitPoolsReadOnly};
-use campfire_units::{ArrivedShort, Body, Dead, Destination, ForcedMove, Owner};
+use campfire_units::{
+    ArrivedShort, Body, Dead, Destination, Due, ForcedMove, Life, Owner, PoolPayer,
+};
 use campfire_values::{ActionId, DashDelivery, Motion, Rank, Team, UnitTags};
 
 use crate::Abilities;
@@ -41,6 +44,25 @@ struct Prepared {
 
 /// The casts units are ordered: their start in Act, and in Hit their resolve, on a client
 /// predicted.
+/// A caster whose cast is due, keyed by its stable id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CastDue(Keyed);
+
+/// What the collect of the due casts reads of a caster, and its progress, which a cast it may not
+/// resolve goes back to its order in.
+#[derive(Debug, QueryData)]
+#[query_data(mutable, derive(Debug))]
+pub(crate) struct DueCaster {
+    entity: Entity,
+    id: &'static StableId,
+    progress: &'static mut ActionProgress,
+    slots: &'static ActionSlots,
+    tags: Option<&'static UnitTags>,
+    forced: Has<ForcedMove>,
+    used: Option<&'static UseGroup>,
+    life: Option<&'static Life>,
+}
+
 #[derive(Debug)]
 pub struct Casts;
 
@@ -61,7 +83,7 @@ impl Casts {
             '_,
             '_,
             (
-                &Position,
+                (Entity, &StableId, &Position),
                 &Team,
                 (&ActionSlots, &mut ActionProgress),
                 &mut SlotTimes,
@@ -76,11 +98,12 @@ impl Casts {
             ),
             Without<Dead>,
         >,
+        mut indexes: ProgressIndexes<'_>,
     ) {
         let now = tick.start();
         let life = life.life();
         for (
-            &position,
+            (entity, &id, &position),
             &team,
             (slots, mut progress),
             mut times,
@@ -97,15 +120,16 @@ impl Casts {
             let Some(underway) = progress.in_progress() else {
                 continue;
             };
+            let dues = &mut indexes.of(id, entity);
             let underway_slot = slots.slot(underway.slot()).expect("a slot the unit has");
             let blocked = Caster::of(tags, Motion::of(forced), used)
                 .blocked(Some(underway_slot), &book)
                 || !pools.lives();
             if let InProgress::Charge { .. } = underway {
                 if blocked {
-                    progress.interrupt();
+                    progress.interrupt(dues);
                 } else {
-                    progress.release(now);
+                    progress.release(now, dues);
                 }
                 continue;
             }
@@ -117,19 +141,25 @@ impl Casts {
                 .expect("an order of a slot the unit has");
             let approached = phase == OrderPhase::Approaching;
             // An item sold in the tick of its order leaves its slot with no action to start.
-            let Some(id) = slot.action else {
-                Self::drop_cast(&mut progress, destination.as_mut(), arrived, approached);
+            let Some(action) = slot.action else {
+                Self::drop_cast(
+                    &mut progress,
+                    destination.as_mut(),
+                    arrived,
+                    approached,
+                    dues,
+                );
                 continue;
             };
-            let action = book.get(id).expect("a slot's action is in the book");
-            if !matches!(action.kind.kind(), ActionKind::Cast | ActionKind::Use) {
+            let action = book.get(action).expect("a slot's action is in the book");
+            if !matches!(action.kind, ActionKind::Cast | ActionKind::Use) {
                 continue;
             }
             if blocked {
                 if approached {
                     Self::walk(destination.as_mut(), arrived, None);
                 }
-                progress.interrupt();
+                progress.interrupt(dues);
                 continue;
             }
             if let OrderPhase::Started(_) = phase {
@@ -142,44 +172,50 @@ impl Casts {
                     let rank = slot.rank.expect("a slot whose toggle is on is learned");
                     times.cool_down(aim.slot, now.after(action.values(rank).cooldown));
                 }
-                progress.stop();
+                progress.stop(dues);
                 continue;
             }
             let purse = Purse::of(pools.of(life), resources.of(owner));
             let relation = |other| targets.relation(team, other);
-            let shape = Body::shape_of(body);
-            let checked = times
-                .checked_action(ActionCheck {
-                    book: &book,
-                    now,
-                    slots,
-                    purse,
-                    aim,
-                    relation,
-                    living: |id| targets.living(id),
-                })
-                .map(|mut checked| {
-                    checked.clamp(position.get(), shape, &targets);
-                    checked
-                });
-            let Some(checked) = checked else {
-                Self::drop_cast(&mut progress, destination.as_mut(), arrived, approached);
+            let from = StartFrom {
+                pos: position.get(),
+                body,
+                targets: &targets,
+            };
+            let check = ActionCheck {
+                book: &book,
+                now,
+                caster: Caster::of(tags, Motion::of(forced), used),
+                slots,
+                purse,
+                aim,
+                relation,
+                living: |id| targets.living(id),
+            };
+            let Some(StartChecked { checked, reached }) = times.start(check, Some(from)) else {
+                Self::drop_cast(
+                    &mut progress,
+                    destination.as_mut(),
+                    arrived,
+                    approached,
+                    dues,
+                );
                 continue;
             };
-            if !checked.in_range(position.get(), body, &targets) {
+            if !reached {
                 match (destination.is_some(), checked.aimed_at(&targets)) {
                     (true, Some(to)) => {
                         Self::walk(destination.as_mut(), arrived, Some(to));
                         progress.approach();
                     }
-                    _ => progress.stop(),
+                    _ => progress.stop(dues),
                 }
                 continue;
             }
             if approached {
                 Self::walk(destination.as_mut(), arrived, None);
             }
-            progress.begin(&checked, position.get(), now);
+            progress.begin(&checked, position.get(), now, dues);
         }
     }
 
@@ -189,11 +225,12 @@ impl Casts {
         destination: Option<&mut Mut<'_, Destination>>,
         arrived: Option<&ArrivedShort>,
         approached: bool,
+        dues: &mut ProgressDues<'_>,
     ) {
         if approached {
             Self::walk(destination, arrived, None);
         }
-        progress.stop();
+        progress.stop(dues);
     }
 
     /// Walks the unit of `destination`, one that walks, to `to`, or stops it.
@@ -207,57 +244,56 @@ impl Casts {
         }
     }
 
-    /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls
-    /// share one snapshot of the living units, read as the batch begins, so no call sees what an
-    /// earlier one changed, at once or in Resolve. A due cast whose caster's tags keep it from
-    /// casting, or that lives no more, goes back to its order instead.
-    pub(super) fn resolve_casts(
-        world: &mut World,
-        casters: &mut QueryState<(Entity, &StableId, &ActionProgress), Without<Dead>>,
-        (mut order, mut due): (Local<'_, Ordered>, Local<'_, Vec<Keyed>>),
+    /// Collects the casts due this tick, in the order of their caster's stable id, for
+    /// `resolve_casts`, from the index of the resolves. A due cast whose caster's tags keep it
+    /// from casting, or that lives no more, goes back to its order instead.
+    pub(super) fn collect_casts(
+        (tick, book): (Res<'_, SimTick>, Res<'_, ActionBook>),
+        mut casters: Query<'_, '_, DueCaster, Without<Dead>>,
+        mut indexes: ProgressIndexes<'_>,
+        (mut order, mut taken): (Local<'_, Ordered>, Local<'_, Vec<DueUnit>>),
+        mut due: ResMut<'_, Due<CastDue>>,
     ) {
-        let now = world.resource::<SimTick>().start();
-        let resolving = casters
-            .iter(world)
-            .filter(|(.., progress)| {
-                progress
-                    .in_progress()
-                    .and_then(|underway| underway.cast_due(now))
-                    .is_some()
-            })
-            .map(|(entity, &id, _)| Keyed { id, entity });
-        due.clear();
-        due.extend_from_slice(order.sort(resolving));
-        due.retain(|&Keyed { entity, .. }| {
-            let unit = world.entity(entity);
-            let forced = unit.contains::<ForcedMove>();
-            let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
-            let progress = unit
-                .get::<ActionProgress>()
-                .expect("a due caster has progress");
-            let due = progress.in_progress().expect("a due cast is under way");
-            let slot = slots.slot(due.slot()).expect("a cast's slot");
-            let used = unit.get::<UseGroup>();
-            let book = world.resource::<ActionBook>();
-            let can_cast = world.lives(entity)
-                && !Caster::of(unit.get::<UnitTags>(), Motion::of(forced), used)
-                    .blocked(Some(slot), book);
+        let now = tick.start();
+        taken.clear();
+        let progress = |entity| casters.get(entity).ok().map(|caster| caster.progress);
+        indexes.take_resolves(now, ResolveKind::Cast, progress, &mut taken);
+        let resolving = taken
+            .iter()
+            .map(|&DueUnit { id, entity }| Keyed { id, entity });
+        let sorted = order.sort(resolving);
+        due.refill(sorted.iter().map(|&keyed| CastDue(keyed)));
+        due.retain(|&CastDue(Keyed { id, entity })| {
+            let mut caster = casters.get_mut(entity).expect("a due caster");
+            let underway = caster
+                .progress
+                .in_progress()
+                .expect("a due cast is under way");
+            let slot = caster.slots.slot(underway.slot()).expect("a cast's slot");
+            let motion = Motion::of(caster.forced);
+            let can_cast = campfire_units::lives(false, caster.life)
+                && !Caster::of(caster.tags, motion, caster.used).blocked(Some(slot), &book);
             if !can_cast {
-                world
-                    .get_mut::<ActionProgress>(entity)
-                    .expect("a due caster has progress")
-                    .interrupt();
+                caster.progress.interrupt(&mut indexes.of(id, entity));
             }
             can_cast
         });
-        if due.is_empty() {
-            return;
+    }
+
+    /// Resolves the casts `collect_casts` found due, in its order. Their calls share one snapshot
+    /// of the living units, read as the batch begins, so no call sees what an earlier one
+    /// changed, at once or in Resolve.
+    pub(super) fn resolve_casts(world: &mut World) {
+        let due = world.resource_mut::<Due<CastDue>>().take();
+        if !due.is_empty() {
+            let now = world.resource::<SimTick>().start();
+            world.script_batch(|batch| {
+                for &CastDue(Keyed { id: caster, entity }) in &due {
+                    Self::resolve(batch, now, caster, entity);
+                }
+            });
         }
-        world.script_batch(|batch| {
-            for &Keyed { id: caster, entity } in &*due {
-                Self::resolve(batch, now, caster, entity);
-            }
-        });
+        world.resource_mut::<Due<CastDue>>().give_back(due);
     }
 
     /// Resolves each due cast of a unit a client predicts as the server does when the cast's script
@@ -273,7 +309,7 @@ impl Casts {
             '_,
             '_,
             (
-                &Team,
+                (Entity, &StableId, &Team),
                 (&ActionSlots, &mut ActionProgress),
                 &mut SlotTimes,
                 UnitPoolsReadOnly,
@@ -284,51 +320,59 @@ impl Casts {
             ),
             Without<Dead>,
         >,
+        (mut indexes, mut taken): (ProgressIndexes<'_>, Local<'_, Vec<DueUnit>>),
     ) {
         let now = clock.start();
         let life = life.life();
         let second = Abilities::second(clock.rate());
-        for (&team, (slots, mut progress), mut times, pools, owner, tags, forced, used) in
-            &mut casters
-        {
-            let Some(ActionCall {
+        taken.clear();
+        let progress = |entity| {
+            casters
+                .get(entity)
+                .ok()
+                .map(|(_, (_, progress), ..)| progress)
+        };
+        indexes.take_resolves(now, ResolveKind::Cast, progress, &mut taken);
+        for &DueUnit { id, entity } in &*taken {
+            let ((_, _, &team), (slots, mut progress), mut times, pools, owner, tags, forced, used) =
+                casters.get_mut(entity).expect("a due caster");
+            let dues = &mut indexes.of(id, entity);
+            let ActionCall {
                 aim: casting,
                 start,
-            }) = progress
+            } = progress
                 .in_progress()
                 .and_then(|underway| underway.cast_due(now))
-            else {
-                continue;
-            };
+                .expect("a due cast is under way");
             let slot = slots.slot(casting.slot).expect("a cast's slot");
             if Caster::of(tags, Motion::of(forced), used).blocked(Some(slot), &book)
                 || !pools.lives()
             {
-                progress.interrupt();
+                progress.interrupt(dues);
                 continue;
             }
             let purse = Purse::of(pools.of(life), resources.of(owner));
             let living = |id| targets.living(id);
             let relation = |other| targets.relation(team, other);
-            let resolved = times
-                .checked_action(ActionCheck {
-                    book: &book,
-                    now,
-                    slots,
-                    purse,
+            let check = ActionCheck {
+                book: &book,
+                now,
+                caster: Caster::of(tags, Motion::of(forced), used),
+                slots,
+                purse,
+                aim: casting,
+                relation,
+                living,
+            };
+            let resolved = times.start(check, None).map(|started| {
+                started.checked.resolved(ActionCall {
                     aim: casting,
-                    relation,
-                    living,
+                    start,
                 })
-                .map(|checked| {
-                    checked.resolved(ActionCall {
-                        aim: casting,
-                        start,
-                    })
-                });
-            progress.finish_cast(slots, now, resolved.as_ref());
+            });
+            progress.finish_cast(slots, now, resolved.as_ref(), dues);
             if let Some(resolved) = &resolved {
-                times.spend_cast(resolved, now, second);
+                times.commit(SlotCommit::cast(resolved, now, second));
             }
         }
     }
@@ -341,35 +385,35 @@ impl Casts {
         let ctx = &batch.ctx().clone();
         let prepared = Self::prepare(batch.world(), ctx, now, caster, entity);
         let resolved = prepared.and_then(|mut prepared| {
-            let ran = batch.run(prepared.start, |batch| {
+            let hook = ListHook::OnResolve.hook();
+            let ran = batch.answer(prepared.start, hook, Some(caster), |batch| {
                 Self::pay_resources(batch.world(), ctx, &prepared);
                 Self::run(batch, ctx, &mut prepared)?;
                 Self::launch(batch.world(), entity, &prepared);
                 Ok(())
             });
             match ran {
-                Ok(()) => {
+                Answered::Ran(()) => {
                     Self::pay_pools(batch.world(), entity, &prepared);
                     Some(prepared.resolved)
                 }
-                Err(error) => {
-                    batch.record(Some(caster), Hook::OnResolve, error);
-                    None
-                }
+                Answered::Failed | Answered::Waits => None,
             }
         });
         let world = batch.world();
         let second = Abilities::second(*world.resource::<TickRate>());
-        let [mut unit] = world.entity_mut([entity]);
-        let (slots, mut progress) = unit
-            .get_components_mut::<(&ActionSlots, &mut ActionProgress)>()
-            .expect("a caster has slots");
-        progress.finish_cast(slots, now, resolved.as_ref());
+        ProgressDues::with(world, caster, entity, |world, dues| {
+            let [mut unit] = world.entity_mut([entity]);
+            let (slots, mut progress) = unit
+                .get_components_mut::<(&ActionSlots, &mut ActionProgress)>()
+                .expect("a caster has slots");
+            progress.finish_cast(slots, now, resolved.as_ref(), dues);
+        });
         if let Some(resolved) = &resolved {
             world
                 .get_mut::<SlotTimes>(entity)
                 .expect("a caster has slot times")
-                .spend_cast(resolved, now, second);
+                .commit(SlotCommit::cast(resolved, now, second));
             CastSpends::spend(world, entity, resolved.call.aim.slot);
         }
     }
@@ -461,32 +505,35 @@ impl Casts {
         let purse = Purse::of(pools, world.owner_resources(owner));
         let living = |id| view.living(id);
         let relation = |other| view.relation(team, other);
-        let checked = times.checked_action(ActionCheck {
+        let check = ActionCheck {
             book,
             now,
+            caster: Caster::of(
+                unit.get::<UnitTags>(),
+                Motion::of(unit.contains::<ForcedMove>()),
+                unit.get::<UseGroup>(),
+            ),
             slots,
             purse,
             aim: casting,
             relation,
             living,
-        })?;
+        };
+        let checked = times.start(check, None)?.checked;
         let target = Abilities::target(view, casting.target);
         let package = checked.action.package;
+        let owner = owner.map(|owner| owner.slot());
         let call = CallStart {
             start: Some(start),
-            dash_delivers: checked
-                .action
-                .delivery
-                .is_none()
-                .then_some(DashDelivery::new(
-                    caster.id,
-                    checked.id,
-                    checked.rank,
-                    Some(start),
-                )),
+            dash_delivers: checked.action.delivery.is_none().then_some(DashDelivery {
+                source: caster.id,
+                action: checked.id,
+                rank: checked.rank,
+                start: Some(start),
+            }),
+            payer: owner,
             ..CallStart::cast(checked.id, checked.rank, caster.id, package, now)
         };
-        let owner = owner.map(|owner| owner.slot());
         Some(Prepared {
             start: call,
             caster,
@@ -494,7 +541,7 @@ impl Casts {
             action: checked.id,
             rank: checked.rank,
             target,
-            on_resolve: checked.action.hook(Hook::OnResolve),
+            on_resolve: checked.action.hook(ListHook::OnResolve.hook()),
             resolved: checked.resolved(ActionCall {
                 aim: casting,
                 start,
@@ -520,11 +567,6 @@ impl Casts {
         let target = mem::take(&mut prepared.target);
         let caster = prepared.caster.clone();
         let args = (ctx.clone(), caster, target);
-        let call = HookCall {
-            script,
-            hook: Hook::OnResolve,
-            args,
-        };
-        batch.call(Pool::of(prepared.owner), call).map(drop)
+        batch.call::<OnResolve>(script, args).map(drop)
     }
 }

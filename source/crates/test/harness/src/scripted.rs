@@ -2,8 +2,8 @@ use std::num::NonZeroU32;
 
 use campfire_actions::ActionTarget;
 use campfire_capabilities::Order;
+use campfire_common::ErrorReport;
 use campfire_common::{AfterLeave, PlayerSlot, Tick};
-use campfire_log::ErrorReport;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::{LeaveReason, ServerInput, SlotPlan};
 

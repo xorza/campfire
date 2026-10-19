@@ -1,5 +1,9 @@
+use std::collections::BTreeMap;
+
+use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{Block, DeclaredName, TagProperties};
+use campfire_values::{Block, TagProperties};
 use serde::Deserialize;
 
 /// A tag's properties as the mode's `[tags.<name>]` declares them; a tag it does not declare has
@@ -41,5 +45,15 @@ impl TagData {
 }
 
 impl DataSection for TagData {
-    const TABLE: DataTable = DataTable::Tag;
+    const TABLE: DataTable = DataTable::new("A tag's properties, `[tags.<name>]`");
+}
+
+/// The mode's `[tags]`: the properties of its tags, by name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(transparent)]
+pub struct ModeTagsData(pub BTreeMap<DeclaredName, TagData>);
+
+impl Section for ModeTagsData {
+    const TABLE: SectionTable = SectionTable::Mode;
+    const KEY: &'static str = "tags";
 }

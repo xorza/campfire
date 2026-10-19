@@ -117,11 +117,11 @@ fn new_world(seed: SegmentSeed) -> World {
 }
 
 fn registry() -> StateRegistry {
-    let mut registry = StateRegistry::new();
+    let mut registry = StateRegistry::builder();
     registry.register_component::<Offset>();
     registry.register_component::<Age>();
     registry.register_resource::<TickSum>();
-    registry
+    registry.build()
 }
 
 /// A spawn, a reader of the tick inputs, two independent systems in one step, and a reader of the

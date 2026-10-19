@@ -1,31 +1,31 @@
 use std::fmt;
 
+use bevy_ecs::change_detection::Mut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::system::{Local, Query, Res, SystemState};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionProgress, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf,
+    ProgressDues,
 };
 use campfire_common::Tick;
 use campfire_declare::ByType;
 use campfire_math::{Num, Rounding};
-use campfire_script::{CallStart, Ctx, Hook, ScriptBatch, ScriptsWorld};
+use campfire_script::{CallStart, Ctx, Hook, HookSpec, ScriptBatch, ScriptRole, ScriptsWorld};
 use campfire_sim::{EntityIndex, SimTick, SimWorld, StableId};
 use campfire_stats::{
-    CarriedMut, Life, ModifierBook, ModifierClocks, PoolId, StatId, StatsWorld, UnitPools,
-    UnitStats,
+    CarriedMut, ModifierBook, ModifierClocks, ModifierEvents, ModifierHooks, StatsWorld, UnitStats,
 };
-use campfire_units::{Avatar, Owner, TagEffect};
+use campfire_units::{Avatar, Deaths, Fallen, Life, Owner, StatId, TagEffect};
 use campfire_values::{Block, NameId, Team, UnitTags, UnitType};
 
 use crate::armor::Armor;
 use crate::combat_book::CombatBook;
 use crate::combat_event::CombatEvent;
-use crate::combat_hooks::CombatHooks;
 use crate::damage::Damage;
-use crate::deaths::{Deaths, Fallen};
+use crate::damage_handle::DamageHandle;
 use crate::heal::{Heal, HealCause};
-use crate::modifier_hooks::ModifierHooks;
+use crate::heal_handle::HealHandle;
 use crate::next_damage::NextDamage;
 use crate::pass_queue::{PassEntry, PassQueue};
 use crate::recent_attack::RecentAttack;
@@ -93,6 +93,28 @@ impl fmt::Debug for PassScratch {
     }
 }
 
+/// `calc_damage(ctx, d)`: the mode's pure hook that gives a damage's amount.
+#[derive(Debug)]
+pub struct CalcDamage;
+
+/// `calc_heal(ctx, h)`: the mode's pure hook that gives a heal's amount before the heal scale.
+#[derive(Debug)]
+pub struct CalcHeal;
+
+impl HookSpec for CalcDamage {
+    const NAME: &'static str = "calc_damage";
+    const ROLE: ScriptRole = ScriptRole::Mode;
+    const PARAMS: &'static [&'static str] = &["ctx", "d"];
+    type Args = (Ctx, DamageHandle);
+}
+
+impl HookSpec for CalcHeal {
+    const NAME: &'static str = "calc_heal";
+    const ROLE: ScriptRole = ScriptRole::Mode;
+    const PARAMS: &'static [&'static str] = &["ctx", "h"];
+    type Args = (Ctx, HealHandle);
+}
+
 impl DamagePass {
     /// Applies the tick's damage and heals in the queue's order, with the units as the pass began:
     /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
@@ -104,20 +126,26 @@ impl DamagePass {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
         // Only a tick that carries entries writes the next tick's damage, which is state.
-        let carried = if world.resource::<NextDamage>().is_empty() {
-            Vec::new()
+        if world.resource::<NextDamage>().is_empty() {
+            world.resource_mut::<PassQueue>().begin([]);
         } else {
-            world.resource_mut::<NextDamage>().take()
-        };
-        world.resource_mut::<PassQueue>().begin(carried);
-        let hooks = world.non_send::<CombatHooks>().clone();
+            world.resource_scope(|world, mut carried: Mut<'_, NextDamage>| {
+                world.resource_mut::<PassQueue>().begin(carried.drain());
+            });
+        }
+        let hooks = ModifierEvents::of(world);
         let weigh = world.resource::<Weighers>().get();
-        if weigh.is_none() && hooks.events.is_none() {
-            Self::drain(&mut PassRun::Plain(world), &hooks, weigh, &mut scratch);
+        if weigh.is_none() && hooks.is_none() {
+            Self::drain(
+                &mut PassRun::Plain(world),
+                hooks.as_deref(),
+                weigh,
+                &mut scratch,
+            );
         } else if !world.resource::<PassQueue>().is_empty() {
             world.script_batch(|batch| {
                 let run = &mut PassRun::Scripted(batch);
-                Self::drain(run, &hooks, weigh, &mut scratch);
+                Self::drain(run, hooks.as_deref(), weigh, &mut scratch);
             });
         }
         world.resource_mut::<PassQueue>().end(now);
@@ -142,7 +170,7 @@ impl DamagePass {
     /// `run` runs them, and its buffers, `scratch`.
     fn drain(
         run: &mut PassRun<'_, '_>,
-        hooks: &CombatHooks,
+        hooks: Option<&ModifierHooks>,
         weigh: Option<Weigh>,
         scratch: &mut PassScratch,
     ) {
@@ -158,7 +186,7 @@ impl DamagePass {
                         (Some(weigh), Some(batch)) => match (weigh.heal)(batch, heal) {
                             Some(Ok(amount)) => amount,
                             Some(Err(error)) => {
-                                batch.record(Some(heal.target), Hook::CalcHeal, error);
+                                batch.record(Some(heal.target), Hook::of::<CalcHeal>(), &error);
                                 heal.amount
                             }
                             None => heal.amount,
@@ -180,7 +208,7 @@ impl DamagePass {
                 (Some(weigh), Some(batch)) => match (weigh.damage)(batch, damage) {
                     Some(Ok(amount)) => amount,
                     Some(Err(error)) => {
-                        batch.record(Some(damage.target), Hook::CalcDamage, error);
+                        batch.record(Some(damage.target), Hook::of::<CalcDamage>(), &error);
                         damage.amount
                     }
                     None => damage.amount,
@@ -196,13 +224,23 @@ impl DamagePass {
                 let ctx = batch.ctx().clone();
                 Self::run_weapon_list(batch, &ctx, damage, now);
             }
-            if let Some(events) = &hooks.events {
+            if let Some(events) = hooks {
                 let dealt = Damage {
                     amount: amount.max(Num::ZERO),
                     ..damage
                 };
                 Self::answer(batch, events, dealt, landed, &mut scratch.assisters);
             }
+        }
+    }
+
+    /// Takes `unit`'s life whole, when it lives: it dies as the next tick's deaths find it, with no
+    /// killer.
+    pub fn kill(world: &mut World, unit: StableId) {
+        if let Some(entity) = Self::living(world, unit) {
+            let mut life = world.get_mut::<Life>(entity).expect("a living unit's life");
+            let all = life.current();
+            life.take(all);
         }
     }
 
@@ -265,7 +303,7 @@ impl DamagePass {
             hit: damage.hit,
             ..CallStart::cast(weapon, rank, source, package, now)
         };
-        batch.hook_call(start, Hook::OnHit, Some(source), |batch| {
+        batch.answer(start, ListHook::OnHit.hook(), Some(source), |batch| {
             let call = ListCall {
                 of: ListsOf::Action(weapon, ListHook::OnHit),
                 reached: ActionTarget::Unit(damage.target),
@@ -288,9 +326,9 @@ impl DamagePass {
             return;
         }
         if damage.cause.attack() {
-            events.hear(batch, CombatEvent::AttackHit(damage));
+            CombatEvent::AttackHit(damage).reach(events, batch);
         }
-        events.hear(batch, CombatEvent::DamageTaken(damage));
+        CombatEvent::DamageTaken(damage).reach(events, batch);
         let Landed::Killed { death } = landed else {
             return;
         };
@@ -300,24 +338,20 @@ impl DamagePass {
         assisters.extend_from_slice(kill.assisters);
         let (victim, depth) = (damage.target, damage.depth);
         if let Some(killer) = killer {
-            events.hear(
-                batch,
-                CombatEvent::Kill {
-                    killer,
-                    victim,
-                    depth,
-                },
-            );
+            CombatEvent::Kill {
+                killer,
+                victim,
+                depth,
+            }
+            .reach(events, batch);
         }
         for unit in killer.into_iter().chain(assisters.iter().copied()) {
-            events.hear(
-                batch,
-                CombatEvent::Takedown {
-                    unit,
-                    victim,
-                    depth,
-                },
-            );
+            CombatEvent::Takedown {
+                unit,
+                victim,
+                depth,
+            }
+            .reach(events, batch);
         }
     }
 
@@ -339,16 +373,20 @@ impl DamagePass {
         let progress = world.get::<ActionProgress>(entity);
         let book = world.resource::<ActionBook>();
         if left > Num::ZERO && progress.is_some_and(|progress| progress.damage_cuts(book)) {
-            let progress = world.get_mut::<ActionProgress>(entity);
-            progress.expect("a unit whose channel runs").cut_channel();
+            ProgressDues::change(world, damage.target, entity, |progress, dues| {
+                progress.cut_channel(dues);
+            })
+            .expect("a unit whose channel runs");
         }
         let clocks = world.get::<ModifierClocks>(entity);
         if clocks.is_some_and(ModifierClocks::shielded) {
             let takes_effect = TagEffect::of(world, entity);
-            let book = world.resource::<ModifierBook>().clone();
-            if let Some(mut carried) = CarriedMut::of(world, entity) {
-                left = carried.absorb(left, |id| takes_effect.takes(book.tags(id)));
-            }
+            let absorbed = world.resource_scope(|world, book: Mut<'_, ModifierBook>| {
+                CarriedMut::with(world, entity, |carried| {
+                    carried.absorb(left, |id| takes_effect.takes(book.tags(id)))
+                })
+            });
+            left = absorbed.unwrap_or(left);
         }
         let living = |world: &World| {
             let life = world.get::<Life>(entity);
@@ -438,20 +476,6 @@ impl DamagePass {
         if amount > Num::ZERO {
             let mut life = world.get_mut::<Life>(entity).expect("a living unit");
             life.add(amount);
-        }
-    }
-
-    /// Restores `amount` of `id`'s `pool`, unscaled, when the unit exists, its life is above
-    /// zero, and it has the pool.
-    pub fn restore(world: &mut World, id: StableId, pool: PoolId, amount: Num) {
-        let Some(entity) = Self::living(world, id) else {
-            return;
-        };
-        if amount > Num::ZERO {
-            let life = world.life_pool();
-            let mut id = world.entity_mut(entity);
-            let pools = id.get_components_mut::<UnitPools>();
-            pools.expect("a unit's pools").of(life).add(pool, amount);
         }
     }
 

@@ -9,8 +9,19 @@ use crate::scripts::type_slots::{Slot, TypeSlots};
 /// An effect a call queues: it applies itself when the call returns, in the order queued among
 /// every type's.
 pub trait Effect: Debug + 'static {
+    /// What the effect does to the match, which says which roles' calls may queue it.
+    const KIND: EffectKind;
+
     /// Applies the effect, which the call in `frame` queued, in the call's tick.
     fn apply(self, world: &mut World, frame: &mut Frame);
+}
+
+/// What an effect does to the match: a change, which no AI's call makes, or an order its unit
+/// takes, which an AI's call gives (08-script-api.md, An AI reads and orders).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectKind {
+    Change,
+    Order,
 }
 
 /// How the next effect in order applies: it takes the first of its type's queue, and applies it.
@@ -20,7 +31,7 @@ type ApplyNext = fn(&mut World, &mut Frame);
 /// for the match, and the apply of each effect in the order queued. A type's effects apply in
 /// their own queue's order, so the order list needs no index.
 #[derive(Debug, Default)]
-pub struct Effects {
+pub(crate) struct Effects {
     queues: TypeSlots<dyn Queue>,
     order: Vec<ApplyNext>,
 }
@@ -38,7 +49,7 @@ impl<E: Effect> Queue for VecDeque<E> {
 
 impl Effects {
     /// Queues `effect` after every effect queued before it.
-    pub fn push<E: Effect>(&mut self, effect: E) {
+    pub(crate) fn push<E: Effect>(&mut self, effect: E) {
         let at = self
             .queues
             .index_of::<VecDeque<E>>()
@@ -48,22 +59,22 @@ impl Effects {
     }
 
     /// The effects of type `E` queued and not applied yet, first first.
-    pub fn queued<E: Effect>(&self) -> impl Iterator<Item = &E> {
+    pub(crate) fn queued<E: Effect>(&self) -> impl Iterator<Item = &E> {
         self.queues.get::<VecDeque<E>>().into_iter().flatten()
     }
 
     /// The effects of type `E` queued and not applied yet, first first, to change: a later call
     /// may add to an effect it finds, as a grant to a unit the call spawns joins the spawn.
-    pub fn queued_mut<E: Effect>(&mut self) -> impl Iterator<Item = &mut E> {
+    pub(crate) fn queued_mut<E: Effect>(&mut self) -> impl Iterator<Item = &mut E> {
         self.queues.get_mut::<VecDeque<E>>().into_iter().flatten()
     }
 
     /// The apply of each effect, in the order queued.
-    pub fn order(&self) -> &[ApplyNext] {
+    pub(crate) fn order(&self) -> &[ApplyNext] {
         &self.order
     }
 
-    pub fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.order.clear();
         for queue in self.queues.iter_mut() {
             queue.clear();
@@ -101,6 +112,8 @@ mod tests {
     struct Hit(u8);
 
     impl Effect for Hit {
+        const KIND: EffectKind = EffectKind::Change;
+
         fn apply(self, world: &mut World, frame: &mut Frame) {
             let now = frame.now();
             world
@@ -115,6 +128,8 @@ mod tests {
     struct Heal(u8);
 
     impl Effect for Heal {
+        const KIND: EffectKind = EffectKind::Change;
+
         fn apply(self, world: &mut World, frame: &mut Frame) {
             let now = frame.now();
             world
@@ -134,6 +149,8 @@ mod tests {
     impl CallPart for Early {
         const COMMITS: Commit = Commit::BeforeEffects;
 
+        fn begin_batch(&mut self, _: &World) {}
+
         fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
             Ok(())
         }
@@ -145,6 +162,8 @@ mod tests {
 
     impl CallPart for Late {
         const COMMITS: Commit = Commit::AfterEffects;
+
+        fn begin_batch(&mut self, _: &World) {}
 
         fn begin(&mut self, _: &World, _: &CallStart) -> Result<(), CallError> {
             Ok(())

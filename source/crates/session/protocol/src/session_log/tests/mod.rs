@@ -4,7 +4,7 @@ use blake3::Hasher;
 use campfire_common::{
     AfterLeave, MapName, PackageFingerprint, SegmentSeed, StateHash, Ticks, Version,
 };
-use secp256k1::Keypair;
+use secp256k1::{Keypair, XOnlyPublicKey};
 
 use super::*;
 use crate::delegation::DelegationTerms;
@@ -18,8 +18,9 @@ use crate::journal::tests::MemorySink;
 use crate::seed_chain::SeedChain;
 use crate::server_input::LeaveReason;
 use crate::server_input::error::ServerInputDecodeError;
-use crate::session_log::error::JournalReplayError;
+use crate::session_log::error::{JournalReplayError, PublishError};
 use crate::session_log::file::{LOG_TAG, PACKET_ENTRY};
+use crate::session_log::log_replay::LogReplay;
 use crate::session_result::{Outcome, SessionResult};
 use crate::session_terms::SessionTerms;
 use crate::slot_plan::SlotPlan;
@@ -131,13 +132,23 @@ struct Sent<'a> {
 impl Sent<'_> {
     /// Records the packet into `log`, as the server does when it arrives.
     fn submit(&self, log: &mut SessionLog, applied: &mut Vec<Applied>) -> Result<(), InputError> {
+        self.submit_to(log, applied, None)
+    }
+
+    /// Records the packet into `log` as `submit` does, its record into `journal`.
+    fn submit_to(
+        &self,
+        log: &mut SessionLog,
+        applied: &mut Vec<Applied>,
+        journal: Option<&mut Journal>,
+    ) -> Result<(), InputError> {
         let inputs = self.inputs.iter().map(|input| (input.stamp, input.payload));
         let packet = PlayerPacket {
             slot: self.slot(),
             inputs,
             signature: &self.signature,
         };
-        log.record(packet, applied)
+        log.record(packet, applied, journal)
     }
 
     /// The slot of its first input, or slot 0 for a packet of none.
@@ -146,6 +157,18 @@ impl Sent<'_> {
             .first()
             .map_or(PlayerSlot::new(0), |input| input.slot)
     }
+}
+
+/// The file the journal `file` publishes, with the server seed of its log's second segment.
+fn published_from(file: &[u8]) -> Result<Vec<u8>, PublishError> {
+    let mut out = Vec::new();
+    let mut walk = |visit: &mut dyn FnMut(&[u8])| {
+        for record in JournalFrames::new(file).unwrap() {
+            visit(record);
+        }
+    };
+    SessionLog::publish(&mut walk, &SEED_CHAIN.seed(1), &mut out)?;
+    Ok(out)
 }
 
 /// A new log of `header()`.
@@ -301,16 +324,25 @@ fn record_into(mut log: SessionLog, ticks: &[Vec<Sent<'_>>]) -> Result<Recorded,
 
 /// The applied inputs of the next tick, sealed now, as `(slot, payload)`.
 fn seal(log: &mut SessionLog) -> Vec<(u32, Vec<u8>)> {
-    log.seal_tick()
+    log.seal_tick(None)
         .map(|input| (input.slot.get(), input.payload.to_vec()))
         .collect()
 }
 
-/// `log` rewound and replayed to its last sealed tick: each tick's applied inputs, and the log.
+/// `log`'s sealed ticks replayed through a `LogReplay`, to its last: each tick's applied inputs,
+/// and the log.
 fn replayed(log: SessionLog) -> Recorded {
-    let ticks = log.next_tick();
-    let mut log = log.rewound();
-    let applied = (0..ticks.get()).map(|_| seal(&mut log)).collect();
+    let mut applied = Vec::new();
+    if let Some(mut replay) = LogReplay::of(&log) {
+        while !replay.done(&log) {
+            let sealed = replay.seal_tick(&log);
+            applied.push(
+                sealed
+                    .map(|input| (input.slot.get(), input.payload.to_vec()))
+                    .collect(),
+            );
+        }
+    }
     Recorded { log, applied }
 }
 
@@ -325,7 +357,7 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
             let payloads = packet.inputs.iter().map(|input| input.payload);
             outcomes.extend(payloads.zip(applied.iter().copied()));
         }
-        drop(log.seal_tick());
+        drop(log.seal_tick(None));
     }
     // Applied at max(stamp, next tick); late when the next tick is more than 2 ticks after the
     // stamp, early when the stamp is more than 2 ticks ahead; and a player's inputs fill each tick
@@ -356,22 +388,21 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
 }
 
 #[test]
-fn a_rewound_log_replays_the_same_ticks_and_ends_as_it_was() {
+fn a_replay_seals_the_same_ticks_and_leaves_the_log_as_it_was() {
     let log = published();
     let bytes = encoded(&log);
     let Recorded { mut log, applied } = replayed(log);
     assert_eq!(applied, script_applied());
-    // Caught up, the log is as it was: the same file, and the inputs held for later ticks, and
-    // the tail, wait to apply.
+    // The replay leaves the log as it was: the same file, and the inputs held for later ticks,
+    // and the tail, wait to apply.
     assert_eq!(encoded(&log), bytes);
     assert_eq!(
         [seal(&mut log), seal(&mut log), seal(&mut log)].to_vec(),
         tail_applied()
     );
 
-    // A log with no sealed tick rewinds to itself.
-    let empty = new_log().rewound();
-    assert_eq!(empty.next_tick(), Tick::new(0));
+    // A log with no sealed tick has no replay: its next tick runs live.
+    assert!(LogReplay::of(&new_log()).is_none());
 }
 
 /// A change to the sent packets, and the first packet it makes the log refuse.
@@ -513,7 +544,7 @@ fn a_tampered_packet_is_refused() {
         let mut ticks = chained();
         (case.change)(&mut ticks);
         // A log file with the same packets is refused for the same packet.
-        let file = frame(&header(), &ticks, &[], Some(server_seed()));
+        let file = frame(&header(), &ticks, &[], Some(&server_seed()));
         assert_eq!(
             SessionLog::decode(&file).err(),
             Some(case.refused.clone()),
@@ -557,7 +588,7 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     let mut log = bounded(70 + kept);
     sent[0].submit(&mut log, &mut applied).unwrap();
     assert_eq!(log.file_len, start + 70);
-    assert!(log.full());
+    assert!(log.full(None));
     assert_eq!(
         sent[1].submit(&mut log, &mut applied),
         Err(InputError::LogFull)
@@ -572,39 +603,41 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
         file: file_bound,
         journal: Bounds::MAX.journal,
     };
-    assert!(SessionLog::decode_within(&file, within(start + 70 + kept), Signatures::Check).is_ok());
+    assert!(SessionLog::decode_within(&file, within(start + 70 + kept)).is_ok());
     let full = LogError::Input {
         tick: Tick::new(0),
         error: InputError::LogFull,
     };
     assert_eq!(
-        SessionLog::decode_within(&file, within(start + 70 + kept - 1), Signatures::Check).err(),
+        SessionLog::decode_within(&file, within(start + 70 + kept - 1)).err(),
         Some(full)
     );
     // A log full only once it takes a record of the most bytes and the end no more.
     let mut log = bounded(unit + kept);
-    assert!(!log.full());
+    assert!(!log.full(None));
     sent[0].submit(&mut log, &mut applied).unwrap();
-    assert!(log.full());
+    assert!(log.full(None));
 
     // The journal counts on its own: its frames past what the log holds.
     let mut log = new_log();
-    log.keep_journal(MemorySink::new().boxed());
-    let journal = log.journal.as_ref().unwrap().len();
-    log.bounds.journal = journal + 106 + kept - 1;
+    let mut journal = Journal::start(&log, MemorySink::new().boxed());
+    let before = journal.len();
+    log.bounds.journal = before + 106 + kept - 1;
     assert_eq!(
-        sent[0].submit(&mut log, &mut applied),
+        sent[0].submit_to(&mut log, &mut applied, Some(&mut journal)),
         Err(InputError::LogFull)
     );
     log.bounds.journal += 1;
-    sent[0].submit(&mut log, &mut applied).unwrap();
-    assert_eq!(log.journal.as_ref().unwrap().len(), journal + 106);
+    sent[0]
+        .submit_to(&mut log, &mut applied, Some(&mut journal))
+        .unwrap();
+    assert_eq!(journal.len(), before + 106);
 
     // Each seal takes a byte for the next tick's count of entries, and one more as the count
     // of the segment's ticks passes 127: 127 + 2 bytes in 128 seals.
     let mut log = new_log();
     for _ in 0..128 {
-        drop(log.seal_tick());
+        drop(log.seal_tick(None));
     }
     assert_eq!(log.file_len, start + 129);
     assert_eq!(len(encoded(&log).len()), start + 129);
@@ -612,11 +645,11 @@ fn an_entry_past_the_files_or_the_journals_bound_is_refused() {
     // segments stays a byte and whose own count of ticks takes one, leave a log of 2 bytes more
     // full within 2 + 9,842 + 5 × 9,842 bytes less one.
     let mut log = bounded(2 + 6 * unit - 1);
-    drop(log.seal_tick());
-    assert!(!log.full());
-    log.begin_checkpoint().unwrap();
+    drop(log.seal_tick(None));
+    assert!(!log.full(None));
+    log.begin_checkpoint(None).unwrap();
     assert_eq!(log.file_len, start + 2);
-    assert!(log.full());
+    assert!(log.full(None));
 }
 
 #[test]
@@ -817,15 +850,15 @@ fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
         ]))
     });
     assert_ne!(expected[0], expected[1]);
-    for (segment, expected) in (0..).zip(expected) {
+    for (segment, expected) in (0..).zip(&expected) {
         let seed = header().segment_seed(segment, &SEED_CHAIN.seed(segment));
-        assert_eq!(seed, expected);
+        assert_eq!(&seed, expected);
     }
     // A seed of another segment, or of no chain of the commitment's, is no seed of its chain.
     let commitment = header().terms.seed_commitment;
-    assert!(ServerSeeds::new(1, s1).commits_to(&commitment));
-    for (segment, server_seed) in [(0, s1), (1, s0), (0, ServerSeed::new([4; 32]))] {
-        let seeds = ServerSeeds::new(segment, server_seed);
+    assert!(ServerSeeds::new(1, s1.clone()).commits_to(&commitment));
+    for (segment, server_seed) in [(0, &s1), (1, &s0), (0, &ServerSeed::new([4; 32]))] {
+        let seeds = ServerSeeds::new(segment, server_seed.clone());
         assert!(!seeds.commits_to(&commitment), "{segment}: {server_seed:?}");
     }
 
@@ -839,16 +872,16 @@ fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
     let mut swapped = header();
     swapped.slots.swap(0, 1);
     for other in [changed, swapped] {
-        for (segment, expected) in (0..).zip(expected) {
+        for (segment, expected) in (0..).zip(&expected) {
             let seed = other.segment_seed(segment, &SEED_CHAIN.seed(segment));
-            assert_ne!(seed, expected, "{segment}: {other:?}");
+            assert_ne!(&seed, expected, "{segment}: {other:?}");
         }
     }
 
     let mut log = new_log();
     assert_eq!(log.revealed_seed(), None);
-    log.reveal_seed(s0);
-    assert_eq!(log.revealed_seed(), Some(s0));
+    log.reveal_seed(s0.clone());
+    assert_eq!(log.revealed_seed(), Some(&s0));
 }
 
 #[test]
@@ -865,7 +898,7 @@ fn frame(
     header: &SessionHeader,
     ticks: &[Vec<Sent<'_>>],
     tail: &[Sent<'_>],
-    revealed: Option<ServerSeed>,
+    revealed: Option<&ServerSeed>,
 ) -> Vec<u8> {
     let mut bytes = b"campfire/session-log/v6".to_vec();
     let terms = &header.terms;
@@ -936,11 +969,11 @@ fn a_log_file_decodes_to_the_same_log() {
     let bytes = encoded(&log);
     let mut sent = chained_with_tail();
     let tail = sent.pop().unwrap();
-    assert_eq!(bytes, frame(&header(), &sent, &tail, Some(server_seed())));
+    assert_eq!(bytes, frame(&header(), &sent, &tail, Some(&server_seed())));
 
     let mut decoded = SessionLog::decode(&bytes).unwrap();
     assert_eq!(decoded.header(), log.header());
-    assert_eq!(decoded.revealed_seed(), Some(server_seed()));
+    assert_eq!(decoded.revealed_seed(), Some(&server_seed()));
     assert_eq!(decoded.next_tick(), Tick::new(5));
     assert_eq!(encoded(&decoded), bytes);
     let live = record(header(), &sent).unwrap().applied;
@@ -990,7 +1023,7 @@ fn a_log_file_has_its_layout() {
         place,
     });
     serve(&mut log, disconnected).unwrap();
-    drop(log.seal_tick());
+    drop(log.seal_tick(None));
     log.reveal_seed(server_seed());
 
     let [first, second] = [0, 1].map(delegation);
@@ -1054,22 +1087,26 @@ fn a_log_file_has_its_layout() {
 /// and an input still due; 1 packet after it; the revealed seed; and the result.
 fn minimal() -> SessionLog {
     let mut log = new_log();
-    play_minimal(&mut log);
+    play_minimal(&mut log, None);
     log.reveal_seed(SEED_CHAIN.seed(1));
     log
 }
 
-/// Records into `log`, of `header()` and new, what `minimal` holds before its reveal.
-fn play_minimal(log: &mut SessionLog) {
+/// Records into `log`, of `header()` and new, what `minimal` holds before its reveal, each record
+/// into `journal` too, when one is given.
+fn play_minimal(log: &mut SessionLog, journal: Option<&mut Journal>) {
+    let mut journal = journal;
     let mut applied = Vec::new();
     let sent = resent(1, &[&[(0, b"a"), (1, b"b")], &[(1, b"c")]], 1);
-    sent[0].submit(log, &mut applied).unwrap();
+    sent[0]
+        .submit_to(log, &mut applied, journal.as_deref_mut())
+        .unwrap();
     let connected = ServerInput::Connected {
         slot: PlayerSlot::new(0),
     };
-    serve(log, connected).unwrap();
-    drop(log.seal_tick());
-    log.begin_checkpoint().unwrap();
+    serve_to(log, connected, journal.as_deref_mut()).unwrap();
+    drop(log.seal_tick(journal.as_deref_mut()));
+    log.begin_checkpoint(journal.as_deref_mut()).unwrap();
     let record = Checkpoint {
         segment: 1,
         tick: log.next_tick(),
@@ -1081,8 +1118,11 @@ fn play_minimal(log: &mut SessionLog) {
         session_id: session_id(),
         record: &record,
     });
-    log.record_checkpoint(record, &signature).unwrap();
-    sent[1].submit(log, &mut applied).unwrap();
+    log.record_checkpoint(record, &signature, journal.as_deref_mut())
+        .unwrap();
+    sent[1]
+        .submit_to(log, &mut applied, journal.as_deref_mut())
+        .unwrap();
     let result = SessionResult {
         tick: log.next_tick(),
         outcome: Outcome::Won { team: 1 },
@@ -1092,7 +1132,7 @@ fn play_minimal(log: &mut SessionLog) {
         session_id: session_id(),
         record: &result,
     });
-    log.record_result(result, &signature).unwrap();
+    log.record_result(result, &signature, journal).unwrap();
 }
 
 #[test]
@@ -1208,12 +1248,12 @@ fn flawed_log_files_are_refused() {
             LogError::Malformed(Binary::decode::<Option<u8>>(&[2]).unwrap_err()),
         ),
         (
-            frame(&header(), &sent, &[], Some(ServerSeed::new([4; 32]))),
+            frame(&header(), &sent, &[], Some(&ServerSeed::new([4; 32]))),
             LogError::WrongSeed,
         ),
         // Segment 1's seed is in the chain, but not the seed of the one segment the log holds.
         (
-            frame(&header(), &sent, &[], Some(SEED_CHAIN.seed(1))),
+            frame(&header(), &sent, &[], Some(&SEED_CHAIN.seed(1))),
             LogError::WrongSeed,
         ),
         (overlong, LogError::NotCanonical),
@@ -1274,7 +1314,16 @@ fn mixed_log() -> SessionLog {
 /// `input` served into `log`, which signs it with the server key at its next place. A log file
 /// with it decodes, recording each server input with its signature, which `record_server` checks.
 fn serve(log: &mut SessionLog, input: ServerInput<'_>) -> Result<(), ServerInputError> {
-    log.serve(input, &TestKey::signer(TestKey::server()))
+    serve_to(log, input, None)
+}
+
+/// `input` served into `log` as `serve` does, its record into `journal`.
+fn serve_to(
+    log: &mut SessionLog,
+    input: ServerInput<'_>,
+    journal: Option<&mut Journal>,
+) -> Result<(), ServerInputError> {
+    log.serve(input, &TestKey::signer(TestKey::server()), journal)
 }
 
 /// A packet of `inputs`, `(stamp, payload)` each, that the session key of `key` signs on the chain
@@ -1391,7 +1440,7 @@ fn a_bots_commands_apply_in_slot_order_and_the_log_refuses_inputs_its_structure_
         place: early,
     });
     assert_eq!(
-        log.record_server(input, &stale),
+        log.record_server(input, &stale, None),
         Err(ServerInputError::BadSignature)
     );
     // Player 0 renews their session key: the chain goes on, now signed by key 3, and their q,
@@ -1428,7 +1477,7 @@ fn two_ticks_played() -> (SessionLog, InputChain) {
         .unwrap();
     serve(&mut log, bot(1, b"x")).unwrap();
     serve(&mut log, ServerInput::Disconnected { slot: slot(0) }).unwrap();
-    drop(log.seal_tick());
+    drop(log.seal_tick(None));
     for payload in [b"y", b"z"] {
         serve(&mut log, bot(1, payload)).unwrap();
     }
@@ -1440,7 +1489,7 @@ fn two_ticks_played() -> (SessionLog, InputChain) {
     mixed_packet(&mut zero, &[(2, b"s")], 3)
         .submit(&mut log, &mut applied)
         .unwrap();
-    drop(log.seal_tick());
+    drop(log.seal_tick(None));
     (log, zero)
 }
 
@@ -1476,9 +1525,14 @@ fn a_leave_and_a_join_change_who_controls_a_slot_and_the_log_replays_them() {
     let main = |player: u32| *mixed_delegation(player, player).main_key();
     assert_eq!(log.controller(slot(0)), Some(Controller::Bot));
     assert_eq!(log.leaver(slot(0)), Some(main(0)));
+    let delegation = mixed_delegation(1, 1);
+    assert_eq!(*delegation.main_key(), main(1));
+    assert_eq!(
+        delegation.terms().session_key,
+        session_key(1).x_only_public_key().0
+    );
     let joiner = Controller::Player {
-        main_key: main(1),
-        session_key: session_key(1).x_only_public_key().0,
+        delegation: &delegation,
         chain: InputChain::joined(
             slot(2),
             mixed_delegation(1, 1).id(),
@@ -1578,7 +1632,7 @@ mod segments;
 
 impl SessionLog {
     /// The last segment's server seed, once the log is published.
-    const fn revealed_seed(&self) -> Option<ServerSeed> {
-        self.revealed
+    const fn revealed_seed(&self) -> Option<&ServerSeed> {
+        self.revealed.as_ref()
     }
 }

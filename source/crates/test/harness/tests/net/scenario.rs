@@ -7,15 +7,14 @@ use campfire_bots::OrderScript;
 use campfire_common::Tick;
 use campfire_harness::{End, HashTrail, InProcessMatch, LinkLayout, LinkModel, MatchSetup};
 use campfire_math::{Num, Vec3};
-use campfire_net::TickHashes;
+use campfire_net::internals::TickHashes;
 use campfire_orders::OrdersAction;
-use campfire_protocol::SessionLog;
+use campfire_protocol::{LogReplay, SessionLog};
 use campfire_runner::{Replay, Session};
 use campfire_sim::{Position, SimWorld, StableId};
-use campfire_stats::{Life, PoolId, Pools};
-use campfire_units::{Body, Dead};
+use campfire_stats::Pools;
+use campfire_units::{Body, Dead, GroundPoint, Life, PoolId, SeenBy};
 use campfire_values::{NameId, Team};
-use campfire_vision::SeenBy;
 
 const MATCH_TICKS: u64 = 600;
 /// The lane mode's respawn, 5000 ms at 30 ticks a second, from the end of the tick of death.
@@ -148,11 +147,11 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
     let mut file = Vec::new();
     server.resource::<Session>().log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
-    let ticks = decoded.next_tick();
-    let mut rewound = decoded.rewound();
+    let mut replay = LogReplay::of(&decoded).unwrap();
     let mut applied = Vec::new();
-    for tick in 0..ticks.get() {
-        applied.extend(rewound.seal_tick().map(|input| (input.stamp, tick)));
+    while !replay.done(&decoded) {
+        let tick = replay.next_tick().get();
+        applied.extend(replay.seal_tick(&decoded).map(|input| (input.stamp, tick)));
     }
     assert_eq!(applied.len(), inputs, "{applied:?}");
     assert!(
@@ -161,7 +160,10 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
             .all(|&(stamp, tick)| stamp == Tick::new(tick)),
         "{applied:?}"
     );
-    assert_eq!(live.totals().len(), usize::try_from(ticks.get()).unwrap());
+    assert_eq!(
+        live.totals().len(),
+        usize::try_from(decoded.next_tick().get()).unwrap()
+    );
     let decoded = SessionLog::decode(&file).unwrap();
     let mut replay = Replay::of(decoded, local.packages()).unwrap();
     let replayed = HashTrail::of_replay(&mut replay);
@@ -177,27 +179,27 @@ fn check_log(local: &mut InProcessMatch, scripts: [&str; 2]) {
 ///
 /// The walker casts its first ability, 100 true damage within 2 m for 40 of its 100 mana, every
 /// 90 ticks: in tick 100 it hits; in 120 it is on cooldown; in 190 its cooldown has ended, and it
-/// hits; in 280 the 20 mana left do not pay. In tick 300 it attacks the runner: 60 damage 8 ticks
+/// hits; in 280 the 20 mana left do not pay. In tick 300 it attacks the nearest enemy hero, the
+/// runner: 60 damage 8 ticks
 /// into each attack of 20, in 308, 328 and 348; in 350 it walks to where it stands, which ends
 /// the attack.
 ///
-/// The runner casts its first ability at the walker in tick 140: 80 true damage for 30 of its 100
-/// mana, every 60 ticks.
-fn cast_scripts(walker: StableId, runner: StableId) -> [String; 2] {
-    let walker_orders = format!(
-        "[[order]]\ntick = 60\nlearn = 0\n[[order]]\ntick = 60\nmove = [0, 12]\n\
-         [[order]]\ntick = 100\ncast = 0\n[[order]]\ntick = 120\ncast = 0\n\
-         [[order]]\ntick = 190\ncast = 0\n[[order]]\ntick = 280\ncast = 0\n\
-         [[order]]\ntick = 300\nattack = {}\n[[order]]\ntick = 350\nmove = [0, 12]\n",
-        runner.get()
-    );
-    let runner_orders = format!(
-        "[[order]]\ntick = 60\nlearn = 0\n[[order]]\ntick = 60\nmove = [\"1.5\", 12]\n\
-         [[order]]\ntick = 140\ncast = 0\ntarget = {}\n",
-        walker.get()
-    );
-    [walker_orders, runner_orders]
-}
+/// The runner casts its first ability at the nearest enemy hero, the walker, in tick 140: 80 true
+/// damage for 30 of its 100 mana, every 60 ticks.
+const CAST_SCRIPTS: [&str; 2] = [
+    "[[order]]\ntick = 60\naction.progression.learn.slot = \"first\"\n\
+     [[order]]\ntick = 60\naction.orders.move.to = [0, 12]\n\
+     [[order]]\ntick = 100\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 120\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 190\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 280\naction.orders.slot = { slot = \"first\", target = \"none\" }\n\
+     [[order]]\ntick = 300\naction.orders.attack.target = \"enemies:avatar\"\n\
+     [[order]]\ntick = 350\naction.orders.move.to = [0, 12]\n",
+    "[[order]]\ntick = 60\naction.progression.learn.slot = \"first\"\n\
+     [[order]]\ntick = 60\naction.orders.move.to = [\"1.5\", 12]\n\
+     [[order]]\ntick = 140\n\
+     action.orders.slot = { slot = \"first\", target.unit = \"enemies:avatar\" }\n",
+];
 const CAST_TICKS: u64 = 360;
 
 /// Where a unit stands, its health and mana, the lane mode's pools in the order of their names,
@@ -238,8 +240,8 @@ fn cast(link: LinkModel) -> [u32; 2] {
             .unwrap()
     });
     let [walker, runner] = clients.map(|client| local.avatar(client));
-    let [west, east] = cast_scripts(walker, runner);
-    local.play_by_team([&west, &east]);
+    let [west, east] = CAST_SCRIPTS;
+    local.play_by_team([west, east]);
     // The ticks after which each hero's health changed on the server, the walker's then the
     // runner's.
     let mut hits = [Vec::new(), Vec::new()];
@@ -254,7 +256,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
             }
         }
     }
-    check_log(&mut local, [&west, &east]);
+    check_log(&mut local, [west, east]);
 
     // Each order took effect in its stamp tick: each hero stands on the edge, z = 8; the walker
     // lost 80 health to the runner's cast;
@@ -325,8 +327,8 @@ fn route(link: LinkModel) -> [u32; 2] {
     let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
     let scripts = [
-        "[[order]]\ntick = 60\nmove = [-12, -4]\n",
-        "[[order]]\ntick = 60\nmove = [12, 7]\n",
+        "[[order]]\ntick = 60\naction.orders.move.to = [-12, -4]\n",
+        "[[order]]\ntick = 60\naction.orders.move.to = [12, 7]\n",
     ];
     local.play_by_team(scripts);
     let client = local.client_of(Team::new(0));
@@ -372,7 +374,7 @@ const ROUND_TICKS: u64 = 70;
 fn round(link: LinkModel) -> [u32; 2] {
     let mut local = InProcessMatch::new(MatchSetup::duo(link, InProcessMatch::SEED_CHAIN));
     local.start_match();
-    let scripts = ["[[order]]\ntick = 1\nmove = [0, 5]\n", ""];
+    let scripts = ["[[order]]\ntick = 1\naction.orders.move.to = [0, 5]\n", ""];
     local.play_by_team(scripts);
     let clients = [0, 1].map(|team| local.client_of(Team::new(team)));
     let [walker, stander] = clients.map(|client| local.avatar(client));
@@ -480,7 +482,12 @@ fn a_server_stall_runs_at_most_its_bound_and_makes_no_input_late() {
     let order = |local: &mut InProcessMatch, targets: [Vec3; 2]| {
         for (client, &team) in teams.iter().enumerate() {
             let Vec3 { x, z, .. } = targets[team];
-            local.order(client, OrdersAction::Move { x, z });
+            local.order(
+                client,
+                OrdersAction::Move {
+                    to: GroundPoint { x, z },
+                },
+            );
         }
     };
     // An order every 5 frames from before the stall on, so some go out as a timeline steps back.

@@ -1,10 +1,12 @@
 #![expect(
     clippy::disallowed_types,
-    reason = "a global allocator gets no state of its caller, so a window's state is the thread's own"
+    reason = "a global allocator gets no state of its caller, so a thread's exclusion is its own"
 )]
 
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::cell::{Cell, RefCell};
+use std::cell::Cell;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Mutex, PoisonError};
 use std::{mem, thread};
 
 use backtrace::Backtrace;
@@ -12,10 +14,11 @@ use backtrace::Backtrace;
 use crate::alloc_audit::alloc_trace::AllocTrace;
 
 /// The allocator of a crate's `tests/alloc` binary: `System`, which counts each allocation and
-/// reallocation of a thread inside a window that thread opened, and keeps its backtrace. Its
-/// counts are each thread's own, as a test runner runs tests side by side in one process; so an
-/// allocation on another thread is never counted, and a fixture whose work a thread of its own
-/// does drives that work on its own thread to measure it.
+/// reallocation of every thread of the process but its main one inside an open window, and keeps
+/// its backtrace, so a fixture's workers count as its own thread does. A window is the process's,
+/// as nextest runs each test in a process of its own; a thread's excluded part is that thread's
+/// alone. The main thread is libtest's harness, which runs the test on a thread of its own and
+/// allocates as it first waits for it, at a time no window can foresee.
 #[derive(Debug)]
 pub struct CountingAllocator;
 
@@ -28,18 +31,25 @@ pub struct AllocWindow {
     pub(crate) traces: Vec<AllocTrace>,
 }
 
+/// The process's window and what it counted: statics, as a global allocator gets no state of
+/// its caller.
+static IN_WINDOW: AtomicBool = AtomicBool::new(false);
+static ALLOCS: AtomicU64 = AtomicU64::new(0);
+static BYTES: AtomicU64 = AtomicU64::new(0);
+static TRACES: Mutex<Vec<AllocTrace>> = Mutex::new(Vec::new());
+/// Whether the process allocated yet: its first allocation is its main thread's, as no other
+/// thread runs before the runtime starts it.
+static ALLOCATED: AtomicBool = AtomicBool::new(false);
+
 thread_local! {
-    static IN_WINDOW: Cell<bool> = const { Cell::new(false) };
     static EXCLUDED: Cell<bool> = const { Cell::new(false) };
-    /// Set while the allocator keeps a backtrace, whose own allocations it does not count.
+    static MAIN: Cell<bool> = const { Cell::new(false) };
+    /// Set while the thread keeps a backtrace, or holds the traces' lock, whose own allocations
+    /// the allocator does not count.
     static CAPTURING: Cell<bool> = const { Cell::new(false) };
-    static ALLOCS: Cell<u64> = const { Cell::new(0) };
-    static BYTES: Cell<u64> = const { Cell::new(0) };
-    static TRACES: RefCell<Vec<AllocTrace>> = const { RefCell::new(Vec::new()) };
 }
 
-/// Clears the thread's window as it closes, also when its body panics, so the thread's next window
-/// starts closed.
+/// Closes the process's window, also when its body panics, so the next window starts closed.
 #[derive(Debug)]
 struct WindowGuard;
 
@@ -56,29 +66,33 @@ impl CountingAllocator {
     /// `dbghelp` behind one lock for the process, so the bound keeps a failure's cost flat.
     pub const TRACE_CAP: usize = 8;
 
-    /// Runs `body` with the thread's allocations counted. A window inside an open one panics, as it
-    /// would take the open window's backtraces and close it, and so does one inside an excluded
-    /// part, which would count nothing.
+    /// Runs `body` with the process's allocations counted. A window inside an open one panics, as
+    /// it would take the open window's backtraces and close it, and so does one inside an
+    /// excluded part, whose thread would count nothing.
     pub fn window(body: impl FnOnce()) -> AllocWindow {
         assert!(
-            !IN_WINDOW.get(),
+            !IN_WINDOW.load(Ordering::Acquire),
             "an allocation window opened inside an open one"
         );
         assert!(
             !EXCLUDED.get(),
             "an allocation window opened inside an excluded part"
         );
-        IN_WINDOW.set(true);
+        assert!(
+            !MAIN.get(),
+            "an allocation window opened on the process's main thread, which it does not count"
+        );
+        Self::traces(Vec::clear);
+        let allocs = ALLOCS.load(Ordering::Acquire);
+        let bytes = BYTES.load(Ordering::Acquire);
+        IN_WINDOW.store(true, Ordering::Release);
         let guard = WindowGuard;
-        TRACES.with_borrow_mut(Vec::clear);
-        let allocs = ALLOCS.get();
-        let bytes = BYTES.get();
         body();
         drop(guard);
         AllocWindow {
-            allocs: ALLOCS.get() - allocs,
-            bytes: BYTES.get() - bytes,
-            traces: TRACES.with_borrow_mut(mem::take),
+            allocs: ALLOCS.load(Ordering::Acquire) - allocs,
+            bytes: BYTES.load(Ordering::Acquire) - bytes,
+            traces: Self::traces(mem::take),
         }
     }
 
@@ -94,21 +108,36 @@ impl CountingAllocator {
     }
 
     fn track(size: usize) {
+        if !ALLOCATED.load(Ordering::Relaxed) && !ALLOCATED.swap(true, Ordering::AcqRel) {
+            MAIN.set(true);
+        }
         // A panicking thread's allocations are its unwinding's, not the work a window measures.
         // Skipping them also keeps the allocator out of `dbghelp` under a panic hook that is in
         // it already, where two panicking threads deadlock on Windows.
-        if !IN_WINDOW.get() || EXCLUDED.get() || CAPTURING.get() || thread::panicking() {
+        if !IN_WINDOW.load(Ordering::Acquire)
+            || EXCLUDED.get()
+            || MAIN.get()
+            || CAPTURING.get()
+            || thread::panicking()
+        {
             return;
         }
-        ALLOCS.set(ALLOCS.get() + 1);
-        BYTES.set(BYTES.get() + size as u64);
-        CAPTURING.set(true);
-        TRACES.with_borrow_mut(|traces| {
+        ALLOCS.fetch_add(1, Ordering::AcqRel);
+        BYTES.fetch_add(size as u64, Ordering::AcqRel);
+        Self::traces(|traces| {
             if traces.len() < Self::TRACE_CAP {
                 traces.push(AllocTrace::new(Backtrace::new_unresolved()));
             }
         });
-        CAPTURING.set(false);
+    }
+
+    /// `f` of the window's traces, with the thread's allocations as it holds them not counted,
+    /// so a lock that allocates as it first locks, or a trace's own buffer, counts nothing.
+    fn traces<R>(f: impl FnOnce(&mut Vec<AllocTrace>) -> R) -> R {
+        let was = CAPTURING.replace(true);
+        let result = f(&mut TRACES.lock().unwrap_or_else(PoisonError::into_inner));
+        CAPTURING.set(was);
+        result
     }
 }
 
@@ -147,7 +176,7 @@ impl AllocWindow {
 
 impl Drop for WindowGuard {
     fn drop(&mut self) {
-        IN_WINDOW.set(false);
+        IN_WINDOW.store(false, Ordering::Release);
     }
 }
 

@@ -1,4 +1,4 @@
-use campfire_common::{EnumAll, EnumIdents, NamedEnum};
+use campfire_common::{EnumIdents, NamedEnum};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::engine_enum::EngineEnum;
@@ -7,7 +7,7 @@ use crate::script_enum::ScriptEnum;
 /// How one team regards another, as the mode's `[[relations]]` declare it and
 /// `ctx.set_relation` changes it: Unreal's team attitudes. A neutral unit may be attacked,
 /// but does not seek a fight.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, EnumIdents, NamedEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIdents, NamedEnum)]
 pub enum Relation {
     Hostile,
     Neutral,

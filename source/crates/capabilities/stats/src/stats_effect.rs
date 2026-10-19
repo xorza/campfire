@@ -1,7 +1,9 @@
 use bevy_ecs::world::World;
 use campfire_common::{PlayerSlot, Ticks};
-use campfire_script::{Effect, Frame};
+use campfire_math::Num;
+use campfire_script::{Effect, EffectKind, Frame};
 use campfire_sim::StableId;
+use campfire_units::PoolId;
 use campfire_values::{ModifierId, Tag};
 
 use crate::Stats;
@@ -13,7 +15,7 @@ use crate::stats_world::StatsWorld;
 
 /// A change to a unit's modifiers that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StatsEffect {
+pub(crate) enum StatsEffect {
     /// Modifier `id` on `target`, for `duration` when the call names one.
     Add {
         target: StableId,
@@ -22,6 +24,8 @@ pub enum StatsEffect {
     },
     /// Modifier `id` held by `player`, for the units it owns.
     AddPlayer { player: PlayerSlot, id: ModifierId },
+    /// The end of `player`'s modifier `id`, if it holds it.
+    RemovePlayer { player: PlayerSlot, id: ModifierId },
     /// The end of the instance of `id` from `source` on `carrier`.
     Remove {
         carrier: StableId,
@@ -31,6 +35,12 @@ pub enum StatsEffect {
     /// The end of the applications of `carrier`'s modifiers that grant `tag`, whatever their
     /// source; an instance a hold keeps stays.
     Purge { carrier: StableId, tag: Tag },
+    /// `amount` of `unit`'s `pool`, unscaled, when it lives.
+    Restore {
+        unit: StableId,
+        pool: PoolId,
+        amount: Num,
+    },
 }
 
 impl StatsEffect {
@@ -73,18 +83,27 @@ impl StatsEffect {
                     .expect("a player of the session holds its modifiers")
                     .add(id);
             }
+            Self::RemovePlayer { player, id } => {
+                world
+                    .player_modifiers_mut(player)
+                    .expect("a player of the session holds its modifiers")
+                    .remove(id);
+            }
             Self::Remove {
                 carrier,
                 id,
                 source,
             } => Stats::remove_modifier(world, carrier, id, source),
             Self::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
+            Self::Restore { unit, pool, amount } => Stats::restore(world, unit, pool, amount),
         }
     }
 }
 
 /// From the call's acting unit, by its action at its rank.
 impl Effect for StatsEffect {
+    const KIND: EffectKind = EffectKind::Change;
+
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let applier = Applier {
             source: frame.acting(),

@@ -5,13 +5,11 @@ use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_sim::{SimComponent, TickRate};
 use campfire_state_types::{DataKind, Replication, SentOnChange};
-use campfire_units::UnitEntity;
+use campfire_units::{Meter, PoolId, UnitEntity};
 use campfire_values::NameId;
 use serde::{Deserialize, Serialize};
 
-use crate::meter::Meter;
 use crate::pool_book::PoolBook;
-use crate::pool_id::PoolId;
 
 /// A unit's pools but its life, by pool id: each an amount from 0 to its maximum, none where its
 /// type lists no such pool, and none in the mode's life pool, which `Life` holds, as only its
@@ -95,8 +93,8 @@ impl PerType for Pools {
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use campfire_math::Num;
+    use campfire_units::PoolId;
 
-    use crate::pool_id::PoolId;
     use crate::pools::Pools;
 
     impl Pools {

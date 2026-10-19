@@ -1,16 +1,20 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_declare::{Declarations, EntityParts, InstallCx, KindVisitor, Module};
-use campfire_sim::{Breach, Capability, StableId};
-use campfire_units::{MatchEntity, Player, UnitsWorld};
-use campfire_values::Team;
+use campfire_declare::{Declarations, EntityParts, InstallCx, KindVisitor, Module, NoSet};
+use campfire_sim::{Breach, Capability, Either, StableId};
+use campfire_units::{UnitEntity, UnitsWorld};
+use campfire_values::{Relations, Team};
 
 use crate::held_out::HeldOut;
+use crate::match_entity::MatchEntity;
 use crate::out_of_play::OutOfPlay;
+use crate::player::Player;
 use crate::player_resources::PlayerResources;
 use crate::players_call::PlayersCall;
 use crate::players_world::PlayersWorld;
+use crate::resource_book::ResourceBook;
+use crate::resources_data::ResourcesData;
 use crate::seated::{Seated, Seating, SlotStart};
 
 /// The players and the match as entities: what spawns them, under every capability.
@@ -21,8 +25,11 @@ impl Module for Players {
     const CAPABILITY: Option<Capability> = None;
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
+        d.section::<ResourcesData>();
+        d.book::<ResourceBook>(ResourceBook::build);
         Self::kinds(d);
         d.component::<MatchEntity>();
         d.component::<Player>();
@@ -32,13 +39,15 @@ impl Module for Players {
         d.component::<PlayerResources>();
         d.call_part::<PlayersCall>();
         d.require::<Player, Team>();
+        d.host::<Team, Either<UnitEntity, Player>>();
+        d.host::<Relations, MatchEntity>();
         d.check::<MatchEntity>(Self::match_spawned);
         d.part::<Player, PlayerResources>(|at| {
             Some(PlayerResources::new(at.world().declared_resources()))
         });
     }
 
-    fn install(_: &mut InstallCx<'_>) {}
+    fn install(_: &mut InstallCx<'_, Self::Set>) {}
 }
 
 impl Players {
@@ -60,7 +69,7 @@ impl Players {
     /// team and whether it is held, each with its named id and the parts the installed modules
     /// declare for its kind.
     pub fn spawn_match(world: &mut World, slots: impl IntoIterator<Item = SlotStart>) {
-        EntityParts::<MatchEntity>::give(&mut world.spawn((StableId::MATCH, MatchEntity)));
+        EntityParts::<MatchEntity>::spawn(world, (StableId::MATCH, MatchEntity));
         for (slot, start) in (0..).map(PlayerSlot::new).zip(slots) {
             Self::spawn_player(world, slot, start);
         }
@@ -76,12 +85,10 @@ impl Players {
             "players join a match that started, which holds its entity"
         );
         let core = (StableId::of_player(slot), Player::new(slot), start.team);
-        let mut player = match start.seating {
-            Seating::Held => world.spawn((core, Seated)),
-            Seating::Open => world.spawn(core),
-        };
-        EntityParts::<Player>::give(&mut player);
-        player.id()
+        match start.seating {
+            Seating::Held => EntityParts::<Player>::spawn(world, (core, Seated)),
+            Seating::Open => EntityParts::<Player>::spawn(world, core),
+        }
     }
 }
 

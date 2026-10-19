@@ -18,16 +18,16 @@ use campfire_bots::OrderScript;
 use campfire_capabilities::Release;
 use campfire_common::PlayerSlot;
 use campfire_harness::{End, InProcessMatch, MatchSetup};
-use campfire_net::{JoinState, TickHashes, WatchRequest};
+use campfire_net::internals::TickHashes;
+use campfire_net::{JoinState, WatchRequest};
 use campfire_package::ModePackages;
-use campfire_players::{HeldOut, PlayerResources, PlayersWorld};
+use campfire_players::{HeldOut, Player, PlayerResources, PlayersWorld};
 use campfire_sim::{EntityIndex, SimResource, StableId, Unpredicted};
 use campfire_state_types::{DataKind, Recipients, Replication, StateTypes};
 use campfire_test_packages::Edit;
-use campfire_units::{Dead, Owner, Player};
+use campfire_units::{Dead, Owner, SeenBy};
 use campfire_values::{Team, TeamSet};
 use campfire_visibility::{HostVisibility, OutView, SpectatorFog, Visibility};
-use campfire_vision::SeenBy;
 use lightyear::prelude::{Replicate, Replicated, RollbackMode};
 
 use crate::net::short_3v3::{PICKS, short_3v3};
@@ -190,20 +190,27 @@ struct LeakCheck {
 }
 
 /// Gale's player, of the north, out of play for 3 s from the pick's end, alive.
-const HELD_OUT: [(&str, Edit<'_>); 2] = [
+const HELD_OUT: [(&str, Edit<'_>); 3] = [
+    (
+        "modes/3v3/data/mode.toml",
+        Edit::Replace(
+            "timers = [\"income\", \"pick_end\", \"wave\"]",
+            "timers = [\"back_in\", \"income\", \"pick_end\", \"wave\"]",
+        ),
+    ),
     (
         "modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             "        ctx.state.phase = \"play\";\n",
-            "        ctx.state.phase = \"play\";\n        ctx.set_out(1, true);\n        \
-             ctx.timer(\"back_in\", 3000, false, ());\n",
+            "        ctx.state.phase = \"play\";\n        ctx.set_out(ctx.players[1], true);\n        \
+             ctx.after(\"back_in\", 3000);\n",
         ),
     ),
     (
         "modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             "    } else if name == \"wave\" {",
-            "    } else if name == \"back_in\" {\n        ctx.set_out(1, false);\n    \
+            "    } else if name == \"back_in\" {\n        ctx.set_out(ctx.players[1], false);\n    \
              } else if name == \"wave\" {",
         ),
     ),
@@ -251,7 +258,7 @@ impl LeakCheck {
         local.await_avatars(JOIN_FRAMES);
         let host = HostVisibility {
             settings: host.iter().map(|text| text.parse().unwrap()).collect(),
-            max_spectators: setup.max_spectators,
+            max_spectators: local.setup().max_spectators,
         };
         let visibility = local.packages().data().visibility.session(&host).unwrap();
         let mut roles: Vec<Role> = (0..PLAYERS)
@@ -469,12 +476,14 @@ impl LeakCheck {
         );
     }
 
-    /// Orders the north's first two heroes to strike the south's in `STRIKE` ticks from now.
+    /// Orders the north's first two heroes to strike the south's, the one fighter, in `STRIKE`
+    /// ticks from now.
     fn strike(&mut self) {
         let tick = self.local.next_tick(End::Server) + STRIKE;
-        let target = self.local.avatar(3).get();
         for client in 0..2 {
-            let script = format!("[[order]]\ntick = {tick}\nattack = {target}\n");
+            let script = format!(
+                "[[order]]\ntick = {tick}\naction.orders.attack.target = \"enemies:avatar:fighter\"\n"
+            );
             self.local
                 .play(client, &OrderScript::parse(&script).unwrap());
         }

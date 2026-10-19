@@ -3,8 +3,6 @@ use std::sync::Arc;
 use campfire_common::PlayerSlot;
 use campfire_values::{Names, Team};
 
-use crate::scripts::error::{ApiError, Checked};
-
 /// The match's teams, in the manifest's order, the playing teams among them, those with slots,
 /// and each player's team by slot. A team with no slots, such as a MOBA's camps, has only units.
 /// Package data, not state: the mode builds it, and the mode and the script view share it.
@@ -57,15 +55,6 @@ impl Teams {
         &self.playing
     }
 
-    /// The other playing team of `team`, in a match of two playing teams.
-    pub fn sole_enemy(&self, team: Team) -> Option<Team> {
-        match self.playing[..] {
-            [a, b] if team == a => Some(b),
-            [a, b] if team == b => Some(a),
-            _ => None,
-        }
-    }
-
     /// The team of player `slot`.
     pub fn of(&self, slot: PlayerSlot) -> Option<Team> {
         self.slots.get(slot.index()).copied()
@@ -73,15 +62,6 @@ impl Teams {
 
     pub fn players(&self) -> u32 {
         u32::try_from(self.slots.len()).expect("players fit u32")
-    }
-
-    /// Player `player`'s slot, as a script names it, when the session has it.
-    pub(crate) fn player(&self, player: i64) -> Checked<PlayerSlot> {
-        u32::try_from(player)
-            .ok()
-            .filter(|&slot| slot < self.players())
-            .map(PlayerSlot::new)
-            .ok_or_else(|| ApiError::UnknownPlayer.fail().into())
     }
 }
 
@@ -107,10 +87,6 @@ mod tests {
         assert_eq!(named, [Some(team(0)), Some(team(2)), Some(team(1)), None]);
         assert_eq!(teams.names().name(team(1)), Some("camps"));
         assert_eq!(teams.names().name(team(3)), None);
-        // In a match of two playing teams, each has the other; a team that does not play has
-        // none.
-        let enemies = [0, 1, 2].map(|at| teams.sole_enemy(team(at)));
-        assert_eq!(enemies, [Some(team(2)), None, Some(team(0))]);
         // Fewer players than slots leave the last slots empty; more players than slots fail.
         assert_eq!(build(&["a", "b"], &[2, 1], 1).unwrap().players(), 1);
         assert_eq!(build(&["a", "b"], &[2, 1], 4), None);
@@ -125,6 +101,5 @@ mod tests {
         let solos = Teams::new(solo_table, [1; 100], 100).unwrap();
         assert_eq!(solos.of(PlayerSlot::new(99)), Some(team(99)));
         assert_eq!((solos.count(), solos.playing().len()), (100, 100));
-        assert_eq!(solos.sole_enemy(team(0)), None);
     }
 }

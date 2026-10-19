@@ -5,16 +5,22 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemCondition};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    KindSpawn, KindVisitor, MatchFacts, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
+    Book, BuildFn, BuiltBooks, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations,
+    EntityKind, EntityParts, ExtendFn, Fact, InstallFacts, KindSpawn, KindVisitor, Listed,
+    ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section, SpawnParts,
 };
-use campfire_script::{ApiBuilder, CallParams, CallPart, Ctx, RowReads, ViewColumn};
+use campfire_script::{
+    ApiBuilder, CallParams, CallPart, Ctx, HookSpec, PlannedCapability, RowReads, Status,
+    ViewColumn,
+};
 use campfire_sim::{
-    Breach, Capability, HostRule, SimComponent, SimEdge, SimResource, SimSet, StateRegistry,
+    Breach, Capability, DueIndex, HostRule, OwnResources, Removals, SimComponent, SimEdge,
+    SimResource, SimSet, StateRegistryBuilder, TimedProcess, TimedRuns,
 };
 use campfire_state_types::{Replication, StateTypes};
 use campfire_units::{EntityKinds, ViewReader};
@@ -23,33 +29,44 @@ use campfire_values::EngineTag;
 use crate::release::stage_span::StageSpan;
 
 /// The consumer that puts a module's declarations into a match: its state types and restore
-/// checks into the state registry, its system sets into the schedule, and the rest into the
-/// world.
+/// checks into the state registry, its system sets into the schedule, its books from the built
+/// ones, and the rest into the world.
 pub(super) struct Installer<'a> {
     world: &'a mut World,
     schedule: &'a mut Schedule,
-    registry: &'a mut StateRegistry,
+    registry: &'a mut StateRegistryBuilder,
+    books: &'a mut BuiltBooks,
     set: CapabilitySet,
     role: &'a Role,
     /// The capability of the module whose declarations it installs.
     capability: Option<Capability>,
 }
 
+/// What an install fills: the world, the schedule and the registry of the match, and the books
+/// it takes its modules' from.
+pub(super) struct InstallParts<'a> {
+    pub(super) world: &'a mut World,
+    pub(super) schedule: &'a mut Schedule,
+    pub(super) registry: &'a mut StateRegistryBuilder,
+    pub(super) books: &'a mut BuiltBooks,
+}
+
 impl<'a> Installer<'a> {
-    /// Installs into the match of `world` and `schedule`, as `facts` says, its state types into
-    /// `registry`.
-    pub(super) const fn new(
-        world: &'a mut World,
-        schedule: &'a mut Schedule,
-        registry: &'a mut StateRegistry,
-        facts: &'a MatchFacts<'a>,
-    ) -> Self {
+    /// Installs into the match of `parts`, as `facts` says, its books from `books`.
+    pub(super) const fn new(parts: InstallParts<'a>, facts: &'a InstallFacts<'a>) -> Self {
+        let InstallParts {
+            world,
+            schedule,
+            registry,
+            books,
+        } = parts;
         Installer {
             world,
             schedule,
             registry,
-            set: facts.set,
-            role: facts.role,
+            books,
+            set: facts.facts.set,
+            role: &facts.facts.role,
             capability: None,
         }
     }
@@ -79,9 +96,13 @@ impl StateTypes for Installer<'_> {
         self.world.register_component::<C>();
     }
 
+    /// A role that does not compute the state holds none of its resources, which no server
+    /// sends, so a system of it that reads one fails its parameter validation.
     fn resource<R: SimResource + Default>(&mut self) {
-        self.registry.resource::<R>();
-        self.world.insert_resource(R::default());
+        if self.role.computes_state() {
+            self.registry.resource::<R>();
+            self.world.insert_resource(R::default());
+        }
     }
 
     fn sim_component<C: Replication>(&mut self) {
@@ -116,36 +137,55 @@ impl Declarations for Installer<'_> {
         self.registry.add_check::<C>(check);
     }
 
-    fn book<B: Book>(&mut self) {
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn rule(&mut self, _: RuleFn) {}
+
+    /// The book its builder made, in place before its owner installs, so the install reads it;
+    /// the script view takes what it copies of it.
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {
+        let book = (self.books.take::<B>())
+            .unwrap_or_else(|| panic!("{} is declared and built", type_name::<B>()));
         if B::held(self.role) {
-            self.world.insert_resource(B::default());
+            self.world.insert_resource(book);
+            B::share_in(self.world);
         }
     }
 
+    fn section<S: Section>(&mut self) {}
+
+    fn listed<L: Listed>(&mut self) {}
+
     fn sets<S: ModuleSet>(&mut self) {
-        assert_eq!(
-            S::CAPABILITY,
-            self.capability,
-            "the sets of {} are their owner's to declare",
-            type_name::<S>()
-        );
         for &set in S::ALL {
-            self.schedule.configure_sets(set.in_set(set.place().set()));
+            set.place().configure(set, self.schedule);
         }
     }
 
     fn scratch<R: Scratch>(&mut self) {
-        self.world.insert_resource(R::default());
+        if let Some(scratch) = R::installed(self.role) {
+            self.world.insert_resource(scratch);
+        }
     }
 
     fn cache<R: Cache>(&mut self) {
-        if let Some(cache) = R::installed() {
+        if let Some(cache) = R::installed(self.world) {
             self.world.insert_resource(cache);
         }
     }
 
+    fn timed<P: TimedProcess>(&mut self) {
+        if P::RUNS == TimedRuns::Server && !self.role.computes_state() {
+            return;
+        }
+        self.world.insert_resource(DueIndex::<P>::default());
+        DueIndex::<P>::track(self.world, self.schedule);
+    }
+
     fn report<R: Report>(&mut self) {
-        if let Some(report) = R::installed() {
+        if let Some(report) = R::installed(self.role) {
             self.world.insert_resource(report);
         }
     }
@@ -165,8 +205,11 @@ impl Declarations for Installer<'_> {
             .register(key, callback);
     }
 
+    /// Only a match that runs scripts reads the script view's rows.
     fn column<C: ViewColumn + Default, D: RowReads>(&mut self, fill: ColumnFill<D, C>) {
-        ViewReader::add_source::<D, C>(self.world, fill);
+        if self.role.scripts() {
+            ViewReader::add_source::<D, C>(self.world, fill);
+        }
     }
 
     fn call_part<P: CallPart + Default>(&mut self) {
@@ -200,11 +243,19 @@ impl Declarations for Installer<'_> {
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 
+    fn hook<H: HookSpec>(&mut self, _: Status) {}
+
+    fn plan_hook<H: HookSpec>(&mut self, _: PlannedCapability) {}
+
     fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>) {
         self.world.add_observer(observer);
     }
 
-    fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, (), M> + 'static) {
+    fn removals<C: Component>(&mut self) {
+        Removals::<C>::track(self.world, self.schedule);
+    }
+
+    fn one_shot<R: OneShot, M>(&mut self, system: impl IntoSystem<R::In, R::Out, M> + 'static) {
         let id = self.world.register_system(system);
         self.world.insert_resource(R::new(id));
     }
@@ -225,7 +276,7 @@ impl Declarations for Installer<'_> {
         }
     }
 
-    fn non_send_loaded<R: 'static>(&mut self) {}
+    fn loaded<R: Resource>(&mut self) {}
 
     /// Each stage checks `condition` once, as it starts, with `SimEdge::Start` before them all,
     /// so the stage it turns false in is the last to run, its closing set with it.
@@ -241,4 +292,9 @@ impl Declarations for Installer<'_> {
             ));
         }
     }
+}
+
+impl OwnResources for Installer<'_> {
+    /// The build puts it in, some as it ends, as the registry and the schedule.
+    fn own<R: Resource>(&mut self) {}
 }

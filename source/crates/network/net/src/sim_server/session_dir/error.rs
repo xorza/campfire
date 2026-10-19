@@ -1,12 +1,12 @@
 use std::ffi::OsString;
 
 use campfire_codec::TaggedError;
-use campfire_common::Version;
-use campfire_protocol::{JournalReplayError, NotJournal};
+use campfire_protocol::PublishError as JournalPublishError;
+use campfire_protocol::{JournalReplayError, JournalStreamError, NotJournal, SessionId};
 use campfire_store::{AppendOpenError, DurableDirError, DurableError, PathError, ReadError};
 use thiserror::Error;
 
-use crate::sim_server::error::RestoreMatchError;
+use crate::sim_server::error::MatchBeginError;
 
 /// Why a server's data directory does not say which session to restore.
 #[derive(Debug, Error)]
@@ -28,15 +28,18 @@ pub enum RestoreError {
     Read(#[source] PathError<ReadError>),
     #[error("the private record")]
     Private(#[source] TaggedError),
-    /// The session runs on another engine release than this one, which restores it.
-    #[error("the session runs on release {0}, which restores it")]
-    OtherRelease(Version),
     #[error("the journal file")]
     NotJournal(#[source] NotJournal),
     #[error("the journal")]
     Journal(#[source] PathError<AppendOpenError>),
     #[error(transparent)]
     Replay(JournalReplayError),
+    /// The journal's header names another session than the directory's name.
+    #[error("the journal is session {0}'s")]
+    OtherSession(SessionId),
+    /// The private record's seed chain is not the one the journal's terms commit to.
+    #[error("the private record's seed chain is not the one the terms commit to")]
+    OtherSeedChain,
 }
 
 /// Why an aborted session's log was not published.
@@ -44,7 +47,7 @@ pub enum RestoreError {
 pub enum AbortError {
     /// The session's match does not replay to where it stopped.
     #[error("the session's match does not replay")]
-    Replay(#[source] RestoreMatchError),
+    Replay(#[source] MatchBeginError),
     #[error("could not publish the log")]
     Publish(#[source] PublishError),
 }
@@ -52,11 +55,20 @@ pub enum AbortError {
 /// Why a session's log was not published, by its step, each of which its path's error names.
 #[derive(Debug, Error)]
 pub enum PublishError {
+    /// The journal did not open to read.
+    #[error(transparent)]
+    Read(PathError<ReadError>),
+    /// The journal did not read.
+    #[error(transparent)]
+    Journal(JournalStreamError),
+    /// The journal holds no whole log.
+    #[error(transparent)]
+    Log(#[from] JournalPublishError),
     /// The logs' directory was not made.
     #[error(transparent)]
     Dir(#[from] PathError<DurableDirError>),
     #[error(transparent)]
-    Log(#[from] PathError<DurableError>),
+    File(#[from] PathError<DurableError>),
 }
 
 /// Why a session's directory was not made, by its step, each of which its path's error names.

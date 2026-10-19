@@ -26,6 +26,7 @@ pub struct RoomMakingRun(pub(super) SystemId<In<Entity>>);
 
 impl OneShot for RoomMakingRun {
     type In = In<Entity>;
+    type Out = ();
 
     fn new(id: SystemId<In<Entity>>) -> Self {
         Self(id)

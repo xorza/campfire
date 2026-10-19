@@ -1,6 +1,6 @@
 use campfire_math::Num;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// A speed in meters a second, positive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -18,6 +18,13 @@ impl Speed {
     /// In meters a second.
     pub const fn get(self) -> Num {
         self.0
+    }
+}
+
+/// As its number, which `Deserialize` reads.
+impl Serialize for Speed {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        self.0.serialize(serializer)
     }
 }
 

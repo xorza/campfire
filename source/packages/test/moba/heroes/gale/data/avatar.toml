@@ -38,7 +38,7 @@ targeting = "direction"
 range = "17.0"
 cooldown_ms = [14000, 13000, 12000, 11000, 10000]
 cost = { mana = [90, 105, 120, 135, 150] }
-charge = { max_ms = 3000 }
+charging = { max_ms = 3000 }
 delivery = { projectile = "cyclone" }
 
 [actions.cyclone.params]
@@ -123,3 +123,7 @@ projectile = { speed = "9", width = "1.2" }
 
 [units.wind_bolt]
 projectile = { speed = "12", homing = true }
+
+# A hero's death gives 150 experience, and 25 for each level it holds.
+[experience]
+gives = { base = 150, per_level = 25 }

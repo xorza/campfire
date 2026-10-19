@@ -9,7 +9,8 @@ use campfire_sim::Capability;
 pub(crate) type SpawnHook = fn(&mut World, Entity);
 
 /// The spawn hooks of the capabilities above the core, by capability: each declares its own, so
-/// the spawner names none, and a match runs only its capabilities'. Not state.
+/// the spawner names none, and a match runs only its capabilities' (02-engine-core.md, Spawn
+/// reactions run on the spawner's path). Not state.
 #[derive(Resource, Debug, Default)]
 pub struct SpawnHooks(CallbackTable<SpawnHook, { Capability::ALL.len() }>);
 

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 
 /// A track of the mode, by its place among the mode's tracks in name order.
@@ -27,6 +28,10 @@ impl NameId for TrackId {
     fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+impl Named for TrackId {
+    const NAMES: NameKind = NameKind::new("track", Article::A, NameScope::Match);
 }
 
 #[cfg(feature = "internals")]

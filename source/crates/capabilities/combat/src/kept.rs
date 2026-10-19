@@ -6,7 +6,7 @@ use campfire_state_types::{DataKind, NotSent, Replication};
 use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
 
-/// Keeps a dead unit whose death a later stage has yet to answer, as the mode's `on_unit_died`
+/// Keeps a dead unit whose death a later stage has yet to answer, as the mode's `on_unit_death`
 /// does when its pool is spent: the unit stays, dead, until that stage removes this, and then
 /// despawns at the end of that tick if its type despawns.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -1,8 +1,8 @@
 use campfire_geometry::{Bounds, Grid};
 use campfire_navigation::{Navigation, Walker};
-use campfire_units::{Layer, MapBook};
+use campfire_units::{GroundPoint, Layer, MapBook, SeenBy};
 use campfire_values::TeamSet;
-use campfire_vision::{SeenBy, Vision};
+use campfire_vision::Vision;
 
 use super::*;
 
@@ -14,7 +14,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
     let shop = Shop::place(&mut game);
     let gold = ResourceId::new(0);
     Players::spawn(&mut game, 1, 1);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(4), None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::new(4), None);
     let mut queue = TrainQueue::default();
     for paid in [10, 20, 30] {
         let queued = Queued {
@@ -27,7 +27,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
             resource: gold,
             amount: paid,
         };
-        queue.push(queued, &[amount], Tick::new(0));
+        queue.push(queued, &[amount], Tick::new(0), &mut QueueDues::loose());
     }
     let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
@@ -78,7 +78,7 @@ fn a_cancel_refunds_what_its_entry_paid_and_a_cancelled_head_starts_the_next() {
         resource: gold,
         amount: 10,
     };
-    queue.push(queued, &[ten], Tick::new(7));
+    queue.push(queued, &[ten], Tick::new(7), &mut QueueDues::loose());
     game.insert_parts(producer, queue);
     let mut resources = game.player_resources_mut(player).unwrap();
     resources.add(gold, i64::MAX - 35).unwrap();
@@ -104,7 +104,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     let mut walkers = ByType::default();
     walkers.set(shop.grunt, walker);
     game.insert_resource(walkers);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
     let producer = Production::allocate_id(&mut game);
     shop.producer(
@@ -132,9 +132,11 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
     let rally = |target| ProductionAction::Rally {
         target: Some(target),
     };
-    let point = |x: i64, z: i64| RallyTarget::Point {
-        x: Num::int(x),
-        z: Num::int(z),
+    let point = |x: i64, z: i64| {
+        RallyTarget::Point(GroundPoint {
+            x: Num::int(x),
+            z: Num::int(z),
+        })
     };
     // Each case's rally order applies in Inputs, and the train ordered in Act spawns as the tick
     // ends: the spawn place, and where the grunt walks.
@@ -218,8 +220,7 @@ fn a_trained_unit_spawns_on_its_rally_points_side_of_its_producer_and_goes_there
         angle: Num::int(90),
     };
     let slots = TimedSlots::new(ActionSlots::new([(train, SlotKind::new(0), Rank::new(1))]));
-    let spawner = Mode::test_spawner(&game).expect("the shop loaded its spawner");
-    spawner.spawn(&mut game, at, (slots, TrainQueue::default()));
+    Spawner::place_any(&mut game, at, (slots, TrainQueue::default()));
     let cases = [
         (None, Some(halves(0, -6))),
         (Some(point(8, 0)), Some(halves(16, 0))),
@@ -242,7 +243,7 @@ fn a_predicting_clients_train_reads_only_what_it_holds() {
     // server sent it, and trains grunts at once.
     Release::sync_held(&ORDERING, 6, |game| {
         let shop = Shop::place(game);
-        let train = Actions::add_train(game, shop.grunt, Ticks::ZERO, None);
+        let train = Production::add_train(game, shop.grunt, Ticks::ZERO, None);
         let producer = Production::allocate_id(game);
         let player = PlayerSlot::new(0);
         let queue = TrainQueue::default();

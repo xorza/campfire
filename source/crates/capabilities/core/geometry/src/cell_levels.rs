@@ -1,11 +1,12 @@
 use campfire_math::Num;
 
 /// Square cells of the ground plane in levels by size, as a hierarchical grid keeps them
-/// (Mirtich's thesis; Ericson, chapter 7.2): each level's cell is twice the one below, from the
-/// base cell, so a wide body costs its own few cells and not every body's. A body goes into the
-/// least level whose cell is at least twice its reach from its center along each axis, so it
-/// covers at most two cells along each. Level `k`'s cells nest in level `k + 1`'s: a cell's row
-/// and column there are its own shifted right by one, as the floor of a halving.
+/// (Mirtich's thesis; Ericson, chapter 7.2): each level's cell is `2^RATIO_BITS` times the one
+/// below, from the base cell, so a wide body costs its own few cells and not every body's. A body
+/// goes into the least level whose cell is at least twice its reach from its center along each
+/// axis, so it covers at most two cells along each. Level `k`'s cells nest in level `k + 1`'s: a
+/// cell's row and column there are its own shifted right by `RATIO_BITS`, as the floor of a
+/// division by the ratio.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CellLevels {
     /// The base cell, in raw units.
@@ -14,8 +15,12 @@ pub struct CellLevels {
 
 impl CellLevels {
     /// The narrowest base cell, an eighth of a meter, 2²¹ bits: the rows and columns of positions
-    /// within `Position::BOUND`, 2⁴⁴ bits, then lie within ±2²³, as a `CellKey` holds them.
+    /// within `Vec3::BOUND`, 2⁴⁴ bits, then lie within ±2²³, as a `CellKey` holds them.
     pub const MIN_BASE: Num = Num::from_bits(1 << 21);
+
+    /// The power of two by which each level's cell is wider than the one below
+    /// (04-capabilities/00-overview.md, Spatial indexes in levels by size).
+    pub const RATIO_BITS: u32 = 1;
 
     /// Levels from a base cell of `base`, or of `MIN_BASE` when `base` is narrower.
     pub const fn new(base: Num) -> Self {
@@ -42,7 +47,7 @@ impl CellLevels {
 
     /// The side of `level`'s cells, in raw units.
     pub const fn cell(self, level: u8) -> i64 {
-        self.base << level
+        self.base << (Self::RATIO_BITS * level as u32)
     }
 
     /// The row or column of `level` that holds `bits` along its axis.
@@ -54,6 +59,7 @@ impl CellLevels {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cell_key::CellKey;
 
     #[test]
     fn a_reach_takes_the_least_level_twice_as_wide() {
@@ -89,13 +95,22 @@ mod tests {
             Num::ONE.to_bits() / 8
         );
         // Rows round down on both sides of 0, and nest: a cell's row a level up is its own
-        // halved, rounded down.
+        // halved, rounded down, and a cell key's `within` finds the cell `index` gives there.
         assert_eq!(
             [-3, -1, 0, 1, 3].map(|m| levels.index(1, Num::int(m).to_bits())),
             [-2, -1, 0, 0, 1]
         );
         for bits in [-5 << 24, -1, 0, 3 << 23, 17 << 24] {
             assert_eq!(levels.index(1, bits), levels.index(0, bits) >> 1, "{bits}");
+            let key = CellKey::new(0, 0, levels.index(0, bits), levels.index(0, -bits));
+            for level in 1..4 {
+                let up = key.within(level);
+                assert_eq!(
+                    (up.row(), up.column()),
+                    (levels.index(level, bits), levels.index(level, -bits)),
+                    "{bits} at {level}"
+                );
+            }
         }
     }
 }

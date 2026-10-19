@@ -2,24 +2,26 @@ use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
 use campfire_codec::Toml;
+use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_values::DeclaredName;
 use serde::Serialize;
 
 use crate::zero_hour::combat_import::CombatImport;
-use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::format::ini::multiplayer_ini::MoneyChoices;
-use crate::zero_hour::imported_type::{INFANTRY, LIFE, STRUCTURE, VICTORY, WALL, WEAPON};
-use crate::zero_hour::map_import::{SLOTS, START};
-use crate::zero_hour::production_import::{COMMAND, MONEY, ProductionImport};
+use crate::zero_hour::map_import::SLOTS;
+use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::skirmish_start::SkirmishStart;
 
 /// Zero Hour's rules package as the importer ships it, `source/packages/zero-hour/`: each file but
 /// its index, by its path, which the import writes beside the imported package.
-pub(crate) const RULES_FILES: [(&str, &[u8]); 2] = [
+pub(crate) const RULES_FILES: [(&str, &[u8]); 3] = [
     (
         "manifest.toml",
         include_bytes!("../../../../../packages/zero-hour/manifest.toml"),
+    ),
+    (
+        "data/rules.toml",
+        include_bytes!("../../../../../packages/zero-hour/data/rules.toml"),
     ),
     (
         "scripts/mode.rhai",
@@ -27,11 +29,11 @@ pub(crate) const RULES_FILES: [(&str, &[u8]); 2] = [
     ),
 ];
 
-/// The imported package's manifest: a mode of eight players, each on a team of its own, beside
-/// the `neutral` team every placed object stands on, whose units drive, are made and fight with
-/// shells: of `stats`, `orders`, `navigation`, `abilities`, `production`, `combat` and
-/// `projectiles`, no unit faster than `max_move_speed` meters a second, at the game's 30 logic frames a
-/// second, depending on the rules package beside it.
+/// The imported package's manifest: a mode of eight players, each on a team of its own, beside the
+/// `neutral` team every placed object stands on, whose units drive, are made and fight with shells:
+/// of `stats`, `orders`, `navigation`, `abilities`, `production`, `combat` and `projectiles`, no
+/// unit faster than `max_move_speed` meters a second, at the game's 30 logic frames a second,
+/// depending on the rules package beside it.
 pub(crate) fn mode_manifest(max_move_speed: Num) -> String {
     let teams: Vec<String> = (1..=SLOTS)
         .map(|player| format!("{{ name = \"player_{player}\", slots = 1 }}"))
@@ -67,15 +69,13 @@ pub(crate) struct ModeImport<'a> {
     pub(crate) start_money: &'a MoneyChoices,
 }
 
-/// The imported package's mode data: its name and its teams' names, the rules package's mode
-/// script, the player resource `money`, the stats its unit types drive by and the life they live
-/// by, the pool of that life, its combat of the game's damage types and armors, the tags of
-/// victory, of a structure, a wall and infantry, the markers its players start at, the state
-/// `ended` by which its script ends the match once, its params of what each starts with, `start`
-/// (12-zero-hour.md, A skirmish starts with the faction's start objects), and the option of the
-/// money it starts with, of `start_money`'s values (12-zero-hour.md, The import writes Zero
-/// Hour's money as an option); the slot kinds `weapon` and `command`, the weapons of `combat`
-/// (12-zero-hour.md) and the trains and builds of `production` (04-capabilities/production.md).
+/// The imported package's mode data: what the install gives, over the rules package's fixed
+/// data (03-game-scripting.md, Overrides by load order): its name and its teams' names, as its
+/// manifest names the teams, the rules package's mode script, its params of what each starts
+/// with, `start` (12-zero-hour.md, A skirmish starts with the faction's start objects), and the
+/// option of the money it starts with, of `start_money`'s values (12-zero-hour.md, The import
+/// writes Zero Hour's money as an option); the armors and weapons of `combat` (12-zero-hour.md)
+/// and the trains and builds of `production` (04-capabilities/production.md).
 pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     let ModeImport {
         start,
@@ -89,10 +89,6 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
         .map(|unit| format!("\"{unit}\""))
         .collect();
     let money: Vec<String> = start_money.values.iter().map(ToString::to_string).collect();
-    let kinds: Vec<String> = DamageType::ALL
-        .into_iter()
-        .map(|kind| format!("\"{}\"", kind.kind()))
-        .collect();
     let mut teams = String::new();
     for player in 1..=SLOTS {
         write!(
@@ -117,43 +113,10 @@ pub(crate) fn mode_data(mode: ModeImport<'_>) -> String {
     .write();
     format!(
         r#"name = "mode-name"
-script = {{ package = "zero-hour", path = "scripts/mode.rhai" }}
-resources = ["{MONEY}"]
-
-[stats]
-move_speed = {{}}
-turn_rate = {{}}
-{LIFE} = {{}}
-
-[pools.{LIFE}]
-max = "{LIFE}"
-
-[combat]
-damage_kinds = [{kinds}]
-life = "{LIFE}"
-
-[tags.{VICTORY}]
-
-[tags.{STRUCTURE}]
-
-[tags.{WALL}]
-
-[tags.{INFANTRY}]
+scripts = [{{ package = "zero-hour", path = "scripts/mode.rhai" }}]
 
 {teams}[teams.neutral]
 name = "team-neutral"
-
-[navigation]
-spawn_tags = ["{START}"]
-
-[[slots]]
-name = "{WEAPON}"
-
-[[slots]]
-name = "{COMMAND}"
-
-[state]
-ended = {{ type = "bool", default = false }}
 
 [params]
 start_building = "{building}"
@@ -167,7 +130,6 @@ default = {default_money}
 {armors}
 {weapons}
 {trains}"#,
-        kinds = kinds.join(", "),
         building = start.building,
         units = units.join(", "),
         offset = start.offset,
@@ -263,6 +225,9 @@ mod tests {
     use serde::de::IgnoredAny;
 
     use super::*;
+    use crate::zero_hour::format::ini::damage_type::DamageType;
+    use crate::zero_hour::imported_type::{INFANTRY, LIFE, MONEY, STRUCTURE, VICTORY, WALL};
+    use crate::zero_hour::map_import::START;
 
     #[test]
     fn a_mode_of_no_weapon_armor_or_action_writes_none_of_their_tables() {
@@ -288,6 +253,69 @@ mod tests {
             !data.contains("actions") && !data.contains("armors"),
             "{data}"
         );
+    }
+
+    #[test]
+    fn the_rules_package_s_data_declares_each_name_the_import_gives_its_types() {
+        // The rules data, as the import ships it, holds the game's damage types in the order of
+        // `DamageType`, the life pool and stats, the tags and slot kinds the imported types name,
+        // the command buttons' `command` among them, the player resource and the markers' start
+        // tag, and the slot kind its types' turrets turn by default.
+        #[derive(Debug, serde::Deserialize)]
+        #[expect(
+            clippy::zero_sized_map_values,
+            reason = "the test reads the keys of the rules' tables alone"
+        )]
+        struct Rules {
+            resources: Vec<String>,
+            stats: BTreeMap<String, IgnoredAny>,
+            pools: BTreeMap<String, IgnoredAny>,
+            combat: RulesCombat,
+            tags: BTreeMap<String, IgnoredAny>,
+            navigation: RulesNavigation,
+            slots: Vec<RulesSlot>,
+            defaults: RulesDefaults,
+        }
+        #[derive(Debug, serde::Deserialize)]
+        struct RulesCombat {
+            damage_kinds: Vec<String>,
+            life: String,
+        }
+        #[derive(Debug, serde::Deserialize)]
+        struct RulesNavigation {
+            spawn_tags: Vec<String>,
+        }
+        #[derive(Debug, serde::Deserialize)]
+        struct RulesSlot {
+            name: String,
+        }
+        #[derive(Debug, serde::Deserialize)]
+        struct RulesDefaults {
+            turret: RulesTurret,
+        }
+        #[derive(Debug, serde::Deserialize)]
+        struct RulesTurret {
+            slot: String,
+        }
+        let (_, text) = RULES_FILES
+            .into_iter()
+            .find(|(path, _)| *path == "data/rules.toml")
+            .unwrap();
+        let rules: Rules = Toml::parse(std::str::from_utf8(text).unwrap()).unwrap();
+        let kinds: Vec<String> = DamageType::ALL.map(|kind| kind.kind().to_string()).into();
+        assert_eq!(rules.combat.damage_kinds, kinds);
+        assert_eq!(
+            (rules.combat.life.as_str(), rules.resources),
+            (LIFE, vec![MONEY.to_owned()])
+        );
+        assert!(rules.stats.contains_key(LIFE) && rules.pools.contains_key(LIFE));
+        for tag in [VICTORY, STRUCTURE, WALL, INFANTRY] {
+            assert!(rules.tags.contains_key(tag), "{tag}");
+        }
+        assert_eq!(rules.navigation.spawn_tags, [START]);
+        let slots: Vec<&str> = rules.slots.iter().map(|slot| slot.name.as_str()).collect();
+        assert_eq!(slots, ["weapon", "command"]);
+        assert_eq!(rules.defaults.turret.slot, "weapon");
     }
 
     #[test]

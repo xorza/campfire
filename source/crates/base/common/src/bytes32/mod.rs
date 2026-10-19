@@ -3,16 +3,17 @@
 use std::fmt;
 use std::str::FromStr;
 
-use serde::{Deserialize, Serialize};
+use serde::de::{Error, Visitor};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::bytes32::error::NotHex;
 
 pub(crate) mod error;
 
 /// 32 bytes, such as a key, a hash or an id. It writes as exactly 64 lowercase hex digits, the
-/// one spelling it reads back.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
+/// one spelling it reads back, and serializes so too in a format people read, as JSON and TOML,
+/// and as its 32 bytes in a binary one, as `serde`'s `is_human_readable` tells them apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bytes32([u8; 32]);
 
 impl Bytes32 {
@@ -63,6 +64,42 @@ impl Bytes32 {
             b'a'..=b'f' => Some(byte - b'a' + 10),
             _ => None,
         }
+    }
+}
+
+impl Serialize for Bytes32 {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        if serializer.is_human_readable() {
+            serializer.collect_str(self)
+        } else {
+            self.0.serialize(serializer)
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Bytes32 {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        if deserializer.is_human_readable() {
+            deserializer.deserialize_str(HexVisitor)
+        } else {
+            <[u8; 32]>::deserialize(deserializer).map(Self)
+        }
+    }
+}
+
+/// Reads a `Bytes32` from its hex.
+#[derive(Debug)]
+struct HexVisitor;
+
+impl Visitor<'_> for HexVisitor {
+    type Value = Bytes32;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("64 lowercase hex digits")
+    }
+
+    fn visit_str<E: Error>(self, hex: &str) -> Result<Bytes32, E> {
+        Bytes32::parse(hex.as_bytes()).ok_or_else(|| E::custom(NotHex))
     }
 }
 

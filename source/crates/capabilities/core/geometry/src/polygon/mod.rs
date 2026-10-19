@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 
 use campfire_math::{Flat, Num, Vec3};
-use campfire_sim::Position;
 
 use crate::halves;
 use crate::polygon::error::PolygonError;
@@ -30,7 +29,7 @@ impl Polygon {
         if count < 3 {
             return Err(PolygonError::TooFewPoints);
         }
-        let past = |&[x, z]: &[Num; 2]| !Position::from(Vec3::new(x, Num::ZERO, z)).within_bound();
+        let past = |&[x, z]: &[Num; 2]| !Vec3::new(x, Num::ZERO, z).within_bound();
         if let Some(point) = points.iter().position(past) {
             return Err(PolygonError::PastBound { point });
         }
@@ -70,6 +69,16 @@ impl Polygon {
     /// Whether `at`, `[x, z]`, lies inside the polygon or on its edge.
     pub(crate) fn holds_point(&self, at: [Num; 2]) -> bool {
         self.holds(Flat::from_array(at.map(halves::of)))
+    }
+
+    /// Whether `at`, `[x, z]`, lies inside the polygon, off its edge, which the outside shares.
+    pub fn holds_inside(&self, at: [Num; 2]) -> bool {
+        let at = Flat::from_array(at.map(halves::of));
+        let on_edge = (0..self.points.len()).any(|edge| {
+            let [a, b] = self.edge(edge);
+            on_segment(a, b, at)
+        });
+        !on_edge && self.holds(at)
     }
 
     pub fn points(&self) -> &[[Num; 2]] {

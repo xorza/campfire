@@ -2,14 +2,15 @@ use std::collections::BTreeMap;
 use std::convert::Infallible;
 
 use campfire_capabilities::{Match, Release};
+use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_script::ParamProblem;
 use campfire_script::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
 use campfire_stats::*;
-use campfire_units::{ScriptBook, UnitTypes};
+use campfire_units::{ScriptBook, StatId, UnitTypes};
 use campfire_values::{
-    ActionId, DeclaredName, ModifierId, NameId, Number, PackageIndex, Param, ParamRef, Rank,
-    Ranked, Scalar, Scaling, Stat,
+    ActionId, ModifierId, NameId, Number, PackageIndex, Param, ParamRef, Rank, Ranked, Scalar,
+    Scaling, Stat,
 };
 
 fn name(text: &str) -> DeclaredName {
@@ -66,7 +67,7 @@ fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
     let mut book = ModifierBook::default();
     let types = UnitTypes::new(Release::engine_tags());
     let load = ModifierLoad {
-        scripts: &ScriptBook::default(),
+        scripts: &ScriptBook::new(Release::hooks()),
         tags: types.tags(),
         stat: |_: &_| Ok(StatId::new(0)),
         rate,

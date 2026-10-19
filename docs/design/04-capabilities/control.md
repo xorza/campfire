@@ -7,12 +7,15 @@
 ## Orders
 
 - **Every capability's orders are its commands.** Each capability decodes and applies its own orders in Inputs, in the module list's order, those of `orders` last, so a buy and a cast of the bought item in one tick both apply; players, bots and AI issue the same orders.
+- **A given order is an event.** `orders` gives every order of every source and triggers `UnitOrdered` for it, which each capability that keeps a loop of the unit's observes to set or end its own, production its build and gather, interaction the use slot; so `orders` writes no part of theirs. Refused: `orders` writing production's and interaction's parts, which tied it to both crates; and each capability decoding its own build, gather and use commands, which changes the command protocol and the order of two orders to one unit in a tick. As Bevy's observers carry a change to the systems that own what it touches.
 - **A group is one command.** An order names its units in increasing stable id, each its player controls carries it out, and a move of many shares one route ([Groups](navigation.md#groups)).
 - **An unseen target is ignored.** An order's unit target must be one its player's group sees as it applies, so a stable id never tells a client what its group does not see ([Replication audiences](../14-replication-audiences.md)).
 - **A player out of play gives no orders** when players out of play see what a spectator sees, as an order would act on what its group does not see.
 - **A blocked order waits** and runs when the block ends.
 - **A stop spends nothing.** A stop ends what a unit has under way with nothing spent; a train queue stays.
-- **Order queues and `hold` are planned.**
+- **Order queues, `hold`, attack-move and patrol are planned,** and an idle unit's target acquisition as native code from data, with the jungle leash as data, each with the slice that needs it.
+- **An action is generic over its references.** Each action type names its units, slots, places and item types through `OrderRefs`, ids by default: a command carries the ids, a bot's script the names, and one exhaustive map for each type gives the one for the other, so a variant added to an action reaches the scripts with no list of its own. Refused: a named copy of the actions in `bots`, which a new variant leaves behind; the script's own keys, which named a part of the orders.
+- **A bot's script names what it orders.** A slot by its action's name, found as the order is due among each commanded unit's slots, as a grant or an item moves them, as Dota 2's `GetAbilityByName`; a target by a filter, the nearest living unit it selects from the order's first unit of those its team sees, as an order aims only at those, as Dota 2's `GetNearbyCreeps`; a place by a marker's name, which its map holds once, as OpenRA's `Map.NamedActor`, or by its coordinates. Refused: slot places and stable ids, which hold only for one spawn order; a slot found at the load; a marker by its tag and place.
 
 ## AI
 

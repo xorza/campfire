@@ -1,41 +1,53 @@
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionProgress, ActionSlots, CastSpends, SlotTimes, SlotsMut, UseGroup};
+use campfire_actions::{
+    ActionSlots, ActionsSet, CastSpends, ProgressDues, SlotClaims, SlotsMut, UseGroup,
+};
 use campfire_common::EnumAll;
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_sim::Capability;
+use campfire_declare::{
+    ByType, Declarations, InstallCx, Module, ModuleSet, NamedMessages, SetPlace,
+};
+use campfire_sim::{Capability, SimSet, StableId};
 use campfire_units::BodyUnit;
+
+use crate::inventory::CarrierSlots;
+use crate::shop_index::ShopIndex;
 
 mod error;
 mod inventory;
 mod inventory_data;
 mod item_book;
+mod item_books;
 mod item_data;
 mod item_holds;
-mod item_id;
 mod items_action;
 mod items_api;
+mod items_data;
+mod items_rules;
 mod shop;
 mod shop_data;
+mod shop_index;
 mod shopping;
 mod trade_orders;
 
-pub use crate::error::ItemError;
-pub use crate::inventory::{CarrierSlots, Inventory, ItemStack, Purchase};
+pub use crate::error::{ItemError, ItemsDataError};
+pub use crate::inventory::{Inventory, ItemStack, Purchase};
 pub use crate::inventory_data::InventoryData;
 pub use crate::item_book::{ItemBook, ItemSpec};
 pub use crate::item_data::ItemData;
 pub use crate::item_holds::ItemHolds;
-pub use crate::item_id::ItemId;
 pub use crate::items_action::ItemsAction;
 pub use crate::items_api::ItemsApi;
+pub use crate::items_data::ItemsData;
 pub use crate::shop::Shop;
 pub use crate::shop_data::ShopData;
 pub use crate::shopping::Shopping;
@@ -48,7 +60,7 @@ pub struct Items;
 
 /// The steps of `items`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum ItemsSet {
+pub enum ItemsSet {
     /// The tick's orders buy, sell and swap items.
     Commands,
     /// Once the tick's trades are in: carried items push their grants.
@@ -58,15 +70,17 @@ pub(crate) enum ItemsSet {
 }
 
 impl ModuleSet for ItemsSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Items);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Commands => Phase::Trade,
-            Self::HoldAtInputs => Phase::HoldItems,
-            Self::Want => Phase::Resolve,
-        })
+        let inputs = || SetPlace::stage(SimSet::Inputs);
+        match self {
+            Self::Commands => SetPlace::at(ActionsSet::Trade),
+            Self::HoldAtInputs => inputs()
+                .after(ActionsSet::Order)
+                .before(ActionsSet::HoldAtInputs),
+            Self::Want => SetPlace::at(ActionsSet::Resolve),
+        }
     }
 }
 
@@ -74,19 +88,29 @@ impl Module for Items {
     const CAPABILITY: Option<Capability> = Some(Capability::Items);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = ItemsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<ItemsSet>();
+        d.section::<ItemsData>();
+        d.section::<InventoryData>();
+        d.section::<ShopData>();
         d.callback::<CastSpends>((), Self::spend_use);
         d.component::<Inventory>();
         d.component::<UseGroup>();
         d.require::<Inventory, UseGroup>();
         d.require::<UseGroup, Inventory>();
-        d.book::<ItemBook>();
-        d.book::<ByType<Shop>>();
+        d.book::<ItemBook>(ItemBook::build);
+        d.book::<ByType<Shop>>(Shop::book);
+        d.cache::<ShopIndex>();
+        d.observer(ShopIndex::typed);
+        d.observer(ShopIndex::untyped);
         d.api(ItemsApi::register);
-        d.book::<ByType<Inventory>>();
-        d.book::<ByType<UseGroup>>();
+        d.book::<ByType<Inventory>>(Inventory::book);
+        d.book::<ByType<UseGroup>>(Inventory::groups);
+        d.extend::<ByType<ActionSlots>>(Self::inventory_slots);
+        d.extend::<SlotClaims>(Self::claim_slots);
+        d.extend::<NamedMessages>(Self::named_messages);
+        d.rule(Self::rule);
         d.part::<BodyUnit, Inventory>(|at| at.of_type::<Inventory>().cloned());
         d.part::<BodyUnit, UseGroup>(|at| at.of_type::<UseGroup>().copied());
     }
@@ -96,12 +120,10 @@ impl Module for Items {
     /// starts once the trades are in, and in Resolve once a use may have spent an item. On the
     /// server, the tick's orders trade in Inputs, as a trade pays and refunds the server's
     /// resources; a client predicts no trade.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems((
-            ItemHolds::want_items.in_set(ItemsSet::HoldAtInputs),
-            ItemHolds::want_items.in_set(ItemsSet::Want),
-        ));
-        cx.server(TradeOrders::trade_items.in_set(ItemsSet::Commands));
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        cx.add(ItemsSet::HoldAtInputs, ItemHolds::want_items);
+        cx.add(ItemsSet::Want, ItemHolds::want_items);
+        cx.server(ItemsSet::Commands, TradeOrders::trade_items);
     }
 }
 
@@ -110,24 +132,20 @@ impl Items {
     /// when the slot is one of its inventory's.
     fn spend_use(world: &mut World, entity: Entity, slot: u8) {
         let book = world.resource::<ItemBook>().clone();
-        let mut caster = world.entity_mut(entity);
-        let carried = caster.get_components_mut::<(
-            &mut Inventory,
-            &UseGroup,
-            &mut ActionSlots,
-            &mut SlotTimes,
-            &mut ActionProgress,
-        )>();
-        if let Ok((mut inventory, &group, mut slots, mut times, mut progress)) = carried {
-            let carrier = CarrierSlots {
-                unit: SlotsMut {
-                    slots: &mut slots,
-                    times: &mut times,
-                    progress: &mut progress,
-                },
-                group,
-            };
-            inventory.spend_use(&book, carrier, slot);
-        }
+        let Some(&id) = world.get::<StableId>(entity) else {
+            return;
+        };
+        ProgressDues::with(world, id, entity, |world, dues| {
+            let mut caster = world.entity_mut(entity);
+            let carried = caster.get_components_mut::<(&mut Inventory, &UseGroup, SlotsMut)>();
+            if let Ok((mut inventory, &group, unit)) = carried {
+                let carrier = CarrierSlots {
+                    unit,
+                    dues: dues.reborrow(),
+                    group,
+                };
+                inventory.spend_use(&book, carrier, slot);
+            }
+        });
     }
 }

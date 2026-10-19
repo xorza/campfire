@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_navigation::{NavigationBook, OnPath, PathEnd, PathWalker};
+use campfire_navigation::{NavigationBook, PathEnd, WalkerOnPath};
 use campfire_sim::StableId;
 use campfire_units::{SpawnAt, Spawner};
 use campfire_values::{PathId, Team, UnitType};
@@ -33,12 +33,8 @@ impl SpawnGroup {
             .paths
             .waypoint(self.path, 0, self.from)
             .expect("a path has a waypoint");
-        let spawner = world.non_send::<Spawner>().clone();
         for &GroupUnit { unit_type, id } in &self.units {
-            let walker = (
-                OnPath::new(self.path),
-                PathWalker::start(self.from, first.id),
-            );
+            let walker = WalkerOnPath::new(self.path, self.from, first.id);
             let at = SpawnAt {
                 id,
                 unit_type,
@@ -47,7 +43,7 @@ impl SpawnGroup {
                 pos,
                 angle: Num::ZERO,
             };
-            spawner.spawn(world, at, walker);
+            Spawner::spawn(world, at, walker);
         }
     }
 }

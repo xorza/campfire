@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use campfire_common::MapName;
+use campfire_common::{EnumAll, MapName};
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
 
 /// The modes of the workspace's test packages, each in its tree, at its root, on its map.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
 pub enum TestMode {
     /// `test-lane`, on `lane`.
     Lane,

@@ -2,35 +2,49 @@
 
 use std::fmt::Write;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use campfire_actions::{
-    ActionDataField, ActionField, ActionKind, DoesData, EffectData, EffectTo, HealFields,
-    LaunchFields, ListHook, PlannedEffect, PurgeFields,
+    ActionField, ActionProblem, CostTarget, EffectData, EffectRule, EffectTo, LaunchLists,
+    ListHook, ListedEffect, PipelineField, PlannedEffect, SlotError, SlotKind,
 };
-use campfire_capabilities::{CapabilityError, Release, UnitStartError};
+use campfire_areas::{AreaDeliveryError, LandEffectData};
+use campfire_capabilities::{CapabilityError, Release};
 use campfire_codec::Binary;
 use campfire_codec::internals::{TomlDocument, TomlNode};
-use campfire_common::MapName;
+use campfire_combat::{Armor, CombatDataError, HealEffectData};
+use campfire_common::{DeclaredName, MapName};
+use campfire_declare::{BookPlace, NamesListError, TypePlace};
 use campfire_geometry::Metric;
 use campfire_math::Num;
-use campfire_mode::ModeError;
-use campfire_navigation::MapProblem;
+use campfire_mode::{ChoiceId, MarkerTag, ModeDataError, ModeError, TimerId};
+use campfire_navigation::{MapProblem, NavigationDataError};
 use campfire_orders::AiError;
 use campfire_package::{
-    BoxProblem, BuildProblem, ChoiceProblem, ContentError, DeliveryProblem, EffectProblem,
-    GatherProblem, Limit, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName,
-    PackageRef, Place, ScriptProblem, Way,
+    ContentError, LoadError, LoadProblem, LocaleProblem, ModePackages, PackageName, PackageRef,
+    Place, ScriptProblem,
 };
 use campfire_package_disk::PackageDir;
-use campfire_script::internals::Undefined;
-use campfire_script::{CtxMisuse, NameKind, ParamProblem, Status, SyncTo};
+use campfire_production::ProductionDataError;
+use campfire_progression::TrackError;
+use campfire_projectiles::{ProjectileDeliveryError, ProjectileError};
+use campfire_script::{CtxMisuse, ParamProblem, Status, SyncTo};
+use campfire_script::{Filter, internals::Undefined};
 use campfire_sim::{Capability, TickRate};
-use campfire_stats::ModifierProblem;
+use campfire_stats::{
+    AppliedError, ModifierProblem, ModifiersDataError, PurgeEffectData, StatGraphError,
+    UnitStartError, Way,
+};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::HeightGrid;
-use campfire_values::{DeclaredName, EngineEnum, Number, Scalar, TimeTooLarge};
+use campfire_units::{HeightGrid, Layer, PoolId, StatId, TypesError, UnitTypeError};
+use campfire_values::{
+    ActionId, DamageKind, EngineEnum, MessageId, ModifierId, Named, Number, Param, ResourceId,
+    Scalar, Stat, Tag, Team, TimeTooLarge, TrackId, UnitType,
+};
+use campfire_vision::VisionDataError;
 
 use crate::package::moba::{edited, load, moba, two_lanes};
+use crate::package::module_rules::{entry, rule, rule_at, rule_of, unit_type};
 
 /// A flaw, the package it is in, and the problem it fails the load with.
 #[derive(Debug)]
@@ -106,7 +120,44 @@ const PRODUCTION: Edit<'static> = Edit::Replace(r#""items"]"#, r#""items", "prod
 
 /// Whether `problem` is Rime's Slow's `slow` param failing for `kind` by `way`.
 fn slow_fails(problem: &LoadProblem, way: Option<&Way>, kind: ParamProblem) -> bool {
-    matches!(problem, LoadProblem::ModifierParam { modifier, param, way: found, problem } if modifier == "slow" && param == "slow" && found.as_ref() == way && *problem == kind)
+    let error = AppliedError::Param {
+        param: name("slow"),
+        way: way.cloned(),
+        problem: kind,
+    };
+    rule_at(problem, &entry("modifiers", "slow"), &error)
+}
+
+/// Whether `problem` is the modifier `modifier` held as the passive of `first` and of the
+/// action `second` of one package.
+fn shared_passive(problem: &LoadProblem, modifier: &str, first: BookPlace, second: &str) -> bool {
+    let error = AppliedError::SharedPassive {
+        modifier: name(modifier),
+        first,
+    };
+    rule_at(problem, &entry("actions", second), &error)
+}
+
+/// The place of the action `id`, as a module's rule names it.
+fn action_place(id: &str) -> BookPlace {
+    BookPlace::Entry {
+        table: "actions",
+        name: name(id),
+    }
+}
+
+/// Whether `problem` is live stat changes that read each other in a loop through `stats`.
+fn stat_loop<const N: usize>(problem: &LoadProblem, stats: [&str; N]) -> bool {
+    let looped = stats.map(|stat| Stat::named(stat).unwrap()).to_vec();
+    rule_at(
+        problem,
+        &Place::Section("stats"),
+        &StatGraphError::Loop(looped),
+    )
+}
+
+fn name(name: &str) -> DeclaredName {
+    DeclaredName::new(name).unwrap()
 }
 
 /// Whether `problem` is a script that does not compile, as it reads the variable `name`, which
@@ -141,7 +192,13 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
         error.package,
         PackageRef::Name(PackageName::new(MODE).unwrap())
     );
-    let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotFaster(Place::UnitType(name))) if name == "caster_creep_bolt");
+    let at_caster = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &unit_type("caster_creep_bolt"),
+            &ProjectileError::NotFaster,
+        )
+    };
     assert!(at_caster(&error.problem), "{error:?}");
     // Along a line, the same speed loads: it chases no one.
     let edit = Edit::Set("units.grasping_wraps.projectile.speed", r#""5""#);
@@ -164,7 +221,13 @@ fn a_weapon_or_an_action_at_a_unit_or_a_point_may_fly_a_curve_and_one_along_a_di
     let wraps = format!(r#"{{ speed = "20", width = "1.6", curve = {curve} }}"#);
     let edit = Edit::Set("units.grasping_wraps.projectile", &wraps);
     let error = load(&edited([(HUSK, edit)])).unwrap_err();
-    let along = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Curve(action)) if action == "grasping_wraps");
+    let along = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "grasping_wraps"),
+            &ProjectileDeliveryError::Curve,
+        )
+    };
     assert!(along(&error.problem), "{error:?}");
     // A curve takes nothing of a line's or a homing flight's, and its points lie on the way.
     for (projectile, message) in [
@@ -219,16 +282,34 @@ fn a_weapons_splash_needs_a_projectile_its_scatter_a_curve_its_speed_none_and_it
     assert!(set(&[splash, scatter, pitch, curve]).is_ok());
     // A homing bolt does not scatter, and a weapon of no projectile does not splash.
     let error = set(&[scatter]).unwrap_err();
-    let scatters = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Scatter(action)) if action == "tower_attack");
+    let scatters = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "tower_attack"),
+            &CombatDataError::Scatter,
+        )
+    };
     assert!(scatters(&error.problem), "{error:?}");
     // A melee weapon may be slow; a homing bolt flies at its own speed.
     assert!(set(&[("actions.wolf_attack.speed", r#""40""#)]).is_ok());
     let error = set(&[("actions.tower_attack.speed", r#""40""#)]).unwrap_err();
-    let speeds = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Speed(action)) if action == "tower_attack");
+    let speeds = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "tower_attack"),
+            &CombatDataError::Speed,
+        )
+    };
     assert!(speeds(&error.problem), "{error:?}");
     let melee = [("actions.wolf_attack.splash", splash.1)];
     let error = set(&melee).unwrap_err();
-    let splashes = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Splash(action)) if action == "wolf_attack");
+    let splashes = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "wolf_attack"),
+            &CombatDataError::Splash,
+        )
+    };
     assert!(splashes(&error.problem), "{error:?}");
     // Each reads only within its bounds.
     let file = "data/mode.toml";
@@ -295,13 +376,13 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
     let heal = EffectData {
-        does: DoesData::Heal(HealFields {
+        does: Arc::new(HealEffectData {
             amount: Number::Value(Scalar::Int(1)),
         }),
         to: EffectTo::Source,
     };
     assert_eq!(
-        rime.content.actions["fan_of_frost"].on_hit.last(),
+        rime.content.actions()["fan_of_frost"].on_hit.last(),
         Some(&heal)
     );
     // A purge names a tag the match declares, which Rime's slow grants.
@@ -312,11 +393,11 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its
         .iter()
         .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
-    let purge = DoesData::Purge(PurgeFields {
+    let purge: Arc<dyn ListedEffect> = Arc::new(PurgeEffectData {
         tag: DeclaredName::new("slowed").unwrap(),
     });
     assert_eq!(
-        rime.content.actions["fan_of_frost"]
+        rime.content.actions()["fan_of_frost"]
             .on_hit
             .last()
             .map(|effect| &effect.does),
@@ -348,17 +429,23 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
     let on_hit = biting("on_hit");
     let edit = Edit::Replace(MELEE_END, &on_hit);
     let packages = load(&edited([(MODE_DATA, edit)])).unwrap();
-    let weapon = &packages.content().actions["melee_creep_attack"];
+    let weapon = &packages.content().actions()["melee_creep_attack"];
     assert_eq!((weapon.on_hit.len(), weapon.params.len()), (1, 1));
     let on_end = biting("on_end");
     let edit = Edit::Replace(MELEE_END, &on_end);
     let error = load(&edited([(MODE_DATA, edit)])).unwrap_err();
-    let refused = |problem: &LoadProblem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::OnEnd } if action == "melee_creep_attack");
+    let refused = |problem: &LoadProblem| {
+        rule_at(
+            problem,
+            &entry("actions", "melee_creep_attack"),
+            &ActionProblem::KindField(PipelineField::OnEnd),
+        )
+    };
     assert!(refused(&error.problem), "{error:?}");
     // Cinder's bolt launches an eruption, an area type of her own package, where it hits.
     let edit = Edit::Set(
         "actions.attack.on_hit",
-        r#"[{ launch = { area = "eruption" } }]"#,
+        r#"[{ land = { area = "eruption" } }]"#,
     );
     let packages = load(&edited([(CINDER, edit)])).unwrap();
     let cinder = packages
@@ -366,12 +453,11 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
         .iter()
         .find(|dependent| dependent.package.header.name == "hero-cinder")
         .unwrap();
-    let launch = DoesData::Launch(LaunchFields {
+    let launch: Arc<dyn ListedEffect> = Arc::new(LandEffectData {
         area: DeclaredName::new("eruption").unwrap(),
-        on_hit: Vec::new(),
-        on_end: Vec::new(),
+        lists: LaunchLists::default(),
     });
-    let on_hit = &cinder.content.actions["attack"].on_hit;
+    let on_hit = &cinder.content.actions()["attack"].on_hit;
     assert_eq!(
         on_hit.iter().map(|effect| &effect.does).collect::<Vec<_>>(),
         [&launch]
@@ -439,14 +525,27 @@ fn a_script_names_a_spawn_tag_no_marker_of_the_map_holds() {
 }
 
 #[test]
+fn an_anonymous_function_and_a_function_pointer_load() {
+    // An anonymous function captures nothing, and a pointer passes `ctx` to none.
+    for line in [
+        "    let near = |unit| unit.pos;\n",
+        "    let hook = Fn(\"on_resolve\");\n",
+    ] {
+        let at = r#"    for unit in ctx.find(caster, caster.pos, ctx.params.radius, "enemies") {"#;
+        let edit = Edit::Replace(at, &format!("{line}{at}"));
+        assert!(load(&edited([(LASH_OUT, edit)])).is_ok(), "{line}");
+    }
+}
+
+#[test]
 fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
     // The mode's tower, and Husk by its package's name, are in the mode's scope; the team is one
     // of the manifest's.
-    let spawns = r#"    share_xp(ctx, unit);
-    ctx.spawn_unit("tower", "north", unit.pos);
+    let spawns = r#"    ctx.spawn_unit("tower", "north", unit.pos);
     ctx.spawn_unit("hero-husk", "camps", unit.pos);
+    if unit.has_tag("inhibitor") {
 "#;
-    let edit = Edit::Replace("    share_xp(ctx, unit);\n", spawns);
+    let edit = Edit::Replace("    if unit.has_tag(\"inhibitor\") {\n", spawns);
     assert!(load(&edited([(MODE_SCRIPT, edit)])).is_ok());
 }
 
@@ -502,7 +601,7 @@ fn tracks(count: usize) -> Vec<(String, String)> {
 struct LimitCase {
     more: fn(usize) -> Vec<(String, String)>,
     allowed: usize,
-    limit: Limit,
+    refused: fn(&LoadProblem) -> bool,
 }
 
 #[test]
@@ -512,13 +611,13 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
         LimitCase {
             more: layers,
             allowed: 223,
-            limit: Limit::Tags,
+            refused: |problem| rule(problem, &TypesError::TooManyTags),
         },
         // `level` and 31 more fill the 32 tracks a unit holds.
         LimitCase {
             more: tracks,
             allowed: 31,
-            limit: Limit::Tracks,
+            refused: |problem| rule(problem, &TrackError::TooMany),
         },
     ];
     for case in cases {
@@ -535,10 +634,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
             error.package,
             PackageRef::Name(PackageName::new(MODE).unwrap())
         );
-        assert!(
-            matches!(*error.problem, LoadProblem::TooMany(limit) if limit == case.limit),
-            "{case:?}: {error:?}"
-        );
+        assert!((case.refused)(&error.problem), "{case:?}: {error:?}");
     }
 }
 
@@ -618,8 +714,8 @@ static DATA_FLAWS: &[Flaw] = &[
         },
     ),
     // A section of the mode's data or of its map is its capability's, declared or refused: the
-    // map's vision grid without `vision`, its pathing grid without `navigation`, `[supply]`
-    // without `production`.
+    // map's vision grid without `vision`, the mode's `[navigation]` without `navigation`,
+    // `[supply]` without `production`.
     flaw(
         MANIFEST,
         Edit::Replace(r#", "vision", "progression""#, r#", "progression""#),
@@ -629,7 +725,7 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Vision,
-                    at: Place::MapGrid
+                    at: Place::MapSection("grid")
                 }
             )
         },
@@ -643,7 +739,7 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Navigation,
-                    at: Place::MapNavigation
+                    at: Place::Section("navigation")
                 }
             )
         },
@@ -657,13 +753,14 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Production,
-                    at: Place::Supply
+                    at: Place::Section("supply")
                 }
             )
         },
     ),
-    // Tracks are progression's: positive and ascending, at most one the `level` track, and each a
-    // unit type lists one the mode declares.
+    // Tracks and a death's experience are progression's: tracks positive and ascending, at most
+    // one the `level` track, and each a unit type lists one the mode declares; the experience
+    // section the first the load finds.
     flaw(
         MANIFEST,
         Edit::Replace(r#", "progression", "items"]"#, r#", "items"]"#),
@@ -673,7 +770,7 @@ static DATA_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Progression,
-                    at: Place::Tracks
+                    at: Place::Section("experience")
                 }
             )
         },
@@ -691,7 +788,7 @@ static DATA_FLAWS: &[Flaw] = &[
             "[tracks.fame]\nlevel = true\nlevels = [10]\n\n[tracks.level]\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::LevelTracks),
+        |problem| rule(problem, &TrackError::LevelTracks),
     ),
     // A slot kind's levels: one for each of its ranks, each at least 1 and at least the one
     // before, on a kind with ranks, in a mode with the `level` track.
@@ -741,13 +838,18 @@ static DATA_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("level = true\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::RankLevels(kind) if kind.as_str() == "basic"),
+        |problem| {
+            rule(
+                problem,
+                &TrackError::RankLevels(DeclaredName::new("basic").unwrap()),
+            )
+        },
     ),
     flaw(
         HUSK,
         Edit::Replace(r#"tracks = ["level"]"#, r#"tracks = ["levels"]"#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Track, name, .. } if name == "levels"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: TrackId::NAMES, name, .. } if name == "levels"),
     ),
     flaw(
         MANIFEST,
@@ -805,7 +907,7 @@ static DATA_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace(r#""tomb_bind"]"#, r#""tomb_binds"]"#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownSlot(id) if id == "tomb_binds"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ActionId::NAMES, at: Place::Avatar(_), name } if name == "tomb_binds"),
     ),
     flaw(
         HUSK,
@@ -814,7 +916,13 @@ static DATA_FLAWS: &[Flaw] = &[
             "[16000, 14000, 12000, 10000]",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::RankCount { action, ranks: 5 } if action == "grasping_wraps"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "grasping_wraps"),
+                &ActionProblem::RankCount(5),
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -823,7 +931,7 @@ static DATA_FLAWS: &[Flaw] = &[
             "orders = { ai = \"scripts/lash_out.rhai\", think_ms = 250 }\n[combat]\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::AvatarOrders),
+        |problem| rule(problem, &AiError::AvatarOrders),
     ),
     flaw(
         HUSK,
@@ -838,7 +946,13 @@ static DATA_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("units.grasping_wraps.projectile.homing", "true"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Homing(action)) if action == "grasping_wraps"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "grasping_wraps"),
+                &ProjectileDeliveryError::Homing,
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -847,13 +961,19 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"delivery = { projectile = "wraps" }"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "grasping_wraps" && name == "wraps"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "grasping_wraps" && name == "wraps"),
     ),
     flaw(
         HUSK,
         Edit::Set("actions.grasping_wraps.targeting", r#""none""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoAim(action)) if action == "grasping_wraps"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "grasping_wraps"),
+                &ProjectileDeliveryError::NoAim,
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -863,10 +983,9 @@ static DATA_FLAWS: &[Flaw] = &[
         ),
         "hero-husk",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::Avatar(_)))
-            )
+            rule_of(problem, |at, error: &UnitTypeError| {
+                matches!(at, Place::Avatar(_)) && *error == UnitTypeError::NotDelivery
+            })
         },
     ),
     flaw(
@@ -876,13 +995,25 @@ static DATA_FLAWS: &[Flaw] = &[
             "[units.tower_bolt]\npools = [\"health\"]\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "tower_bolt"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("tower_bolt"),
+                &UnitTypeError::NotDelivery,
+            )
+        },
     ),
     flaw(
         UNITS,
         Edit::Remove("units.tower_bolt.projectile.homing"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Weapon(action)) if action == "tower_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &CombatDataError::Delivery,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -891,7 +1022,10 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"delivery = { projectile = "tower" }"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "tower_attack" && unit_type == "tower"),
+        |problem| {
+            let wrong = ProjectileDeliveryError::NotProjectile(DeclaredName::new("tower").unwrap());
+            rule_at(problem, &entry("actions", "tower_attack"), &wrong)
+        },
     ),
     // An area delivery names an area type, which lands on a point, a unit or the caster, takes
     // no count, and holds modifiers of its package; a delivery type has one section of the two.
@@ -902,13 +1036,22 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"delivery = { area = "fire_lance" }"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "eruption" && unit_type == "fire_lance"),
+        |problem| {
+            let wrong = AreaDeliveryError::NotArea(DeclaredName::new("fire_lance").unwrap());
+            rule_at(problem, &entry("actions", "eruption"), &wrong)
+        },
     ),
     flaw(
         CINDER,
         Edit::Set("actions.eruption.targeting", r#""direction""#),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaDirection(action)) if action == "eruption"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "eruption"),
+                &AreaDeliveryError::Direction,
+            )
+        },
     ),
     flaw(
         CINDER,
@@ -923,7 +1066,7 @@ static DATA_FLAWS: &[Flaw] = &[
         CINDER,
         Edit::Set("units.eruption.area.affects", r#""enemies:molten""#),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, at: Place::UnitType(name), .. } if name == "eruption"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, at: Place::UnitType(name), .. } if name == "eruption"),
     ),
     flaw(
         CINDER,
@@ -932,13 +1075,13 @@ static DATA_FLAWS: &[Flaw] = &[
             "[units.eruption]\nprojectile = { speed = \"20\" }\n",
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "eruption"),
+        |problem| rule_at(problem, &unit_type("eruption"), &UnitTypeError::NotDelivery),
     ),
     flaw(
         VEIL,
         Edit::Replace(r#"self = "smoke_ring_cover""#, r#"self = "smoke_cover""#),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::UnitType(unit_type), name } if unit_type == "smoke_ring" && name == "smoke_cover"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, at: Place::UnitType(unit_type), name } if unit_type == "smoke_ring" && name == "smoke_cover"),
     ),
     flaw(
         MANIFEST,
@@ -950,7 +1093,12 @@ static DATA_FLAWS: &[Flaw] = &[
         MAP,
         Edit::Replace("unit_type = \"tower\"", "unit_type = \"tower_bolt\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownUnitType(name)) if name == "tower_bolt"),
+        |problem| {
+            rule(
+                problem,
+                &ModeError::UnknownUnitType(DeclaredName::new("tower_bolt").unwrap()),
+            )
+        },
     ),
     // Snow Owl hits nothing: a width, a stop on hit, a hit once a cast or homing would use hits,
     // and so would an `on_hit` list or hook of its action.
@@ -958,25 +1106,49 @@ static DATA_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Set("units.snow_owl.projectile.width", r#""0.5""#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("snow_owl"),
+                &ProjectileError::HitsNothing,
+            )
+        },
     ),
     flaw(
         RIME,
         Edit::Set("units.snow_owl.projectile.stop_on_hit", "true"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("snow_owl"),
+                &ProjectileError::HitsNothing,
+            )
+        },
     ),
     flaw(
         RIME,
         Edit::Set("units.snow_owl.projectile.once_per_cast", "true"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("snow_owl"),
+                &ProjectileError::HitsNothing,
+            )
+        },
     ),
     flaw(
         RIME,
         Edit::Set("units.snow_owl.projectile.homing", "true"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("snow_owl"),
+                &ProjectileError::HitsNothing,
+            )
+        },
     ),
     flaw(
         RIME,
@@ -985,7 +1157,13 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ damage = { amount = 1, kind = "true" } }]"#,
         ),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoHit(action)) if action == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "snow_owl"),
+                &ProjectileDeliveryError::NoHit,
+            )
+        },
     ),
     flaw(
         SNOW_OWL,
@@ -994,7 +1172,13 @@ static DATA_FLAWS: &[Flaw] = &[
             "fn on_hit(ctx, caster, target, hit) {}\n\nfn on_end(ctx, caster, hit) {",
         ),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoHit(action)) if action == "snow_owl"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "snow_owl"),
+                &ProjectileDeliveryError::NoHit,
+            )
+        },
     ),
     flaw(
         RIME,
@@ -1007,28 +1191,37 @@ static DATA_FLAWS: &[Flaw] = &[
         CINDER,
         Edit::Set(
             "actions.attack.on_hit",
-            r#"[{ launch = { area = "fire_lance" } }]"#,
+            r#"[{ land = { area = "fire_lance" } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "attack" && unit_type == "fire_lance"),
+        |problem| {
+            let wrong = AreaDeliveryError::NotArea(DeclaredName::new("fire_lance").unwrap());
+            rule_at(problem, &entry("actions", "attack"), &wrong)
+        },
+    ),
+    flaw(
+        CINDER,
+        Edit::Set("actions.attack.on_hit", r#"[{ land = { area = "pyre" } }]"#),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "attack" && name == "pyre"),
     ),
     flaw(
         CINDER,
         Edit::Set(
             "actions.attack.on_hit",
-            r#"[{ launch = { area = "pyre" } }]"#,
+            r#"[{ land = { area = "eruption", on_end = [{ heal = { amount = 1 } }] } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "attack" && name == "pyre"),
-    ),
-    flaw(
-        CINDER,
-        Edit::Set(
-            "actions.attack.on_hit",
-            r#"[{ launch = { area = "eruption", on_end = [{ heal = { amount = 1 } }] } }]"#,
-        ),
-        "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "attack"),
+                &ActionProblem::Effect {
+                    list: ListHook::OnEnd,
+                    rule: EffectRule::NoUnit,
+                },
+            )
+        },
     ),
     // An action spawns a unit type of its own package that stands, an avatar's summon among
     // them, for a whole number of milliseconds: Rime's arrow, a projectile, is none. A summon of
@@ -1038,25 +1231,40 @@ static DATA_FLAWS: &[Flaw] = &[
         RIME,
         Edit::Replace(SLOWS, r#"{ spawn = { unit_type = "frost_arrow" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "frost_arrow"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, name, .. } if name == "frost_arrow"),
     ),
     flaw(
         RIME,
         Edit::Set("units.wisp.stats.nonsense.base", "1"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "nonsense"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, name, .. } if name == "nonsense"),
     ),
     flaw(
         "spells/data/loadout.toml",
         Edit::Set("units.totem.slots.basic", r#"["blink"]"#),
         "player-spells",
-        |problem| matches!(problem, LoadProblem::ActionRanks(action) if action.as_str() == "blink"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "blink"),
+                &ActionProblem::SlottedRanks,
+            )
+        },
     ),
     flaw(
         RIME,
         Edit::Replace(SLOWS, r#"{ loot = { table = "chest", level = 1 } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Loot) } if action == "fan_of_frost"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "fan_of_frost"),
+                &ActionProblem::Effect {
+                    list: ListHook::OnHit,
+                    rule: EffectRule::Planned(PlannedEffect::Loot),
+                },
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -1065,7 +1273,7 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ spawn = { unit_type = "caster_creep_bolt" } }]"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "caster_creep_bolt"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, name, .. } if name == "caster_creep_bolt"),
     ),
     flaw(
         MODE_DATA,
@@ -1074,7 +1282,16 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"[{ spawn = { unit_type = "melee_creep", duration_ms = "1.5" } }]"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnHit, problem: EffectProblem::Duration } if action == "tower_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &ActionProblem::Effect {
+                    list: ListHook::OnHit,
+                    rule: EffectRule::Duration,
+                },
+            )
+        },
     ),
     // A move is a dash's `to` and `speed`, or a knock back's `from`, `distance` and whole `ms`;
     // its other unit, as its own, is one its list reaches.
@@ -1091,28 +1308,53 @@ static DATA_FLAWS: &[Flaw] = &[
             r#"{ move = { from = "source", distance = 1, ms = "0.5" } },"#,
         ),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnHit, problem: EffectProblem::Duration } if action == "fan_of_frost"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "fan_of_frost"),
+                &ActionProblem::Effect {
+                    list: ListHook::OnHit,
+                    rule: EffectRule::Duration,
+                },
+            )
+        },
     ),
     flaw(
         CINDER,
         Edit::Set(
             "actions.attack.on_hit",
-            r#"[{ launch = { area = "eruption", on_end = [{ move = { to = "reached", speed = 5 }, to = "source" }] } }]"#,
+            r#"[{ land = { area = "eruption", on_end = [{ move = { to = "reached", speed = 5 }, to = "source" }] } }]"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: ListHook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "attack"),
+                &ActionProblem::Effect {
+                    list: ListHook::OnEnd,
+                    rule: EffectRule::NoUnit,
+                },
+            )
+        },
     ),
     flaw(
         RIME,
         Edit::Replace(SLOWS, r#"{ purge = { tag = "frozen" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Tag, at: Place::Action(action), name } if action == "fan_of_frost" && name == "frozen"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Tag::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "fan_of_frost" && name == "frozen"),
     ),
     flaw(
         RIME,
         Edit::Replace(SLOWS, r#"{ purge = { tag = "avatar" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Action(action), tag } if tag.name() == "avatar" && action == "fan_of_frost"),
+        |problem| {
+            let purged = EffectRule::EngineTag(DeclaredName::new("avatar").unwrap());
+            let effect = ActionProblem::Effect {
+                list: ListHook::OnHit,
+                rule: purged,
+            };
+            rule_at(problem, &entry("actions", "fan_of_frost"), &effect)
+        },
     ),
     flaw(
         RIME,
@@ -1128,14 +1370,12 @@ static DATA_FLAWS: &[Flaw] = &[
         Edit::Replace("on_hit = [", "on_end = ["),
         "hero-rime",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    list: ListHook::OnEnd,
-                    problem: EffectProblem::NoUnit,
-                    ..
-                }
-            )
+            let broken = EffectRule::NoUnit;
+            let effect = ActionProblem::Effect {
+                list: ListHook::OnEnd,
+                rule: broken,
+            };
+            rule(problem, &effect)
         },
     ),
     flaw(
@@ -1143,14 +1383,12 @@ static DATA_FLAWS: &[Flaw] = &[
         Edit::Replace("on_hit = [", "on_resolve = ["),
         "hero-rime",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    list: ListHook::OnResolve,
-                    problem: EffectProblem::NoUnit,
-                    ..
-                }
-            )
+            let broken = EffectRule::NoUnit;
+            let effect = ActionProblem::Effect {
+                list: ListHook::OnResolve,
+                rule: broken,
+            };
+            rule(problem, &effect)
         },
     ),
     flaw(
@@ -1158,14 +1396,12 @@ static DATA_FLAWS: &[Flaw] = &[
         Edit::Remove("actions.fan_of_frost.delivery"),
         "hero-rime",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    list: ListHook::OnHit,
-                    problem: EffectProblem::NoDelivery,
-                    ..
-                }
-            )
+            let broken = EffectRule::NoDelivery;
+            let effect = ActionProblem::Effect {
+                list: ListHook::OnHit,
+                rule: broken,
+            };
+            rule(problem, &effect)
         },
     ),
     flaw(
@@ -1176,13 +1412,15 @@ static DATA_FLAWS: &[Flaw] = &[
         ),
         "hero-rime",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    problem: EffectProblem::Negative,
-                    ..
-                }
-            )
+            rule_of(problem, |_, error: &ActionProblem| {
+                matches!(
+                    error,
+                    ActionProblem::Effect {
+                        rule: EffectRule::Negative,
+                        ..
+                    }
+                )
+            })
         },
     ),
 ];
@@ -1199,13 +1437,13 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         ),
         "hero-rime",
         |problem| {
-            matches!(
+            rule_at(
                 problem,
-                LoadProblem::Effect {
-                    action,
+                &entry("actions", "fan_of_frost"),
+                &ActionProblem::Effect {
                     list: ListHook::OnHit,
-                    problem: EffectProblem::Overflow,
-                } if action == "fan_of_frost"
+                    rule: EffectRule::Overflow,
+                },
             )
         },
     ),
@@ -1214,20 +1452,22 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         Edit::Set("actions.fan_of_frost.params.slow_ms", r#""2000.5""#),
         "hero-rime",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    problem: EffectProblem::Duration,
-                    ..
-                }
-            )
+            rule_of(problem, |_, error: &ActionProblem| {
+                matches!(
+                    error,
+                    ActionProblem::Effect {
+                        rule: EffectRule::Duration,
+                        ..
+                    }
+                )
+            })
         },
     ),
     flaw(
         RIME,
         Edit::Replace(r#"kind = "physical" } }"#, r#"kind = "frost" } }"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, name, .. } if name == "frost"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: DamageKind::NAMES, name, .. } if name == "frost"),
     ),
     flaw(
         RIME,
@@ -1236,7 +1476,7 @@ static SCRIPT_FLAWS: &[Flaw] = &[
             r#"id = "frozen", duration_ms"#,
         ),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, name, .. } if name == "frozen"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, name, .. } if name == "frozen"),
     ),
     flaw(
         MANIFEST,
@@ -1252,7 +1492,13 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Trained(action)) if action == "recruit"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "recruit"),
+                &ProductionDataError::Trained,
+            )
+        },
     },
     flaw(
         "heroes/husk/scripts/extra.rhai",
@@ -1293,6 +1539,16 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_cast"),
     ),
+    // A handle's param that no unit type or map marker holds.
+    flaw(
+        CREEP_AI,
+        Edit::Replace(
+            "ctx.nearest_visible(unit, unit.params.aggro_range, \"enemies:creep\")",
+            "ctx.nearest_visible(unit, unit.params.aggro_rang, \"enemies:creep\")",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: Param::NAMES, at: Place::Script(path), name } if path.as_str() == "scripts/creep_ai.rhai" && name == "aggro_rang"),
+    ),
     // A handle's member every form of which is of a capability the mode does not declare: the
     // 3v3 has no `production`, whose `unit.load` it is.
     flaw(
@@ -1308,7 +1564,7 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         CREEP_AI,
         Edit::Replace(
             "if target == () {\n        ctx.order_follow_path",
-            "if supply_cap(ctx, 0) > 0 {\n        ctx.order_follow_path",
+            "if unit.load > 0 {\n        ctx.order_follow_path",
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Script(path) } if path.as_str() == "scripts/creep_ai.rhai"),
@@ -1355,15 +1611,18 @@ static SCRIPT_FLAWS: &[Flaw] = &[
     flaw(
         LASH_OUT,
         Edit::Replace(
-            r#"ctx.damage(unit, ctx.p.damage, "magic");"#,
-            r#"ctx.damage(unti, ctx.p.damage, "magic");"#,
+            r#"ctx.damage(unit, "magic", ctx.params.damage);"#,
+            r#"ctx.damage(unti, "magic", ctx.params.damage);"#,
         ),
         "hero-husk",
         |problem| undefined(problem, "unti"),
     ),
     flaw(
         CREEP_AI,
-        Edit::Replace("let target = unit.target;", "let target = unti.target;"),
+        Edit::Replace(
+            "let target = unit.attack_target;",
+            "let target = unti.attack_target;",
+        ),
         MODE,
         |problem| undefined(problem, "unti"),
     ),
@@ -1405,62 +1664,78 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(error), .. } if error.undefined() == Some(Undefined::Module("Path"))),
     ),
-    // No script makes a function pointer: a closure, an anonymous function that captures
-    // nothing, or `Fn`.
+    // A literal compared with a name the API returns is a name of its kind, as the mode's damage
+    // kinds `true` and `physical` are; an action's name compares through `is_action`, in its
+    // package's scope; a `switch` on a name has cases no check reads.
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(r#"d.kind == "true""#, r#"d.kind == "pure""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: DamageKind::NAMES, at: Place::Script(_), name } if name == "pure"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(r#"d.kind == "true""#, r#"d.action == "true""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::ScopedCompare(member), .. } if member == "action"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            r#"if d.kind == "true" {"#,
+            r#"switch d.kind { "true" => {} }
+    if d.kind == "true" {"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::NameSwitch(member), .. } if member == "kind"),
+    ),
+    // No script holds statements outside its functions, and none tries to catch a refusal.
     flaw(
         LASH_OUT,
         Edit::Replace(
-            r#"    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
-            r#"    let radius = ctx.p.radius;
+            "fn on_resolve(ctx, caster, target) {",
+            "let radius = 3;\nfn on_resolve(ctx, caster, target) {",
+        ),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Script {
+                    problem: ScriptProblem::TopLevel,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            r#"        ctx.damage(unit, "magic", ctx.params.damage);"#,
+            r#"        try { ctx.damage(unit, "magic", ctx.params.damage); } catch { }"#,
+        ),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Script {
+                    problem: ScriptProblem::Compile(_),
+                    ..
+                }
+            )
+        },
+    ),
+    // With no closures, a function that captures a variable fails to compile: it names a
+    // variable its scope lacks.
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            r#"    for unit in ctx.find(caster, caster.pos, ctx.params.radius, "enemies") {"#,
+            r#"    let radius = ctx.params.radius;
     let near = |unit| unit.pos.within(caster.pos, radius);
     for unit in ctx.find(caster, caster.pos, radius, "enemies") {"#,
         ),
         "hero-husk",
-        |problem| {
-            matches!(
-                problem,
-                LoadProblem::Script {
-                    problem: ScriptProblem::FunctionPointer,
-                    ..
-                }
-            )
-        },
-    ),
-    flaw(
-        LASH_OUT,
-        Edit::Replace(
-            r#"    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
-            r#"    let near = |unit| unit.pos;
-    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
-        ),
-        "hero-husk",
-        |problem| {
-            matches!(
-                problem,
-                LoadProblem::Script {
-                    problem: ScriptProblem::FunctionPointer,
-                    ..
-                }
-            )
-        },
-    ),
-    flaw(
-        LASH_OUT,
-        Edit::Replace(
-            r#"    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
-            r#"    let hook = Fn("on_resolve");
-    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
-        ),
-        "hero-husk",
-        |problem| {
-            matches!(
-                problem,
-                LoadProblem::Script {
-                    problem: ScriptProblem::FunctionPointer,
-                    ..
-                }
-            )
-        },
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(error), .. } if error.undefined() == Some(Undefined::Variable("caster"))),
     ),
     flaw(
         LASH_OUT,
@@ -1500,6 +1775,26 @@ static SCRIPT_FLAWS: &[Flaw] = &[
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "spawn_avatars"),
     ),
+    // A call or a method given a count of arguments no form of it takes, as `ctx.damage` takes
+    // three and `distance_to` one.
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            "ctx.damage(unit, \"magic\", ctx.params.damage);",
+            "ctx.damage(unit);",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Arity { name, args: 1 }, .. } if name == "ctx.damage"),
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            "    for unit in",
+            "    let far = caster.pos.distance_to();\n    for unit in",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Arity { name, args: 0 }, .. } if name == ".distance_to"),
+    ),
 ];
 
 /// Flaws of a weapon, a place on the map, an AI, the visibility, the names the release plans,
@@ -1514,25 +1809,31 @@ static ACTION_FLAWS: &[Flaw] = &[
             "damage_kind = \"fire\"\ndelivery = { projectile = \"tower_bolt\" }",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, at: Place::Action(action), name: kind } if action == "tower_attack" && kind == "fire"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: DamageKind::NAMES, at: Place::Entry { table: "actions", name: action }, name: kind } if action == "tower_attack" && kind == "fire"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("rate = \"attack_speed\"\n", "rate = \"attack_sped\"\n"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Action(action), name } if action == "melee_creep_attack" && name == "attack_sped"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "melee_creep_attack" && name == "attack_sped"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("rate = \"attack_speed\"\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Rate } if action == "melee_creep_attack"),
+        |problem| read_fails(problem, "data/mode.toml", "a weapon's rate is a stat"),
     ),
     flaw(
         MODE_DATA,
         Edit::Set("actions.tower_attack.range", r#""global""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::GlobalAttack(action) if action == "tower_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &ActionProblem::Global,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -1541,7 +1842,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[actions.tower_attack]\nkind = \"attack\"\ntargeting = \"point\"",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::AttackAims(action) if action == "tower_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "tower_attack"),
+                &CombatDataError::AttackAims,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -1550,7 +1857,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[actions.wolf_attack]\ncooldown_ms = 1000\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::CooldownMs } if action == "wolf_attack"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "wolf_attack"),
+                &ActionProblem::KindField(PipelineField::CooldownMs),
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -1559,7 +1872,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[actions.dread]\nrate = \"attack_speed\"\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Rate } if action == "dread"),
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `rate`"),
     ),
     flaw(
         MODE_DATA,
@@ -1568,7 +1881,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "damage_kinds = []",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::NoDamageKinds),
+        |problem| rule(problem, &CombatDataError::NoDamageKinds),
     ),
     flaw(
         MODE_DATA,
@@ -1577,16 +1890,16 @@ static ACTION_FLAWS: &[Flaw] = &[
             r#"heal_scale = "heal_taken""#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Combat, name } if name == "heal_taken"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, at: Place::Section("combat"), name } if name == "heal_taken"),
     ),
     flaw(MAP, Edit::Remove("grid"), MODE, |problem| {
-        matches!(problem, LoadProblem::NoGrid)
+        rule(problem, &VisionDataError::NoGrid)
     }),
     flaw(MAP, Edit::Remove("navigation"), MODE, |problem| {
-        matches!(problem, LoadProblem::NoPathingGrid)
+        rule(problem, &NavigationDataError::NoPathingGrid)
     }),
     flaw(MAP, Edit::Set("grid.cell", r#""0""#), MODE, |problem| {
-        matches!(problem, LoadProblem::Mode(ModeError::Grid))
+        rule(problem, &VisionDataError::Grid)
     }),
     flaw(
         MAP,
@@ -1601,7 +1914,7 @@ static ACTION_FLAWS: &[Flaw] = &[
         },
     ),
     flaw(MAP, Edit::Set("units.0.pos", "[0, -69]"), MODE, |problem| {
-        matches!(problem, LoadProblem::Mode(ModeError::OutOfBounds))
+        rule(problem, &ModeError::OutOfBounds)
     }),
     // A meter from the west lane's waypoint 1, at (−36, −36), less than the tower's body and the
     // widest walker's together.
@@ -1610,14 +1923,14 @@ static ACTION_FLAWS: &[Flaw] = &[
         Edit::Set("units.2.pos", "[-36, -37]"),
         MODE,
         |problem| {
-            matches!(problem, LoadProblem::Map(MapProblem::WaypointBlocked { path, waypoint })
-                if path == "west" && *waypoint == 1)
+            let path = DeclaredName::new("west").unwrap();
+            rule(problem, &MapProblem::WaypointBlocked { path, waypoint: 1 })
         },
     ),
     // A meter from the north spawn, at (0, −60).
     flaw(MAP, Edit::Set("units.2.pos", "[0, -59]"), MODE, |problem| {
-        matches!(problem, LoadProblem::Map(MapProblem::MarkerBlocked { marker })
-                if marker == "north_spawn")
+        let marker = DeclaredName::new("north_spawn").unwrap();
+        rule(problem, &MapProblem::MarkerBlocked { marker })
     }),
     flaw(
         UNITS,
@@ -1635,15 +1948,7 @@ static ACTION_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("actions.lash_out.cost.mana", "-35"),
         "hero-husk",
-        |problem| {
-            matches!(
-                problem,
-                LoadProblem::ActionField {
-                    field: ActionField::Cost,
-                    ..
-                }
-            )
-        },
+        |problem| rule(problem, &ActionProblem::Field(ActionField::Cost)),
     ),
     Flaw {
         file: UNITS,
@@ -1656,7 +1961,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Repeated { at: Place::UnitTypes, name } if name == "husk"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &Place::UnitTypes,
+                &TypesError::Repeated("husk".to_owned()),
+            )
+        },
     },
     flaw(
         LASH_OUT,
@@ -1674,16 +1985,16 @@ static ACTION_FLAWS: &[Flaw] = &[
     ),
     flaw(
         LASH_OUT,
-        Edit::Replace("ctx.p.radius", r#"ctx.p["radiuss"]"#),
+        Edit::Replace("ctx.params.radius", r#"ctx.params["radiuss"]"#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, name, .. } if name == "radiuss"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Param::NAMES, name, .. } if name == "radiuss"),
     ),
     // An AI's order in the mode's script.
     flaw(
         "modes/3v3/scripts/mode.rhai",
         Edit::Replace(
             "fn on_match_start(ctx) {",
-            "fn on_match_start(ctx) {\n    ctx.order_reset(());",
+            "fn on_match_start(ctx) {\n    ctx.order_reset();",
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "order_reset"),
@@ -1693,10 +2004,10 @@ static ACTION_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("late_join = true", "late_join = false"),
         MODE,
-        |problem| matches!(problem, LoadProblem::BotTakeoverWithoutLateJoin),
+        |problem| rule(problem, &ModeDataError::BotTakeoverWithoutLateJoin),
     ),
-    // An option whose default is none of its values; one of a param's name, which `ctx.p` would
-    // read as one.
+    // An option whose default is none of its values; one of a param's name, which `ctx.params`
+    // would read as one.
     flaw(
         MODE_DATA,
         Edit::Set("options.income_gold", "{ values = [8, 16], default = 4 }"),
@@ -1713,7 +2024,13 @@ static ACTION_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Set("options.income_gold", "{ values = [8, 16], default = 8 }"),
         MODE,
-        |problem| matches!(problem, LoadProblem::OptionParam(name) if name.as_str() == "income_gold"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("options", "income_gold"),
+                &ModeDataError::OptionParam,
+            )
+        },
     ),
     // `[visibility]`: a name no setting has; a recipient life's audience holds whatever the
     // mode says.
@@ -1743,7 +2060,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "first_blood = { type = \"bool\", default = false, sync = \"team\" }",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::ModeStateSync(name) if name.as_str() == "first_blood"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("state", "first_blood"),
+                &ModeDataError::StateSync,
+            )
+        },
     ),
     // Names the script API plans: a `ctx` method and field, a handle's field, a hook and data
     // fields.
@@ -1807,67 +2130,79 @@ static ACTION_FLAWS: &[Flaw] = &[
             "speed = \"12\", homing = true, gravity = \"9.8\"",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Planned { field: "gravity", at: Place::UnitType(name) } if name == "tower_bolt"),
+        |problem| rule_at(problem, &unit_type("tower_bolt"), &ProjectileError::Gravity),
     ),
     flaw(
         LASH_OUT,
-        Edit::Replace("ctx.p.radius", "ctx.p.radios"),
+        Edit::Replace("ctx.params.radius", "ctx.params.radios"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "radios"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Param::NAMES, at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "radios"),
     ),
     // A cooldown cut names an ability of the script's own package.
     flaw(
         LASH_OUT,
         Edit::Replace(
-            r#"ctx.reduce_cooldown(m.carrier, "lash_out""#,
-            r#"ctx.reduce_cooldown(m.carrier, "lash""#,
+            r#"ctx.cut_cooldown(m.carrier, "lash_out""#,
+            r#"ctx.cut_cooldown(m.carrier, "lash""#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Ability, at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "lash"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ActionId::NAMES, at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "lash"),
     ),
     flaw(
         "heroes/cinder/scripts/wildfire.rhai",
         Edit::Replace(r#""kindle""#, r#""kindl""#),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, name: id, .. } if id == "kindl"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, name: id, .. } if id == "kindl"),
     ),
     flaw(
         "heroes/veil/scripts/dual_path.rhai",
         Edit::Replace(r#"stat("attack_damage")"#, r#"stat("attack_dmg")"#),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "attack_dmg"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, name, .. } if name == "attack_dmg"),
     ),
     flaw(
         CREEP_AI,
         Edit::Replace("enemies:creep", "enemies:minion"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "enemies:minion"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, name: filter, .. } if filter == "enemies:minion"),
     ),
     flaw(
         HUSK,
         Edit::Rename("stats.magic_resist", "spirit"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "spirit"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, name, .. } if name == "spirit"),
     ),
     flaw(
         HUSK,
         Edit::Rename("modifiers.withered.stats.magic_resist", "spirit"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "spirit"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, name, .. } if name == "spirit"),
     ),
     // A hold needs a toggle or a channel to hold its modifier while.
     flaw(
         RIME,
         Edit::Remove("actions.chill_arrows.toggle"),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::HoldAlone(action) if action.as_str() == "chill_arrows"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "chill_arrows"),
+                &ActionProblem::HoldAlone,
+            )
+        },
     ),
     // Only a point aim clamps to the range.
     flaw(
         "spells/data/loadout.toml",
         Edit::Set("actions.blink.targeting", r#""direction""#),
         "player-spells",
-        |problem| matches!(problem, LoadProblem::ClampAims(action) if action.as_str() == "blink"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "blink"),
+                &ActionProblem::ClampAims,
+            )
+        },
     ),
     // A stat change names one operation; a scaling param scales with declared stats alone.
     flaw(
@@ -1889,7 +2224,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "spell_power",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Action(_), name } if name == "spell_power"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, at: Place::Entry { table: "actions", name: _ }, name } if name == "spell_power"),
     ),
     // The mode's `surge` adds attack damage by a param that only the mode's action `surge`,
     // which applies it, declares, and that reads spell vamp; `vamp` adds spell vamp by its own
@@ -1901,7 +2236,7 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[modifiers.surge]\nstats = { attack_damage = { param = \"surge\" } }\n\n[modifiers.vamp]\nstats = { spell_vamp = { param = \"vamp\" } }\n[modifiers.vamp.params]\nvamp = { base = 0, attack_damage = \"1\" }\n\n[actions.surge]\ntargeting = \"none\"\npassive_modifier = \"surge\"\n[actions.surge.params]\nsurge = { base = 0, spell_vamp = \"10\" }\n\n[actions.melee_creep_attack]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::StatLoop(stats) if stats.iter().map(ToString::to_string).eq(["attack_damage", "spell_vamp"])),
+        |problem| stat_loop(problem, ["attack_damage", "spell_vamp"]),
     ),
     // Dual Path's spell vamp reads attack damage; a modifier whose attack damage reads spell
     // vamp closes a loop.
@@ -1912,13 +2247,13 @@ static ACTION_FLAWS: &[Flaw] = &[
             "[modifiers.loop]\nstats = { attack_damage = { param = \"thirst\" } }\n[modifiers.loop.params]\nthirst = { base = 0, spell_vamp = \"10\" }\n\n[modifiers.dual_path.params]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::StatLoop(stats) if stats.iter().map(ToString::to_string).eq(["attack_damage", "spell_vamp"])),
+        |problem| stat_loop(problem, ["attack_damage", "spell_vamp"]),
     ),
     flaw(
         "heroes/veil/data/avatar.toml",
         Edit::Replace("bonus = { attack_damage =", "bonus = { attack_dmg ="),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Modifier(id), name } if id == "dual_path" && name == "attack_dmg"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, at: Place::Entry { table: "modifiers", name: id }, name } if id == "dual_path" && name == "attack_dmg"),
     ),
 ];
 
@@ -1934,7 +2269,7 @@ static STAT_FLAWS: &[Flaw] = &[
             r#"pools = ["health", "rage"]"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Avatar(_), name } if name == "rage"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: PoolId::NAMES, at: Place::Avatar(_), name } if name == "rage"),
     ),
     flaw(
         HUSK,
@@ -1943,59 +2278,72 @@ static STAT_FLAWS: &[Flaw] = &[
             r#"pools = ["health", "mana", "mana"]"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Avatar(_), name } if name == "mana"),
+        |problem| {
+            rule_of(problem, |at, error: &NamesListError| {
+                let mana = NamesListError::Repeated(DeclaredName::new("mana").unwrap());
+                matches!(at, Place::Avatar(_)) && *error == mana
+            })
+        },
     ),
     flaw(
         HUSK,
         Edit::Replace(r#"pools = ["health", "mana"]"#, r#"pools = ["mana"]"#),
         "hero-husk",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::UnitStart {
-                    at: Place::Avatar(_),
-                    error: UnitStartError::NoLifePool
-                }
-            )
+            rule_of(problem, |at, error: &UnitStartError| {
+                matches!(at, Place::Avatar(_)) && *error == UnitStartError::NoLifePool
+            })
         },
     ),
     flaw(
         UNITS,
         Edit::Replace("pools = [\"health\"]\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnitStart { at: Place::UnitType(name), error: UnitStartError::NoLifePool } if name == "melee_creep"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("melee_creep"),
+                &UnitStartError::NoLifePool,
+            )
+        },
     ),
     flaw(
         UNITS,
         Edit::Replace("combat = { on_death = \"stay\" }\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::CombatMissing(Place::UnitType(name)) if name == "inhibitor"),
+        |problem| rule_at(problem, &unit_type("inhibitor"), &UnitStartError::NoCombat),
     ),
     flaw(
         UNITS,
         Edit::Replace(r#""tower", "true_sight"]"#, r#""tower", "avatar"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::UnitType(name), tag } if tag.name() == "avatar" && name == "tower"),
+        |problem| {
+            let avatar = UnitTypeError::EngineTag(DeclaredName::new("avatar").unwrap());
+            rule_at(problem, &unit_type("tower"), &avatar)
+        },
     ),
     flaw(
         HUSK,
         Edit::Replace(r#"tags = ["tank"]"#, r#"tags = ["area"]"#),
         "hero-husk",
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::EngineTag {
-                    at: Place::Avatar(_),
-                    tag
-                } if tag.name() == "area"
-            )
+            rule_of(problem, |at, error: &UnitTypeError| {
+                let area = UnitTypeError::EngineTag(DeclaredName::new("area").unwrap());
+                matches!(at, Place::Avatar(_)) && *error == area
+            })
         },
     ),
     flaw(
         RIME,
         Edit::Replace(r#"tags = ["slowed"]"#, r#"tags = ["projectile"]"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Modifier(id), tag } if tag.name() == "projectile" && id == "slow"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "slow"),
+                &ModifiersDataError::EngineTag(name("projectile")),
+            )
+        },
     ),
     flaw(
         HUSK,
@@ -2016,34 +2364,26 @@ static STAT_FLAWS: &[Flaw] = &[
         UNITS,
         Edit::Set("units.melee_creep.stats.health.base", "0"),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnitStart { at: Place::UnitType(name), error: UnitStartError::NotPositive(_) } if name == "melee_creep"),
+        |problem| {
+            rule_of(problem, |at, error: &UnitStartError| {
+                *at == unit_type("melee_creep") && matches!(error, UnitStartError::NotPositive(_))
+            })
+        },
     ),
     flaw(
         UNITS,
         Edit::Set("units.melee_creep.orders.think_ms", "400000000000000000"),
         MODE,
-        |problem| {
-            matches!(
-                problem,
-                LoadProblem::Ai {
-                    error: AiError::TimeTooLarge,
-                    ..
-                }
-            )
-        },
+        |problem| rule(problem, &AiError::Time(TimeTooLarge)),
     ),
     flaw(
         CREEP_AI,
         Edit::Replace("fn on_think(ctx, unit) {", "fn think(ctx, unit) {"),
         MODE,
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Ai {
-                    at: Place::UnitType(_),
-                    error: AiError::NoThink
-                }
-            )
+            rule_of(problem, |at, error: &AiError| {
+                matches!(at, Place::UnitType(_)) && *error == AiError::NoThink
+            })
         },
     ),
     flaw(
@@ -2051,9 +2391,10 @@ static STAT_FLAWS: &[Flaw] = &[
         Edit::Set("actions.lash_out.cooldown_ms.4", "400000000000000000"),
         "hero-husk",
         |problem| {
-            matches!(
+            rule_at(
                 problem,
-                LoadProblem::Action { action, error: TimeTooLarge } if action.as_str() == "lash_out"
+                &entry("actions", "lash_out"),
+                &ActionProblem::Time(TimeTooLarge),
             )
         },
     ),
@@ -2061,7 +2402,13 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("modifiers.withered.duration_ms", "-1"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Time } if modifier == "withered"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "withered"),
+                &ModifierProblem::Time,
+            )
+        },
     ),
     // A stat change past what a number holds: 9 × 10¹² is past 2³⁹, as a number has 24 bits
     // of fraction in 64.
@@ -2069,13 +2416,19 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("modifiers.withered.stats.magic_resist", "-9000000000000"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Overflow } if modifier == "withered"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "withered"),
+                &ModifierProblem::Overflow,
+            )
+        },
     ),
     flaw(
         CINDER,
         Edit::Set("units.eruption.area.delay_ms", "400000000000000000"),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaTime(name)) if name == "eruption"),
+        |problem| rule_at(problem, &unit_type("eruption"), &TimeTooLarge),
     ),
     // An avatar package named as its own delivery type: the area's time names the delivery type.
     Flaw {
@@ -2089,7 +2442,7 @@ static STAT_FLAWS: &[Flaw] = &[
             ),
         ],
         package: "eruption",
-        refused: |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaTime(name)) if name == "eruption"),
+        refused: |problem| rule_at(problem, &unit_type("eruption"), &TimeTooLarge),
     },
     // A modifier is the passive of one owner of its package: Husk's avatar holds
     // `withering_touch`, and Lash Out `lash_out_guard`.
@@ -2097,13 +2450,20 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Set("actions.lash_out.passive_modifier", r#""withering_touch""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Avatar(avatar), Place::Action(action)] } if modifier == "withering_touch" && avatar == "hero-husk" && action == "lash_out"),
+        |problem| {
+            shared_passive(
+                problem,
+                "withering_touch",
+                BookPlace::UnitType(TypePlace::Avatar),
+                "lash_out",
+            )
+        },
     ),
     flaw(
         HUSK,
         Edit::Set("actions.dread.passive_modifier", r#""lash_out_guard""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Action(first), Place::Action(second)] } if modifier == "lash_out_guard" && first == "dread" && second == "lash_out"),
+        |problem| shared_passive(problem, "lash_out_guard", action_place("dread"), "lash_out"),
     ),
     // The same of the mode, a unit type's and an action's, and of a loadout, two actions'.
     Flaw {
@@ -2117,7 +2477,14 @@ static STAT_FLAWS: &[Flaw] = &[
             ),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::UnitType(tower), Place::Action(action)] } if modifier == "warden_blessing" && tower == "tower" && action == "tower_attack"),
+        refused: |problem| {
+            shared_passive(
+                problem,
+                "warden_blessing",
+                BookPlace::UnitType(TypePlace::Declared(name("tower"))),
+                "tower_attack",
+            )
+        },
     },
     Flaw {
         file: "spells/data/loadout.toml",
@@ -2127,15 +2494,49 @@ static STAT_FLAWS: &[Flaw] = &[
             Edit::Set("actions.haste.passive_modifier", r#""haste""#),
         )],
         package: "player-spells",
-        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Action(first), Place::Action(second)] } if modifier == "haste" && first == "blink" && second == "haste"),
+        refused: |problem| shared_passive(problem, "haste", action_place("blink"), "haste"),
     },
+    // A modifier grants no engine tag: one that granted `avatar` would split who a player
+    // commands between the type's own tags and the unit's.
+    flaw(
+        GALE,
+        Edit::Set("modifiers.fair_wind.tags", r#"["avatar"]"#),
+        "hero-gale",
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "fair_wind"),
+                &ModifiersDataError::EngineTag(name("avatar")),
+            )
+        },
+    ),
+    // A projectile type holds no passive, as a delivery's spawn gives none: a type with one is
+    // a type that stands, which no delivery names.
+    flaw(
+        GALE,
+        Edit::Set("units.wind_bolt.passive", r#""wind_shield""#),
+        "hero-gale",
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("wind_bolt"),
+                &UnitTypeError::NotDelivery,
+            )
+        },
+    ),
     // An aura's radius and a shield are never negative: as Gale's Fair Wind's value, as a rank
     // of the Wind Shield action's param its modifier reads, or as the modifier's own param.
     flaw(
         GALE,
         Edit::Set("modifiers.fair_wind.aura.radius", r#""-1.0""#),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "fair_wind"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "fair_wind"),
+                &AppliedError::Sign(ModifierProblem::Negative),
+            )
+        },
     ),
     flaw(
         GALE,
@@ -2144,13 +2545,25 @@ static STAT_FLAWS: &[Flaw] = &[
             "[80, 120, -1, 200, 240]",
         ),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "wind_shield"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "wind_shield"),
+                &AppliedError::Sign(ModifierProblem::Negative),
+            )
+        },
     ),
     flaw(
         GALE,
         Edit::Set("modifiers.wind_shield.params.shield", "-5"),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "wind_shield"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "wind_shield"),
+                &AppliedError::Sign(ModifierProblem::Negative),
+            )
+        },
     ),
     // A way that applies a modifier gives each param it reads and does not declare: Rime's Slow
     // reads `slow` of Fan of Frost, which applies it on hit; of Chill Arrows, whose held
@@ -2205,7 +2618,17 @@ static STAT_FLAWS: &[Flaw] = &[
             ),
         )],
         package: "hero-rime",
-        refused: |problem| matches!(problem, LoadProblem::ModifierParam { modifier, param, way: None, problem: ParamProblem::ScalingTime } if modifier == "stun" && param == "stun_ms"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("modifiers", "stun"),
+                &AppliedError::Param {
+                    param: name("stun_ms"),
+                    way: None,
+                    problem: ParamProblem::ScalingTime,
+                },
+            )
+        },
     },
     // A name a script gives the API, as the registry marks the argument: a tag, a track, a unit
     // type of the mode's scope, a team.
@@ -2213,43 +2636,40 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_SCRIPT,
         Edit::Replace(r#"unit.has_tag("core")"#, r#"unit.has_tag("cor")"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Tag, name, .. } if name == "cor"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Tag::NAMES, name, .. } if name == "cor"),
     ),
     flaw(
         MODE_SCRIPT,
         Edit::Replace(
-            r#"ctx.units_tagged("inhibitor")"#,
-            r#"ctx.units_tagged("inhibitors")"#,
+            r#"ctx.all_units_tagged("inhibitor")"#,
+            r#"ctx.all_units_tagged("inhibitors")"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Tag, name, .. } if name == "inhibitors"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Tag::NAMES, name, .. } if name == "inhibitors"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(r#"track = "level""#, r#"track = "levels""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: TrackId::NAMES, name, .. } if name == "levels"),
     ),
     flaw(
         MODE_SCRIPT,
         Edit::Replace(
-            r#"ctx.add_xp(hero, "level""#,
-            r#"ctx.add_xp(hero, "levels""#,
+            "    if unit.has_tag(\"inhibitor\") {\n",
+            "    ctx.spawn_unit(\"grasping_wraps\", \"north\", unit.pos);\n    if unit.has_tag(\"inhibitor\") {\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Track, name, .. } if name == "levels"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, name, .. } if name == "grasping_wraps"),
     ),
     flaw(
         MODE_SCRIPT,
         Edit::Replace(
-            "    share_xp(ctx, unit);\n",
-            "    share_xp(ctx, unit);\n    ctx.spawn_unit(\"grasping_wraps\", \"north\", unit.pos);\n",
+            "    if unit.has_tag(\"inhibitor\") {\n",
+            "    ctx.spawn_unit(\"hero-husk\", \"west\", unit.pos);\n    if unit.has_tag(\"inhibitor\") {\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "grasping_wraps"),
-    ),
-    flaw(
-        MODE_SCRIPT,
-        Edit::Replace(
-            "    share_xp(ctx, unit);\n",
-            "    share_xp(ctx, unit);\n    ctx.spawn_unit(\"hero-husk\", \"west\", unit.pos);\n",
-        ),
-        MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Team, name, .. } if name == "west"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Team::NAMES, name, .. } if name == "west"),
     ),
     // Human text: each message an avatar names has a value in its own language's file, and each
     // file under `locale/` is `<language>.ftl`, parses, defines no message twice, and in another
@@ -2258,7 +2678,7 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace(r#"name = "hero-name""#, r#"name = "hero-nam""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Avatar(package), name } if package == "hero-husk" && name == "hero-nam"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, at: Place::Avatar(package), name } if package == "hero-husk" && name == "hero-nam"),
     ),
     flaw(
         HUSK,
@@ -2276,7 +2696,7 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK_TEXT,
         Edit::Replace("hero-name = Husk", "hero-name =\n    .short = Hu"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, name, .. } if name == "hero-name"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, name, .. } if name == "hero-name"),
     ),
     // The names players see: the mode's, each team's, each choice's and each of an avatar's or a
     // loadout's actions, each a message of its package's own language.
@@ -2284,7 +2704,7 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_TEXT,
         Edit::Replace("mode-name = Three on Three\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Mode, name } if name == "mode-name"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, at: Place::Mode, name } if name == "mode-name"),
     ),
     flaw(
         MODE_DATA,
@@ -2299,13 +2719,13 @@ static STAT_FLAWS: &[Flaw] = &[
             "[teams.river]\nname = \"team-north\"\n\n[teams.north]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Team, at: Place::Mode, name } if name == "river"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Team::NAMES, at: Place::Mode, name } if name == "river"),
     ),
     flaw(
         MODE_TEXT,
         Edit::Replace("choice-hero = Hero\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Choice(choice), name } if choice == "hero" && name == "choice-hero"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, at: Place::Choice(choice), name } if choice == "hero" && name == "choice-hero"),
     ),
     flaw(
         HUSK,
@@ -2323,7 +2743,7 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK_TEXT,
         Edit::Replace("action-dread = Dread\n", ""),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Action(action), name } if action == "dread" && name == "action-dread"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: MessageId::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "dread" && name == "action-dread"),
     ),
     flaw(
         HUSK_TEXT,
@@ -2453,31 +2873,37 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Rename("actions.lash_out.cost.mana", "rage"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Cost, at: Place::Action(id), name } if id == "lash_out" && name == "rage"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: CostTarget::NAMES, at: Place::Entry { table: "actions", name: id }, name } if id == "lash_out" && name == "rage"),
     ),
     flaw(
         "heroes/veil/scripts/dusk_mark.rhai",
         Edit::Replace(r#""energy""#, r#""rage""#),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Script(_), name } if name == "rage"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: PoolId::NAMES, at: Place::Script(_), name } if name == "rage"),
+    ),
+    flaw(
+        "heroes/veil/scripts/dusk_mark.rhai",
+        Edit::Replace(r#"is_action("dusk_mark")"#, r#"is_action("dusk")"#),
+        "hero-veil",
+        |problem| matches!(problem, LoadProblem::Unknown { of: ActionId::NAMES, at: Place::Script(_), name } if name == "dusk"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("life = \"health\"\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::NoLifePool),
+        |problem| rule(problem, &CombatDataError::NoLifePool),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace(r#"life = "health""#, r#"life = "hp""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Combat, name } if name == "hp"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: PoolId::NAMES, at: Place::Section("combat"), name } if name == "hp"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("[pools.mana]\nmax = \"mana\"", "[pools.mana]\nmax = \"mp\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Pool(pool), name } if pool.as_str() == "mana" && name == "mp"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, at: Place::Entry { table: "pools", name: pool }, name } if pool.as_str() == "mana" && name == "mp"),
     ),
     flaw(
         MODE_DATA,
@@ -2486,19 +2912,25 @@ static STAT_FLAWS: &[Flaw] = &[
             "[pools.p1]\nmax = \"mana\"\n[pools.p2]\nmax = \"mana\"\n[pools.p3]\nmax = \"mana\"\n[pools.p4]\nmax = \"mana\"\n[pools.p5]\nmax = \"mana\"\n[pools.p6]\nmax = \"mana\"\n[pools.energy]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::TooMany(Limit::Pools)),
+        |problem| rule(problem, &NamesListError::TooMany),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "gold"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Resources, name } if name == "gold"),
+        |problem| {
+            let gold = NamesListError::Repeated(DeclaredName::new("gold").unwrap());
+            rule_at(problem, &Place::Section("resources"), &gold)
+        },
     ),
     flaw(
         MODE_DATA,
         Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "mana"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Resources, name } if name == "mana"),
+        |problem| {
+            let mana = NamesListError::Repeated(DeclaredName::new("mana").unwrap());
+            rule_at(problem, &Place::Section("resources"), &mana)
+        },
     ),
     // An engine stat is declared like any other: one the units carry and the mode does not
     // declare fails.
@@ -2506,7 +2938,7 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("move_speed = {}\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "move_speed"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: StatId::NAMES, name, .. } if name == "move_speed"),
     ),
     flaw(
         MODE_DATA,
@@ -2520,19 +2952,19 @@ static STAT_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Set("combat.armors.plate", r#"{ cold = "0.5" }"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, name, .. } if name == "cold"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: DamageKind::NAMES, name, .. } if name == "cold"),
     ),
     flaw(
         UNITS,
         Edit::Set("units.inhibitor.combat.armor", r#""plate""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Armor, name, .. } if name == "plate"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Armor::NAMES, name, .. } if name == "plate"),
     ),
     flaw(
         "heroes/veil/scripts/whirling_blades.rhai",
         Edit::Replace(r#""physical""#, r#""fire""#),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, name: kind, .. } if kind == "fire"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: DamageKind::NAMES, name: kind, .. } if kind == "fire"),
     ),
     flaw(
         GALE,
@@ -2541,19 +2973,19 @@ static STAT_FLAWS: &[Flaw] = &[
             r#"{ param = "bonus_speeds" }"#,
         ),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, at: Place::Modifier(id), name } if id == "gust_speed" && name == "bonus_speeds"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Param::NAMES, at: Place::Entry { table: "modifiers", name: id }, name } if id == "gust_speed" && name == "bonus_speeds"),
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"hold = "still_mind""#, r#"hold = "still_mindful""#),
         "hero-kensho",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Action(ability), name: id } if ability == "still_mind" && id == "still_mindful"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, at: Place::Entry { table: "actions", name: ability }, name: id } if ability == "still_mind" && id == "still_mindful"),
     ),
     flaw(
         GALE,
         Edit::Replace(r#"affects = "allies""#, r#"affects = "allies:friends""#),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "allies:friends"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, name: filter, .. } if filter == "allies:friends"),
     ),
     flaw(
         "heroes/rime/data/avatar.toml",
@@ -2571,19 +3003,34 @@ static STAT_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace(r#""dread", "lash_out""#, r#""grasping_wraps", "lash_out""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Avatar(_), name } if name == "grasping_wraps"),
+        |problem| {
+            rule_of(problem, |at, error: &SlotError| {
+                let twice = SlotError::Repeated(DeclaredName::new("grasping_wraps").unwrap());
+                matches!(at, Place::Avatar(_)) && *error == twice
+            })
+        },
     ),
     flaw(
         MAP,
         Edit::Replace(r#"unit_type = "core""#, r#"unit_type = "cor""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownUnitType(name)) if name == "cor"),
+        |problem| {
+            rule(
+                problem,
+                &ModeError::UnknownUnitType(DeclaredName::new("cor").unwrap()),
+            )
+        },
     ),
     flaw(
         MAP,
         Edit::Replace(r#"path = "west""#, r#"path = "north""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownPath(name)) if name == "north"),
+        |problem| {
+            rule(
+                problem,
+                &ModeError::UnknownPath(DeclaredName::new("north").unwrap()),
+            )
+        },
     ),
 ];
 
@@ -2597,13 +3044,13 @@ static MAP_FLAWS: &[Flaw] = &[
         "modes/3v3/scripts/mode.rhai",
         Edit::Replace(r#"ctx.map.markers("camp")"#, r#"ctx.map.markers("camps")"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::MarkerTag, name: tag, .. } if tag == "camps"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: MarkerTag::NAMES, name: tag, .. } if tag == "camps"),
     ),
     flaw(
         MAP,
         Edit::Set("markers.0.pos", "[0, 0, -60]"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::PointShape)),
+        |problem| rule(problem, &ModeError::PointShape),
     ),
     Flaw {
         file: MAP,
@@ -2613,31 +3060,56 @@ static MAP_FLAWS: &[Flaw] = &[
             Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -70] }"),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
+        refused: |problem| {
+            rule(
+                problem,
+                &ModeError::Region(DeclaredName::new("camp1").unwrap()),
+            )
+        },
     },
     flaw(
         MAP,
         Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -10] }"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
+        |problem| {
+            rule(
+                problem,
+                &ModeError::Region(DeclaredName::new("camp1").unwrap()),
+            )
+        },
     ),
     flaw(
         MAP,
         Edit::Set("units.2.path", r#""middle""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownPath(path)) if path == "middle"),
+        |problem| {
+            rule(
+                problem,
+                &ModeError::UnknownPath(DeclaredName::new("middle").unwrap()),
+            )
+        },
     ),
     flaw(
         MAP,
         Edit::Set("units.0.from", r#""start""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::NoPathToWalk(unit_type)) if unit_type == "core"),
+        |problem| {
+            rule(
+                problem,
+                &ModeError::NoPathToWalk(DeclaredName::new("core").unwrap()),
+            )
+        },
     ),
     flaw(
         MAP,
         Edit::Set("markers.3.name", r#""camp1""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedMarker(name)) if name == "camp1"),
+        |problem| {
+            rule(
+                problem,
+                &ModeError::RepeatedMarker(DeclaredName::new("camp1").unwrap()),
+            )
+        },
     ),
     // The layers have names of their own, a unit type moves on one of them, and they are
     // navigation's.
@@ -2645,13 +3117,16 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Set("navigation.layers", r#"["ground", "ground"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Navigation, name } if name == "ground"),
+        |problem| {
+            let ground = NamesListError::Repeated(DeclaredName::new("ground").unwrap());
+            rule_at(problem, &Place::Section("navigation"), &ground)
+        },
     ),
     flaw(
         UNITS,
         Edit::Set("units.melee_creep.collision.layer", r#""air""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Layer, at: Place::UnitType(unit_type), name: layer } if unit_type == "melee_creep" && layer.as_str() == "air"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Layer::NAMES, at: Place::UnitType(unit_type), name: layer } if unit_type == "melee_creep" && layer.as_str() == "air"),
     ),
     Flaw {
         file: MANIFEST,
@@ -2663,7 +3138,7 @@ static MAP_FLAWS: &[Flaw] = &[
                 problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Navigation,
-                    at: Place::Navigation
+                    at: Place::Section("navigation")
                 }
             )
         },
@@ -2678,7 +3153,7 @@ static MAP_FLAWS: &[Flaw] = &[
             r#"ultimates = ["tomb_bind"]"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, at: Place::Avatar(avatar), name } if avatar == "hero-husk" && name == "ultimates"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: SlotKind::NAMES, at: Place::Avatar(avatar), name } if avatar == "hero-husk" && name == "ultimates"),
     ),
     flaw(
         HUSK,
@@ -2687,7 +3162,13 @@ static MAP_FLAWS: &[Flaw] = &[
             r#""grasping_wraps", "lash_out""#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unslotted(id) if id == "dread"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "dread"),
+                &ActionProblem::Unslotted,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -2699,7 +3180,13 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Remove("choices.spells.slot"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name)) if name.as_str() == "spells"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("choices", "spells"),
+                &ModeDataError::ChoiceSlot,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -2708,13 +3195,19 @@ static MAP_FLAWS: &[Flaw] = &[
             "unique = true\nslot = \"spell\"\n\n[choices.spells]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name)) if name.as_str() == "hero"),
+        |problem| {
+            rule_at(
+                problem,
+                &entry("choices", "hero"),
+                &ModeDataError::ChoiceSlot,
+            )
+        },
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("slot = \"spell\"", "slot = \"spells\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, at: Place::Choice(choice), name } if choice.as_str() == "spells" && name == "spells"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: SlotKind::NAMES, at: Place::Entry { table: "choices", name: choice }, name } if choice.as_str() == "spells" && name == "spells"),
     ),
     flaw(
         MODE_DATA,
@@ -2723,7 +3216,7 @@ static MAP_FLAWS: &[Flaw] = &[
             "slot = \"spell\"\n\n[choices.more]\nname = \"choice-spells\"\noffers = \"loadout\"\nslot = \"basic\"",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::LoadoutRanks)),
+        |problem| rule(problem, &ModeDataError::LoadoutRanks),
     ),
     flaw(
         "modes/3v3/scripts/mode.rhai",
@@ -2732,7 +3225,13 @@ static MAP_FLAWS: &[Flaw] = &[
             r#"ctx.chosen(player, "spell")"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Choice, name, .. } if name == "spell"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ChoiceId::NAMES, name, .. } if name == "spell"),
+    ),
+    flaw(
+        "modes/3v3/scripts/mode.rhai",
+        Edit::Replace(r#"ctx.after("pick_end""#, r#"ctx.after("pick_ends""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: TimerId::NAMES, name, .. } if name == "pick_ends"),
     ),
     flaw(
         "modes/3v3/scripts/mode.rhai",
@@ -2741,7 +3240,7 @@ static MAP_FLAWS: &[Flaw] = &[
             r#"ctx.grant(unit, "spells","#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::SlotKind, name, .. } if name == "spells"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: SlotKind::NAMES, name, .. } if name == "spells"),
     ),
     // A train is production's, names a unit type of the mode and takes no target, and sits on a
     // unit type with a queue; no other kind names a unit type.
@@ -2749,7 +3248,7 @@ static MAP_FLAWS: &[Flaw] = &[
         MODE_DATA,
         Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
         MODE,
-        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Action(action) } if action == "recruit"),
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Entry { table: "actions", name: action } } if action == "recruit"),
     ),
     // A train needs the name players see on its producer's button.
     Flaw {
@@ -2770,7 +3269,7 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "knight"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, name, .. } if name == "knight"),
     },
     Flaw {
         file: MODE_DATA,
@@ -2786,7 +3285,13 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::TrainAims(action) if action == "recruit"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "recruit"),
+                &ProductionDataError::TrainAims,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -2802,7 +3307,10 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::NoQueue(action) if action == "recruit"),
+        refused: |problem| {
+            let recruit = ProductionDataError::NoQueue(DeclaredName::new("recruit").unwrap());
+            rule_at(problem, &unit_type("tower"), &recruit)
+        },
     },
     // A box on a creep, which walks; on a ward, which an effect spawns; and a train of a tower,
     // which does not walk.
@@ -2813,7 +3321,13 @@ static MAP_FLAWS: &[Flaw] = &[
             r#"collision = { box = ["1", "1"] }"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::BoxBody { at: Place::UnitType(name), problem: BoxProblem::Walks } if name == "melee_creep"),
+        |problem| {
+            rule_at(
+                problem,
+                &unit_type("melee_creep"),
+                &NavigationDataError::BoxWalks,
+            )
+        },
     ),
     flaw(
         UNITS,
@@ -2823,13 +3337,15 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         MODE,
         |problem| {
-            matches!(
-                problem,
-                LoadProblem::Effect {
-                    problem: EffectProblem::SpawnBox,
-                    ..
-                }
-            )
+            rule_of(problem, |_, error: &ActionProblem| {
+                matches!(
+                    error,
+                    ActionProblem::Effect {
+                        rule: EffectRule::SpawnBox,
+                        ..
+                    }
+                )
+            })
         },
     ),
     Flaw {
@@ -2843,7 +3359,13 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::TrainStands(action) if action == "recruit"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "recruit"),
+                &ProductionDataError::TrainStands,
+            )
+        },
     },
     // A train's `requires` names unit types of its package that stand, and modifiers of its
     // package; a cast takes none. A unit type's `supply` needs the mode's `[supply]`.
@@ -2855,7 +3377,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "recruit" && name == "tower_bolt"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "recruit" && name == "tower_bolt"),
     },
     Flaw {
         file: MODE_DATA,
@@ -2865,7 +3387,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Action(action), name } if action == "recruit" && name == "drill"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "recruit" && name == "drill"),
     },
     Flaw {
         file: MODE_DATA,
@@ -2875,20 +3397,20 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "recruit" && name == "keep"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "recruit" && name == "keep"),
     },
     // A unit type's passive is a modifier of its package.
     flaw(
         UNITS,
         Edit::Set("units.tower.passive", r#""warden_blesing""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::UnitType(unit_type), name } if unit_type == "tower" && name == "warden_blesing"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ModifierId::NAMES, at: Place::UnitType(unit_type), name } if unit_type == "tower" && name == "warden_blesing"),
     ),
     flaw(
         HUSK,
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nrequires = {}\n"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Requires } if action == "dread"),
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `requires`"),
     ),
     Flaw {
         file: UNITS,
@@ -2898,7 +3420,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::SupplyUncounted(Place::UnitType(name)) if name == "tower"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &unit_type("tower"),
+                &ProductionDataError::SupplyUncounted,
+            )
+        },
     },
     // A build aims at a point, within meters, of a unit type of its package with a box body;
     // its site starts with a share of its life above 0 when the type has the life pool; its
@@ -2911,7 +3439,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::Aims(action)) if action == "raise"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "raise"),
+                &ProductionDataError::BuildAims,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -2921,7 +3455,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::NoBox(action)) if action == "raise"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "raise"),
+                &ProductionDataError::NoBox,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -2931,7 +3471,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "dragon"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, name, .. } if name == "dragon"),
     },
     // A delivery type is no unit type of the mode that a build raises.
     Flaw {
@@ -2942,7 +3482,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "raise" && name == "caster_creep_bolt"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: UnitType::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "raise" && name == "caster_creep_bolt"),
     },
     Flaw {
         file: MODE_DATA,
@@ -2952,7 +3492,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::StartLife(action)) if action == "raise"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "raise"),
+                &ProductionDataError::StartLife,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -2962,7 +3508,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Construct } if action == "raise"),
+        refused: |problem| read_fails(problem, "data/mode.toml", "missing field `construct`"),
     },
     Flaw {
         file: MODE_DATA,
@@ -2976,7 +3522,7 @@ static MAP_FLAWS: &[Flaw] = &[
             matches!(
                 problem,
                 LoadProblem::Unknown {
-                    of: NameKind::Filter,
+                    of: Filter::NAMES,
                     ..
                 }
             )
@@ -2990,7 +3536,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, LIVING_YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::StartLife(action)) if action == "raise"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "raise"),
+                &ProductionDataError::StartLife,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -3000,7 +3552,10 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, YARD)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Build(BuildProblem::Global(action)) if action == "raise"),
+        refused: |problem| {
+            let global = ActionProblem::Global;
+            rule_at(problem, &entry("actions", "raise"), &global)
+        },
     },
     // A gather aims at a unit its filter selects, within meters; it gathers a player resource
     // of the mode's, and its bounce is a distance; a node and a drop-off name the mode's
@@ -3013,7 +3568,13 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Gather(GatherProblem::Aims(action)) if action == "mine"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "mine"),
+                &ProductionDataError::GatherAims,
+            )
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -3023,7 +3584,10 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Gather(GatherProblem::Global(action)) if action == "mine"),
+        refused: |problem| {
+            let global = ActionProblem::Global;
+            rule_at(problem, &entry("actions", "mine"), &global)
+        },
     },
     Flaw {
         file: MODE_DATA,
@@ -3043,7 +3607,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, at: Place::Action(action), name } if action == "mine" && name == "silver"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: ResourceId::NAMES, at: Place::Entry { table: "actions", name: action }, name } if action == "mine" && name == "silver"),
     },
     Flaw {
         file: MODE_DATA,
@@ -3053,7 +3617,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION), (UNITS, GOLD_MINE)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Take } if action == "mine"),
+        refused: |problem| read_fails(problem, "data/mode.toml", "missing field `take`"),
     },
     Flaw {
         file: UNITS,
@@ -3063,7 +3627,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, at: Place::UnitType(unit), name } if unit == "mine" && name == "silver"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: ResourceId::NAMES, at: Place::UnitType(unit), name } if unit == "mine" && name == "silver"),
     },
     Flaw {
         file: UNITS,
@@ -3073,7 +3637,7 @@ static MAP_FLAWS: &[Flaw] = &[
         ),
         also: &[(MANIFEST, PRODUCTION)],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, at: Place::UnitType(unit), name } if unit == "depot" && name == "silver"),
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: ResourceId::NAMES, at: Place::UnitType(unit), name } if unit == "depot" && name == "silver"),
     },
     flaw(
         UNITS,
@@ -3100,7 +3664,7 @@ static MAP_FLAWS: &[Flaw] = &[
             "[actions.dread]\nunit_type = \"melee_creep\"\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::UnitType } if action == "dread"),
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `unit_type`"),
     ),
     // The release runs no action of the kind `enter` yet; an action sits in
     // slot kinds of one count of ranks.
@@ -3108,7 +3672,10 @@ static MAP_FLAWS: &[Flaw] = &[
         HUSK,
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"enter\"\n"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindNotRun { action, kind: ActionKind::Enter } if action == "dread"),
+        |problem| {
+            let message = "the release runs no action of the kind `enter`";
+            read_fails(problem, "data/avatar.toml", message)
+        },
     ),
     Flaw {
         file: MODE_DATA,
@@ -3133,17 +3700,33 @@ static MAP_FLAWS: &[Flaw] = &[
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::ActionRanks(action) if action == "taunt"),
+        refused: |problem| {
+            rule_at(
+                problem,
+                &entry("actions", "taunt"),
+                &ActionProblem::SlottedRanks,
+            )
+        },
     },
     // A script adds only to a player resource the mode declares.
     flaw(
         "modes/3v3/scripts/mode.rhai",
         Edit::Replace(
-            r#"add_resource(killer.owner, "gold", unit.params.gold)"#,
-            r#"add_resource(killer.owner, "silver", unit.params.gold)"#,
+            r#"add_resource(killer.owner, "gold", gold)"#,
+            r#"add_resource(killer.owner, "silver", gold)"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, name, .. } if name == "silver"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: ResourceId::NAMES, name, .. } if name == "silver"),
+    ),
+    // A type's bounty pays a player resource the mode declares.
+    flaw(
+        UNITS,
+        Edit::Replace(
+            r#"bounty = { resource = "gold", amount = 20 }"#,
+            r#"bounty = { resource = "silver", amount = 20 }"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: ResourceId::NAMES, name, .. } if name == "silver"),
     ),
     // A player modifier's filter names a tag the mode has.
     flaw(
@@ -3153,7 +3736,7 @@ static MAP_FLAWS: &[Flaw] = &[
             "[modifiers.warden_blessing]\naffects = \"allies:totem\"\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "allies:totem"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, name: filter, .. } if filter == "allies:totem"),
     ),
     // A relation names two of the mode's teams, a pair once.
     flaw(
@@ -3163,7 +3746,12 @@ static MAP_FLAWS: &[Flaw] = &[
             "resources = [\"gold\"]\n\n[[relations]]\nteams = [\"north\", \"east\"]\nrelation = \"neutral\"\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownTeam(team)) if team == "east"),
+        |problem| {
+            rule(
+                problem,
+                &ModeError::UnknownTeam(DeclaredName::new("east").unwrap()),
+            )
+        },
     ),
     flaw(
         MODE_DATA,
@@ -3172,13 +3760,19 @@ static MAP_FLAWS: &[Flaw] = &[
             "resources = [\"gold\"]\n\n[[relations]]\nteams = [\"north\", \"camps\"]\nrelation = \"neutral\"\n\n[[relations]]\nteams = [\"camps\", \"north\"]\nrelation = \"friendly\"\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedRelation(a, b)) if a == "camps" && b == "north"),
+        |problem| {
+            let name = |name| DeclaredName::new(name).unwrap();
+            rule(
+                problem,
+                &ModeError::RepeatedRelation(name("camps"), name("north")),
+            )
+        },
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:totem""#),
         "hero-kensho",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "enemies:totem"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: Filter::NAMES, name: filter, .. } if filter == "enemies:totem"),
     ),
     // A second spells package with a spell the first holds.
     Flaw {
@@ -3277,7 +3871,11 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
     assert!(kinds(253).is_ok());
     let error = kinds(254).unwrap_err();
     assert!(
-        matches!(*error.problem, LoadProblem::TooMany(Limit::DamageKinds)),
+        rule_at(
+            &error.problem,
+            &Place::Section("combat"),
+            &NamesListError::TooMany
+        ),
         "{error:?}"
     );
     // Gold and 255 more are 256, all a resource id counts; one more fails.
@@ -3297,7 +3895,11 @@ fn a_mode_holds_kinds_and_resources_to_their_limits_and_a_hero_is_no_mode() {
     assert!(resources(255).is_ok());
     let error = resources(256).unwrap_err();
     assert!(
-        matches!(*error.problem, LoadProblem::TooMany(Limit::Resources)),
+        rule_at(
+            &error.problem,
+            &Place::Section("resources"),
+            &NamesListError::TooMany
+        ),
         "{error:?}"
     );
 
@@ -3414,10 +4016,10 @@ fn a_mode_loads_the_map_its_session_names() {
     let two = edited([("modes/3v3/map/second/map.toml", Edit::Create(&raised))]);
     let planar = load(&two).unwrap();
     assert_eq!(planar.map_name(), &two_lanes());
-    assert_eq!(planar.map().metric, Metric::Planar);
+    assert_eq!(planar.map().metric(), Metric::Planar);
     let spatial = two.mode_packages(Some(&second)).unwrap();
     assert_eq!(spatial.map_name(), &second);
-    assert_eq!(spatial.map().metric, Metric::Spatial);
+    assert_eq!(spatial.map().metric(), Metric::Spatial);
     let third = MapName::parse("third").unwrap();
     let error = two.mode_packages(Some(&third)).unwrap_err();
     assert!(matches!(&*error.problem, LoadProblem::NoMap(map) if *map == third));
@@ -3474,7 +4076,11 @@ fn a_box_lies_only_on_a_planar_map() {
     let spatial = [(MAP, Edit::Create(&raised)), (UNITS, tower)];
     let error = load(&edited(spatial)).unwrap_err();
     assert!(
-        matches!(&*error.problem, LoadProblem::BoxBody { at: Place::UnitType(name), problem: BoxProblem::Spatial } if name == "tower"),
+        rule_at(
+            &error.problem,
+            &unit_type("tower"),
+            &UnitTypeError::BoxOnSpatial
+        ),
         "{error:?}"
     );
     // The raised map alone loads: the points it raised are its only change.
@@ -3484,22 +4090,26 @@ fn a_box_lies_only_on_a_planar_map() {
 
 #[test]
 fn a_build_or_a_gather_without_navigation_fails_its_load() {
-    // The skirmish runs no navigation, and production without it runs no build, whose box only
+    // The ruled mode runs no navigation, and production without it runs no build, whose box only
     // navigation tests for room and whose worker walks, nor a gather, whose worker walks.
     let raise = "[actions.raise]\nkind = \"build\"\nrange = \"2\"\nwindup_ms = 1000\ntargeting = \"point\"\nunit_type = \"yard\"\nconstruct = \"alone\"\n";
     let mine = "[actions.mine]\nkind = \"gather\"\nrange = \"1\"\nwindup_ms = 1000\ntargeting = \"neutrals\"\nresource = \"money\"\ntake = 5\n";
     for (action, data) in [("raise", raise), ("mine", mine)] {
-        let mut tree = PackageTree::of(TestMode::Skirmish);
+        let mut tree = PackageTree::of(TestMode::Ruled);
         tree.edit(
-            "test/modes/skirmish/manifest.toml",
+            "modes/ruled/manifest.toml",
+            Edit::Replace("capabilities = []", r#"capabilities = ["production"]"#),
+        )
+        .edit(
+            "modes/ruled/data/mode.toml",
             Edit::Replace(
-                r#"["stats", "combat"]"#,
-                r#"["stats", "combat", "production"]"#,
+                "\n[teams.player]",
+                "resources = [\"money\"]\n\n[teams.player]",
             ),
         )
-        .edit("test/modes/skirmish/data/mode.toml", Edit::Append(data))
+        .edit("modes/ruled/data/mode.toml", Edit::Append(data))
         .edit(
-            "test/modes/skirmish/data/units.toml",
+            "modes/ruled/data/units.toml",
             Edit::Append("[units.yard]\ncollision = { box = [\"4\", \"2\"] }\n"),
         );
         let error = tree.load().unwrap_err();
@@ -3508,7 +4118,7 @@ fn a_build_or_a_gather_without_navigation_fails_its_load() {
                 &*error.problem,
                 LoadProblem::Undeclared {
                     capability: Capability::Navigation,
-                    at: Place::Action(at),
+                    at: Place::Entry { table: "actions", name: at },
                 } if at == action
             ),
             "{action}: {error:?}"

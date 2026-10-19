@@ -1,20 +1,19 @@
 use campfire_actions::{DeliveryData, DeliveryShape};
 use campfire_deliveries::Launcher;
 use campfire_math::Vec3;
-use campfire_script::{ApiBuilder, Checked, Ctx, DataTable, MemberSpec, RoleSet, ScriptPosition};
-use campfire_units::NewUnit;
+use campfire_script::{ApiBuilder, Checked, Ctx, MemberSpec, RoleSet, ScriptPosition, Unit};
 
 use crate::area_data::{AreaData, AreaInsideData};
 use crate::areas_effect::AreasEffect;
 
-/// The script API of `areas`: `ctx.area`, and the data of an area type.
+/// The script API of `areas`: `ctx.land`, and the data of an area type.
 #[derive(Debug)]
 pub struct AreasApi;
 
 impl AreasApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let area = MemberSpec::call(
-            "area",
+            "land",
             &[&["pos"]],
             "lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick",
         )
@@ -22,18 +21,14 @@ impl AreasApi {
         api.call(area, |ctx: &mut Ctx, pos: ScriptPosition| {
             Self::land(ctx, pos.get())
         })
-        .data::<DeliveryData>(&["area"], &[])
-        .shared_data(DataTable::UnitType, &["area"], &[])
-        .data::<AreaData>(
-            &["radius", "delay_ms", "duration_ms", "affects", "inside"],
-            &[],
-        )
-        .data::<AreaInsideData>(&["self", "allies", "enemies"], &[]);
+        .own_fields::<DeliveryData>(&["area"])
+        .data::<AreaData>(&[])
+        .data::<AreaInsideData>(&[]);
     }
 
     /// Queues an area of the running action, which delivers areas, from its acting unit: the new
     /// area, with the id the call takes for it.
-    fn land(ctx: &Ctx, pos: Vec3) -> Checked<NewUnit> {
+    fn land(ctx: &Ctx, pos: Vec3) -> Checked<Unit> {
         let launcher = Launcher::of(ctx, |shape| shape == DeliveryShape::Area)?;
         let unit_type = launcher.delivery.unit_type;
         let mut frame = ctx.write()?;
@@ -44,6 +39,6 @@ impl AreasApi {
             unit_type,
             pos,
         });
-        Ok(NewUnit { id, unit_type })
+        Ok(Unit::created(id, unit_type, ctx.view().clone()))
     }
 }

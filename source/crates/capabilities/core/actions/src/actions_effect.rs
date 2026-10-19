@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
-use campfire_script::{Effect, Frame};
+use campfire_script::{Effect, EffectKind, Frame};
 use campfire_units::{Lifespan, SpawnAt, Spawner};
 
 /// A unit a listed `spawn` makes, `at` its place, of the acting unit's team and player, with a
@@ -12,14 +12,15 @@ pub(crate) struct ActionsEffect {
 }
 
 impl Effect for ActionsEffect {
+    const KIND: EffectKind = EffectKind::Change;
+
     // The unit spawns with the id the call took, and its lifespan of `life` ticks from this one
     // with it, so it spawns whole.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
-        let spawner = world.non_send::<Spawner>().clone();
         match self.life {
-            Some(life) => spawner.spawn(world, self.at, Lifespan::until(now.after(life))),
-            None => spawner.spawn(world, self.at, ()),
+            Some(life) => Spawner::spawn(world, self.at, Lifespan::until(now.after(life))),
+            None => Spawner::spawn(world, self.at, ()),
         };
     }
 }

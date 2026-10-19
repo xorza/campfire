@@ -1,33 +1,55 @@
 //! The mode: its script, its state, its players' choices, and the units it spawns. It runs the
 //! mode's hooks on the capabilities below it.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
-use std::rc::Rc;
 use std::sync::Arc;
 
-use bevy_ecs::schedule::common_conditions::not;
-use bevy_ecs::schedule::{IntoScheduleConfigs, SystemCondition, SystemSet};
+use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
-use campfire_actions::ActionSlots;
+use campfire_actions::{ActionSlots, ActionsSet};
 use campfire_combat::{Weigh, Weighers};
 use campfire_common::{EnumAll, PlayerSlot};
-use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
-use campfire_navigation::{NavigationBook, OnPath, PathWalker};
-use campfire_players::{Players, PlayersWorld, Seating, SlotStart};
-use campfire_script::{CallError, Ctx, Hook, Pool, ScriptText, View};
-use campfire_sim::{Breach, Capability, IdAllocator, SimTick};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, ModuleSet, SetPlace};
+use campfire_navigation::{
+    ModeNavigationData, Navigation, NavigationBook, OnPath, PathArrivals, WalkerOnPath,
+};
+use campfire_players::{MatchEntity, Player, Players, PlayersWorld, Seating, SlotStart};
+use campfire_production::{CompletedSites, ProductionSet, TrainedUnits};
+use campfire_progression::LevelUps;
+use campfire_script::{
+    ApiVersion, CallError, Ctx, Hook, HookSet, MatchNames, ModeEvents, PlannedCapability,
+    ScriptRole, ScriptText, Status,
+};
+use campfire_sim::{Breach, Capability, IdAllocator, SimSet, SimTick};
 use campfire_units::{
-    BodyForm, MatchEntity, Player, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone,
+    BodyForm, ScriptBook, SpawnAt, Spawner, SyncAll, SyncNone, SyncOwner, SyncTeam, UnitsSet,
 };
 use campfire_values::Relations;
 
+use crate::bounty_book::Bounty;
+use crate::game_map::GameMap;
+use crate::mode_api::ModeApi;
+use crate::mode_call::ModeCall;
+use crate::mode_hooks::{
+    ModeHooks, OnGenerate, OnInput, OnMatchStart, OnPlayerJoin, OnPlayerLeave, OnQuestStage,
+    OnSystem, OnTimer, OnUnitDeath,
+};
+use crate::mode_script::ModeScript;
 use crate::out_of_play_marks::OutOfPlayMarks;
+use crate::placed_unit::PlacedPath;
+use crate::save_asked::SaveAsked;
+use crate::victory::Victory;
 
+mod bounty_book;
+mod bounty_data;
+mod bounty_share;
 mod calls;
 mod choice_data;
 mod choice_id;
@@ -38,7 +60,6 @@ mod game_map;
 mod loadout;
 mod loadout_setup;
 mod map_data;
-mod map_point;
 mod marker;
 mod marker_spec;
 mod marker_tag;
@@ -55,11 +76,12 @@ mod mode_input;
 mod mode_inputs;
 mod mode_load;
 mod mode_map;
-mod mode_names;
 mod mode_schema;
+mod mode_script;
 mod mode_setup;
 mod mode_spec;
 mod mode_state;
+mod mode_teams;
 mod mode_units;
 mod mode_world;
 mod offer;
@@ -68,95 +90,119 @@ mod option_picks;
 mod option_value;
 mod out_of_play_marks;
 mod placed_unit;
+mod player_state;
+mod player_state_access;
+mod player_states;
 mod players_data;
 mod region_data;
 mod relation_data;
+mod result_handle;
 mod roster;
 mod save_asked;
 mod saves_data;
 mod spawn_group;
 mod team_data;
 mod team_manifest;
+mod timer_id;
 mod timers;
 mod unanswered_deaths;
 mod unanswered_slot_events;
+mod victory;
+mod victory_data;
 
+pub use crate::bounty_book::BountyBook;
+pub use crate::bounty_data::{BountyData, ModeBountyData, Pays};
+pub use crate::bounty_share::BountyShare;
 pub use crate::calls::Calls;
 pub use crate::choice_data::{ChoiceData, Offers};
+pub use crate::choice_id::ChoiceId;
 pub use crate::choices::Choices;
 pub use crate::error::{
-    ModeError, ModeList, ModeNamesError, ModeRefusal, OptionValueError, PickError,
+    BountyError, ModeDataError, ModeError, ModeRefusal, OptionValueError, PickError,
 };
-pub use crate::game_map::GameMap;
 pub use crate::loadout_setup::LoadoutSetup;
-pub use crate::map_data::{
-    BrushData, GridData, GroundData, MapData, MapNavigationData, MarkerData, PathData,
-    PlacedUnitData, WallData,
-};
-pub use crate::map_point::MapPoint;
+pub use crate::map_data::{MapData, MapSeed, MarkerData, PlacedUnitData};
 pub use crate::marker::{Marker, MarkerInfo};
 pub use crate::marker_spec::MarkerSpec;
+pub use crate::marker_tag::MarkerTag;
 pub use crate::match_end::{MatchEnd, MatchResult};
 pub use crate::match_mode::MatchMode;
-pub use crate::mode_api::ModeApi;
-pub use crate::mode_call::ModeCall;
 pub use crate::mode_core::ModeCore;
-pub use crate::mode_data::{InputType, ListEntry, ModeData, ModeParam};
-pub use crate::mode_hooks::ModeHooks;
+pub use crate::mode_data::{InputType, ListEntry, ModeData, ModeParam, ModeSeed};
 pub use crate::mode_input::{InputValue, ModeInput};
 pub use crate::mode_inputs::ModeInputs;
 pub use crate::mode_load::ModeLoad;
-pub use crate::mode_map::{MapInput, ModeMap, ResolvedMap};
-pub use crate::mode_names::ModeNames;
+pub use crate::mode_map::{MapInput, ModeMap};
 pub use crate::mode_setup::ModeSetup;
 pub use crate::mode_spec::{MapStart, ModeSpec, SpecLoad};
 pub use crate::mode_state::{ModeState, ModeSync};
+pub use crate::mode_teams::ModeTeams;
 pub use crate::mode_units::ModeUnits;
 pub use crate::mode_world::ModeWorld;
 pub use crate::offer::Offer;
 pub use crate::option_data::OptionData;
 pub use crate::option_picks::OptionPicks;
 pub use crate::option_value::OptionValue;
-pub use crate::placed_unit::{PlacedPath, PlacedUnit};
+pub use crate::placed_unit::PlacedUnit;
+pub use crate::player_state::{PlayerState, PlayerSync};
 pub use crate::players_data::PlayersData;
 pub use crate::region_data::RegionData;
 pub use crate::relation_data::RelationData;
-pub use crate::save_asked::SaveAsked;
 pub use crate::saves_data::{SaveBy, SavesData};
 pub use crate::team_data::TeamData;
 pub use crate::team_manifest::TeamManifest;
+pub use crate::timer_id::TimerId;
 pub use crate::timers::{Timer, TimerStart, Timers};
 pub use crate::unanswered_deaths::{DeathCall, UnansweredDeaths};
 pub use crate::unanswered_slot_events::UnansweredSlotEvents;
+pub use crate::victory::VictoryBook;
+pub use crate::victory_data::{Defeat, VictoryData};
 
 /// The scripted part of the mode of a match: the core's rules above the capabilities, which a
-/// match that runs scripts installs after them, once its books are in; `ModeCore` is the part
+/// match that runs scripts installs after them, once its scripts compile; `ModeCore` is the part
 /// every match installs.
 #[derive(Debug)]
 pub struct Mode;
 
 /// The mode's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum ModeSet {
+pub enum ModeSet {
     /// The tick's mode inputs run its script, once the tick started and before any order.
     Inputs,
-    /// Once the trains spawned: the slots' events, the due timers, the deaths and the level
-    /// ups run the mode's hooks.
+    /// Once the trains spawned: the tick's deaths end players and the match, then pay their
+    /// bounties.
+    Deaths,
+    /// Then the slots' events, the due timers and the deaths run the mode's hooks, which read how
+    /// the match ended.
     Hooks,
+    /// Then the levels units reached run theirs.
+    LevelUps,
+    /// Then the units trains made.
+    Trained,
+    /// Then the sites that completed.
+    Sites,
+    /// Then the walkers that reached their paths' ends.
+    PathEnds,
     /// The players out of play are counted again.
     OutOfPlay,
 }
 
 impl ModuleSet for ModeSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Mode);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Inputs => Phase::ModeInputs,
-            Self::Hooks => Phase::ModeHooks,
-            Self::OutOfPlay => Phase::End,
-        })
+        match self {
+            Self::Inputs => {
+                (SetPlace::stage(SimSet::Inputs).after(UnitsSet::Begin)).before(ActionsSet::Toggle)
+            }
+            Self::Deaths => SetPlace::stage(SimSet::Mode).after(ProductionSet::Finish),
+            Self::Hooks => SetPlace::stage(SimSet::Mode).after(Self::Deaths),
+            Self::LevelUps => SetPlace::stage(SimSet::Mode).after(Self::Hooks),
+            Self::Trained => SetPlace::stage(SimSet::Mode).after(Self::LevelUps),
+            Self::Sites => SetPlace::stage(SimSet::Mode).after(Self::Trained),
+            Self::PathEnds => SetPlace::stage(SimSet::Mode).after(Self::Sites),
+            Self::OutOfPlay => SetPlace::at(UnitsSet::End),
+        }
     }
 }
 
@@ -169,8 +215,8 @@ impl Module for Mode {
         Capability::Production,
         Capability::Progression,
         Capability::Stats,
-        Capability::Vision,
     ];
+    type Set = ModeSet;
 
     fn declare<D: Declarations>(d: &mut D) {
         d.callback::<Weighers>(
@@ -180,137 +226,211 @@ impl Module for Mode {
                 heal: Calls::weigh_heal,
             },
         );
-        d.sets::<ModeSet>();
         d.component::<ModeState<SyncNone>>();
         d.component::<ModeState<SyncAll>>();
+        d.component::<PlayerState<SyncNone>>();
+        d.component::<PlayerState<SyncOwner>>();
+        d.component::<PlayerState<SyncTeam>>();
+        d.component::<PlayerState<SyncAll>>();
         d.resource::<Choices>();
         d.resource::<Timers>();
         d.resource::<UnansweredDeaths>();
         d.resource::<UnansweredSlotEvents>();
         d.report::<SaveAsked>();
-        d.non_send_loaded::<MatchMode>();
-        d.non_send_loaded::<Spawner>();
+        d.loaded::<MatchMode>();
         d.check::<Player>(Self::players_spawned);
         d.part::<MatchEntity, Relations>(|at| {
-            Some(at.world().non_send::<MatchMode>().relations.clone())
+            Some(at.world().resource::<MatchMode>().relations.clone())
         });
         d.part::<MatchEntity, ModeState<SyncNone>>(|at| {
             Some(ModeState::initial(
-                &at.world().non_send::<MatchMode>().schema,
+                &at.world().resource::<MatchMode>().schema,
             ))
         });
         d.part::<MatchEntity, ModeState<SyncAll>>(|at| {
             Some(ModeState::initial(
-                &at.world().non_send::<MatchMode>().schema,
+                &at.world().resource::<MatchMode>().schema,
+            ))
+        });
+        d.part::<Player, PlayerState<SyncNone>>(|at| {
+            Some(PlayerState::initial(
+                &at.world().resource::<MatchMode>().schema.players,
+            ))
+        });
+        d.part::<Player, PlayerState<SyncOwner>>(|at| {
+            Some(PlayerState::initial(
+                &at.world().resource::<MatchMode>().schema.players,
+            ))
+        });
+        d.part::<Player, PlayerState<SyncTeam>>(|at| {
+            Some(PlayerState::initial(
+                &at.world().resource::<MatchMode>().schema.players,
+            ))
+        });
+        d.component::<BountyShare>();
+        d.part::<Player, BountyShare>(|at| {
+            let start = at.world().resource::<BountyBook>().start();
+            start.map(BountyShare)
+        });
+        d.part::<Player, PlayerState<SyncAll>>(|at| {
+            Some(PlayerState::initial(
+                &at.world().resource::<MatchMode>().schema.players,
             ))
         });
         d.api(ModeApi::register);
+        d.hook::<OnMatchStart>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnInput>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnTimer>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnUnitDeath>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnPlayerJoin>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnPlayerLeave>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnGenerate>(Status::Planned);
+        d.hook::<OnSystem>(Status::Planned);
+        d.plan_hook::<OnQuestStage>(PlannedCapability::Quests);
     }
 
     /// Adds the mode's hooks to a match: in Inputs, the players' mode inputs run
-    /// `on_mode_input`; in Mode, the tick's joins and leaves run `on_player_join` and
+    /// `on_input`; in Mode, the tick's joins and leaves run `on_player_join` and
     /// `on_player_leave`, due timers run `on_timer`, or fire with no call in a mode without it, the
-    /// tick's deaths run `on_unit_died`, and, with progression, the levels reached run
-    /// `on_level_up`, or clear in a mode without it. `Mode::load` gives them the mode they run,
-    /// and each hook's system runs only in a mode that defines its hook.
-    fn install(cx: &mut InstallCx<'_>) {
-        let defines = ModeHooks::defines;
-        let joins = defines(Hook::OnPlayerJoin).or_else(defines(Hook::OnPlayerLeave));
-        cx.systems((
-            ModeHooks::mode_inputs
-                .run_if(defines(Hook::OnModeInput))
-                .in_set(ModeSet::Inputs),
-            (
-                ModeHooks::slot_events.run_if(joins),
-                ModeHooks::run_timers.run_if(defines(Hook::OnTimer)),
-                ModeHooks::fire_timers.run_if(not(defines(Hook::OnTimer))),
-                ModeHooks::unit_deaths.run_if(defines(Hook::OnUnitDied)),
-            )
-                .chain()
-                .in_set(ModeSet::Hooks),
-            OutOfPlayMarks::refresh.in_set(ModeSet::OutOfPlay),
-        ));
-        if cx.has(Capability::Progression) {
-            cx.systems(
-                (
-                    ModeHooks::level_ups.run_if(defines(Hook::OnLevelUp)),
-                    ModeHooks::clear_level_ups.run_if(not(defines(Hook::OnLevelUp))),
-                )
-                    .chain()
-                    .after(ModeHooks::unit_deaths)
-                    .in_set(ModeSet::Hooks),
+    /// tick's deaths run `on_unit_death`; then, of the capabilities the match holds, the levels
+    /// reached run `on_level_up`, the units trained `on_unit_trained`, the sites that completed
+    /// `on_site_complete`, and the walkers at their paths' ends `on_path_end`, each in that order,
+    /// or clear in a mode without the hook. Each hook's system installs only in a mode whose
+    /// script defines its hook, a fact of the load; `Mode::load` gives them the mode they run.
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        let book = cx.book::<ScriptBook>();
+        let book = book.expect("a match that runs its mode holds its scripts' hooks");
+        let hooks = cx.mode_scripts().map_or_else(HookSet::default, |listed| {
+            book.defines_any(listed, ScriptRole::Mode)
+        });
+        if cx
+            .book::<VictoryBook>()
+            .and_then(|book| book.victory())
+            .is_some()
+        {
+            cx.add(ModeSet::Deaths, Victory::follow);
+        }
+        if cx
+            .book::<BountyBook>()
+            .and_then(BountyBook::bounty)
+            .is_some()
+        {
+            cx.add(ModeSet::Deaths, Bounty::pay.after(Victory::follow));
+        }
+        let defines = |hook| hooks.contains(hook);
+        let answers = |queue_hooks: &[Hook]| queue_hooks.iter().any(|&hook| defines(hook));
+        let timers = (ModeHooks::run_timers, ModeHooks::fire_timers);
+        if defines(Hook::of::<OnInput>()) {
+            cx.add(ModeSet::Inputs, ModeHooks::mode_inputs);
+        }
+        let slot_events = ModeHooks::answer::<UnansweredSlotEvents>;
+        if answers(UnansweredSlotEvents::HOOKS) {
+            cx.add(
+                ModeSet::Hooks,
+                slot_events.before(timers.0).before(timers.1),
             );
+        }
+        if defines(Hook::of::<OnTimer>()) {
+            cx.add(ModeSet::Hooks, timers.0);
+        } else {
+            cx.add(ModeSet::Hooks, timers.1);
+        }
+        let deaths = ModeHooks::answer::<UnansweredDeaths>;
+        if answers(UnansweredDeaths::HOOKS) {
+            cx.add(ModeSet::Hooks, deaths.after(timers.0).after(timers.1));
+        }
+        cx.add(ModeSet::OutOfPlay, OutOfPlayMarks::refresh);
+        if cx.has(Capability::Progression) {
+            Self::events::<LevelUps>(cx, ModeSet::LevelUps, &hooks);
+        }
+        if cx.has(Capability::Production) {
+            Self::events::<TrainedUnits>(cx, ModeSet::Trained, &hooks);
+            Self::events::<CompletedSites>(cx, ModeSet::Sites, &hooks);
+        }
+        if cx.has(Capability::Navigation) {
+            Self::events::<PathArrivals>(cx, ModeSet::PathEnds, &hooks);
         }
     }
 }
 
 impl Mode {
+    /// Adds, in `set`, the answer of a capability's events `Q` in a mode whose script defines one
+    /// of their hooks, `hooks` being those it defines, or else their drop.
+    fn events<Q: ModeEvents>(cx: &mut InstallCx<'_, ModeSet>, set: ModeSet, hooks: &HookSet) {
+        if Q::HOOKS.iter().any(|&hook| hooks.contains(hook)) {
+            cx.add(set, ModeHooks::answer::<Q>);
+        } else {
+            cx.add(set, ModeHooks::drop::<Q>);
+        }
+    }
+
     /// Loads the mode of `setup` into a match whose capabilities, mode and books are installed
-    /// and whose unit types, abilities and AI are loaded, with what `load` takes from the books:
-    /// the map's pathing grid, for the kinds of its walkers, and its teams.
-    pub fn load(world: &mut World, setup: ModeSetup<'_>, load: ModeLoad) {
-        let view = world.non_send::<View>().clone();
+    /// and whose unit types, abilities and AI are loaded, with what `inputs` takes from the
+    /// books: the map's pathing grid, for the kinds of its walkers, its teams, and the units the
+    /// mode spawns.
+    pub fn load(world: &mut World, setup: ModeSetup<'_>, inputs: ModeInputs) {
+        let ModeInputs { units, load } = inputs;
         let ModeLoad {
             map,
             walkers,
             loadout_ranks,
         } = load;
-        map.install_pathing(world, walkers);
+        Navigation::load_map(world, walkers);
         let ModeMap {
             teams,
             relations,
             placed,
             markers,
-            ..
         } = map;
         let paths = world
             .get_resource::<NavigationBook>()
             .map(|book| &book.paths);
         let path_names = paths.into_iter().flat_map(|paths| paths.names().texts());
+        let spawn_tags = &setup
+            .data
+            .section_or_default::<ModeNavigationData>()
+            .spawn_tags;
+        let map = GameMap::new(path_names.map(ScriptText::from), &markers, spawn_tags);
+        world
+            .resource_mut::<MatchNames>()
+            .set_table(Arc::clone(map.tags()));
+        let script = ModeScript::new(setup.data, setup.picks, map);
         let start = MapStart {
             teams,
             placed,
             relations,
-            map: GameMap::new(
-                path_names.map(ScriptText::from),
-                &markers,
-                &setup.data.navigation.spawn_tags,
-            ),
         };
-        view.names_mut().set_table(Arc::clone(start.map.tags()));
-        Self::load_units(world, &setup.units);
         let load = SpecLoad {
             start,
+            units,
             loadout_ranks,
             scripts: world.resource::<ScriptBook>(),
             bodies: world.resource::<ByType<BodyForm>>(),
             slots: world.resource::<ByType<ActionSlots>>(),
+            bounty: world.resource::<BountyBook>().bounty().is_some(),
         };
         let book = ModeSpec::new(setup, load);
-        view.names_mut().set_teams(Rc::clone(&book.teams));
-        view.names_mut().set_table(Arc::clone(book.choices.names()));
+        let mut names = world.resource_mut::<MatchNames>();
+        names.set_teams(Arc::clone(&book.teams));
+        names.set_table(Arc::clone(book.choices.names()));
+        names.set_table(Arc::clone(&book.timers));
         let players = usize::try_from(book.teams.players()).expect("a player count fits usize");
         world.insert_resource(Choices::empty(&book.choices, players));
         let ctx = world.non_send::<Ctx>().clone();
-        let book = Rc::new(book);
-        ctx.frame().add_params(ModeCall::new(Rc::clone(&book)));
-        world.insert_non_send(MatchMode(Rc::clone(&book)));
+        let book = Arc::new(book);
+        ctx.frame()
+            .add_params(ModeCall::new(Arc::clone(&book), script));
+        world.insert_resource(MatchMode(Arc::clone(&book)));
     }
 
     /// Whether each slot of the session has its entity, as the mode's start spawns them, so no
     /// call finds one missing.
     fn players_spawned(world: &World) -> Result<(), Breach> {
-        let players = world.non_send::<MatchMode>().teams.players();
+        let players = world.resource::<MatchMode>().teams.players();
         let seated = (0..players)
             .map(PlayerSlot::new)
             .all(|slot| world.player_entity(slot).is_some());
         Breach::of_match(seated)
-    }
-
-    /// Loads the spawner of `units`, the mode's unit types, into `world`: from then on, the mode
-    /// and each capability spawn a unit of a type the mode spawns through it.
-    pub fn load_units(world: &mut World, units: &ModeUnits) {
-        world.insert_non_send(units.spawner());
     }
 
     /// Starts the match, before its first tick: the players spawn, each slot held or open as
@@ -319,7 +439,7 @@ impl Mode {
     /// from the start. An error when the call fails: a match its mode cannot start would run
     /// without its rules.
     pub fn start(world: &mut World, seatings: &[Seating]) -> Result<(), CallError> {
-        let book = world.non_send::<MatchMode>().clone();
+        let book = world.resource::<MatchMode>().clone();
         let teams = &book.teams;
         assert_eq!(
             seatings.len(),
@@ -334,7 +454,6 @@ impl Mode {
                 seating,
             }),
         );
-        let spawner = world.non_send::<Spawner>().clone();
         for placed in &book.placed {
             let at = SpawnAt {
                 id: world.resource_mut::<IdAllocator>().allocate(),
@@ -345,25 +464,23 @@ impl Mode {
                 angle: placed.angle,
             };
             match placed.path {
-                None => spawner.spawn(world, at, ()),
+                None => Spawner::spawn(world, at, ()),
                 Some(PlacedPath { path, from: None }) => {
-                    spawner.spawn(world, at, OnPath::new(path))
+                    Spawner::spawn(world, at, OnPath::new(path))
                 }
                 Some(PlacedPath {
                     path,
                     from: Some(from),
-                }) => {
-                    let walker = (OnPath::new(path), PathWalker::start(from, at.id));
-                    spawner.spawn(world, at, walker)
-                }
+                }) => Spawner::spawn(world, at, WalkerOnPath::new(path, from, at.id)),
             };
         }
-        if !book.schema.hooks.contains(Hook::OnMatchStart) {
+        if !book.schema.hooks.contains(Hook::of::<OnMatchStart>()) {
             return Ok(());
         }
         let now = world.resource::<SimTick>().start();
         Calls::scope(world, now, |call| {
-            call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
+            let ctx = call.ctx.clone();
+            call.run::<OnMatchStart>(|| (ctx.clone(),))
         })?;
         // A save the start asked for is at the boundary before the first tick, its own time.
         if world.contains_resource::<SaveAsked>() {
@@ -375,7 +492,7 @@ impl Mode {
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    use bevy_ecs::bundle::Bundle;
+    use bevy_ecs::bundle::{Bundle, NoBundleEffect};
     use bevy_ecs::entity::Entity;
     use bevy_ecs::world::World;
     use campfire_actions::Actions;
@@ -384,29 +501,43 @@ pub mod internals {
     use campfire_math::{Num, Vec3};
     use campfire_navigation::{PathEnd, PathWalker};
     use campfire_players::Seating;
-    use campfire_script::internals::FailureKind;
+    use campfire_script::FailureKind;
     use campfire_script::{
-        CallError, CallStart, Ctx, ScriptFailures, ScriptRole, ScriptValue, StateValue, View,
+        CallError, CallStart, Ctx, MatchNames, ScriptFailures, ScriptRole, ScriptValue, StateValue,
     };
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{
         EntityIndex, IdAllocator, Position, SimTick, SimWorld, SlotEvent, SlotEventKind, StableId,
         TickInputs,
     };
-    use campfire_stats::{
-        Application, Life, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats,
-    };
-    use campfire_units::{Owner, SpawnAt, Spawner, UnitTypeBook, Units};
+    use campfire_stats::{Application, Modifiers, NewInstance, StatBook, StatOp, StatShare, Stats};
+    use campfire_units::{Life, Owner, SpawnAt, Spawner, Units};
     use campfire_values::{NameId, PackageIndex, Rank, Stat, TagSet, Team, UnitType};
 
     use crate::Mode;
     use crate::match_mode::MatchMode;
+    use crate::mode_call::ModeCall;
     use crate::mode_ctx::ModeCtx;
     use crate::mode_input::{InputValue, ModeInput};
-    use crate::mode_units::ModeUnits;
     use crate::mode_world::ModeWorld;
 
+    /// A marker a reader finds: of the tag `tag`, whose param `param` is the text `value`.
+    #[derive(Debug, Clone, Copy)]
+    pub struct MarkerOf<'a> {
+        pub tag: &'a str,
+        pub param: &'a str,
+        pub value: &'a str,
+    }
+
     impl Mode {
+        /// The point of the marker `of` names, as the match's map holds it, which its mode's
+        /// script reads; none for no such marker, or one of no point.
+        pub fn marker_point(world: &World, of: MarkerOf<'_>) -> Option<Vec3> {
+            let ctx = world.non_send::<Ctx>();
+            let frame = ctx.frame();
+            frame.part::<ModeCall>()?.map().point_of(of)
+        }
+
         /// Spawns a unit of the mode's type `name` at `pos` on `team`, of the next stable id, with
         /// `parts`, as the mode's own spawns do.
         pub fn spawn_typed(
@@ -414,7 +545,7 @@ pub mod internals {
             name: &str,
             pos: Vec3,
             team: Team,
-            parts: impl Bundle,
+            parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
             let unit_type =
                 Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
@@ -430,7 +561,7 @@ pub mod internals {
             pos: Vec3,
             angle: Num,
             team: Team,
-            parts: impl Bundle,
+            parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
             let id = world.resource_mut::<IdAllocator>().allocate();
             let at = SpawnAt {
@@ -441,35 +572,22 @@ pub mod internals {
                 pos,
                 angle,
             };
-            let spawner = Self::test_spawner(world)
-                .expect("the mode loaded its unit types before a unit spawns");
-            spawner.spawn(world, at, parts);
+            Spawner::place_any(world, at, parts);
             id
         }
     }
-
-    /// The spawner the fixtures of a world built as a client's place units through, apart from
-    /// the world's `Spawner`: a client holds none, as no client installs the mode, so a system
-    /// that spawns on a client fails its test as it fails the client.
-    #[derive(Debug)]
-    struct FixtureSpawner(Spawner);
-
-    /// On a world built as a client's, whose fixtures keep their spawner apart.
-    #[derive(Debug)]
-    struct ClientFixtures;
 
     impl Mode {
         /// Spawns a unit of the mode's type `unit_type` at `pos` on `team`, of the next stable
         /// id, with `parts`, as the mode's own spawns do, once the match loaded its types: the
         /// first spawn seals their tags, with no effect for a tag, as a mode's load does once
-        /// its packages load, and loads the spawner of `load_test_units` when the test loaded
-        /// none.
+        /// its packages load. On a client's match too, as the server would send the unit.
         pub fn spawn(
             world: &mut World,
             unit_type: UnitType,
             pos: impl Into<Vec3>,
             team: Team,
-            parts: impl Bundle,
+            parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
             Self::spawn_turned(world, unit_type, pos, Num::ZERO, team, parts)
         }
@@ -481,12 +599,9 @@ pub mod internals {
             pos: impl Into<Vec3>,
             angle: Num,
             team: Team,
-            parts: impl Bundle,
+            parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
             Units::seal_once(world);
-            if Self::test_spawner(world).is_none() {
-                Self::load_test_units(world);
-            }
             Self::spawn_at(world, unit_type, pos.into(), angle, team, parts)
         }
 
@@ -497,41 +612,8 @@ pub mod internals {
 
         /// How many slots the session of the installed mode has.
         pub fn slots(world: &World) -> usize {
-            let players = world.non_send::<MatchMode>().teams.players();
+            let players = world.resource::<MatchMode>().teams.players();
             usize::try_from(players).expect("slots fit usize")
-        }
-
-        /// Loads the spawner of every unit type the match loaded so far, which applies no
-        /// passive, as a mode's load gives its own: a fixture that loads types loads it again. A
-        /// world built as a client's keeps it apart, as its fixtures' alone.
-        pub fn load_test_units(world: &mut World) {
-            let count = world.resource::<UnitTypeBook>().count();
-            let types = (0..count)
-                .map(|index| UnitType::new(u16::try_from(index).expect("unit types fit u16")));
-            let units = ModeUnits {
-                unit_types: types.collect(),
-                ..ModeUnits::default()
-            };
-            if world.get_non_send::<ClientFixtures>().is_some() {
-                world.insert_non_send(FixtureSpawner(units.spawner()));
-            } else {
-                Self::load_units(world, &units);
-            }
-        }
-
-        /// Marks `world`, built as a client's, so its fixtures keep their spawner apart and the
-        /// world holds no `Spawner`, as a client's holds none.
-        pub fn keep_no_spawner(world: &mut World) {
-            world.insert_non_send(ClientFixtures);
-        }
-
-        /// The spawner the fixtures place units through: the world's, or, on a world built as a
-        /// client's, their own; none before a test loads one.
-        pub fn test_spawner(world: &World) -> Option<Spawner> {
-            match world.get_non_send::<FixtureSpawner>() {
-                Some(FixtureSpawner(spawner)) => Some(spawner.clone()),
-                None => world.get_non_send::<Spawner>().cloned(),
-            }
         }
 
         /// Spawns a unit of the mode's type `name`, as `spawn` does.
@@ -540,7 +622,7 @@ pub mod internals {
             name: &str,
             pos: impl Into<Vec3>,
             team: Team,
-            parts: impl Bundle,
+            parts: impl Bundle<Effect: NoBundleEffect>,
         ) -> StableId {
             let unit_type =
                 Units::type_named(world, name).unwrap_or_else(|| panic!("no unit type {name}"));
@@ -630,7 +712,7 @@ pub mod internals {
 
         /// The kind of each of the tick's failed calls.
         pub fn failures(world: &World) -> Vec<FailureKind> {
-            let failures = world.non_send::<ScriptFailures>().calls();
+            let failures = world.resource::<ScriptFailures>().calls();
             failures.into_iter().map(|failure| failure.kind).collect()
         }
 
@@ -672,8 +754,7 @@ pub mod internals {
             cause: DamageCause,
         ) {
             let kind = world
-                .non_send::<View>()
-                .names()
+                .resource::<MatchNames>()
                 .named(kind)
                 .expect("the mode names the damage kind");
             DamagePass::queue(
@@ -706,18 +787,19 @@ pub mod internals {
             let now = world.resource::<SimTick>().start();
             match role {
                 ScriptRole::Mode => {
-                    let start = CallStart::mode(ScriptRole::Mode, now);
-                    ctx.frame().begin(world, start).unwrap();
+                    let place = world.resource::<MatchMode>().schema.mode;
+                    let start = CallStart::listed(place, now);
+                    ctx.frame().begin_alone(world, start).unwrap();
                 }
                 ScriptRole::Ai => ctx
                     .frame()
-                    .begin(world, CallStart::think(actor, now))
+                    .begin_alone(world, CallStart::think(actor, now))
                     .unwrap(),
                 ScriptRole::Action => {
                     let strike = Actions::named(world, PackageIndex::MODE, "strike").unwrap();
                     let start =
                         CallStart::cast(strike, Rank::FIRST, actor, PackageIndex::MODE, now);
-                    ctx.frame().begin(world, start).unwrap();
+                    ctx.frame().begin_alone(world, start).unwrap();
                 }
                 ScriptRole::Modifier => {
                     let blessing = Stats::modifier(world, PackageIndex::MODE, "blessing").unwrap();
@@ -725,7 +807,7 @@ pub mod internals {
                         acting: Some(actor),
                         ..CallStart::hook(blessing, PackageIndex::MODE, 1, now)
                     };
-                    ctx.frame().begin(world, start).unwrap();
+                    ctx.frame().begin_alone(world, start).unwrap();
                 }
             }
             let handle = ctx.view().unit(id).unwrap();

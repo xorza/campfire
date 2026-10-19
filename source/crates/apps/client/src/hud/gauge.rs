@@ -5,7 +5,7 @@ use bevy::transform::components::Transform;
 use campfire_actions::{ChargeRule, SlotCharges};
 use campfire_common::{Tick, Ticks};
 use campfire_math::{Num, Rounding};
-use campfire_stats::PoolId;
+use campfire_units::PoolId;
 
 use crate::view::float_num::FloatNum;
 
@@ -76,19 +76,25 @@ pub(crate) struct Cooling {
     pub(crate) seen_at: Tick,
 }
 
-/// A bar's thickness, and the gap between rows.
-const THICKNESS: f32 = 0.12;
-const ROW: f32 = 0.16;
+// Each length is in pixels of the screen, as a stand's scale makes one of its units a pixel
+// (02-engine-core.md, Bars in screen space).
+/// How far above its stand's point, the top of its unit's drawing, the life bar stands.
+const ABOVE: f32 = 16.0;
+/// A bar's thickness, and the step from one row to the next.
+const THICKNESS: f32 = 6.0;
+const ROW: f32 = 8.0;
 /// The pool bars' width.
-const WIDE: f32 = 1.2;
+const WIDE: f32 = 64.0;
 /// A cooldown pip's width, and the step from one pip to the next.
-const PIP: f32 = 0.27;
-const PIP_STEP: f32 = 0.31;
+const PIP: f32 = 14.0;
+const PIP_STEP: f32 = 16.0;
 /// A rank tick's thickness, and the gap between the ticks of one pip.
-const TICK_THICKNESS: f32 = 0.06;
-const TICK_GAP: f32 = 0.02;
+const TICK_THICKNESS: f32 = 3.0;
+const TICK_GAP: f32 = 1.0;
 /// The learn mark's thickness.
-const MARK_THICKNESS: f32 = 0.05;
+const MARK_THICKNESS: f32 = 3.0;
+/// How far in front of its back a fill lies, so the two never fight for a pixel's depth.
+const FRONT: f32 = 0.5;
 
 impl Gauge {
     /// `current` of `max`, as a share from 0 to 1; 0 when the maximum is not positive.
@@ -104,15 +110,15 @@ impl Gauge {
 }
 
 impl GaugeKind {
-    /// The bar's width, and its center from the top of the stack, in the plane that faces the
-    /// camera: x across, z down the stack.
+    /// The bar's width, and its center from its stand's point, in the plane that faces the
+    /// camera: x across, z down the stack, the life bar `ABOVE` the point and each row under it.
     pub(crate) fn layout(self) -> Layout {
-        let down = |row: u8| f32::from(row) * ROW;
+        let down = |row: u8| f32::from(row) * ROW - ABOVE;
         match self {
             Self::Life { .. } => Layout {
                 width: WIDE,
                 thickness: THICKNESS,
-                center: Vec3::ZERO,
+                center: Vec3::new(0.0, 0.0, down(0)),
             },
             Self::Pool { row, .. } => Layout {
                 width: WIDE,
@@ -177,7 +183,7 @@ impl Layout {
     pub(crate) fn fill(self, fraction: f32) -> Transform {
         let fraction = fraction.clamp(0.0, 1.0);
         let left = -(1.0 - fraction) * self.width / 2.0;
-        Transform::from_translation(Vec3::new(left, 0.01, 0.0)).with_scale(Vec3::new(
+        Transform::from_translation(Vec3::new(left, FRONT, 0.0)).with_scale(Vec3::new(
             fraction * self.width,
             1.0,
             self.thickness,
@@ -236,12 +242,13 @@ mod tests {
 
     #[test]
     fn a_bar_fills_from_its_left_edge_and_a_pip_from_where_its_cooldown_was_seen() {
-        // A 1.2 m bar at a quarter: 0.3 m wide, its center 0.45 m left of the bar's.
+        // A bar of 64 pixels, 16 above its stand's point, at a quarter: 16 wide, its center
+        // (1 − 0.25) · 64 / 2 = 24 left of the bar's.
         let health = GaugeKind::Life { shown: None }.layout();
+        assert_eq!(health.center, Vec3::new(0.0, 0.0, -16.0));
         let quarter = health.fill(0.25);
-        assert_eq!(quarter.scale, Vec3::new(0.3, 1.0, THICKNESS));
-        // The fill's center is an f32 sum of halves of the width, exact to an ulp of 0.45.
-        assert!((quarter.translation.x + 0.45).abs() < 1e-6, "{quarter:?}");
+        assert_eq!(quarter.scale, Vec3::new(16.0, 1.0, THICKNESS));
+        assert_eq!(quarter.translation, Vec3::new(-24.0, FRONT, 0.0));
         // Out of range, a share holds at the ends.
         assert_eq!(health.fill(1.5).scale.x, WIDE);
         assert_eq!(health.fill(-1.0).scale.x, 0.0);
@@ -256,14 +263,14 @@ mod tests {
             .layout()
             .center
         };
-        let across = |steps: f32| Vec3::new(steps * PIP_STEP, 0.0, 2.0 * ROW);
+        let across = |steps: f32| Vec3::new(steps * PIP_STEP, 0.0, 2.0 * ROW - ABOVE);
         assert_eq!(pip(0, 4), across(-1.5));
         assert_eq!(pip(3, 4), across(1.5));
         assert_eq!([pip(1, 3), pip(2, 3)], [across(0.0), across(1.0)]);
         assert_eq!(pip(0, 1), across(0.0));
-        // Slot 3's five rank ticks, a row under its pip, span its width: each (0.27 − 4 × 0.02) / 5
-        // = 0.038 wide, the first's left edge on the pip's, the last's right edge on its right,
-        // to an ulp of the f32 sums. Its learn mark is as wide as the pip, and thinner.
+        // Slot 3's five rank ticks, a row under its pip, span its width: each (14 − 4 × 1) / 5 = 2
+        // wide, the first's left edge on the pip's, the last's right edge on its right. Its learn
+        // mark is as wide as the pip, and thinner.
         let tick = |rank| {
             GaugeKind::Rank {
                 at: SlotPlace { slot: 3, of: 4 },
@@ -274,16 +281,13 @@ mod tests {
             .layout()
         };
         let (first, last) = (tick(1), tick(5));
-        assert!((first.width - 0.038).abs() < 1e-6, "{first:?}");
+        assert_eq!(first.width, 2.0);
         let pip_left = 1.5 * PIP_STEP - PIP / 2.0;
-        let edges = [
-            first.center.x - first.width / 2.0 - pip_left,
-            last.center.x + last.width / 2.0 - (pip_left + PIP),
-        ];
-        assert!(edges.iter().all(|edge| edge.abs() < 1e-6), "{edges:?}");
+        assert_eq!(first.center.x - first.width / 2.0, pip_left);
+        assert_eq!(last.center.x + last.width / 2.0, pip_left + PIP);
         assert_eq!(
             (first.center.z, first.thickness),
-            (3.0 * ROW, TICK_THICKNESS)
+            (3.0 * ROW - ABOVE, TICK_THICKNESS)
         );
         let mark = GaugeKind::Learnable {
             at: SlotPlace { slot: 3, of: 4 },
@@ -292,7 +296,11 @@ mod tests {
         .layout();
         assert_eq!(
             (mark.width, mark.thickness, mark.center),
-            (PIP, MARK_THICKNESS, Vec3::new(1.5 * PIP_STEP, 0.0, ROW))
+            (
+                PIP,
+                MARK_THICKNESS,
+                Vec3::new(1.5 * PIP_STEP, 0.0, ROW - ABOVE)
+            )
         );
         // Seen in tick 100, ready in 190: empty then, half in 145, full from 190.
         let cooling = Cooling {

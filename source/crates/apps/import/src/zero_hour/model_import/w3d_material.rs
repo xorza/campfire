@@ -1,4 +1,4 @@
-use campfire_client_files::{Blend, MaterialFile, MaterialTexture};
+use campfire_client_files::{Blend, MaterialExtras, TeamPaint};
 use campfire_values::PackagePath;
 
 use crate::gltf::glb_builder::{CLAMP_TO_EDGE, REPEAT};
@@ -12,14 +12,16 @@ use crate::zero_hour::format::w3d::w3d_mesh::{
 };
 use crate::zero_hour::game_path;
 
-/// What makes one material of a model: its surface, what colors it, its two-sidedness and its
-/// depth bias, its layer's order over the pass it covers, so equal ones share a material.
+/// What makes one material of a model: its surface, what colors it, its two-sidedness, its
+/// depth bias, its layer's order over the pass it covers, and how its unit's team colors it, so
+/// equal ones share a material.
 #[derive(Debug, Clone, PartialEq)]
 pub(super) struct MaterialKey {
     pub(super) surface: Surface,
     pub(super) source: Source,
     pub(super) two_sided: bool,
     pub(super) depth_bias: i32,
+    pub(super) team: TeamPaint,
 }
 
 /// What colors a material: a pass's shader and vertex material, or a detail stage's function,
@@ -44,13 +46,11 @@ pub(super) enum Surface {
     Missing,
 }
 
-/// A key's material: its glTF material, of no texture yet, the texture it samples, and the
-/// material file beside it when glTF's material says less than its shader.
+/// A key's material: its glTF material, of no texture yet, and the texture it samples.
 #[derive(Debug)]
 pub(super) struct KeyMaterial {
     pub(super) gltf: Material,
     pub(super) texture: Option<KeyTexture>,
-    pub(super) file: Option<MaterialFile>,
 }
 
 /// A texture a glTF material samples: its URI from the model's file, and its wraps along `s` and
@@ -82,8 +82,8 @@ impl MaterialKey {
     /// and of no emissive light, when its shader draws its texture alone; of `MissingTexture`'s
     /// color times its own in place of a texture no archive holds (12-zero-hour.md, A W3D material
     /// becomes the one material); and, for a triangle of no texture under a shader that textures,
-    /// of what its shader draws of the null vector. A material file goes beside it if its shader is
-    /// more than glTF's material says.
+    /// of what its shader draws of the null vector. Its extras go in its extension when its shader
+    /// is more than glTF's material says (02-engine-core.md, Material extras in a glTF extension).
     pub(super) fn convert(
         &self,
         name: &str,
@@ -107,7 +107,13 @@ impl MaterialKey {
         let (lit_color, lit_emissive) = match colors {
             None => ([1.0; 4], [0.0; 3]),
             Some(material) => {
-                let [r, g, b] = material.diffuse.map(linear);
+                // A tinted material's diffuse is its team's color, as the game sets it, which it
+                // takes as white before.
+                let [r, g, b] = if self.team.tint {
+                    [1.0; 3]
+                } else {
+                    material.diffuse.map(linear)
+                };
                 let emissive = material.emissive.map(linear);
                 ([r, g, b, material.opacity], emissive)
             }
@@ -131,24 +137,32 @@ impl MaterialKey {
             }
         };
         let texture = match &self.surface {
-            Surface::Texture { path, flags } => Some(MaterialTexture {
-                path: path.texture_path()?,
-                clamp_u: flags & CLAMP_U != 0,
-                clamp_v: flags & CLAMP_V != 0,
-            }),
+            Surface::Texture { path, flags } => {
+                let held = |flag: u16| flags & flag != 0;
+                let wrap = |flag| if held(flag) { CLAMP_TO_EDGE } else { REPEAT };
+                Some(KeyTexture {
+                    uri: game_path::relative_uri(model, &path.texture_path()?),
+                    wrap_s: wrap(CLAMP_U),
+                    wrap_t: wrap(CLAMP_V),
+                })
+            }
             Surface::Untextured | Surface::Missing => None,
         };
-        let wrap = |clamp: bool| if clamp { CLAMP_TO_EDGE } else { REPEAT };
-        let gltf_texture = texture.as_ref().map(|texture| KeyTexture {
-            uri: game_path::relative_uri(model, &texture.path),
-            wrap_s: wrap(texture.clamp_u),
-            wrap_t: wrap(texture.clamp_v),
-        });
         let (alpha_mode, alpha_cutoff, gltf_depth_write) = match blend {
             Blend::Opaque => ("OPAQUE", None, true),
             Blend::Mask { cutoff } => ("MASK", Some(cutoff), true),
             _ => ("BLEND", None, false),
         };
+        let says_all = matches!(blend, Blend::Opaque | Blend::Mask { .. } | Blend::Alpha)
+            && gltf_depth_write == depth_write
+            && self.depth_bias == 0
+            && self.team.is_none();
+        let extras = (!says_all).then_some(MaterialExtras {
+            blend,
+            depth_write,
+            depth_bias: self.depth_bias,
+            team: self.team,
+        });
         let gltf = Material {
             name: name.to_owned(),
             pbr: Pbr {
@@ -164,33 +178,31 @@ impl MaterialKey {
             extensions: MaterialExtensions {
                 specular: Specular { factor: SPECULAR },
                 unlit: unlit.then_some(Unlit {}),
+                extras,
             },
         };
-        let says_all = matches!(blend, Blend::Opaque | Blend::Mask { .. } | Blend::Alpha)
-            && gltf_depth_write == depth_write
-            && self.depth_bias == 0;
-        let file = (!says_all).then_some(MaterialFile {
-            base_color,
-            texture,
-            emissive,
-            metallic: METALLIC,
-            roughness: ROUGHNESS,
-            specular: SPECULAR,
-            unlit,
-            blend,
-            depth_write,
-            depth_bias: self.depth_bias,
-            double_sided: self.two_sided,
-        });
-        Ok(KeyMaterial {
-            gltf,
-            texture: gltf_texture,
-            file,
-        })
+        Ok(KeyMaterial { gltf, texture })
     }
 }
 
-/// The blend of a pass of `shader`, as a material file names it; `None` for a pair of factors no
+/// How a team colors a material of the mesh `mesh` of a texture of the name `texture`, as
+/// `W3DAssetManager::Recolor_Mesh` recolors it: a pass's vertex materials take the team's color
+/// when the mesh's name, past its container's and its `.`, starts with `HOUSECOLOR`, of either
+/// case, and a texture whose name starts with `ZHCA` is the team's hue where its alpha is below
+/// one. The game's palette textures, of `ZHCD`, no shipped model uses.
+pub(super) fn team_paint(mesh: &str, pass: bool, texture: Option<&str>) -> TeamPaint {
+    let own = mesh.split_once('.').map_or(mesh, |(_, own)| own);
+    let starts = |name: &str, prefix: &str| {
+        name.get(..prefix.len())
+            .is_some_and(|start| start.eq_ignore_ascii_case(prefix))
+    };
+    TeamPaint {
+        tint: pass && starts(own, "HOUSECOLOR"),
+        hue_mask: texture.is_some_and(|texture| starts(texture, "ZHCA")),
+    }
+}
+
+/// The blend of a pass of `shader`, as the material extras name it; `None` for a pair of factors no
 /// shipped shader uses.
 pub(super) const fn pass_blend(shader: Shader) -> Option<Blend> {
     Some(
@@ -234,6 +246,66 @@ fn linear(code: u8) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_house_color_mesh_tints_and_a_zhca_texture_masks_its_team_s_hue() {
+        let paint = |mesh, pass, texture| {
+            let paint = team_paint(mesh, pass, texture);
+            (paint.tint, paint.hue_mask)
+        };
+        // The mesh's own name past its container's, of either case; a detail stage, of no vertex
+        // material, is not tinted; a texture of `ZHCA`, of either case, masks; `ZHCD`, a name of
+        // `HOUSECOLOR` in the container's part, or none, does neither.
+        assert_eq!(paint("AVTANK.HouseColor01", true, None), (true, false));
+        assert_eq!(
+            paint("HOUSECOLOR", true, Some("zhca_tank.tga")),
+            (true, true)
+        );
+        assert_eq!(paint("AVTANK.HOUSECOLOR", false, None), (false, false));
+        assert_eq!(
+            paint("HOUSECOLOR.HULL", true, Some("ZHCD_X.tga")),
+            (false, false)
+        );
+        assert_eq!(
+            paint("AVTANK.HULL", true, Some("ZHCA_X.tga")),
+            (false, true)
+        );
+        assert_eq!(paint("AVTANK.HULL", true, Some("ZH")), (false, false));
+    }
+
+    #[test]
+    fn a_tinted_material_is_white_under_its_team_s_color_and_says_so_in_its_extras() {
+        // A lit pass of a diffuse of (255, 128, 0), on a texture no archive holds: its color is the
+        // diffuse times `MissingTexture`'s, (1, 0, 0) of red and blue full and no green; tinted,
+        // white times it, (1, 0, 1), and its extras name the tint.
+        let key = |team| MaterialKey {
+            surface: Surface::Missing,
+            source: Source::Pass {
+                shader: Shader::DEFAULT,
+                material: VertexMaterial {
+                    diffuse: [255, 128, 0],
+                    ..VertexMaterial::DEFAULT
+                },
+            },
+            two_sided: false,
+            depth_bias: 0,
+            team,
+        };
+        let model = PackagePath::parse("client/models/tank.glb").unwrap();
+        let tint = TeamPaint {
+            tint: true,
+            hue_mask: false,
+        };
+        let plain = key(TeamPaint::NONE).convert("plain", &model).unwrap().gltf;
+        let tinted = key(tint).convert("tinted", &model).unwrap().gltf;
+        assert_eq!(plain.pbr.base_color[..3], [1.0, 0.0, 0.0]);
+        assert_eq!(tinted.pbr.base_color[..3], [1.0, 0.0, 1.0]);
+        assert_eq!(plain.extensions.extras, None);
+        assert_eq!(
+            tinted.extensions.extras.map(|extras| extras.team),
+            Some(tint)
+        );
+    }
 
     #[test]
     fn each_shipped_blend_is_a_mode_and_another_is_none() {

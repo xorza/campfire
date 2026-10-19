@@ -1,3 +1,3 @@
 fn on_hit(ctx, caster, target, hit) {
-    ctx.damage(target, ctx.p.damage, "true");
+    ctx.damage(target, "true", ctx.params.damage);
 }

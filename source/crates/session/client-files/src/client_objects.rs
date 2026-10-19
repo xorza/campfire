@@ -1,6 +1,6 @@
-use campfire_common::MapName;
+use campfire_common::{DeclaredName, MapName};
 use campfire_math::Num;
-use campfire_values::{DeclaredName, PackagePath};
+use campfire_values::PackagePath;
 use serde::{Deserialize, Serialize};
 
 use crate::client_path;

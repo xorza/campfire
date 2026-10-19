@@ -1,10 +1,9 @@
-use campfire_actions::{ActionDataField, ActionRange, ActionsColumn, SlotKind};
+use campfire_actions::{ActionRange, ActionsColumn, SlotKind};
 use campfire_math::{Num, Vec3};
 use campfire_script::{
-    ApiBuilder, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec, RoleSet,
-    ScriptCut, ScriptValue, Status, Unit,
+    ApiBuilder, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberSpec, RoleSet, ScriptCut,
+    ScriptValue, Status, Unit,
 };
-use campfire_sim::Capability;
 use campfire_values::{ActionId, Block, TagProperty};
 
 use crate::abilities_effect::AbilitiesEffect;
@@ -20,7 +19,7 @@ impl AbilitiesApi {
         let cast = |name, description| MemberSpec::value(name, description).roles(RoleSet::ACTION);
         let call = |name, signature, description| MemberSpec::call(name, signature, description);
         let cut = call(
-            "reduce_cooldowns",
+            "scale_cooldowns",
             &[&["unit", "kind", "fraction"]],
             "takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind`",
         );
@@ -33,7 +32,7 @@ impl AbilitiesApi {
         )
         .call(
             cast(
-                "charge",
+                "charged",
                 "the share of its most a charged action charged, from 0 to 1",
             ),
             |ctx: &mut Ctx| Self::charge(ctx),
@@ -44,9 +43,9 @@ impl AbilitiesApi {
         )
         .call(
             call(
-                "reduce_cooldown",
-                &[&["unit", "id", "ms"]],
-                "takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package",
+                "cut_cooldown",
+                &[&["unit", "action", "ms"]],
+                "takes `ms` off the cooldown of `unit`'s action `action`, of the script's package",
             ),
             |ctx: &mut Ctx, unit: Unit, id: ActionId, ms: ScriptCut| {
                 Self::reduce_cooldown(ctx, &unit, id, ms)
@@ -69,12 +68,7 @@ impl AbilitiesApi {
         api.tag_property(
             TagProperty::Blocks(Block::Cast),
             Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(Hook::OnResolve, Status::Runs(ApiVersion::FIRST))
-        .hook(Hook::OnChannelTick, Status::Runs(ApiVersion::FIRST))
-        .hook(Hook::OnInterrupt, Status::Runs(ApiVersion::FIRST))
-        .action_fields(ActionDataField::of(Some(Capability::Abilities)))
-        .shared_data(DataTable::UnitType, &["slots"], &[]);
+        );
     }
 
     /// Where the running call's action's unit stood as the action started.
@@ -102,7 +96,7 @@ impl AbilitiesApi {
             (action, frame.rank())
         };
         match ActionsColumn::range(ctx.view(), action, rank) {
-            ActionRange::Meters(meters) => ScriptValue::of(meters),
+            ActionRange::Meters(meters) => ScriptValue::of(meters.get()),
             ActionRange::Global => ScriptValue::UNIT,
         }
     }
@@ -134,7 +128,7 @@ impl AbilitiesApi {
 
     /// Refuses `action` unless `unit` holds it.
     fn check_held(ctx: &Ctx, unit: &Unit, action: ActionId) -> Checked<()> {
-        if !ActionsColumn::holds(ctx.view(), unit.row_index(), action) {
+        if !ActionsColumn::holds(ctx.view(), unit.row_index()?, action) {
             return Err(AbilitiesRefusal::NotHeld.fail().into());
         }
         Ok(())

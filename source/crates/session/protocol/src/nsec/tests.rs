@@ -4,7 +4,7 @@ use crate::harness::test_key::TestKey;
 #[test]
 fn a_key_round_trips_and_what_is_no_nsec_is_refused() {
     let key = TestKey::of(7);
-    let text = encode_nsec(&key);
+    let text = encode_nsec(&TestKey::signer(key));
     assert!(
         text.starts_with("nsec1") && text.ends_with('\n'),
         "{}",

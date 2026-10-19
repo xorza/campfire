@@ -99,7 +99,7 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
     // reach stops at 8 bounds before it doubles.
     let every: Vec<usize> = (0..grid.cells()).collect();
     assert_eq!(reveal(Num::MAX), every);
-    assert_eq!(reveal(Position::BOUND), every);
+    assert_eq!(reveal(Vec3::BOUND), every);
 
     // Against each cell's center tested alone, in halves of a bit, from points on and off
     // the grid, on cell lines and between them, with radii that end on centers and between.
@@ -149,7 +149,7 @@ fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
     );
     for (cell, bounds) in [
         (Num::ZERO, bounds),
-        (Position::BOUND + Num::EPSILON, bounds),
+        (Vec3::BOUND + Num::EPSILON, bounds),
         (Num::int(1), wide),
     ] {
         assert_eq!(Grid::new(cell, bounds), None, "{cell:?} {bounds:?}");

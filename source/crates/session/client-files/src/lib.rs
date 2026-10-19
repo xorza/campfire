@@ -1,32 +1,42 @@
-//! The client's data files of a package, which the sim never reads, and which only the import,
-//! that writes them, and the client, that draws them, depend on: how its camera moves, how its
-//! unit types and its maps' client objects look, the materials that override its models' own, the
-//! light its maps are drawn in, their terrain and its ground heights, and the objects of each map
-//! the client alone draws.
+//! The client's data files of a package, which the sim never reads, and which only the import, that
+//! writes them, and the client, that draws them, depend on: how its camera moves, which keys do
+//! what, which units show their bars, its teams' colors, how its unit types and its maps' client
+//! objects look, what its models' materials say past glTF's own, the light its maps are drawn in,
+//! their terrain and its ground heights, and the objects of each map the client alone draws.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 mod camera_file;
 mod client_objects;
 mod client_path;
 mod client_units;
 mod error;
+mod hud_file;
+mod input_file;
 mod ktx2_image;
 mod map_conditions;
 mod map_lights;
-mod material_file;
+mod material_extras;
+mod team_colors;
 mod terrain_file;
 mod texture_format;
 mod texture_levels;
 
 pub use crate::camera_file::{CameraFile, CameraHeight};
 pub use crate::client_objects::{ClientObject, ClientObjects};
-pub use crate::client_units::{ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale};
+pub use crate::client_units::{
+    ClientModel, ClientUnit, ClientUnits, LookVariant, ModelScale, ModelTop,
+};
 pub use crate::error::{TerrainFileError, TextureLevelsError};
+pub use crate::hud_file::{HudFile, ShownBars};
+pub use crate::input_file::{Chord, ChordLabel, InputFile, Key, Modifiers};
 pub use crate::ktx2_image::Ktx2Image;
 pub use crate::map_conditions::MapConditions;
 pub use crate::map_lights::{MapLight, MapLights};
-pub use crate::material_file::{Blend, MaterialFile, MaterialTexture};
+pub use crate::material_extras::{Blend, MaterialExtras, TeamPaint};
+pub use crate::team_colors::TeamColors;
 pub use crate::terrain_file::{
     BorderWrap, GroundQuad, Overlay, TerrainFile, TerrainQuads, TerrainSurface, TerrainTexture,
     TextureCopy,

@@ -2,6 +2,7 @@ use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::seed_contribution::SeedContribution;
 use crate::harness::test_key::TestKey;
+use crate::signed::write_message;
 use crate::verifier::Verifier;
 
 /// A delegation of the main key of `main` for the session key of `byte`.
@@ -71,6 +72,21 @@ fn a_server_input_round_trips_and_its_signature_holds_only_at_its_place() {
         Verifier::new().verifies(signature, key, &placed(input, session_id, place))
     };
     assert!(signed_by(input, &key, id, place, &signature));
+    // Each input's message is the message of its encoding at its place, which a log signs once
+    // it wrote the encoding.
+    for input in &inputs {
+        let mut encoded = Vec::new();
+        input.encode(&mut encoded);
+        let [mut whole, mut written] = [Vec::new(), Vec::new()];
+        write_message(&placed(input, id, place), &mut whole);
+        let of_encoding = EncodedPlace {
+            session_id: id,
+            place,
+            input: &encoded,
+        };
+        write_message(&of_encoding, &mut written);
+        assert_eq!(whole, written);
+    }
     // At another tick or index, in another session, under another key, or over another input.
     let other_tick = InputPlace {
         tick: Tick::new(8),

@@ -2,16 +2,17 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_common::Ticks;
+use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
 use campfire_script::{Filter, StateSchema, SyncTo, TagNames, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::{DeclaredName, FilterData, ModifierId, Names, Number, Param, Stat};
+use campfire_units::StatId;
+use campfire_values::{FilterData, ModifierId, Names, Number, Param, Stat};
 
 use crate::applier_param::ApplierParam;
 use crate::error::{ModifierProblem, SpecError};
+use crate::interval_revival::IntervalRevival;
 use crate::modifier_data::{ModifierData, Reapply};
-use crate::stat_id::StatId;
 use crate::stat_op::StatOp;
 
 /// A modifier as a match runs it: its data with every name resolved at load, its stats to their
@@ -22,6 +23,7 @@ pub struct ModifierSpec {
     /// Absent: until removed.
     pub duration: Option<SpecTime>,
     pub interval: Option<SpecTime>,
+    pub revival: IntervalRevival,
     pub stacks_expire: Option<SpecTime>,
     pub reapply: Reapply,
     /// Absent: no limit.
@@ -144,6 +146,7 @@ impl ModifierSpec {
         Ok(Self {
             duration,
             interval,
+            revival: data.interval_revival,
             stacks_expire,
             reapply: data.reapply,
             max_stacks: data.max_stacks,

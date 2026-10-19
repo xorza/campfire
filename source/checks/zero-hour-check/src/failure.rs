@@ -1,63 +1,38 @@
-use campfire_bots::{OrderScriptError, UnknownUnitType};
-use campfire_common::MapName;
-use campfire_log::ErrorReport;
+use campfire_bots::{BotScriptError, OrderScriptError};
 use campfire_math::{Num, Vec3};
 use campfire_mode::PickError;
 use campfire_orders::OrdersAction;
-use campfire_package::LoadError;
 use derive_more::Display;
 
 use crate::pins::{
-    BOT, BotBase, CLIENT_OBJECTS, DRIVE_TICKS, FACTORY, FIGHT, FINGERPRINTS, FOUGHT, FactorySteps,
-    FightSteps, Fingerprints, FoughtCounts, HEIGHTS, LOOKS, LookCounts, MARKERS, OBJECT_LOOKS,
-    PRODUCED, PRODUCTION, ProducedCounts, ProductionSteps, TERRAIN, TerrainDrawn, UNIT_TYPES,
-    UNITS, WALLS,
+    BotBase, FactorySteps, FightSteps, Fingerprints, FoughtCounts, LookCounts, MapCounts,
+    ProducedCounts, ProductionSteps, TerrainDrawn,
 };
 
 /// What the import holds other than the original gives it: what Tournament Desert holds, or a
 /// map that does not load in the imported mode.
 #[derive(Debug, Display)]
 pub(crate) enum Failure {
-    /// The import's fingerprints differ from those the runs on Linux and on macOS gave.
-    #[display("it gave {_0}, not {FINGERPRINTS}")]
-    Fingerprints(Fingerprints),
-    /// Its heights are not `HEIGHTS` samples.
-    #[display("its heights are {columns} × {rows} samples, not {} × {}", HEIGHTS[0], HEIGHTS[1])]
-    Heights { columns: u32, rows: u32 },
-    /// It places other than `UNITS` units of `UNIT_TYPES` types.
-    #[display("it places {units} units of {types} types, not {UNITS} of {UNIT_TYPES}")]
-    Units { units: usize, types: usize },
-    /// It has other than `CLIENT_OBJECTS` client objects of `OBJECT_LOOKS` looks.
-    #[display(
-        "it has {objects} client objects of {looks} looks, not {CLIENT_OBJECTS} of {OBJECT_LOOKS}"
-    )]
-    ClientObjects { objects: usize, looks: usize },
-    /// It has other than `MARKERS` markers.
-    #[display("it has {_0} markers, not {MARKERS}")]
-    Markers(usize),
-    /// Its terrain file holds other than its pinned quads, overlays, copies and wraps.
-    #[display(
-        "its terrain has {} quads, {} overlays, {} copies and {} wraps, not {}, {}, {} and {}",
-        _0.quads, _0.overlays, _0.copies, _0.wraps,
-        TERRAIN.quads, TERRAIN.overlays, TERRAIN.copies, TERRAIN.wraps
-    )]
-    Terrain(TerrainDrawn),
+    /// The import's fingerprints differ from the pinned.
+    #[display("it gave {_0}")]
+    Fingerprints(Box<Differs<Fingerprints>>),
+    /// Tournament Desert's heights, units, client objects, markers or walls differ from the
+    /// pinned.
+    #[display("its map holds {_0}")]
+    Map(Box<Differs<MapCounts>>),
+    /// Its terrain file holds other than its expected quads, overlays, copies and wraps.
+    #[display("its terrain holds {_0}")]
+    Terrain(Box<Differs<TerrainDrawn>>),
     /// Cells it draws have a tile with no texture.
     #[display("{_0} of its drawn cells have a tile with no texture")]
     Untextured(usize),
-    /// Its grown cliffs merge into other than its pinned walls.
-    #[display("it has {_0} walls, not {WALLS}")]
-    Walls(usize),
-    /// A map of the import does not load in the imported mode.
-    #[display("map {map} does not load: {}", ErrorReport::of(error))]
-    MapLoad { map: MapName, error: LoadError },
     /// The import's looks of night and snow, its empty looks, and its maps of night and snow differ
     /// from the pinned.
-    #[display("it has {_0}, not {LOOKS}")]
-    Looks(LookCounts),
+    #[display("it has {_0}")]
+    Looks(Box<Differs<LookCounts>>),
     /// The import's trains, builds and dropped buttons by cause differ from the pinned.
-    #[display("it converted {_0}, not {PRODUCED}")]
-    Produced(ProducedCounts),
+    #[display("it converted {_0}")]
+    Produced(Box<Differs<ProducedCounts>>),
     /// The imported mode has no unit type a play reads.
     #[display("the imported mode has no unit type {_0}")]
     NoType(&'static str),
@@ -76,36 +51,36 @@ pub(crate) enum Failure {
     /// A step of the production play does not end within its limit.
     #[display("the production step {_0:?} does not end")]
     ProductionStep(OrdersAction),
-    /// The production play's ticks or money differ from the pinned.
-    #[display("it played production as {_0:?}, not {PRODUCTION:?}")]
-    Production(ProductionSteps),
-    /// The factory's chain's ticks or money differ from the pinned.
-    #[display("it built the factory's chain as {_0:?}, not {FACTORY:?}")]
-    Factory(FactorySteps),
+    /// The production play's ticks or money differ from the expected.
+    #[display("it played production as {_0}")]
+    Production(Box<Differs<ProductionSteps>>),
+    /// The factory's chain's ticks or money differ from the expected.
+    #[display("it built the factory's chain as {_0}")]
+    Factory(Box<Differs<FactorySteps>>),
     /// The mode takes no pick the play's host gives of its options.
     #[display("the mode takes no pick of {_0}")]
     Options(PickError),
     /// The builder bot's orders file is no order script.
     #[display("the builder bot's orders: {_0}")]
     BotOrders(OrderScriptError),
-    /// The builder bot's orders name a unit type the mode lacks.
+    /// The builder bot's orders name what the mode lacks.
     #[display("the builder bot's orders: {_0}")]
-    BotType(UnknownUnitType),
+    BotNames(BotScriptError),
     /// The bot's base differs from the pinned.
-    #[display("the bot built {_0:?}, not {BOT:?}")]
-    Bot(BotBase),
+    #[display("the bot built {_0}")]
+    Bot(Box<Differs<BotBase>>),
     /// The bot lacks the command center or the dozer the fight reads.
     #[display("the bot lacks its command center or its dozer")]
     FightStart,
     /// The fight does not end the match within its limit.
     #[display("the fight does not end the match")]
     NoEnd,
-    /// The fight's ticks, money or end differ from the pinned.
-    #[display("it fought as {_0:?}, not {FIGHT:?}")]
-    Fight(FightSteps),
+    /// The fight's ticks, money or end differ from the expected.
+    #[display("it fought as {_0}")]
+    Fight(Box<Differs<FightSteps>>),
     /// The import's weapons, armors, damage kinds and bodies differ from the pinned.
-    #[display("it converted {_0}, not {FOUGHT}")]
-    Fought(Box<FoughtCounts>),
+    #[display("it converted {_0}")]
+    Fought(Box<Differs<FoughtCounts>>),
     /// Tournament Desert lacks a start of player 1 or 2.
     #[display("it has no start of player 1 or of player 2")]
     NoStarts,
@@ -120,8 +95,8 @@ pub(crate) enum Failure {
     /// Player 1's dozer stands in its command center's box, at this place.
     #[display("player 1's dozer stands in its command center's box, at ({}, {})", _0.x, _0.z)]
     DozerInBuilding(Vec3),
-    /// The dozer stood in a wall's cell in this tick, at this place.
-    #[display("the dozer stood in a wall's cell in tick {tick}, at ({}, {})", pos.x, pos.z)]
+    /// The dozer stood in a wall in this tick, at this place.
+    #[display("the dozer stood in a wall in tick {tick}, at ({}, {})", pos.x, pos.z)]
     DozerInWall { tick: u64, pos: Vec3 },
     /// The dozer's walk did not end within the check's limit of ticks.
     #[display("the dozer's walk did not end")]
@@ -129,7 +104,26 @@ pub(crate) enum Failure {
     /// The dozer's walk ended this far short of the other start.
     #[display("the dozer's walk ended {_0} m short of the other start")]
     DriveShort(Num),
-    /// The dozer took more ticks to the other start than the check pins.
-    #[display("the dozer took {_0} ticks to the other start, not at most {DRIVE_TICKS}")]
-    DriveTicks(u64),
+    /// The dozer took other ticks to the other start than the pinned.
+    #[display("the dozer took ticks to the other start: {_0}")]
+    DriveTicks(Box<Differs<u64>>),
+    /// A run that blesses failed before it measured every value the file pins, so it writes none.
+    #[display("the run measured not every value it pins, so it writes no golden file")]
+    Unmeasured,
+}
+
+/// What a check measured, and what it expected: the pinned value, or one of a closed form. A
+/// failure boxes it, as it holds a measure twice.
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq)]
+#[display("{got:?}, not {expected:?}")]
+pub(crate) struct Differs<T> {
+    pub(crate) got: T,
+    pub(crate) expected: T,
+}
+
+impl<T: PartialEq> Differs<T> {
+    /// The difference of `got` from `expected`; none when they are one.
+    pub(crate) fn of(got: T, expected: T) -> Option<Box<Self>> {
+        (got != expected).then(|| Box::new(Self { got, expected }))
+    }
 }

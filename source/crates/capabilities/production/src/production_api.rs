@@ -1,21 +1,27 @@
-use campfire_actions::{ActionDataField, RequiresData};
+use campfire_actions::ActionData;
+use campfire_codec::StructFields;
 use campfire_common::PlayerSlot;
 use campfire_script::{
-    ApiBuilder, ApiOwner, CapabilityRefusal, Checked, Ctx, DataTable, MemberSpec, Unit,
+    ApiBuilder, ApiOwner, ApiVersion, CapabilityRefusal, Checked, Ctx, MemberSpec, PlayerHandle,
+    Status, Unit,
 };
-use campfire_sim::Capability;
+use campfire_values::{Block, TagProperty};
 
+use crate::build_data::BuildData;
 use crate::drop_off_data::DropOffData;
 use crate::error::ProductionRefusal;
+use crate::gather_data::GatherData;
 use crate::mode_supply_data::ModeSupplyData;
 use crate::node_data::NodeData;
 use crate::production_column::ProductionColumn;
 use crate::production_data::ProductionData;
+use crate::requires_data::RequiresData;
 use crate::supply_data::SupplyData;
+use crate::train_data::TrainData;
 
-/// What `production` gives scripts: each player's supply; and the data of `production` the
-/// release runs: a train's unit type and requirements, a unit type's queue and supply, and the
-/// mode's supply rules.
+/// What `production` gives scripts: what a unit carries, builds, trains and holds, and each
+/// player's supply; and the data of `production` the release runs: a train's unit type and
+/// requirements, a unit type's queue and supply, and the mode's supply rules.
 #[derive(Debug)]
 pub struct ProductionApi;
 
@@ -28,38 +34,80 @@ enum SupplyCount {
 
 impl ProductionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.action_fields(ActionDataField::of(Some(Capability::Production)))
-            .data::<ProductionData>(&["queue", "exit", "rally"], &[])
-            .data::<SupplyData>(&["cost", "provides"], &[])
-            .shared_data(DataTable::Mode, &["supply"], &[])
-            .shared_data(
-                DataTable::UnitType,
-                &["production", "supply", "node", "drop_off"],
-                &[],
+        let mut kinds: Vec<&'static str> = Vec::new();
+        let sections = [
+            StructFields::of::<TrainData>(),
+            StructFields::of::<BuildData>(),
+            StructFields::of::<GatherData>(),
+        ];
+        for field in sections.into_iter().flatten() {
+            if !kinds.contains(field) {
+                kinds.push(field);
+            }
+        }
+        api.fields(ActionData::TABLE, ApiVersion::FIRST, kinds)
+            .data::<ProductionData>(&[])
+            .data::<SupplyData>(&[])
+            .data::<ModeSupplyData>(&[])
+            .data::<RequiresData>(&[])
+            .tag_property(
+                TagProperty::Blocks(Block::Produce),
+                Status::Runs(ApiVersion::FIRST),
             )
-            .data::<ModeSupplyData>(&["max"], &[])
-            .data::<RequiresData>(&["units", "modifiers"], &[])
-            .data::<NodeData>(&["resource", "amount"], &[])
-            .data::<DropOffData>(&["resources"], &[])
+            .data::<NodeData>(&[])
+            .data::<DropOffData>(&[])
             .bind(
-                MemberSpec::field(ApiOwner::Unit, "load", "the amount it carries, 0 with none"),
+                MemberSpec::field(
+                    ApiOwner::of::<Unit>(),
+                    "load",
+                    "the amount it carries, 0 with none",
+                ),
                 |unit: &mut Unit| ProductionColumn::load(unit),
             )
-            .call(
-                MemberSpec::call(
-                    "supply_used",
-                    &[&["player"]],
-                    "what `player`'s living units and queued trains use of its supply",
+            .bind(
+                MemberSpec::field(
+                    ApiOwner::of::<Unit>(),
+                    "site_progress",
+                    "the share of its build's time its site reached, from 0 to 1, `()` when it is \
+                     no site",
                 ),
-                |ctx: &mut Ctx, player: PlayerSlot| Self::supply(ctx, player, SupplyCount::Used),
+                |unit: &mut Unit| ProductionColumn::site_progress(unit),
             )
-            .call(
-                MemberSpec::call(
-                    "supply_cap",
-                    &[&["player"]],
-                    "what `player`'s living, complete units give of supply, at most the mode's `max`",
+            .bind(
+                MemberSpec::field(
+                    ApiOwner::of::<Unit>(),
+                    "queue",
+                    "the unit types its queue trains, first the one under way, none with no queue",
                 ),
-                |ctx: &mut Ctx, player: PlayerSlot| Self::supply(ctx, player, SupplyCount::Cap),
+                |unit: &mut Unit| ProductionColumn::queue(unit),
+            )
+            .bind(
+                MemberSpec::field(
+                    ApiOwner::of::<Unit>(),
+                    "node_amount",
+                    "the amount it holds as a node, `()` when it is no node",
+                ),
+                |unit: &mut Unit| ProductionColumn::node_amount(unit),
+            )
+            .bind(
+                MemberSpec::field(
+                    ApiOwner::of::<PlayerHandle>(),
+                    "supply_used",
+                    "what its living units and queued trains use of its supply",
+                ),
+                |ctx: &Ctx, player: &mut PlayerHandle| {
+                    Self::supply(ctx, player.slot(), SupplyCount::Used)
+                },
+            )
+            .bind(
+                MemberSpec::field(
+                    ApiOwner::of::<PlayerHandle>(),
+                    "supply_cap",
+                    "what its living, complete units give of supply, at most the mode's `max`",
+                ),
+                |ctx: &Ctx, player: &mut PlayerHandle| {
+                    Self::supply(ctx, player.slot(), SupplyCount::Cap)
+                },
             );
     }
 

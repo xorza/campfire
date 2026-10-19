@@ -1,9 +1,9 @@
 use std::fmt;
 
-use bevy_ecs::bundle::Bundle;
+use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use bevy_ecs::world::World;
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_sim::{EntityIndex, IdAllocator, StableId};
 use campfire_units::{DeliveryEntity, Owner, UnitCore, UnitFilter};
 use campfire_values::{Team, UnitType};
@@ -39,7 +39,7 @@ impl DeliverySpawner<'_, '_> {
     /// else a new one, of its source's team and player, through the one spawn of a unit,
     /// `UnitCore::spawn`, as the commands apply; gives its id; none, and no id taken, when its
     /// source is gone.
-    pub fn spawn<B: Bundle>(
+    pub fn spawn<B: Bundle<Effect: NoBundleEffect>>(
         &mut self,
         delivery: NewDelivery,
         make: impl FnOnce(StableId) -> B,
@@ -61,6 +61,7 @@ impl DeliverySpawner<'_, '_> {
             unit_type,
             team,
             owner: owner.copied(),
+            angle: Num::ZERO,
         };
         let parts = make(id);
         self.commands.queue(move |world: &mut World| {

@@ -1,9 +1,9 @@
-use campfire_script::{NameKind, name_script_arg};
-use campfire_values::NameId;
+use campfire_script::name_script_arg;
+use campfire_values::{Article, NameId, NameKind, NameScope, Named};
 
 /// A choice of the mode, by its place among the mode's choices, in the order of their names.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ChoiceId(u16);
+pub struct ChoiceId(u16);
 
 impl NameId for ChoiceId {
     type Scope = ();
@@ -19,6 +19,8 @@ impl NameId for ChoiceId {
 }
 
 // A choice a script names is one of the mode's, which only the mode's calls name.
-name_script_arg!(ChoiceId, NameKind::Choice, |ctx, name| {
-    ctx.view().names().named(name)
-});
+name_script_arg!(ChoiceId, |ctx, name| { ctx.view().names().named(name) });
+
+impl Named for ChoiceId {
+    const NAMES: NameKind = NameKind::new("choice", Article::A, NameScope::Match);
+}

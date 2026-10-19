@@ -1,10 +1,11 @@
 use std::num::NonZeroU8;
 
+use campfire_common::DeclaredName;
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::ser::SerializeMap;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// An action's `delivery`: the unit type of its package it launches, a projectile type with
 /// `count` of them spread evenly over `spread_deg` degrees around its aim, or an area type.
@@ -65,6 +66,31 @@ impl<'de> Deserialize<'de> for DeliveryData {
     }
 }
 
+/// As data writes it, what `Deserialize` reads: a projectile, with its count unless 1 and its
+/// spread unless 0, or an area.
+impl Serialize for DeliveryData {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut map = serializer.serialize_map(None)?;
+        match self {
+            Self::Projectile {
+                unit_type,
+                count,
+                spread_deg,
+            } => {
+                map.serialize_entry("projectile", unit_type)?;
+                if *count != NonZeroU8::MIN {
+                    map.serialize_entry("count", count)?;
+                }
+                if *spread_deg != Num::ZERO {
+                    map.serialize_entry("spread_deg", spread_deg)?;
+                }
+            }
+            Self::Area { unit_type } => map.serialize_entry("area", unit_type)?,
+        }
+        map.end()
+    }
+}
+
 impl DataSection for DeliveryData {
-    const TABLE: DataTable = DataTable::Delivery;
+    const TABLE: DataTable = DataTable::new("An action's `delivery`");
 }

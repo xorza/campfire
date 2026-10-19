@@ -1,7 +1,9 @@
 //! The `stats` capability: a unit type's stats and how they grow by level, the rules the mode
 //! declares for them, and each unit's stats derived from its type and level.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
@@ -13,19 +15,32 @@
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::world::World;
+use campfire_actions::ActionsSet;
 use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, NamedScripts, ServerForm,
+    SetPlace, StateFields,
 };
+use campfire_math::Num;
+use campfire_players::Player;
+use campfire_script::{ApiVersion, Status};
 use campfire_sim::{Capability, SimEdge, SimSet, SimTick, SimWorld, StableId, TickRate};
-use campfire_units::{BodyUnit, Dead, Player, SpawnHooks};
+use campfire_units::{
+    BodyUnit, Dead, DeclaredTags, Due, ModifierNames, Owner, PoolId, PoolNames, SpawnHooks,
+    StatNames, UnitGrid, UnitSteps, UnitsSet,
+};
 use campfire_values::{ActionId, ModifierId, Rank, Tag};
 
+use crate::action_params::ActionParams;
+use crate::action_passives::ActionPassives;
 use crate::application::{Adding, ApplyAt};
 use crate::aura_carriers::AuraCarriers;
 use crate::modifier_adds::ModifierAdd;
+use crate::modifier_intervals::{IntervalDue, OnInterval};
 use crate::player_grants::PlayerGrants;
 use crate::stats_column::RowReads;
 
+mod action_params;
+mod action_passives;
 mod application;
 mod applier;
 mod applier_param;
@@ -38,38 +53,50 @@ mod held_modifiers;
 mod held_pass;
 mod instance;
 mod interval;
+mod interval_revival;
 mod level;
-mod life;
+mod life_pool;
 mod lifetime;
 mod live_carriers;
 mod live_param;
-mod meter;
+mod mode_pools_data;
+mod mode_stats_data;
 mod modifier_adds;
+mod modifier_appliers;
 mod modifier_book;
 mod modifier_data;
+mod modifier_dues;
+mod modifier_effect_data;
 mod modifier_ends;
+mod modifier_events;
 mod modifier_handle;
+mod modifier_hooks;
+mod modifier_intervals;
+mod modifier_param_table;
 mod modifier_params;
 mod modifier_spec;
+mod modifier_ways;
 mod modifiers;
+mod modifiers_data;
+mod move_speed_cap;
 mod param_book;
 mod param_read;
 mod param_source;
 mod param_table;
+mod passive_data;
 mod player_grants;
 mod player_modifiers;
 mod pool_book;
-mod pool_cost;
 mod pool_data;
-mod pool_id;
 mod pools;
+mod purge_effect_data;
 mod refresh;
 mod refresh_scratch;
+mod restore_effect_data;
 mod stat_book;
 mod stat_books;
 mod stat_change;
 mod stat_graph;
-mod stat_id;
 mod stat_op;
 mod stat_rule;
 mod stat_totals;
@@ -80,6 +107,8 @@ mod stats_data;
 mod stats_effect;
 mod stats_world;
 mod type_passive;
+mod type_pools;
+mod type_pools_data;
 mod unit_pools;
 mod unit_stats;
 
@@ -87,43 +116,57 @@ pub use crate::application::{Application, NewInstance};
 pub use crate::applier::Applier;
 pub use crate::applier_param::ApplierParam;
 pub use crate::carried_mut::CarriedMut;
-pub use crate::error::{EdgeError, ModifierError, ModifierProblem, SpecError, StatsRefusal};
+pub use crate::error::{
+    AppliedError, EdgeError, ModifierError, ModifierProblem, ModifiersDataError, SpecError,
+    StatGraphError, StatsRefusal, UnitStartError, Way,
+};
 pub use crate::grant_pass::GrantPass;
 pub use crate::grants::{Grant, GrantChange, GrantFrom, Grants, GrantsIter, UnitGrants};
 pub use crate::held_modifiers::{Held, HeldModifiers};
 pub use crate::held_pass::HeldPass;
 pub use crate::instance::{Instance, StackEnd, StatShare};
 pub use crate::interval::Interval;
+pub use crate::interval_revival::IntervalRevival;
 pub use crate::level::Level;
-pub use crate::life::{Life, lives};
+pub use crate::life_pool::LifePool;
 pub use crate::lifetime::{Ends, Hold, Lifetime};
 pub use crate::live_carriers::LiveCarriers;
 pub use crate::live_param::{LiveParam, ParamOwner};
-pub use crate::meter::Meter;
+pub use crate::mode_pools_data::ModePoolsData;
+pub use crate::mode_stats_data::ModeStatsData;
+pub use crate::modifier_appliers::ModifierAppliers;
 pub use crate::modifier_book::{ModifierBook, ModifierEntry, ModifierLoad, PackageModifier};
 pub use crate::modifier_data::{AuraData, ModifierData, Reapply};
+pub use crate::modifier_effect_data::ModifierEffectData;
 pub use crate::modifier_ends::ModifierEnds;
+pub use crate::modifier_events::ModifierEvents;
 pub use crate::modifier_handle::{HandleData, HandleOf, ModifierHandle};
+pub use crate::modifier_hooks::{ModifierHook, ModifierHooks};
+pub use crate::modifier_intervals::ModifierIntervals;
+pub use crate::modifier_param_table::ModifierParamTable;
 pub use crate::modifier_params::ModifierParams;
 pub use crate::modifier_spec::{
     AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
 };
+pub use crate::modifier_ways::ModifierWays;
 pub use crate::modifiers::modifier_clocks::{Clock, ModifierClocks, Spent};
 pub use crate::modifiers::{Absorbed, Carried, Modifiers, Touched};
+pub use crate::modifiers_data::ModifiersData;
+pub use crate::move_speed_cap::MoveSpeedCap;
 pub use crate::param_book::{ParamBook, ParamTables};
 pub use crate::param_source::ParamSource;
 pub use crate::param_table::ParamTable;
+pub use crate::passive_data::PassiveData;
 pub use crate::player_modifiers::PlayerModifiers;
 pub use crate::pool_book::{PoolBook, PoolStats};
-pub use crate::pool_cost::PoolCost;
 pub use crate::pool_data::PoolData;
-pub use crate::pool_id::PoolId;
 pub use crate::pools::Pools;
+pub use crate::purge_effect_data::PurgeEffectData;
 pub use crate::refresh::Refresh;
+pub use crate::restore_effect_data::RestoreEffectData;
 pub use crate::stat_book::StatBook;
 pub use crate::stat_change::StatChange;
 pub use crate::stat_graph::StatGraph;
-pub use crate::stat_id::StatId;
 pub use crate::stat_op::StatOp;
 pub use crate::stat_rule::StatRule;
 pub use crate::stat_totals::StatTotals;
@@ -131,9 +174,10 @@ pub use crate::stats_api::StatsApi;
 pub use crate::stats_call::StatsCall;
 pub use crate::stats_column::StatsColumn;
 pub use crate::stats_data::{StatValue, StatsData};
-pub use crate::stats_effect::StatsEffect;
 pub use crate::stats_world::StatsWorld;
 pub use crate::type_passive::TypePassive;
+pub use crate::type_pools::TypePools;
+pub use crate::type_pools_data::TypePoolsData;
 pub use crate::unit_pools::{PoolMeters, PoolMetersMut, UnitPools, UnitPoolsReadOnly};
 pub use crate::unit_stats::UnitStats;
 
@@ -153,6 +197,8 @@ pub enum StatsSet {
     /// Once the attacks going off paid their toggles and before they strike: the grants the
     /// sources pushed apply.
     GrantAtStrike,
+    /// Modifiers' intervals come.
+    Interval,
     /// Once the tick's damage is dealt and before units die: the grants the sources pushed apply.
     GrantAtResolve,
     /// The grants the sources pushed apply.
@@ -168,11 +214,12 @@ pub enum StatsSet {
 
 impl StatsSet {
     /// The steps in the stages.
-    const STEPS: [Self; 8] = [
+    const STEPS: [Self; 9] = [
         Self::Expire,
         Self::Regenerate,
         Self::GrantAtInputs,
         Self::GrantAtStrike,
+        Self::Interval,
         Self::GrantAtResolve,
         Self::GrantAtEnd,
         Self::ClearDead,
@@ -198,19 +245,22 @@ impl StatsSet {
 }
 
 impl ModuleSet for StatsSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
+        let stage = SetPlace::stage;
         match self {
-            Self::Expire | Self::Regenerate => SetPlace::Phase(Phase::Begin),
-            Self::GrantAtInputs => SetPlace::Phase(Phase::GrantAtInputs),
-            Self::GrantAtStrike => SetPlace::Phase(Phase::GrantAtStrike),
-            Self::GrantAtResolve => SetPlace::Phase(Phase::GrantAtResolve),
-            Self::GrantAtEnd => SetPlace::Phase(Phase::GrantAtEnd),
-            Self::ClearDead => SetPlace::Phase(Phase::ClearDead),
-            Self::Hold => SetPlace::Phase(Phase::HoldModifiers),
-            Self::Refresh(edge) => SetPlace::Gap(edge),
+            Self::Expire | Self::Regenerate => SetPlace::at(UnitsSet::Begin),
+            Self::GrantAtInputs => stage(SimSet::Inputs).after(ActionsSet::HoldAtInputs),
+            Self::GrantAtStrike => {
+                (stage(SimSet::Hit).after(ActionsSet::Pay)).before(ActionsSet::Strike)
+            }
+            Self::Interval => stage(SimSet::Hit).after(ActionsSet::Land),
+            Self::GrantAtResolve => stage(SimSet::Resolve).after(ActionsSet::Resolve),
+            Self::ClearDead => stage(SimSet::Resolve).after(Self::GrantAtResolve),
+            Self::Hold => stage(SimSet::Resolve).after(Self::ClearDead),
+            Self::GrantAtEnd => stage(SimSet::Vision).before(UnitsSet::End),
+            Self::Refresh(edge) => SetPlace::gap(edge),
         }
     }
 }
@@ -219,9 +269,22 @@ impl Module for Stats {
     const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = StatsSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<StatsSet>();
+        d.timed::<ActionPassives>();
+        d.timed::<Modifiers>();
+        d.timed::<ModifierClocks>();
+        d.scratch::<Due<IntervalDue>>();
+        d.section::<ModifiersData>();
+        d.section::<TypePoolsData>();
+        d.section::<StatsData>();
+        d.section::<PassiveData>();
+        d.section::<ModeStatsData>();
+        d.section::<ModePoolsData>();
+        d.removals::<Dead>();
+        d.removals::<Modifiers>();
+        d.removals::<Owner>();
         d.component::<PlayerModifiers>();
         d.component::<Level>();
         d.component::<Modifiers>();
@@ -233,14 +296,39 @@ impl Module for Stats {
         d.cache::<LiveCarriers>();
         d.derived::<UnitStats>();
         d.part::<Player, PlayerModifiers>(|_| Some(PlayerModifiers::default()));
-        d.book::<ModifierBook>();
-        d.book::<StatBook>();
-        d.book::<PoolBook>();
+        d.non_send::<ModifierEvents>(|world, role| Some(ModifierEvents::install(world, role)));
+        d.rule(ModifiersData::rule);
+        d.extend::<StateFields>(ModifiersData::state_fields);
+        d.extend::<DeclaredTags>(ModifiersData::granted_tags);
+        d.book::<ModifierBook>(ModifierBook::build);
+        d.book::<ParamBook>(ActionParams::book);
+        d.listed::<ModifierEffectData>();
+        d.listed::<PurgeEffectData>();
+        d.listed::<RestoreEffectData>();
+        d.fact::<ModifierAppliers>(ModifierAppliers::build);
+        d.fact::<ModifierWays>(ModifierWays::build);
+        d.rule(PassiveData::rule);
+        d.rule(ModifierWays::rule);
+        d.extend::<StatGraph>(ModifierWays::stat_edges);
+        d.extend::<NamedScripts>(ModifierWays::named_scripts);
+        d.fact::<ModifierNames>(ModifierBook::names_fact);
+        d.fact::<ModifierParamTable>(ModifierParamTable::build);
+        d.fact::<StatGraph>(StatGraph::build);
+        d.rule(StatGraph::rule);
+        d.book::<StatBook>(StatBook::build);
+        d.fact::<StatNames>(StatBook::names_fact);
+        d.fact::<UnitSteps>(StatBook::unit_steps);
+        d.fact::<PoolNames>(ModePoolsData::names);
+        d.rule(ModePoolsData::rule);
+        d.book::<PoolBook>(PoolBook::build);
+        d.fact::<TypePools>(TypePools::build);
+        d.rule(TypePools::rule);
         d.column::<StatsColumn, RowReads>(StatsColumn::fill_row);
         d.call_params::<StatsCall>();
         d.api(StatsApi::register);
-        d.book::<ByType<Pools>>();
-        d.book::<ByType<TypePassive>>();
+        d.hook::<OnInterval>(Status::Runs(ApiVersion::FIRST));
+        d.book::<ByType<Pools>>(TypePools::pools);
+        d.book::<ByType<TypePassive>>(TypePassive::book);
         d.callback::<SpawnHooks>(Capability::Stats, TypePassive::grant);
         d.part::<BodyUnit, Level>(|_| Some(Level::default()));
         d.observer(Level::raise);
@@ -254,36 +342,78 @@ impl Module for Stats {
     /// derived again, and the components that hold their effect follow them; as each tick
     /// starts, the living units' pools regenerate. The grants the sources push apply as each
     /// tick starts, before attacks strike, before units die and as the tick ends. With no stat
-    /// book, as before a mode loads one, nothing changes.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems((
-            ModifierEnds::expire_modifiers.in_set(StatsSet::Expire),
-            Refresh::regenerate.in_set(StatsSet::Regenerate),
-            GrantPass::run.in_set(StatsSet::GrantAtInputs),
-            GrantPass::run.in_set(StatsSet::GrantAtStrike),
-            (PlayerGrants::want, GrantPass::run)
-                .chain()
-                .in_set(StatsSet::GrantAtResolve),
-            GrantPass::run.in_set(StatsSet::GrantAtEnd),
-            ModifierEnds::clear_dead_modifiers.in_set(StatsSet::ClearDead),
-        ));
+    /// book, as before a mode loads one, nothing changes. The regen and the intervals install
+    /// only in a match whose pools and modifiers have them (02-engine-core.md, Books before the
+    /// install).
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        let regenerates = cx.book::<PoolBook>().is_some_and(PoolBook::regenerates);
+        let intervals = cx
+            .book::<ModifierBook>()
+            .is_some_and(ModifierBook::has_intervals);
+        cx.add(StatsSet::Expire, ModifierEnds::expire_modifiers);
+        if regenerates {
+            cx.add(StatsSet::Regenerate, Refresh::regenerate);
+        }
+        // The actions' passives and holds push their grants right before each pass applies them.
+        for set in [
+            StatsSet::GrantAtInputs,
+            StatsSet::GrantAtStrike,
+            StatsSet::GrantAtEnd,
+        ] {
+            cx.add(set, (ActionPassives::want, GrantPass::run).chain());
+        }
+        cx.add(
+            StatsSet::GrantAtResolve,
+            (ActionPassives::want, PlayerGrants::want, GrantPass::run).chain(),
+        );
+        cx.add(StatsSet::ClearDead, ModifierEnds::clear_dead_modifiers);
+        if intervals {
+            cx.add(StatsSet::Interval, ModifierIntervals::count_intervals);
+            cx.scripted(
+                StatsSet::Interval,
+                ModifierIntervals::run_intervals.after(ModifierIntervals::count_intervals),
+            );
+        }
         cx.by_role(
-            (AuraCarriers::track, HeldPass::run::<ServerForm>)
-                .chain()
-                .in_set(StatsSet::Hold),
-            (AuraCarriers::track, HeldPass::run::<ClientForm>)
-                .chain()
-                .in_set(StatsSet::Hold),
+            StatsSet::Hold,
+            (
+                AuraCarriers::track,
+                UnitGrid::before_reading(HeldPass::run::<ServerForm>),
+            )
+                .chain(),
+            (
+                AuraCarriers::track,
+                UnitGrid::before_reading(HeldPass::run::<ClientForm>),
+            )
+                .chain(),
         );
         for set in StatsSet::ALL {
             if let StatsSet::Refresh(_) = set {
-                cx.systems(Refresh::run.in_set(set));
+                cx.add(set, Refresh::run);
             }
         }
     }
 }
 
 impl Stats {
+    /// Restores `amount` of unit `id`'s `pool`, unscaled, when the unit lives: it is not dead, and
+    /// its life, if it has one, is above zero, as a unit with no life lives until it dies.
+    pub fn restore(world: &mut World, id: StableId, pool: PoolId, amount: Num) {
+        let Some(entity) = world.entity_of(id) else {
+            return;
+        };
+        if amount <= Num::ZERO {
+            return;
+        }
+        let life = world.life_pool();
+        let mut unit = world.entity_mut(entity);
+        if let Ok(pools) = unit.get_components_mut::<UnitPools>()
+            && pools.lives()
+        {
+            pools.of(life).add(pool, amount);
+        }
+    }
+
     /// Ends the applications of the modifiers `carrier` holds that grant `tag`: an instance no
     /// hold keeps ends, and one a passive, an aura, an area or a player holds stays, as its holder
     /// would apply it again.
@@ -292,9 +422,9 @@ impl Stats {
             return;
         };
         let book = world.resource::<ModifierBook>().clone();
-        if let Some(mut carried) = CarriedMut::of(world, entity) {
+        CarriedMut::with(world, entity, |carried| {
             carried.purge(|id| book.tags(id).contains(tag));
-        }
+        });
     }
 
     /// Adds `add` from a world alone, as `HeldModifierAdds::add` adds it, its shares and state
@@ -325,9 +455,7 @@ impl Stats {
             .resource::<ModifierBook>()
             .application(at, adding)
             .owned();
-        if let Some(mut carried) = CarriedMut::of(world, entity) {
-            carried.apply(application);
-        }
+        CarriedMut::with(world, entity, |carried| carried.apply(application));
     }
 
     fn remove_modifier(
@@ -336,9 +464,8 @@ impl Stats {
         id: ModifierId,
         source: Option<StableId>,
     ) {
-        let entity = world.entity_of(carrier);
-        if let Some(mut carried) = entity.and_then(|entity| CarriedMut::of(world, entity)) {
-            carried.remove(id, source);
+        if let Some(entity) = world.entity_of(carrier) {
+            CarriedMut::with(world, entity, |carried| carried.remove(id, source));
         }
     }
 
@@ -350,9 +477,10 @@ impl Stats {
             return;
         }
         let now = world.resource::<SimTick>().start();
-        let entity = world.entity_of(data.carrier);
-        if let Some(mut carried) = entity.and_then(|entity| CarriedMut::of(world, entity)) {
-            carried.write(data.id, data.source, data.stacks, &data.state, now);
+        if let Some(entity) = world.entity_of(data.carrier) {
+            CarriedMut::with(world, entity, |carried| {
+                carried.write(data.id, data.source, data.stacks, &data.state, now);
+            });
         }
     }
 
@@ -376,27 +504,26 @@ pub mod internals {
     use std::collections::BTreeMap;
 
     use bevy_ecs::world::{Mut, World};
+    use campfire_common::DeclaredName;
     use campfire_declare::Book;
+    use campfire_declare::internals::BookLoad;
     use campfire_math::Num;
     use campfire_script::ScriptId;
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId, TickRate};
-    use campfire_units::{ScriptBook, UnitTypeBook, Units};
+    use campfire_units::{Life, ScriptBook, StatId, UnitTypeBook, Units};
     use campfire_values::{
-        ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet,
-        UnitType,
+        ActionId, ModifierId, NameId, Names, PackageIndex, Param, Rank, Stat, TagSet, UnitType,
     };
 
     use crate::Stats;
     use crate::applier::Applier;
-    use crate::life::Life;
     use crate::lifetime::Hold;
     use crate::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
     use crate::modifier_data::ModifierData;
     use crate::modifiers::Modifiers;
     use crate::param_book::ParamBook;
     use crate::stat_book::StatBook;
-    use crate::stat_id::StatId;
     use crate::stat_op::StatOp;
     use crate::stat_rule::StatRule;
     use crate::stats_effect::StatsEffect;
@@ -410,8 +537,8 @@ pub mod internals {
                 .named((package, name))
         }
 
-        /// Gives `target` the modifier `id` from `source`, by `action` at `rank`, and a passive when
-        /// `passive`, as an application in the running tick would.
+        /// Gives `target` the modifier `id` from `source`, by `action` at `rank`, and a passive
+        /// when `passive`, as an application in the running tick would.
         pub fn give_modifier(
             world: &mut World,
             target: StableId,
@@ -539,8 +666,8 @@ pub mod internals {
             world.resource_mut::<StatBook>().add_base(unit_type, values);
         }
 
-        /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool stats;
-        /// the pools its scripts name stay named.
+        /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool
+        /// stats; the pools its scripts name stay named.
         pub fn load_rules(world: &mut World, rules: &BTreeMap<Stat, StatRule>) {
             Self::load_book(world, StatBook::new(rules, Num::MAX));
         }

@@ -23,9 +23,11 @@ impl AppendWatch {
         pending.stopped || self.durable() == pending.records
     }
 
-    /// The write or sync that failed, the first time it is asked after the failure; none
-    /// before it, and after.
+    /// The failure that stopped the writer, the first time it is asked after the failure; none
+    /// before it, and after. A write and its sync that run past `AppendWriter::HUNG_SYNC` as it
+    /// is asked stop the writer, so an owner that asks each frame sees a hung disk.
     pub fn take_failure(&self) -> Option<AppendError> {
+        self.0.check_hung();
         self.0.failure.take()
     }
 

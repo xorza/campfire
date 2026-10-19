@@ -3,18 +3,17 @@ use std::fmt::{self, Write as _};
 use std::path::{Path, PathBuf};
 
 use campfire_capabilities::Match;
-use campfire_combat::Deaths;
-use campfire_common::{PlayerSlot, StateHash, Tick};
-use campfire_log::ErrorReport;
+use campfire_common::ErrorReport;
+use campfire_common::{DeclaredName, PlayerSlot, StateHash, Tick};
 use campfire_package::ModePackages;
-use campfire_players::PlayersWorld;
+use campfire_players::{PlayersWorld, ResourcesData};
 use campfire_script::ScriptFailures;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateRegistry};
-use campfire_stats::{PoolId, PoolMeters};
+use campfire_stats::PoolMeters;
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;
-use campfire_units::{Dead, Owner};
-use campfire_values::{DeclaredName, NameId, Names, ResourceId, Team};
+use campfire_units::{Dead, Deaths, Owner, PoolId};
+use campfire_values::{NameId, Names, ResourceId, Team};
 
 /// The pinned record of a whole match, one line a tick: the state hash, which changes with the
 /// state's layout, and a digest of the match's behaviour, which does not. A change of layout
@@ -42,8 +41,8 @@ const DIGITS: usize = 16;
 impl Golden {
     /// A record of a match of `packages` for `players` players.
     pub(crate) fn new(packages: &ModePackages, players: u32) -> Self {
-        let names = packages.data().resources.iter();
-        let names: Names<ResourceId> = names.map(DeclaredName::as_str).collect();
+        let data = packages.data().section_or_default::<ResourcesData>();
+        let names: Names<ResourceId> = data.0.iter().map(DeclaredName::as_str).collect();
         let resources = names.iter().map(|(resource, _)| resource).collect();
         Self {
             resources,
@@ -53,8 +52,8 @@ impl Golden {
         }
     }
 
-    /// Records the tick `game` just ran, whose state hash `state_hash` is, as the `CopyCheck` of the
-    /// tick gives it: the state is hashed once a tick.
+    /// Records the tick `game` just ran, whose state hash `state_hash` is, as the `CopyCheck` of
+    /// the tick gives it: the state is hashed once a tick.
     pub(crate) fn record(&mut self, game: &Match, state_hash: StateHash) {
         let behaviour = self.behaviour(game);
         self.ticks.push(GoldenTick {
@@ -110,11 +109,11 @@ impl Golden {
                 }
             }
         }
-        if let Some(failures) = game.get_non_send::<ScriptFailures>() {
+        if let Some(failures) = game.get_resource::<ScriptFailures>() {
             for failure in failures.get() {
                 let id = failure.id.map_or(u64::MAX, StableId::get);
                 bytes.extend_from_slice(&id.to_le_bytes());
-                write!(Text(bytes), "{} {}", failure.hook.name(), failure.error)
+                write!(Text(bytes), "{} {}", failure.hook.name, failure.error)
                     .expect("text writes into bytes");
             }
         }

@@ -14,16 +14,14 @@ use campfire_values::TrackId;
 use crate::error::ProgressionRefusal;
 use crate::experience::{Experience, TrackXp};
 use crate::points::Points;
-use crate::track_book::TrackBook;
 
 /// The parts of a unit progression reads into its row: its experience and its points.
 pub(crate) type RowReads = (Option<&'static Experience>, Option<&'static Points>);
 
-/// What progression adds to the script view: the tracks the mode declares, and each unit's
-/// tracks, its experience and level on each, and its points, a row each.
+/// What progression adds to the script view: each unit's tracks, its experience and level on
+/// each, and its points, a row each.
 #[derive(Debug, Default)]
 pub struct ProgressionColumn {
-    book: TrackBook,
     rows: KeptRows<ProgressionRows>,
 }
 
@@ -51,11 +49,8 @@ impl ViewColumn for ProgressionColumn {
         &mut self.rows
     }
 
-    fn begin(&mut self, world: &World) -> bool {
-        let book = world.resource::<TrackBook>();
-        if !book.same(&self.book) {
-            self.book = book.clone();
-        }
+    /// Its rows derive from the units' parts alone.
+    fn begin(&mut self, _: &World) -> bool {
         false
     }
 }

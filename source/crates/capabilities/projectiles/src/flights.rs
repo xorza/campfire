@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 use std::ops::ControlFlow;
 
 use bevy_ecs::entity::Entity;
-use campfire_actions::{Reached, ShotHit, ShotHits, Targets};
-use campfire_deliveries::{Delivered, Deliveries, Delivering};
+use campfire_actions::{Reached, Targets};
+use campfire_deliveries::{AttackShot, Delivered, DeliveredPayload, Delivering, DeliveryQueue};
 use campfire_geometry::{BodyGrid, Placed, Shape, Volume};
 use campfire_math::{Num, Vec3};
 use campfire_script::Filters;
@@ -21,11 +21,10 @@ use crate::struck_units::{Struck, StruckUnits};
 /// of the units a line's step meets, by share of the step.
 #[derive(Debug)]
 pub(crate) struct Flights<'a> {
-    pub(crate) hits: &'a mut ShotHits,
-    pub(crate) deliveries: &'a mut Deliveries,
+    pub(crate) deliveries: &'a mut DeliveryQueue,
     pub(crate) struck: &'a mut StruckUnits,
     /// The units near, when a line or a curve flies.
-    pub(crate) grid: Option<&'a BodyGrid<Entity>>,
+    pub(crate) grid: Option<&'a BodyGrid<Entity, StableId>>,
     pub(crate) met: &'a mut Vec<(Num, StableId)>,
 }
 
@@ -219,7 +218,7 @@ impl Flights<'_> {
             origin.checked_add(offset)
         };
         let to = along(flown + step);
-        let Some(to) = to.filter(|&to| Position::from(to).within_bound()) else {
+        let Some(to) = to.filter(|&to| to.within_bound()) else {
             self.reach(fired, Reached::End, line(from.get(), flown));
             return true;
         };
@@ -340,7 +339,7 @@ impl Flights<'_> {
         let point = curve.point(steps, points);
         let here = map.point(position.get());
         let moved = map.position(point);
-        if !Position::from(moved).within_bound() {
+        if !moved.within_bound() {
             self.reach(fired, Reached::End, hit(position.get(), flown, None));
             return true;
         }
@@ -407,11 +406,13 @@ impl Flights<'_> {
         let Fired { projectile, team } = fired;
         let source = projectile.source();
         match projectile.payload() {
-            Payload::Attack(damage) => self.hits.0.push(ShotHit {
-                source,
-                team,
+            Payload::Attack(damage) => self.deliveries.deliver(Delivered {
+                payload: DeliveredPayload::Attack(AttackShot {
+                    source,
+                    team,
+                    damage,
+                }),
                 reach,
-                damage,
                 hit,
             }),
             Payload::Action {
@@ -420,13 +421,13 @@ impl Flights<'_> {
                 start,
                 ..
             } => self.deliveries.deliver(Delivered {
-                by: Delivering {
+                payload: DeliveredPayload::Action(Delivering {
                     source,
                     action,
                     rank,
                     start,
                     launch: None,
-                },
+                }),
                 reach,
                 hit,
             }),

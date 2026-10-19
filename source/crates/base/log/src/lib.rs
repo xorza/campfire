@@ -6,7 +6,6 @@
 
 #[cfg(feature = "start")]
 mod error;
-mod error_report;
 #[cfg(any(feature = "internals", feature = "start"))]
 mod json_layer;
 mod json_text;
@@ -17,7 +16,6 @@ mod log_line;
 #[cfg(feature = "start")]
 mod logging;
 
-pub use crate::error_report::ErrorReport;
 pub use crate::json_text::JsonText;
 pub use crate::log_event::LogEvent;
 #[cfg(feature = "start")]

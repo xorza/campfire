@@ -1,18 +1,32 @@
-use campfire_common::EnumAll;
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
 use campfire_values::{NameId, TrackId};
 use thiserror::Error;
 
 /// Why the mode's tracks do not load. Packages are untrusted, so each is an expected failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum TrackError {
+    /// The slot kind of that name gives its ranks levels, in a mode with no `level` track.
+    #[error("slot kind {0}: its ranks' `levels` need a `level` track")]
+    RankLevels(DeclaredName),
     /// More tracks than a unit holds.
     #[error("more than {} tracks", TrackId::LIMIT)]
     TooMany,
     /// More than one track is the `level` track.
     #[error("more than one `level` track")]
     LevelTracks,
+}
+
+/// Why the deaths' experience does not load: a fault of the mode's data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum ExperienceError {
+    /// A unit type gives `[experience]` in a mode that gives none.
+    #[error("a unit type's experience in a mode of no [experience]")]
+    NoModeExperience,
+    /// A list of experience of `given` values, for a track of `levels`.
+    #[error("experience for {given} levels, of a track of {levels}")]
+    Levels { given: usize, levels: usize },
 }
 
 /// Why the progression capability refused a script call: a script gave it a value it does not

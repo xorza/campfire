@@ -6,6 +6,7 @@ use campfire_state_types::{DataKind, Replication, SentOnInsert};
 use serde::{Deserialize, Serialize};
 
 use crate::bits256::Bits256;
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 
 /// A unit's team: its index in the mode's list of teams. How two teams regard each other is
@@ -57,4 +58,8 @@ impl SimComponent for Team {
 impl Replication for Team {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentOnInsert;
+}
+
+impl Named for Team {
+    const NAMES: NameKind = NameKind::new("team", Article::A, NameScope::Match);
 }

@@ -17,6 +17,10 @@ pub enum ReadError {
     /// refuses a key that is not a regular file.
     #[error("it is not a regular file")]
     NotFile,
+    /// Its last name is a link, which a read does not follow (02-engine-core.md, Reads follow
+    /// no link).
+    #[error("it is a link, which a read does not follow")]
+    Link,
     /// A listing's path is not a directory.
     #[error("it is not a directory")]
     NotDir,

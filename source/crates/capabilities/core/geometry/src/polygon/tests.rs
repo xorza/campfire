@@ -56,7 +56,7 @@ fn a_polygon_needs_three_points_and_edges_that_meet_only_where_they_follow() {
     }
     // A point past the world's bound, 2²⁰ m, by a bit, on either axis and either side, or at a
     // number's end; a triangle to the bound itself is one.
-    let bound = Position::BOUND;
+    let bound = Vec3::BOUND;
     let bit = Num::from_bits(1);
     for past in [
         [bound + bit, Num::ZERO],
@@ -112,4 +112,13 @@ fn a_polygon_holds_the_points_inside_it_and_on_its_edge_exactly() {
     for at in out {
         assert!(!arrow.holds(quarters(at)), "{at:?}");
     }
+    // Inside alone, off the edge: the tip's middle, not the vertices or the edges' points, and
+    // nothing outside.
+    let quartered = |at: [i64; 2]| at.map(|at| Num::QUARTER * Num::int(at));
+    let inside: Vec<bool> = held
+        .iter()
+        .map(|&at| arrow.holds_inside(quartered(at)))
+        .collect();
+    assert_eq!(inside, [true, false, false, false, false, false]);
+    assert!(out.iter().all(|&at| !arrow.holds_inside(quartered(at))));
 }

@@ -1,19 +1,30 @@
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 use bevy_ecs::world::World;
-use campfire_actions::ActionSlots;
-use campfire_declare::{ByType, Declarations, InstallCx, Module};
+use campfire_actions::{ActionSlots, SlotClaims};
+use campfire_declare::{ByType, Declarations, InstallCx, Module, NoSet};
 use campfire_sim::{Breach, Capability};
 use campfire_values::UnitType;
 
+use crate::use_orders::UseOrders;
+
+mod error;
 mod interaction_api;
+mod interaction_books;
+mod interaction_rules;
+mod use_action_data;
 mod use_data;
+mod use_orders;
 mod use_slot;
 mod use_spec;
 mod uses_data;
 mod using;
 
+pub use crate::error::UseError;
 pub use crate::interaction_api::InteractionApi;
+pub use crate::use_action_data::UseActionData;
 pub use crate::use_data::UseData;
 pub use crate::use_slot::UseSlot;
 pub use crate::use_spec::UseSpec;
@@ -55,15 +66,23 @@ impl Module for Interaction {
     const CAPABILITY: Option<Capability> = Some(Capability::Interaction);
     const NEEDS: &'static [Capability] = &[];
     const USES: &'static [Capability] = &[];
+    type Set = NoSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.book::<ByType<UseSpec>>();
-        d.book::<ByType<UseSlot>>();
+        d.listed::<UseActionData>();
+        d.section::<UseData>();
+        d.section::<UsesData>();
+        d.book::<ByType<UseSpec>>(UseSpec::book);
+        d.book::<ByType<UseSlot>>(UseSlot::book);
+        d.extend::<ByType<ActionSlots>>(Self::use_slots);
+        d.extend::<SlotClaims>(Self::claim_slots);
+        d.rule(Self::rule);
         d.check::<ActionSlots>(Self::users_hold_their_slot);
         d.api(InteractionApi::register);
+        d.observer(UseOrders::ordered);
     }
 
-    /// Adds nothing to the schedule: the `use` order of `orders` fills a use slot, and the
+    /// Adds nothing to the schedule: a `use` order fills a use slot as it is given, and the
     /// abilities' casts run it.
-    fn install(_: &mut InstallCx<'_>) {}
+    fn install(_: &mut InstallCx<'_, Self::Set>) {}
 }

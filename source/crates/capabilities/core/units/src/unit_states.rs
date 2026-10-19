@@ -12,7 +12,7 @@ use crate::unit_state_book::UnitStateBook;
 /// A new unit's script state: the values of each class of its fields, in the order of their
 /// names, by the class's place, each class a `UnitState` of its own as the unit spawns.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct UnitStates([Vec<StateValue>; SyncTo::ALL.len()]);
+pub(crate) struct UnitStates([Vec<StateValue>; SyncTo::ALL.len()]);
 
 /// Adds a class's values to a spawning unit's write as its `UnitState`, unless it has none.
 struct InsertClass<'t, 'w, 's> {
@@ -31,7 +31,7 @@ struct WriteClass<'w> {
 
 impl UnitStates {
     /// The state a unit of `unit_type` spawns with, by `book`, each field at its first value.
-    pub fn initial(book: &UnitStateBook, unit_type: UnitType) -> Self {
+    pub(crate) fn initial(book: &UnitStateBook, unit_type: UnitType) -> Self {
         let mut states = Self::default();
         if let Some(schema) = book.schema(unit_type) {
             for (value, place) in schema.initial().iter().zip(schema.places()) {
@@ -46,12 +46,12 @@ impl UnitStates {
     }
 
     /// Adds `value`, the next field of class `sync`.
-    pub fn push(&mut self, sync: SyncTo, value: StateValue) {
+    pub(crate) fn push(&mut self, sync: SyncTo, value: StateValue) {
         self.class_mut(sync).push(value);
     }
 
     /// Sets the field at `place`, of a value of its type, as a call's write.
-    pub fn set(&mut self, place: StatePlace, value: StateValue) {
+    pub(crate) fn set(&mut self, place: StatePlace, value: StateValue) {
         let held = &mut self.class_mut(place.sync)[place.at];
         debug_assert_eq!(held.kind(), value.kind(), "a value of the field's type");
         *held = value;
@@ -59,7 +59,7 @@ impl UnitStates {
 
     /// Adds a component to `target`, a spawning unit's write, for each class it holds a field
     /// of.
-    pub fn push_into(self, target: &mut PartWriter<'_, '_>) {
+    pub(crate) fn push_into(self, target: &mut PartWriter<'_, '_>) {
         for (sync, values) in SyncTo::ALL.into_iter().zip(self.0) {
             InsertClass { target, values }.on(sync);
         }
@@ -67,7 +67,7 @@ impl UnitStates {
 
     /// Writes `value` to the field at `place` of the unit of `entity`, which holds the field's
     /// class, as a unit holds each class its type declares a field of.
-    pub fn write(world: &mut World, entity: Entity, place: StatePlace, value: StateValue) {
+    pub(crate) fn write(world: &mut World, entity: Entity, place: StatePlace, value: StateValue) {
         let at = place.at;
         WriteClass {
             world,

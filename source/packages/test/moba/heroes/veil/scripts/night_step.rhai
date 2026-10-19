@@ -1,9 +1,9 @@
 fn on_resolve(ctx, caster, target) {
-    ctx.dash(caster, target, ctx.p.speed);
+    ctx.dash(caster, target, ctx.params.speed);
 }
 
 fn on_end(ctx, caster, hit) {
-    ctx.damage(hit.target, ctx.p.damage, "magic");
+    ctx.damage(hit.aimed, "magic", ctx.params.damage);
 }
 
 fn on_takedown(ctx, m, victim) {

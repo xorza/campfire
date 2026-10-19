@@ -3,14 +3,13 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_capabilities::{Match, Release};
-use campfire_common::Ticks;
+use campfire_common::{DeclaredName, Ticks};
 use campfire_math::Num;
-use campfire_script::{Filter, NameKind, UnknownName};
+use campfire_script::{Filter, UnknownName};
 use campfire_stats::*;
-use campfire_units::UnitTypes;
+use campfire_units::{StatId, UnitTypes};
 use campfire_values::{
-    DeclaredName, FilterData, ModifierId, NameId, Names, Number, Param, ParamRef, Ranked, Scalar,
-    Stat,
+    FilterData, ModifierId, NameId, Named, Names, Number, Param, ParamRef, Ranked, Scalar, Stat,
 };
 
 fn name(text: &str) -> DeclaredName {
@@ -30,6 +29,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
         script: None,
         duration_ms: Some(param("bind_ms")),
         interval_ms: Some(Number::Value(Scalar::Int(1500))),
+        interval_revival: IntervalRevival::Reset,
         stacks_expire_ms: Some(param("stun_ms")),
         reapply: Reapply::Stack,
         max_stacks: NonZeroU32::new(3),
@@ -65,7 +65,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
     let stat = |stat: &Stat| {
         let at = stats.iter().position(|at| at == stat);
         at.map(StatId::at)
-            .ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
+            .ok_or_else(|| UnknownName::new(StatId::NAMES, stat))
     };
     let names = SpecNames {
         stat,
@@ -85,6 +85,7 @@ fn a_spec_resolves_every_name_of_its_modifier_at_load() {
     let expected = ModifierSpec {
         duration: Some(SpecTime::Param(ParamPlace::Own(0))),
         interval: Some(SpecTime::Fixed(Ticks::new(45))),
+        revival: IntervalRevival::Reset,
         stacks_expire: Some(SpecTime::Param(ParamPlace::Applier(
             appliers.named("stun_ms").unwrap(),
         ))),
@@ -136,13 +137,13 @@ fn a_spec_fails_on_a_name_the_match_does_not_have() {
     let names = SpecNames {
         stat: |stat: &Stat| {
             let found = (*stat == armor).then(|| StatId::new(0));
-            found.ok_or_else(|| UnknownName::new(NameKind::Stat, stat))
+            found.ok_or_else(|| UnknownName::new(StatId::NAMES, stat))
         },
         tags: types.tags(),
         rate: Match::TEST_RATE,
         modifier: |modifier: &str| {
             let found = (modifier == "chill").then(|| ModifierId::new(0));
-            found.ok_or_else(|| UnknownName::new(NameKind::Modifier, modifier))
+            found.ok_or_else(|| UnknownName::new(ModifierId::NAMES, modifier))
         },
     };
     let change = StatChange {
@@ -177,9 +178,9 @@ fn a_spec_fails_on_a_name_the_match_does_not_have() {
         },
     ];
     let unknown = [
-        (NameKind::Modifier, "frost"),
-        (NameKind::Stat, "attack_speed"),
-        (NameKind::Filter, "allies:frozen"),
+        (ModifierId::NAMES, "frost"),
+        (StatId::NAMES, "attack_speed"),
+        (Filter::NAMES, "allies:frozen"),
     ];
     for (data, (of, name)) in cases.iter().zip(unknown) {
         let fails = Err(SpecError::Unknown(UnknownName::new(of, name)));

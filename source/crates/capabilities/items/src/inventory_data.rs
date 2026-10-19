@@ -1,7 +1,8 @@
+use campfire_declare::{Section, SectionTable};
 use std::num::NonZeroU8;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
 /// A unit type's `inventory` section: how many slots it carries items in, at least one, and the
@@ -14,5 +15,10 @@ pub struct InventoryData {
 }
 
 impl DataSection for InventoryData {
-    const TABLE: DataTable = DataTable::Inventory;
+    const TABLE: DataTable = DataTable::new("A unit type's `inventory`");
+}
+
+impl Section for InventoryData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "inventory";
 }

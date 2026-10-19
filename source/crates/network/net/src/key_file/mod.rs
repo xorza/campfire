@@ -1,6 +1,5 @@
-use campfire_protocol::{Entropy, MAX_NSEC_FILE_LEN, decode_nsec, encode_nsec};
+use campfire_protocol::{Entropy, MAX_NSEC_FILE_LEN, Signer, decode_nsec, encode_nsec};
 use campfire_store::{DurableCreateError, PathError, ReadError, SecretFile};
-use secp256k1::Keypair;
 
 use crate::key_file::error::KeyFileError;
 
@@ -12,27 +11,30 @@ pub(crate) mod error;
 pub struct KeyFile;
 
 impl KeyFile {
-    /// The key in `file`, whose access is checked before its key is read.
-    pub fn read(file: &SecretFile) -> Result<Keypair, KeyFileError> {
+    /// The signer of the key in `file`, whose access is checked before its key is read, and
+    /// whose signatures draw on `entropy`. The key goes straight into its signer, its one owner.
+    pub fn read(file: &SecretFile, entropy: Entropy) -> Result<Signer, KeyFileError> {
         let bytes = file.read(MAX_NSEC_FILE_LEN).map_err(KeyFileError::Read)?;
-        decode_nsec(&bytes).map_err(KeyFileError::NotNsec)
+        let key = decode_nsec(&bytes).map_err(KeyFileError::NotNsec)?;
+        Ok(Signer::new(key, entropy))
     }
 
-    /// The key in `file`, or, when there is no file, a new key from `entropy`'s random bytes,
-    /// created there first; when another process created it meanwhile, its key.
-    pub fn read_or_create(file: &SecretFile, entropy: Entropy) -> Result<Keypair, KeyFileError> {
-        match Self::read(file) {
+    /// The signer of the key in `file`, as `read` gives it, or, when there is no file, of a new
+    /// key from `entropy`'s random bytes, created there first; when another process created it
+    /// meanwhile, of its key.
+    pub fn read_or_create(file: &SecretFile, entropy: Entropy) -> Result<Signer, KeyFileError> {
+        match Self::read(file, entropy) {
             Err(KeyFileError::Read(PathError {
                 error: ReadError::Missing,
                 ..
             })) => {
-                let key = entropy.keypair();
-                match file.create_new(encode_nsec(&key).as_bytes()) {
-                    Ok(()) => Ok(key),
+                let signer = Signer::new(entropy.keypair(), entropy);
+                match file.create_new(encode_nsec(&signer).as_bytes()) {
+                    Ok(()) => Ok(signer),
                     Err(PathError {
                         error: DurableCreateError::Exists,
                         ..
-                    }) => Self::read(file),
+                    }) => Self::read(file, entropy),
                     Err(PathError {
                         path,
                         error: DurableCreateError::Make(error),

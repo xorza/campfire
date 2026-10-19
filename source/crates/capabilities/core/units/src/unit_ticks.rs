@@ -1,23 +1,22 @@
-use bevy_ecs::entity::Entity;
-use bevy_ecs::system::{Commands, NonSendMut, Query, Res, ResMut};
-use campfire_script::{ScriptBudgets, ScriptFailures};
-use campfire_sim::SimTick;
+use bevy_ecs::system::{Commands, Local, NonSend, Query, Res, ResMut};
+use campfire_script::{ScriptBudgets, ScriptFailures, ScriptHost, ScriptPrints};
+use campfire_sim::{DueIndex, DueUnit, SimTick};
 
 use crate::lifespan::Lifespan;
 use crate::new_unit_states::NewUnitStates;
 
 /// The core's systems that bound each tick: what a tick used cleared as it starts, the timed
-/// lives that end with it, and the writes it left to units that never spawned.
+/// lives that end with it, the writes it left to units that never spawned, and its prints.
 #[derive(Debug)]
 pub(crate) struct UnitTicks;
 
 impl UnitTicks {
-    /// Clears, as each tick starts, the script budgets' use and the failures recorded.
+    /// Fills every pool, and clears the failures the last tick recorded, as each tick starts.
     pub(super) fn begin_tick(
         mut budgets: ResMut<'_, ScriptBudgets>,
-        mut failures: NonSendMut<'_, ScriptFailures>,
+        mut failures: ResMut<'_, ScriptFailures>,
     ) {
-        budgets.begin_tick();
+        budgets.refill();
         failures.clear();
     }
 
@@ -27,16 +26,33 @@ impl UnitTicks {
         new_states.clear();
     }
 
+    /// Moves what the scripts printed into the report, as each tick ends, after its last call.
+    pub(super) fn report_prints(
+        tick: Res<'_, SimTick>,
+        host: NonSend<'_, ScriptHost>,
+        mut prints: ResMut<'_, ScriptPrints>,
+    ) {
+        host.take_prints(tick.start(), &mut prints);
+    }
+
     /// Despawns each unit whose timed life ends with this tick, at its end, as the dead despawn: it
-    /// is seen and sees in this tick's Vision stage for the last time.
+    /// is seen and sees in this tick's Vision stage for the last time. It visits only the units
+    /// the index of the lives that end holds due, in a buffer it keeps.
     pub(super) fn end_lifespans(
         tick: Res<'_, SimTick>,
-        units: Query<'_, '_, (Entity, &Lifespan)>,
+        mut index: ResMut<'_, DueIndex<Lifespan>>,
+        units: Query<'_, '_, &Lifespan>,
         mut commands: Commands<'_, '_>,
+        mut due: Local<'_, Vec<DueUnit>>,
     ) {
         let now = tick.start();
-        for (entity, lifespan) in &units {
-            if lifespan.ends_after(now) {
+        due.clear();
+        index.take_due(now, &mut due);
+        for &DueUnit { entity, .. } in &*due {
+            if units
+                .get(entity)
+                .is_ok_and(|lifespan| lifespan.ends_after(now))
+            {
                 commands.entity(entity).despawn();
             }
         }

@@ -1,26 +1,31 @@
 use std::collections::BTreeSet;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_ecs::world::World;
 use campfire_common::Version;
 use campfire_log::LogEvent;
 use campfire_package::ModePackages;
-use campfire_protocol::{JournalFrames, SessionId, SessionLog, SessionPrivate, Signer};
-use campfire_runner::{ResumeAt, Session, SessionSource, SessionWorld};
+use campfire_protocol::{
+    JournalFrames, ServerSeed, SessionId, SessionLog, SessionPrivate, SessionTerms, Signer,
+};
+use campfire_runner::{
+    CheckedTerms, ResumeAt, Session, SessionRules, SessionSource, SessionWorld, StartError,
+};
 use campfire_sim::StateRegistry;
 use campfire_store::{
     AppendOpenError, DirEntries, DurableDir, DurableDirError, DurableFile, InputFile, PathError,
     ReadError, Stamped,
 };
 
+use crate::events::journal_cut::JournalCut;
 use crate::events::session_aborted::SessionAborted;
 use crate::sim_server::checkpoints::Checkpoints;
-use crate::sim_server::error::RestoreMatchError;
+use crate::sim_server::error::MatchBeginError;
 use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
 use crate::sim_server::server_dir::ServerDir;
-use crate::sim_server::server_signer::ServerSigner;
 use crate::sim_server::session_dir::error::{
     AbortError, FindError, PublishError, RestoreError, SessionCreateError, WaitingError,
 };
@@ -35,6 +40,7 @@ pub(crate) mod error;
 /// its log is published in the data directory, which marks it done.
 #[derive(Debug)]
 pub struct SessionDir {
+    session: SessionId,
     path: PathBuf,
 }
 
@@ -50,7 +56,8 @@ pub struct SessionFiles {
 #[derive(Debug)]
 pub struct RestoredSession {
     pub private: SessionPrivate,
-    /// The log its journal rebuilds: what the server held when it wrote the last record.
+    /// The log its journal rebuilds, whose header holds the session's terms: what the server
+    /// held when it wrote the last record.
     pub log: SessionLog,
     /// Its journal, cut to its whole frames, open to append, and its snapshots.
     pub files: SessionFiles,
@@ -66,17 +73,20 @@ pub struct RestoredSession {
 pub struct Publisher<'a> {
     pub data: &'a ServerDir,
     pub packages: &'a ModePackages,
-    pub signer: &'a Signer,
+    pub signer: &'a Arc<Signer>,
 }
 
 impl SessionDir {
-    /// Makes the directory of the session whose terms `private` holds, under `data`, and writes
-    /// `private` into it.
-    pub fn create(data: &ServerDir, private: &SessionPrivate) -> Result<Self, SessionCreateError> {
+    /// Makes the directory of `session` under `data`, and writes `private` into it.
+    pub fn create(
+        data: &ServerDir,
+        session: SessionId,
+        private: &SessionPrivate,
+    ) -> Result<Self, SessionCreateError> {
         DurableDir::create(&data.layout().sessions_dir())?;
-        let path = data.layout().session_dir(private.terms.session_id());
+        let path = data.layout().session_dir(session);
         DurableDir::create(&path)?;
-        let dir = Self { path };
+        let dir = Self { session, path };
         let mut bytes = Vec::new();
         private.encode(&mut bytes);
         DurableFile::write(&dir.private(), &bytes)?;
@@ -138,6 +148,7 @@ impl SessionDir {
                 return Err(FindError::Several);
             }
             found = Some(Self {
+                session,
                 path: layout.session_dir(session),
             });
         }
@@ -160,10 +171,12 @@ impl SessionDir {
     }
 
     /// Reads the session back: its private record, and the log its journal rebuilds, the
-    /// journal cut to its whole frames; none when the journal holds no record, as a session
-    /// whose match never started has none, and none when a stop as the session opened left no
-    /// private record or no journal. An error for a record that does not read, a session of
-    /// another release, and a journal whose records do not rebuild a log.
+    /// journal cut at its first bad frame, which logs `JournalCut` with the bytes it drops
+    /// (10-sessions.md, A journal is cut at its first bad frame); none when the journal holds no
+    /// record, as a session whose match never started has none, and none when a stop as the
+    /// session opened left no private record or no journal. An error for a record that does not
+    /// read, a journal whose records do not rebuild a log, as one of another release does not,
+    /// one of another session, and a seed chain the terms do not commit to.
     pub fn restore(&self) -> Result<Option<RestoredSession>, RestoreError> {
         let private = InputFile::read_if_present(&self.private(), SessionPrivate::MAX_FILE_LEN)
             .map_err(RestoreError::Read)?;
@@ -171,9 +184,6 @@ impl SessionDir {
             return Ok(None);
         };
         let private = SessionPrivate::decode(&private).map_err(RestoreError::Private)?;
-        if private.terms.release != Version::ENGINE {
-            return Err(RestoreError::OtherRelease(private.terms.release));
-        }
         let path = self.journal();
         let Stamped { bytes, modified } =
             match InputFile::read_stamped(&path, SessionLog::MAX_JOURNAL_LEN) {
@@ -186,12 +196,26 @@ impl SessionDir {
             };
         let mut frames = JournalFrames::new(&bytes).map_err(RestoreError::NotJournal)?;
         let records: Vec<&[u8]> = frames.by_ref().collect();
+        let len = |bytes: usize| u64::try_from(bytes).expect("a file's length fits u64");
+        let whole = len(frames.whole());
+        let cut = JournalCut {
+            session: self.session,
+            bytes: len(bytes.len()) - whole,
+        };
         if records.is_empty() {
+            cut.log_dropped();
             return Ok(None);
         }
-        let log = SessionLog::from_journal(records).map_err(RestoreError::Replay)?;
-        let whole = u64::try_from(frames.whole()).expect("a file's length fits u64");
+        let log =
+            SessionLog::from_journal(records, Version::ENGINE).map_err(RestoreError::Replay)?;
+        if log.session_id() != self.session {
+            return Err(RestoreError::OtherSession(log.session_id()));
+        }
+        if private.seed_chain.commitment() != log.header().terms.seed_commitment {
+            return Err(RestoreError::OtherSeedChain);
+        }
         let journal = SessionJournal::reopen(&path, whole).map_err(RestoreError::Journal)?;
+        cut.log_dropped();
         Ok(Some(RestoredSession {
             private,
             log,
@@ -209,31 +233,88 @@ impl SessionDir {
         DurableDir::remove(&self.path)
     }
 
-    /// Publishes `log`, its seed revealed, in `data`, written durably; the file's path.
-    pub fn publish(data: &ServerDir, log: &SessionLog) -> Result<PathBuf, PublishError> {
-        DurableDir::create(&data.layout().logs_dir())?;
-        let file = data.layout().published_log(log.session_id());
+    /// Publishes the log of `session`, which its journal under `data` holds whole, with the
+    /// server seed `revealed` of its last segment, in `data`, written durably: the file the
+    /// journal publishes in two streaming reads (10-sessions.md, A published log is written from
+    /// the journal); the file's path.
+    pub fn publish(
+        data: &ServerDir,
+        session: SessionId,
+        revealed: &ServerSeed,
+    ) -> Result<PathBuf, PublishError> {
+        let dir = Self {
+            session,
+            path: data.layout().session_dir(session),
+        };
+        let journal = dir.journal();
+        let mut failed = None;
+        let mut walk = |visit: &mut dyn FnMut(&[u8])| {
+            if failed.is_some() {
+                return;
+            }
+            let streamed = InputFile::stream(&journal)
+                .map_err(PublishError::Read)
+                .and_then(|stream| {
+                    JournalFrames::stream(stream, visit).map_err(PublishError::Journal)
+                });
+            if let Err(error) = streamed {
+                failed = Some(error);
+            }
+        };
         let mut bytes = Vec::new();
-        log.encode(&mut bytes);
+        let published = SessionLog::publish(&mut walk, revealed, &mut bytes);
+        if let Some(error) = failed {
+            return Err(error);
+        }
+        published?;
+        DurableDir::create(&data.layout().logs_dir())?;
+        let file = data.layout().published_log(session);
         DurableFile::write(&file, &bytes)?;
         Ok(file)
     }
 }
 
+/// What a session's replay leaves beside its match: the watch of its journal, and its
+/// snapshots' directory.
+#[derive(Debug)]
+pub(crate) struct Replayed {
+    pub(crate) journal: JournalWatch,
+    pub(crate) snapshots: SnapshotDir,
+}
+
+/// What a session's replay takes beside its world: the packages of its mode, the server's
+/// signer, which signs what the session logs, and the log's terms as the mode's rules checked
+/// them.
+#[derive(Debug)]
+pub(crate) struct ReplayWith<'p> {
+    pub(crate) packages: &'p ModePackages,
+    pub(crate) signer: Arc<Signer>,
+    pub(crate) checked: CheckedTerms,
+}
+
 impl RestoredSession {
-    /// Builds the session's match in `world`, of the mode `packages` holds: from the snapshot of
-    /// the latest checkpoint whose record the log holds, or from tick 0 with none; resumes its
-    /// journal, which `JournalWatch` watches; and replays the log from there to the tick the
-    /// server stopped before, running `after_tick` after each tick the replay runs, and taking
-    /// again a checkpoint begun with no record as the replay reaches its boundary; the session
-    /// signs with `signer`, the server's. Its snapshots.
+    /// The session's terms, which its journal's header holds.
+    pub const fn terms(&self) -> &SessionTerms {
+        &self.log.header().terms
+    }
+
+    /// Builds the session's match in `world`, of the mode `with.packages` holds: from the
+    /// snapshot of the latest checkpoint whose record the log holds, or from tick 0 with none;
+    /// resumes its journal; and replays the log from there to the tick the server stopped before,
+    /// running `after_tick` after each tick the replay runs, and taking again a checkpoint begun
+    /// with no record as the replay reaches its boundary; the session signs with `with.signer`,
+    /// the server's. The watch of its journal, and its snapshots, which `world` holds neither of.
     pub(crate) fn replay(
         self,
         world: &mut World,
-        packages: &ModePackages,
-        signer: Signer,
+        with: ReplayWith<'_>,
         mut after_tick: impl FnMut(&mut World),
-    ) -> Result<SnapshotDir, RestoreMatchError> {
+    ) -> Result<Replayed, MatchBeginError> {
+        let ReplayWith {
+            packages,
+            signer,
+            checked,
+        } = with;
         let Self {
             private,
             log,
@@ -252,35 +333,42 @@ impl RestoredSession {
                 &snapshots.file(fingerprint),
                 StateRegistry::MAX_SNAPSHOT_LEN,
             )
-            .map_err(RestoreMatchError::ReadSnapshot)?;
+            .map_err(MatchBeginError::ReadSnapshot)?;
             let source = SessionSource {
-                log: log.rewound(),
+                log,
                 seeds,
                 packages,
+                checked,
+                signer: Some(signer),
             };
             let at = ResumeAt {
                 segment,
                 snapshot: &snapshot,
             };
-            Session::resume(world, source, at).map_err(RestoreMatchError::Resume)?;
+            Session::resume(world, source, at).map_err(MatchBeginError::Resume)?;
         } else {
             let source = SessionSource {
-                log: log.rewound(),
+                log,
                 seeds,
                 packages,
+                checked,
+                signer: Some(signer),
             };
-            Session::start(world, source).map_err(RestoreMatchError::Start)?;
+            Session::start(world, source).map_err(MatchBeginError::Start)?;
         }
-        world.insert_resource(ServerSigner(signer));
-        JournalWatch::keep(world, journal, JournalFrom::End { len: journal_len });
-        let resumed = world.session().log().next_tick();
+        let journal = JournalWatch::keep(
+            &mut world.resource_mut::<Session>(),
+            journal,
+            JournalFrom::End { len: journal_len },
+        );
+        let resumed = world.session().next_tick();
         world.replay_to(ticks, |world| {
-            if world.session().log().next_tick() > resumed {
+            if world.session().next_tick() > resumed {
                 after_tick(world);
             }
-            Checkpoints::take_again(world, &snapshots).map_err(RestoreMatchError::WriteSnapshot)
+            Checkpoints::take_again(world, &snapshots).map_err(MatchBeginError::WriteSnapshot)
         })?;
-        Ok(snapshots)
+        Ok(Replayed { journal, snapshots })
     }
 
     /// Ends the session, as a server back past the restore window does, unless it ended before the
@@ -295,19 +383,35 @@ impl RestoredSession {
             packages,
             signer,
         } = publisher;
+        let checked = SessionRules::of(packages)
+            .check(self.terms())
+            .map_err(|error| {
+                AbortError::Replay(MatchBeginError::Start(StartError::Terms(error)))
+            })?;
+        let with = ReplayWith {
+            packages,
+            signer: Arc::clone(signer),
+            checked,
+        };
         let mut world = World::new();
-        self.replay(&mut world, packages, signer.clone(), |_| {})
+        self.replay(&mut world, with, |_| {})
             .map_err(AbortError::Replay)?;
         if world.session().log().result().is_none() {
             let result = world.session_result();
             world
                 .session_mut()
-                .record_result(result, signer)
+                .record_result(result)
                 .expect("the server's own result holds");
         }
         world.session_mut().reveal_seed();
+        world.session_mut().close_journal();
         let log = world.resource::<Session>().log();
-        let file = SessionDir::publish(data, log).map_err(AbortError::Publish)?;
+        let revealed = log.revealed_seeds().expect("the seed is revealed");
+        let last = revealed
+            .seed(log.segment())
+            .expect("the seeds reach the last segment");
+        let file =
+            SessionDir::publish(data, log.session_id(), last).map_err(AbortError::Publish)?;
         SessionAborted {
             session: log.session_id(),
             file: file.clone(),
@@ -323,7 +427,7 @@ mod tests {
 
     use campfire_common::{MapName, PackageFingerprint, Ticks};
     use campfire_protocol::internals::TestKey;
-    use campfire_protocol::{InputRules, SeedChain, SessionTerms, SlotPlan};
+    use campfire_protocol::{InputRules, SeedChain, SlotPlan};
     use campfire_store::internals::Scratch;
     use campfire_visibility::Visibility;
 
@@ -336,28 +440,27 @@ mod tests {
         let data = ServerDir::open(&root).unwrap();
         let key = TestKey::of(8);
         let seed_chain = SeedChain::new([9; 32], NonZeroU32::MIN);
-        let private = SessionPrivate {
-            seed_chain,
-            terms: SessionTerms {
-                server_key: key.x_only_public_key().0,
-                tick_hz: NonZeroU32::new(30).unwrap(),
-                inputs: InputRules {
-                    max_delay: Ticks::new(3),
-                    max_lead: Ticks::new(3),
-                    max_payload_len: 64,
-                    max_per_tick: 4,
-                },
-                seed_commitment: seed_chain.commitment(),
-                release: Version::ENGINE,
-                mode: PackageFingerprint::new([1; 32]),
-                map: MapName::parse("lane").unwrap(),
-                dependencies: Vec::new(),
-                slots: vec![SlotPlan::Open],
-                visibility: Visibility::DEFAULT.encode(),
-                options: Vec::new(),
+        let terms = SessionTerms {
+            server_key: key.x_only_public_key().0,
+            tick_hz: NonZeroU32::new(30).unwrap(),
+            inputs: InputRules {
+                max_delay: Ticks::new(3),
+                max_lead: Ticks::new(3),
+                max_payload_len: 64,
+                max_per_tick: 4,
             },
+            seed_commitment: seed_chain.commitment(),
+            release: Version::ENGINE,
+            mode: PackageFingerprint::new([1; 32]),
+            map: MapName::parse("lane").unwrap(),
+            dependencies: Vec::new(),
+            slots: vec![SlotPlan::Open],
+            visibility: Visibility::DEFAULT.encode(),
+            options: Vec::new(),
         };
-        let session = Path::new("data/sessions").join(private.terms.session_id().to_string());
+        let private = SessionPrivate { seed_chain };
+        let id = terms.session_id();
+        let session = Path::new("data/sessions").join(id.to_string());
         let path = scratch.path(&session);
         let gone = |data: &ServerDir| {
             assert!(SessionDir::waiting(data).unwrap().is_none());
@@ -368,10 +471,10 @@ mod tests {
         DurableDir::create(&path).unwrap();
         assert!(gone(&data));
         // Before its journal.
-        SessionDir::create(&data, &private).unwrap();
+        SessionDir::create(&data, id, &private).unwrap();
         assert!(gone(&data));
         // With its journal's tag and no record.
-        let dir = SessionDir::create(&data, &private).unwrap();
+        let dir = SessionDir::create(&data, id, &private).unwrap();
         drop(dir.start().unwrap());
         assert!(gone(&data));
         // An entry named by no session id is no session's.

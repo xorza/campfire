@@ -1,7 +1,12 @@
-use campfire_geometry::{BodyBox, MAX_BOUND, Radius};
+use campfire_common::DeclaredName;
+use campfire_geometry::BodyBox;
 use campfire_math::Num;
-use campfire_values::DeclaredName;
-use serde::{Serialize, Serializer};
+use campfire_mode::{BountyData, Pays};
+use campfire_projectiles::{CurveData, ProjectileData, ProjectileHits};
+use campfire_stats::{StatValue, StatsData, TypePoolsData};
+use campfire_units::{BodyForm, CollisionData, TypeTagsData};
+use campfire_values::{EngineStat, FilterData, Stat};
+use serde::Serialize;
 
 use crate::zero_hour::error::TypeError;
 use crate::zero_hour::format::game_float;
@@ -19,118 +24,56 @@ use crate::zero_hour::weapon_drop::{self, WeaponDrop};
 /// drives on the ground; its body: a circle of its bounding radius, at most `MAX_WALKER`, when it
 /// drives, or, when it is a structure that is not small, a box of twice its radii for a box
 /// geometry, else a circle of its radius, of its geometry's height (04-capabilities/00-overview.md,
-/// A body has a height); the life of an active or a structure body, with its
-/// `combat` section, which despawns it as it dies, and the armor of its starting armor set; the
-/// tags of its kinds, of victory for a structure that counts for one, and of a structure, a wall
-/// and infantry, which a shell's hits and a scatter name; and the turret of its AI module, which
-/// turns its weapons. Every other object has none of these. A shell's type is a projectile alone
-/// (12-zero-hour.md, The import converts shells, splash, scatter, pitch, turrets and
-/// slow weapons).
+/// A body has a height); the life of an active or a structure body, with its `combat` section of
+/// the armor of its starting armor set; the tags of its kinds, of victory for a structure that
+/// counts for one, and of a structure, a wall and infantry, which a shell's hits and a scatter
+/// name; the turn rate of the turret of its AI module, which turns its weapons; and, of a life, its
+/// `BuildCost` in money as the cost a kill's bounty takes its share of. Every other object has none
+/// of these. What every type shares, a death that despawns and a turret's tolerance and slot kind,
+/// is Zero Hour's rules data, `[defaults]`, which lies under each type's own (03-game-scripting.md,
+/// Defaults under each unit type). A shell's type is a projectile alone (12-zero-hour.md, The
+/// import converts shells, splash, scatter, pitch, turrets and slow weapons).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedType {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pools: Option<[&'static str; 1]>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tags: Vec<&'static str>,
-    #[serde(skip_serializing_if = "TypeStats::is_empty")]
-    stats: TypeStats,
+    pools: Option<TypePoolsData>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    collision: Option<TypeBody>,
+    tags: Option<TypeTagsData>,
+    #[serde(skip_serializing_if = "StatsData::is_empty")]
+    stats: StatsData,
     #[serde(skip_serializing_if = "Option::is_none")]
-    combat: Option<TypeCombat>,
+    collision: Option<CollisionData>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    turret: Option<TypeTurret>,
+    combat: Option<WrittenCombat>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    projectile: Option<TypeProjectile>,
+    turret: Option<WrittenTurret>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    bounty: Option<BountyData>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    projectile: Option<ProjectileData>,
 }
 
-/// A type's stats: a driving type's `move_speed` in meters a second and its `turn_rate` in
-/// degrees a second, as the original's units a second and degrees a second are, and a living
-/// type's `life`, its body's `MaxHealth`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
-struct TypeStats {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    move_speed: Option<StatBase>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    turn_rate: Option<StatBase>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    life: Option<StatBase>,
-}
-
-/// A stat's value at every level.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-struct StatBase {
-    base: Num,
-}
-
-/// A type's body, as its `collision` section writes it: its shape and its height.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-struct TypeBody {
-    #[serde(flatten)]
-    shape: BodyShape,
-    height: Num,
-}
-
-/// A body's shape: a circle's radius, or a box's sides, along its `x` then its `z`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-enum BodyShape {
-    #[serde(rename = "radius")]
-    Circle(Num),
-    #[serde(rename = "box")]
-    Box([Num; 2]),
-}
-
-/// A living type's `combat` section: it despawns as it dies, as the original's object goes, and
-/// takes damage through its armor, whole with none.
+/// A type's `combat` as the import writes it: the armor of its starting armor set, the one field
+/// the install gives; the engine's own load of what the import wrote completes it from the rules
+/// data's defaults, and refuses a key its section does not read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct TypeCombat {
-    on_death: &'static str,
+pub(crate) struct WrittenCombat {
     #[serde(skip_serializing_if = "Option::is_none")]
     armor: Option<DeclaredName>,
 }
 
-/// A type's `turret`: its turn rate in degrees a second, the original's 0.035 radians of
-/// tolerance, and the slot kind of its weapons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-struct TypeTurret {
-    turn_rate: Num,
-    tolerance_deg: Num,
-    slot: &'static str,
-}
-
-/// A shell's `projectile` section: its weapon's speed, twice its geometry's radius wide, what it
-/// detonates on in its way, and its curve.
+/// A type's `turret` as the import writes it: its turn rate in degrees a second, positive, the one
+/// field the install gives, which the engine's own load completes as it does a `combat`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub(crate) struct TypeProjectile {
-    speed: Num,
-    width: Num,
-    hits: ShellHits,
-    curve: TypeCurve,
+pub(crate) struct WrittenTurret {
+    turn_rate: Num,
 }
 
-/// What a shell detonates on in its way, besides its target: the units of any of its filters, or
-/// none, `"none"`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum ShellHits {
-    Nothing,
-    Units(Vec<&'static str>),
-}
-
-/// A shell's `curve`: its inner points, `[fraction, height]` each, how far its end follows its
-/// victim a second, and its life in milliseconds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-struct TypeCurve {
-    first: [Num; 2],
-    second: [Num; 2],
-    follow: Num,
-    life_ms: u64,
-}
+/// The player resource every cost is in.
+pub(crate) const MONEY: &str = "money";
 
 /// The mode's pool of life, and the stat of its maximum.
 pub(crate) const LIFE: &str = "life";
-
-/// The slot kind of the converted weapons.
-pub(crate) const WEAPON: &str = "weapon";
 
 /// The tag of a type that counts for a multiplayer victory (12-zero-hour.md, Defeat by the last
 /// building that counts).
@@ -141,10 +84,6 @@ pub(crate) const STRUCTURE: &str = "structure";
 pub(crate) const WALL: &str = "wall";
 pub(crate) const INFANTRY: &str = "infantry";
 
-/// The original's tolerance of a turret's aim, 0.035 radians (`TurretAIAimTurretState::update`),
-/// in degrees, 2.00535228…, to the nearest bit: 33,644,228.41 · 2⁻²⁴.
-const TURRET_TOLERANCE_DEG: Num = Num::from_bits(33_644_228);
-
 /// The widest a driving type's circle is, 25 m: the original's largest pathfinding footprint, 2
 /// cells of 10 m on each side of a center cell (`MAX_RADIUS` of `getRadiusAndCenter`), which our
 /// one body for collision and pathfinding takes (12-zero-hour.md, Only walkers and standing
@@ -154,7 +93,7 @@ const MAX_WALKER: f32 = 25.0;
 impl ImportedType {
     /// The unit type of `object`, its locomotors found in `locomotors`; an error for a locomotor
     /// no file defines, as the game refuses one, a number past what the engine holds, or a body
-    /// a unit type's load refuses.
+    /// or a turret a unit type's load refuses, as the engine's types refuse them.
     pub(crate) fn of(object: &IniObject, locomotors: &LocomotorIni) -> Result<Self, TypeError> {
         let mut drive = None;
         for name in object.locomotors() {
@@ -166,53 +105,48 @@ impl ImportedType {
             }
         }
         let geometry = object.geometry();
-        let shape = match drive {
-            Some(_) => Some(BodyShape::Circle(num(geometry
+        let form = match drive {
+            Some(_) => Some(BodyForm::circle(num(geometry
                 .bounding_circle()
                 .min(MAX_WALKER))?)),
             None if object.is_structure() && !geometry.small => Some(match geometry.shape {
                 GeometryShape::Box => {
-                    BodyShape::Box([num(2.0 * geometry.major)?, num(2.0 * geometry.minor)?])
+                    BodyForm::box_sized([num(2.0 * geometry.major)?, num(2.0 * geometry.minor)?])
                 }
                 GeometryShape::Sphere | GeometryShape::Cylinder => {
-                    BodyShape::Circle(num(geometry.major)?)
+                    BodyForm::circle(num(geometry.major)?)
                 }
             }),
             None => None,
         };
-        let collision = match shape {
-            Some(shape) => Some(TypeBody {
-                shape,
-                height: num(geometry.height())?,
-            }),
+        let collision = match form {
+            Some(form) => {
+                let height = num(geometry.height())?;
+                let form = form.and_then(|form| form.raised(height));
+                let form = form.ok_or(TypeError::Body)?;
+                Some(CollisionData { form, layer: None })
+            }
             None => None,
         };
-        let held = collision.is_none_or(|body| {
-            let shape = match body.shape {
-                BodyShape::Circle(radius) => Radius::new(radius).is_some(),
-                BodyShape::Box(size) => BodyBox::new(size, Num::ZERO).is_some(),
-            };
-            shape && Num::ZERO <= body.height && body.height <= MAX_BOUND
-        });
-        if !held {
-            return Err(TypeError::Body);
-        }
-        let base = |value| Ok::<_, TypeError>(StatBase { base: num(value)? });
-        let mut stats = TypeStats::default();
+        let mut stats = Vec::new();
         if let Some(locomotor) = drive {
-            stats.move_speed = Some(base(locomotor.speed)?);
-            stats.turn_rate = Some(base(locomotor.turn_rate)?);
+            let speed = StatValue::flat(num(locomotor.speed)?);
+            stats.push((Stat::Engine(EngineStat::MoveSpeed), speed));
+            let turn_rate = StatValue::flat(num(locomotor.turn_rate)?);
+            stats.push((Stat::Engine(EngineStat::TurnRate), turn_rate));
         }
         let fight = object.fight();
         let body = fight
             .body
             .filter(|body| matches!(body.kind, BodyKind::Active | BodyKind::Structure));
-        stats.life = body
+        let life = body
             .filter(|body| body.max > 0.0)
-            .map(|body| base(body.max))
+            .map(|body| num(body.max))
             .transpose()?;
-        let combat = stats.life.map(|_| TypeCombat {
-            on_death: "despawn",
+        if let Some(life) = life {
+            stats.push((Self::life_stat(), StatValue::flat(life)));
+        }
+        let combat = life.map(|_| WrittenCombat {
             armor: fight
                 .starting_armor()
                 .map(|armor| ImportName::latin(armor).declared()),
@@ -223,104 +157,63 @@ impl ImportedType {
             (object.is_wall(), WALL),
             (object.is_infantry(), INFANTRY),
         ];
+        let tags: Vec<DeclaredName> = kinds
+            .into_iter()
+            .filter(|&(holds, _)| holds)
+            .map(|(_, tag)| declared(tag))
+            .collect();
         // A turret that turns no weapon, or does not turn, aims nothing the engine's turret aims.
         let turret = fight
             .turret
             .filter(|turret| turret.slots.contains(&true) && turret.turn_rate > 0.0)
             .map(|turret| {
-                Ok::<_, TypeError>(TypeTurret {
-                    turn_rate: num(turret.turn_rate)?,
-                    tolerance_deg: TURRET_TOLERANCE_DEG,
-                    slot: WEAPON,
-                })
+                let turn_rate = num(turret.turn_rate)?;
+                let turns = turn_rate > Num::ZERO;
+                turns
+                    .then_some(WrittenTurret { turn_rate })
+                    .ok_or(TypeError::Turret)
             })
             .transpose()?;
+        let cost = object.build().cost;
+        let bounty = (life.is_some() && cost > 0).then(|| BountyData {
+            resource: declared(MONEY),
+            pays: Pays::Cost(u32::from(cost)),
+        });
         Ok(Self {
-            pools: stats.life.map(|_| [LIFE]),
-            tags: kinds
-                .into_iter()
-                .filter_map(|(holds, tag)| holds.then_some(tag))
-                .collect(),
-            stats,
+            pools: life.map(|_| TypePoolsData(vec![declared(LIFE)])),
+            tags: (!tags.is_empty()).then_some(TypeTagsData(tags)),
+            stats: stats.into_iter().collect(),
             collision,
             combat,
             turret,
+            bounty,
             projectile: None,
         })
     }
 
     /// The type of a shell, of `projectile` alone: it has no life, no body and no tag.
-    pub(crate) const fn shell(projectile: TypeProjectile) -> Self {
+    pub(crate) fn shell(projectile: ProjectileData) -> Self {
         Self {
             pools: None,
-            tags: Vec::new(),
-            stats: TypeStats {
-                move_speed: None,
-                turn_rate: None,
-                life: None,
-            },
+            tags: None,
+            stats: StatsData::default(),
             collision: None,
             combat: None,
             turret: None,
+            bounty: None,
             projectile: Some(projectile),
         }
     }
 
-    /// Its most life, of a type that lives.
-    pub(crate) fn life(&self) -> Option<Num> {
-        self.stats.life.map(|life| life.base)
-    }
-
-    /// Its armor, of a type that lives.
-    pub(crate) fn armor(&self) -> Option<&DeclaredName> {
-        self.combat.as_ref()?.armor.as_ref()
-    }
-
-    /// How far its body reaches from its unit's place along `x` and `z`, at `angle` degrees, as
-    /// a map's load measures a placed box against its bounds; none for no body.
-    pub(crate) fn reach(&self, angle: Num) -> Option<[Num; 2]> {
-        match self.collision?.shape {
-            BodyShape::Circle(radius) => Some([radius; 2]),
-            BodyShape::Box(size) => Some(
-                BodyBox::new(size, angle)
-                    .expect("a box's size alone decides whether it is one")
-                    .extent(),
-            ),
-        }
-    }
-
-    /// Whether its units walk: it drives, so it has a `move_speed`.
-    pub(crate) const fn walks(&self) -> bool {
-        self.stats.move_speed.is_some()
-    }
-
-    /// Whether its body is a box, which a build places.
-    pub(crate) const fn is_box(&self) -> bool {
-        matches!(
-            self.collision,
-            Some(TypeBody {
-                shape: BodyShape::Box(_),
-                ..
-            })
-        )
-    }
-
-    /// Its speed in meters a second, when it drives.
-    pub(crate) const fn move_speed(&self) -> Option<Num> {
-        match self.stats.move_speed {
-            Some(speed) => Some(speed.base),
-            None => None,
-        }
-    }
-}
-
-impl TypeProjectile {
     /// The projectile `weapon` fires, of `shell`, an object of a `DumbProjectileBehavior`: at its
     /// `WeaponSpeed`, twice its geometry's radius wide, detonating on what its
     /// `ProjectileCollidesWith` names, on the curve of its behavior; why the import drops the
-    /// weapon, for a speed that is not above 0, a mask of what the engine's units are not, or a
-    /// number past what the engine holds.
-    pub(crate) fn of(weapon: &IniWeapon, shell: &IniObject) -> Result<Self, WeaponDrop> {
+    /// weapon, for a mask of what the engine's units are not, a number past what the engine
+    /// holds, or a projectile the engine's type refuses.
+    pub(crate) fn projectile(
+        weapon: &IniWeapon,
+        shell: &IniObject,
+    ) -> Result<ProjectileData, WeaponDrop> {
         let flight = shell
             .fight()
             .shell
@@ -344,72 +237,77 @@ impl TypeProjectile {
             (collides.controlled_structures, "allies:structure"),
             (collides.walls, "all:wall"),
         ];
-        let filters: Vec<&'static str> = filters
+        let filters: Vec<FilterData> = filters
             .into_iter()
             .filter_map(|(holds, filter)| holds.then_some(filter))
+            .map(|filter| FilterData::parse(filter).expect("the import's filters parse"))
             .collect();
         let number = |value: f32| game_float::to_num(value).map_err(|_| WeaponDrop::BadNumber);
-        let speed = number(weapon.speed)?;
-        let width = number(2.0 * shell.geometry().major)?;
-        let fraction = |value: f32| {
-            let value = number(value)?;
-            (Num::ZERO..=Num::ONE)
-                .contains(&value)
-                .then_some(value)
-                .ok_or(WeaponDrop::BadNumber)
-        };
-        let height = |value: f32| {
-            let value = number(value)?;
-            (-MAX_BOUND..=MAX_BOUND)
-                .contains(&value)
-                .then_some(value)
-                .ok_or(WeaponDrop::BadNumber)
-        };
-        let follow = number(flight.follow)?;
         let life_ms = weapon_drop::game_ms(flight.lifespan_ms)?;
-        let held = speed > Num::ZERO
-            && Num::ZERO <= width
-            && width <= MAX_BOUND * 2
-            && follow >= Num::ZERO
-            && life_ms > 0;
-        if !held {
-            return Err(WeaponDrop::BadNumber);
-        }
-        Ok(Self {
-            speed,
-            width,
-            hits: if filters.is_empty() {
-                ShellHits::Nothing
-            } else {
-                ShellHits::Units(filters)
-            },
-            curve: TypeCurve {
-                first: [fraction(flight.first_indent)?, height(flight.first_height)?],
-                second: [
-                    fraction(flight.second_indent)?,
-                    height(flight.second_height)?,
-                ],
-                follow,
-                life_ms,
-            },
-        })
+        let life_ms = u32::try_from(life_ms).map_err(|_| WeaponDrop::BadNumber)?;
+        let curve = CurveData::new(
+            [number(flight.first_indent)?, number(flight.first_height)?],
+            [number(flight.second_indent)?, number(flight.second_height)?],
+            number(flight.follow)?,
+            Some(life_ms),
+        )
+        .map_err(|_| WeaponDrop::BadNumber)?;
+        let hits = if filters.is_empty() {
+            ProjectileHits::Nothing
+        } else {
+            ProjectileHits::Units(filters)
+        };
+        ProjectileData::builder(number(weapon.speed)?)
+            .width(number(2.0 * shell.geometry().major)?)
+            .hits(hits)
+            .curve(curve)
+            .build()
+            .map_err(|_| WeaponDrop::BadNumber)
     }
-}
 
-/// As data writes it: `"none"`, or the list of its filters.
-impl Serialize for ShellHits {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        match self {
-            Self::Nothing => serializer.serialize_str("none"),
-            Self::Units(filters) => filters.serialize(serializer),
-        }
+    /// The stat of the most life.
+    fn life_stat() -> Stat {
+        Stat::named(LIFE).expect("the life stat's name is a stat's")
     }
-}
 
-impl TypeStats {
-    /// Whether it holds no stat, so the type writes no `stats`.
-    const fn is_empty(&self) -> bool {
-        self.move_speed.is_none() && self.turn_rate.is_none() && self.life.is_none()
+    /// Its most life, of a type that lives.
+    pub(crate) fn life(&self) -> Option<Num> {
+        self.stats.value(&Self::life_stat()).map(|life| life.base)
+    }
+
+    /// Its armor, of a type that lives.
+    pub(crate) fn armor(&self) -> Option<&DeclaredName> {
+        self.combat.as_ref()?.armor.as_ref()
+    }
+
+    /// How far its body reaches from its unit's place along `x` and `z`, at `angle` degrees, as
+    /// a map's load measures a placed box against its bounds; none for no body.
+    pub(crate) fn reach(&self, angle: Num) -> Option<[Num; 2]> {
+        let form = self.collision.as_ref()?.form;
+        if let Some(radius) = form.circle_radius() {
+            return Some([radius; 2]);
+        }
+        let size = form.box_size().expect("a form is a circle or a box");
+        let body = BodyBox::new(size, angle).expect("a box's size alone decides whether it is one");
+        Some(body.extent())
+    }
+
+    /// Whether its units walk: it drives, so it has a `move_speed`.
+    pub(crate) fn walks(&self) -> bool {
+        self.stats.walks()
+    }
+
+    /// Whether its body is a box, which a build places.
+    pub(crate) fn is_box(&self) -> bool {
+        self.collision
+            .as_ref()
+            .is_some_and(|collision| collision.form.is_box())
+    }
+
+    /// Its speed in meters a second, when it drives.
+    pub(crate) fn move_speed(&self) -> Option<Num> {
+        let speed = self.stats.value(&Stat::Engine(EngineStat::MoveSpeed));
+        speed.map(|speed| speed.base)
     }
 }
 
@@ -418,28 +316,37 @@ fn num(value: f32) -> Result<Num, TypeError> {
     game_float::to_num(value).map_err(|_| TypeError::Number)
 }
 
+/// `name`, a name the import gives, as a declared name.
+fn declared(name: &str) -> DeclaredName {
+    DeclaredName::new(name).expect("the import's names are declared names")
+}
+
 #[cfg(test)]
 pub(crate) mod internals {
     use campfire_math::Num;
-
-    use crate::zero_hour::imported_type::{ShellHits, TypeCurve, TypeProjectile};
+    use campfire_projectiles::{CurveData, ProjectileData, ProjectileHits};
+    use campfire_values::FilterData;
 
     /// The projectile of the fixture's `TankShell`, fired at `speed` m/s by a weapon of
     /// `STRUCTURES WALLS`: 2 m wide, its inner points at 50% and 90% of the way, 10 m up, its end
     /// following its victim by 100 m/s, for 10 s. 90% is 90 ÷ 100 in `f32`, 0.89999997615…, the
     /// bits 15,099,494 · 2⁻²⁴ of a `Num`.
-    pub(crate) fn shell_projectile(speed: i64) -> TypeProjectile {
-        TypeProjectile {
-            speed: Num::int(speed),
-            width: Num::int(2),
-            hits: ShellHits::Units(vec!["enemies:structure", "all:wall"]),
-            curve: TypeCurve {
-                first: [Num::HALF, Num::int(10)],
-                second: [Num::from_bits(15_099_494), Num::int(10)],
-                follow: Num::int(100),
-                life_ms: 10_000,
-            },
-        }
+    pub(crate) fn shell_projectile(speed: i64) -> ProjectileData {
+        let filters =
+            ["enemies:structure", "all:wall"].map(|text| FilterData::parse(text).unwrap());
+        let curve = CurveData::new(
+            [Num::HALF, Num::int(10)],
+            [Num::from_bits(15_099_494), Num::int(10)],
+            Num::int(100),
+            Some(10_000),
+        )
+        .unwrap();
+        ProjectileData::builder(Num::int(speed))
+            .width(Num::int(2))
+            .hits(ProjectileHits::Units(filters.into()))
+            .curve(curve)
+            .build()
+            .unwrap()
     }
 }
 
@@ -541,32 +448,41 @@ End
         let of = |name: &str| ImportedType::of(ini.object(name.as_bytes()).unwrap(), &locomotors);
         let int = Num::int;
         let half = |x: i64| Num::from_bits(x << (Num::FRAC_BITS - 1));
-        let body = |shape, height| Some(TypeBody { shape, height });
+        let body = |form: Option<BodyForm>, height| {
+            let form = form.unwrap().raised(height).unwrap();
+            Some(CollisionData { form, layer: None })
+        };
+        let circle = BodyForm::circle;
+        let boxed = BodyForm::box_sized;
         let drives = |speed, turn_rate, radius, height| ImportedType {
             pools: None,
-            tags: Vec::new(),
-            stats: TypeStats {
-                move_speed: Some(StatBase { base: speed }),
-                turn_rate: Some(StatBase { base: turn_rate }),
-                life: None,
-            },
-            collision: body(BodyShape::Circle(radius), height),
+            tags: None,
+            stats: StatsData::from([
+                (Stat::Engine(EngineStat::MoveSpeed), StatValue::flat(speed)),
+                (
+                    Stat::Engine(EngineStat::TurnRate),
+                    StatValue::flat(turn_rate),
+                ),
+            ]),
+            collision: body(circle(radius), height),
             combat: None,
             turret: None,
+            bounty: None,
             projectile: None,
         };
         let stands = |body| ImportedType {
             pools: None,
-            tags: Vec::new(),
-            stats: TypeStats::default(),
+            tags: None,
+            stats: StatsData::default(),
             collision: body,
             combat: None,
             turret: None,
+            bounty: None,
             projectile: None,
         };
         // A structure stands of the tag of its kind.
         let structure = |body| ImportedType {
-            tags: vec![STRUCTURE],
+            tags: Some(TypeTagsData(vec![declared(STRUCTURE)])),
             ..stands(body)
         };
         // The tank drives on its treads, 30.5 m and 90° a second; a box of half extents 15 and
@@ -597,27 +513,24 @@ End
         // it, and the sphere 5 m wide with a height of 9 m, 5 m tall.
         assert_eq!(
             of("Barracks").unwrap(),
-            structure(body(BodyShape::Box([int(120), int(140)]), int(49)))
+            structure(body(boxed([int(120), int(140)]), int(49)))
         );
         assert_eq!(
             of("Tower").unwrap(),
-            structure(body(BodyShape::Circle(half(17)), int(1)))
+            structure(body(circle(half(17)), int(1)))
         );
         assert_eq!(
             of("Shrub").unwrap(),
-            structure(body(BodyShape::Circle(int(1)), int(1)))
+            structure(body(circle(int(1)), int(1)))
         );
-        assert_eq!(
-            of("Dome").unwrap(),
-            structure(body(BodyShape::Circle(int(5)), int(5)))
-        );
+        assert_eq!(of("Dome").unwrap(), structure(body(circle(int(5)), int(5))));
         // A small structure and an object of no kind block nothing; a reskin's own geometry
         // makes its mine large, a box of 6 × 6.
         assert_eq!(of("Mine").unwrap(), structure(None));
         assert_eq!(of("Rock").unwrap(), stands(None));
         assert_eq!(
             of("BigMine").unwrap(),
-            structure(body(BodyShape::Box([int(6), int(6)]), int(1)))
+            structure(body(boxed([int(6), int(6)]), int(1)))
         );
         // A locomotor no file defines refuses the type, as the game refuses it.
         assert_eq!(
@@ -649,6 +562,7 @@ End
 End
 Object Center
   KindOf = STRUCTURE MP_COUNT_FOR_VICTORY
+  BuildCost = 2000
   Body = StructureBody ModuleTag_02
     MaxHealth = 5000.0
   End
@@ -688,6 +602,7 @@ Object Fixed
   End
 End
 Object Ghost
+  BuildCost = 100
   Body = ImmortalBody ModuleTag_04
     MaxHealth = 100
   End
@@ -714,21 +629,17 @@ End
             )
             .unwrap()
         };
-        let lives = |life: i64, armor: Option<&str>, tags| ImportedType {
-            pools: Some([LIFE]),
-            tags,
-            stats: TypeStats {
-                life: Some(StatBase {
-                    base: Num::int(life),
-                }),
-                ..TypeStats::default()
-            },
+        let lives = |life: i64, armor: Option<&str>, tags: Vec<&str>| ImportedType {
+            pools: Some(TypePoolsData(vec![declared(LIFE)])),
+            tags: (!tags.is_empty())
+                .then(|| TypeTagsData(tags.into_iter().map(declared).collect())),
+            stats: StatsData::from([(ImportedType::life_stat(), StatValue::flat(Num::int(life)))]),
             collision: None,
-            combat: Some(TypeCombat {
-                on_death: "despawn",
+            combat: Some(WrittenCombat {
                 armor: armor.map(|armor| DeclaredName::new(armor).unwrap()),
             }),
             turret: None,
+            bounty: None,
             projectile: None,
         };
         // The soldier lives by its active body, 180, in the armor of its set of no condition,
@@ -743,26 +654,34 @@ End
         // no geometry stands as the game's sphere of radius 1, 1 m tall, of the tags of both;
         // an object of the kind that is no structure, of an armor of `None`, counts for none,
         // and of a fence's width is a wall.
+        let form = BodyForm::circle(Num::ONE)
+            .unwrap()
+            .raised(Num::ONE)
+            .unwrap();
+        // Its build cost of 2,000 is its bounty's cost, in money.
         let center = ImportedType {
-            collision: Some(TypeBody {
-                shape: BodyShape::Circle(Num::ONE),
-                height: Num::ONE,
+            collision: Some(CollisionData { form, layer: None }),
+            bounty: Some(BountyData {
+                resource: declared(MONEY),
+                pays: Pays::Cost(2000),
             }),
             ..lives(5000, None, vec![VICTORY, STRUCTURE])
         };
         assert_eq!(of("Center"), center);
         assert_eq!(of("Wall"), lives(10, None, vec![WALL]));
-        // An immortal body, and a body of no most life, give no life, and no combat.
+        // An immortal body, and a body of no most life, give no life, no combat, and no bounty,
+        // whatever their cost.
         for name in ["Ghost", "Hollow"] {
             let typed = of(name);
-            assert_eq!((typed.pools, typed.combat), (None, None), "{name}");
+            assert_eq!(
+                (typed.pools, typed.combat, typed.bounty),
+                (None, None, None),
+                "{name}"
+            );
         }
-        // The gunner's turret turns 60° a second, its weapons within the original's 0.035
-        // radians; a turret of no weapon, or of no turn, is none.
-        let turret = TypeTurret {
+        // The gunner's turret turns 60° a second; a turret of no weapon, or of no turn, is none.
+        let turret = WrittenTurret {
             turn_rate: Num::int(60),
-            tolerance_deg: TURRET_TOLERANCE_DEG,
-            slot: WEAPON,
         };
         assert_eq!(of("Gunner").turret, Some(turret));
         assert_eq!((of("Idle").turret, of("Fixed").turret), (None, None));
@@ -780,7 +699,7 @@ End
             let mut weapons = WeaponIni::default();
             let text = format!("Weapon W\n  WeaponSpeed = 400\n{lines}End\n");
             weapons.read(text.as_bytes()).unwrap();
-            TypeProjectile::of(
+            ImportedType::projectile(
                 weapons.get("W").unwrap(),
                 ini.object(object.as_bytes()).unwrap(),
             )
@@ -794,7 +713,10 @@ End
             Ok(shell_projectile(400))
         );
         // The default mask, structures; an ally's, an enemy's, and one's own structures; none.
-        let hits = |filters: &[&'static str]| Ok(ShellHits::Units(filters.to_vec()));
+        let hits = |filters: &[&str]| {
+            let filters = filters.iter().map(|text| FilterData::parse(text).unwrap());
+            Ok(ProjectileHits::Units(filters.collect()))
+        };
         assert_eq!(
             fired("").map(|shell| shell.hits),
             hits(&["enemies:structure"])
@@ -803,7 +725,7 @@ End
             collides("ALLIES ENEMIES CONTROLLED_STRUCTURES"),
             hits(&["allies", "hostiles", "allies:structure"])
         );
-        assert_eq!(collides("NONE"), Ok(ShellHits::Nothing));
+        assert_eq!(collides("NONE"), Ok(ProjectileHits::Nothing));
         // Shrubbery, projectiles and missiles are no units; a speed of 0, and a point past the
         // way's end, are no numbers the engine takes.
         for mask in [

@@ -9,20 +9,28 @@ campfire-actions.workspace = true
 campfire-capabilities.workspace = true
 campfire-codec.workspace = true
 campfire-common.workspace = true
+campfire-geometry.workspace = true
+campfire-items.workspace = true
 campfire-math.workspace = true
 campfire-mode.workspace = true
-campfire-orders.workspace = true
 campfire-players.workspace = true
-campfire-production.workspace = true
-campfire-progression.workspace = true
+campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-store.workspace = true
 campfire-units.workspace = true
 campfire-values.workspace = true
+campfire-vision.workspace = true
 
 bevy_ecs.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+campfire-orders = { workspace = true, features = ["internals"] }
+campfire-package = { workspace = true, features = ["internals"] }
+campfire-progression = { workspace = true, features = ["internals"] }
+# Its tests resolve scripts in the workspace's test packages.
+campfire-test-packages.workspace = true
 
 [lints]
 workspace = true

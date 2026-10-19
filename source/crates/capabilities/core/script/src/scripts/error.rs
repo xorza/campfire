@@ -3,9 +3,9 @@ use campfire_values::EngineEnum;
 use rhai::EvalAltResult;
 use thiserror::Error;
 
-use crate::script_host::error::{Raised, ScriptError};
-use crate::scripts::name_kind::NameKind;
+use crate::script_host::error::{NumError, Raised, ScriptError};
 use crate::scripts::script_limits::ScriptLimits;
+use campfire_values::NameKind;
 
 /// What a registered script function returns: its value, or the error that fails the call.
 pub type Checked<T> = Result<T, Box<EvalAltResult>>;
@@ -46,10 +46,6 @@ pub enum ApiError {
     /// A projectile or an area of an action that delivers none of that kind.
     #[error("the action delivers no unit of that kind")]
     NoDelivery,
-    /// An attack field or order for a unit that has no attack, or an attack order on a target
-    /// none of its weapons selects.
-    #[error("unit has no attack for the target")]
-    NoAttack,
     /// A hook at the depth of combat events no chain reaches.
     #[error("a chain of combat events {} deep", ScriptLimits::CHAIN_DEPTH)]
     ChainTooDeep,
@@ -65,12 +61,16 @@ pub enum ApiError {
     /// A text that names no member of the engine enum, as its `named` reads it.
     #[error("text names no member of {0}")]
     UnknownMember(EngineEnum),
-    /// A player slot the session does not have.
-    #[error("player is not in the session")]
-    UnknownPlayer,
+    /// A read of a unit the call creates, which has no values until it spawns as the call
+    /// applies.
+    #[error("unit has not spawned yet")]
+    Unspawned,
     /// A field of the mode's state it does not declare.
     #[error("state field is not declared")]
     UnknownState,
+    /// A text that is no member of its enum state field.
+    #[error("text is no member of the state field")]
+    NotAMember,
     /// A value not of its state field's type.
     #[error("value is not of the state field's type")]
     WrongStateType,
@@ -189,6 +189,23 @@ impl CallError {
         };
         refused.map_or(Self::Script(error), CallError::Api)
     }
+
+    /// What it is, its raised value read once.
+    pub fn kind(&self) -> FailureKind {
+        match self {
+            Self::Api(api) => FailureKind::Api(*api),
+            Self::Script(ScriptError::Compile(_)) => FailureKind::Compile,
+            Self::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
+            Self::PoolSpent => FailureKind::PoolSpent,
+            Self::Script(ScriptError::TickBudget) => {
+                unreachable!("a spent budget is a spent pool")
+            }
+            Self::Script(ScriptError::Raised(raised)) => {
+                FailureKind::Raised(raised.get::<NumError>())
+            }
+            Self::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
+        }
+    }
 }
 
 impl ApiError {
@@ -198,38 +215,14 @@ impl ApiError {
     }
 }
 
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use crate::script_host::error::{NumError, ScriptError};
-    use crate::scripts::error::{ApiError, CallError};
-
-    /// What a failed call's error is, without what Rhai reported, so a test compares it: of what
-    /// a script raised, the `NumError`, none for another value.
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum FailureKind {
-        Api(ApiError),
-        Compile,
-        CallLimit,
-        PoolSpent,
-        Raised(Option<NumError>),
-        Runtime,
-    }
-
-    impl CallError {
-        pub fn kind(&self) -> FailureKind {
-            match self {
-                Self::Api(api) => FailureKind::Api(*api),
-                Self::Script(ScriptError::Compile(_)) => FailureKind::Compile,
-                Self::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
-                Self::PoolSpent => FailureKind::PoolSpent,
-                Self::Script(ScriptError::TickBudget) => {
-                    unreachable!("a spent budget is a spent pool")
-                }
-                Self::Script(ScriptError::Raised(raised)) => {
-                    FailureKind::Raised(raised.get::<NumError>())
-                }
-                Self::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
-            }
-        }
-    }
+/// What a failed call's error is, without what Rhai reported, so a host and a test tell it
+/// apart: of what a script raised, the `NumError`, none for another value.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureKind {
+    Api(ApiError),
+    Compile,
+    CallLimit,
+    PoolSpent,
+    Raised(Option<NumError>),
+    Runtime,
 }

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 use crate::package_index::PackageIndex;
 
@@ -19,6 +20,10 @@ impl NameId for ModifierId {
     fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+impl Named for ModifierId {
+    const NAMES: NameKind = NameKind::new("modifier", Article::A, NameScope::Package);
 }
 
 #[cfg(feature = "internals")]

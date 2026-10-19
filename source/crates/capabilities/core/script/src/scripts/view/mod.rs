@@ -1,4 +1,4 @@
-use std::cell::{Ref, RefCell, RefMut};
+use std::cell::{Cell, Ref, RefCell, RefMut};
 use std::fmt;
 use std::rc::Rc;
 
@@ -7,12 +7,17 @@ use campfire_common::Tick;
 use campfire_geometry::{Bounds, Metric, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::{StableId, TickRate};
-use campfire_values::{ActionId, Relation, Tag, Team};
+use campfire_values::{Relation, Tag, Team};
 
+use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
+use crate::scripts::view::filter_texts::FilterTexts;
+use crate::scripts::view::listing::Listing;
 use crate::scripts::view::living_unit::LivingUnit;
+use crate::scripts::view::match_names::MatchNames;
 use crate::scripts::view::target_index::{TargetIndex, TargetQuery};
 use crate::scripts::view::unit::Unit;
 use crate::scripts::view::unit_row::UnitRow;
@@ -21,9 +26,12 @@ use crate::scripts::view::view_names::ViewNames;
 use crate::scripts::view::view_rows::ViewRows;
 
 pub(crate) mod filter;
+pub(crate) mod filter_texts;
 pub(crate) mod filters;
 pub(crate) mod kept_rows;
+pub(crate) mod listing;
 pub(crate) mod living_unit;
+pub(crate) mod match_names;
 pub(crate) mod row_fill;
 pub(crate) mod row_reads;
 pub(crate) mod tag_names;
@@ -48,8 +56,12 @@ pub struct View(Rc<ViewParts>);
 struct ViewParts {
     rate: TickRate,
     names: RefCell<ViewNames>,
+    /// The revision of the match's `MatchNames` that `names` derive from; none before the first.
+    names_at: Cell<Option<u64>>,
     rows: RefCell<ViewRows>,
     targets: RefCell<TargetIndex>,
+    /// The filters scripts gave as text, as the names resolve them.
+    filters: RefCell<FilterTexts>,
     /// What reads a world's units into the rows, which the module that holds the units gives.
     read: fn(&mut World),
 }
@@ -61,20 +73,17 @@ impl View {
         Self(Rc::new(ViewParts {
             rate,
             names: RefCell::default(),
+            names_at: Cell::new(None),
             rows: RefCell::default(),
             targets: RefCell::default(),
+            filters: RefCell::default(),
             read,
         }))
     }
 
-    /// The names scripts read, as the load and the mode set them.
+    /// The names scripts read, as the last read derived them from the match's `MatchNames`.
     pub fn names(&self) -> Ref<'_, ViewNames> {
         self.0.names.borrow()
-    }
-
-    /// The names, for the load and the mode to set.
-    pub fn names_mut(&self) -> RefMut<'_, ViewNames> {
-        self.0.names.borrow_mut()
     }
 
     /// The units as the running phase read them.
@@ -87,10 +96,32 @@ impl View {
         self.0.rows.borrow_mut()
     }
 
-    /// Reads the units of `world` for the phase that begins.
+    /// Reads the units of `world` for the phase that begins, and its names, when its `MatchNames`
+    /// changed since the read before.
     pub fn read(&self, world: &mut World) {
+        self.read_names(world);
         (self.0.read)(world);
         self.0.targets.borrow_mut().forget();
+    }
+
+    /// Derives the names from `world`'s `MatchNames`, when they changed since they last did: the
+    /// load and the mode change them, a tick does not.
+    fn read_names(&self, world: &World) {
+        let Some(names) = world.get_resource::<MatchNames>() else {
+            return;
+        };
+        if self.0.names_at.get() != Some(names.revision()) {
+            *self.0.names.borrow_mut() = ViewNames::of(names);
+            self.0.filters.borrow_mut().clear();
+            self.0.names_at.set(Some(names.revision()));
+        }
+    }
+
+    /// The filter `text` names, with its tags among the match's, resolved once for each text a
+    /// script gives again.
+    pub fn filter(&self, text: &ScriptText) -> Result<Filter, ApiError> {
+        let names = self.names();
+        self.0.filters.borrow_mut().filter(text, names.tags())
     }
 
     /// The map's bounds, as the units were read.
@@ -163,9 +194,9 @@ impl View {
             .collect()
     }
 
-    /// Every unit, living or dead, with `tag`, by stable id.
-    pub fn units_tagged(&self, tag: Tag) -> ScriptList {
-        self.units_where(|row| row.tags.tags.contains(tag))
+    /// Every unit with `tag` that `listing` lists, by stable id.
+    pub fn units_tagged(&self, tag: Tag, listing: Listing) -> ScriptList {
+        self.units_where(|row| listing.lists(row) && row.tags.tags.contains(tag))
     }
 
     pub fn row(&self, id: StableId) -> Option<UnitRow> {
@@ -196,13 +227,6 @@ impl View {
             .map_or(ScriptValue::UNIT, ScriptValue::of)
     }
 
-    /// The name of action `id` as a script value: `()` for none.
-    pub fn ability_value(&self, id: Option<ActionId>) -> ScriptValue {
-        id.map_or(ScriptValue::UNIT, |id| {
-            ScriptValue::of(self.names().name(id))
-        })
-    }
-
     /// Unit `id`, when it is a living unit that may be a target.
     pub fn living(&self, id: StableId) -> Option<LivingUnit> {
         let row = self.row(id).filter(|row| row.targetable)?;
@@ -225,12 +249,12 @@ impl View {
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-    ) -> ScriptList {
+    ) -> Checked<ScriptList> {
         debug_assert!(radius >= Num::ZERO, "a script's radius is not negative");
         let rows = self.rows();
         let units = rows.units();
         let query = TargetQuery {
-            team: units[of.row_index()].team,
+            team: units[of.row_index()?].team,
             from: pos,
             shape: Shape::POINT,
             radius,
@@ -240,7 +264,7 @@ impl View {
         let found = targets.find(&rows, query, seen);
         let unit =
             |&index: &usize| ScriptValue::of(Unit::new(units[index].id, index, self.clone()));
-        found.iter().map(unit).collect()
+        Ok(found.iter().map(unit).collect())
     }
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
@@ -253,10 +277,10 @@ impl View {
         radius: Num,
         filter: &Filter,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-    ) -> ScriptValue {
+    ) -> Checked<ScriptValue> {
         debug_assert!(radius >= Num::ZERO, "a script's radius is not negative");
         let rows = self.rows();
-        let of = rows.units()[of.row_index()];
+        let of = rows.units()[of.row_index()?];
         let query = TargetQuery {
             team: of.team,
             from: of.pos,
@@ -276,9 +300,9 @@ impl View {
                     nearest = Some(candidate);
                 }
             });
-        nearest.map_or(ScriptValue::UNIT, |(_, id, at)| {
+        Ok(nearest.map_or(ScriptValue::UNIT, |(_, id, at)| {
             ScriptValue::of(Unit::new(id, at, self.clone()))
-        })
+        }))
     }
 }
 
@@ -286,21 +310,5 @@ impl View {
 impl fmt::Debug for View {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("View")
-    }
-}
-
-#[cfg(feature = "internals")]
-pub(crate) mod internals {
-    use campfire_values::FilterData;
-
-    use crate::scripts::error::UnknownName;
-    use crate::scripts::view::View;
-    use crate::scripts::view::filter::Filter;
-
-    impl View {
-        /// The run-time form of `filter`, its tag among those of the match's unit types.
-        pub fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, UnknownName> {
-            Filter::resolve(filter, self.names().tags())
-        }
     }
 }

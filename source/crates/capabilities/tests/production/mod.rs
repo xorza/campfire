@@ -1,7 +1,8 @@
+use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionProgress, ActionSlots, Actions, SlotKind, TimedSlots};
+use campfire_actions::{ActionProgress, ActionSlots, SlotKind, TimedSlots};
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::Binary;
@@ -12,9 +13,10 @@ use campfire_mode::Mode;
 use campfire_players::{Players, PlayersWorld, ResourceAmount};
 use campfire_production::*;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{Capability, SimComponent, SimWorld, StableId, Unpredicted};
+use campfire_sim::{Capability, SimComponent, SimTick, SimWorld, StableId, Unpredicted};
 use campfire_units::{
-    BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, UnitTypeCore, Units,
+    BodyForm, Dead, Destination, MoveStep, Owner, SpawnAt, SpawnPoint, Spawner, StatusTags,
+    UnitTypeCore, Units,
 };
 use campfire_values::{ActionId, Rank, ResourceId, Team, TypeScope, UnitType};
 use serde::Serialize;
@@ -93,7 +95,6 @@ impl Shop {
         );
         Self::give(game, grunt, MoveStep::new(Num::ONE).unwrap());
         Self::give(game, grunt, BodyForm::circle(Num::HALF).unwrap());
-        Mode::load_test_units(game);
         let gold = ResourceId::new(0);
         Self {
             grunt,
@@ -152,8 +153,7 @@ impl Shop {
             owner,
             angle: Num::ZERO,
         };
-        let spawner = Mode::test_spawner(game).expect("the shop loaded its spawner");
-        spawner.spawn(game, at, (slots, queue));
+        Spawner::place_any(game, at, (slots, queue));
     }
 
     /// Each grunt trained so far, in order: the team and position of the producer it came from,
@@ -209,7 +209,7 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
             time: Ticks::new(time),
             paid: 0,
         };
-        queue.push(queued, &[], Tick::new(0));
+        queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
     }
     queue
 }
@@ -218,7 +218,7 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
 fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() {
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
     // The first id goes to the producer spawned second, so the world holds them out of id order.
     let (first, second) = (
@@ -293,7 +293,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         resource: gold,
         amount: 2,
     };
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::ZERO, Some(cost));
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, Some(cost));
     let (owned, unowned) = (
         Production::allocate_id(&mut game),
         Production::allocate_id(&mut game),
@@ -347,7 +347,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
         .unwrap()
         .add(gold, 5)
         .unwrap();
-    let train = Actions::add_train(&mut client, shop.grunt, Ticks::ZERO, Some(cost));
+    let train = Production::add_train(&mut client, shop.grunt, Ticks::ZERO, Some(cost));
     let owned = Production::allocate_id(&mut client);
     let queue = TrainQueue::default();
     shop.producer(
@@ -376,6 +376,52 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
             .collect::<Vec<_>>(),
         [train]
     );
+}
+
+#[test]
+fn a_producer_whose_tags_block_production_neither_pays_nor_queues() {
+    let mut game = shop_match_of(&[Capability::Stats, Capability::Production]);
+    let shop = Shop::place(&mut game);
+    // The engine tags' properties come with the sealed types, as a match's load gives them.
+    Units::seal_types(&mut game, &BTreeMap::new());
+    let gold = ResourceId::new(0);
+    let player = PlayerSlot::new(0);
+    Players::spawn(&mut game, 1, 1);
+    game.player_resources_mut(player)
+        .unwrap()
+        .add(gold, 5)
+        .unwrap();
+    let cost = ResourceAmount {
+        resource: gold,
+        amount: 2,
+    };
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::ZERO, Some(cost));
+    let (site, built) = (
+        Production::allocate_id(&mut game),
+        Production::allocate_id(&mut game),
+    );
+    for (id, x) in [(site, 10), (built, 20)] {
+        let queue = TrainQueue::default();
+        shop.producer(&mut game, id, x, Team::new(1), Some(player), train, queue);
+    }
+    // A site under construction holds the `constructing` tag, which blocks production: its order
+    // ends, and it pays and queues nothing. The built producer pays 2 of the 5 gold and trains.
+    game.insert_parts(site, StatusTags::from([Production::CONSTRUCTING]));
+    game.step();
+    Production::order_train(&mut game, site);
+    Production::order_train(&mut game, built);
+    game.step();
+    assert_eq!(
+        shop.spawns(&mut game),
+        [(Team::new(1), Vec3::from((20, 0, 0)), Some(player))]
+    );
+    assert_eq!(game.player_resources(player).unwrap().amount(gold), 3);
+    let entity = game.unit_entity(site);
+    assert_eq!(
+        game.get::<ActionProgress>(entity).unwrap().in_progress(),
+        None
+    );
+    assert_eq!(game.get::<TrainQueue>(entity), Some(&TrainQueue::default()));
 }
 
 #[test]
@@ -408,7 +454,7 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head_and_its_paid
     };
     // Pushed at tick 5, a train of 30 ticks, which paid 5 gold, is done at tick 35.
     let mut queue = TrainQueue::default();
-    queue.push(queued, &[five], Tick::new(5));
+    queue.push(queued, &[five], Tick::new(5), &mut QueueDues::loose());
     assert_eq!(decode(vec![queued], Some(35), vec![five]), Ok(queue));
     assert_eq!(decode(vec![], None, vec![]), Ok(TrainQueue::default()));
     assert!(decode(vec![], Some(35), vec![]).is_err());
@@ -423,7 +469,7 @@ fn a_train_queue_is_state_and_restores() {
     // A queue of two trains, the first ordered at tick 0 to be done at tick 3.
     let mut game = shop_match();
     let shop = Shop::place(&mut game);
-    let train = Actions::add_train(&mut game, shop.grunt, Ticks::new(3), None);
+    let train = Production::add_train(&mut game, shop.grunt, Ticks::new(3), None);
     let id = Production::allocate_id(&mut game);
     shop.producer(
         &mut game,
@@ -438,7 +484,7 @@ fn a_train_queue_is_state_and_restores() {
     // A restore loads the match's books first: the same train.
     let mut restored = shop_match();
     let restored_shop = Shop::place(&mut restored);
-    Actions::add_train(&mut restored, restored_shop.grunt, Ticks::new(3), None);
+    Production::add_train(&mut restored, restored_shop.grunt, Ticks::new(3), None);
     Release::restore_into(&game, &mut restored);
     // A train of the longest time, pushed at tick 0, is done at the limit; pushed a tick later,
     // or a tick longer, it fails to decode.
@@ -451,11 +497,16 @@ fn a_train_queue_is_state_and_restores() {
             time: Ticks::new(time),
             paid: 0,
         };
-        queue.push(queued, &[], Tick::new(pushed));
+        queue.push(queued, &[], Tick::new(pushed), &mut QueueDues::loose());
         Match::decodes(&queue) && queue.check(&restored, entity)
     };
     assert!(check(0, Tick::LIMIT.get()));
     assert!(!check(1, Tick::LIMIT.get()) && !check(0, Tick::LIMIT.get() + 1));
+    // A head started before the tick the match runs next ends at most its time after it: one of
+    // 3 ticks pushed in that tick holds; pushed a tick later, it would wait past what any train
+    // waits, and fails.
+    let now = restored.resource::<SimTick>().start().get();
+    assert!(check(now, 3) && !check(now + 1, 3));
     assert_eq!(restored.part::<TrainQueue>(id), game.part::<TrainQueue>(id));
 }
 

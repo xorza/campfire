@@ -1,7 +1,9 @@
-use campfire_values::{FilterData, FilterSyntax, Relation, RelationSet, TagSet};
+use campfire_values::{
+    Article, FilterData, FilterSyntax, NameKind, NameScope, Named, Relation, RelationSet, Tag,
+    TagSet,
+};
 
 use crate::scripts::error::{ApiError, UnknownName};
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::view::tag_names::TagNames;
 
 /// A filter as a match runs it: a set of relations, the tags a unit must have, and those it must
@@ -17,9 +19,9 @@ pub struct Filter {
 impl Filter {
     /// The filter `text` names, with its tags among the match's.
     pub fn parse(text: &str, tags: &TagNames) -> Result<Self, ApiError> {
-        let syntax = FilterSyntax::parse(text).ok_or(ApiError::Unknown(NameKind::Filter))?;
+        let syntax = FilterSyntax::parse(text).ok_or(ApiError::Unknown(Self::NAMES))?;
         let terms = syntax.tags().map(|term| (term.name, term.negated));
-        Self::of(syntax.relations, terms, tags).ok_or(ApiError::Unknown(NameKind::Tag))
+        Self::of(syntax.relations, terms, tags).ok_or(ApiError::Unknown(Tag::NAMES))
     }
 
     /// The run-time form of `filter`, data's, with its tags among the match's; an error that
@@ -29,8 +31,7 @@ impl Filter {
             .tags
             .iter()
             .map(|tag| (tag.name.as_str(), tag.negated));
-        Self::of(filter.relations, terms, tags)
-            .ok_or_else(|| UnknownName::new(NameKind::Filter, filter))
+        Self::of(filter.relations, terms, tags).ok_or_else(|| UnknownName::new(Self::NAMES, filter))
     }
 
     /// The run-time form of `data`, as `resolve` gives it, or with none, the filter of enemies
@@ -90,26 +91,28 @@ impl Filter {
     }
 }
 
+impl Named for Filter {
+    const NAMES: NameKind = NameKind::new("filter", Article::A, NameScope::Match);
+}
+
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_values::RelationSet;
 
-    use crate::scripts::view::View;
     use crate::scripts::view::filter::Filter;
+    use crate::scripts::view::match_names::MatchNames;
 
     impl Filter {
         /// The filter of `relations` alone, of the tags of the match `world` holds.
         pub fn of_match_relations(world: &World, relations: RelationSet) -> Self {
-            let view = world.non_send::<View>();
-            let names = view.names();
-            Self::of_relations(relations, names.tags())
+            Self::of_relations(relations, world.resource::<MatchNames>().tags())
         }
 
         /// The filter `text` names, of the tags of the match `world` holds.
         pub fn of_match(world: &World, text: &str) -> Self {
-            let view = world.non_send::<View>();
-            Self::parse(text, view.names().tags()).expect("a filter of the match's tags")
+            let tags = world.resource::<MatchNames>().tags();
+            Self::parse(text, tags).expect("a filter of the match's tags")
         }
     }
 }

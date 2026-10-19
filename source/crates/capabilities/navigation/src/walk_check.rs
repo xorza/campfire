@@ -1,8 +1,9 @@
-use campfire_geometry::{Grid, Shape};
+use campfire_common::DeclaredName;
+use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
-use campfire_units::{Body, MapBook};
-use campfire_values::{DeclaredName, UnitType};
+use campfire_units::{Body, MapBook, WallBook};
+use campfire_values::UnitType;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::error::MapProblem;
@@ -13,14 +14,14 @@ use crate::segment::Segment;
 use crate::terrain::Terrain;
 use crate::walker_kinds::WalkerKinds;
 
-/// What a map's walk check reads: its ground, with the bounds; its paths and walls; its pathing
-/// cells, none for a map with no `[navigation]`; each kind of unit that walks; the bodies of its
-/// placed units that do not walk; and the points of the markers its mode's units spawn at.
+/// What a map's walk check reads: its ground, with the bounds; its paths, walls and pathing cells,
+/// none for a map with no `[navigation]`; each kind of unit that walks; the bodies of its placed
+/// units that do not walk; and the points of the markers its mode's units spawn at.
 #[derive(Debug, Clone, Copy)]
 pub struct WalkCheck<'a> {
     pub ground: &'a MapBook,
     pub navigation: &'a NavigationBook,
-    pub cells: Option<Grid>,
+    pub walls: &'a WallBook,
     pub walkers: &'a WalkerKinds,
     pub placed: &'a [PlacedBody],
     pub spawns: &'a [MarkerPoint],
@@ -55,10 +56,7 @@ impl WalkCheck<'_> {
     /// nothing more to check.
     pub fn run(&self, name_of: impl Fn(UnitType) -> DeclaredName) -> Result<(), MapProblem> {
         let bounds = &self.ground.bounds;
-        let NavigationBook {
-            paths,
-            walls: placed_walls,
-        } = self.navigation;
+        let NavigationBook { paths, pathing } = self.navigation;
         let mut ids = IdAllocator::default();
         let structures: Vec<IndexedBody> = self
             .placed
@@ -76,11 +74,11 @@ impl WalkCheck<'_> {
                 });
             }
         }
-        let Some(cells) = self.cells else {
+        let &Some(cells) = pathing else {
             return Ok(());
         };
         let walkers = self.walkers;
-        let terrain = Terrain::new(&cells, placed_walls.walls());
+        let terrain = Terrain::new(&cells, self.walls.walls());
         let widest_radius = walkers.iter().map(|walker| walker.radius).max();
         let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
         statics.update(&structures);

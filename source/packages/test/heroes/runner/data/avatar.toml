@@ -51,3 +51,7 @@ windup_ms = 266
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "true"
+
+# The hero that fells it takes 150 experience.
+[experience]
+gives = 150

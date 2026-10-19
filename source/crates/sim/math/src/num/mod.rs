@@ -164,6 +164,15 @@ impl Num {
         narrow(rounding.shift_right(self.0 as i128 * rhs.0 as i128, Self::FRAC_BITS))
     }
 
+    /// `self × by × and`, from the exact product of the three, rounded once by `rounding`; `None`
+    /// for a result that does not fit. A product past an `i128` is far past every `Num`.
+    pub const fn checked_mul_mul(self, by: Self, and: Self, rounding: Rounding) -> Option<Self> {
+        let Some(product) = (self.0 as i128 * by.0 as i128).checked_mul(and.0 as i128) else {
+            return None;
+        };
+        narrow(rounding.shift_right(product, 2 * Self::FRAC_BITS))
+    }
+
     /// The value with these bits, from a wider result that cannot overflow.
     pub(crate) const fn from_wide_bits(bits: i128) -> Self {
         Self(to_i64(bits))
@@ -173,12 +182,6 @@ impl Num {
     /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit.
     pub(crate) const fn from_raw_products(sum: i128) -> Option<Self> {
         narrow(Rounding::NearestEven.shift_right(sum, Self::FRAC_BITS))
-    }
-
-    /// The value whose bits are nearest to `numerator / denominator`, for a ratio of raw products;
-    /// `None` when it does not fit.
-    pub(crate) fn from_raw_ratio(numerator: i128, denominator: i128) -> Option<Self> {
-        narrow(Rounding::NearestEven.divide(numerator, denominator))
     }
 
     /// `self ÷ rhs`, rounded once by `rounding`; `None` for a divisor of 0 or a result that does

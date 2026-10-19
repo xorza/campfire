@@ -6,7 +6,7 @@ use bevy::camera::visibility::Visibility;
 use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::hierarchy::{ChildOf, Children};
+use bevy::ecs::hierarchy::Children;
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{Allow, With, Without};
 use bevy::ecs::resource::Resource;
@@ -14,26 +14,27 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::picking::events::{Click, Pointer};
 use bevy::picking::pointer::PointerButton;
+use bevy::state::state::NextState;
 use bevy::text::TextColor;
 use bevy::ui::widget::Text;
-use bevy::ui::{BackgroundColor, FlexDirection, Node, PositionType, UiRect, Val};
-use campfire_actions::{ActionBook, ActionSlots, ActionTarget, KindSpec};
+use campfire_actions::{ActionBook, ActionKind, ActionSlots, ActionTarget};
 use campfire_capabilities::{Action, Order};
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
-use campfire_players::{PlayerResources, PlayerRows};
-use campfire_production::{ProductionAction, Site, TrainQueue};
+use campfire_production::{BuildBook, ProductionAction, Site, SiteProgress, TrainQueue};
+use campfire_script::MatchNames;
 use campfire_sim::{EntityIndex, SimTick, StableId, Unpredicted};
 use campfire_units::{Dead, Owner};
-use campfire_values::{ActionId, ResourceId, UnitType};
+use campfire_values::{ActionId, NameId, ResourceId, UnitType};
 
 use crate::action_names::ActionTexts;
+use crate::input_mode::InputMode;
 use crate::own_player::OwnPlayer;
 use crate::placing::Placing;
 use crate::selection::{Selection, SelectionSystems};
-use crate::ui_style::{self, BACK, DIMMED, TEXT};
+use crate::ui_style::{self, Corner, DIMMED, Panel, PanelRow, TEXT};
 use crate::view::unit_looks::UnitLooks;
 
 /// The command panel (02-engine-core.md, A command panel from the actions): it shows the first
@@ -43,15 +44,15 @@ use crate::view::unit_looks::UnitLooks;
 /// train queue, each entry's name and the head's progress, a click on an entry cancelling it; and
 /// of a site, its progress, a click cancelling it. A train button orders the unit alone to train; a
 /// build button starts the build preview.
-#[derive(Debug, Clone)]
-pub(crate) struct CommandPanel {
-    pub(crate) resources: Vec<ResourceId>,
-}
+#[derive(Debug)]
+pub(crate) struct CommandPanel;
 
-/// What the panel shows of the mode: the player resources whose amounts it shows, in the mode's
-/// order.
+/// What the panel shows of the mode: the player resources whose amounts it shows, in the order
+/// the match names them.
 #[derive(Resource, Debug)]
-struct PanelSetup(CommandPanel);
+struct PanelSetup {
+    resources: Vec<ResourceId>,
+}
 
 /// The panel's root, shown while it shows a unit.
 #[derive(Component, Debug)]
@@ -111,6 +112,13 @@ enum Making {
     Build(UnitType),
 }
 
+/// The books the panel tells a train from a build by, and a build's building.
+#[derive(Debug, Clone, Copy)]
+struct MakingBooks<'a> {
+    actions: &'a ActionBook,
+    builds: &'a BuildBook,
+}
+
 /// What the panel reads of a unit: its slots, its train queue, and its site.
 #[derive(Debug, Clone, Copy)]
 struct PanelUnit<'a> {
@@ -126,7 +134,7 @@ type PanelNodes<'w, 's> = (
     Single<'w, 's, Entity, With<Funds>>,
 );
 
-/// The units the panel may show: each one's player, slots, train queue and site.
+/// The units the panel may show: each one's player, slots, train queue, site and its progress.
 type PanelUnits<'w, 's> = Query<
     'w,
     's,
@@ -135,42 +143,33 @@ type PanelUnits<'w, 's> = Query<
         Option<&'static ActionSlots>,
         Option<&'static TrainQueue>,
         Option<&'static Site>,
+        Option<&'static SiteProgress>,
     ),
     (Without<Dead>, Allow<Unpredicted>),
 >;
 
 impl Plugin for CommandPanel {
     fn build(&self, app: &mut App) {
-        app.insert_resource(PanelSetup(self.clone()));
         app.init_resource::<Shown>();
-        app.add_systems(Startup, Self::spawn);
+        app.add_systems(Startup, (Self::set_up, Self::spawn));
         app.add_systems(Update, Self::show.after(SelectionSystems));
     }
 }
 
 impl CommandPanel {
+    /// Takes the player resources the match names, whose amounts the panel shows.
+    fn set_up(names: Res<'_, MatchNames>, mut commands: Commands<'_, '_>) {
+        let resources = (0..names.count::<ResourceId>())
+            .map(ResourceId::at)
+            .collect();
+        commands.insert_resource(PanelSetup { resources });
+    }
+
     fn spawn(mut commands: Commands<'_, '_>) {
-        let root = Node {
-            position_type: PositionType::Absolute,
-            right: Val::Px(12.0),
-            bottom: Val::Px(12.0),
-            width: Val::Px(320.0),
-            flex_direction: FlexDirection::Column,
-            padding: UiRect::all(Val::Px(8.0)),
-            row_gap: Val::Px(4.0),
-            ..Node::default()
-        };
-        commands
-            .spawn((PanelRoot, root, BackgroundColor(BACK), Visibility::Hidden))
-            .with_children(|panel| {
-                panel.spawn((Funds, Text::default(), ui_style::font(), TextColor(TEXT)));
-                let rows = Node {
-                    flex_direction: FlexDirection::Column,
-                    row_gap: Val::Px(2.0),
-                    ..Node::default()
-                };
-                panel.spawn((Rows, rows));
-            });
+        let panel = Panel::spawn(&mut commands, Corner::BottomRight, 320.0);
+        commands.entity(panel.root).insert(PanelRoot);
+        commands.entity(panel.funds).insert(Funds);
+        commands.entity(panel.rows).insert(Rows);
     }
 
     /// Shows the unit the panel reads: its rows, made again when what it shows changes, and
@@ -183,12 +182,13 @@ impl CommandPanel {
     fn show(
         own: OwnPlayer<'_, '_>,
         (selection, index, units): (Res<'_, Selection>, Res<'_, EntityIndex>, PanelUnits<'_, '_>),
-        (book, names, tick): (
+        (book, builds, names, tick): (
             Res<'_, ActionBook>,
+            Res<'_, BuildBook>,
             Res<'_, ActionTexts>,
-            Option<Res<'_, SimTick>>,
+            Res<'_, SimTick>,
         ),
-        (funds_rows, setup): (PlayerRows<'_, '_, PlayerResources>, Res<'_, PanelSetup>),
+        setup: Res<'_, PanelSetup>,
         (mut shown, mut next): (ResMut<'_, Shown>, Local<'_, Shown>),
         (root, rows, funds): PanelNodes<'_, '_>,
         (mut texts, mut colors): (Query<'_, '_, &mut Text>, Query<'_, '_, &mut TextColor>),
@@ -203,7 +203,7 @@ impl CommandPanel {
         let slot = own.slot();
         next.clear();
         for &unit in selection.get() {
-            let Some(Ok((owner, slots, queue, site))) = index.get(unit).map(|at| units.get(at))
+            let Some(Ok((owner, slots, queue, site, _))) = index.get(unit).map(|at| units.get(at))
             else {
                 continue;
             };
@@ -211,7 +211,11 @@ impl CommandPanel {
                 continue;
             }
             let held = PanelUnit { slots, queue, site };
-            if next.fill(unit, held, &book) {
+            let books = MakingBooks {
+                actions: &book,
+                builds: &builds,
+            };
+            if next.fill(unit, held, books) {
                 break;
             }
         }
@@ -226,13 +230,12 @@ impl CommandPanel {
             return;
         };
         root.set_if_neq(Visibility::Inherited);
-        let Ok((_, slots, queue, site)) = units.get(unit) else {
+        let Ok((_, slots, queue, site, progress)) = units.get(unit) else {
             return;
         };
-        let held = slot.and_then(|slot| funds_rows.of_slot(slot));
         line.clear();
-        for (at, &resource) in setup.0.resources.iter().enumerate() {
-            let amount = held.map_or(0, |held| held.amount(resource));
+        for (at, &resource) in setup.resources.iter().enumerate() {
+            let amount = own.amount(resource);
             let gap = if at == 0 { "" } else { "  " };
             write!(line, "{gap}{amount}").expect("a String takes any text");
         }
@@ -247,9 +250,7 @@ impl CommandPanel {
                 write!(line, "{gap}{}", cost.amount).expect("a String takes any text");
             }
             ui_style::set_text(&mut texts, row.cost, &line);
-            let affords = costs
-                .zip(held)
-                .is_some_and(|(costs, held)| held.affords(costs));
+            let affords = costs.is_some_and(|costs| own.affords(costs));
             let color = if affords { TEXT } else { DIMMED };
             for line in [row.name, row.cost] {
                 if let Ok(mut held) = colors.get_mut(line) {
@@ -257,45 +258,23 @@ impl CommandPanel {
                 }
             }
         }
-        let now = tick.map(|tick| tick.start());
+        let now = tick.start();
         for row in &queue_rows {
             line.clear();
             let head = (row.place == 0).then_some(queue).flatten();
-            if let Some(percent) = head
-                .zip(now)
-                .and_then(|(queue, now)| head_percent(queue, now))
-            {
+            if let Some(percent) = head.and_then(|queue| head_percent(queue, now)) {
                 write!(line, "{percent}%").expect("a String takes any text");
             }
             ui_style::set_text(&mut texts, row.progress, &line);
         }
         for row in &site_rows {
             line.clear();
-            let time = site.and_then(|site| book.get(site.action())?.windup_ticks(site.rank()));
-            if let Some((site, time)) = site.zip(time) {
-                let percent = site_percent(site.progress(), time);
+            if let Some((progress, time)) = progress.zip(site.map(Site::time)) {
+                let percent = site_percent(progress.get(), time);
                 write!(line, "{percent}%").expect("a String takes any text");
             }
             ui_style::set_text(&mut texts, row.progress, &line);
         }
-    }
-
-    /// A row in `rows` of a line of `name` and a line of value, which the panel writes.
-    fn spawn_row(commands: &mut Commands<'_, '_>, rows: Entity, name: &str) -> RowLines {
-        let line = Node {
-            flex_direction: FlexDirection::Row,
-            column_gap: Val::Px(12.0),
-            ..Node::default()
-        };
-        let row = commands.spawn((line, ChildOf(rows))).id();
-        let mut cell = |text: Text| {
-            commands
-                .spawn((text, ui_style::font(), TextColor(TEXT), ChildOf(row)))
-                .id()
-        };
-        let name = cell(Text::new(name));
-        let value = cell(Text::default());
-        RowLines { row, name, value }
     }
 
     /// A left click on a button's row trains with its slot, or starts the build preview of its
@@ -304,8 +283,8 @@ impl CommandPanel {
         click: On<'_, '_, Pointer<Click>>,
         rows: Query<'_, '_, &ButtonRow>,
         shown: Res<'_, Shown>,
-        looks: Option<Res<'_, UnitLooks>>,
-        mut orders: ResMut<'_, PendingOrders>,
+        looks: Res<'_, UnitLooks>,
+        (mut orders, mut mode): (ResMut<'_, PendingOrders>, ResMut<'_, NextState<InputMode>>),
         mut commands: Commands<'_, '_>,
     ) {
         if click.button != PointerButton::Primary {
@@ -325,9 +304,7 @@ impl CommandPanel {
                 orders.push(Order::one(unit, OrdersAction::Slot { slot, target }));
             }
             Making::Build(building) => {
-                let angle = looks
-                    .as_deref()
-                    .map_or(Num::ZERO, |looks| looks.placement_angle(building));
+                let angle = looks.placement_angle(building);
                 commands.insert_resource(Placing {
                     builder: unit,
                     slot,
@@ -335,6 +312,7 @@ impl CommandPanel {
                     building,
                     angle,
                 });
+                NextState::set_if_neq(&mut mode, InputMode::Place);
             }
         }
     }
@@ -348,12 +326,7 @@ impl CommandPanel {
     ) {
         if let Ok(row) = rows.get(click.entity) {
             let place = row.place;
-            Self::cancel(
-                &click,
-                &shown,
-                orders,
-                ProductionAction::CancelTrain { place },
-            );
+            shown.order(&click, orders, ProductionAction::CancelTrain { place });
         }
     }
 
@@ -363,34 +336,26 @@ impl CommandPanel {
         shown: Res<'_, Shown>,
         orders: ResMut<'_, PendingOrders>,
     ) {
-        Self::cancel(&click, &shown, orders, ProductionAction::CancelBuild);
+        shown.order(&click, orders, ProductionAction::CancelBuild);
     }
+}
 
+impl Shown {
     /// Orders the shown unit to `action`, for a left click.
-    fn cancel(
+    fn order(
+        &self,
         click: &Pointer<Click>,
-        shown: &Shown,
         mut orders: ResMut<'_, PendingOrders>,
         action: ProductionAction,
     ) {
         if click.button != PointerButton::Primary {
             return;
         }
-        if let Some(unit) = shown.unit {
+        if let Some(unit) = self.unit {
             orders.push(Order::one(unit, Action::from(action)));
         }
     }
-}
 
-/// The entities of a row: the row, and its lines of name and of value.
-#[derive(Debug, Clone, Copy)]
-struct RowLines {
-    row: Entity,
-    name: Entity,
-    value: Entity,
-}
-
-impl Shown {
     /// Shows nothing.
     fn clear(&mut self) {
         self.unit = None;
@@ -399,10 +364,10 @@ impl Shown {
         self.site = None;
     }
 
-    /// Shows `unit`, as `held` and `book` give it, unless it is no site and has no button: then
+    /// Shows `unit`, as `held` and `books` give it, unless it is no site and has no button: then
     /// it shows nothing. Whether it shows the unit. A site shows its own row alone, as its actions
     /// wait for it to complete.
-    fn fill(&mut self, unit: StableId, held: PanelUnit<'_>, book: &ActionBook) -> bool {
+    fn fill(&mut self, unit: StableId, held: PanelUnit<'_>, books: MakingBooks<'_>) -> bool {
         self.clear();
         if let Some(site) = held.site {
             self.unit = Some(unit);
@@ -412,9 +377,9 @@ impl Shown {
         let slots = held.slots.into_iter().flat_map(ActionSlots::indexed);
         self.buttons.extend(slots.filter_map(|(slot, held)| {
             let action = held.action?;
-            let making = match book.get(action)?.kind {
-                KindSpec::Train(_) => Making::Train,
-                KindSpec::Build(building) => Making::Build(building),
+            let making = match books.actions.get(action)?.kind {
+                ActionKind::Train => Making::Train,
+                ActionKind::Build => Making::Build(books.builds.of(action)?.unit_type),
                 _ => return None,
             };
             Some(Button {
@@ -436,7 +401,7 @@ impl Shown {
     /// queue's entries, then its site.
     fn spawn_rows(&self, commands: &mut Commands<'_, '_>, rows: Entity, names: &ActionTexts) {
         for &button in &self.buttons {
-            let lines = CommandPanel::spawn_row(commands, rows, names.of(button.action));
+            let lines = PanelRow::spawn(commands, rows, names.of(button.action));
             commands
                 .entity(lines.row)
                 .insert(ButtonRow {
@@ -447,7 +412,7 @@ impl Shown {
                 .observe(CommandPanel::press);
         }
         for (place, &action) in (0..=u8::MAX).zip(&self.queue) {
-            let lines = CommandPanel::spawn_row(commands, rows, names.of(action));
+            let lines = PanelRow::spawn(commands, rows, names.of(action));
             commands
                 .entity(lines.row)
                 .insert(QueueRow {
@@ -457,7 +422,7 @@ impl Shown {
                 .observe(CommandPanel::cancel_train);
         }
         if let Some(action) = self.site {
-            let lines = CommandPanel::spawn_row(commands, rows, names.of(action));
+            let lines = PanelRow::spawn(commands, rows, names.of(action));
             commands
                 .entity(lines.row)
                 .insert(SiteRow {
@@ -481,25 +446,34 @@ fn head_percent(queue: &TrainQueue, now: Tick) -> Option<u64> {
     })
 }
 
-/// The share of `time` that `progress` is, in whole percent rounded down; 100 for a build of no
-/// time.
+/// The share of `time` that `progress` is, in whole percent rounded down, from 0 to 100; 100 for
+/// a build of no time. A site's progress is at most its time, as the sim's check of it holds.
 fn site_percent(progress: Num, time: Num) -> i64 {
+    debug_assert!(
+        Num::ZERO <= progress && progress <= time.max(Num::ZERO),
+        "a site's progress is from 0 to its time"
+    );
     let (progress, time) = (i128::from(progress.to_bits()), i128::from(time.to_bits()));
     if time <= 0 {
         return 100;
     }
-    i64::try_from(progress * 100 / time).expect("a site's progress is at most its time")
+    i64::try_from(progress * 100 / time).expect("a share from 0 to 100 fits")
 }
 
 #[cfg(test)]
 mod tests {
     use bevy::ecs::system::{IntoSystem, System};
     use bevy::ecs::world::World;
-    use campfire_actions::{Actions, SlotKind};
+    use campfire_actions::SlotKind;
     use campfire_capabilities::Match;
-    use campfire_production::Queued;
+    use campfire_production::internals::TestBuild;
+    use campfire_production::{
+        BuildStart, NewBuild, Production, QueueDues, Queued, SiteStart, Style,
+    };
     use campfire_sim::{Capability, IdAllocator};
+    use campfire_units::BodyForm;
     use campfire_values::Rank;
+    use campfire_values::Share;
 
     use super::*;
 
@@ -516,9 +490,27 @@ mod tests {
         let mut world = Match::predicting(&[Capability::Production]);
         let (ranger, barracks) = (UnitType::new(1), UnitType::new(2));
         let time = Ticks::new(150);
-        let train = Actions::add_train(&mut world, ranger, time, None);
-        let build = Actions::add_build(&mut world, barracks, 10, Ticks::new(300), None);
-        let book = world.resource::<ActionBook>();
+        let train = Production::add_train(&mut world, ranger, time, None);
+        let build = TestBuild {
+            range: Num::int(10),
+            time: Ticks::new(300),
+            resource_cost: None,
+            build: NewBuild {
+                unit_type: barracks,
+                form: BodyForm::box_sized([Num::int(4), Num::int(2)]).unwrap(),
+                start: BuildStart::Arrival,
+                style: Style::Builder,
+                start_life: None,
+                refund: Share::ALL,
+                near: Vec::new(),
+                away: Vec::new(),
+            },
+        };
+        let build = Production::add_build(&mut world, build);
+        let books = MakingBooks {
+            actions: world.resource::<ActionBook>(),
+            builds: world.resource::<BuildBook>(),
+        };
         let kind = SlotKind::new(0);
         let rank = Some(Rank::FIRST);
         // A dozer's slots: a build in slot 0 and a train in slot 1.
@@ -530,8 +522,8 @@ mod tests {
             time,
             paid: 0,
         };
-        queue.push(queued, &[], Tick::new(0));
-        queue.push(queued, &[], Tick::new(0));
+        queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
+        queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
         let mut ids = IdAllocator::default();
         let (center, wall) = (ids.allocate(), ids.allocate());
         let mut shown = Shown::default();
@@ -540,7 +532,7 @@ mod tests {
             queue: Some(&queue),
             site: None,
         };
-        assert!(shown.fill(center, held, book));
+        assert!(shown.fill(center, held, books));
         assert_eq!(
             shown,
             Shown {
@@ -568,16 +560,23 @@ mod tests {
             queue: None,
             site: None,
         };
-        assert!(!shown.fill(wall, held, book));
+        assert!(!shown.fill(wall, held, books));
         assert_eq!(shown, Shown::default());
         // A site shows its row alone, though its type trains.
-        let site = Site::new(build, Rank::FIRST, Num::ZERO, &[], None);
+        let site = Site::new(SiteStart {
+            action: build,
+            rank: Rank::FIRST,
+            time: Num::int(4),
+            gain: Num::ZERO,
+            paid: &[],
+            holder: None,
+        });
         let held = PanelUnit {
             slots: Some(&slots),
             queue: Some(&queue),
             site: Some(&site),
         };
-        assert!(shown.fill(wall, held, book));
+        assert!(shown.fill(wall, held, books));
         assert_eq!(
             shown,
             Shown {
@@ -601,7 +600,7 @@ mod tests {
         };
         let mut queue = TrainQueue::default();
         assert_eq!(head_percent(&queue, Tick::new(0)), None);
-        queue.push(queued, &[], Tick::new(0));
+        queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
         let at = |now| head_percent(&queue, Tick::new(now));
         assert_eq!(
             [at(0), at(60), at(149), at(150), at(400)],
@@ -609,7 +608,7 @@ mod tests {
         );
         // A head that reached the head at 100, after another: at 160, 60 of its 150 ticks.
         let mut queue = TrainQueue::default();
-        queue.push(queued, &[], Tick::new(100));
+        queue.push(queued, &[], Tick::new(100), &mut QueueDues::loose());
         assert_eq!(head_percent(&queue, Tick::new(160)), Some(40));
         // A site 0.7 of the way to 300 ticks: 210 / 300 = 70 % exactly; one 2⁻³² below it, 69.
         let time = Num::int(300);

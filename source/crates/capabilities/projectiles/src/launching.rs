@@ -27,7 +27,7 @@ impl Launching {
         index: Res<'_, EntityIndex>,
         bodies: Query<'_, '_, &Body>,
     ) {
-        for shot in shots.0.drain(..) {
+        for shot in shots.drain() {
             let spec = specs
                 .get(shot.unit_type)
                 .expect("a shot's projectile type has a spec");

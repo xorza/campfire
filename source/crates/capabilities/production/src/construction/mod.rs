@@ -1,27 +1,33 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, QueryState, Without};
-use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, SystemState};
+use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut, SystemState};
 use bevy_ecs::world::{EntityMut, World};
-use campfire_actions::{ActionBook, ActionSlots, Payer, SlotTimes};
+use campfire_actions::{ActionBook, ActionKind, ActionSlots, Payer, SlotCommit, SlotTimes};
+use campfire_common::Tick;
 use campfire_declare::{ByType, RoleForm};
 use campfire_geometry::Placed;
 use campfire_math::Num;
-use campfire_navigation::Navigation;
 use campfire_players::{PlayerResources, PlayersWorld, ResourceAmount};
-use campfire_sim::{EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId};
-use campfire_stats::{Life, StatsWorld, UnitPools};
-use campfire_units::{Body, Dead, MapBook, Owner, SpawnAt, Spawner, StatusTags};
-use campfire_values::{Block, Team, UnitTags};
+use campfire_sim::{
+    DueIndex, DueUnit, EntityIndex, IdAllocator, Keyed, Ordered, Position, SimTick, StableId,
+};
+use campfire_stats::{StatsWorld, UnitPools};
+use campfire_units::{
+    Body, BuildTarget, Dead, Destination, GridBuild, Life, MapBook, Owner, SpawnAt, Spawner,
+    StatusTags,
+};
+use campfire_values::{Team, UnitTags};
 use campfire_vision::TeamSight;
 
 use crate::Production;
 use crate::build_book::{BuildBook, Style};
-use crate::build_target::BuildTarget;
 use crate::builder::{BuildOrder, Builder};
+use crate::completed_sites::CompletedSites;
 use crate::construction::build_view::{BuildPlace, BuildView};
 use crate::construction::building_at::BuildingAt;
 use crate::construction::step::{Start, Step};
-use crate::site::Site;
+use crate::order_dues::{self, OrderDues};
+use crate::site::{Site, SiteProgress, SiteStart};
 
 pub(crate) mod build_view;
 pub(crate) mod building_at;
@@ -38,8 +44,16 @@ impl Construction {
     /// its placement against the match as it stands, and a site's is a living site of the same
     /// building and player; one that fails ends, and pays nothing.
     pub(crate) fn check_builds<S: TeamSight>(
-        mut parts: ParamSet<'_, '_, (BuildView<'_, '_, S>, Query<'_, '_, &mut Builder>)>,
+        mut parts: ParamSet<
+            '_,
+            '_,
+            (
+                BuildView<'_, '_, S>,
+                Query<'_, '_, (&StableId, &mut Builder)>,
+            ),
+        >,
         mut changed: Local<'_, Vec<Entity>>,
+        mut index: ResMut<'_, DueIndex<Builder>>,
     ) {
         changed.clear();
         {
@@ -48,25 +62,25 @@ impl Construction {
             if changed.is_empty() {
                 return;
             }
-            view.read_holdings();
+            view.follow_holdings();
             changed.retain(|&entity| !view.applies(entity));
-            view.holdings.forget();
         }
         let mut builders = parts.p1();
         for &entity in &*changed {
-            builders
-                .get_mut(entity)
-                .expect("a builder read this tick")
-                .set(None);
+            let (&id, mut builder) = builders.get_mut(entity).expect("a builder read this tick");
+            builder.set(None, &mut OrderDues::new(&mut index, id, entity));
         }
     }
 
     /// Ends the build order of each builder that died since the last run: a dead unit takes no
     /// order, and starts no action.
-    pub(crate) fn forget_dead_builds(mut builders: Query<'_, '_, &mut Builder, Added<Dead>>) {
-        for mut builder in &mut builders {
+    pub(crate) fn forget_dead_builds(
+        mut builders: Query<'_, '_, (Entity, &StableId, &mut Builder), Added<Dead>>,
+        mut index: ResMut<'_, DueIndex<Builder>>,
+    ) {
+        for (entity, &id, mut builder) in &mut builders {
             if builder.order().is_some() {
-                builder.set(None);
+                builder.set(None, &mut OrderDues::new(&mut index, id, entity));
             }
         }
     }
@@ -78,44 +92,54 @@ impl Construction {
     /// stand in; its life starts at `start_life` of its maximum, rounded down, at least the least
     /// amount above 0. Each build sees the sites the builds before it placed. An `alone` build's
     /// order then ends; another's builds its site. On a predicting client, a build that starts
-    /// spawns nothing, and its order ends until the server's comes back.
+    /// spawns nothing, and its order ends until the server's comes back. The unit grid is built
+    /// again before each build, as one may have spawned a site.
     pub(crate) fn start_builds<S: TeamSight>(
         world: &mut World,
-        builders: &mut QueryState<(Entity, &StableId, &Builder), Without<Dead>>,
-        view: &mut SystemState<BuildView<'_, '_, S>>,
-        (mut order, mut paid): (Local<'_, Ordered>, Local<'_, Vec<ResourceAmount>>),
+        builders: &mut QueryState<&Builder, Without<Dead>>,
+        (view, grid): (
+            &mut SystemState<BuildView<'_, '_, S>>,
+            &mut SystemState<GridBuild<'_, '_>>,
+        ),
+        (mut order, mut paid, mut held): (
+            Local<'_, Ordered>,
+            Local<'_, Vec<ResourceAmount>>,
+            Local<'_, Vec<DueUnit>>,
+        ),
     ) {
-        let ordered = builders
-            .iter(world)
-            .filter(|(.., builder)| builder.order().is_some())
-            .map(|(entity, &id, _)| Keyed { id, entity });
-        let due = order.sort(ordered);
+        order_dues::held::<Builder>(world, &mut held);
+        let ordered = held.iter().filter(|unit| {
+            let builder = builders.get(world, unit.entity);
+            builder.is_ok_and(|builder| builder.order().is_some())
+        });
+        let due = order.sort(ordered.map(|&DueUnit { id, entity }| Keyed { id, entity }));
         if due.is_empty() {
             return;
         }
         view.get_mut(world)
             .expect("a build view is always valid")
-            .read_holdings();
+            .follow_holdings();
         for &Keyed { entity, .. } in due {
+            // A site the build before spawned stands in the grid this build's placement reads.
+            grid.get_mut(world)
+                .expect("a grid build is always valid")
+                .refresh();
             let step = view
                 .get_mut(world)
                 .expect("a build view is always valid")
                 .step(entity);
             match step {
-                Step::Walk(to) => Navigation::go_to(world, entity, Some(to)),
-                Step::Build => Navigation::go_to(world, entity, None),
+                Step::Walk(to) => Destination::go_to(world, entity, Some(to)),
+                Step::Build => Destination::go_to(world, entity, None),
                 Step::Take(site) => {
-                    Navigation::go_to(world, entity, None);
+                    Destination::go_to(world, entity, None);
                     let id = *world.get::<StableId>(entity).expect("a builder has an id");
                     let mut site_part = world.get_mut::<Site>(site).expect("a site to take");
                     site_part.hold(id);
                 }
-                Step::End => {
-                    let mut builder = world.get_mut::<Builder>(entity).expect("a builder");
-                    builder.set(None);
-                }
+                Step::End => Builder::set_in(world, entity, None),
                 Step::Start(start) => {
-                    Navigation::go_to(world, entity, None);
+                    Destination::go_to(world, entity, None);
                     Self::spawn_site::<S>(world, entity, start, &mut paid);
                 }
             }
@@ -147,8 +171,11 @@ impl Construction {
             .expect("a build's slot holds its action");
         paid.clear();
         let book = world.resource::<ActionBook>();
-        let cost = book.get(action).expect("a build in the book");
-        paid.extend_from_slice(cost.resource_cost(start.rank));
+        let build = book.get(action).expect("a build in the book");
+        paid.extend_from_slice(build.resource_cost(start.rank));
+        let time = build
+            .windup_ticks(start.rank)
+            .expect("a build's time fits a Num");
         let life = world.life_pool();
         let pay = |unit: &mut EntityMut<'_>, resources: Option<&mut PlayerResources>| {
             let pools = unit.get_components_mut::<UnitPools>();
@@ -171,14 +198,17 @@ impl Construction {
         let mut times = world
             .get_mut::<SlotTimes>(entity)
             .expect("a builder has slot times");
-        times.cool_down(order.slot, now.after(start.cooldown));
+        times.commit(SlotCommit {
+            slot: order.slot,
+            now,
+            ready_at: now.after(start.cooldown),
+            charges: start.charges,
+            toggle: None,
+        });
         // The site is the server's, which a client predicts no spawn of: the order ends, so the
         // build starts once, and the server's, turned to the site, comes back by replication.
         if F::PREDICTS {
-            world
-                .get_mut::<Builder>(entity)
-                .expect("a builder")
-                .set(None);
+            Builder::set_in(world, entity, None);
             return;
         }
         let id = world.resource_mut::<IdAllocator>().allocate();
@@ -210,10 +240,16 @@ impl Construction {
         });
         let builder = *world.get::<StableId>(entity).expect("a builder has an id");
         let holder = one_holds.then_some(builder);
-        let site_part = Site::new(action, start.rank, gain, paid, holder);
+        let site_part = Site::new(SiteStart {
+            action,
+            rank: start.rank,
+            time,
+            gain,
+            paid,
+            holder,
+        });
         let status = StatusTags::from([Production::CONSTRUCTING]);
-        let spawner = world.non_send::<Spawner>().clone();
-        let site = spawner.spawn(world, at, (site_part, status));
+        let site = Spawner::spawn(world, at, (site_part, status));
         if let Some(mut life) = world.get_mut::<Life>(site) {
             life.take(gain);
         }
@@ -221,10 +257,7 @@ impl Construction {
             slot: order.slot,
             target: BuildTarget::Site(id),
         });
-        world
-            .get_mut::<Builder>(entity)
-            .expect("a builder")
-            .set(next);
+        Builder::set_in(world, entity, next);
     }
 
     /// Grows each site, in the Mode stage before the trains finish, by stable id: its progress
@@ -232,9 +265,11 @@ impl Construction {
     /// that holds it alone, toward the build's time in ticks, and its life the gain of that
     /// progress, within its maximum. A builder builds a site while it lives, its order is to
     /// build it, its body is within its build's range of the site's, and no tag blocks its `use`
-    /// group. A site that reaches its time completes: it loses
-    /// its site and its `constructing` tag, and its builders' orders end.
-    pub(crate) fn progress_sites(
+    /// group. A site that reaches its time completes: it loses its site and its `constructing`
+    /// tag, its builders' orders end, and, on the server, its building joins the completed sites,
+    /// whose `on_site_complete` the mode runs. A predicting client's form `F` completes sites
+    /// alike, and leaves the hook to the server.
+    pub(crate) fn progress_sites<F: RoleForm>(
         (index, book, builds, map): (
             Res<'_, EntityIndex>,
             Res<'_, ActionBook>,
@@ -249,7 +284,7 @@ impl Construction {
                 &StableId,
                 &Position,
                 &Body,
-                &mut Site,
+                (&Site, &mut SiteProgress),
                 Option<&mut Life>,
                 &mut StatusTags,
             ),
@@ -259,7 +294,6 @@ impl Construction {
             '_,
             '_,
             (
-                &StableId,
                 &Position,
                 Option<&Body>,
                 &ActionSlots,
@@ -274,9 +308,20 @@ impl Construction {
             Local<'_, Ordered>,
             Local<'_, Vec<StableId>>,
         ),
+        (mut builder_index, mut held): (ResMut<'_, DueIndex<Builder>>, Local<'_, Vec<DueUnit>>),
+        completed: Option<ResMut<'_, CompletedSites>>,
     ) {
         building.clear();
-        for (&builder_id, &from, body, slots, builder, tags) in &builders {
+        held.clear();
+        held.extend(builder_index.peek_due(Tick::ZERO));
+        for &DueUnit {
+            id: builder_id,
+            entity,
+        } in &*held
+        {
+            let Ok((&from, body, slots, builder, tags)) = builders.get(entity) else {
+                continue;
+            };
             let Some(BuildOrder {
                 slot,
                 target: BuildTarget::Site(site),
@@ -295,7 +340,9 @@ impl Construction {
             };
             let builder = Placed::new(from.get(), Body::shape_of(body));
             let reaches = placed.reached_by(map.metric, builder, range);
-            if reaches && !tags.is_some_and(|tags| tags.properties.blocks(Block::Use)) {
+            if reaches
+                && !tags.is_some_and(|tags| tags.properties.blocks(ActionKind::Build.block()))
+            {
                 building.push(BuildingAt {
                     site,
                     builder: builder_id,
@@ -306,7 +353,7 @@ impl Construction {
         done.clear();
         let ordered = sites.iter().map(|(entity, &id, ..)| Keyed { id, entity });
         for &Keyed { entity, id } in order.sort(ordered) {
-            let (.., mut site, life, mut status) =
+            let (.., (site, mut progress), life, mut status) =
                 sites.get_mut(entity).expect("a site in the order");
             let spec = builds
                 .of(site.action())
@@ -321,18 +368,12 @@ impl Construction {
                 (Style::Builder, None) => 0,
                 (Style::Alone | Style::Builders(_), _) => builders,
             };
-            let action = book
-                .get(site.action())
-                .expect("a site's build is in the book");
-            let time = action
-                .windup_ticks(site.rank())
-                .expect("a build's time fits a Num");
-            let progressed = site.progress_by(spec.rate(count), time);
+            let progressed = progress.grow(site, spec.rate(count));
             if let Some(mut life) = life {
                 life.add(progressed.life);
             }
             if progressed.complete {
-                commands.entity(entity).remove::<Site>();
+                commands.entity(entity).remove::<(Site, SiteProgress)>();
                 *status = status.turned(Production::CONSTRUCTING, false);
                 done.push(id);
             }
@@ -340,14 +381,25 @@ impl Construction {
         if done.is_empty() {
             return;
         }
+        // A predicting client holds no state of the server's alone.
+        debug_assert!(
+            F::PREDICTS || completed.is_some(),
+            "a server holds its completed sites"
+        );
+        if let Some(mut completed) = completed.filter(|_| !F::PREDICTS) {
+            completed.0.extend(done.iter().copied());
+        }
         done.sort_unstable();
-        for (_, _, _, _, mut builder, _) in &mut builders {
+        for &DueUnit { id, entity } in &*held {
+            let Ok((.., mut builder, _)) = builders.get_mut(entity) else {
+                continue;
+            };
             let ends = builder.order().is_some_and(|order| match order.target {
                 BuildTarget::Site(site) => done.binary_search(&site).is_ok(),
                 BuildTarget::Point { .. } => false,
             });
             if ends {
-                builder.set(None);
+                builder.set(None, &mut OrderDues::new(&mut builder_index, id, entity));
             }
         }
     }

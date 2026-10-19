@@ -7,7 +7,7 @@ use campfire_geometry::internals::{Density, KernelScene};
 use campfire_geometry::{BodyBox, Bounds, Grid, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
-use campfire_units::Layer;
+use campfire_units::{Layer, Wall};
 use criterion::measurement::WallTime;
 use criterion::{BenchmarkGroup, Criterion, Throughput};
 
@@ -22,7 +22,6 @@ use crate::route_planner::{RoutePlanner, Walkable};
 use crate::terrain::Terrain;
 use crate::walker::Walker;
 use crate::walker_kinds::WalkerKinds;
-use crate::wall::Wall;
 
 /// Runs each bench of the crate whose id criterion's filter takes.
 pub fn run(c: &mut Criterion) {
@@ -39,10 +38,10 @@ const HERO_RADIUS: i64 = 50;
 /// The routes a run of the route planner's case plans, as four waves' creeps plan theirs.
 const ROUTES: usize = 100;
 
-/// The Collide stage's work for `KernelScene::UNITS` bodies, at each density, in the crowded
-/// scene with its static bodies boxes, and in that scene with its first body a static box of
-/// 1,117 by 100 m, a Zero Hour bridge's size, 2 m past its north edge, which every walker's query
-/// of the static index meets and no walker, at most 1.19 m, touches: finding the contacts, then parting them,
+/// The Collide stage's work for `KernelScene::UNITS` bodies, at each density, in the crowded scene
+/// with its static bodies boxes, and in that scene with its first body a static box of 1,117 by 100
+/// m, a Zero Hour bridge's size, 2 m past its north edge, which every walker's query of the static
+/// index meets and no walker, at most 1.19 m, touches: finding the contacts, then parting them,
 /// from the same scene every run.
 fn collision(c: &mut Criterion) {
     let mut group = c.benchmark_group("integration/collision");
@@ -66,11 +65,12 @@ fn collision(c: &mut Criterion) {
             bodies[0].walking = false;
         }
         let index = statics(&bodies);
+        let walkers: Vec<Collider> = bodies.iter().filter(|body| body.movable).copied().collect();
         let mut broadphase = Broadphase::default();
-        let mut colliders = bodies.clone();
+        let mut colliders = walkers.clone();
         group.bench_function(name, |bench| {
             bench.iter(|| {
-                colliders.clone_from(&bodies);
+                colliders.clone_from(&walkers);
                 let contacts = broadphase.contacts(black_box(&colliders), &index);
                 Collider::resolve(&mut colliders, contacts);
                 black_box(&colliders);

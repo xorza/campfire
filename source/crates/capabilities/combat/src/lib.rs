@@ -1,4 +1,6 @@
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
@@ -9,46 +11,47 @@
 )]
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionSlots, EffectQueues};
+use campfire_actions::{ActionBook, ActionSlots, ActionsSet, ByAction, DamageKindBook, TogglePer};
 use campfire_common::EnumAll;
 use campfire_declare::{
-    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, Phase, ServerForm, SetPlace,
+    ByType, ClientForm, Declarations, InstallCx, Module, ModuleSet, ServerForm, SetPlace,
 };
 use campfire_math::RngStream;
-use campfire_sim::Capability;
-use campfire_stats::Life;
-use campfire_units::{BodyUnit, Dead, SpawnPoint};
+use campfire_script::{ApiVersion, Status};
+use campfire_sim::{Capability, SimSet};
+use campfire_stats::{LifePool, StatsSet, TypePools};
+use campfire_units::{BodyUnit, Dead, Deaths, Due, Life, SpawnPoint, UnitGrid, UnitsSet};
 
 use crate::combat_column::RowReads;
+use crate::combat_event::{OnAttack, OnAttackHit, OnDamageTaken, OnKill, OnTakedown};
 use crate::held_hits::HeldHits;
 use crate::next_damage::NextDamage;
 use crate::turret::aiming::Aiming;
-use crate::volley::Volley;
+use crate::volley::{GoingOff, Volley};
 
 mod armor;
+mod attack_data;
 mod attacks;
 mod clip_shots;
 mod combat_api;
 mod combat_book;
+mod combat_books;
 mod combat_column;
 mod combat_data;
 mod combat_effect;
 mod combat_event;
-mod combat_hooks;
 mod damage;
+mod damage_effect_data;
 mod damage_handle;
 mod damage_pass;
-mod deaths;
 mod dying;
 mod error;
 mod heal;
+mod heal_effect_data;
 mod heal_handle;
 mod held_hits;
-mod interval_due;
 mod kept;
 mod mode_combat_data;
-mod modifier_hooks;
-mod modifier_intervals;
 mod next_damage;
 mod on_death;
 mod pass_queue;
@@ -57,31 +60,32 @@ mod recent_attackers;
 mod respawn;
 mod turret;
 mod volley;
+mod weapon;
+mod weapon_names;
 mod weighers;
 mod wielded;
 
 pub use crate::armor::{Armor, ArmorShare};
+pub use crate::attack_data::{
+    AttackData, ClipData, PitchData, ScatterData, SplashData, WeaponValue,
+};
 pub use crate::attacks::Attacks;
 pub use crate::clip_shots::ClipShots;
 pub use crate::combat_api::CombatApi;
 pub use crate::combat_book::CombatBook;
 pub use crate::combat_column::CombatColumn;
 pub use crate::combat_data::CombatData;
-pub use crate::combat_effect::CombatEffect;
-pub use crate::combat_event::CombatEvent;
-pub use crate::combat_hooks::CombatHooks;
 pub use crate::damage::{Damage, DamageCause};
+pub use crate::damage_effect_data::DamageEffectData;
 pub use crate::damage_handle::DamageHandle;
-pub use crate::damage_pass::DamagePass;
-pub use crate::deaths::{DeathView, Deaths, Fallen};
+pub use crate::damage_pass::{CalcDamage, CalcHeal, DamagePass};
 pub use crate::dying::Dying;
-pub use crate::error::CombatRefusal;
+pub use crate::error::{CombatDataError, CombatRefusal};
 pub use crate::heal::{Heal, HealCause};
+pub use crate::heal_effect_data::HealEffectData;
 pub use crate::heal_handle::HealHandle;
 pub use crate::kept::Kept;
 pub use crate::mode_combat_data::{LeechData, ModeCombatData};
-pub use crate::modifier_hooks::ModifierHooks;
-pub use crate::modifier_intervals::ModifierIntervals;
 pub use crate::on_death::OnDeath;
 pub use crate::pass_queue::{PassEntry, PassQueue};
 pub use crate::recent_attack::RecentAttack;
@@ -90,6 +94,7 @@ pub use crate::respawn::Respawn;
 pub use crate::turret::Turret;
 pub use crate::turret::turret_angle::TurretAngle;
 pub use crate::turret::turret_data::TurretData;
+pub use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Weapon, WeaponDamage};
 pub use crate::weighers::{Weigh, Weighers};
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
@@ -105,7 +110,7 @@ pub struct Combat;
 
 /// Combat's steps.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum CombatSet {
+pub enum CombatSet {
     /// Dead units whose respawn is due come back, before any input of the tick can reach
     /// them.
     Respawn,
@@ -118,8 +123,6 @@ pub(crate) enum CombatSet {
     Pay,
     /// Windups that end strike, or fire, each with its roll drawn.
     Strike,
-    /// Modifiers' intervals come.
-    Interval,
     /// The tick's damage is dealt.
     Damage,
     /// Units at zero life die.
@@ -129,21 +132,20 @@ pub(crate) enum CombatSet {
 }
 
 impl ModuleSet for CombatSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Combat);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Respawn => Phase::Begin,
-            Self::Attack => Phase::Attack,
-            Self::Hits => Phase::Hits,
-            Self::Pay => Phase::Pay,
-            Self::Strike => Phase::Strike,
-            Self::Interval => Phase::Interval,
-            Self::Damage => Phase::Damage,
-            Self::Die => Phase::Die,
-            Self::Despawn => Phase::End,
-        })
+        match self {
+            Self::Respawn => SetPlace::at(UnitsSet::Begin),
+            Self::Attack => SetPlace::at(ActionsSet::WindUp),
+            Self::Hits => SetPlace::at(ActionsSet::Hit),
+            Self::Pay => SetPlace::at(ActionsSet::Pay),
+            Self::Strike => SetPlace::at(ActionsSet::Strike),
+            Self::Damage => SetPlace::stage(SimSet::Resolve).before(ActionsSet::Resolve),
+            Self::Die => (SetPlace::stage(SimSet::Resolve).after(StatsSet::GrantAtResolve))
+                .before(StatsSet::ClearDead),
+            Self::Despawn => SetPlace::at(UnitsSet::End),
+        }
     }
 }
 
@@ -151,40 +153,57 @@ impl Module for Combat {
     const CAPABILITY: Option<Capability> = Some(Capability::Combat);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = CombatSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<CombatSet>();
+        d.scratch::<Due<GoingOff>>();
+        d.section::<CombatData>();
+        d.section::<TurretData>();
+        d.section::<ModeCombatData>();
         d.component::<TurretAngle>();
-        d.book::<ByType<Turret>>();
+        d.book::<ByType<Turret>>(Turret::book);
         d.part::<BodyUnit, TurretAngle>(|at| at.of_type::<Turret>().map(|_| TurretAngle::REST));
         d.component::<Kept>();
         d.component::<Life>();
-        d.component::<OnDeath>();
         d.component::<RecentAttackers>();
         d.component::<ClipShots>();
         // A unit with slots counts the shots of its weapons with a clip, from its spawn or a
         // grant of slots on; a client receives its own units' counts, as it predicts them.
         d.server_part::<ActionSlots, ClipShots>();
         d.component::<Respawn>();
+        d.timed::<Respawn>();
         d.state::<BodyUnit, Respawn>();
         d.scratch::<PassQueue>();
         d.scratch::<Volley>();
         d.resource::<NextDamage>();
         d.resource::<HeldHits>();
+        d.observer(HeldHits::drop_died);
         d.report::<Deaths>();
-        d.non_send::<CombatHooks>(|world, role| Some(CombatHooks::install(world, role)));
         d.calls::<Weighers>();
-        d.book::<CombatBook>();
-        d.callback::<EffectQueues>(Capability::Combat, CombatEffect::queue_listed);
+        d.book::<DamageKindBook>(Self::damage_kinds);
+        d.fact::<LifePool>(Self::life_pool);
+        d.book::<CombatBook>(CombatBook::build);
+        d.listed::<AttackData>();
+        d.book::<ByAction<Weapon>>(Weapon::book);
+        d.rule(Self::rule);
+        d.rule(Self::attacks_rule);
+        d.listed::<DamageEffectData>();
+        d.listed::<HealEffectData>();
         d.require::<Respawn, Dead>();
         d.require::<Respawn, SpawnPoint>();
         d.column::<CombatColumn, RowReads>(CombatColumn::fill_row);
         d.api(CombatApi::register);
-        d.book::<ByType<Life>>();
-        d.book::<ByType<OnDeath>>();
-        d.book::<ByType<Armor>>();
+        d.hook::<OnAttack>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnAttackHit>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnDamageTaken>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnKill>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnTakedown>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<CalcDamage>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<CalcHeal>(Status::Runs(ApiVersion::FIRST));
+        d.book::<ByType<Life>>(TypePools::lives);
+        d.book::<ByType<OnDeath>>(OnDeath::book);
+        d.book::<ByType<Armor>>(Armor::book);
         d.part::<BodyUnit, Life>(|at| at.of_type::<Life>().copied());
-        d.part::<BodyUnit, OnDeath>(|at| at.of_type::<OnDeath>().copied());
         // A unit that can die keeps who struck it, for its death's assisters.
         d.part::<BodyUnit, RecentAttackers>(|at| {
             at.of_type::<OnDeath>().map(|_| RecentAttackers::default())
@@ -195,48 +214,67 @@ impl Module for Combat {
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
-    /// go, after the Mode stage saw them. A unit's despawn, its attackers and its toggles' pay are
-    /// the server's: a predicting client despawns no unit, forgets no attacker it never held, and
-    /// pays no toggle, as its pools come from the server.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems((
-            Aiming::aim
-                .before(Attacks::start_attacks)
-                .in_set(CombatSet::Attack),
-            Attacks::start_attacks.in_set(CombatSet::Attack),
-            Attacks::take_hits.in_set(CombatSet::Hits),
-            ModifierIntervals::run_intervals.in_set(CombatSet::Interval),
-            DamagePass::run.in_set(CombatSet::Damage),
-            Dying::die.in_set(CombatSet::Die),
-            Dying::respawn.in_set(CombatSet::Respawn),
-        ));
-        cx.systems(Volley::collect.in_set(CombatSet::Pay));
+    /// go, after the Mode stage saw them. A unit's hits, damage, death and despawn, its attackers
+    /// and its toggles' pay are the server's: a predicting client deals no damage, as its pools
+    /// and its deaths come from the server, despawns no unit, forgets no attacker it never held,
+    /// and pays no toggle; it predicts a respawn that is due. The turrets' aim, the slow weapons'
+    /// hits and the pay of toggles that cost an attack install only in a match whose books have
+    /// them (02-engine-core.md, Books before the install).
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        let turrets = cx
+            .book::<ByType<Turret>>()
+            .is_some_and(|turrets| !turrets.is_empty());
+        let slow = cx
+            .book::<ByAction<Weapon>>()
+            .is_some_and(|weapons| weapons.values().any(|weapon| weapon.speed.is_some()));
+        let actions = cx.book::<ActionBook>();
+        let toggles = actions.is_some_and(|book| {
+            book.iter()
+                .any(|action| action.toggles_per(TogglePer::Attack))
+        });
+        if turrets {
+            cx.add(
+                CombatSet::Attack,
+                Aiming::aim.before(Attacks::start_attacks),
+            );
+        }
+        cx.add(CombatSet::Attack, Attacks::start_attacks);
+        cx.add(CombatSet::Respawn, Dying::respawn);
+        cx.server(
+            CombatSet::Hits,
+            UnitGrid::before_reading(Attacks::take_hits),
+        );
+        cx.server(CombatSet::Damage, DamagePass::run);
+        cx.server(CombatSet::Die, Dying::die);
+        cx.add(CombatSet::Pay, Volley::collect);
         cx.by_role(
+            CombatSet::Strike,
             (
-                Attacks::attack_events.run_if(Volley::any),
+                (Attacks::collect_attacks, Attacks::attack_events)
+                    .chain()
+                    .run_if(Volley::any),
                 Attacks::strike::<ServerForm>,
             )
-                .chain()
-                .in_set(CombatSet::Strike),
-            (
-                Attacks::attack_events.run_if(Volley::any),
-                Attacks::strike::<ClientForm>,
-            )
-                .chain()
-                .in_set(CombatSet::Strike),
+                .chain(),
+            Attacks::strike::<ClientForm>,
         );
-        cx.server((
-            Attacks::pay_attack_toggles
-                .after(Volley::collect)
-                .in_set(CombatSet::Pay),
-            Dying::forget_attackers
-                .before(Dying::respawn)
-                .in_set(CombatSet::Respawn),
-            Dying::despawn_dead.in_set(CombatSet::Despawn),
-            Attacks::land_held
-                .before(Attacks::take_hits)
-                .in_set(CombatSet::Hits),
-        ));
+        if toggles {
+            cx.server(
+                CombatSet::Pay,
+                Attacks::pay_attack_toggles.after(Volley::collect),
+            );
+        }
+        cx.server(
+            CombatSet::Respawn,
+            Dying::forget_attackers.before(Dying::respawn),
+        );
+        cx.server(CombatSet::Despawn, Dying::despawn_dead);
+        if slow {
+            cx.server(
+                CombatSet::Hits,
+                Attacks::land_held.before(Attacks::take_hits),
+            );
+        }
     }
 }
 
@@ -246,22 +284,27 @@ pub mod internals {
 
     use bevy_ecs::system::RunSystemOnce;
     use bevy_ecs::world::World;
-    use campfire_actions::internals::TestWeapon;
+    use campfire_actions::internals::TestAction;
     use campfire_actions::{
-        ActionBook, ActionProgress, ActionRange, ActionSlots, Actions, InProgress, Pitch, SlotKind,
-        SlotTimes, SplashData,
+        ActionBook, ActionData, ActionKind, ActionProgress, ActionRange, ActionSlots, Actions, Aim,
+        ByAction, InProgress, LoadedAction, ProgressDues, SlotKind, SlotTimes,
     };
-    use campfire_common::{Tick, Ticks};
+    use campfire_common::{DeclaredName, Tick, Ticks};
     use campfire_declare::ServerForm;
     use campfire_math::{Num, Rounding};
-    use campfire_script::{Filter, View};
+    use campfire_players::ResourceAmount;
+    use campfire_script::{Filter, MatchNames};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{StableId, TickRate};
-    use campfire_stats::{Life, PoolBook, PoolId, StatBook, StatRule, Stats};
-    use campfire_units::{UnitTypeCore, Units};
-    use campfire_values::{DamageKind, Rank, RelationSet, Speed, Stat, UnitType};
+    use campfire_stats::{PoolBook, StatBook, StatRule, Stats};
+    use campfire_units::{Life, PoolId, UnitTypeCore, Units};
+    use campfire_units::{PoolCost, StatId};
+    use campfire_values::{
+        ActionId, DamageKind, PackageIndex, Rank, RelationSet, Speed, Stat, UnitType,
+    };
 
     use crate::Combat;
+    use crate::attack_data::{AttackData, SplashData};
     use crate::attacks::Attacks;
     use crate::combat_book::CombatBook;
     use crate::damage::{Damage, DamageCause};
@@ -270,8 +313,121 @@ pub mod internals {
     use crate::on_death::OnDeath;
     use crate::pass_queue::PassEntry;
     use crate::volley::Volley;
+    use crate::weapon::{ClipRule, Pitch, Rate, Scatter, Weapon, WeaponDamage};
+    use crate::weapon_names::WeaponNames;
+
+    /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
+    /// homing projectile it fires, if it fires one, where its rate and its damage come from, its
+    /// clip, its cost in pools and in a player resource, and its splash, its scatter's radius,
+    /// its bound of pitch and its speed, at its one rank.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub struct TestWeapon {
+        pub aim: Filter,
+        pub range: ActionRange,
+        pub windup: Ticks,
+        pub projectile: Option<UnitType>,
+        pub rate: Rate,
+        pub damage: WeaponDamage,
+        pub clip: Option<ClipRule>,
+        pub cost: PoolCost,
+        pub resource_cost: Option<ResourceAmount>,
+        pub splash: Option<SplashData>,
+        pub scatter: Option<Num>,
+        pub pitch: Option<Pitch>,
+        pub speed: Option<Speed>,
+    }
+
+    impl TestWeapon {
+        /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
+        /// rate and damage, costing nothing.
+        pub fn new(aim: Filter, range: ActionRange, windup: Ticks) -> Self {
+            Self {
+                aim,
+                range,
+                windup,
+                projectile: None,
+                rate: Rate::Stat(StatId::new(0)),
+                damage: WeaponDamage::Stat(StatId::new(1)),
+                clip: None,
+                cost: PoolCost::default(),
+                resource_cost: None,
+                splash: None,
+                scatter: None,
+                pitch: None,
+                speed: None,
+            }
+        }
+    }
 
     impl Combat {
+        /// Adds `weapon` to the match's action book and its weapon book, which deals damage of
+        /// the first kind.
+        pub fn add_weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
+            let action = TestAction {
+                cost: weapon.cost,
+                resource_cost: weapon.resource_cost,
+                ..TestAction::new(
+                    ActionKind::Attack,
+                    Aim::Unit(weapon.aim),
+                    weapon.range,
+                    weapon.windup,
+                )
+            };
+            let action = match weapon.projectile {
+                Some(projectile) => action.homing(projectile),
+                None => action,
+            };
+            let id = Actions::add(world, "weapon", action);
+            world.get_resource_or_init::<ByAction<Weapon>>().set(
+                id,
+                Weapon {
+                    rate: weapon.rate,
+                    damage: weapon.damage,
+                    kind: DamageKind::new(0),
+                    clip: weapon.clip.map(|clip| Box::from([clip])),
+                    splash: weapon.splash,
+                    scatter: weapon.scatter.map(|radius| Scatter {
+                        radius,
+                        tags: Box::new([]),
+                    }),
+                    pitch: weapon.pitch,
+                    speed: weapon.speed,
+                },
+            );
+            id
+        }
+
+        /// Resolves the weapon of `action`, which the action book of `world` loaded from `data` of
+        /// the mode's package, into the match's weapon book, as the load resolves it.
+        pub fn load_weapon(
+            world: &mut World,
+            action: ActionId,
+            data: &ActionData,
+            name: &DeclaredName,
+        ) {
+            let Some(attack) = data.section::<AttackData>() else {
+                return;
+            };
+            let book = world.resource::<ActionBook>();
+            let names = WeaponNames {
+                loaded: LoadedAction {
+                    package: PackageIndex::MODE,
+                    name,
+                    action,
+                    data,
+                },
+                action: book.get(action).expect("the book loaded the action"),
+                rate: *world.resource::<TickRate>(),
+                stats: world.get_resource::<StatBook>(),
+                kinds: world.resource::<MatchNames>().table::<DamageKind>(),
+                tags: world.resource::<MatchNames>().tags(),
+            };
+            let weapon = names.weapon(attack).expect("a test's weapon resolves");
+            world
+                .get_resource_or_init::<ByAction<Weapon>>()
+                .set(action, weapon);
+        }
+
         /// Strikes with each attack whose windup ended, as the server's strike set does once the
         /// tick's attacks paid: for a test that strikes outside a tick.
         pub fn strike_now(world: &mut World) {
@@ -292,8 +448,7 @@ pub mod internals {
             kind: &str,
         ) {
             let kind = world
-                .non_send::<View>()
-                .names()
+                .resource::<MatchNames>()
                 .named(kind)
                 .unwrap_or_else(|| panic!("the mode declares the damage kind {kind}"));
             DamagePass::queue(
@@ -385,11 +540,11 @@ pub mod internals {
                 speed: self.speed,
                 ..TestWeapon::new(
                     Filter::of_match_relations(world, RelationSet::Enemies),
-                    ActionRange::Meters(self.range),
+                    ActionRange::meters(self.range),
                     self.windup,
                 )
             };
-            let id = Actions::add_weapon(world, weapon);
+            let id = Combat::add_weapon(world, weapon);
             Units::give_type(
                 world,
                 unit_type,
@@ -556,11 +711,9 @@ pub mod internals {
         }
 
         pub fn attack(world: &mut World, attacker: StableId, target: StableId) {
-            let entity = world.unit_entity(attacker);
-            world
-                .get_mut::<ActionProgress>(entity)
-                .unwrap()
-                .set_attack_target(Some(target));
+            ProgressDues::change_unit(world, attacker, |progress, dues| {
+                progress.set_attack_target(Some(target), dues);
+            });
         }
 
         /// Queues `amount` of damage from `source` to `target`, dealt by `cause`.

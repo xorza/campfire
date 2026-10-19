@@ -10,10 +10,12 @@
 - **A train is never under way.** The producer stays free; the queue makes one at a time, and its unit spawns of the producer's team and player.
 - **A producer may name its exit and rally.** A unit type's exit and default rally points lie in its own frame and turn with it; a trained unit spawns at the free cell nearest the exit, as a teleport finds its cell, so it stands outside every static body, and walks to its rally point, or gathers there when it is a node.
 - **No refund is lost.** A cancel whose refund would pass the largest amount a player holds is refused.
+- **A trained unit runs a hook.** A unit a train makes runs `on_unit_trained` with its producer, as Warcraft III fires `EVENT_PLAYER_UNIT_TRAIN_FINISH`, queued on the server as it spawns.
 
 ## Supply
 
-- **Supply is derived, not a player resource.** Supply used and the cap follow from the living units, the queued trains and the complete providers, counted when a train checks its room, so no script keeps it and it cannot drift from them; an update at each event would need every system that spawns or kills to report it.
+- **Supply is derived, not a player resource.** Supply used and the cap follow from the living units, the queued trains and the complete providers, so no script keeps it and it cannot drift from them. Refused: an update at each event, which would need every system that spawns or kills to report it.
+- **Supply and holdings follow what changed.** One cache keeps what each unit counts for, and its observers mark a unit whose owner, type, death, site or presence comes or goes, as each fires on every path that spawns, kills, restores or rolls back; a queue, which changes in place, shows by its change tick. Each reader follows the marked units before it reads, so a count costs the units that changed, not every unit. Refused: a count of every unit at each train and again at each tick's end, and a `Changed` filter on each part, which reads every unit's change ticks in each tick.
 
 ## Requirements
 
@@ -25,20 +27,27 @@
 - **A build starts on arrival or on order.** An arrival build starts when its builder comes in range, as StarCraft II's SCV; an order build pays and places its site in the tick its order applies, wherever its builder stands, as Zero Hour's dozer does, and the builder then walks to it.
 - **Two builders, one site.** Builds start by their builders' stable ids, and each sees the sites placed before it, so two builders that arrive at one place in one tick place one site.
 - **A site gains its life as it progresses,** keeping the damage it takes, as in StarCraft II, its gains exact so a complete site has gained exactly its maximum.
-- **A site is not yet a building.** It gives no supply, meets no requirement, and its tag blocks its attacks and casts.
+- **A site is not yet a building.** It gives no supply, meets no requirement, and its tag blocks its attacks, casts, uses and trains.
+- **A site keeps its build's time.** A site holds the time its build gives at its rank from its placement, so its growth and a script's read of its share look up no book, and a restore checks the time against the build.
+- **A complete site runs a hook.** A site that completes runs `on_site_complete`, as Warcraft III fires `EVENT_PLAYER_UNIT_CONSTRUCT_FINISH`, queued on the server by stable id in its tick; a predicting client grows its sites alike and runs no hook.
+- **A build point its team sees.** A placement needs its point in a cell its builder's team saw in the last Vision stage, as Zero Hour's `isLocationLegalToBuild` refuses a point under shroud first, so a build into the fog finds out nothing of what stands there; the fog a restored match holds is filled again as its first tick starts, from the units and reveals the last stage saw.
+- **Tags block production.** A train starts only when its producer's tags do not block `produce`, as a cast starts only when they do not block `cast`; each kind of action names the one block that stops it, so a stun that a mode declares can stop a queue or leave it running.
 
 ## Placement
 
 - **A seen enemy blocks, a friendly or hidden one moves out.** A placement fails where its box overlaps a wall, a static body, or a walker of a team not friendly to the builder's that the builder's group sees. A refusal for a hidden walker would tell the builder it is there, so a hidden enemy is moved out as a friendly walker is, at the cost that a player may move a hidden enemy by building on it.
 - **A walker in the box goes to the nearest free cell,** as a teleport places a unit: collision would push a walker caught between the new box and another static body from one into the other every tick.
 - **Near and away rules.** A build may need to stand near a unit, as a Protoss pylon's field, or away from one, as a town hall keeps from minerals.
+- **Production asks navigation through units.** A placement reads the walls from `units`' book of them, which navigation builds from its map section, and tests the static bodies through the unit grid; a trained unit's free cell comes from a one-shot system `units` declares and navigation registers. Refused: production depending on navigation for two reads, and the pathing grid's static index and ring search moved down into `units`, which would hold navigation's pathing types.
 
 ## Gathering
 
+- **A gather search scans.** A worker's search for a node and for a drop-off visits the nodes and drop-offs, as Zero Hour's `findBestSupplyWarehouse` scans the player's warehouses, and a freed node finds its next worker among the waiting ones. Refused: a search of the unit grid and a queue on each node, for a tick of 200 workers at 16 nodes that costs 20.5 µs ([Gather loop](../research/gather-loop.md)).
 - **One gatherer at a node.** A worker that finds its node taken goes to the nearest free node of the same resource near it, or waits, as a StarCraft II worker moves to another mineral patch.
 - **Gatherers pass through each other,** so the income does not depend on the order collision parts them in.
 - **Return cargo.** A gather aimed at a drop-off delivers the load and goes back, as StarCraft II's return cargo.
 - **No load is lost.** A load that would pass the largest amount a player holds stays with its worker.
+- **Production's rules as data, planned.** With the slice that needs each, its default today's behavior: capacities that the mode declares in place of one supply cap; requirements in conjunctive normal form, so Zero Hour's either-or prerequisites hold; one progress model by rate, with research entries; a node's capacity of gatherers; `passes` as a tag property of the mode; a placement on a unit, repair and builders that a build consumes; the gather and progress defaults as data.
 
 ## Network
 

@@ -1,4 +1,5 @@
-use campfire_log::{ErrorReport, LogEvent};
+use campfire_common::ErrorReport;
+use campfire_log::LogEvent;
 use campfire_store::AppendError;
 
 use crate::events::checkpoint_failed::CheckpointFailed;

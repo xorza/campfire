@@ -16,7 +16,7 @@ use campfire_net::{
     Os, Pace, PendingSaves, SaveCommand, ServerDir, ServerPin, SessionDir, SimClient,
 };
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Entropy, Outcome, SessionLog};
+use campfire_protocol::{Entropy, Outcome, SessionLog, Signer};
 use campfire_runner::TermsError;
 use campfire_store::internals::Scratch;
 use campfire_test_packages::TestMode;
@@ -47,7 +47,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let mut client = App::new();
     client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
     let setup = SimClient {
-        main_key: keys.main,
+        main: Arc::new(Signer::new(keys.main, Entropy::Fixed(4))),
         session_key: keys.session,
         server: server.pin(),
         role: JoinRole::Play,
@@ -69,6 +69,7 @@ fn a_client_plays_a_local_server_which_publishes_the_log_as_it_drops() {
     let at_20 = SimClient {
         server: elsewhere,
         packages: Arc::clone(&setup.packages),
+        main: Arc::clone(&setup.main),
         os: setup.os.clone(),
         data: None,
         ..setup

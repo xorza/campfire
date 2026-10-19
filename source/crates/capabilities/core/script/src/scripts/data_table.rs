@@ -1,90 +1,24 @@
-use campfire_common::EnumAll;
-
-/// A table of the data files.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
-pub enum DataTable {
-    Mode,
-    UnitType,
-    ModeCombat,
-    ModeNavigation,
-    SlotKind,
-    Choice,
-    Option,
-    Leech,
-    Relation,
-    Team,
-    Players,
-    Saves,
-    Action,
-    Effect,
-    Delivery,
-    Projectile,
-    Area,
-    AreaInside,
-    Track,
-    Modifier,
-    Aura,
-    Combat,
-    Turret,
-    Production,
-    Supply,
-    ModeSupply,
-    Requires,
-    Node,
-    DropOff,
-    Vision,
-    Collision,
-    Ai,
-    Tag,
-    Item,
-    Inventory,
-    Shop,
-    Use,
-    Uses,
+/// A table of the data files, as the reference titles it: the fields of a data type of the
+/// module that reads it, or the keys of a file the modules share, by its title, which tells it from
+/// every other (08-script-api.md, A table is its reader's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DataTable {
+    title: &'static str,
 }
 
 impl DataTable {
+    /// The mode's file, whose keys its modules' sections are.
+    pub const MODE: Self = Self::new("`data/mode.toml`");
+    /// A unit type, whose keys its modules' sections are.
+    pub const UNIT_TYPE: Self = Self::new("A unit type, `[units.<id>]`");
+
+    /// The table the reference titles `title`.
+    pub const fn new(title: &'static str) -> Self {
+        Self { title }
+    }
+
     /// The table as the reference titles it.
     pub const fn title(self) -> &'static str {
-        match self {
-            Self::Mode => "`data/mode.toml`",
-            Self::UnitType => "A unit type, `[units.<id>]`",
-            Self::ModeCombat => "The mode's `[combat]`",
-            Self::ModeNavigation => "The mode's `[navigation]`",
-            Self::SlotKind => "A slot kind, `[[slots]]`",
-            Self::Choice => "A choice, `[choices.<name>]`",
-            Self::Option => "An option, `[options.<name>]`",
-            Self::Leech => "The mode's `[combat] leech`",
-            Self::Relation => "A pair of teams, `[[relations]]`",
-            Self::Team => "A team, `[teams.<team>]`",
-            Self::Players => "The mode's `[players]`",
-            Self::Saves => "The mode's `[saves]`",
-            Self::Action => "An action, `[actions.<id>]`",
-            Self::Effect => "An effect of an action's `on_resolve`, `on_hit` or `on_end`",
-            Self::Delivery => "An action's `delivery`",
-            Self::Projectile => "A unit type's `projectile`",
-            Self::Area => "A unit type's `area`",
-            Self::AreaInside => "An area's `inside`",
-            Self::Track => "A track, `[tracks.<name>]`",
-            Self::Modifier => "A modifier, `[modifiers.<id>]`",
-            Self::Aura => "A modifier's `aura`",
-            Self::Combat => "A unit type's `combat`",
-            Self::Turret => "A unit type's `turret`",
-            Self::Production => "A unit type's `production`",
-            Self::Supply => "A unit type's `supply`",
-            Self::ModeSupply => "The mode's `[supply]`",
-            Self::Requires => "A train's `requires`",
-            Self::Node => "A unit type's `node`",
-            Self::DropOff => "A unit type's `drop_off`",
-            Self::Vision => "A unit type's `vision`",
-            Self::Collision => "A unit type's `collision`",
-            Self::Ai => "A unit type's `orders`",
-            Self::Tag => "A tag's properties, `[tags.<name>]`",
-            Self::Item => "An item type, `[items.<id>]`",
-            Self::Inventory => "A unit type's `inventory`",
-            Self::Shop => "A unit type's `shop`",
-            Self::Use => "A unit type's `use`",
-            Self::Uses => "A unit type's `uses`",
-        }
+        self.title
     }
 }

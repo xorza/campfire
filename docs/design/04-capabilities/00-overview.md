@@ -30,9 +30,11 @@ The engine has no genres. It has **capabilities**, each one mechanism; a package
 | `world` | planned | Large worlds | [World](world.md) |
 
 - **Built is what the release installs.** A test holds this table's status column equal to the release.
+- **A planned capability is the design's alone.** `Capability` holds only the capabilities of a module the release builds, as a manifest that names another fails as it reads and a command carries no index of one; a planned capability joins the enum with its module. Refused: variants for the planned capabilities, which every match, command and log encoded beside the built ones, and which only a load check refused.
 
 ## Relations
 
+- **A unit holds up to 256 tags.** A tag set is a fixed set of 256 bits, which a rollback copies with no allocation, as a set of teams is.
 - **Teams are indices.** A team is an index into the mode's list of up to 256, so a set of teams is a fixed bitset a rollback copies without allocating.
 - **Attitudes between teams.** The mode declares how pairs regard each other, as Unreal's team attitudes do; a pair not named is hostile, and a team is friendly to itself.
 - **Neutral is attackable but passive.** A neutral unit may be attacked but seeks no fight: an AI chooses targets among hostiles.
@@ -41,13 +43,14 @@ The engine has no genres. It has **capabilities**, each one mechanism; a package
 ## Space and map
 
 - **Two metrics.** A map is `planar`, measured on the ground plane with heights from the terrain, or `spatial`, measured in 3D; every distance uses it.
-- **The sim's ground is the map's height grid.** `map/<name>/heights.bin` is data of the sim, as Spring's `CGround` and OpenRA's `Map.DistanceAboveTerrain` keep the heights in the simulation: a point's height is the plane of its cell's triangle, every cell split on the one diagonal the map's `[ground] split` names, computed from the samples in one step and rounded once ([Determinism core](../09-determinism-core.md)); `[ground] high` gives coarse cells of the highest samples they hold, which `Ground::highest_along` walks by Bresenham's line, as Zero Hour's partition cells and `iterateCellsAlongLine`. A map of no grid is flat, and a point off the grid takes the nearest point's height.
+- **The sim's ground is the map's height grid.** `map/<name>/heights.bin` is data of the sim, as Spring's `CGround` and OpenRA's `Map.DistanceAboveTerrain` keep the heights in the simulation: a point's height is the plane of its cell's triangle, every cell split on the one diagonal the map's `[ground] split` names, computed from the samples in one step and rounded once ([Determinism core](../09-determinism-core.md)); `[ground] high` gives coarse cells of the highest samples they hold, which `Ground::highest_along` walks by Bresenham's line, as Zero Hour's partition cells and `iterateCellsAlongLine`. A map of no grid is flat, and a point off the grid takes the nearest point's height. Its samples are 8 bits above 0; samples of 16 bits with a base height come when a game needs them, planned.
 - **A body has a height.** A unit type's `collision` `height` makes its body a volume from its ground point up, its center halfway, as Zero Hour's `getCenterPosition` raises an object by half its geometry's height; a shot aims at the center, and a splash measures to the volume.
 - **Circles and boxes.** A body is a circle, or, for a type that does not walk on a planar map, a box, as 0 A.D. keeps a structure as a static square while a unit stays a circle; pathing, placement, collision and reach all read the box. StarCraft II keeps a radius for reach beside a footprint for pathing, which the engine avoids.
 - **A box rounds once.** A box turns to any angle as it spawns, and its rounded half edges are its state, so no later test rounds again; degrees, not radians, make the right angles exact.
 - **One bound for every body.** A body's bound is at most 2,048 m, the same for a walker and a structure, so no rule of collision asks which kind it is, and the math at that bound stays within one `i128` step ([Determinism core](../09-determinism-core.md)).
-- **Spatial indexes in levels by size.** Each spatial index keeps its bodies in levels by size, as one cell size suits only its widest body (Ericson, *Real-Time Collision Detection*, chapter 7).
+- **Spatial indexes in levels by size.** Each spatial index keeps its bodies in levels by size, as one cell size suits only its widest body (Ericson, *Real-Time Collision Detection*, chapter 7), each level's cell twice the one below, and visits only the levels that hold a body. Refused: a ratio of 4, slower on every collision scene, and of 8, faster for walkers alone and 55 % slower with static boxes ([Cell levels](../../research/cell-levels.md)); one level, which a wide walker makes wide for every body.
 - **One reach rule.** A range reaches from the edge of one body to the edge of another, exactly, decided squared with no root, as League of Legends measures edge to edge; weapons, actions, areas, auras and script queries all follow it.
+- **One order of a body pair, two tests of a path.** Two bodies have one exact order of their distance against a reach, which `reaches` reads as at most and `closer` as below. A path past a body answers two questions, so it keeps two forms: whether it comes closer than a reach, exactly, as a route's clearance needs, and where along it a body within the reach lies nearest, each distance to the nearest bit, as a hit needs its place. Refused: one order of a path, as no exact test of a path and a box gives the place a hit needs.
 - **Layers.** Collision and pathing work within a layer the mode declares, so air passes over ground.
 - **Bounds.** No unit is ever outside the map's bounds: orders clamp to them, and a spawn outside fails.
 - **Markers.** A map's named points and regions, with tags, a team and params, which scripts read by tag.
@@ -74,9 +77,11 @@ The engine has no genres. It has **capabilities**, each one mechanism; a package
 | 5 | Collide | Overlaps resolved within each layer |
 | 6 | Hit | Deliveries and their effects; modifier intervals |
 | 7 | Resolve | The damage and heal pass; deaths, auras |
-| 8 | Mode | Timers, then events in the order they happened; spawns; `ctx.end` |
+| 8 | Mode | Timers, then events in the order they happened; spawns; `ctx.win` and `ctx.draw` |
 | 9 | Vision | What each vision group sees; despawns |
 
+- **One due index for each timed process.** A process whose units come due at a tick, as a timed life ends or a charge comes back, pushes each unit where it sets its time into its own index, which gives its pass the units due by tick, then stable id, each once at its earliest push, so the pass visits only those and in the same order in every world; an entry is a visit, not a promise, and the pass pushes a unit whose time moved again. A process whose units several passes run, as the resolves of attacks and of casts, keeps one index, and each pass takes its own units and leaves the others' due. Each process states the tick a unit is due at from its parts, and each index builds again from them, with one scan, whenever the state is written from outside the sim: as a restore ends, as a client's rollback restores the parts, and as a match installs over units a test spawned first; a unit the client starts to predict again is pushed, and a debug build checks at each tick's end that every unit due is held. A process whose times derive from parts that many writers change, as a slot's charges and a passive that waits for a cooldown, has its pass follow those parts' changes by their change ticks, as the passes that follow changes do, and push each unit it visits at its time: such scans cost at most 5 % of the 3v3's mean tick ([Change scans](../../research/change-scans.md)). Refused: a scan of every unit in each tick to find the timers due; `Changed` filters on the parts that hold the times to find the timers due, which read every unit's change ticks each tick; a mark from each writer of slots, times and modifiers, which saves at most those 5 % for a change across seven crates; and lightyear's resource rollback of each index, which restores the client's own predicted index, not one that follows a part the server corrected in place (decided 2026-10-18).
+- **A standing order is due at once.** A unit whose order runs in each tick until it ends, as a channel, a build, a gather loop or an attack target, is held in its process's index at tick 0 while the order stands, and a pass forgets it once the order ends or the unit is gone. A pass whose whole population runs in each tick, as the path walkers, keeps its query, as an index would hold every unit it visits. Refused: a scan in each tick of every unit that may hold such an order, most of which hold none.
 - **Stats derive at every edge.** Before the first stage and after each, every unit whose level, modifiers or type changed derives its stats and tags again ([Stats](stats.md)).
 
 ## Commands
@@ -85,7 +90,7 @@ The engine has no genres. It has **capabilities**, each one mechanism; a package
 
 ## Control
 
-- **Control is a relation to units.** Direct, by input frames the client predicts, or by orders that name their units, so one player orders many; AI and bots send the same orders as players.
+- **Control is a relation to units.** Direct, by input frames the client predicts, or by orders that name their units, so one player orders many; AI and bots send the same orders as players. A unit has one controller, its owner; a relation of shared control comes when a game needs it, planned.
 
 ## Unit types
 

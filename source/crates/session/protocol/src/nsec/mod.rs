@@ -6,6 +6,7 @@ use secp256k1::{Keypair, Secp256k1, SecretKey};
 use zeroize::Zeroizing;
 
 use crate::nsec::error::NsecError;
+use crate::signer::Signer;
 
 pub(crate) mod error;
 
@@ -17,10 +18,10 @@ const NSEC_LEN: usize = 4 + 1 + (32_usize * 8).div_ceil(5) + 6;
 /// it, which `decode_nsec` trims and an editor may add.
 pub const MAX_NSEC_FILE_LEN: usize = 2 * NSEC_LEN;
 
-/// The text of `key` in a key file, a NIP-19 `nsec` and a newline, in a buffer zeroed when
-/// dropped, as is each copy of the key made on the way.
-pub fn encode_nsec(key: &Keypair) -> Zeroizing<String> {
-    let bytes = Zeroizing::new(key.secret_bytes());
+/// The text of `signer`'s key in a key file, a NIP-19 `nsec` and a newline, in a buffer zeroed
+/// when dropped, as is each copy of the key made on the way.
+pub fn encode_nsec(signer: &Signer) -> Zeroizing<String> {
+    let bytes = signer.secret_bytes();
     let secret = NostrKey::from_slice(&bytes[..]).expect("a keypair's secret is a key");
     let Ok(nsec) = secret.to_bech32();
     let nsec = Zeroizing::new(nsec);

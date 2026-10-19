@@ -1,8 +1,8 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, With};
 use bevy_ecs::system::{Commands, Local, Query};
-use campfire_players::{HeldOut, OutOfPlay};
-use campfire_units::{Avatar, Dead, Owner, Player};
+use campfire_players::{HeldOut, OutOfPlay, Player};
+use campfire_units::{Avatar, Dead, Owner};
 
 /// The mode's marks of who is out of play, on each player's entity (14-replication-audiences.md,
 /// Prediction reads only what its client holds; 14-replication-audiences.md, A player out of play

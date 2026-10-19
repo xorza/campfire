@@ -1,10 +1,11 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
+use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_script::{StateValue, SyncTo};
-use campfire_sim::{SimComponent, StableId};
+use campfire_sim::{DueIndex, SimComponent, StableId, TimedKept, TimedProcess, TimedRuns};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::ModifierId;
@@ -12,6 +13,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::interval::Interval;
+use crate::interval_revival::IntervalRevival;
 use crate::modifier_book::ModifierBook;
 use crate::modifiers::Modifiers;
 
@@ -19,8 +21,10 @@ use crate::modifiers::Modifiers;
 /// `Modifiers`: its interval, its shield and its script state. A change here derives nothing
 /// again, so an interval that comes, a shield that absorbs or a state a script writes leaves the
 /// unit's stats as they are. The state of every instance sits in one buffer, instance after
-/// instance.
+/// instance. Its hook pushes its unit into the index of the intervals at each insert, a spawn's
+/// and a restore's alike.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[component(on_insert = ModifierClocks::pushed)]
 pub struct ModifierClocks {
     clocks: Vec<Clock>,
     state: Vec<StateValue>,
@@ -43,6 +47,28 @@ pub struct Spent {
 }
 
 impl ModifierClocks {
+    /// The first tick an interval of its instances comes, which `advance_intervals` takes, or
+    /// `skip_intervals`; none when none has an interval.
+    pub(crate) fn next_interval(&self) -> Option<Tick> {
+        let intervals = self.clocks.iter().filter_map(|clock| clock.interval);
+        intervals.map(|interval| interval.next).min()
+    }
+
+    /// Pushes the unit whose clocks they are into the index of the intervals, at their first.
+    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
+        let entity = context.entity;
+        let (Some(clocks), Some(&id)) = (world.get::<Self>(entity), world.get::<StableId>(entity))
+        else {
+            return;
+        };
+        let Some(at) = clocks.next_interval() else {
+            return;
+        };
+        if let Some(mut index) = world.get_resource_mut::<DueIndex<Self>>() {
+            index.push(at, id, entity);
+        }
+    }
+
     pub const fn len(&self) -> usize {
         self.clocks.len()
     }
@@ -81,8 +107,9 @@ impl ModifierClocks {
     }
 
     /// Counts the intervals of tick `now`: each instance of `modifiers` whose interval comes,
-    /// and whose modifier `takes_effect` lets act, goes to `due`, by id and source, and its next
-    /// comes an interval later; whether any came.
+    /// and whose modifier `takes_effect` lets act, goes to `due`, by id and source, once however
+    /// many of its ticks `now` passed, and its next comes at its first tick after `now`; whether
+    /// any came.
     pub fn advance_intervals(
         &mut self,
         modifiers: &Modifiers,
@@ -98,12 +125,54 @@ impl ModifierClocks {
             if interval.next > now {
                 continue;
             }
-            interval.next = interval.next.after(interval.every);
+            interval.next = interval.first_after(now);
             let instance = carried.instance;
             if takes_effect(instance.id) {
                 due(instance.id, instance.source);
             }
             any = true;
+        }
+        any
+    }
+
+    /// Moves each interval of tick `now` or before to its first tick after `now`, with no hook,
+    /// as a dead carrier's intervals keep the clock; whether any moved.
+    pub fn skip_intervals(&mut self, now: Tick) -> bool {
+        let mut any = false;
+        for interval in self
+            .clocks
+            .iter_mut()
+            .filter_map(|clock| clock.interval.as_mut())
+        {
+            if interval.next <= now {
+                interval.next = interval.first_after(now);
+                any = true;
+            }
+        }
+        any
+    }
+
+    /// Sets each interval of `modifiers` as `revival` gives its modifier's policy, as their
+    /// carrier comes back to life in tick `now`: one that resets comes a whole interval on, one
+    /// that fires comes in `now`; whether any changed.
+    pub fn revive_intervals(
+        &mut self,
+        modifiers: &Modifiers,
+        now: Tick,
+        revival: impl Fn(ModifierId) -> IntervalRevival,
+    ) -> bool {
+        let mut any = false;
+        for (clock, carried) in self.clocks.iter_mut().zip(modifiers.iter()) {
+            let Some(interval) = &mut clock.interval else {
+                continue;
+            };
+            let next = match revival(carried.instance.id) {
+                IntervalRevival::Continue => continue,
+                IntervalRevival::Reset => now.after(interval.every),
+                IntervalRevival::FireAndReset => now,
+            };
+            any |= interval.next != next;
+            interval.next = next;
         }
         any
     }
@@ -168,6 +237,19 @@ impl ModifierClocks {
             .iter()
             .map(|clock| usize::from(clock.state))
             .sum()
+    }
+}
+
+/// A unit is due as the first interval of its modifiers comes
+/// (04-capabilities/00-overview.md, One due index for each timed process).
+impl TimedProcess for ModifierClocks {
+    const RUNS: TimedRuns = TimedRuns::EveryRole;
+    const KEPT: TimedKept = TimedKept::BySetters;
+    type Parts = &'static Self;
+    type Books = ();
+
+    fn due((): &(), clocks: &Self) -> Option<Tick> {
+        clocks.next_interval()
     }
 }
 

@@ -6,10 +6,12 @@ use campfire_sim::StableId;
 use rhai::{Dynamic, NativeCallContext};
 
 use crate::script_host::ScriptHost;
+use crate::scripts::api_owner::{ApiOwner, ScriptHandle};
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
-use crate::scripts::frame::effects::Effect;
+use crate::scripts::frame::effects::{Effect, EffectKind};
 use crate::scripts::role_set::RoleSet;
+use crate::scripts::script_role::ScriptRole;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::view::View;
 
@@ -26,9 +28,9 @@ struct CtxParts {
     view: View,
 }
 
-/// `ctx.p`: the running call's params, by name: an ability's, a modifier's then its ability's,
-/// or the mode's for a mode or AI call. `ctx.p.damage` reads through the indexer, as Rhai tries
-/// one for a property with no getter.
+/// `ctx.params`: the running call's params, by name: an ability's, a modifier's then its ability's,
+/// or the mode's for a mode or AI call. `ctx.params.damage` reads through the indexer, as Rhai
+/// tries one for a property with no getter.
 #[derive(Debug, Clone)]
 pub struct Params(pub(crate) Ctx);
 
@@ -60,8 +62,18 @@ impl Ctx {
         self.0.frame.borrow_mut()
     }
 
-    /// The frame to change, as `frame`; a pure hook's call fails.
+    /// The frame to change the match through, as `frame`; a pure hook's call fails, and so does
+    /// an AI's, which reads, orders and draws (08-script-api.md, An AI reads and orders).
     pub fn write(&self) -> Checked<RefMut<'_, Frame>> {
+        let frame = self.drawing()?;
+        if frame.role() == Some(ScriptRole::Ai) {
+            return Err(ApiError::NotForRole.fail().into());
+        }
+        Ok(frame)
+    }
+
+    /// The frame to draw from, or to give an order through, as `frame`; a pure hook's call fails.
+    pub(crate) fn drawing(&self) -> Checked<RefMut<'_, Frame>> {
         let frame = self.frame();
         if frame.pure() {
             return Err(ApiError::PureCall.fail().into());
@@ -79,9 +91,13 @@ impl Ctx {
         Ok(())
     }
 
-    /// Queues `effect`; a pure hook's call fails.
+    /// Queues `effect`; a pure hook's call fails, and so does an AI's for a change.
     pub fn queue<E: Effect>(&self, effect: E) -> Checked<()> {
-        self.write()?.queue(effect);
+        let mut frame = match E::KIND {
+            EffectKind::Change => self.write()?,
+            EffectKind::Order => self.drawing()?,
+        };
+        frame.queue(effect);
         Ok(())
     }
 
@@ -106,4 +122,15 @@ impl Params {
         let value = self.0.frame().param(name);
         value.map_err(|error| error.fail().into())
     }
+}
+
+/// The owner of the calls and values of `ctx`.
+impl ScriptHandle for Ctx {
+    const NAME: &'static str = ApiOwner::CTX.name();
+    const TITLE: &'static str = ApiOwner::CTX.title();
+}
+
+impl ScriptHandle for Params {
+    const NAME: &'static str = "Params";
+    const TITLE: &'static str = "`ctx.params`";
 }

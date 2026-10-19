@@ -3,3 +3,4 @@
 
 pub(crate) mod glb_builder;
 pub(crate) mod gltf_document;
+pub(crate) mod model_bounds;

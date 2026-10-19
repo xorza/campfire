@@ -3,16 +3,15 @@ use std::num::{NonZeroU8, NonZeroU32, NonZeroUsize};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, SlotsMut, UseGroup};
+use campfire_actions::{ActionSlots, ProgressDues, SlotsMutItem, UseGroup};
 use campfire_declare::PerType;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnChange};
 use campfire_units::UnitEntity;
-use campfire_values::ResourceId;
+use campfire_values::{ItemId, ResourceId};
 use serde::{Deserialize, Serialize};
 
 use crate::item_book::ItemBook;
-use crate::item_id::ItemId;
 
 /// What a carrier carries: its inventory's slots, in order, each empty or holding a stack of one
 /// item type, which fill the action slots of the carrier's `UseGroup`, one each. State of `items`.
@@ -21,11 +20,12 @@ pub struct Inventory {
     slots: Vec<Option<ItemStack>>,
 }
 
-/// A carrier's action slots, with what follows them, and the use group whose slots its inventory
-/// fills.
+/// A carrier's action slots, with what follows them, the indexes a change of what it has under
+/// way pushes it into, and the use group whose slots its inventory fills.
 #[derive(Debug)]
-pub struct CarrierSlots<'a> {
-    pub(crate) unit: SlotsMut<'a>,
+pub(crate) struct CarrierSlots<'w, 's, 'd> {
+    pub(crate) unit: SlotsMutItem<'w, 's>,
+    pub(crate) dues: ProgressDues<'d>,
     pub(crate) group: UseGroup,
 }
 
@@ -190,18 +190,22 @@ impl Inventory {
     pub(crate) fn follow(
         &self,
         book: &ItemBook,
-        carrier: CarrierSlots<'_>,
+        carrier: CarrierSlots<'_, '_, '_>,
         before: &[Option<ItemId>],
     ) {
-        let CarrierSlots { mut unit, group } = carrier;
-        let first = unit.slots.first_of(group.kind());
+        let CarrierSlots {
+            mut unit,
+            mut dues,
+            group,
+        } = carrier;
+        let first = unit.slots().first_of(group.kind());
         for (at, (slot, &was)) in self.slots.iter().zip(before).enumerate() {
             let item = slot.map(|carried| carried.item);
             if item != was {
                 let action =
                     item.and_then(|item| book.get(item).expect("an item of the book").action);
                 let at = u8::try_from(at).expect("a slot index fits u8");
-                unit.fill(first + at, action);
+                unit.fill(first + at, action, &mut dues);
             }
         }
     }
@@ -210,9 +214,18 @@ impl Inventory {
     /// `carrier`'s, when `slot` is one of its inventory's: the item on top goes with its last use,
     /// the next fresh, and the inventory slot with the last item, its action slot then empty and
     /// ready.
-    pub(crate) fn spend_use(&mut self, book: &ItemBook, carrier: CarrierSlots<'_>, slot: u8) {
-        let CarrierSlots { mut unit, group } = carrier;
-        let first = unit.slots.first_of(group.kind());
+    pub(crate) fn spend_use(
+        &mut self,
+        book: &ItemBook,
+        carrier: CarrierSlots<'_, '_, '_>,
+        slot: u8,
+    ) {
+        let CarrierSlots {
+            mut unit,
+            mut dues,
+            group,
+        } = carrier;
+        let first = unit.slots().first_of(group.kind());
         let Some(at) = slot
             .checked_sub(first)
             .filter(|&at| usize::from(at) < self.slots.len())
@@ -235,19 +248,27 @@ impl Inventory {
             carried.uses = book.get(carried.item).expect("an item of the book").uses;
         } else {
             *held = None;
-            unit.fill(slot, None);
+            unit.fill(slot, None, &mut dues);
         }
     }
 
     /// Swaps slots `from` and `to`, empty or not, and their action slots in `carrier`'s, each
     /// keeping its times; nothing when either is no slot.
-    pub(crate) fn swap_with(&mut self, from: u8, to: u8, carrier: Option<CarrierSlots<'_>>) {
+    pub(crate) fn swap_with(
+        &mut self,
+        from: u8,
+        to: u8,
+        carrier: Option<CarrierSlots<'_, '_, '_>>,
+    ) {
         if usize::from(from.max(to)) >= self.slots.len() {
             return;
         }
         self.slots.swap(usize::from(from), usize::from(to));
-        if let Some(CarrierSlots { mut unit, group }) = carrier {
-            let first = unit.slots.first_of(group.kind());
+        if let Some(CarrierSlots {
+            mut unit, group, ..
+        }) = carrier
+        {
+            let first = unit.slots().first_of(group.kind());
             unit.swap(first + from, first + to);
         }
     }

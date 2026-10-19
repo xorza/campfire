@@ -5,7 +5,7 @@ use tracing::warn;
 
 /// The server dropped an input of the bot of `slot`, its payload `len` bytes long, for `cause`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct BotPayloadDropped {
+pub(crate) struct BotPayloadDropped {
     pub slot: PlayerSlot,
     pub len: usize,
     #[serde(deserialize_with = "LogLine::json")]

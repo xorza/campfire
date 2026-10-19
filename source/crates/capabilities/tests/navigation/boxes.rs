@@ -163,7 +163,6 @@ fn a_dash_at_a_box_ends_touching_it() {
         ForcedMove::Dash {
             to: DashTo::Unit(building),
             step: Num::ONE,
-            delivers: None,
         },
     );
     let mut path = Vec::new();
@@ -199,11 +198,11 @@ fn a_placed_box_lies_within_the_bounds_and_may_overlap_the_walls_and_the_bodies_
     };
     let check = |boxes: &[(Num, Num)], walled: bool| {
         let mut map = corridor(&[(5, 2)], (8, 3));
-        map.paths.clear();
+        map.section_mut::<MapPathsData>().unwrap().0.clear();
         map.markers.clear();
         if walled {
             let corner = |x, z| point(x, z);
-            map.navigation = Some(MapNavigationData {
+            map = map.with(MapNavigationData {
                 cell: Num::HALF,
                 walls: vec![WallData {
                     layer: None,

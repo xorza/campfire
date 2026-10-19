@@ -1,0 +1,394 @@
+use std::fmt;
+
+use campfire_values::PackagePath;
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::client_path;
+
+/// A mode's `client/input.toml`: the keys of each of the client's actions, each a list of
+/// chords, any of which does it; a field the file does not give keeps the engine's own keys, as
+/// a mode of no file does (02-engine-core.md, Keys are the mode's data).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct InputFile {
+    /// The chords that cast the avatar's abilities, one for each of its slots in their order.
+    pub cast: Vec<Chord>,
+    /// The chords that learn the next rank of the avatar's abilities, as `cast` gives them.
+    pub learn: Vec<Chord>,
+    /// The chords that cast the actions of the inventory's slots, one for each slot in their
+    /// order: the inventory bar has a slot for each.
+    pub items: Vec<Chord>,
+    /// The chords that stop the selection.
+    pub stop: Vec<Chord>,
+    /// The chords that drop the build the player places.
+    pub drop_build: Vec<Chord>,
+    /// The chords that show and hide the shop.
+    pub shop: Vec<Chord>,
+    /// The chords that pause a local match and play it on, step its speed down and up, save it,
+    /// and load its latest save.
+    pub pause: Vec<Chord>,
+    pub slower: Vec<Chord>,
+    pub faster: Vec<Chord>,
+    pub save: Vec<Chord>,
+    pub load: Vec<Chord>,
+    /// The chords held that scroll the camera, zoom it and turn it, and the ones that set it
+    /// back.
+    pub scroll_left: Vec<Chord>,
+    pub scroll_right: Vec<Chord>,
+    pub scroll_up: Vec<Chord>,
+    pub scroll_down: Vec<Chord>,
+    pub zoom_in: Vec<Chord>,
+    pub zoom_out: Vec<Chord>,
+    pub turn_left: Vec<Chord>,
+    pub turn_right: Vec<Chord>,
+    pub reset_camera: Vec<Chord>,
+    /// The modifiers held with a drag of the middle button that orbit the camera, where none
+    /// pans it.
+    pub orbit: Modifiers,
+}
+
+/// A key with the modifiers held with it, written as their names and its own joined by `+`, as
+/// `Control+KeyQ`: it is pressed when its key is and its modifiers are exactly the ones held, as
+/// Zero Hour's `MetaMap` matches a key's modifiers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Chord {
+    pub key: Key,
+    pub modifiers: Modifiers,
+}
+
+/// What a key's cap shows of a chord: its modifiers' names and its key's label, joined by `+`,
+/// as `Control+Q`.
+#[derive(Debug, Clone, Copy)]
+pub struct ChordLabel(Chord);
+
+/// The modifiers a chord holds, each of either side of the keyboard, written as their names
+/// joined by `+`, as `Shift+Control`, and none as an empty text.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Modifiers {
+    pub shift: bool,
+    pub control: bool,
+    pub alt: bool,
+}
+
+/// Declares the keys a chord may name, each by its name.
+macro_rules! keys {
+    ($($key:ident),* $(,)?) => {
+        /// A key of the keyboard but a modifier, by the W3C's `KeyboardEvent.code` name, which
+        /// names a key by its place, whatever a layout prints on it.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+        pub enum Key {
+            $($key),*
+        }
+
+        impl Key {
+            /// Every key, in the order the W3C's tables list them.
+            pub const ALL: &[Self] = &[$(Self::$key),*];
+
+            /// Its `KeyboardEvent.code` name.
+            pub const fn name(self) -> &'static str {
+                match self {
+                    $(Self::$key => stringify!($key)),*
+                }
+            }
+        }
+    };
+}
+
+keys! {
+    Backquote, Backslash, BracketLeft, BracketRight, Comma,
+    Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9,
+    Equal,
+    KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL, KeyM,
+    KeyN, KeyO, KeyP, KeyQ, KeyR, KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ,
+    Minus, Period, Quote, Semicolon, Slash,
+    Backspace, Enter, Space, Tab,
+    Delete, End, Home, Insert, PageDown, PageUp,
+    ArrowDown, ArrowLeft, ArrowRight, ArrowUp,
+    Numpad0, Numpad1, Numpad2, Numpad3, Numpad4, Numpad5, Numpad6, Numpad7, Numpad8, Numpad9,
+    NumpadAdd, NumpadDecimal, NumpadDivide, NumpadEnter, NumpadMultiply, NumpadSubtract,
+    Escape,
+    F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+}
+
+impl InputFile {
+    /// Where a mode's package holds it.
+    pub fn path() -> PackagePath {
+        client_path::parse("client/input.toml")
+    }
+}
+
+/// The engine's own keys: Q, W, E and R cast and, with Control, learn; 1 to 6 cast the items; S
+/// stops; Escape drops a build; P shows the shop; Space pauses, minus and equals or the keypad's
+/// minus and plus step the speed, F5 saves and F9 loads; the arrows scroll, and the keypad's 8, 2,
+/// 4 and 6 zoom and turn, as the arrows do with Alt, for a keyboard with no keypad; the keypad's 5
+/// and Alt with Backspace set the camera back; and Control with the middle button orbits it
+/// (02-engine-core.md, Every key on a keyboard with no keypad).
+impl Default for InputFile {
+    fn default() -> Self {
+        let alt = Modifiers {
+            alt: true,
+            ..Modifiers::NONE
+        };
+        let control = Modifiers {
+            control: true,
+            ..Modifiers::NONE
+        };
+        let plain = |keys: &[Key]| keys.iter().map(|&key| Chord::plain(key)).collect();
+        let with = |key, modifiers| Chord { key, modifiers };
+        let casts = [Key::KeyQ, Key::KeyW, Key::KeyE, Key::KeyR];
+        Self {
+            cast: plain(&casts),
+            learn: casts.iter().map(|&key| with(key, control)).collect(),
+            items: plain(&[
+                Key::Digit1,
+                Key::Digit2,
+                Key::Digit3,
+                Key::Digit4,
+                Key::Digit5,
+                Key::Digit6,
+            ]),
+            stop: plain(&[Key::KeyS]),
+            drop_build: plain(&[Key::Escape]),
+            shop: plain(&[Key::KeyP]),
+            pause: plain(&[Key::Space]),
+            slower: plain(&[Key::Minus, Key::NumpadSubtract]),
+            faster: plain(&[Key::Equal, Key::NumpadAdd]),
+            save: plain(&[Key::F5]),
+            load: plain(&[Key::F9]),
+            scroll_left: plain(&[Key::ArrowLeft]),
+            scroll_right: plain(&[Key::ArrowRight]),
+            scroll_up: plain(&[Key::ArrowUp]),
+            scroll_down: plain(&[Key::ArrowDown]),
+            zoom_in: vec![Chord::plain(Key::Numpad8), with(Key::ArrowUp, alt)],
+            zoom_out: vec![Chord::plain(Key::Numpad2), with(Key::ArrowDown, alt)],
+            turn_left: vec![Chord::plain(Key::Numpad4), with(Key::ArrowLeft, alt)],
+            turn_right: vec![Chord::plain(Key::Numpad6), with(Key::ArrowRight, alt)],
+            reset_camera: vec![Chord::plain(Key::Numpad5), with(Key::Backspace, alt)],
+            orbit: control,
+        }
+    }
+}
+
+impl Chord {
+    /// `key` with no modifier.
+    pub const fn plain(key: Key) -> Self {
+        Self {
+            key,
+            modifiers: Modifiers::NONE,
+        }
+    }
+
+    /// What a key's cap shows of it.
+    pub const fn label(self) -> ChordLabel {
+        ChordLabel(self)
+    }
+
+    /// The chord `text` writes; none for a key or a modifier it does not name, or a modifier
+    /// named twice.
+    fn parse(text: &str) -> Option<Self> {
+        let (modifiers, key) = match text.rsplit_once('+') {
+            Some((modifiers, key)) => (Modifiers::parse(modifiers)?, key),
+            None => (Modifiers::NONE, text),
+        };
+        let key = Key::parse(key)?;
+        Some(Self { key, modifiers })
+    }
+}
+
+impl Modifiers {
+    pub const NONE: Self = Self {
+        shift: false,
+        control: false,
+        alt: false,
+    };
+
+    /// The modifiers `text` writes, none for an empty text; none for a name it does not know
+    /// or one named twice.
+    fn parse(text: &str) -> Option<Self> {
+        let mut modifiers = Self::NONE;
+        if text.is_empty() {
+            return Some(modifiers);
+        }
+        for name in text.split('+') {
+            let held = match name {
+                "Shift" => &mut modifiers.shift,
+                "Control" => &mut modifiers.control,
+                "Alt" => &mut modifiers.alt,
+                _ => return None,
+            };
+            if *held {
+                return None;
+            }
+            *held = true;
+        }
+        Some(modifiers)
+    }
+
+    /// Each modifier held, with its name, in the order a chord writes them.
+    fn named(self) -> impl Iterator<Item = &'static str> {
+        [
+            (self.shift, "Shift"),
+            (self.control, "Control"),
+            (self.alt, "Alt"),
+        ]
+        .into_iter()
+        .filter_map(|(held, name)| held.then_some(name))
+    }
+}
+
+impl Key {
+    /// The key `name` names.
+    fn parse(name: &str) -> Option<Self> {
+        Self::ALL.iter().copied().find(|key| key.name() == name)
+    }
+
+    /// What a key's cap shows of it: a letter's or a digit's own, else its name.
+    pub fn label(self) -> &'static str {
+        let name = self.name();
+        name.strip_prefix("Key")
+            .or_else(|| name.strip_prefix("Digit"))
+            .unwrap_or(name)
+    }
+}
+
+impl fmt::Display for Chord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for name in self.modifiers.named() {
+            write!(f, "{name}+")?;
+        }
+        f.write_str(self.key.name())
+    }
+}
+
+impl fmt::Display for ChordLabel {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for name in self.0.modifiers.named() {
+            write!(f, "{name}+")?;
+        }
+        f.write_str(self.0.key.label())
+    }
+}
+
+impl fmt::Display for Modifiers {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (at, name) in self.named().enumerate() {
+            if at > 0 {
+                f.write_str("+")?;
+            }
+            f.write_str(name)?;
+        }
+        Ok(())
+    }
+}
+
+impl Serialize for Chord {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+/// A package's file is untrusted, so a chord of a key or a modifier no chord names fails to read.
+impl<'de> Deserialize<'de> for Chord {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Self::parse(&text).ok_or_else(|| D::Error::custom("a chord is modifiers and a key by name"))
+    }
+}
+
+impl Serialize for Modifiers {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_str(self)
+    }
+}
+
+impl<'de> Deserialize<'de> for Modifiers {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Self::parse(&text).ok_or_else(|| {
+            D::Error::custom("modifiers are `Shift`, `Control` and `Alt`, each once")
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use campfire_codec::Toml;
+
+    use super::*;
+
+    #[test]
+    fn a_file_gives_its_own_chords_and_keeps_the_engine_s_for_the_rest() {
+        let text = r#"
+            cast = ["KeyA", "Shift+Control+KeyB"]
+            stop = []
+            orbit = "Alt"
+        "#;
+        let file: InputFile = Toml::parse(text).unwrap();
+        let both = Modifiers {
+            shift: true,
+            control: true,
+            alt: false,
+        };
+        assert_eq!(
+            file.cast,
+            [
+                Chord::plain(Key::KeyA),
+                Chord {
+                    key: Key::KeyB,
+                    modifiers: both,
+                }
+            ]
+        );
+        assert!(file.stop.is_empty());
+        assert_eq!(
+            file.orbit,
+            Modifiers {
+                alt: true,
+                ..Modifiers::NONE
+            }
+        );
+        // A field it does not give is the engine's: the items are 1 to 6.
+        let engine = InputFile::default();
+        assert_eq!(file.items, engine.items);
+        assert_eq!(file.items.len(), 6);
+        assert_ne!(file.cast, engine.cast);
+        // Each writes as it reads, the engine's own too.
+        assert_eq!(Toml::parse::<InputFile>(&Toml::write(&file)).unwrap(), file);
+        assert_eq!(
+            Toml::parse::<InputFile>(&Toml::write(&engine)).unwrap(),
+            engine
+        );
+        assert!(Toml::write(&file).contains(r#""Shift+Control+KeyB""#));
+        // A key no chord names, a modifier key, a modifier twice or unknown, a chord of no key,
+        // and an unknown field fail to read.
+        for chord in [
+            "KeyÄ",
+            "ControlLeft",
+            "Control+Control+KeyA",
+            "Meta+KeyA",
+            "Control+",
+            "",
+        ] {
+            let text = format!("cast = [\"{chord}\"]");
+            assert!(Toml::parse::<InputFile>(&text).is_err(), "{chord}");
+        }
+        assert!(Toml::parse::<InputFile>("orbit = \"Shift+Shift\"").is_err());
+        assert!(Toml::parse::<InputFile>("fire = []").is_err());
+    }
+
+    #[test]
+    fn a_key_reads_by_its_name_and_shows_its_cap() {
+        for &key in Key::ALL {
+            assert_eq!(Key::parse(key.name()), Some(key));
+        }
+        assert_eq!(Key::ALL.len(), 90);
+        let labels = [Key::KeyQ, Key::Digit1, Key::F5, Key::Numpad8].map(Key::label);
+        assert_eq!(labels, ["Q", "1", "F5", "Numpad8"]);
+        let learn = InputFile::default().learn[0];
+        assert_eq!(
+            (learn.to_string(), learn.label().to_string()),
+            ("Control+KeyQ".to_owned(), "Control+Q".to_owned())
+        );
+    }
+}

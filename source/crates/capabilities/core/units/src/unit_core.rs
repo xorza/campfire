@@ -1,12 +1,12 @@
 use std::iter;
 
-use bevy_ecs::bundle::Bundle;
+use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_declare::{EntityKind, EntityParts, SpawnCore, SpawnParts};
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
-use campfire_values::{Team, UnitTags, UnitType};
+use campfire_values::{Team, UnitType};
 
 use crate::avatar::Avatar;
 use crate::new_unit_states::NewUnitStates;
@@ -17,8 +17,8 @@ use crate::unit_state_book::UnitStateBook;
 use crate::unit_states::UnitStates;
 
 /// What every unit spawns with, a delivery among them: its stable id, place, type, team and
-/// owner, and its script state; its type gives it its tags. Every spawn of a unit goes through
-/// `UnitCore::spawn`, the mode's spawner's and a delivery's alike.
+/// owner, the angle in degrees it faces, and its script state; its type gives it its tags. Every
+/// spawn of a unit goes through `UnitCore::spawn`, the mode's spawner's and a delivery's alike.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitCore {
     pub id: StableId,
@@ -26,16 +26,22 @@ pub struct UnitCore {
     pub unit_type: UnitType,
     pub team: Team,
     pub owner: Option<Owner>,
+    pub angle: Num,
 }
 
 impl UnitCore {
-    /// Spawns the unit, of the kind `kind` marks, in `world` with `parts`, which hold no part of
-    /// the core, then in one move its core, its owner, its script state, its mark as an avatar
-    /// when its type's tags hold `avatar`, and the parts the modules declare for every unit and
-    /// for its kind, but those of `parts`: two moves between archetypes. Its script state starts
-    /// at its type's defaults, but what a call wrote to it before it spawned, which
-    /// `NewUnitStates` holds.
-    pub fn spawn<K: EntityKind>(self, world: &mut World, kind: K, parts: impl Bundle) -> Entity {
+    /// Spawns the unit, of the kind `kind` marks, in `world`, in one move between archetypes:
+    /// with the kind's marker, `parts`, which hold no part of the core, its core, its owner, its
+    /// script state, its mark as an avatar when its type's tags hold `avatar`, and the parts the
+    /// modules declare for every unit and for its kind, but those of `parts`. Its script state
+    /// starts at its type's defaults, but what a call wrote to it before it spawned, which
+    /// `NewUnitStates` holds (02-engine-core.md, A unit spawns in one write).
+    pub fn spawn<K: EntityKind, B: Bundle<Effect: NoBundleEffect>>(
+        self,
+        world: &mut World,
+        kind: K,
+        parts: B,
+    ) -> Entity {
         let mut states = UnitStates::initial(world.resource::<UnitStateBook>(), self.unit_type);
         world
             .resource_mut::<NewUnitStates>()
@@ -46,22 +52,20 @@ impl UnitCore {
             unit_type,
             team,
             owner,
+            angle,
         } = self;
         let avatar = world.get_resource::<TagBook>().is_some_and(|book| {
             let tags = book.unit_tags(unit_type, iter::empty());
             tags.tags.contains(Avatar::TAG.tag())
         });
-        let mut unit = world.spawn((kind, parts));
-        debug_assert!(
-            !(unit.contains::<StableId>()
-                || unit.contains::<Position>()
-                || unit.contains::<UnitType>()
-                || unit.contains::<Team>()
-                || unit.contains::<UnitTags>()
-                || owner.is_some() && unit.contains::<Owner>()),
-            "a unit's parts hold none of its core, which would take their place"
-        );
+        // The write takes the parts by their components, which it finds registered.
+        world.register_bundle::<(K, B)>();
+        let mut unit = world.spawn_empty();
         SpawnParts::give(&mut unit, |writer| {
+            // A part of `parts` that is one of the core's is pushed twice, which the writer
+            // refuses.
+            writer.push(kind);
+            writer.push_bundle(parts);
             writer.push(id);
             writer.push(Position::from(pos));
             writer.push(unit_type);
@@ -73,7 +77,11 @@ impl UnitCore {
             if avatar {
                 writer.push(Avatar);
             }
-            let core = Some(SpawnCore { pos, unit_type });
+            let core = Some(SpawnCore {
+                pos,
+                unit_type,
+                angle,
+            });
             EntityParts::<UnitEntity>::push(writer, core);
             EntityParts::<K>::push(writer, core);
         });

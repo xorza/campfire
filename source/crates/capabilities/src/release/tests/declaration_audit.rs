@@ -14,22 +14,31 @@ use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::schedule::{InternedSystemSet, SystemSet};
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem, System};
 use bevy_ecs::world::World;
-use campfire_actions::{ActionSlots, CapabilityDoesSpec, CastSpends, EffectQueues, QueueListed};
+use campfire_actions::{ActionSlots, CastSpends, DeliveryShape};
 use campfire_combat::ClipShots;
 use campfire_common::EnumAll;
 use campfire_declare::{
-    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Phase, Report, Role, Scratch, SetPlace,
+    Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
+    KindSpawn, KindVisitor, Listed, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section,
+    SetPlace,
 };
-use campfire_deliveries::{Deliverers, DeliveryKind};
+use campfire_deliveries::Deliverers;
 use campfire_navigation::{RoomMakingRun, StaticTrackingRun};
-use campfire_production::PlayerSupply;
-use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, View, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, OnAny, SimComponent, SimResource};
+use campfire_players::Player;
+use campfire_production::{Gatherer, PlayerSupply};
+use campfire_script::{
+    ApiBuilder, CallParams, CallPart, HookSpec, MatchNames, PlannedCapability, RowReads, Status,
+    ViewColumn,
+};
+use campfire_sim::{
+    Breach, Capability, DueIndex, HostRule, OnAny, OwnResources, SimComponent, SimResource, SimSet,
+    TimedProcess, Unpredicted,
+};
 use campfire_state_types::{DataKind, NotSent, Replication, StateTypes};
-use campfire_units::{BodyUnit, DeliveryEntity, Player, UnitEntity};
+use campfire_stats::Modifiers;
+use campfire_units::{BodyUnit, Dead, DeliveryEntity, OpenCellRun, Owner, SeenBy, UnitEntity};
 use campfire_values::{EngineTag, NameId, TagProperties};
-use campfire_vision::{SeenBy, VisionColumn};
+use campfire_vision::VisionColumn;
 use serde::{Deserialize, Serialize};
 
 use crate::release::Release;
@@ -80,13 +89,10 @@ struct DeclaredCallback {
     declared_by: Option<Capability>,
 }
 
-/// A system set as declared: its set, the capability its type names, and the capability of the
-/// module that declares it.
+/// A system set as declared.
 #[derive(Debug)]
 struct DeclaredSet {
     set: InternedSystemSet,
-    owner: Option<Capability>,
-    declared_by: Option<Capability>,
 }
 
 /// Every declaration of the modules it visits.
@@ -118,10 +124,14 @@ struct DeclarationAudit {
     engine_tags: Vec<EngineTag>,
     /// Each observer, by its system's name.
     observers: Vec<String>,
+    /// Each part whose removals a module reads, by its type.
+    removals: Vec<Named>,
     /// Each system run out of the schedule, by the resource that keeps its id.
     one_shots: Vec<Named>,
     /// Each part a server's match derives: its holder, and its type.
     server_parts: Vec<(Named, Named)>,
+    /// Each resource the match's build puts in itself.
+    owns: Vec<Named>,
 }
 
 impl DeclarationAudit {
@@ -137,14 +147,14 @@ impl DeclarationAudit {
     }
 
     /// What breaks a rule between the declarations, each by the type it names: every type is
-    /// declared once; each state type sits on declared kinds, by its host, by a `host`
-    /// declaration when its host takes any entity, or as a kind itself; a pair's holder is a kind
-    /// or a state type and its part a state type; a check and a `host` name state types; a book's
-    /// capability is the module's that declares it; a kind's part is a state type of that kind; a
-    /// callback is its key's owner's, declared once, in a registry a module calls; an engine tag
-    /// is at its number, in the order the modules declare them, under a name of its own; and a
-    /// column reads only declared types, as a restored match's scripts would read another value of one
-    /// no state or derivation holds.
+    /// declared once; each state type sits on declared kinds, by its host, by a `host` declaration
+    /// when its host takes any entity, or as a kind itself; a pair's holder is a kind or a state
+    /// type and its part a state type; a check and a `host` name state types; a book's capability
+    /// is the module's that declares it; a kind's part is a state type of that kind; a callback is
+    /// its key's owner's, declared once, in a registry a module calls; an engine tag is at its
+    /// number, in the order the modules declare them, under a name of its own; and a column reads
+    /// only declared types, as a restored match's scripts would read another value of one no state
+    /// or derivation holds.
     fn problems(&self) -> Vec<String> {
         let mut problems = Vec::new();
         let mut once = |what: &str, names: Vec<&'static str>| {
@@ -160,6 +170,7 @@ impl DeclarationAudit {
         );
         once("resource", self.resources.clone());
         once("run", self.one_shots.iter().map(|ty| ty.name).collect());
+        once("own", self.owns.iter().map(|ty| ty.name).collect());
         once("book", self.books.iter().map(|book| book.ty.name).collect());
         once("column", self.columns.iter().map(|ty| ty.name).collect());
         once(
@@ -245,15 +256,12 @@ impl DeclarationAudit {
         problems
     }
 
-    /// Each system set declared twice or by another module than its own.
+    /// Each system set declared twice: a module's sets are its own by its type.
     fn set_problems(&self, problems: &mut Vec<String>) {
         for (at, declared) in self.sets.iter().enumerate() {
             let set = declared.set;
             if self.sets[..at].iter().any(|other| other.set == set) {
                 problems.push(format!("the set {set:?} is declared twice"));
-            }
-            if declared.owner != declared.declared_by {
-                problems.push(format!("the set {set:?} is declared by another module"));
             }
         }
     }
@@ -354,20 +362,26 @@ impl Declarations for DeclarationAudit {
         self.checks.push(Named::of::<C>());
     }
 
-    fn book<B: Book>(&mut self) {
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn rule(&mut self, _: RuleFn) {}
+
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {
         self.books.push(DeclaredBook {
             ty: Named::of::<B>(),
             declared_by: self.capability,
         });
     }
 
+    fn section<S: Section>(&mut self) {}
+
+    fn listed<L: Listed>(&mut self) {}
+
     fn sets<S: ModuleSet>(&mut self) {
         for &set in S::ALL {
-            self.sets.push(DeclaredSet {
-                set: set.intern(),
-                owner: S::CAPABILITY,
-                declared_by: self.capability,
-            });
+            self.sets.push(DeclaredSet { set: set.intern() });
         }
     }
 
@@ -377,6 +391,10 @@ impl Declarations for DeclarationAudit {
 
     fn cache<R: Cache>(&mut self) {
         self.resources.push(type_name::<R>());
+    }
+
+    fn timed<P: TimedProcess>(&mut self) {
+        self.resources.push(type_name::<DueIndex<P>>());
     }
 
     fn report<R: Report>(&mut self) {
@@ -423,16 +441,24 @@ impl Declarations for DeclarationAudit {
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 
+    fn hook<H: HookSpec>(&mut self, _: Status) {}
+
+    fn plan_hook<H: HookSpec>(&mut self, _: PlannedCapability) {}
+
     fn observer<E: Event, B: Bundle, M>(&mut self, observer: impl IntoObserverSystem<E, B, M>) {
         let system = IntoObserverSystem::into_system(observer);
         self.observers.push(system.name().shortname().to_string());
     }
 
-    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {
+    fn removals<C: Component>(&mut self) {
+        self.removals.push(Named::of::<C>());
+    }
+
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, R::Out, M> + 'static) {
         self.one_shots.push(Named::of::<R>());
     }
 
-    fn non_send_loaded<R: 'static>(&mut self) {}
+    fn loaded<R: Resource>(&mut self) {}
 
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 
@@ -445,18 +471,26 @@ impl Declarations for DeclarationAudit {
     fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {}
 }
 
+impl OwnResources for DeclarationAudit {
+    fn own<R: Resource>(&mut self) {
+        self.owns.push(Named::of::<R>());
+    }
+}
+
 #[test]
 fn the_modules_declarations_keep_every_rule_between_them() {
     let mut audit = DeclarationAudit::default();
     Release::declare(Release::capabilities(), &mut audit);
     assert_eq!(audit.problems(), Vec::<String>::new());
-    // The audit read every module: the core's four kinds, the stats' and the players' parts of a
-    // player, the mode's three of the match, the 31 of a unit, items' `UseGroup`, orders'
-    // `NextThink`, the units' `StatusTags` and combat's `TurretAngle` among them, and the 48
-    // books, 14 of the core's, interaction's two and combat's armors and turrets among them.
+    // The audit read every module: the core's four kinds, the stats', the players' and the
+    // mode's five parts of a player, its bounty share among them, the mode's three of the match,
+    // the 30 of a unit, items' `UseGroup`, orders' `NextThink`, production's `StatusTags` and
+    // combat's `TurretAngle` among them, and the 57 books, 14 of the core's, interaction's two,
+    // combat's armors, turrets and weapons, production's trains and gathers, the mode's victory
+    // and bounty, and progression's experience among them.
     assert_eq!(audit.kinds.len(), 4);
-    assert_eq!(audit.parts.len(), 36);
-    assert_eq!(audit.books.len(), 48);
+    assert_eq!(audit.parts.len(), 40);
+    assert_eq!(audit.books.len(), 57);
     let core = audit.books.iter().filter(|book| book.declared_by.is_none());
     assert_eq!(core.count(), 14);
     // The observers, the runs out of the schedule and the parts a server derives, which the
@@ -468,11 +502,37 @@ fn the_modules_declarations_keep_every_rule_between_them() {
             "UnitTracker<GridUnits>::lost_body",
             "Units::refill_view",
             "Level::raise",
+            "HeldHits::drop_died",
             "UnitTracker<StaticBodies>::aged",
             "StaticBodies::part_removed",
             "StaticBodies::state_inserted",
             "StaticBodies::state_removed",
+            "Route::rewritten",
             "Flying::lose_teleported",
+            "Flying::lose_died",
+            "ProductionOrders::ordered",
+            "TrainQueue::revived",
+            "Holdings::inserted",
+            "Holdings::removed",
+            "Holdings::aged",
+            "ShopIndex::typed",
+            "ShopIndex::untyped",
+            "UseOrders::ordered",
+            "NextThink::revived",
+        ]
+    );
+    // The parts whose removals a module reads, which reach it as the tick ages them.
+    let removals: Vec<&str> = audit.removals.iter().map(|ty| ty.name).collect();
+    assert_eq!(
+        removals,
+        [
+            type_name::<Unpredicted>(),
+            type_name::<Dead>(),
+            type_name::<Modifiers>(),
+            type_name::<Owner>(),
+            type_name::<Dead>(),
+            type_name::<Unpredicted>(),
+            type_name::<Gatherer>(),
         ]
     );
     let runs: Vec<&str> = audit.one_shots.iter().map(|ty| ty.name).collect();
@@ -480,7 +540,8 @@ fn the_modules_declarations_keep_every_rule_between_them() {
         runs,
         [
             type_name::<StaticTrackingRun>(),
-            type_name::<RoomMakingRun>()
+            type_name::<RoomMakingRun>(),
+            type_name::<OpenCellRun>()
         ]
     );
     let server: Vec<(&str, &str)> = audit
@@ -548,10 +609,10 @@ struct StrayBook;
 impl Book for StrayBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
-/// Sets the stats own.
+/// Sets of no module, which the test declares twice.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
 enum StraySet {
     Early,
@@ -559,13 +620,12 @@ enum StraySet {
 }
 
 impl ModuleSet for StraySet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Stats);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Early => Phase::Begin,
-            Self::Late => Phase::Fire,
+        SetPlace::stage(match self {
+            Self::Early => SimSet::Inputs,
+            Self::Late => SimSet::Hit,
         })
     }
 }
@@ -575,7 +635,7 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     // One module of the combat capability: a state type on no kind, declared twice, needed by a
     // unit though it is a part that sits nowhere, checked, and put on players; a book the stats
     // own; a kind's part, a unit's, needing a type no module declares; a unit's server part, of a
-    // type no module declares; and the stats' sets.
+    // type no module declares; and sets declared twice.
     let mut audit = DeclarationAudit::default();
     audit.module(None);
     audit.kind::<BodyUnit>();
@@ -587,8 +647,8 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.require::<UnitEntity, Stray>();
     audit.require::<UnitEntity, Player>();
     audit.check::<Player>(|_| Ok(()));
-    audit.book::<StrayBook>();
-    audit.book::<StrayBook>();
+    audit.book::<StrayBook>(|_| Ok(StrayBook));
+    audit.book::<StrayBook>(|_| Ok(StrayBook));
     audit.part::<Player, Stray>(|_| Some(Stray));
     audit.engine_tags(&STRAY_TAGS);
     // A column that reads a type no module declares.
@@ -596,13 +656,12 @@ fn each_rule_names_the_declaration_that_breaks_it() {
     audit.column::<VisionColumn, &Undeclared>(reads_undeclared);
     audit.server_part::<UnitEntity, Undeclared>();
     // A callback the areas own, twice, in a registry no module calls.
-    let queue: QueueListed = |_, _, _, _, _| Ok(());
-    audit.callback::<EffectQueues>(Capability::Areas, queue);
-    audit.callback::<EffectQueues>(Capability::Areas, queue);
-    // Sets the stats own, twice.
+    audit.callback::<Deliverers>(Capability::Areas, |_, _, _, _| {});
+    audit.callback::<Deliverers>(Capability::Areas, |_, _, _, _| {});
+    // Sets declared twice.
     audit.sets::<StraySet>();
     audit.sets::<StraySet>();
-    let queues = type_name::<EffectQueues>();
+    let queues = type_name::<Deliverers>();
     let stray = type_name::<Stray>();
     let player = type_name::<Player>();
     let unit = type_name::<UnitEntity>();
@@ -628,12 +687,8 @@ fn each_rule_names_the_declaration_that_breaks_it() {
             format!("the callback Areas of {queues} is declared by another module"),
             format!("the callback Areas of {queues} is declared twice"),
             format!("{queues} has a callback no module calls"),
-            "the set Early is declared by another module".to_owned(),
-            "the set Late is declared by another module".to_owned(),
             "the set Early is declared twice".to_owned(),
-            "the set Early is declared by another module".to_owned(),
             "the set Late is declared twice".to_owned(),
-            "the set Late is declared by another module".to_owned(),
         ]
     );
     // A `host` declaration puts the stray on a declared kind.
@@ -647,8 +702,8 @@ fn each_rule_names_the_declaration_that_breaks_it() {
 
 #[test]
 fn each_key_a_caller_asks_for_has_its_callback() {
-    // A listed effect queues in the capability it names; each kind of delivery sets out by its
-    // capability's callback; and a cast spends what items keep of a slot.
+    // Each kind of delivery sets out by its capability's callback, and a cast spends what items
+    // keep of a slot.
     let mut audit = DeclarationAudit::default();
     Release::declare(Release::capabilities(), &mut audit);
     let declared = |registry: &str, key: String| {
@@ -657,12 +712,11 @@ fn each_key_a_caller_asks_for_has_its_callback() {
             .iter()
             .any(|callback| callback.registry.name == registry && callback.key == key)
     };
-    for does in CapabilityDoesSpec::one_of_each() {
-        let key = format!("{:?}", does.capability());
-        assert!(declared(type_name::<EffectQueues>(), key), "{does:?}");
-    }
-    for kind in DeliveryKind::ALL {
-        assert!(declared(type_name::<Deliverers>(), format!("{kind:?}")));
+    for capability in DeliveryShape::CAPABILITIES {
+        assert!(declared(
+            type_name::<Deliverers>(),
+            format!("{capability:?}")
+        ));
     }
     assert!(declared(type_name::<CastSpends>(), format!("{:?}", ())));
 }

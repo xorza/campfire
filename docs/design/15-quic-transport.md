@@ -8,6 +8,7 @@ The server and the client link over QUIC alone, through `quic`, an IO layer on `
 - **The socket is `quinn-udp`'s.** It reads and writes in batches, turns on ECN, and gives each datagram's destination, so a server bound to `0.0.0.0` replies from the address the client reached.
 - **A thread for each endpoint, and no IO in the frame.** The thread waits through `polling` for the socket, a deadline or a wake, reads one batch with no lock and holds the shared mutex only for that batch, so acknowledgments and keep-alives go on through a stalled frame, and a frame waits at most one batch. The wake is a loopback datagram, as the self-pipe trick does, as `polling`'s own `notify` allocates on each call on kqueue.
 - **Datagrams, not streams.** One Lightyear packet is one DATAGRAM frame: Lightyear keeps reliability, order and fragments, QUIC keeps encryption, congestion control and the path MTU; a full send queue drops its oldest datagram, as the newest state matters most.
+- **A message's size is declared, planned.** Each registered message type declares its largest encoding in `net_protocol`, and the transport refuses a fragment count past it before it allocates, so a peer's count sizes nothing. Refused: a bound in the fork alone, which knows no message's size.
 - **A link's minimum MTU is QUIC's datagram.** `1200 − (1 + 8 + 4 + 16) − 9 = 1,162` bytes on the minimum path, for every link, in-process ones too, as both ends must agree on Lightyear's fragment size.
 
 ## The server's key

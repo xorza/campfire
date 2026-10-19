@@ -1,17 +1,20 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_common::Tick;
 use campfire_declare::PerType;
-use campfire_sim::SimComponent;
+use campfire_sim::{SimComponent, TimedKept, TimedProcess, TimedRuns};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_units::UnitEntity;
+use campfire_units::{BuildTarget, UnitEntity};
 use serde::{Deserialize, Serialize};
 
-use crate::build_target::BuildTarget;
+use crate::order_dues::{self, OrderDues, StandingOrder};
 
 /// A unit that builds, as one whose slots hold a build: its build order, none while it has none.
-/// Any other order ends it.
+/// Any other order ends it. Its hook pushes its unit into the index of the builders at each
+/// insert, a spawn's and a restore's alike.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[component(on_insert = order_dues::pushed::<Builder>)]
 #[serde(transparent)]
 pub struct Builder(Option<BuildOrder>);
 
@@ -28,8 +31,36 @@ impl Builder {
         self.0
     }
 
-    pub const fn set(&mut self, order: Option<BuildOrder>) {
+    /// Gives it `order`, or none; with one, its unit is due at once in `dues`.
+    pub(crate) fn set(&mut self, order: Option<BuildOrder>, dues: &mut OrderDues<'_, Self>) {
         self.0 = order;
+        dues.push(self);
+    }
+
+    /// Gives the builder of `entity` in `world` `order`, or none, as an exclusive system does.
+    pub(crate) fn set_in(world: &mut World, entity: Entity, order: Option<BuildOrder>) {
+        order_dues::change(world, entity, |builder: &mut Self, dues| {
+            builder.set(order, dues);
+        });
+    }
+}
+
+impl StandingOrder for Builder {
+    fn has_order(&self) -> bool {
+        self.0.is_some()
+    }
+}
+
+/// A builder is due at once while it has an order, as a build order's walk, start and work run
+/// in each tick (04-capabilities/00-overview.md, One due index for each timed process).
+impl TimedProcess for Builder {
+    const RUNS: TimedRuns = TimedRuns::EveryRole;
+    const KEPT: TimedKept = TimedKept::BySetters;
+    type Parts = &'static Self;
+    type Books = ();
+
+    fn due((): &(), builder: &Self) -> Option<Tick> {
+        builder.0.map(|_| Tick::ZERO)
     }
 }
 

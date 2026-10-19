@@ -25,7 +25,7 @@ pub enum SaveBy {
 }
 
 impl DataSection for SavesData {
-    const TABLE: DataTable = DataTable::Saves;
+    const TABLE: DataTable = DataTable::new("The mode's `[saves]`");
 }
 
 #[cfg(test)]

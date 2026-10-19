@@ -5,19 +5,41 @@ fn records(file: &[u8]) -> Vec<&[u8]> {
     JournalFrames::new(file).unwrap().collect()
 }
 
+/// How many entries `log` holds: those since its base's boundary, once it forgot those before.
+fn held_entries(log: &SessionLog) -> u32 {
+    let base = log.base().and_then(|base| log.segments.get(base));
+    let from = base.and_then(|start| start.boundary.as_ref());
+    log.entries.len() - from.map_or(0, |boundary| boundary.entries.entries)
+}
+
 #[test]
 fn a_journal_rebuilds_the_log_it_followed() {
-    // Kept from the start: each record goes to the journal as the log takes it.
+    // Kept from the start: each record goes to the journal as the log takes it, and the log
+    // forgets what its checkpoint's record leaves before its boundary.
     let mut log = new_log();
     let file = MemorySink::new();
-    log.keep_journal(file.boxed());
-    play_minimal(&mut log);
-    let bytes = encoded(&log);
-    assert_eq!(log.journal.as_ref().unwrap().len(), len(file.bytes().len()));
-    drop(log);
+    let mut journal = Journal::start(&log, file.boxed());
+    play_minimal(&mut log, Some(&mut journal));
+    // The sink takes the frames once they are flushed, all of them in one append.
+    assert_eq!(file.appends(), 0);
+    journal.flush();
+    assert_eq!(file.appends(), 1);
+    assert_eq!(journal.len(), len(file.bytes().len()));
+    drop(journal);
+    // The log holds the packet after its checkpoint alone, of the three entries it took, as
+    // does the log its journal rebuilds; their state is the one a log with no journal holds.
+    let mut whole = new_log();
+    play_minimal(&mut whole, None);
     let journal = file.bytes();
-    let rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
-    assert_eq!(encoded(&rebuilt), bytes);
+    let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
+    for log in [&log, &rebuilt] {
+        assert_eq!((log.base(), held_entries(log)), (Some(1), 1));
+        assert_eq!(log.next_tick(), whole.next_tick());
+        assert_eq!(log.result(), whole.result());
+        assert!(log.checkpoints().eq(whole.checkpoints()));
+        assert_eq!(log.carry(), whole.carry());
+    }
+    assert_eq!((whole.base(), held_entries(&whole)), (None, 3));
     // The header, a packet and a server input, the seal, the checkpoint's begin and its record,
     // a packet, the result.
     let kinds: Vec<u8> = records(&journal).iter().map(|record| record[0]).collect();
@@ -25,10 +47,9 @@ fn a_journal_rebuilds_the_log_it_followed() {
 
     // Kept at the end: the log writes what it holds, the same records.
     let mut log = new_log();
-    play_minimal(&mut log);
+    play_minimal(&mut log, None);
     let late = MemorySink::new();
-    log.keep_journal(late.boxed());
-    drop(log);
+    drop(Journal::start(&log, late.boxed()));
     assert_eq!(late.bytes(), journal);
 
     // Every prefix of the records rebuilds a log, as a crash leaves one: what the server held
@@ -36,36 +57,42 @@ fn a_journal_rebuilds_the_log_it_followed() {
     let all = records(&journal);
     for len in 1..all.len() {
         assert!(
-            SessionLog::from_journal(all[..len].iter().copied()).is_ok(),
+            SessionLog::from_journal(all[..len].iter().copied(), RELEASE).is_ok(),
             "{len}"
         );
     }
     // Cut after the checkpoint's begin: its segment starts, its record still to come.
-    let begun = SessionLog::from_journal(all[..5].iter().copied()).unwrap();
+    let begun = SessionLog::from_journal(all[..5].iter().copied(), RELEASE).unwrap();
     let pending = begun.begun_checkpoint().unwrap();
     assert_eq!((pending.segment, pending.tick), (1, Tick::new(1)));
     assert_eq!(begun.segment_starting(Tick::new(1)), Some(1));
     assert_eq!(begun.checkpoint_at(Tick::new(1)), None);
 
+    // Read by another release than its own, a journal is refused at its header, naming its
+    // release.
+    assert_eq!(
+        SessionLog::from_journal(all.iter().copied(), Version::new(0, 0, 9)).err(),
+        Some(JournalReplayError::OtherRelease(RELEASE))
+    );
     // A journal with no header; a seal after the result; a checkpoint's begin after the first
     // packet, before its tick is sealed; or a record past the header that the log refuses: the
     // packet again, whose first stamp, 0, goes back from its last, 1.
     assert_eq!(
-        SessionLog::from_journal(all[1..].iter().copied()).err(),
+        SessionLog::from_journal(all[1..].iter().copied(), RELEASE).err(),
         Some(JournalReplayError::NoHeader)
     );
     let ended = all.iter().copied().chain([all[3]]);
     assert_eq!(
-        SessionLog::from_journal(ended).err(),
+        SessionLog::from_journal(ended, RELEASE).err(),
         Some(JournalReplayError::AfterResult { record: 8 })
     );
     assert_eq!(
-        SessionLog::from_journal([all[0], all[1], all[4]]).err(),
+        SessionLog::from_journal([all[0], all[1], all[4]], RELEASE).err(),
         Some(JournalReplayError::CheckpointMidTick { record: 2 })
     );
     let again = [all[0], all[1], all[1]];
     assert_eq!(
-        SessionLog::from_journal(again).err(),
+        SessionLog::from_journal(again, RELEASE).err(),
         Some(JournalReplayError::Record {
             record: 2,
             error: LogError::Input {
@@ -80,21 +107,21 @@ fn a_journal_rebuilds_the_log_it_followed() {
 fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
     let mut log = new_log();
     let file = MemorySink::new();
-    log.keep_journal(file.boxed());
-    play_minimal(&mut log);
+    let mut journal = Journal::start(&log, file.boxed());
+    play_minimal(&mut log, Some(&mut journal));
     // The header, a packet and a server input, the seal, the checkpoint's begin and its record,
     // a packet, the result. No chain is durable before the log notes the synced records; once
     // the first two are, player 1's chain stands at their first packet, a and b, seq 1; once
     // all 8 are, at c, seq 2, the last, signed under their delegation.
     let slot = PlayerSlot::new(1);
-    assert_eq!(log.durable_head(slot), None);
-    log.advance_durable(1);
-    assert_eq!(log.durable_head(slot), None);
-    log.advance_durable(2);
-    assert_eq!(log.durable_head(slot).map(|head| head.seq), Some(1));
-    log.advance_durable(6);
-    assert_eq!(log.durable_head(slot).map(|head| head.seq), Some(1));
-    log.advance_durable(8);
+    assert_eq!(journal.durable_head(slot), None);
+    journal.advance_durable(1);
+    assert_eq!(journal.durable_head(slot), None);
+    journal.advance_durable(2);
+    assert_eq!(journal.durable_head(slot).map(|head| head.seq), Some(1));
+    journal.advance_durable(6);
+    assert_eq!(journal.durable_head(slot).map(|head| head.seq), Some(1));
+    journal.advance_durable(8);
     let mut chain = InputChain::new(slot, root(1));
     for (stamp, payload) in [(0, b"a"), (1, b"b"), (1, b"c")] {
         chain.extend(Tick::new(stamp), payload);
@@ -104,17 +131,16 @@ fn the_log_follows_where_each_chain_stands_in_the_synced_records() {
         seq: 2,
         head: chain.head(),
     };
-    assert_eq!(log.durable_head(slot), Some(head));
-    assert_eq!(log.durable_head(PlayerSlot::new(0)), None);
+    assert_eq!(journal.durable_head(slot), Some(head));
+    assert_eq!(journal.durable_head(PlayerSlot::new(0)), None);
 
-    // The log the journal rebuilds, once it keeps the journal again, holds every chain durably.
-    drop(log);
+    // The log the journal rebuilds, once its journal resumes, holds every chain durably.
+    drop(journal);
     let journal = file.bytes();
-    let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
-    assert_eq!(rebuilt.durable_head(slot), None);
-    rebuilt.resume_journal(MemorySink::new().boxed(), len(journal.len()));
-    assert_eq!(rebuilt.durable_head(slot), Some(head));
-    assert_eq!(rebuilt.durable_head(PlayerSlot::new(0)), None);
+    let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
+    let resumed = Journal::resume(&rebuilt, MemorySink::new().boxed(), len(journal.len()));
+    assert_eq!(resumed.durable_head(slot), Some(head));
+    assert_eq!(resumed.durable_head(PlayerSlot::new(0)), None);
 }
 
 #[test]
@@ -122,34 +148,54 @@ fn a_renewal_forgets_where_the_chain_stands_durably() {
     // Player 1 sends a and b, which the journal syncs.
     let mut log = new_log();
     let file = MemorySink::new();
-    log.keep_journal(file.boxed());
+    let mut journal = Journal::start(&log, file.boxed());
     let mut applied = Vec::new();
     resent(1, &[&[(0, b"a"), (1, b"b")]], 1)[0]
-        .submit(&mut log, &mut applied)
+        .submit_to(&mut log, &mut applied, Some(&mut journal))
         .unwrap();
-    log.advance_durable(2);
+    journal.advance_durable(2);
     let slot = PlayerSlot::new(1);
-    assert_eq!(log.durable_head(slot).map(|head| head.seq), Some(1));
+    assert_eq!(journal.durable_head(slot).map(|head| head.seq), Some(1));
 
     // Their renewal to session key 5: the head stays the old key's, which a receipt would name,
     // so none is durable; and none once the journal rebuilds the log either.
     let renewed = delegation_with(1, |terms| {
         terms.session_key = session_key(5).x_only_public_key().0;
     });
-    serve(
-        &mut log,
-        ServerInput::Renew {
-            slot,
-            delegation: renewed,
-        },
-    )
-    .unwrap();
-    assert_eq!(log.durable_head(slot), None);
-    log.advance_durable(3);
-    assert_eq!(log.durable_head(slot), None);
-    drop(log);
+    let renew = ServerInput::Renew {
+        slot,
+        delegation: renewed,
+    };
+    serve_to(&mut log, renew, Some(&mut journal)).unwrap();
+    assert_eq!(journal.durable_head(slot), None);
+    journal.advance_durable(3);
+    assert_eq!(journal.durable_head(slot), None);
+    drop(journal);
     let journal = file.bytes();
-    let mut rebuilt = SessionLog::from_journal(records(&journal)).unwrap();
-    rebuilt.resume_journal(MemorySink::new().boxed(), len(journal.len()));
-    assert_eq!(rebuilt.durable_head(slot), None);
+    let rebuilt = SessionLog::from_journal(records(&journal), RELEASE).unwrap();
+    let resumed = Journal::resume(&rebuilt, MemorySink::new().boxed(), len(journal.len()));
+    assert_eq!(resumed.durable_head(slot), None);
+}
+
+#[test]
+fn a_journal_publishes_the_file_its_log_writes() {
+    // Two segments, the second of a packet after its checkpoint, and the result: the file a
+    // log of no journal, which forgets nothing, writes.
+    let mut log = new_log();
+    let file = MemorySink::new();
+    let mut journal = Journal::start(&log, file.boxed());
+    play_minimal(&mut log, Some(&mut journal));
+    drop(journal);
+    assert_eq!(published_from(&file.bytes()), Ok(encoded(&minimal())));
+
+    // A journal of no record, and one whose last checkpoint has no record yet, publish nothing.
+    let empty = MemorySink::new().bytes();
+    assert_eq!(published_from(&empty), Err(PublishError::NoHeader));
+    let mut log = new_log();
+    let file = MemorySink::new();
+    let mut journal = Journal::start(&log, file.boxed());
+    drop(log.seal_tick(Some(&mut journal)));
+    log.begin_checkpoint(Some(&mut journal)).unwrap();
+    drop(journal);
+    assert_eq!(published_from(&file.bytes()), Err(PublishError::Begun));
 }

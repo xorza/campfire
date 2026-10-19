@@ -1,21 +1,18 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::{Added, Allow, Changed, Has, Or, With, Without};
 use bevy_ecs::system::{Local, ParamSet, Query, Res, ResMut};
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, StableId, TickRate, Unpredicted};
-use campfire_units::{Dead, MoveStep, StatusTags, TagEffect, TurnStep};
+use campfire_sim::{EntityIndex, Removals, StableId, TickRate, Unpredicted};
+use campfire_units::{Dead, Life, MoveStep, PoolId, StatusTags, TagEffect, TurnStep};
 use campfire_values::{NameId, UnitTags, UnitType};
 
 use crate::level::Level;
-use crate::life::Life;
 use crate::live_carriers::LiveCarriers;
 use crate::modifiers::Modifiers;
 use crate::param_book::ParamBook;
 use crate::param_source::ParamSource;
 use crate::pool_book::PoolBook;
-use crate::pool_id::PoolId;
 use crate::pools::Pools;
 use crate::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stat_book::StatBook;
@@ -92,7 +89,7 @@ impl Refresh {
                 Query<'_, '_, &mut Modifiers>,
             ),
         >,
-        mut revived: RemovedComponents<'_, '_, Dead>,
+        mut revived: Removals<'_, '_, Dead>,
         mut scratch: Local<'_, RefreshScratch>,
         mut visits: Local<'_, Vec<Entity>>,
     ) {

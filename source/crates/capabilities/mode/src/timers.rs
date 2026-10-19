@@ -1,13 +1,17 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_script::StateValue;
+use campfire_script::{ListPlace, MatchNames, StateValue};
 use campfire_sim::SimResource;
+use campfire_values::NameId;
 use serde::{Deserialize, Serialize};
 
-/// The mode's timers, earliest first. Times count ticks from the match start, as
-/// `SimTick::start` and `SimTick::end` give them: the Mode stage is at its tick's end, so a timer
-/// never fires early.
+use crate::match_mode::MatchMode;
+use crate::timer_id::TimerId;
+
+/// The mode's timers, earliest first, each of the script that set it (03-game-scripting.md, Rules
+/// scripts in order). Times count ticks from the match start, as `SimTick::start` and
+/// `SimTick::end` give them: the Mode stage is at its tick's end, so a timer never fires early.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Timers {
     /// Sorted by due time, then by when each was set, the latest first: the earliest fires from
@@ -17,10 +21,12 @@ pub struct Timers {
     next_seq: u64,
 }
 
-/// A timer: the name and data `on_timer` receives, when it is due, and its period if it repeats.
+/// A timer: the place in the mode's list of the script that set it, whose `on_timer` receives its
+/// name and data, when it is due, and its period if it repeats.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Timer {
-    pub name: String,
+    pub owner: ListPlace,
+    pub name: TimerId,
     pub due: Tick,
     seq: u64,
     /// In ticks, when it repeats.
@@ -29,11 +35,12 @@ pub struct Timer {
     pub data: Option<StateValue>,
 }
 
-/// A timer a call sets: the name and data `on_timer` receives, the ticks until it is first due,
-/// and its period, when it repeats.
+/// A timer a call sets: the place in the mode's list of the call's script, the name and data its
+/// `on_timer` receives, the ticks until it is first due, and its period, when it repeats.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TimerStart {
-    pub name: String,
+    pub owner: ListPlace,
+    pub name: TimerId,
     pub after: Ticks,
     pub every: Option<Ticks>,
     /// `None` for `()`.
@@ -44,12 +51,14 @@ impl Timers {
     /// Sets the timer `start` gives, `after` ticks from `now`.
     pub fn set(&mut self, now: Tick, start: TimerStart) {
         let TimerStart {
+            owner,
             name,
             after,
             every,
             data,
         } = start;
         let timer = Timer {
+            owner,
             name,
             due: now.after(after),
             seq: self.next_seq,
@@ -72,6 +81,13 @@ impl Timers {
         self.timers.last().filter(|timer| timer.due <= now)
     }
 
+    /// Ends every timer of `name` the script at `owner` set, the ones a call set before it among
+    /// them.
+    pub fn cancel(&mut self, owner: ListPlace, name: TimerId) {
+        self.timers
+            .retain(|timer| (timer.owner, timer.name) != (owner, name));
+    }
+
     /// Ends the earliest timer, which sets itself again when it repeats.
     pub fn fire(&mut self) {
         let mut timer = self.timers.pop().expect("a timer fires once due");
@@ -89,15 +105,20 @@ impl SimResource for Timers {
 
     // The earliest timer fires first only while they keep their order, and a new one is set last
     // among those due with it only while its number is the highest. A repeating timer of no
-    // ticks would be due again as it fires, in the same tick, without end.
-    fn check(&self, _: &World) -> bool {
+    // ticks would be due again as it fires, in the same tick, without end. A name the mode does
+    // not declare has no text for `on_timer`, and a script past the mode's list no `on_timer`.
+    fn check(&self, world: &World) -> bool {
+        let names = world.resource::<MatchNames>().count::<TimerId>();
+        let mode = world.get_resource::<MatchMode>();
+        let scripts = mode.map_or(0, |mode| mode.schema.scripts.len());
         let ordered = self
             .timers
             .windows(2)
             .all(|two| (two[0].due, two[0].seq) > (two[1].due, two[1].seq));
         let each = self.timers.iter().all(|timer| {
             let repeats = timer.every.is_none_or(|every| every >= Ticks::ONE);
-            timer.seq < self.next_seq && repeats
+            let named = timer.name.index() < names && timer.owner.index() < scripts;
+            timer.seq < self.next_seq && repeats && named
         });
         ordered && each && self.next_seq <= Tick::LIMIT.get()
     }

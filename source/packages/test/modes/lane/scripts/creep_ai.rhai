@@ -13,9 +13,9 @@ fn on_think(ctx, unit) {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
-        ctx.order_follow_path(unit);
-    } else if target != unit.target {
-        ctx.order_attack(unit, target);
+        ctx.order_follow_path();
+    } else if target != unit.attack_target {
+        ctx.order_attack(target);
     }
 }
 
@@ -31,8 +31,8 @@ fn defend_hero(ctx, unit) {
 }
 
 fn keep_target(unit) {
-    let target = unit.target;
-    if target != () && target.alive && in_reach(unit, target) {
+    let target = unit.attack_target;
+    if target != () && target.is_alive && in_reach(unit, target) {
         target
     } else {
         ()

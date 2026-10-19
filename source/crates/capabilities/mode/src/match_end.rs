@@ -4,10 +4,10 @@ use bevy_ecs::query::{Allow, With};
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_script::View;
+use campfire_players::MatchEntity;
+use campfire_script::MatchNames;
 use campfire_sim::{SimComponent, Unpredicted};
 use campfire_state_types::{DataKind, Replication, SentOnce};
-use campfire_units::MatchEntity;
 use campfire_values::Team;
 use serde::{Deserialize, Serialize};
 
@@ -57,7 +57,7 @@ impl SimComponent for MatchEnd {
     // A winner that is not one of the mode's teams has no name to report.
     fn check(&self, world: &World, _: Entity) -> bool {
         match self.result {
-            MatchResult::Won(team) => world.non_send::<View>().names().has_team(team),
+            MatchResult::Won(team) => world.resource::<MatchNames>().has_team(team),
             MatchResult::Draw => true,
         }
     }

@@ -1,3 +1,4 @@
+use crate::coordinate;
 use crate::direction::FRACTION;
 
 /// The divisor of a unit's axes, a root `d` from 2⁶² to 2⁶³, as the square it is taken from
@@ -61,7 +62,7 @@ impl UnitDivisor {
         const SIGNED_52: f64 = 6_755_399_441_055_744.0;
         /// 2³², exact in f64.
         const TWO_POW_32: f64 = 4_294_967_296.0;
-        debug_assert!(axis.unsigned_abs() < 1 << 47);
+        debug_assert!(axis.unsigned_abs() < coordinate::WIDEST.unsigned_abs());
         let magnitude = axis.unsigned_abs() as u64;
         let numerator = u128::from(magnitude) << self.shift;
         let coarse = (magnitude.cast_signed() as f64).mul_add(self.scale, TWO_POW_52);

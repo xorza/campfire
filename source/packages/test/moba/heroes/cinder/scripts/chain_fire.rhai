@@ -1,15 +1,15 @@
 fn on_hit(ctx, caster, target, hit) {
-    ctx.damage(target, ctx.p.damage, "magic");
+    ctx.damage(target, "magic", ctx.params.damage);
     ctx.add_modifier(target, "kindle");
     if hit.delivery.state.bounces_left == 0 {
         return;
     }
-    let pool = without(ctx.find_visible(caster, target.pos, ctx.p.bounce_radius, "enemies:avatar"), target);
+    let pool = without(ctx.find_visible(caster, target.pos, ctx.params.bounce_radius, "enemies:avatar"), target);
     if pool.is_empty() {
-        pool = without(ctx.find_visible(caster, target.pos, ctx.p.bounce_radius, "enemies"), target);
+        pool = without(ctx.find_visible(caster, target.pos, ctx.params.bounce_radius, "enemies"), target);
     }
     if !pool.is_empty() {
-        let next = ctx.projectile(target.pos, ctx.pick(pool));
+        let next = ctx.launch(target.pos, ctx.pick(pool));
         next.state.bounces_left = hit.delivery.state.bounces_left - 1;
     }
 }

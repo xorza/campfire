@@ -1,6 +1,5 @@
 use bevy::asset::{Asset, Handle};
-use bevy::color::{Color, LinearRgba};
-use bevy::image::Image;
+use bevy::gltf::GltfMaterial;
 use bevy::material::AlphaMode;
 use bevy::mesh::MeshVertexBufferLayoutRef;
 use bevy::pbr::{
@@ -9,23 +8,34 @@ use bevy::pbr::{
 };
 use bevy::reflect::Reflect;
 use bevy::render::render_resource::{
-    AsBindGroup, BlendComponent, BlendFactor, BlendOperation, BlendState, Face,
-    RenderPipelineDescriptor, SpecializedMeshPipelineError,
+    AsBindGroup, BlendComponent, BlendFactor, BlendOperation, BlendState, RenderPipelineDescriptor,
+    SpecializedMeshPipelineError,
 };
+use bevy::render::storage::ShaderBuffer;
 use bevy::shader::ShaderRef;
-use campfire_client_files::{Blend, MaterialFile};
+use campfire_client_files::{Blend, MaterialExtras, TeamPaint};
 
-/// A material file's material: the standard material of its colors and texture, drawn with the
-/// file's blend, depth write and alpha test, which the standard material alone cannot all say.
+use crate::view::match_colors::MatchColors;
+
+/// The material of a model's glTF material: its standard material, as Bevy draws the glTF
+/// material, drawn with its extras' blend, depth write, alpha test and depth bias, which the
+/// standard material alone cannot all say, and painted by its mesh's tag, its unit's team's
+/// color and its tint (02-engine-core.md, Team colors in the one material).
 pub(crate) type FileMaterial = ExtendedMaterial<StandardMaterial, FileBlend>;
 
-/// What a material file says past the standard material: how its color meets what is behind it,
-/// whether it writes depth, and the alpha below which it is not drawn, 0 for none.
+/// What a material's extras say past the standard material: how its color meets what is behind
+/// it, whether it writes depth, the alpha below which it is not drawn, 0 for none, how its team
+/// colors it, and the match's colors its mesh's tag names.
 #[derive(Asset, AsBindGroup, Reflect, Debug, Clone, PartialEq)]
 #[bind_group_data(FileBlendKey)]
 pub(crate) struct FileBlend {
     #[uniform(100)]
     pub(crate) cutoff: f32,
+    /// `TINT` and `HUE_MASK`, as its extras' team paint says.
+    #[uniform(100)]
+    pub(crate) team: u32,
+    #[storage(101, read_only)]
+    pub(crate) colors: Handle<ShaderBuffer>,
     pub(crate) factors: Factors,
     pub(crate) depth_write: bool,
 }
@@ -56,15 +66,32 @@ pub(crate) struct FileBlendKey {
 /// The shader of every file material, embedded in the client.
 const SHADER: &str = "embedded://campfire_client/view/file_material.wgsl";
 
+/// The bits of a file material's team paint, as its shader reads them.
+const TINT: u32 = 1;
+const HUE_MASK: u32 = 2;
+
 impl FileBlend {
-    /// The material of `file`, its texture `texture`: the standard material of the file's colors,
-    /// its metallic and roughness factors, its reflectance half its specular factor, as Bevy's
-    /// glTF loader reads `KHR_materials_specular`, lit or not as it says, and its depth bias, in
-    /// the render phase its blend draws in; and the file's blend.
-    pub(crate) fn material(file: &MaterialFile, texture: Option<Handle<Image>>) -> FileMaterial {
-        let [r, g, b, a] = file.base_color;
-        let [er, eg, eb] = file.emissive;
-        let (alpha_mode, factors, cutoff) = match file.blend {
+    /// The extras a glTF material of none draws by, as Bevy draws its alpha mode: opaque or
+    /// masked, writing depth, or mixed by its alpha, writing none, and painted by no team.
+    pub(crate) const fn plain(gltf: &GltfMaterial) -> MaterialExtras {
+        let (blend, depth_write) = match gltf.alpha_mode {
+            AlphaMode::Opaque => (Blend::Opaque, true),
+            AlphaMode::Mask(cutoff) => (Blend::Mask { cutoff }, true),
+            _ => (Blend::Alpha, false),
+        };
+        MaterialExtras {
+            blend,
+            depth_write,
+            depth_bias: 0,
+            team: TeamPaint::NONE,
+        }
+    }
+
+    /// The material of the glTF material `gltf` with `extras`: the standard material Bevy draws
+    /// `gltf` with, its depth bias the extras', in the render phase their blend draws in; and the
+    /// extras' blend and team paint, over the match's colors.
+    pub(crate) fn material(gltf: &GltfMaterial, extras: MaterialExtras) -> FileMaterial {
+        let (alpha_mode, factors, cutoff) = match extras.blend {
             Blend::Opaque => (AlphaMode::Opaque, Factors::Replace, 0.0),
             Blend::Mask { cutoff } => (AlphaMode::Mask(cutoff), Factors::Replace, cutoff),
             Blend::Alpha => (AlphaMode::Blend, Factors::Alpha, 0.0),
@@ -75,24 +102,57 @@ impl FileBlend {
         };
         ExtendedMaterial {
             base: StandardMaterial {
-                base_color: Color::LinearRgba(LinearRgba::new(r, g, b, a)),
-                base_color_texture: texture,
-                emissive: LinearRgba::new(er, eg, eb, 1.0),
-                metallic: file.metallic,
-                perceptual_roughness: file.roughness,
-                reflectance: file.specular * 0.5,
-                unlit: file.unlit,
-                depth_bias: file.depth_bias as f32,
+                depth_bias: extras.depth_bias as f32,
                 alpha_mode,
-                double_sided: file.double_sided,
-                cull_mode: (!file.double_sided).then_some(Face::Back),
-                ..StandardMaterial::default()
+                ..Self::standard(gltf)
             },
             extension: Self {
                 cutoff,
+                team: (u32::from(extras.team.tint) * TINT)
+                    | (u32::from(extras.team.hue_mask) * HUE_MASK),
+                colors: MatchColors::BUFFER,
                 factors,
-                depth_write: file.depth_write,
+                depth_write: extras.depth_write,
             },
+        }
+    }
+
+    /// The standard material of `gltf`, as Bevy's glTF loader draws it: of each field
+    /// `bevy_pbr`'s private `standard_material_from_gltf_material` takes in a build of the
+    /// features the client's Bevy holds.
+    fn standard(gltf: &GltfMaterial) -> StandardMaterial {
+        StandardMaterial {
+            base_color: gltf.base_color,
+            base_color_channel: gltf.base_color_channel.clone(),
+            base_color_texture: gltf.base_color_texture.clone(),
+            emissive: gltf.emissive,
+            emissive_channel: gltf.emissive_channel.clone(),
+            emissive_texture: gltf.emissive_texture.clone(),
+            perceptual_roughness: gltf.perceptual_roughness,
+            metallic: gltf.metallic,
+            metallic_roughness_channel: gltf.metallic_roughness_channel.clone(),
+            metallic_roughness_texture: gltf.metallic_roughness_texture.clone(),
+            reflectance: gltf.reflectance,
+            specular_tint: gltf.specular_tint,
+            specular_transmission: gltf.specular_transmission,
+            thickness: gltf.thickness,
+            ior: gltf.ior,
+            attenuation_distance: gltf.attenuation_distance,
+            attenuation_color: gltf.attenuation_color,
+            normal_map_channel: gltf.normal_map_channel.clone(),
+            normal_map_texture: gltf.normal_map_texture.clone(),
+            occlusion_channel: gltf.occlusion_channel.clone(),
+            occlusion_texture: gltf.occlusion_texture.clone(),
+            clearcoat: gltf.clearcoat,
+            clearcoat_perceptual_roughness: gltf.clearcoat_perceptual_roughness,
+            anisotropy_strength: gltf.anisotropy_strength,
+            anisotropy_rotation: gltf.anisotropy_rotation,
+            double_sided: gltf.double_sided,
+            cull_mode: gltf.cull_mode,
+            unlit: gltf.unlit,
+            alpha_mode: gltf.alpha_mode,
+            uv_transform: gltf.uv_transform,
+            ..StandardMaterial::default()
         }
     }
 }
@@ -157,24 +217,30 @@ impl MaterialExtension for FileBlend {
 
 #[cfg(test)]
 mod tests {
+    use bevy::color::{Color, LinearRgba};
     use bevy::pbr::Material;
+    use bevy::render::render_resource::Face;
 
     use super::*;
 
     #[test]
-    fn a_file_gives_its_phase_its_blend_its_depth_write_and_its_test() {
-        let file = |blend, depth_write| MaterialFile {
-            base_color: [1.0, 0.5, 0.25, 0.75],
-            texture: None,
-            emissive: [0.5, 0.0, 0.0],
-            metallic: 0.0,
-            roughness: 1.0,
-            specular: 0.0,
-            unlit: false,
+    fn extras_give_their_phase_blend_depth_write_test_and_bias_over_the_gltf_material() {
+        // A glTF material of a color, an emission, its factors and one face, as Bevy reads it.
+        let gltf = GltfMaterial {
+            base_color: Color::LinearRgba(LinearRgba::new(1.0, 0.5, 0.25, 0.75)),
+            emissive: LinearRgba::new(0.5, 0.0, 0.0, 1.0),
+            metallic: 0.25,
+            perceptual_roughness: 0.5,
+            reflectance: 0.3,
+            unlit: true,
+            cull_mode: Some(Face::Back),
+            ..GltfMaterial::default()
+        };
+        let extras = |blend, depth_write, depth_bias| MaterialExtras {
             blend,
             depth_write,
-            depth_bias: 0,
-            double_sided: false,
+            depth_bias,
+            team: TeamPaint::NONE,
         };
         let cutoff = 96.0 / 255.0;
         let cases = [
@@ -211,23 +277,62 @@ mod tests {
             (Blend::Screen, false, AlphaMode::Blend, Factors::Screen, 0.0),
         ];
         for (blend, depth_write, alpha_mode, factors, test) in cases {
-            let material = FileBlend::material(&file(blend, depth_write), None);
+            let material = FileBlend::material(&gltf, extras(blend, depth_write, 0));
             assert_eq!(material.base.alpha_mode, alpha_mode, "{blend:?}");
             assert_eq!(
                 material.extension,
                 FileBlend {
                     cutoff: test,
+                    team: 0,
+                    colors: MatchColors::BUFFER,
                     factors,
                     depth_write,
                 }
             );
+            // The rest is the glTF material's, as Bevy draws it.
+            let base = &material.base;
+            assert_eq!(base.base_color, gltf.base_color);
+            assert_eq!(base.emissive, gltf.emissive);
+            assert_eq!(base.cull_mode, Some(Face::Back));
             assert_eq!(
-                material.base.base_color,
-                Color::LinearRgba(LinearRgba::new(1.0, 0.5, 0.25, 0.75))
+                (
+                    base.metallic,
+                    base.perceptual_roughness,
+                    base.reflectance,
+                    base.unlit
+                ),
+                (0.25, 0.5, 0.3, true)
             );
-            assert_eq!(material.base.emissive, LinearRgba::new(0.5, 0.0, 0.0, 1.0));
-            assert_eq!(material.base.cull_mode, Some(Face::Back));
         }
+        // A team's paint is its bits: a tint 1, a hue mask 2, both 3.
+        let painted = |tint, hue_mask| {
+            let extras = MaterialExtras {
+                team: TeamPaint { tint, hue_mask },
+                ..extras(Blend::Opaque, true, 0)
+            };
+            FileBlend::material(&gltf, extras).extension.team
+        };
+        assert_eq!(
+            [
+                painted(true, false),
+                painted(false, true),
+                painted(true, true)
+            ],
+            [1, 2, 3]
+        );
+        // A material of no extras draws as Bevy draws its alpha mode.
+        let plain = |alpha_mode| {
+            FileBlend::plain(&GltfMaterial {
+                alpha_mode,
+                ..gltf.clone()
+            })
+        };
+        assert_eq!(plain(AlphaMode::Opaque), extras(Blend::Opaque, true, 0));
+        assert_eq!(
+            plain(AlphaMode::Mask(cutoff)),
+            extras(Blend::Mask { cutoff }, true, 0)
+        );
+        assert_eq!(plain(AlphaMode::Blend), extras(Blend::Alpha, false, 0));
         // Each blend's factors on the color: W3D's own, `src · s + dst · d`.
         let color = |factors: Factors| {
             factors
@@ -251,46 +356,15 @@ mod tests {
             color(Factors::Screen),
             Some((BlendFactor::One, BlendFactor::OneMinusSrc))
         );
-        // A two-sided file culls no face.
-        let both = MaterialFile {
-            double_sided: true,
-            ..file(Blend::Opaque, true)
-        };
-        assert_eq!(FileBlend::material(&both, None).base.cull_mode, None);
-        // The file's lighting: its metallic and roughness as they are; its reflectance half its
-        // specular, 0.6 / 2 = 0.3, and 0 for the import's 0; lit or not as it says.
-        let shiny = MaterialFile {
-            metallic: 0.25,
-            roughness: 0.5,
-            specular: 0.6,
-            unlit: true,
-            ..file(Blend::Opaque, true)
-        };
-        let lighting = |material: &FileMaterial| {
-            let base = &material.base;
-            (
-                base.metallic,
-                base.perceptual_roughness,
-                base.reflectance,
-                base.unlit,
-            )
-        };
-        assert_eq!(
-            lighting(&FileBlend::material(&shiny, None)),
-            (0.25, 0.5, 0.3, true)
-        );
-        let matte = FileBlend::material(&file(Blend::Opaque, true), None);
-        assert_eq!(lighting(&matte), (0.0, 1.0, 0.0, false));
         // Two blended layers of one mesh, 1 and 2 over the pass under them: Bevy sorts a blended
         // item by its distance plus its depth bias, so of one mesh, one distance `d`, the layer
         // of `d + 2` draws after that of `d + 1`, and its pipeline's constant depth bias, 2 to 1,
         // passes the depth test over it.
         let layer = |depth_bias| {
-            let file = MaterialFile {
-                depth_bias,
-                ..file(Blend::Add, false)
-            };
-            Material::depth_bias(&FileBlend::material(&file, None))
+            Material::depth_bias(&FileBlend::material(
+                &gltf,
+                extras(Blend::Add, false, depth_bias),
+            ))
         };
         assert_eq!((layer(0), layer(1), layer(2)), (0.0, 1.0, 2.0));
     }

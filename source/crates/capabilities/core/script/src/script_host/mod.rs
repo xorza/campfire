@@ -1,19 +1,20 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::num::NonZeroU64;
 use std::rc::Rc;
 
+use campfire_common::Tick;
 use rhai::config::hashing;
 use rhai::packages::{
     ArithmeticPackage, BasicArrayPackage, BasicIteratorPackage, BasicMapPackage,
     BasicStringPackage, LogicPackage, Package,
 };
 use rhai::{AST, CallFnOptions, Dynamic, Engine, FuncArgs, Scope};
-use tracing::debug;
 
 use crate::script_host::budget::Budget;
 use crate::script_host::error::ScriptError;
 use crate::script_host::num_api::NumApi;
 use crate::script_host::property_forwards::PropertyForwards;
+use crate::script_host::script_prints::{PrintKind, ScriptPrints};
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
@@ -21,6 +22,7 @@ pub(crate) mod budget;
 pub(crate) mod error;
 mod num_api;
 mod property_forwards;
+pub(crate) mod script_prints;
 
 /// Rhai hashes function signatures to resolve calls. It seeds the hash per process unless set,
 /// so the engine fixes the seed: every build and process resolves calls alike.
@@ -63,10 +65,10 @@ impl ScriptId {
 /// most `per_call` operations, and at most what its `Budget` has left.
 ///
 /// The engine has only what scripts need: integer arithmetic and logic, strings, arrays, maps,
-/// iteration, and `Num`, with no floats, no clock, no `sleep`, no `eval` and no imports.
-/// `print` and `debug` write to stderr in a debug build, to debug a script, and nothing in a
-/// release one, so an untrusted script cannot fill a server's log; either way they change no
-/// state and count the same operations. A capability adds its script API through `engine_mut`.
+/// iteration, and `Num`, with no floats, no clock, no `sleep`, no `eval` and no imports. `print`
+/// and `debug` record their text in a debug build, for the host to log as `ScriptPrints`, and
+/// nothing in a release one; either way they change no state and count the same operations. A
+/// capability adds its script API through `engine_mut`.
 #[derive(Debug)]
 pub struct ScriptHost {
     engine: Engine,
@@ -76,6 +78,8 @@ pub struct ScriptHost {
     /// Operations of the running call, as the progress callback last saw them.
     counted: Rc<Cell<u64>>,
     properties: PropertyForwards,
+    /// What the scripts printed since the last `take_prints`.
+    printed: Rc<RefCell<ScriptPrints>>,
     /// The scope each call runs in, which Rhai empties again after it, kept so its buffers stay.
     scope: Scope<'static>,
 }
@@ -114,11 +118,22 @@ impl ScriptHost {
             .set_max_modules(0)
             .set_strict_variables(true)
             .set_max_operations(per_call.get())
-            .disable_symbol("eval");
+            .disable_symbol("eval")
+            .disable_symbol("try")
+            .disable_symbol("catch");
+        let printed = Rc::new(RefCell::new(ScriptPrints::default()));
         if cfg!(debug_assertions) {
+            let (on_print, on_debug) = (Rc::clone(&printed), Rc::clone(&printed));
             engine
-                .on_print(|text| debug!(text, "script print"))
-                .on_debug(|text, _, at| debug!(text, %at, "script debug"));
+                .on_print(move |text| on_print.borrow_mut().push(PrintKind::Print, text))
+                .on_debug(move |text, _, at| {
+                    let place = |at: Option<usize>| u32::try_from(at?).ok();
+                    let kind = PrintKind::Debug {
+                        line: place(at.line()),
+                        column: place(at.position()),
+                    };
+                    on_debug.borrow_mut().push(kind, text);
+                });
         } else {
             engine.on_print(|_| {}).on_debug(|_, _, _| {});
         }
@@ -135,6 +150,7 @@ impl ScriptHost {
             allowed,
             counted,
             properties: PropertyForwards::new(),
+            printed,
             scope: Scope::new(),
         };
         NumApi::register(&mut host.engine);
@@ -179,6 +195,11 @@ impl ScriptHost {
         self.scripts[script.index()]
             .iter_functions()
             .map(|function| (function.name, function.params.len()))
+    }
+
+    /// Moves what the scripts printed since the last take into `report`, as the prints of `tick`.
+    pub fn take_prints(&self, tick: Tick, report: &mut ScriptPrints) {
+        report.take(tick, &mut self.printed.borrow_mut());
     }
 
     /// Calls the function `hook` of `script` with `args`, drawing from `budget`. A call over its

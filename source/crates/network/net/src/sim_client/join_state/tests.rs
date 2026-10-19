@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_common::{PackageFingerprint, TlsKey, Version};
+use campfire_common::{PackageFingerprint, Version};
 use campfire_mode::OptionPicks;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
@@ -17,9 +17,9 @@ const TICK_HZ: NonZeroU32 = NonZeroU32::new(30).unwrap();
 
 type Change = fn(&mut SessionTerms);
 
-/// The rules of the lane mode, which runs at 30 Hz only.
-fn lane_rules() -> SessionRules {
-    SessionRules::of(&TestMode::Lane.packages())
+/// The packages of the lane mode, which runs at 30 Hz only.
+fn lane() -> ModePackages {
+    TestMode::Lane.packages()
 }
 
 /// The x-only key of `TestKey::of(secret)`.
@@ -33,17 +33,7 @@ const BINDING: ChannelBinding = ChannelBinding::new([3; 32]);
 /// A client of the lane mode, main key 1, that means to reach the remote server of key 8 at
 /// `tick_hz`.
 fn waiting(tick_hz: NonZeroU32) -> JoinState {
-    let server = ServerPin {
-        key: x_only(8),
-        tls_key: TlsKey::new([3; 32]),
-        tick_hz,
-    };
-    JoinState::new(Joining {
-        main_key: TestKey::of(1),
-        server,
-        role: JoinRole::Play,
-        rules: lane_rules(),
-    })
+    JoinState::waiting(Arc::new(lane()), tick_hz)
 }
 
 /// Session key 2, whose randomness is all 6s.
@@ -53,7 +43,8 @@ fn signer() -> Signer {
 
 /// Terms the client can play, with `change` applied.
 fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
-    let rules = lane_rules();
+    let packages = lane();
+    let rules = SessionRules::of(&packages);
     let mut terms = rules
         .terms(HostChoices {
             server_key: x_only(8),
@@ -67,7 +58,7 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
         .unwrap();
     change(&mut terms);
     Offer {
-        terms,
+        terms: Arc::new(terms),
         times: SessionTimes::DEFAULT,
         challenge: ConnectChallenge::new([9; 32]),
     }

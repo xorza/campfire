@@ -31,6 +31,7 @@ impl SpawnAt {
             unit_type: self.unit_type,
             team: self.team,
             owner,
+            angle: self.angle,
         }
     }
 }

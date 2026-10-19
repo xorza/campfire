@@ -6,23 +6,29 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-codec/internals",
     "campfire-common/internals",
     "campfire-math/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
     "campfire-values/internals",
+    "campfire-visibility/internals",
 ]
 
 [dependencies]
+campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-math.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true
 campfire-values.workspace = true
+campfire-visibility.workspace = true
 
 bevy_ecs.workspace = true
+serde.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 campfire-declare = { workspace = true, features = ["internals"] }

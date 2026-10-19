@@ -1,11 +1,10 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
-use campfire_common::{MapName, PackageFingerprint, Version};
+use campfire_common::{DeclaredName, Version};
 use campfire_mode::{OptionData, OptionPicks};
-use campfire_package::{ModePackages, TickRange};
+use campfire_package::ModePackages;
 use campfire_protocol::{InputRules, SeedCommitment, SessionTerms, SlotPlan};
-use campfire_values::DeclaredName;
 use campfire_visibility::{ModeVisibility, Visibility};
 use secp256k1::XOnlyPublicKey;
 
@@ -38,40 +37,26 @@ pub struct CheckedTerms {
 /// and its dependencies by their fingerprints, the map it loaded, the tick rates the mode runs
 /// at, its visibility, of which the host sets only what the mode leaves it, and its options. A
 /// server builds its terms by them, and the server, the client and the verifier check terms
-/// against them, so the three agree on what a session of the packages is.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionRules {
-    mode: PackageFingerprint,
-    map: MapName,
-    dependencies: Box<[PackageFingerprint]>,
-    tick_hz: TickRange,
-    /// The player slots the mode's teams have.
-    slots: u64,
-    visibility: ModeVisibility,
-    options: BTreeMap<DeclaredName, OptionData>,
+/// against them, so the three agree on what a session of the packages is. It reads each fact
+/// from the packages, which stay their one home, so a build copies nothing.
+#[derive(Debug, Clone, Copy)]
+pub struct SessionRules<'p> {
+    packages: &'p ModePackages,
 }
 
-impl SessionRules {
-    pub fn of(packages: &ModePackages) -> Self {
-        Self {
-            mode: packages.fingerprint(),
-            map: packages.map_name().clone(),
-            dependencies: packages.dependency_fingerprints().collect(),
-            tick_hz: packages.manifest().tick_hz,
-            slots: packages.manifest().slots(),
-            visibility: packages.data().visibility.clone(),
-            options: packages.data().options.clone(),
-        }
+impl<'p> SessionRules<'p> {
+    pub const fn of(packages: &'p ModePackages) -> Self {
+        Self { packages }
     }
 
     /// The mode's options, of which a host picks values.
-    pub const fn options(&self) -> &BTreeMap<DeclaredName, OptionData> {
-        &self.options
+    pub const fn options(&self) -> &'p BTreeMap<DeclaredName, OptionData> {
+        &self.packages.data().options
     }
 
     /// The mode's visibility, which a session's host may set again where the mode leaves it.
-    pub const fn visibility(&self) -> &ModeVisibility {
-        &self.visibility
+    pub const fn visibility(&self) -> &'p ModeVisibility {
+        &self.packages.data().visibility
     }
 
     /// The terms of a session by these rules and the host's `choices`; an error when the mode
@@ -93,9 +78,9 @@ impl SessionRules {
             inputs,
             seed_commitment,
             release: Version::ENGINE,
-            mode: self.mode,
-            map: self.map.clone(),
-            dependencies: self.dependencies.to_vec(),
+            mode: self.packages.fingerprint(),
+            map: self.packages.map_name().clone(),
+            dependencies: self.packages.dependency_fingerprints().collect(),
             slots,
             visibility: visibility.encode(),
             options: picks.places().to_vec(),
@@ -111,34 +96,38 @@ impl SessionRules {
     /// them from terms unchecked.
     pub fn check(&self, terms: &SessionTerms) -> Result<CheckedTerms, TermsError> {
         Self::check_release(terms)?;
-        if terms.mode != self.mode {
+        let packages = self.packages;
+        if terms.mode != packages.fingerprint() {
             return Err(TermsError::OtherMode);
         }
-        if terms.map != self.map {
+        if terms.map != *packages.map_name() {
             return Err(TermsError::OtherMap);
         }
-        if *terms.dependencies != *self.dependencies {
+        if !terms
+            .dependencies
+            .iter()
+            .copied()
+            .eq(packages.dependency_fingerprints())
+        {
             return Err(TermsError::OtherDependencies);
         }
         let slots = u64::try_from(terms.slots.len()).expect("a slot count fits u64");
-        if slots == 0 || slots > self.slots {
-            return Err(TermsError::Slots {
-                slots,
-                most: self.slots,
-            });
+        let most = packages.manifest().slots();
+        if slots == 0 || slots > most {
+            return Err(TermsError::Slots { slots, most });
         }
         self.runs_at(terms.tick_hz)?;
         let visibility = Visibility::decode(&terms.visibility).map_err(TermsError::Visibility)?;
-        if !self.visibility.admits(&visibility) {
+        if !self.visibility().admits(&visibility) {
             return Err(TermsError::OtherVisibility);
         }
-        let picks = OptionPicks::checked(&self.options, &terms.options)?;
+        let picks = OptionPicks::checked(self.options(), &terms.options)?;
         Ok(CheckedTerms { visibility, picks })
     }
 
     /// An error when the mode does not run at `tick_hz`.
     pub const fn runs_at(&self, tick_hz: NonZeroU32) -> Result<(), TermsError> {
-        if !self.tick_hz.contains(tick_hz) {
+        if !self.packages.manifest().tick_hz.contains(tick_hz) {
             return Err(TermsError::TickRate(tick_hz));
         }
         Ok(())

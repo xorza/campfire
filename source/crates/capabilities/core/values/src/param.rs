@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use campfire_math::Num;
 use serde::Deserialize;
 
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::ranked::Ranked;
 use crate::scalar::Scalar;
 use crate::stat::Stat;
 
-/// A param, as `ctx.p` reads it: one value or one per rank, or a scaling table, `base +
+/// A param, as `ctx.params` reads it: one value or one per rank, or a scaling table, `base +
 /// per_level × (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − type's value)` of the
 /// source.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -61,4 +62,8 @@ impl Param {
             Self::Scaling(scaling) => scaling.base.ranks(),
         }
     }
+}
+
+impl Named for Param {
+    const NAMES: NameKind = NameKind::new("param", Article::A, NameScope::Package);
 }

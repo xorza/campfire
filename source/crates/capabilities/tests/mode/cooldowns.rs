@@ -3,34 +3,35 @@ use campfire_actions::SlotTimes;
 use campfire_common::Tick;
 use campfire_script::CapabilityRefusal;
 use campfire_sim::internals::SimWorldInternals;
+use campfire_values::Named;
 
 use super::*;
 
 #[test]
 fn a_script_cuts_cooldowns_by_time_and_by_share_down_to_now() {
     let cutter = r#"
-fn on_input(ctx, player, name, value) {
+fn take_input(ctx, player, name, value) {
     let x = ctx.avatars("a")[0];
     if value == "cut" {
-        ctx.reduce_cooldown(x, "strike", 1000);
+        ctx.cut_cooldown(x, "strike", 1000);
     } else if value == "part" {
-        ctx.reduce_cooldown(x, "strike", 250);
+        ctx.cut_cooldown(x, "strike", 250);
     } else if value == "zero" {
-        ctx.reduce_cooldown(x, "strike", 0);
+        ctx.cut_cooldown(x, "strike", 0);
     } else if value == "half" {
-        ctx.reduce_cooldowns(x, "basic", num(1) / 2);
+        ctx.scale_cooldowns(x, "basic", num(1) / 2);
     } else if value == "all" {
-        ctx.reduce_cooldown(x, "strike", 100000);
+        ctx.cut_cooldown(x, "strike", 100000);
     } else if value == "unknown" {
-        ctx.reduce_cooldown(x, "lunge", 1000);
+        ctx.cut_cooldown(x, "lunge", 1000);
     } else if value == "unheld" {
-        ctx.reduce_cooldown(ctx.avatars("b")[0], "strike", 1000);
+        ctx.cut_cooldown(ctx.avatars("b")[0], "strike", 1000);
     } else if value == "negative" {
-        ctx.reduce_cooldown(x, "strike", -1);
+        ctx.cut_cooldown(x, "strike", -1);
     } else if value == "kind" {
-        ctx.reduce_cooldowns(x, "ultimate", 1);
+        ctx.scale_cooldowns(x, "ultimate", 1);
     } else if value == "share" {
-        ctx.reduce_cooldowns(x, "basic", 2);
+        ctx.scale_cooldowns(x, "basic", 2);
     }
 }
 "#;
@@ -63,10 +64,10 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(ready(&game), start + 4);
     assert_eq!(Mode::failures(&game), []);
     let refused = [
-        ("unknown", ApiError::Unknown(NameKind::Ability)),
+        ("unknown", ApiError::Unknown(ActionId::NAMES)),
         ("unheld", AbilitiesRefusal::NotHeld.refused()),
         ("negative", ApiError::NegativeTime),
-        ("kind", ApiError::Unknown(NameKind::SlotKind)),
+        ("kind", ApiError::Unknown(SlotKind::NAMES)),
         ("share", AbilitiesRefusal::NotAFraction.refused()),
     ];
     for (value, error) in refused {

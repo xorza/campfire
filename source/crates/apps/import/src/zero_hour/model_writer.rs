@@ -1,19 +1,18 @@
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_client_files::MaterialFile;
-use campfire_codec::Toml;
 use campfire_package_disk::PackageWriter;
 
-use crate::zero_hour::error::{NoPackagePath, ZeroHourError};
+use crate::gltf::model_bounds::ModelBounds;
+use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::game_path;
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_import::{Converted, ModelImport};
 use crate::zero_hour::model_parts::ModelParts;
 use crate::zero_hour::{SkipReason, SkippedModel};
 
-/// The models of an import: each converted once, at `client/models/<name>.glb`, with the material
-/// files its shaders need, into the package's writer; the parts each one's looks read; the models
+/// The models of an import: each converted once, at `client/models/<name>.glb`, into the
+/// package's writer; the parts each one's looks read; the models
 /// the objects name that the package lacks; and the textures the models name that no archive
 /// holds.
 #[derive(Debug)]
@@ -22,12 +21,15 @@ pub(crate) struct ModelWriter<'i, 'w> {
     written: BTreeMap<String, WrittenModel>,
 }
 
-/// What a model the objects name gives their looks: the parts its looks read; nothing, as it
-/// draws nothing, as a `NULL` or a collision box; or nothing, as the package lacks it, which the
-/// report names.
+/// What a model the objects name gives their looks: the parts its looks read and the bounds its
+/// looks' tops are measured from; nothing, as it draws nothing, as a `NULL` or a collision box;
+/// or nothing, as the package lacks it, which the report names.
 #[derive(Debug)]
 pub(crate) enum WrittenModel {
-    Parts(ModelParts),
+    Parts {
+        parts: ModelParts,
+        bounds: ModelBounds,
+    },
     Nothing,
     Skipped,
 }
@@ -86,22 +88,19 @@ impl Converter<'_, '_> {
     fn convert(&mut self, name: &str) -> Result<WrittenModel, ZeroHourError> {
         let reason = match ModelImport::convert(name, &mut self.assets)? {
             Converted::Model(import) => {
+                let bounds = ModelBounds::of(&import.glb.document);
                 self.writer
                     .write(game_path::model(name)?, &import.glb.encode())?;
-                for material in &import.materials {
-                    let text = Toml::write(&material.file);
-                    let path = MaterialFile::path(&material.name).ok_or_else(|| {
-                        NoPackagePath(format!("{}/{}.toml", MaterialFile::DIR, material.name))
-                    })?;
-                    self.writer.write(path, text.as_bytes())?;
-                }
                 self.missing_textures.extend(import.missing_textures);
                 self.skipped
                     .extend(import.aggregates.into_iter().map(|name| SkippedModel {
                         name,
                         reason: SkipReason::Aggregate,
                     }));
-                return Ok(WrittenModel::Parts(import.parts));
+                return Ok(WrittenModel::Parts {
+                    parts: import.parts,
+                    bounds,
+                });
             }
             Converted::Nothing => return Ok(WrittenModel::Nothing),
             Converted::Emitter => SkipReason::Emitter,

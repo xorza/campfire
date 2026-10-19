@@ -3,7 +3,7 @@ use std::net::{IpAddr, Ipv4Addr, SocketAddr, SocketAddrV4};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
-use campfire_log::ErrorReport;
+use campfire_common::ErrorReport;
 use campfire_store::SharedPort;
 use ring::rand::{SecureRandom, SystemRandom};
 use tracing::{debug, info, warn};

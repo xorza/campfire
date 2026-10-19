@@ -22,7 +22,8 @@ pub(crate) struct RowSource<D: RowReads, C: ViewColumn> {
     /// The place of its column among the view's.
     column: usize,
     fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_, C>),
-    of: PhantomData<C>,
+    /// The column it fills, which it holds none of.
+    of: PhantomData<fn() -> C>,
 }
 
 impl<D: RowReads, C: ViewColumn> RowSource<D, C> {
@@ -54,10 +55,10 @@ impl<D: RowReads, C: ViewColumn> fmt::Debug for RowSource<D, C> {
 }
 
 /// A row source of any parts, as the view holds them.
-pub(crate) trait FillRow: fmt::Debug {
-    /// Starts a read of `world`: brings its queries up to the archetypes, starts its column's
-    /// read, and marks for `source` each unit whose parts changed since its last read. Whether
-    /// every row must be filled again, as the column asks.
+pub(crate) trait FillRow: fmt::Debug + Send + Sync {
+    /// Starts a read of `world`: brings its queries up to the archetypes, takes what its column
+    /// derives from besides the units' parts, and marks for `source` each unit whose parts
+    /// changed since its last read. Whether every row must be filled again, as the column asks.
     fn begin(
         &mut self,
         world: &World,
@@ -65,6 +66,9 @@ pub(crate) trait FillRow: fmt::Debug {
         source: usize,
         marks: &mut RowMarks,
     ) -> bool;
+
+    /// Starts its column's rows, as a read that changes rows goes on.
+    fn start_rows(&self, columns: &mut ViewColumns);
 
     /// Fills the row of `entity` of `world` into `row` and its column.
     fn fill(&self, world: &World, entity: Entity, row: &mut UnitRow, columns: &mut ViewColumns);
@@ -86,7 +90,11 @@ impl<D: RowReads, C: ViewColumn> FillRow for RowSource<D, C> {
         for entity in &changed {
             marks.mark(entity, source);
         }
-        columns.start(self.column, world)
+        columns.begin(self.column, world)
+    }
+
+    fn start_rows(&self, columns: &mut ViewColumns) {
+        columns.start_rows(self.column);
     }
 
     fn fill(&self, world: &World, entity: Entity, row: &mut UnitRow, columns: &mut ViewColumns) {

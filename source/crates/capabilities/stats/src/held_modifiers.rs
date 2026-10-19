@@ -1,10 +1,10 @@
 use bevy_ecs::resource::Resource;
-use campfire_declare::Scratch;
+use campfire_declare::{Role, Scratch};
 use campfire_sim::StableId;
 use campfire_values::{ActionId, ModifierId, Rank};
 
 /// The modifiers capabilities other than stats hold on units this tick, which stats hold in
-/// `Phase::HoldModifiers` as they hold auras': each producer adds to it before that phase, whose
+/// `StatsSet::Hold` as they hold auras': each producer adds to it before that set, whose
 /// pass takes all it holds, so every producer's entries reach it, and none outlives its tick. Not
 /// state.
 #[derive(Resource, Debug, Default)]
@@ -22,6 +22,10 @@ pub struct Held {
 }
 
 impl Scratch for HeldModifiers {
+    fn installed(_: &Role) -> Option<Self> {
+        Some(Self::default())
+    }
+
     fn is_clear(&self) -> bool {
         self.0.is_empty()
     }

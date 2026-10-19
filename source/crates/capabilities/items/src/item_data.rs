@@ -1,15 +1,16 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, MessageId};
+use campfire_values::MessageId;
 use serde::Deserialize;
 
 /// An item type, `[items.<id>]` of the mode package: the message of the name players see; what it
-/// costs in the mode's player resources, whole amounts; the items of its package it is built from; how many share one
-/// inventory slot; a consumable's uses, its action spending one as it resolves; the modifiers of
-/// its package its carrier holds while it carries it; and the action of its package that is its
-/// active.
+/// costs in the mode's player resources, whole amounts; the items of its package it is built from;
+/// how many share one inventory slot; a consumable's uses, its action spending one as it resolves;
+/// the modifiers of its package its carrier holds while it carries it; and the action of its
+/// package that is its active.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ItemData {
@@ -34,5 +35,5 @@ impl ItemData {
 }
 
 impl DataSection for ItemData {
-    const TABLE: DataTable = DataTable::Item;
+    const TABLE: DataTable = DataTable::new("An item type, `[items.<id>]`");
 }

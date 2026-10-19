@@ -3,9 +3,9 @@ use std::iter;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionSlots, UseGroup};
 use campfire_capabilities::{Action, Order};
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::{DeclaredName, PlayerSlot, Tick};
 use campfire_geometry::internals::{Density, KernelScene};
-use campfire_items::{Inventory, ItemId, ItemsAction};
+use campfire_items::{Inventory, ItemsAction};
 use campfire_math::Num;
 use campfire_mode::{InputValue, Mode, ModeInput};
 use campfire_navigation::PathWalker;
@@ -13,10 +13,9 @@ use campfire_orders::OrdersAction;
 use campfire_progression::ProgressionAction;
 use campfire_protocol::{InputRules, ServerInput, ServerSeeds, SlotPlan};
 use campfire_sim::{Position, StableId};
-use campfire_stats::Life;
 use campfire_test_packages::TestMode;
-use campfire_units::Dead;
-use campfire_values::{DeclaredName, Names, Team};
+use campfire_units::{Dead, GroundPoint, Life};
+use campfire_values::{ItemId, Names, Team};
 
 use crate::fixed_session::FixedSession;
 use crate::fixed_session::fixed_match::FixedMatch;
@@ -307,7 +306,7 @@ impl Moba3v3 {
     /// The MOBA 3v3 with its slots opened as `plan` says.
     pub fn planned(plan: impl IntoIterator<Item = SlotPlan>) -> ScriptedMode<Self> {
         let packages = TestMode::Moba3v3.packages();
-        let items = &packages.mode().content.items;
+        let items = packages.mode().content.items();
         let items: Names<ItemId> = items.keys().map(DeclaredName::as_str).collect();
         let item = |name: &str| items.named(name).expect("an item of the 3v3");
         let script = Self::script(&item);
@@ -368,8 +367,10 @@ impl Plan for Moba3v3 {
         let hero = units.hero(slot);
         let action = match self {
             Self::Move { x, z } => Action::Orders(OrdersAction::Move {
-                x: Num::from(x),
-                z: Num::from(z),
+                to: GroundPoint {
+                    x: Num::from(x),
+                    z: Num::from(z),
+                },
             }),
             Self::AttackSpawnedAt { x, z } => Action::Orders(OrdersAction::Attack {
                 target: units.spawned_at((x, 0, z)),
@@ -391,8 +392,10 @@ impl Plan for Moba3v3 {
             }),
             Self::Farm { x, z } => Action::Orders(weakest_creep(units, hero).map_or_else(
                 || OrdersAction::Move {
-                    x: Num::from(x),
-                    z: Num::from(z),
+                    to: GroundPoint {
+                        x: Num::from(x),
+                        z: Num::from(z),
+                    },
                 },
                 |target| OrdersAction::Attack { target },
             )),

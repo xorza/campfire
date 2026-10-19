@@ -2,26 +2,27 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Without};
 use bevy_ecs::system::{Query, Res, ResMut, SystemParam};
 use campfire_actions::{
-    ActionBook, ActionCheck, ActionSlots, ActionTarget, BuildStart, Purse, SlotAim, SlotTimes,
+    ActionBook, ActionCheck, ActionSlots, ActionTarget, Caster, Purse, SlotAim, SlotTimes,
 };
 use campfire_geometry::{Metric, Placed, Shape};
 use campfire_math::{Num, Vec3};
 use campfire_players::{PlayerResources, PlayerRows};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use campfire_stats::{PlayerModifiers, PoolBook, UnitPoolsReadOnly};
-use campfire_units::{ArrivedShort, Body, Dead, Destination, MapBook, Owner};
-use campfire_values::{Relation, Team, UnitTags, UnitType};
+use campfire_units::{
+    ArrivedShort, Body, BuildTarget, Dead, Destination, GroundPoint, MapBook, Owner,
+};
+use campfire_values::{Motion, Relation, Team, UnitTags, UnitType};
 use campfire_vision::TeamSight;
 
 use crate::build_book::{BuildBook, Building, Style};
-use crate::build_target::BuildTarget;
+use crate::build_start::BuildStart;
 use crate::builder::{BuildOrder, Builder};
 use crate::construction::step::{Start, Step};
-use crate::holdings::Holdings;
+use crate::holdings::{Holdings, OwnedUnits};
 use crate::placement::Placement;
 use crate::requirement_book::RequirementBook;
 use crate::site::Site;
-use crate::supply::Counted;
 
 /// What a build order reads of the match: the books, the players' resources and modifiers, the
 /// life pool, the placement, the builders, the sites, and the units the players own, which the
@@ -70,8 +71,8 @@ pub(crate) struct BuildView<'w, 's, S: TeamSight> {
         ),
         Without<Dead>,
     >,
-    owned: Query<'w, 's, Counted>,
-    pub(super) holdings: ResMut<'w, Holdings>,
+    owned: OwnedUnits<'w, 's>,
+    holdings: ResMut<'w, Holdings>,
     pub(super) changed: Query<'w, 's, Entity, (Changed<Builder>, Without<Dead>)>,
 }
 
@@ -99,9 +100,9 @@ impl BuildPlace {
 }
 
 impl<S: TeamSight> BuildView<'_, '_, S> {
-    /// Reads the holdings, unless they are read, for the requirements the builds meet.
-    pub(super) fn read_holdings(&mut self) {
-        self.holdings.read(self.owned.iter());
+    /// Follows the units, for the requirements the builds meet.
+    pub(super) fn follow_holdings(&mut self) {
+        self.holdings.follow(&self.owned);
     }
 
     /// Where the build at `target` places its building, by the builder `by`: the point's box,
@@ -113,7 +114,10 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
         target: BuildTarget,
     ) -> Option<BuildPlace> {
         match target {
-            BuildTarget::Point { x, z, angle } => {
+            BuildTarget::Point {
+                at: GroundPoint { x, z },
+                angle,
+            } => {
                 let at = Vec3::new(x, by.from.y, z);
                 Some(BuildPlace {
                     pos: at,
@@ -123,7 +127,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             BuildTarget::Site(site) => {
                 let (&at, &body, &unit_type, site_owner, _) =
                     self.sites.get(self.index.get(site)?).ok()?;
-                let same = unit_type == building.unit_type && site_owner == by.owner;
+                let same = unit_type == building.spec.unit_type && site_owner == by.owner;
                 same.then_some(BuildPlace {
                     pos: at.get(),
                     body,
@@ -135,7 +139,7 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
     /// The start of the build at a point of the builder of `entity`'s `order`, when it passes
     /// its action's checks, its requirements, by the holdings, and its placement.
     pub(super) fn start(&mut self, entity: Entity, order: BuildOrder) -> Option<Start> {
-        let (_, _, &from, _, &team, owner, slots, times, pools, ..) =
+        let (_, _, &from, _, &team, owner, slots, times, pools, .., tags) =
             self.builders.get(entity).ok()?;
         let BuildTarget::Point { angle, .. } = order.target else {
             return None;
@@ -155,15 +159,17 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             target: ActionTarget::Point(placed.pos),
         };
         let no_target = |_| Relation::Friendly;
-        let checked = times.checked_action(ActionCheck {
+        let check = ActionCheck {
             book: &self.book,
             now: self.tick.start(),
+            caster: Caster::of(tags, Motion::Own, None),
             slots,
             purse,
             aim,
             relation: no_target,
             living: |_| None,
-        })?;
+        };
+        let checked = times.start(check, None)?.checked;
         let met = self
             .holdings
             .meet(owner, modifiers, self.requirements.of(checked.id));
@@ -171,11 +177,12 @@ impl<S: TeamSight> BuildView<'_, '_, S> {
             .placement
             .passes(team, placed.pos, placed.body, building.spec);
         (met && room).then_some(Start {
-            unit_type: building.unit_type,
+            unit_type: building.spec.unit_type,
             pos: placed.pos,
             angle,
             cost: checked.values.cost,
             cooldown: checked.values.cooldown,
+            charges: checked.values.charges,
             rank: checked.rank,
         })
     }

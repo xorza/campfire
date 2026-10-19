@@ -7,6 +7,7 @@ use crate::applier::Applier;
 use crate::carried_mut::CarriedMut;
 use crate::grants::{Grant, GrantChange, Grants};
 use crate::modifier_book::ModifierBook;
+use crate::modifier_dues::ModifierIndexes;
 use crate::modifier_params::ModifierParams;
 use crate::modifiers::Modifiers;
 use crate::modifiers::modifier_clocks::ModifierClocks;
@@ -27,6 +28,7 @@ impl GrantPass {
         params: ModifierParams<'_, '_>,
         mut grants: ResMut<'_, Grants>,
         mut units: Query<'_, '_, (&mut Modifiers, &mut ModifierClocks)>,
+        mut indexes: ModifierIndexes<'_>,
     ) {
         let at = ApplyAt {
             now: clock.start(),
@@ -42,7 +44,8 @@ impl GrantPass {
                     panic!("a source pushes the grants of a unit that carries modifiers: {error:?}")
                 }
             };
-            let mut carried = CarriedMut::new(modifiers, clocks);
+            let dues = indexes.of(unit.unit, unit.entity);
+            let mut carried = CarriedMut::new(modifiers, clocks, dues);
             let source = params.source(unit.unit);
             for &grant in unit.grants {
                 let Grant {

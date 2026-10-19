@@ -1,5 +1,5 @@
-use campfire_stats::PoolId;
-use campfire_values::{Names, ResourceId};
+use campfire_units::PoolId;
+use campfire_values::{Article, NameKind, NameScope, Named, Names, ResourceId};
 
 /// What a name of a cost takes from: a pool of the unit, or a resource of its player; the mode's
 /// pools and player resources never share a name.
@@ -16,4 +16,8 @@ impl CostTarget {
         let pool = pools.named(name).map(CostTarget::Pool);
         pool.or_else(|| resources.named(name).map(CostTarget::Resource))
     }
+}
+
+impl Named for CostTarget {
+    const NAMES: NameKind = NameKind::new("pool or player resource", Article::A, NameScope::Match);
 }

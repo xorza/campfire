@@ -12,7 +12,7 @@ use campfire_orders::OrdersAction;
 use campfire_sim::{EntityIndex, StableId};
 use campfire_stats::Modifiers;
 use campfire_test_packages::Edit;
-use campfire_units::MoveStep;
+use campfire_units::{GroundPoint, MoveStep};
 use lightyear::prelude::RollbackMode;
 
 use crate::net::short_3v3::{PICKS, short_3v3};
@@ -86,8 +86,10 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     local.order(
         0,
         OrdersAction::Move {
-            x: Num::int(-8),
-            z: Num::int(-33),
+            to: GroundPoint {
+                x: Num::int(-8),
+                z: Num::int(-33),
+            },
         },
     );
     for _ in 0..WALK_FRAMES {
@@ -99,8 +101,10 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     local.order(
         0,
         OrdersAction::Move {
-            x: Num::int(-4),
-            z: Num::int(-31),
+            to: GroundPoint {
+                x: Num::int(-4),
+                z: Num::int(-31),
+            },
         },
     );
     for _ in 0..WALK_FRAMES {
@@ -121,8 +125,10 @@ fn an_allys_aura_predicts_with_no_correction_and_a_hidden_enemy_aura_corrects_on
     local.order(
         0,
         OrdersAction::Move {
-            x: Num::int(-1),
-            z: Num::int(-24),
+            to: GroundPoint {
+                x: Num::int(-1),
+                z: Num::int(-24),
+            },
         },
     );
     for _ in 0..WALK_FRAMES {

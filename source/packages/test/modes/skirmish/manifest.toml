@@ -1,11 +1,12 @@
-# A test mode that runs Zero Hour's rules package's script as its own: three players, each a team
-# of one, who start with a building that counts for victory and a unit, and fight.
+# A test mode that runs Zero Hour's rules package's script as its own, over its fixed data: three
+# players, each a team of one, who start with a building that counts for victory and a unit, and
+# fight.
 name = "test-skirmish"
 version = "0.1.0"
 api = "1.0"
 language = "en"
 kind = "mode"
-capabilities = ["stats", "combat"]
+capabilities = ["stats", "combat", "navigation"]
 tick_hz = { min = 30, max = 30, default = 30 }
 teams = [{ name = "player_1", slots = 1 }, { name = "player_2", slots = 1 }, { name = "player_3", slots = 1 }, { name = "neutral", slots = 0 }]
 max_move_speed = "1.0"

@@ -2,8 +2,8 @@ fn on_think(ctx, tower) {
     let range = tower.attack_range;
     let target = defend_hero(ctx, tower, range);
     if target == () {
-        let current = tower.target;
-        if current != () && current.alive && reaches(tower, current, range) {
+        let current = tower.attack_target;
+        if current != () && current.is_alive && reaches(tower, current, range) {
             target = current;
         }
     }
@@ -13,8 +13,8 @@ fn on_think(ctx, tower) {
     if target == () {
         target = ctx.nearest_visible(tower, range, "enemies:avatar");
     }
-    if target != () && target != tower.target {
-        ctx.order_attack(tower, target);
+    if target != () && target != tower.attack_target {
+        ctx.order_attack(target);
     }
 }
 

@@ -3,8 +3,8 @@ use campfire_values::EngineEnum;
 
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_arg::ScriptArg;
+use campfire_values::NameKind;
 
 /// A radius a script gives a query or a reveal: a number not below 0. One below 0 fails the call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,9 +27,10 @@ impl ScriptRadius {
 impl ScriptArg for ScriptRadius {
     type Raw = Num;
     type Int = i64;
-    const NAMES: Option<NameKind> = None;
+    const NAME_KIND: Option<NameKind> = None;
     const ENUM: Option<EngineEnum> = None;
     const NUMBER: bool = true;
+    const TYPE: &'static str = "Num";
 
     fn take(raw: Num, ctx: &ArgCtx<'_>) -> Checked<Self> {
         Self::checked(Num::take(raw, ctx)?)

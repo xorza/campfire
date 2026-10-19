@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use bevy_app::{App, AppExit, First, FixedUpdate, Last, Plugin, Update};
+use bevy_app::{App, AppExit, First, FixedUpdate, Last, Plugin, PreUpdate, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::{Add, Insert, Remove};
 use bevy_ecs::observer::On;
@@ -13,33 +13,36 @@ use bevy_ecs::schedule::common_conditions::{
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use bevy_time::{Real, Time};
-use campfire_bots::{BotOrder, BotScript, BotUnits, ScriptedInput};
-use campfire_capabilities::{MatchSpec, Order, Release};
-use campfire_combat::Fallen;
+use campfire_bots::{BotOrder, BotScript, BotUnits, BotView, OrderScratch, ScriptedInput};
+use campfire_capabilities::{MatchKind, MatchSpec, Order, Release};
+use campfire_common::ErrorReport;
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declare::Role;
-use campfire_log::{ErrorReport, LogEvent};
+use campfire_log::LogEvent;
 use campfire_mode::MatchEnd;
 use campfire_package::ModePackages;
 use campfire_protocol::{SignedReceipt, Signer, Verifier};
 use campfire_quic::{CloseLink, LinkBinding, LinkEnd, QuicEndpoint, QuicPlugin};
 use campfire_runner::{SessionRules, TermsError};
-use campfire_sim::{SimTick, SimUpdate, StableId, TickInput, TickInputs, TickRate, Unpredicted};
-use campfire_units::{Avatar, Dead, Owner, PlayerUnits, UnitsWorld};
+use campfire_sim::{
+    SimTick, SimUpdate, StableId, StateRewritten, TickInput, TickInputs, TickRate, Unpredicted,
+};
+use campfire_units::{Avatar, Dead, Fallen, Owner, UnitsWorld};
 use campfire_values::{Team, TeamSet};
+use campfire_vision::ByHolding;
 use lightyear::prelude::client::{
     ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient, RemoteTimeline,
 };
 use lightyear::prelude::{
     Client, Connect, LocalTimeline, MessageReceiver, MessageSender, Predicted, PredictionManager,
-    Replicated, ReplicationReceiver, SyncConfig, SyncedLocalTimeline, UnlinkReason, Unlinked,
-    is_in_rollback,
+    Replicated, ReplicationReceiver, RollbackSystems, SyncConfig, SyncedLocalTimeline,
+    UnlinkReason, Unlinked, is_in_rollback,
 };
 use secp256k1::Keypair;
 use tracing::info;
 
 use crate::close_code::CloseCode;
-use crate::events::bot_units_missing::BotUnitsMissing;
+use crate::events::bot_order_unsent::BotOrderUnsent;
 use crate::events::client_frame::ClientFrame;
 use crate::events::input_dropped::InputDropped;
 use crate::events::inputs_discarded::InputsDiscarded;
@@ -93,8 +96,8 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::ZERO;
 /// in-process channels.
 #[derive(Debug)]
 pub struct SimClient {
-    /// The player's Nostr identity, which signs the delegation.
-    pub main_key: Keypair,
+    /// The signer of the player's Nostr identity, which signs the delegation.
+    pub main: Arc<Signer>,
     /// This session's key, which the delegation lets sign the player's inputs.
     pub session_key: Keypair,
     pub server: ServerPin,
@@ -195,20 +198,17 @@ impl Plugin for SimClient {
         let packages = &self.packages;
         // A client runs no scripts: it predicts only its own player's units.
         let set = packages.manifest().capabilities;
-        Release::build(
-            world,
-            MatchSpec::new(PREDICTION_SEED, rate, Role::Client).set(set),
-        );
-        packages.books(rate).install_prediction(world);
+        let spec = MatchSpec::new(PREDICTION_SEED, rate, Role::Client).set(set);
+        Release::build(world, spec, packages.books(rate), MatchKind::Predicting);
         mark_unpredicted(world);
         world.insert_resource(PlayerSigner(Signer::new(self.session_key, self.os.entropy)));
         world.insert_resource(self.hosting);
         world.insert_resource(self.os.clone());
         world.insert_resource(JoinState::new(Joining {
-            main_key: self.main_key,
+            main: Arc::clone(&self.main),
             server: self.server,
             role: self.role,
-            rules: SessionRules::of(packages),
+            packages: Arc::clone(packages),
         }));
         world.init_resource::<SentInputs>();
         if let Some(data) = &self.data {
@@ -256,6 +256,13 @@ impl Plugin for SimClient {
             ReceiptWriter::close_at_exit.run_if(on_message::<AppExit>),
         );
         app.add_systems(First, log_frame);
+        app.add_systems(
+            PreUpdate,
+            rewrite_after_rollback
+                .after(RollbackSystems::Prepare)
+                .before(RollbackSystems::Rollback)
+                .run_if(is_in_rollback),
+        );
         app.add_systems(
             FixedUpdate,
             (send_orders.run_if(not(is_in_rollback)), run_predicted_tick)
@@ -593,14 +600,14 @@ fn report_deaths(
 }
 
 /// Adds the bot script's mode inputs due by the tick about to run, and its orders, each for the
-/// player's units it names: one for the player's own avatar once the client predicts it, as a
-/// link that came back replicates it a little later, so an order due before waits with those
-/// after it, and goes out late; one whose units the player lacks is dropped. Then stamps the pending orders
+/// player's units it names: one for the player's own avatar once the client predicts it, as a link
+/// that came back replicates it a little later, so an order due before waits with those after it,
+/// and goes out late; one whose units the player lacks is dropped. Then stamps the pending orders
 /// with that tick, up to the session's max inputs per tick, chains each and keeps it, and sends
-/// them in one message signed over the chain head after the last. The orders past the max wait
-/// for the next tick, so the log never refuses the message; an order whose payload passes the
-/// session's max length can never be sent, and is dropped. The inputs older than the deepest
-/// rollback Lightyear takes are dropped first.
+/// them in one message signed over the chain head after the last. The orders past the max wait for
+/// the next tick, so the log never refuses the message; an order whose payload passes the session's
+/// max length can never be sent, and is dropped. The inputs older than the deepest rollback
+/// Lightyear takes are dropped first.
 #[expect(
     clippy::too_many_arguments,
     reason = "a Bevy system takes each resource it reads"
@@ -610,8 +617,9 @@ fn send_orders(
     prediction: Res<'_, PredictionManager>,
     timeline_config: Res<'_, InputTimelineConfig>,
     bot: Option<ResMut<'_, BotScript>>,
-    players: PlayerUnits<'_, '_>,
-    mut scratch: Local<'_, Vec<StableId>>,
+    view: BotView<'_, '_, ByHolding>,
+    mut scratch: Local<'_, OrderScratch>,
+    mut orders: Local<'_, Vec<Order>>,
     signer: Res<'_, PlayerSigner>,
     mut pending: ResMut<'_, PendingOrders>,
     mut state: ResMut<'_, JoinState>,
@@ -646,17 +654,21 @@ fn send_orders(
             pending.push_input(input.clone());
         }
         let slot = playing.chain.slot();
-        let avatar = players.avatar(slot).is_some();
+        let avatar = view.avatar(slot).is_some();
         let ready = |order: &BotOrder| avatar || order.units != BotUnits::Avatar;
         for scripted in bot.due_orders_while(stamp, ready) {
-            match scripted.order(slot, &players, &mut scratch) {
-                Ok(order) => pending.push(order),
-                Err(cause) => BotUnitsMissing {
+            orders.clear();
+            let unsent = scripted.orders(slot, &view, &mut scratch, &mut orders);
+            for order in orders.drain(..) {
+                pending.push(order);
+            }
+            if let Some(cause) = unsent {
+                BotOrderUnsent {
                     slot,
                     cause,
-                    action: scripted.action,
+                    action: scripted.named.clone(),
                 }
-                .log(),
+                .log();
             }
         }
     }
@@ -737,6 +749,14 @@ fn run_predicted_tick(world: &mut World) {
         }
     });
     world.run_schedule(SimUpdate);
+}
+
+/// Tells the sim, once Lightyear restored the parts it predicts and before it runs the ticks
+/// again, that its state was written from outside it, so each cache that follows the state's
+/// changes builds again from the restored state (04-capabilities/00-overview.md, One due index for
+/// each timed process).
+fn rewrite_after_rollback(world: &mut World) {
+    world.trigger(StateRewritten);
 }
 
 /// Marks each replicated entity `Unpredicted` while it is not predicted, in whatever order the

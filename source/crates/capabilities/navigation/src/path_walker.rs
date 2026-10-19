@@ -1,7 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::{EnumAll, EnumIdents, NamedEnum};
+use campfire_common::{EnumIdents, NamedEnum};
 use campfire_math::Vec3;
 use campfire_script::enum_script_arg;
 use campfire_sim::{SimComponent, StableId};
@@ -11,12 +11,15 @@ use campfire_values::{EngineEnum, ScriptEnum};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::party::{Party, PartyKey};
+use crate::path_walk::PathWalk;
 
 /// A unit walking the path its `OnPath` names, such as a creep: it walks to the path's waypoints
-/// from the end it starts at while it has no other order, and stays at the last. It keeps the
-/// spawn group it came from, whose units on their path share their route searches.
+/// from the end it walks from while it has no other order, and past the last as the path's walk
+/// says. It keeps the spawn group it came from, whose units on their path share their route
+/// searches.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PathWalker {
+    /// The end it walks from, which a walk back and forth turns at each end.
     from: PathEnd,
     /// The waypoint it walks to next, counted from its end.
     next: u32,
@@ -29,7 +32,7 @@ pub struct PathWalker {
 /// The end of a path a unit walks it from, as a placed unit's or a spawn group's `from`
 /// names it: a MOBA's two sides walk each path from their own end, and a third team either
 /// way.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, EnumIdents, NamedEnum)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, EnumIdents, NamedEnum)]
 pub enum PathEnd {
     Start,
     End,
@@ -46,6 +49,16 @@ impl Serialize for PathEnd {
 impl<'de> Deserialize<'de> for PathEnd {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         Self::deserialize_member(deserializer)
+    }
+}
+
+impl PathEnd {
+    #[must_use]
+    pub const fn other(self) -> Self {
+        match self {
+            Self::Start => Self::End,
+            Self::End => Self::Start,
+        }
     }
 }
 
@@ -86,8 +99,25 @@ impl PathWalker {
         self.next
     }
 
-    pub const fn advance(&mut self) {
-        self.next += 1;
+    /// Goes on from the waypoint it reached to the next of a path of `len` waypoints, walked as
+    /// `walk` says: whether the waypoint was its last, from the end it walks from. Past the last,
+    /// a walk once ends, a loop goes to the first again, and a walk back and forth turns and
+    /// walks from the other end, to the waypoint before the last.
+    pub(crate) const fn advance(&mut self, len: u32, walk: PathWalk) -> bool {
+        debug_assert!(self.next < len, "a walker reaches a waypoint of its path");
+        if self.next + 1 < len {
+            self.next += 1;
+            return false;
+        }
+        match walk {
+            PathWalk::Once => self.next = len,
+            PathWalk::Loop => self.next = 0,
+            PathWalk::BackAndForth => {
+                self.from = self.from.other();
+                self.next = 1;
+            }
+        }
+        true
     }
 
     /// Whether it left the path, and walks it no more until it rejoins it.
@@ -123,6 +153,7 @@ enum_script_arg!(PathEnd);
 
 #[cfg(test)]
 mod tests {
+    use campfire_sim::IdAllocator;
     use campfire_values::internals::named_as_data;
 
     use super::*;
@@ -130,5 +161,23 @@ mod tests {
     #[test]
     fn each_path_end_is_named_in_scripts_as_data_names_it() {
         named_as_data::<PathEnd>();
+    }
+
+    #[test]
+    fn a_walker_goes_past_its_last_waypoint_as_its_path_is_walked() {
+        // On a path of 3 waypoints from its start, a walker bound for waypoint 1 reaches it and
+        // goes to 2, which is the last: a walk once ends, 3 being past the last; a loop goes to
+        // 0; a walk back and forth walks from the end, to its waypoint 1, the middle.
+        let group = IdAllocator::default().allocate();
+        let walked = |walk| {
+            let mut walker = PathWalker::start(PathEnd::Start, group);
+            let ends = [walker.advance(3, walk), walker.advance(3, walk)];
+            (ends, walker.next(), walker.walks_from())
+        };
+        let on = [false, true];
+        assert_eq!(walked(PathWalk::Once), (on, 3, PathEnd::Start));
+        assert_eq!(walked(PathWalk::Loop), (on, 0, PathEnd::Start));
+        assert_eq!(walked(PathWalk::BackAndForth), (on, 1, PathEnd::End));
+        assert_eq!(PathEnd::Start.other().other(), PathEnd::Start);
     }
 }

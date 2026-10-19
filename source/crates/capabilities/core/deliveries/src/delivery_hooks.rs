@@ -2,14 +2,14 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_actions::{
-    ActionBook, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf, Reached,
+    ActionBook, ActionTarget, EffectListBook, ListCall, ListHook, ListsOf, OnEnd, OnHit, Reached,
 };
-use campfire_script::{CallStart, HookCall, Pool, ScriptValue, ScriptsWorld};
+use campfire_script::{CallStart, ScriptValue, ScriptsWorld};
 use campfire_sim::{SimTick, SimWorld};
 use campfire_units::{HitHandle, Owner};
 
-use crate::Deliveries;
-use crate::delivered::Delivered;
+use crate::delivered::{Delivered, DeliveredPayload};
+use crate::delivery_queue::DeliveryQueue;
 
 /// The hooks of the tick's delivery hits and ends, and the despawn of the delivery units that
 /// ended.
@@ -20,7 +20,7 @@ impl DeliveryHooks {
     /// Despawns the delivery units that ended this tick, in a match that runs no scripts, whose
     /// hits and ends run no hook or list.
     pub(super) fn end(world: &mut World, mut ended: Local<'_, Vec<Entity>>) {
-        let mut deliveries = world.resource_mut::<Deliveries>();
+        let mut deliveries = world.resource_mut::<DeliveryQueue>();
         deliveries.delivered.clear();
         ended.clear();
         ended.append(&mut deliveries.ended);
@@ -34,7 +34,7 @@ impl DeliveryHooks {
         world: &mut World,
         (mut due, mut ended): (Local<'_, Vec<Delivered>>, Local<'_, Vec<Entity>>),
     ) {
-        let mut deliveries = world.resource_mut::<Deliveries>();
+        let mut deliveries = world.resource_mut::<DeliveryQueue>();
         due.clear();
         due.append(&mut deliveries.delivered);
         ended.clear();
@@ -59,7 +59,14 @@ impl DeliveryHooks {
         world.script_batch(|batch| {
             let ctx = batch.ctx().clone();
             for delivered in due {
-                let Delivered { by, reach, hit } = *delivered;
+                let Delivered {
+                    payload: DeliveredPayload::Action(by),
+                    reach,
+                    hit,
+                } = *delivered
+                else {
+                    continue;
+                };
                 let reached = reach.hook();
                 let hook = ListHook::from(reached).hook();
                 let book = batch.world().resource::<ActionBook>();
@@ -87,10 +94,10 @@ impl DeliveryHooks {
                 let start = CallStart {
                     hit: Some(hit),
                     start: by.start,
+                    payer: owner,
                     ..CallStart::cast(by.action, by.rank, by.source, package, now)
                 };
-                let pool = Pool::of(owner);
-                batch.hook_call(start, hook, Some(by.source), |batch| {
+                batch.answer(start, hook, Some(by.source), |batch| {
                     let reached = reach.unit().map_or(ActionTarget::None, ActionTarget::Unit);
                     let call = ListCall { of, reached };
                     EffectListBook::queue(batch.world(), call, &ctx)?;
@@ -101,11 +108,11 @@ impl DeliveryHooks {
                     match reach {
                         Reached::Hit(_) => {
                             let args = (ctx.clone(), caster, target, hit);
-                            batch.call(pool, HookCall { script, hook, args }).map(drop)
+                            batch.call::<OnHit>(script, args).map(drop)
                         }
                         Reached::End => {
                             let args = (ctx.clone(), caster, hit);
-                            batch.call(pool, HookCall { script, hook, args }).map(drop)
+                            batch.call::<OnEnd>(script, args).map(drop)
                         }
                     }
                 });

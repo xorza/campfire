@@ -4,7 +4,7 @@ use crate::sim_update::{SimEdge, SimSet};
 
 /// Where a module's system set runs: in a stage of the tick, or in a gap around one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum SimPlace {
+pub(crate) enum SimPlace {
     Stage(SimSet),
     Edge(SimEdge),
 }
@@ -12,7 +12,7 @@ pub enum SimPlace {
 impl SimPlace {
     /// Every place, in the order a tick runs them: `SimEdge::Start`, then each stage with the
     /// gap after it.
-    pub const ALL: [Self; 1 + 2 * SimSet::ALL.len()] = {
+    pub(crate) const ALL: [Self; 1 + 2 * SimSet::ALL.len()] = {
         let mut all = [Self::Edge(SimEdge::Start); 1 + 2 * SimSet::ALL.len()];
         let mut at = 0;
         while at < SimSet::ALL.len() {
@@ -25,7 +25,7 @@ impl SimPlace {
     };
 
     /// The set of the sim schedule it names.
-    pub fn set(self) -> InternedSystemSet {
+    pub(crate) fn set(self) -> InternedSystemSet {
         match self {
             Self::Stage(stage) => stage.intern(),
             Self::Edge(edge) => edge.intern(),

@@ -1,30 +1,30 @@
-use campfire_common::EnumAll;
-use campfire_geometry::PolygonError;
+use campfire_common::{DeclaredName, EnumAll};
 use campfire_script::CapabilityRefusal;
 use campfire_sim::Capability;
-use campfire_units::GroundError;
-use campfire_values::{DeclaredName, Scalar};
+use campfire_values::Scalar;
 use thiserror::Error;
 
-/// A list of the mode's names, as its data gives it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModeList {
-    Pools,
-    Resources,
-    DamageKinds,
-    Layers,
-}
-
-/// Why a list of the mode's names does not load. Packages are untrusted, so each is an expected
-/// failure.
+/// Why the mode's own data breaks a rule of the mode. Packages are untrusted, so each is an
+/// expected failure.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
-pub enum ModeNamesError {
-    /// More names than the ids of their kind count.
-    #[error("more {0:?} than a match holds")]
-    TooMany(ModeList),
-    /// A name twice.
-    #[error("{list:?}: {name} twice")]
-    Repeated { list: ModeList, name: DeclaredName },
+pub enum ModeDataError {
+    /// A bot takes a leaver's place in a mode no player joins late.
+    #[error("bot_takeover without late_join")]
+    BotTakeoverWithoutLateJoin,
+    /// A field of the mode's state syncs to an owner or a team, which the mode's state has none
+    /// of.
+    #[error("a field of the mode's state syncs to an owner or a team")]
+    StateSync,
+    /// An option and a param of one name, which `ctx.params` reads as one (03-game-scripting.md, A
+    /// mode declares its options).
+    #[error("the mode declares a param of the option's name")]
+    OptionParam,
+    /// A choice of loadout entries names no slot kind, or a choice of avatars names one.
+    #[error("a choice of loadout entries fills a slot kind, one of avatars none")]
+    ChoiceSlot,
+    /// Two choices of loadout entries fill slot kinds of other ranks.
+    #[error("choices of loadout entries fill slot kinds of other ranks")]
+    LoadoutRanks,
 }
 
 /// Why the picks a session's terms carry are none of the mode's options (10-sessions.md, The
@@ -68,16 +68,11 @@ pub enum ModeError {
     /// More teams than a team index counts.
     #[error("more teams than a team index counts")]
     TooManyTeams,
-    /// More teams than a map with a vision grid holds.
-    #[error("more teams than a map with a vision grid holds")]
-    TooManyVisionTeams,
     /// A relation of a team to itself, or of a pair the relations name before.
     #[error("a relation of \"{0}\" and \"{1}\" again, or of a team to itself")]
     RepeatedRelation(DeclaredName, DeclaredName),
     #[error("\"{0}\" names two teams")]
     RepeatedTeam(DeclaredName),
-    #[error("\"{0}\" names two paths")]
-    RepeatedPath(DeclaredName),
     #[error("\"{0}\" names two markers")]
     RepeatedMarker(DeclaredName),
     #[error("no team \"{0}\"")]
@@ -96,41 +91,20 @@ pub enum ModeError {
     /// a point too.
     #[error("marker \"{0}\": the region is no box within the bounds, or has a point too")]
     Region(DeclaredName),
-    /// A path has no waypoint.
-    #[error("path \"{0}\" has no waypoint")]
-    EmptyPath(DeclaredName),
     /// A placed unit of a spatial map gives a height, which its point holds.
     #[error("a placed unit of a spatial map gives a height")]
     SpatialHeight,
     /// A point of the map is outside its bounds.
     #[error("a map point is outside the map's bounds")]
     OutOfBounds,
-    /// The grid's cell is not positive or beyond the world's bound, or it makes more than 2²²
-    /// cells.
-    #[error("the grid needs a positive cell within the world's bound and at most 2²² cells")]
-    Grid,
-    /// A wall names a layer the mode does not declare.
-    #[error("no layer \"{0}\"")]
-    UnknownLayer(DeclaredName),
-    /// The points of wall `wall`, counted from 0, make no simple polygon.
-    #[error("wall {wall}")]
-    Wall {
-        wall: usize,
-        #[source]
-        problem: PolygonError,
-    },
-    /// The points of brush `brush`, counted from 0, make no simple polygon.
-    #[error("brush {brush}")]
-    Brush {
-        brush: usize,
-        #[source]
-        problem: PolygonError,
-    },
-    /// The map's `[ground]` reads a height grid the map does not have.
-    #[error("the map's [ground] reads a height grid it does not have")]
-    NoHeights,
-    #[error("the map's ground")]
-    Ground(#[from] GroundError),
+}
+
+/// Why the mode's kill bounty does not load: a fault of its data.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum BountyError {
+    /// A unit type gives a `[bounty]` in a mode that gives none.
+    #[error("a unit type's bounty in a mode of no [bounty]")]
+    NoModeBounty,
 }
 
 /// Why the mode capability refused a script call: a script gave it a value it does not take.
@@ -140,14 +114,12 @@ pub enum ModeRefusal {
     ChoiceCount,
     /// A value of a unique choice another player chose.
     ChoiceTaken,
-    /// A second end of a match.
-    Ended,
     /// An ability to learn that is at its last rank already.
     MaxRank,
+    /// A resource amount to add or take below 0.
+    NegativeAmount,
     /// A slot the unit has no ability in.
     NoAbilitySlot,
-    /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
-    NoEnemyTeam,
     /// A box with no room where it would spawn: past the bounds, or over a wall or a body that
     /// stands.
     NoRoom,
@@ -162,16 +134,25 @@ pub enum ModeRefusal {
     RepeatedChoiceValue,
     /// A player's resource past what an integer holds.
     ResourceOverflow,
+    /// A resource to take of which the player holds less.
+    ResourceShort,
+    /// A bounty share below 0.
+    NegativeShare,
+    /// A bounty share in a mode of no `[bounty]`.
+    NoBounty,
     /// A unit to respawn that is alive.
     RespawnAlive,
     /// A unit to respawn whose type despawns when it dies.
     RespawnDespawns,
+    /// A call of a rules script to what only the mode's own script does: end the match, or record
+    /// a choice.
+    RulesScript,
     /// A relation of a team to itself, which is friendly.
     SelfRelation,
     /// An action whose ranks are not those of the slot kind it goes in.
     SlotKindRanks,
-    /// Timer data that is not `()`, a bool, an integer, a `Num`, a string, a unit, a list of
-    /// units or a position.
+    /// Timer data that is not `()`, a bool, an integer, a `Num`, a string, a unit, a position, or
+    /// a list of units, bools, integers, `Num`s or strings.
     TimerData,
     /// More slots than a unit holds.
     TooManySlots,
@@ -187,10 +168,9 @@ impl CapabilityRefusal for ModeRefusal {
         match self {
             Self::ChoiceCount => "count of values is not the choice's",
             Self::ChoiceTaken => "value is another player's choice",
-            Self::Ended => "the match has ended",
             Self::MaxRank => "ability is at its last rank",
+            Self::NegativeAmount => "resource amount is below 0",
             Self::NoAbilitySlot => "unit has no ability in that slot",
-            Self::NoEnemyTeam => "team has no one enemy team",
             Self::NoRoom => {
                 "the box has no room there: past the bounds, or over a wall or a body that stands"
             }
@@ -199,8 +179,12 @@ impl CapabilityRefusal for ModeRefusal {
             Self::PlayerOffTeam => "player is not on the unit's team",
             Self::RepeatedChoiceValue => "value is chosen twice",
             Self::ResourceOverflow => "player resource overflows",
+            Self::ResourceShort => "player holds less of the resource",
+            Self::NegativeShare => "bounty share is below 0",
+            Self::NoBounty => "the mode gives no [bounty]",
             Self::RespawnAlive => "unit to respawn is alive",
             Self::RespawnDespawns => "unit to respawn despawns when it dies",
+            Self::RulesScript => "only the mode's own script ends the match or records a choice",
             Self::SelfRelation => "a team's relation to itself is friendly",
             Self::SlotKindRanks => "action's ranks are not its slot kind's",
             Self::TimerData => "timer data is not a value state can hold",

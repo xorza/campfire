@@ -1,39 +1,34 @@
 use std::num::NonZeroU32;
 
 use campfire_capabilities::Order;
-use campfire_geometry::Shape;
+use campfire_geometry::{Polygon, Shape};
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::{Num, Vec3};
-use campfire_mode::{MapData, MapPoint, MarkerData, ModeParam};
+use campfire_mode::Mode;
+use campfire_mode::internals::MarkerOf;
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
 use campfire_sim::Position;
-use campfire_units::{Body, Destination};
-use campfire_values::DeclaredName;
+use campfire_units::{Body, Destination, GroundPoint, WallBook};
 
 use crate::failure::Failure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};
+use crate::pins::HZ;
 
 /// The most ticks the check waits for the dozer's walk to end, past which it never arrives.
-const DRIVE_LIMIT: u64 = 30 * 60 * 10;
+const DRIVE_LIMIT: u64 = HZ * 60 * 10;
 
 /// The skirmish's start of Tournament Desert and the dozer's drive (12-zero-hour.md, A skirmish
 /// starts with the faction's start objects): player 1's command center at `Player_1_Start` and its
 /// dozer clear of the center's box, both its own; then the dozer, ordered to `Player_2_Start`,
-/// which stands in no wall's cell in any tick, and ends its walk `ticks` later at `end`, `left`
-/// from the point it was ordered to.
+/// which stands inside no wall in any tick, and ends its walk `ticks` later at `end`, `left` from
+/// the point it was ordered to. The starts and the walls are the match's own, as its map holds
+/// them.
 #[derive(Debug)]
 pub(crate) struct StartDrive {
     pub(crate) ticks: u64,
     pub(crate) end: Vec3,
     pub(crate) left: Num,
-}
-
-/// A wall of the map as the rectangle it covers, its least and its greatest corner, `[x, z]`.
-#[derive(Debug, Clone, Copy)]
-struct WallRect {
-    min: [Num; 2],
-    max: [Num; 2],
 }
 
 impl StartDrive {
@@ -44,16 +39,21 @@ impl StartDrive {
         rate: NonZeroU32,
         failures: &mut Vec<Failure>,
     ) -> Option<Self> {
-        let map = packages.map().clone();
-        let (Some(start), Some(goal)) = (
-            Self::waypoint(&map, "Player_1_Start"),
-            Self::waypoint(&map, "Player_2_Start"),
-        ) else {
+        let mut play = MatchPlay::new(FixedSession::new(packages, rate, 1).start());
+        let start = |name| {
+            let of = MarkerOf {
+                tag: "start",
+                param: "name",
+                value: name,
+            };
+            Mode::marker_point(play.game(), of)
+        };
+        let (Some(start), Some(goal)) = (start("Player_1_Start"), start("Player_2_Start")) else {
             failures.push(Failure::NoStarts);
+            play.end();
             return None;
         };
-        let mut play = MatchPlay::new(FixedSession::new(packages, rate, 1).start());
-        let drive = Self::play(&mut play, &WallRect::of(&map), [start, goal], failures);
+        let drive = Self::play(&mut play, [start, goal], failures);
         play.end();
         match drive {
             Ok(drive) => Some(drive),
@@ -64,11 +64,10 @@ impl StartDrive {
         }
     }
 
-    /// The start and the drive in `play`, from `start` to `goal`, among `walls`: a failure that
-    /// ends it, and each other one in `failures`.
+    /// The start and the drive in `play`, from `start` to `goal`, among the walls of the match on
+    /// the dozer's layer: a failure that ends it, and each other one in `failures`.
     fn play(
         play: &mut MatchPlay,
-        walls: &[WallRect],
         [start, goal]: [Vec3; 2],
         failures: &mut Vec<Failure>,
     ) -> Result<Self, Failure> {
@@ -95,11 +94,18 @@ impl StartDrive {
         if !clear {
             failures.push(Failure::DozerInBuilding(units.pos(dozer)));
         }
+        let layer = Body::layer_of(units.unit(dozer).get::<Body>());
+        let walls: Vec<Polygon> = (play.game().resource::<WallBook>().walls().iter())
+            .filter(|wall| wall.layer == layer)
+            .map(|wall| wall.area.clone())
+            .collect();
         play.order(&[Order::one(
             dozer,
             OrdersAction::Move {
-                x: goal.x,
-                z: goal.z,
+                to: GroundPoint {
+                    x: goal.x,
+                    z: goal.z,
+                },
             },
         )]);
         let mut ordered = false;
@@ -112,7 +118,7 @@ impl StartDrive {
                 .get::<Position>()
                 .expect("a unit stands somewhere")
                 .get();
-            if walls.iter().any(|wall| wall.holds(pos)) {
+            if walls.iter().any(|wall| wall.holds_inside([pos.x, pos.z])) {
                 return Err(Failure::DozerInWall { tick, pos });
             }
             let walking = unit
@@ -128,63 +134,5 @@ impl StartDrive {
             }
         }
         Err(Failure::NeverArrived)
-    }
-
-    /// The point of the waypoint `name` of `map`, of its start markers.
-    fn waypoint(map: &MapData, name: &str) -> Option<Vec3> {
-        let start = DeclaredName::new("start").expect("a declared name");
-        let named = |marker: &&MarkerData| {
-            marker.params.iter().any(|(key, param)| {
-                key.as_str() == "name" && *param == ModeParam::Text(name.to_owned())
-            })
-        };
-        let marker = map
-            .markers
-            .iter()
-            .filter(|marker| marker.tags.contains(&start))
-            .find(named)?;
-        match marker.pos {
-            Some(MapPoint::Ground([x, z])) => Some(Vec3::new(x, Num::ZERO, z)),
-            _ => None,
-        }
-    }
-}
-
-impl WallRect {
-    /// The walls of `map`'s navigation, each the rectangle of its points.
-    fn of(map: &MapData) -> Vec<Self> {
-        let walls = map
-            .navigation
-            .iter()
-            .flat_map(|navigation| &navigation.walls);
-        walls
-            .map(|wall| {
-                let ground = wall.points.iter().filter_map(|point| match point {
-                    MapPoint::Ground(at) => Some(*at),
-                    MapPoint::Space(_) => None,
-                });
-                let mut rect = Self {
-                    min: [Num::MAX; 2],
-                    max: [Num::MIN; 2],
-                };
-                for at in ground {
-                    let axes = rect.min.iter_mut().zip(&mut rect.max).zip(at);
-                    for ((min, max), value) in axes {
-                        *min = (*min).min(value);
-                        *max = (*max).max(value);
-                    }
-                }
-                rect
-            })
-            .collect()
-    }
-
-    /// Whether `pos` lies inside it on the ground plane, its edges, which a free cell shares,
-    /// left out.
-    fn holds(self, pos: Vec3) -> bool {
-        [pos.x, pos.z]
-            .into_iter()
-            .enumerate()
-            .all(|(axis, at)| self.min[axis] < at && at < self.max[axis])
     }
 }

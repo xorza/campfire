@@ -3,20 +3,21 @@ use std::slice;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Changed, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
-use campfire_actions::{ActionBook, ActionSlots, Aim, KindSpec};
+use campfire_actions::{ActionBook, ActionKind, ActionSlots, Aim, ByAction};
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_geometry::Placed;
 use campfire_math::Vec3;
 use campfire_players::{OnMatch, PlayerResources, PlayerRows, ResourceAmount};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use campfire_units::{Body, Dead, MapBook, Owner};
-use campfire_values::{Block, Relations, ResourceId, Team, UnitTags, UnitType};
+use campfire_values::{Relations, ResourceId, Team, UnitTags, UnitType};
 
 use crate::gather_loop::Worker;
 use crate::gather_loop::checked_gather::CheckedGather;
 use crate::gather_loop::gather::Gather;
 use crate::gather_loop::place::Place;
 use crate::gather_loop::step::Step;
+use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 use crate::node::Node;
 use crate::node_book::NodeBook;
@@ -29,6 +30,7 @@ pub(crate) struct GatherView<'w, 's> {
     pub(super) tick: Res<'w, SimTick>,
     pub(super) index: Res<'w, EntityIndex>,
     pub(super) book: Res<'w, ActionBook>,
+    pub(super) gathers: Res<'w, ByAction<GatherSpec>>,
     pub(super) nodes_book: Res<'w, NodeBook>,
     pub(super) map: Res<'w, MapBook>,
     pub relations: OnMatch<'w, 's, Relations>,
@@ -105,7 +107,8 @@ impl GatherView<'_, '_> {
     pub(crate) fn gather(&self, slots: &ActionSlots, slot: u8) -> Option<Gather> {
         let action_slot = slots.slot(slot)?;
         let action = self.book.get(action_slot.action?)?;
-        let (&KindSpec::Gather(spec), Aim::Unit(filter)) = (&action.kind, action.aim) else {
+        let spec = *self.gathers.get(action_slot.action?)?;
+        let Aim::Unit(filter) = action.aim else {
             return None;
         };
         let rank = action_slot.rank?;
@@ -246,7 +249,7 @@ impl GatherView<'_, '_> {
             body: body.copied(),
         };
         let node = self.node(order.node.node, seeker);
-        if tags.is_some_and(|tags| tags.properties.blocks(Block::Use)) {
+        if tags.is_some_and(|tags| tags.properties.blocks(ActionKind::Gather.block())) {
             return match (order.step, node) {
                 (GatherStep::Gathering { .. }, Some(node)) => Step::Interrupt(node.entity),
                 _ => Step::Hold,

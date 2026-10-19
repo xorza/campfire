@@ -2,12 +2,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
 use campfire_players::PlayersWorld;
-use campfire_units::Dead;
+use campfire_units::{Dead, Life, PoolId, lives};
 
-use crate::life::{self, Life};
 use crate::player_modifiers::PlayerModifiers;
 use crate::pool_book::PoolBook;
-use crate::pool_id::PoolId;
 
 /// What the stats module gives a world, for every crate.
 pub trait StatsWorld {
@@ -17,7 +15,7 @@ pub trait StatsWorld {
     /// The modifiers player `slot` holds, to change; none before its entity spawns.
     fn player_modifiers_mut(&mut self, slot: PlayerSlot) -> Option<Mut<'_, PlayerModifiers>>;
 
-    /// Whether the unit of `entity` lives, as `life::lives` says.
+    /// Whether the unit of `entity` lives, as `lives` says.
     fn lives(&self, entity: Entity) -> bool;
 }
 
@@ -32,6 +30,6 @@ impl StatsWorld for World {
     }
 
     fn lives(&self, entity: Entity) -> bool {
-        life::lives(self.get::<Dead>(entity).is_some(), self.get::<Life>(entity))
+        lives(self.get::<Dead>(entity).is_some(), self.get::<Life>(entity))
     }
 }

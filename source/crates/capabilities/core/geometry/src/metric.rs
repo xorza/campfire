@@ -46,16 +46,19 @@ impl Metric {
         from.step_toward(to, step)
     }
 
-    /// Whether `b` is within `range` of `a`, exactly, with no square root.
-    fn within(self, a: Vec3, b: Vec3, range: Num) -> bool {
-        Vec3::ZERO.within(self.offset(a, b), range)
+    /// Whether `range` from the edge of the body `from` reaches the edge of the body `to`: the
+    /// distance at most it, as `order` gives it.
+    pub fn reaches(self, from: Placed, range: Num, to: Placed) -> bool {
+        self.order(from, range, to) != Ordering::Greater
     }
 
-    /// Whether `range` from the edge of the body `from` reaches the edge of the body `to`,
-    /// exactly: the one rule of reach, which ranges, areas, auras, script queries and homing hits
-    /// all decide by. A point is a circle of radius 0. A reach past what a number holds is past
-    /// every distance within the bound. A box lies only on a planar map.
-    pub fn reaches(self, from: Placed, range: Num, to: Placed) -> bool {
+    /// How the distance from the edge of the body `from` to the edge of the body `to` lies against
+    /// `range`, exactly, with no square root: the one primitive of reach, which ranges, areas,
+    /// auras, script queries and homing hits all decide by, each pair of shapes by its own exact
+    /// test (04-capabilities/00-overview.md, One reach rule). A point is a circle of radius 0. A
+    /// reach past what a number holds is past every distance within the bound. A box lies only on
+    /// a planar map.
+    pub fn order(self, from: Placed, range: Num, to: Placed) -> Ordering {
         let (
             Placed {
                 pos: from,
@@ -67,23 +70,24 @@ impl Metric {
             },
         ) = (from, to);
         debug_assert!(range >= Num::ZERO);
-        let within = |body: &BodyBox, pos: Vec3, other: Vec3, radius: Num| {
+        let to_box = |body: &BodyBox, pos: Vec3, other: Vec3, radius: Num| {
             debug_assert!(self == Self::Planar, "a box lies on a planar map");
-            let reach = range.checked_add(radius);
-            reach.is_none_or(|reach| body.nearest(pos, other, reach) != Ordering::Greater)
+            range
+                .checked_add(radius)
+                .map_or(Ordering::Less, |reach| body.nearest(pos, other, reach))
         };
         match (from_shape, to_shape) {
-            (Shape::Circle(from_radius), Shape::Circle(to_radius)) => {
-                let reach = range
-                    .checked_add(from_radius.get())
-                    .and_then(|reach| reach.checked_add(to_radius.get()));
-                reach.is_none_or(|reach| self.within(from, to, reach))
-            }
-            (Shape::Circle(radius), Shape::Box(body)) => within(&body, to, from, radius.get()),
-            (Shape::Box(body), Shape::Circle(radius)) => within(&body, from, to, radius.get()),
+            (Shape::Circle(from_radius), Shape::Circle(to_radius)) => range
+                .checked_add(from_radius.get())
+                .and_then(|reach| reach.checked_add(to_radius.get()))
+                .map_or(Ordering::Less, |reach| {
+                    Vec3::ZERO.distance_order(self.offset(from, to), reach)
+                }),
+            (Shape::Circle(radius), Shape::Box(body)) => to_box(&body, to, from, radius.get()),
+            (Shape::Box(body), Shape::Circle(radius)) => to_box(&body, from, to, radius.get()),
             (Shape::Box(body), Shape::Box(other)) => {
                 debug_assert!(self == Self::Planar, "a box lies on a planar map");
-                body.nearest_box(from, &other, to, range) != Ordering::Greater
+                body.nearest_box(from, &other, to, range)
             }
         }
     }
@@ -125,25 +129,31 @@ mod tests {
     fn a_reach_runs_from_edge_to_edge() {
         let num = |value| Num::from_int(value).unwrap();
         let (from, to) = (Vec3::from((0, 0, 0)), Vec3::from((10, 0, 0)));
-        // 10 m between centers: a range of 7 from a body of 1 to one of 2 reaches, 7 - ε not; a
-        // point reaches as a body of 0.
+        // 10 m between centers: a range of 7 from a body of 1 to one of 2 touches, so reaches, 7
+        // less a bit falls short, and 8 passes; a point reaches as a body of 0.
         let cases = [
-            (num(1), num(7), num(2), true),
-            (num(1), num(7) - Num::EPSILON, num(2), false),
-            (Num::ZERO, num(10), Num::ZERO, true),
-            (Num::ZERO, num(8), num(2), true),
-            (Num::ZERO, num(8) - Num::EPSILON, num(2), false),
+            (num(1), num(7), num(2), Ordering::Equal),
+            (num(1), num(7) - Num::EPSILON, num(2), Ordering::Greater),
+            (num(1), num(8), num(2), Ordering::Less),
+            (Num::ZERO, num(10), Num::ZERO, Ordering::Equal),
+            (Num::ZERO, num(8), num(2), Ordering::Equal),
+            (Num::ZERO, num(8) - Num::EPSILON, num(2), Ordering::Greater),
             // A reach past what a number holds reaches all.
-            (MAX_BOUND, Num::MAX, Num::ZERO, true),
+            (MAX_BOUND, Num::MAX, Num::ZERO, Ordering::Less),
         ];
         let circle = |radius| Shape::Circle(Radius::new(radius).unwrap());
-        for (from_radius, range, to_radius, reaches) in cases {
-            let met = Metric::Planar.reaches(
+        for (from_radius, range, to_radius, order) in cases {
+            let (a, b) = (
                 Placed::new(from, circle(from_radius)),
-                range,
                 Placed::new(to, circle(to_radius)),
             );
-            assert_eq!(met, reaches, "{from_radius:?} + {range:?} + {to_radius:?}");
+            let case = format!("{from_radius:?} + {range:?} + {to_radius:?}");
+            assert_eq!(Metric::Planar.order(a, range, b), order, "{case}");
+            assert_eq!(
+                Metric::Planar.reaches(a, range, b),
+                order != Ordering::Greater,
+                "{case}"
+            );
         }
         // 4 m up and 3 m along: 3 apart on a planar map, 5 on a spatial one.
         let above = Vec3::from((3, 4, 0));

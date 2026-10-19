@@ -1,25 +1,73 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Has;
-use bevy_ecs::system::{Commands, Local, Query, Res};
+use bevy_ecs::observer::On;
+use bevy_ecs::query::{Allow, Has};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use campfire_players::{PlayerResources, PlayerRowsMut, ResourceAmount, TickCommands};
-use campfire_sim::{EntityIndex, SimTick};
-use campfire_units::{Dead, MapBook, Owner};
+use campfire_sim::{DueIndex, EntityIndex, SimTick, StableId, Unpredicted};
+use campfire_units::{Dead, GroundPoint, MapBook, OrderKind, Owner, UnitOrdered};
 use campfire_values::Team;
 use campfire_vision::{ByVision, SeenTargets, TeamSight};
 
 use crate::build_book::BuildBook;
+use crate::builder::{BuildOrder, Builder};
+use crate::gatherer::{GatherOrder, GatherStep, Gatherer, NodeAt};
+use crate::order_dues::OrderDues;
 use crate::production_action::ProductionAction;
 use crate::rally::Rally;
 use crate::rally_target::RallyTarget;
 use crate::site::Site;
-use crate::train_queue::TrainQueue;
+use crate::train_queue::{QueueIndex, TrainQueue};
 
 /// The tick's orders that cancel a train or a build, or set a rally.
 #[derive(Debug)]
 pub struct ProductionOrders;
 
 impl ProductionOrders {
+    /// The observer that sets a unit's build order and gather loop as an order is given: a
+    /// build's or a gather's sets its own and ends the other, and any other order ends both. A
+    /// unit with neither keeps its parts untouched.
+    pub(super) fn ordered(
+        ordered: On<'_, '_, UnitOrdered>,
+        mut units: Query<
+            '_,
+            '_,
+            (&StableId, Option<&mut Builder>, Option<&mut Gatherer>),
+            Allow<Unpredicted>,
+        >,
+        (mut builders, mut gatherers): (
+            ResMut<'_, DueIndex<Builder>>,
+            ResMut<'_, DueIndex<Gatherer>>,
+        ),
+    ) {
+        let entity = ordered.entity;
+        let Ok((&id, builder, gatherer)) = units.get_mut(entity) else {
+            return;
+        };
+        let (build, gather) = match ordered.order {
+            OrderKind::Build { slot, target } => (Some(BuildOrder { slot, target }), None),
+            OrderKind::Gather { slot, node, from } => {
+                let gather = GatherOrder {
+                    slot,
+                    node: NodeAt { node, pos: from },
+                    step: GatherStep::Ordered,
+                };
+                (None, Some(gather))
+            }
+            OrderKind::Use { .. } | OrderKind::Other => (None, None),
+        };
+        if let Some(mut builder) = builder
+            && (build.is_some() || builder.order().is_some())
+        {
+            builder.set(build, &mut OrderDues::new(&mut builders, id, entity));
+        }
+        if let Some(mut gatherer) = gatherer
+            && (gather.is_some() || gatherer.order().is_some())
+        {
+            gatherer.set(gather, &mut OrderDues::new(&mut gatherers, id, entity));
+        }
+    }
+
     /// Applies each cancel of the tick, in input order, to each of its units by stable id that
     /// its player controls: a cancel of a train to a unit with a train queue, dead or not, a
     /// cancel of a build to a living site, as a dead one refunds nothing. A cancel of a train
@@ -37,6 +85,7 @@ impl ProductionOrders {
         mut units: Query<'_, '_, (&Owner, Option<&mut TrainQueue>, Option<&Site>, Has<Dead>)>,
         mut commands: Commands<'_, '_>,
         (mut refund, mut cancelled): (Local<'_, Vec<ResourceAmount>>, Local<'_, Vec<Entity>>),
+        mut queues: QueueIndex<'_>,
     ) {
         let now = tick.start();
         cancelled.clear();
@@ -69,7 +118,7 @@ impl ProductionOrders {
                             continue;
                         };
                         if refunds(paid, order.slot) {
-                            queue.remove(place, now);
+                            queue.remove(place, now, &mut queues.of(unit, entity));
                         }
                     }
                     (ProductionAction::CancelBuild, _, Some(site))
@@ -110,9 +159,9 @@ impl ProductionOrders {
                 return;
             };
             let target = target.map(|target| match target {
-                RallyTarget::Point { x, z } => {
+                RallyTarget::Point(GroundPoint { x, z }) => {
                     let [x, z] = map.bounds.clamp_ground([x, z]);
-                    RallyTarget::Point { x, z }
+                    RallyTarget::Point(GroundPoint { x, z })
                 }
                 unit @ RallyTarget::Unit(_) => unit,
             });

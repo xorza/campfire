@@ -1,7 +1,10 @@
-use campfire_common::EnumAll;
+use std::fmt;
+
+use campfire_common::{DeclaredName, EnumAll};
+use campfire_declare::BookPlace;
 use campfire_script::{CapabilityRefusal, ParamProblem, UnknownName};
 use campfire_sim::Capability;
-use campfire_values::DeclaredName;
+use campfire_values::Stat;
 use thiserror::Error;
 
 /// Why a modifier does not load.
@@ -38,6 +41,39 @@ pub enum EdgeError {
     Changed(UnknownName),
 }
 
+impl EdgeError {
+    /// The stat the graph does not hold.
+    pub fn name(self) -> UnknownName {
+        match self {
+            Self::Read(name) | Self::Changed(name) => name,
+        }
+    }
+}
+
+/// Why a package's modifier breaks a rule of stats. Packages are untrusted, so each is an
+/// expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum ModifiersDataError {
+    /// It grants a tag only the engine gives.
+    #[error("the tag {0}, which only the engine gives")]
+    EngineTag(DeclaredName),
+}
+
+/// Why a mode's stats have no order the stats refresh computes them in.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum StatGraphError {
+    /// Live stat changes across the mode's modifiers read each other in a loop, through these
+    /// stats.
+    #[error("live stat changes read each other in a loop through {}", joined(.0))]
+    Loop(Vec<Stat>),
+}
+
+/// The names of `stats`, in their order.
+fn joined(stats: &[Stat]) -> String {
+    let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
+    names.join(", ")
+}
+
 /// The modifier `modifier` of a package does not load, for `error`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModifierError {
@@ -64,6 +100,8 @@ pub enum StatsRefusal {
     NegativeStacks,
     /// A pool the unit does not have.
     NoPool,
+    /// A negative amount to restore.
+    NegativeRestore,
     /// A stat or level field of a unit that has no stats.
     NoStats,
 }
@@ -83,6 +121,7 @@ impl CapabilityRefusal for StatsRefusal {
             Self::ParamTime => "a time of the modifier is negative or too large to count in ticks",
             Self::NegativeStacks => "a count of a modifier's stacks is negative",
             Self::NoPool => "unit has no such pool",
+            Self::NegativeRestore => "amount to restore is negative",
             Self::NoStats => "unit has no stats",
         }
     }
@@ -98,5 +137,74 @@ impl StatsRefusal {
             ParamProblem::ScalingTime => Self::ParamScalingTime,
             ParamProblem::Time => Self::ParamTime,
         }
+    }
+}
+
+/// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
+/// failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum UnitStartError {
+    /// A stat its pools need is not one it gives a value.
+    #[error("stat {0} is not declared")]
+    MissingStat(Stat),
+    /// A pool's maximum is not positive at level 1.
+    #[error("stat {0} is not positive")]
+    NotPositive(Stat),
+    /// It has a `combat` section but not the life pool.
+    #[error("a unit type with combat lacks the life pool")]
+    NoLifePool,
+    /// It has the life pool but no `combat` section.
+    #[error("a unit type with the life pool lacks combat")]
+    NoCombat,
+}
+
+/// A way a modifier is applied, by the ways stats give (04-capabilities/stats.md, An application
+/// never fails after its call): with an action of its package, at each of the action's ranks, or
+/// with no action, at rank 1.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Way {
+    Action(DeclaredName),
+    NoAction,
+}
+
+impl fmt::Display for Way {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Action(action) => write!(f, "action {action}"),
+            Self::NoAction => f.write_str("no action"),
+        }
+    }
+}
+
+/// Why a package's modifier breaks a rule of the ways that apply it. Packages are untrusted, so
+/// each is an expected failure.
+#[derive(Debug, Clone, PartialEq, Eq, Error)]
+pub enum AppliedError {
+    /// A param it reads does not hold as it reads it, as the way `way` applies it; its own param
+    /// whatever applies it, when `way` is none.
+    #[error("{}", param_of(.param, .way.as_ref()))]
+    Param {
+        param: DeclaredName,
+        way: Option<Way>,
+        #[source]
+        problem: ParamProblem,
+    },
+    /// An aura radius or a shield is below zero, as its own param or one an action gives it.
+    #[error(transparent)]
+    Sign(#[from] ModifierProblem),
+    /// It is the passive of two owners of its package, unit types by `passive` and actions by
+    /// `passive_modifier`, which would share its hold: of the place of the error and `first`.
+    #[error("modifier {modifier} is also the passive of {first}")]
+    SharedPassive {
+        modifier: DeclaredName,
+        first: BookPlace,
+    },
+}
+
+/// A modifier's param `param`, as the way `way` applies the modifier, or its own when none does.
+fn param_of(param: &DeclaredName, way: Option<&Way>) -> String {
+    match way {
+        Some(way) => format!("param {param}, by {way}"),
+        None => format!("its own param {param}"),
     }
 }

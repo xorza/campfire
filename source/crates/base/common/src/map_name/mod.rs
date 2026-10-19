@@ -1,31 +1,27 @@
 use std::str::FromStr;
 
 use derive_more::Display;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
+use crate::declared_name::DeclaredName;
 use crate::map_name::error::NotMapName;
 
 pub(crate) mod error;
 
 /// The name of one of a mode's maps, as its directory `map/<name>/` holds it and a session's
-/// terms name it: a declared name, a lowercase letter, then lowercase letters, digits and
-/// underscores, as a mode's data names what it declares.
-#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+/// terms name it: a declared name, as a mode's data names what it declares.
+#[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct MapName(Box<str>);
+pub struct MapName(DeclaredName);
 
 impl MapName {
-    /// `text` as a map's name; `None` unless it is of that form.
+    /// `text` as a map's name; `None` unless it is a declared name.
     pub fn parse(text: &str) -> Option<Self> {
-        let mut chars = text.chars();
-        let first = chars.next()?;
-        let rest = |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_';
-        (first.is_ascii_lowercase() && chars.all(rest)).then(|| Self(text.into()))
+        DeclaredName::new(text).map(Self)
     }
 
     pub fn as_str(&self) -> &str {
-        &self.0
+        self.0.as_str()
     }
 }
 
@@ -34,14 +30,6 @@ impl FromStr for MapName {
 
     fn from_str(text: &str) -> Result<Self, NotMapName> {
         Self::parse(text).ok_or(NotMapName)
-    }
-}
-
-/// A log or a message is untrusted, so a name `parse` refuses fails to decode.
-impl<'de> Deserialize<'de> for MapName {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        Self::parse(&text).ok_or_else(|| D::Error::custom(NotMapName))
     }
 }
 

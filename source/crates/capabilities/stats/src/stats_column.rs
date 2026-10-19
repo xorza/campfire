@@ -9,20 +9,17 @@ use campfire_script::{
     View, ViewColumn,
 };
 use campfire_sim::StableId;
+use campfire_units::{Life, Meter, PoolId, StatId};
 use campfire_values::{ActionId, ModifierId, NameId, Rank};
 
 use crate::error::StatsRefusal;
 use crate::level::Level;
-use crate::life::Life;
-use crate::meter::Meter;
 use crate::modifier_book::ModifierBook;
 use crate::modifier_handle::{HandleOf, ModifierHandle};
 use crate::modifiers::Modifiers;
 use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::pool_book::PoolBook;
-use crate::pool_id::PoolId;
 use crate::pools::Pools;
-use crate::stat_id::StatId;
 use crate::stats_call::StatsCall;
 use crate::unit_pools::PoolMeters;
 use crate::unit_stats::UnitStats;
@@ -76,6 +73,24 @@ struct ModifierRow {
     source: Option<StableId>,
     stacks: u32,
     state: Range<u32>,
+}
+
+/// The instance of a modifier `unit.modifier` finds: of `id` on `carrier`, the unit in row
+/// `row`, the one `pick` picks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Carried {
+    pub(crate) carrier: StableId,
+    pub(crate) row: usize,
+    pub(crate) id: ModifierId,
+    pub(crate) pick: CarriedPick,
+}
+
+/// Which instance of a modifier a unit carries `Carried` picks: the first, from no source before
+/// any, then by source, or the one from a source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CarriedPick {
+    First,
+    From(StableId),
 }
 
 impl ViewColumn for StatsColumn {
@@ -328,6 +343,46 @@ impl StatsColumn {
             .expect("a match that applies a modifier has stats");
         call.hand_out(handle.clone());
         handle
+    }
+
+    /// The handle of the instance `carried` finds, as the call sees it; `None` when its unit
+    /// carries none, or the call removed it. An instance the call took a handle to before keeps
+    /// that handle, so the call sees one instance once.
+    pub(crate) fn carried_handle(
+        view: &View,
+        call: &mut StatsCall,
+        carried: Carried,
+    ) -> Checked<Option<ModifierHandle>> {
+        let Carried {
+            carrier,
+            row,
+            id,
+            pick,
+        } = carried;
+        Self::read(view, |column| {
+            let mut run = column.run(row).iter().filter(|held| held.id == id);
+            let held = match pick {
+                CarriedPick::First => run.next(),
+                CarriedPick::From(source) => run.find(|held| held.source == Some(source)),
+            };
+            let Some(held) = held else {
+                return Ok(None);
+            };
+            if let Some(handle) = call.handed(carrier, id, held.source) {
+                return Ok((!handle.data().removed).then(|| handle.clone()));
+            }
+            let of = HandleOf {
+                carrier,
+                id,
+                source: held.source,
+                stacks: held.stacks,
+            };
+            let schema = Arc::clone(&column.modifier_book.get(id).spec.state);
+            let state = column.rows.now().state(held);
+            let handle = ModifierHandle::new(call.spare(), of, state, schema, view.clone());
+            call.hand_out(handle.clone());
+            Ok(Some(handle))
+        })
     }
 
     /// The handle of the instance `of` that the running call gives a script, as the call sees

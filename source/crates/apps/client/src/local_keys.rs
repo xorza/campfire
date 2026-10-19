@@ -7,10 +7,11 @@ use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use campfire_net::{Pace, PaceSpeed, PendingSaves, SaveCommand};
 
-/// The keys of a local match: Space pauses it and plays it on, minus and equals, or the keypad's
-/// minus and plus, step its speed down and up through 0.5, 1, 2 and 4 times, F5 saves it, and F9
-/// loads its latest save. P and the digits are the shop's and the items' (02-engine-core.md, Every
-/// key on a keyboard with no keypad).
+use crate::input_map::{Act, InputMap};
+
+/// The keys of a local match, by the key map: its pause chord pauses it and plays it on, its
+/// slower and faster chords step its speed down and up through 0.5, 1, 2 and 4 times, its save
+/// chord saves it, and its load chord loads its latest save.
 #[derive(Debug)]
 pub(crate) struct LocalKeys {
     pub(crate) pace: Arc<Pace>,
@@ -19,10 +20,6 @@ pub(crate) struct LocalKeys {
 /// The pace the keys set.
 #[derive(Resource, Debug)]
 struct Keyed(Arc<Pace>);
-
-/// The keys that step the speed down, and up.
-const SLOWER_KEYS: [KeyCode; 2] = [KeyCode::Minus, KeyCode::NumpadSubtract];
-const FASTER_KEYS: [KeyCode; 2] = [KeyCode::Equal, KeyCode::NumpadAdd];
 
 impl Plugin for LocalKeys {
     fn build(&self, app: &mut App) {
@@ -33,23 +30,23 @@ impl Plugin for LocalKeys {
 
 impl LocalKeys {
     fn press(
-        keys: Res<'_, ButtonInput<KeyCode>>,
+        (keys, input): (Res<'_, ButtonInput<KeyCode>>, Res<'_, InputMap>),
         keyed: Res<'_, Keyed>,
         mut saves: ResMut<'_, PendingSaves>,
     ) {
         let pace = &keyed.0;
-        if keys.just_pressed(KeyCode::Space) {
+        if input.pressed(Act::Pause, &keys) {
             pace.set_paused(!pace.paused());
         }
-        let step = i8::from(keys.any_just_pressed(FASTER_KEYS))
-            - i8::from(keys.any_just_pressed(SLOWER_KEYS));
+        let step = i8::from(input.pressed(Act::Faster, &keys))
+            - i8::from(input.pressed(Act::Slower, &keys));
         if step != 0 {
             pace.set_speed(Self::stepped(pace.speed(), step));
         }
-        if keys.just_pressed(KeyCode::F5) {
+        if input.pressed(Act::Save, &keys) {
             saves.push(SaveCommand::Save);
         }
-        if keys.just_pressed(KeyCode::F9) {
+        if input.pressed(Act::Load, &keys) {
             saves.push(SaveCommand::LoadLatest);
         }
     }

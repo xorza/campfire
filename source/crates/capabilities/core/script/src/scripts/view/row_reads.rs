@@ -10,7 +10,8 @@ use bevy_ecs::query::{Changed, Has, Or, QueryFilter, ReadOnlyQueryData};
 pub trait RowReads: ReadOnlyQueryData + 'static {
     type Changed: QueryFilter + 'static;
 
-    /// Each component it reads, by type and name, for the declaration audit.
+    /// Each component it reads, by type and name: for the declaration audit, and for the view,
+    /// which observes each one's removal, as no change tick shows it.
     fn components(into: &mut Vec<(TypeId, &'static str)>);
 }
 

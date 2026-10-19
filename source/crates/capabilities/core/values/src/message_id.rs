@@ -2,7 +2,9 @@ use std::borrow::Borrow;
 
 use derive_more::Display;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 
 /// The id of a message of a package's human text, as Fluent names one: a letter, then letters,
 /// digits, `-` and `_`. Data names a message by it, and the package's `locale/` files give its
@@ -31,6 +33,13 @@ impl Borrow<str> for MessageId {
     }
 }
 
+/// As its text, which `Deserialize` reads.
+impl Serialize for MessageId {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.0)
+    }
+}
+
 impl<'de> Deserialize<'de> for MessageId {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let text = String::deserialize(deserializer)?;
@@ -40,6 +49,10 @@ impl<'de> Deserialize<'de> for MessageId {
             ))
         })
     }
+}
+
+impl Named for MessageId {
+    const NAMES: NameKind = NameKind::new("message", Article::A, NameScope::Package);
 }
 
 #[cfg(test)]

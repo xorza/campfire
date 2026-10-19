@@ -4,7 +4,7 @@ use std::str::FromStr;
 use campfire_bots::{OrderScript, OrderScriptReadError};
 use campfire_common::PlayerSlot;
 
-use crate::sim_server::server_bots::SlotBot;
+use crate::sim_server::server_bots::SlotScript;
 use crate::sim_server::slot_bot_file::error::SlotBotFileError;
 
 pub(crate) mod error;
@@ -19,8 +19,8 @@ pub struct SlotBotFile {
 
 impl SlotBotFile {
     /// The bot, its script read from its file.
-    pub fn read(&self) -> Result<SlotBot, OrderScriptReadError> {
-        Ok(SlotBot {
+    pub fn read(&self) -> Result<SlotScript, OrderScriptReadError> {
+        Ok(SlotScript {
             slot: self.slot,
             script: OrderScript::read(&self.path)?,
         })

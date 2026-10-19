@@ -1,16 +1,35 @@
 use bevy_ecs::world::World;
 use campfire_math::Vec3;
 use campfire_sim::{Position, SimWorld, StableId};
+use campfire_units::{Ids, OrderRefs, RefMap, SerdeRefs};
 use serde::{Deserialize, Serialize};
 
 /// What an action is aimed at: nothing, a unit, or a point, which an action that aims at a
 /// direction aims through.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ActionTarget {
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", bound = "R: SerdeRefs")]
+pub enum ActionTarget<R: OrderRefs = Ids> {
     None,
-    Unit(StableId),
-    Point(Vec3),
+    Unit(R::Unit),
+    Point(R::Point),
 }
+
+impl Copy for ActionTarget {}
+
+impl<R: OrderRefs> ActionTarget<R> {
+    /// The same target with each reference as `refs` gives it.
+    pub fn map_refs<T: OrderRefs, M: RefMap<R, T>>(
+        self,
+        refs: &mut M,
+    ) -> Result<ActionTarget<T>, M::Error> {
+        Ok(match self {
+            Self::None => ActionTarget::None,
+            Self::Unit(unit) => ActionTarget::Unit(refs.unit(unit)?),
+            Self::Point(point) => ActionTarget::Point(refs.point(point)?),
+        })
+    }
+}
+
 impl ActionTarget {
     /// The point it names in `world`: its point, or where its unit stands; `None` for no
     /// target, or a unit that is gone.
@@ -26,9 +45,9 @@ impl ActionTarget {
     }
 
     /// Whether its point, when it is one, lies within the world's bound, as a restore checks it.
-    pub(crate) fn within_bound(self) -> bool {
+    pub(crate) const fn within_bound(self) -> bool {
         match self {
-            Self::Point(at) => Position::from(at).within_bound(),
+            Self::Point(at) => at.within_bound(),
             Self::None | Self::Unit(_) => true,
         }
     }

@@ -62,7 +62,7 @@ impl SessionTerms {
     /// fingerprints ‖ u64 slot count ‖ u8 per slot, its plan's code ‖ u64 visibility length ‖
     /// visibility ‖ u64 option count ‖ u8 per option, its pick's place)`, integers little-endian.
     pub fn session_id(&self) -> SessionId {
-        let release = self.release.to_string();
+        let release = self.release.as_str();
         let mut hasher = DomainHasher::new(SESSION_ID_DOMAIN);
         hasher
             .update(&self.server_key.serialize())
@@ -122,9 +122,7 @@ impl SessionTerms {
             .checked_add(2 * HASH + SIGNATURE + SLACK)?;
         let terms = len(self.dependencies.len())
             .checked_mul(HASH)?
-            .checked_add(
-                len(self.release.to_string().len()) + len(self.map.as_str().len()) + SLACK,
-            )?
+            .checked_add(len(self.release.as_str().len()) + len(self.map.as_str().len()) + SLACK)?
             .checked_add(len(self.visibility.len()))?
             .checked_add(len(self.options.len()))?;
         let header = slots.checked_mul(delegation + SLACK)?.checked_add(terms)?;

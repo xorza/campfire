@@ -1,28 +1,31 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
+use campfire_common::DeclaredName;
+use campfire_declare::{Book, BookCx, BookError, BookPlace, Section};
 use campfire_math::Num;
 use campfire_script::{
-    HookSet, NameKind, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName, View,
+    HookSet, MatchNames, ParamProblem, ScriptId, ScriptRole, StateValue, TagNames, UnknownName,
 };
 use campfire_sim::TickRate;
-use campfire_units::{ScriptBook, StatusTags};
+use campfire_units::{ModifierNames, ScriptBook, StatId, StatusTags, UnitTypes};
 use campfire_values::{
-    ActionId, DeclaredName, ModifierId, NameId, Names, PackageIndex, Rank, Stat, TagSet,
+    ActionId, ModifierId, NameId, Named, Names, PackageIndex, Rank, Stat, TagSet,
 };
 
 use crate::application::{Adding, Application, ApplyAt, NewInstance};
 use crate::applier_param::ApplierParam;
-use crate::error::ModifierError;
+use crate::error::{ModifierError, SpecError};
 use crate::instance::{Instance, StackEnd, StatShare};
 use crate::interval::Interval;
+use crate::interval_revival::IntervalRevival;
 use crate::lifetime::{Ends, Hold, Lifetime};
 use crate::modifier_data::{ModifierData, Reapply};
 use crate::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
+use crate::modifiers_data::ModifiersData;
 use crate::param_book::ParamBook;
 use crate::param_read::ParamRead;
-use crate::stat_id::StatId;
+use crate::stat_book::StatBook;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the
@@ -122,7 +125,7 @@ impl ModifierBook {
                     Err(_) => self
                         .names
                         .named((package, name))
-                        .ok_or_else(|| UnknownName::new(NameKind::Modifier, name)),
+                        .ok_or_else(|| UnknownName::new(ModifierId::NAMES, name)),
                 }
             },
         };
@@ -177,6 +180,18 @@ impl ModifierBook {
     /// The tags modifier `id` grants its carrier.
     pub fn tags(&self, id: ModifierId) -> TagSet {
         self.get(id).tags
+    }
+
+    /// Whether a modifier has an interval.
+    pub(crate) fn has_intervals(&self) -> bool {
+        self.entries
+            .iter()
+            .any(|entry| entry.spec.interval.is_some())
+    }
+
+    /// What the interval of `id` does as its carrier comes back to life.
+    pub(crate) fn revival(&self, id: ModifierId) -> IntervalRevival {
+        self.get(id).spec.revival
     }
 
     /// The tag sets a unit's tags derive from beside its type's: those of each modifier of
@@ -330,11 +345,64 @@ impl ModifierBook {
     }
 }
 
+impl ModifierBook {
+    /// Every package's modifiers, package by package, each by name, with its script; an error for
+    /// a name the mode does not declare or a modifier that breaks a rule.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let scripts = cx.book::<ScriptBook>()?;
+        let tags = cx.fact::<UnitTypes>()?.tags();
+        let stats = cx.book::<StatBook>()?;
+        let mut book = Self::default();
+        for (index, package) in cx.packages() {
+            let Some(modifiers) = package.content.get::<ModifiersData>() else {
+                continue;
+            };
+            let modifiers = modifiers.0.iter().map(|(name, data)| {
+                let script = data.script.as_ref().map(|path| cx.script(index, path));
+                Ok(PackageModifier {
+                    name,
+                    data,
+                    script: script.transpose()?,
+                })
+            });
+            let modifiers = modifiers.collect::<Result<Vec<_>, BookError>>()?;
+            let load = ModifierLoad {
+                scripts,
+                tags,
+                stat: |stat: &Stat| {
+                    let found = stats.named(stat);
+                    found.ok_or_else(|| UnknownName::new(StatId::NAMES, stat))
+                },
+                rate: cx.rate(),
+            };
+            book.load(load, index, &modifiers)
+                .map_err(|ModifierError { modifier, error }| {
+                    let at = BookPlace::Entry {
+                        table: ModifiersData::KEY,
+                        name: modifier,
+                    };
+                    match error {
+                        SpecError::Problem(problem) => BookError::rule(index, at, problem),
+                        SpecError::Unknown(name) => BookError::unknown(index, at, name),
+                    }
+                })?;
+        }
+        Ok(book)
+    }
+}
+
+impl ModifierBook {
+    /// The names of its modifiers, the fact an action's load resolves them by.
+    pub(crate) fn names_fact(cx: &BookCx<'_>) -> Result<ModifierNames, BookError> {
+        Ok(ModifierNames(Arc::clone(&cx.book::<Self>()?.names)))
+    }
+}
+
 impl Book for ModifierBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(self.names()));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(self.names()));
     }
 }
 
@@ -344,12 +412,13 @@ pub(crate) mod internals {
 
     use campfire_math::Num;
     use campfire_script::HookSet;
+    use campfire_units::StatId;
     use campfire_values::{ModifierId, NameId, PackageIndex, TagSet};
 
+    use crate::interval_revival::IntervalRevival;
     use crate::modifier_book::{ModifierBook, ModifierEntry};
     use crate::modifier_data::Reapply;
     use crate::modifier_spec::{ModifierSpec, SpecChange, SpecNumber};
-    use crate::stat_id::StatId;
     use crate::stat_op::StatOp;
 
     impl ModifierBook {
@@ -375,6 +444,7 @@ pub(crate) mod internals {
                 spec: ModifierSpec {
                     duration: None,
                     interval: None,
+                    revival: IntervalRevival::Continue,
                     stacks_expire: None,
                     reapply: Reapply::Refresh,
                     max_stacks: None,

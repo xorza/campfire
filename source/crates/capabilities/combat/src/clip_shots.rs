@@ -1,13 +1,16 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::{ActionBook, ClipRule};
+use campfire_actions::ByAction;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::ActionId;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::weapon::ClipRule;
+use crate::weapon::Weapon;
 
 /// The shots each weapon of a unit with a clip fired since its clip was last full, by action, in
 /// the order of their ids: a weapon of none is not in it, so one state has one form, which its
@@ -66,12 +69,12 @@ impl SimComponent for ClipShots {
     // A weapon the book lacks, or one whose clip holds no more shots than it fired at every rank,
     // has no clip to count.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let book = world.resource::<ActionBook>();
+        let weapons = world.resource::<ByAction<Weapon>>();
         self.0.iter().all(|fired| {
-            book.get(fired.action).is_some_and(|action| {
-                let mut clips = action.ranks.iter().filter_map(|values| values.clip);
-                clips.any(|clip| fired.shots < clip.shots.get())
-            })
+            let clips = weapons
+                .get(fired.action)
+                .and_then(|weapon| weapon.clip.as_deref());
+            clips.is_some_and(|clips| clips.iter().any(|clip| fired.shots < clip.shots.get()))
         })
     }
 }

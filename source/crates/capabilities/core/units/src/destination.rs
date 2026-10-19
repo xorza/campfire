@@ -3,7 +3,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Vec3;
-use campfire_sim::{Position, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use serde::{Deserialize, Serialize};
 
@@ -43,6 +43,14 @@ impl Destination {
         }
     }
 
+    /// Sets where the unit of `entity` walks, when it walks, to `target`, leaving a destination
+    /// that does not change untouched, as a capability's own loop walks its unit.
+    pub fn go_to(world: &mut World, entity: Entity, target: Option<Vec3>) {
+        if let Some(mut destination) = world.get_mut::<Self>(entity) {
+            destination.set_if_neq(Self::to(target));
+        }
+    }
+
     /// Whether a unit with `destination` gives up a walk to `target`: it cannot walk, or it
     /// stands, as it `arrived` short of `target`.
     pub fn gives_up(
@@ -63,8 +71,7 @@ impl SimComponent for Destination {
     // Its point lies within the world's bound, as every place does; the cells a unit walks over
     // to it are its route's, whose check holds them to a kind of walker the mode has.
     fn check(&self, _: &World, _: Entity) -> bool {
-        self.0
-            .is_none_or(|point| Position::from(point).within_bound())
+        self.0.is_none_or(Vec3::within_bound)
     }
 }
 

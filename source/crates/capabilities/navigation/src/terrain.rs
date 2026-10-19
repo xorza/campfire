@@ -1,8 +1,6 @@
 use campfire_geometry::Grid;
-use campfire_units::Layer;
+use campfire_units::{Layer, Wall};
 use campfire_values::NameId;
-
-use crate::wall::Wall;
 
 /// The cells of the pathing grid the map's walls block, layer by layer, one bit a cell: derived
 /// from the map once, as the walls never change.
@@ -45,10 +43,9 @@ mod tests {
     use campfire_geometry::internals::KernelScene;
     use campfire_geometry::{Bounds, Grid};
     use campfire_math::{Num, Vec3};
-    use campfire_units::Layer;
+    use campfire_units::{Layer, Wall};
 
     use crate::terrain::Terrain;
-    use crate::wall::Wall;
 
     #[test]
     fn the_walls_split_a_scene_into_two_lanes_and_a_jungle() {

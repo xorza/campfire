@@ -1,5 +1,5 @@
-use campfire_actions::{ShotDamage, SplashData};
-use campfire_combat::SCATTER_STREAM;
+use campfire_actions::ShotDamage;
+use campfire_combat::{SCATTER_STREAM, SplashData};
 use campfire_math::SinCos;
 use campfire_units::{CellSplit, Ground, HeightGrid};
 use campfire_values::{ActionId, DamageKind, Rank, RelationSet};
@@ -162,9 +162,9 @@ fn a_shells_end_follows_its_target_by_follow_a_tick_past_a_tenth_of_a_square_met
 
 #[test]
 fn a_shells_sphere_meets_the_lowest_id_it_selects_on_its_way_and_never_its_source() {
-    // A shell 2 m wide hits hostiles and allies, by a filter each, from a shooter of a body 1 m wide and 2 m tall, its center at
-    // (0, 1, 0), to the center of a target 2 m tall at (8, 1, 0): its inner points rise to 5 m,
-    // and its middle is (4, (1 + 15 + 15 + 1) ÷ 8 = 4, 0).
+    // A shell 2 m wide hits hostiles and allies, by a filter each, from a shooter of a body 1 m
+    // wide and 2 m tall, its center at (0, 1, 0), to the center of a target 2 m tall at (8, 1, 0):
+    // its inner points rise to 5 m, and its middle is (4, (1 + 15 + 15 + 1) ÷ 8 = 4, 0).
     let filters = |names: &[&str]| {
         let filters = names.iter().map(|name| FilterData::parse(name).unwrap());
         ProjectileData {
@@ -328,7 +328,7 @@ fn a_restored_curve_holds_its_points_and_its_state_within_them() {
         steps,
         end,
     };
-    let past = Vec3::new(Position::BOUND + Num::ONE, Num::ZERO, Num::ZERO);
+    let past = Vec3::new(Vec3::BOUND + Num::ONE, Num::ZERO, Num::ZERO);
     let checks = [
         state,
         curve(3, to),
@@ -387,11 +387,7 @@ fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_eac
     // A splash of 2 m at the enemies: the shell ends on the target's center, (8, 0, 0), in tick
     // 5. An enemy whose body's edge lies 1.5 m from it takes the damage, one 2 m away does not,
     // nor an ally within it; the target takes it once, its hit dealing nothing of its own.
-    let splash = SplashData {
-        radius: Num::int(2),
-        affects: RelationSet::Enemies,
-        spares_source: true,
-    };
+    let splash = SplashData::new(Num::int(2), RelationSet::Enemies, true).unwrap();
     let mut near = Vec::new();
     let mut shot = Shot::new(
         |armed| armed.splashing(splash),
@@ -417,11 +413,7 @@ fn a_shells_splash_damages_the_units_of_its_relations_within_its_radius_once_eac
     // At the allies, 9 m wide, sparing no source: the shooter, a point 8 m away, takes it, and
     // the target, an enemy, does not; sparing its source, the shooter takes nothing.
     let run = |spares_source| {
-        let splash = SplashData {
-            radius: Num::int(9),
-            affects: RelationSet::Allies,
-            spares_source,
-        };
+        let splash = SplashData::new(Num::int(9), RelationSet::Allies, spares_source).unwrap();
         let mut shot = Shot::new(|armed| armed.splashing(splash), |_, _| {});
         shot.through(5);
         [shot.shooter, shot.target].map(|id| Stats::health(&shot.game, id))

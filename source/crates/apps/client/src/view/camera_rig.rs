@@ -5,6 +5,8 @@ use bevy::math::{Quat, Vec2, Vec3};
 use bevy::transform::components::Transform;
 use campfire_client_files::{CameraFile, CameraHeight};
 
+use crate::press;
+
 /// The player's camera: it looks down at a pitch at a point of the ground, its pivot, from a
 /// height above it, turned about it by a yaw. Keys and the screen's edges scroll the pivot across
 /// and along the screen, the wheel and keys zoom the height between its least and its most, and
@@ -74,14 +76,18 @@ enum DragKind {
 const PITCH_LEAST: f32 = 10.0 * PI / 180.0;
 const PITCH_MOST: f32 = 89.0 * PI / 180.0;
 
-/// A press shorter than this, in seconds, is a click: the game's 167 ms.
-const CLICK: f64 = 0.167;
-/// A drag past this many pixels on an axis is no click.
-const STILL: f32 = 5.0;
+/// A point of the window, the cursor's, in logical pixels from its top left, on a window of
+/// `screen` pixels.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct ScreenPoint {
+    pub(crate) cursor: Vec2,
+    pub(crate) screen: Vec2,
+}
 
 impl CameraRig {
     /// The camera a package with no camera file has: where the client's camera of old stood,
-    /// 24 m above the point in view and 18 m south of it, zooming between 12 m and 24 m.
+    /// 24 m above the point in view and 18 m south of it, zooming between 12 m and 24 m, the
+    /// cursor scrolling within 3 pixels of the edge, and a click a press of 0.2 s at most.
     pub(crate) const DEFAULT: CameraFile = CameraFile {
         pitch: 53.130_1,
         yaw: 0.0,
@@ -95,6 +101,8 @@ impl CameraRig {
         drag_turn: 0.01,
         zoom_notch: 1.0,
         zoom_key: 12.0,
+        edge: 3.0,
+        click: 0.2,
     };
 
     /// The camera of `file`, looking at `pivot` at its start's yaw and its most height, within
@@ -168,11 +176,12 @@ impl CameraRig {
         });
     }
 
-    /// Begins a pan at `cursor`, `now` seconds, on a screen of `screen` pixels, the ground at
-    /// the pivot `ground` high: it grabs the point of that ground under the cursor.
-    pub(crate) fn press_pan(&mut self, cursor: Vec2, screen: Vec2, ground: f32, now: f64) {
+    /// Begins a pan at the cursor of `at`, `now` seconds, the ground at the pivot `ground` high:
+    /// it grabs the point of that ground under the cursor.
+    pub(crate) fn press_pan(&mut self, at: ScreenPoint, ground: f32, now: f64) {
+        let ScreenPoint { cursor, screen } = at;
         let eye = self.transform(ground);
-        let grabbed = self.ground_under(&eye, cursor, screen, ground);
+        let grabbed = self.ground_under(&eye, at, ground);
         self.drag = Some(Drag {
             from: cursor,
             since: now,
@@ -210,7 +219,7 @@ impl CameraRig {
             return;
         };
         let moved = cursor - drag.from;
-        drag.moved |= moved.x.abs() > STILL || moved.y.abs() > STILL;
+        drag.moved |= press::drags(drag.from, cursor);
         match drag.kind {
             DragKind::Pan {
                 pivot,
@@ -219,7 +228,7 @@ impl CameraRig {
                 ground,
                 grabbed,
             } => {
-                let under = self.ground_under(&eye, cursor, screen, ground);
+                let under = self.ground_under(&eye, ScreenPoint { cursor, screen }, ground);
                 if let (Some(grabbed), Some(under)) = (grabbed, under) {
                     self.pivot = self.bounded(pivot + grabbed - under);
                 }
@@ -232,16 +241,11 @@ impl CameraRig {
         }
     }
 
-    /// The point `[x, z]` of the ground plane `ground` high under `cursor`, on a screen of
-    /// `screen` pixels, seen by `eye`; none past the horizon, and none on a screen of no pixel, as
-    /// a minimized window's, where no ray reaches the ground.
-    fn ground_under(
-        &self,
-        eye: &Transform,
-        cursor: Vec2,
-        screen: Vec2,
-        ground: f32,
-    ) -> Option<Vec2> {
+    /// The point `[x, z]` of the ground plane `ground` high under the cursor of `at`, seen by
+    /// `eye`; none past the horizon, and none on a screen of no pixel, as a minimized window's,
+    /// where no ray reaches the ground.
+    fn ground_under(&self, eye: &Transform, at: ScreenPoint, ground: f32) -> Option<Vec2> {
+        let ScreenPoint { cursor, screen } = at;
         if screen.x < 1.0 || screen.y < 1.0 {
             return None;
         }
@@ -259,12 +263,22 @@ impl CameraRig {
         Some(Vec2::new(at.x, at.z))
     }
 
-    /// Ends the drag, `now` seconds: a click sets the pitch, the yaw and the height back to their
-    /// start.
+    /// The pixels from the window's edge within which the cursor scrolls it.
+    pub(crate) const fn edge(&self) -> f32 {
+        self.file.edge
+    }
+
+    /// Whether a pan or an orbit is under way.
+    pub(crate) const fn dragging(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    /// Ends the drag, `now` seconds: a click, a press within its file's click time that did not
+    /// drag, sets the pitch, the yaw and the height back to their start.
     pub(crate) fn release(&mut self, now: f64) {
         if let Some(drag) = self.drag.take()
             && !drag.moved
-            && now - drag.since < CLICK
+            && now - drag.since <= f64::from(self.file.click)
         {
             self.reset();
         }
@@ -313,6 +327,8 @@ mod tests {
         drag_turn: 0.01,
         zoom_notch: 10.0,
         zoom_key: 300.0,
+        edge: 3.0,
+        click: 0.167,
     };
 
     fn near(a: Vec3, b: Vec3) -> bool {
@@ -387,6 +403,16 @@ mod tests {
         rig.press_orbit(Vec2::ZERO, 12.0);
         rig.release(12.2);
         assert_eq!(rig.height, 290.0);
+        // A file of a click of 0.5 s takes that press as a click.
+        let slow = CameraFile {
+            click: 0.5,
+            ..SHIPPED
+        };
+        let mut rig = CameraRig::new(slow, Vec2::ZERO, None);
+        rig.wheel(2.0);
+        rig.press_orbit(Vec2::ZERO, 12.0);
+        rig.release(12.2);
+        assert_eq!(rig.height, 310.0);
     }
 
     #[test]
@@ -397,20 +423,49 @@ mod tests {
         // The camera looks at its pivot through the screen's center, the ground 20 m up.
         let center = screen / 2.0;
         let eye = rig.transform(20.0);
-        let under = rig.ground_under(&eye, center, screen, 20.0).unwrap();
+        let under = rig
+            .ground_under(
+                &eye,
+                ScreenPoint {
+                    cursor: center,
+                    screen,
+                },
+                20.0,
+            )
+            .unwrap();
         assert!(under.length() < 1e-3, "{under}");
         // A drag from a point to another keeps the point it grabbed under the cursor: on the
         // camera that drag ends with, the ground under the cursor is the grabbed point. A click
         // ends nothing of a pan's place: the drag moved.
         let from = Vec2::new(500.0, 600.0);
-        let grabbed = rig.ground_under(&eye, from, screen, 20.0).unwrap();
-        rig.press_pan(from, screen, 20.0, 1.0);
+        let grabbed = rig
+            .ground_under(
+                &eye,
+                ScreenPoint {
+                    cursor: from,
+                    screen,
+                },
+                20.0,
+            )
+            .unwrap();
+        rig.press_pan(
+            ScreenPoint {
+                cursor: from,
+                screen,
+            },
+            20.0,
+            1.0,
+        );
         let to = Vec2::new(1100.0, 300.0);
         rig.drag_to(to);
         let moved = rig.pivot();
         assert!(moved.length() > 100.0, "{moved}");
         let after = rig
-            .ground_under(&rig.transform(20.0), to, screen, 20.0)
+            .ground_under(
+                &rig.transform(20.0),
+                ScreenPoint { cursor: to, screen },
+                20.0,
+            )
             .unwrap();
         assert!((after - grabbed).length() < 1e-2, "{after} {grabbed}");
         rig.release(1.1);
@@ -418,11 +473,22 @@ mod tests {
         // Tilted to 10°, the screen's top looks 10° − 14.7° above the horizon: a pan grabbed
         // there grabs no ground, and moves nothing.
         rig.pitch = PITCH_LEAST;
-        rig.press_pan(Vec2::new(800.0, 0.0), screen, 20.0, 2.0);
+        rig.press_pan(
+            ScreenPoint {
+                cursor: Vec2::new(800.0, 0.0),
+                screen,
+            },
+            20.0,
+            2.0,
+        );
         rig.drag_to(Vec2::new(800.0, 500.0));
         assert_eq!(rig.pivot(), moved);
         // A screen of no pixel, as a minimized window's, grabs nothing.
-        rig.press_pan(Vec2::ZERO, Vec2::ZERO, 20.0, 3.0);
+        let nowhere = ScreenPoint {
+            cursor: Vec2::ZERO,
+            screen: Vec2::ZERO,
+        };
+        rig.press_pan(nowhere, 20.0, 3.0);
         rig.drag_to(Vec2::new(10.0, 10.0));
         assert_eq!(rig.pivot(), moved);
     }

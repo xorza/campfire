@@ -10,11 +10,9 @@ internals = [
     "campfire-common/internals",
     "campfire-declare/internals",
     "campfire-geometry/internals",
-    "campfire-interaction/internals",
     "campfire-math/internals",
     "campfire-navigation/internals",
     "campfire-players/internals",
-    "campfire-production/internals",
     "campfire-script/internals",
     "campfire-sim/internals",
     "campfire-state-types/internals",
@@ -29,11 +27,9 @@ campfire-actions.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
 campfire-geometry.workspace = true
-campfire-interaction.workspace = true
 campfire-math.workspace = true
 campfire-navigation.workspace = true
 campfire-players.workspace = true
-campfire-production.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 campfire-state-types.workspace = true

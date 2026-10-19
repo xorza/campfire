@@ -1,4 +1,4 @@
-use campfire_script::{ScriptValue, View};
+use campfire_script::{ScriptHandle, ScriptValue, View};
 use campfire_sim::StableId;
 use campfire_values::Hit;
 
@@ -22,4 +22,9 @@ impl HitHandle {
     pub fn unit(&self, id: Option<StableId>) -> ScriptValue {
         self.view.unit_value(id)
     }
+}
+
+impl ScriptHandle for HitHandle {
+    const NAME: &'static str = "Hit";
+    const TITLE: &'static str = "Hit `hit`";
 }

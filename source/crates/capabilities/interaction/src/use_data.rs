@@ -1,5 +1,7 @@
+use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, FilterData};
+use campfire_values::FilterData;
 use serde::Deserialize;
 
 /// A unit type's `use` section, which makes its units objects others use: an action of its
@@ -14,5 +16,10 @@ pub struct UseData {
 }
 
 impl DataSection for UseData {
-    const TABLE: DataTable = DataTable::Use;
+    const TABLE: DataTable = DataTable::new("A unit type's `use`");
+}
+
+impl Section for UseData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "use";
 }

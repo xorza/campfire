@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_math::Vec3;
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use campfire_values::UnitType;
 
@@ -21,11 +21,13 @@ pub struct KindSpawn<'w, H> {
     host: PhantomData<H>,
 }
 
-/// The core a unit spawns with, as its parts read it: its place and its type.
+/// The core a unit spawns with, as its parts read it: its place, its type, and the angle in
+/// degrees it faces.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SpawnCore {
     pub pos: Vec3,
     pub unit_type: UnitType,
+    pub angle: Num,
 }
 
 impl<'w, H> KindSpawn<'w, H> {
@@ -68,6 +70,11 @@ impl<'w, H> KindSpawn<'w, H> {
                 .get::<Position>(self.entity)
                 .map(|place| place.get()),
         }
+    }
+
+    /// The core it spawns with; none for a restored unit, whose parts are on it.
+    pub const fn core(&self) -> Option<SpawnCore> {
+        self.core
     }
 
     /// The unit's type, of its core; none for a restored unit that lacks it.

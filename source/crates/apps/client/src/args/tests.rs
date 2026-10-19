@@ -204,7 +204,7 @@ fn a_spectator_watches_a_remote_server_and_names_teams_only_as_one() {
     let watch = |flags: &[&str]| line(&[flags, &remote[..]].concat());
     let spectator =
         Args::from(watch(&["--spectate", "--watch", "west", "--watch", "east"]).unwrap());
-    assert!(spectator.spectate);
+    assert_eq!(spectator.role, JoinRole::Watch);
     let names = |names: &[&str]| -> Vec<DeclaredName> {
         names
             .iter()
@@ -214,7 +214,7 @@ fn a_spectator_watches_a_remote_server_and_names_teams_only_as_one() {
     assert_eq!(spectator.watch, names(&["west", "east"]));
     // A player, with neither.
     let player = read(&remote);
-    assert!(!player.spectate && player.watch.is_empty());
+    assert!(player.role == JoinRole::Play && player.watch.is_empty());
     // A team named with no spectator, a spectator of a local server or a bot, and no team's name.
     for (flags, kind) in [
         (&["--watch", "west"][..], ErrorKind::MissingRequiredArgument),

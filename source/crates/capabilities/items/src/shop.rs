@@ -1,9 +1,7 @@
 use campfire_declare::PerType;
 use campfire_math::Num;
 use campfire_script::Filter;
-use campfire_values::{Relation, ResourceId, Share, TagSet};
-
-use crate::item_id::ItemId;
+use campfire_values::{ItemId, Relation, ResourceId, Share, TagSet};
 
 /// A shop type's shop as a match reads it, package data and not state: the item types it sells,
 /// the player resource it takes, how far from its body's edge it serves, the units it serves,

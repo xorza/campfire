@@ -1,4 +1,4 @@
-use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, ScriptValue, StateValue};
+use campfire_script::{ApiBuilder, ApiError, Checked, Ctx, ScriptHandle, ScriptValue};
 use campfire_sim::StableId;
 use campfire_values::UnitType;
 
@@ -38,7 +38,7 @@ impl UnitStateAccess {
 
     /// Indexes `UnitState` by field name, to read and to write.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.ty::<Self>("UnitState")
+        api.ty::<Self>()
             .index(|args, state: &mut Self, name| state.get(args.get(), name))
             .index_set(|args, state: &mut Self, name, value| state.set(args.get(), name, &value));
     }
@@ -66,7 +66,7 @@ impl UnitStateAccess {
             let field = schema
                 .field(name)
                 .ok_or_else(|| ApiError::UnknownState.fail())?;
-            let value = StateValue::from_value(schema.kind(field), value)?;
+            let value = schema.take(field, value)?;
             let place = schema.place(field);
             Checked::Ok(StateWrite {
                 id: self.id,
@@ -78,4 +78,9 @@ impl UnitStateAccess {
         UnitsCall::of_mut(&mut *ctx.write()?).write(write);
         Ok(())
     }
+}
+
+impl ScriptHandle for UnitStateAccess {
+    const NAME: &'static str = "UnitState";
+    const TITLE: &'static str = "A unit's state";
 }

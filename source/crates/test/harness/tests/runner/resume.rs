@@ -3,19 +3,21 @@
 //! value a tick reads is state, or derived data a restore builds again.
 
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
-use campfire_combat::Deaths;
+use campfire_common::ErrorReport;
 use campfire_common::{StateHash, Tick};
 use campfire_harness::{FixedMatch, FixedSession, Moba3v3, ProvingMatch};
-use campfire_log::ErrorReport;
 use campfire_package::ModePackages;
 use campfire_protocol::{Checkpoint, SessionLog, SnapshotFingerprint};
 use campfire_runner::{
     Replay, ResumeAt, ResumeError, Session, SessionSource, SessionWorld, SnapshotCheckError,
+    UncheckedSource,
 };
 use campfire_sim::{EntityIndex, SimWorld, SnapshotError, StableId};
 use campfire_test_packages::TestMode;
 use campfire_units::Dead;
+use campfire_units::Deaths;
 
 /// A run of a match with a checkpoint before each of three ticks: its log, the snapshot of each
 /// checkpoint, the state hash after each tick, and the ticks a unit died and came back in.
@@ -95,13 +97,15 @@ impl Checkpointed {
         );
         let ticks = u64::try_from(self.hashes.len()).unwrap();
         for (checkpoint, snapshot) in (0..).zip(&self.snapshots) {
-            let log = SessionLog::decode(&self.log).unwrap().rewound();
+            let log = SessionLog::decode(&self.log).unwrap();
             let segment = checkpoint + 1;
-            let source = SessionSource {
+            let source = SessionSource::check(UncheckedSource {
                 log,
                 seeds: FixedSession::seeds(),
                 packages,
-            };
+                signer: Some(Arc::new(FixedSession::server_signer())),
+            })
+            .unwrap();
             let checkpoint_at = ResumeAt { segment, snapshot };
             let mut game = Session::resume_match(source, checkpoint_at)
                 .unwrap_or_else(|error| panic!("segment {segment}: {}", ErrorReport::of(&error)));
@@ -165,7 +169,7 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
         fixed
             .game_mut()
             .session_mut()
-            .record_checkpoint(record, &FixedSession::server_signer())
+            .record_checkpoint(record)
             .unwrap();
         snapshot
     };
@@ -185,20 +189,20 @@ fn a_resume_refuses_a_checkpoint_its_log_or_snapshot_does_not_give() {
     let mut bytes = Vec::new();
     fixed.game().session().log().encode(&mut bytes);
     let resume = |segment, snapshot: &[u8]| {
-        let log = SessionLog::decode(&bytes).unwrap().rewound();
-        let source = SessionSource {
+        let log = SessionLog::decode(&bytes).unwrap();
+        let source = SessionSource::check(UncheckedSource {
             log,
             seeds: FixedSession::seeds(),
             packages: proving.packages(),
-        };
+            signer: Some(Arc::new(FixedSession::server_signer())),
+        })
+        .unwrap();
         Session::resume_match(source, ResumeAt { segment, snapshot }).err()
     };
     assert!(matches!(resume(3, &first), Some(ResumeError::NoCheckpoint)));
     assert!(matches!(
         resume(1, &garbage),
-        Some(ResumeError::Snapshot(
-            SnapshotCheckError::PackageFingerprint
-        ))
+        Some(ResumeError::Snapshot(SnapshotCheckError::Fingerprint))
     ));
     assert!(matches!(
         resume(1, &first),
@@ -251,9 +255,7 @@ fn a_load_drops_the_log_after_its_save_and_the_published_log_verifies() {
     }
     assert_ne!(game.state_hash(), hashes[149]);
     let result = game.session_result();
-    game.session_mut()
-        .record_result(result, &FixedSession::server_signer())
-        .unwrap();
+    game.session_mut().record_result(result).unwrap();
     game.session_mut().reveal_seed();
     let mut bytes = Vec::new();
     game.session().log().encode(&mut bytes);

@@ -6,7 +6,7 @@ use tracing::trace;
 /// A server frame starts, before it runs sim tick `tick`, its next, if it runs any: at Trace, as
 /// a log line a frame is for a check that times each frame, not for every log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct ServerFrame {
+pub(crate) struct ServerFrame {
     pub tick: Tick,
 }
 

@@ -1,16 +1,19 @@
 use campfire_values::{NameId, Names};
 
+use crate::scripts::error::Checked;
+use crate::scripts::script_value::ScriptValue;
 use crate::scripts::state_decl::StateDecl;
 use crate::scripts::state_decl::synced_state_decl::SyncTo;
 use crate::scripts::state_type::StateType;
 use crate::scripts::state_value::StateValue;
 
-/// The fields of one declared script state, the mode's, a unit type's or a modifier's: each
-/// field's name, found once, its first value, whose type is the field's, and where its value is
-/// held. The fields are in the order of their names. Package data, built once at the load.
+/// The fields of one declared script state, the mode's, a unit type's or a modifier's: each field's
+/// name, found once, its declaration, its first value, and where its value is held. The fields are
+/// in the order of their names. Package data, built once at the load.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct StateSchema {
     names: Names<StateField>,
+    decls: Box<[StateDecl]>,
     /// The first value of each field.
     initial: Box<[StateValue]>,
     places: Box<[StatePlace]>,
@@ -46,7 +49,7 @@ impl StateSchema {
     /// order of their names, as data's tables give them.
     pub fn new<'a>(fields: impl IntoIterator<Item = (&'a str, SyncTo, &'a StateDecl)>) -> Self {
         let mut names = Names::default();
-        let (mut initial, mut places) = (Vec::new(), Vec::new());
+        let (mut decls, mut initial, mut places) = (Vec::new(), Vec::new(), Vec::new());
         let mut counts = [0; SyncTo::ALL.len()];
         let mut previous: Option<&str> = None;
         for (name, sync, decl) in fields {
@@ -60,9 +63,11 @@ impl StateSchema {
             places.push(StatePlace { sync, at: *class });
             *class += 1;
             initial.push(decl.initial().clone());
+            decls.push(decl.clone());
         }
         Self {
             names,
+            decls: decls.into(),
             initial: initial.into(),
             places: places.into(),
         }
@@ -75,7 +80,12 @@ impl StateSchema {
 
     /// The type of `field`.
     pub fn kind(&self, field: StateField) -> StateType {
-        self.initial[field.index()].kind()
+        self.decls[field.index()].kind()
+    }
+
+    /// A script's value as a value of `field`; an error when it is not one.
+    pub fn take(&self, field: StateField, value: &ScriptValue) -> Checked<StateValue> {
+        self.decls[field.index()].take(value)
     }
 
     /// Where `field`'s value is held.
@@ -103,16 +113,16 @@ impl StateSchema {
     }
 
     /// Whether `values` are the values of class `sync`: one for each field of the class, in the
-    /// order of their names, each of its field's type.
+    /// order of their names, each a value of its field.
     pub fn holds(&self, sync: SyncTo, values: &[StateValue]) -> bool {
-        let fields = self.initial.iter().zip(&self.places);
-        let mut kinds = fields
+        let fields = self.decls.iter().zip(&self.places);
+        let mut decls = fields
             .filter(|(_, place)| place.sync == sync)
-            .map(|(initial, _)| initial.kind());
+            .map(|(decl, _)| decl);
         let fits = values
             .iter()
-            .all(|value| kinds.next() == Some(value.kind()));
-        fits && kinds.next().is_none()
+            .all(|value| decls.next().is_some_and(|decl| decl.holds(value)));
+        fits && decls.next().is_none()
     }
 
     /// The first value of each field of class `sync`, in the order of their names.

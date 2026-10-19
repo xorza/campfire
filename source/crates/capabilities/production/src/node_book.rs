@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_declare::{Book, ByType};
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::{ResourceId, UnitType};
 
 use crate::resource_set::ResourceSet;
@@ -29,5 +29,5 @@ impl NodeBook {
 impl Book for NodeBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }

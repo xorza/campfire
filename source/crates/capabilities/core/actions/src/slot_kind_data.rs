@@ -1,8 +1,8 @@
 use std::num::NonZeroU8;
 
+use campfire_common::DeclaredName;
 use campfire_script::{DataSection, DataTable};
-use campfire_stats::Level;
-use campfire_values::DeclaredName;
+use campfire_units::NeededLevel;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -19,13 +19,13 @@ pub struct SlotKindData {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SlotRanks {
     count: NonZeroU8,
-    levels: Option<Box<[Level]>>,
+    levels: Option<Box<[NeededLevel]>>,
 }
 
 impl SlotRanks {
     /// `count` ranks that need `levels`; `None` for levels that are not one for each rank, or
     /// one below the one before.
-    pub fn new(count: NonZeroU8, levels: Option<Vec<Level>>) -> Option<Self> {
+    pub fn new(count: NonZeroU8, levels: Option<Vec<NeededLevel>>) -> Option<Self> {
         if let Some(levels) = &levels
             && (levels.len() != usize::from(count.get()) || !levels.is_sorted())
         {
@@ -42,7 +42,7 @@ impl SlotRanks {
     }
 
     /// The level each rank needs, from rank 1, when the kind gives them.
-    pub fn levels(&self) -> Option<&[Level]> {
+    pub fn levels(&self) -> Option<&[NeededLevel]> {
         self.levels.as_deref()
     }
 }
@@ -56,7 +56,7 @@ impl<'de> Deserialize<'de> for SlotKindData {
         struct Fields {
             name: DeclaredName,
             ranks: Option<NonZeroU8>,
-            levels: Option<Vec<Level>>,
+            levels: Option<Vec<NeededLevel>>,
         }
         let Fields {
             name,
@@ -80,5 +80,5 @@ impl<'de> Deserialize<'de> for SlotKindData {
 }
 
 impl DataSection for SlotKindData {
-    const TABLE: DataTable = DataTable::SlotKind;
+    const TABLE: DataTable = DataTable::new("A slot kind, `[[slots]]`");
 }

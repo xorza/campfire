@@ -4,6 +4,7 @@
 
 - **Life, weapons and one damage pass.** `combat` gives units a life pool and weapons, which are actions of the `attack` kind ([Actions](actions.md)), and runs damage, heals, deaths and kill credit; who may hit whom comes from the teams' relations.
 - **A type can die exactly when it has life.** A unit type has `combat` exactly when it has the life pool, so every unit that can reach zero life can die.
+- **What a death does is the type's.** A death reads `on_death` through its unit's type, as a hit reads its armor, and a unit dies when its life reaches zero, so no part of a unit repeats either. Refused: `on_death` copied onto each unit as state, which a snapshot and the hash carried for every unit, and a marker of the units that can die that `Life` requires, which says only that the unit has life, as the death's query reads it already.
 
 ## Weapons
 
@@ -36,11 +37,13 @@
 - **Deaths at the end of Resolve.** A unit at zero life dies at the end of Resolve; one whose life reaches zero later in the tick, as `ctx.kill` in a mode's hook leaves it, dies at the next tick's.
 - **Kill credit.** The source whose damage took the life to zero is the killer; the units that damaged the victim within the mode's assist window assisted.
 - **A respawn is at least a tick later,** at its spawn place, its pools full.
+- **What aims at a unit learns of its death and its respawn.** A death drops the held hits on its unit and makes the projectiles that home on it lose it, and a respawn tells them it was put elsewhere at once, as a teleport does, since a respawn in the next tick's inputs puts the same unit back before they move again. Refused: each reader's test of life at its own step alone, which a unit that came back passes.
 
 ## Events
 
 - **A unit's modifiers hear its combat events.** An attack, an interval, a hit, damage taken and a kill each run a hook on the modifiers of the unit concerned, in a fixed order, in the pool of the modifier source's player.
 - **A depth bound ends the pass.** A hook an event of depth `k` causes runs at `k + 1`, and one at depth 16 fails, so a chain of reactions ends within the tick; `ctx.attack_hit` marks its damage so a hook can refuse to answer it, as Dota 2 marks reflected damage.
+- **Combat's rules as data, planned.** Each comes with the slice of the game that needs it, its default today's behavior: damage stages before `calc_damage`, a bonus by tags and flat or ratio armor, closed and in data; a weapon's own values scaled by a stat; leech rows by cause and kind; what a splash procs, for each weapon, each target by default; a splash edge that the data names, `<` or `≤`; weapon choice criteria; several turrets; line attack projectiles; a clip's reload from its start or its shot, for each weapon, as Zero Hour counts from the shot.
 
 ## Network
 

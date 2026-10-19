@@ -1,6 +1,6 @@
 use campfire_common::Tick;
 use campfire_math::Vec3;
-use campfire_sim::{Position, StableId};
+use campfire_sim::StableId;
 use campfire_values::{ActionId, ActionStart, Rank};
 use serde::{Deserialize, Serialize};
 
@@ -66,9 +66,7 @@ impl InProgress {
                 };
                 aim.target.within_bound() && started
             }
-            Self::Charge { aim, origin, .. } => {
-                aim.target.within_bound() && Position::from(origin).within_bound()
-            }
+            Self::Charge { aim, origin, .. } => aim.target.within_bound() && origin.within_bound(),
             Self::Channel { aim, start, .. } => aim.target.within_bound() && start.check(),
         }
     }

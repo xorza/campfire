@@ -1,3 +1,4 @@
+use campfire_declare::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
 use serde::de::Error;
@@ -27,5 +28,10 @@ impl<'de> Deserialize<'de> for VisionData {
 }
 
 impl DataSection for VisionData {
-    const TABLE: DataTable = DataTable::Vision;
+    const TABLE: DataTable = DataTable::new("A unit type's `vision`");
+}
+
+impl Section for VisionData {
+    const TABLE: SectionTable = SectionTable::AnyType;
+    const KEY: &'static str = "vision";
 }

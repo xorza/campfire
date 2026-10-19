@@ -1,14 +1,16 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::{Added, Changed, Or, QueryState, Without};
-use bevy_ecs::system::{Commands, Local, ParamSet, Query, SystemState};
+use bevy_ecs::system::{Commands, Local, ParamSet, Query, ResMut, SystemState};
 use bevy_ecs::world::{Mut, World};
-use campfire_actions::{ActionBook, ActionSlots, KindSpec};
+use campfire_actions::{ActionSlots, ByAction};
+use campfire_common::Tick;
 use campfire_declare::RoleForm;
-use campfire_navigation::Navigation;
 use campfire_players::PlayersWorld;
-use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
+use campfire_sim::{
+    DueIndex, DueUnit, EntityIndex, Keyed, Ordered, Position, Removals, SimTick, StableId,
+    Unpredicted,
+};
 use campfire_units::{ArrivedShort, Body, Dead, Destination, Owner, StatusTags};
 use campfire_values::{Team, UnitTags};
 
@@ -16,8 +18,10 @@ use crate::Production;
 use crate::gather_loop::checked_gather::CheckedGather;
 use crate::gather_loop::gather_view::{GatherView, HeldNode};
 use crate::gather_loop::step::Step;
+use crate::gather_spec::GatherSpec;
 use crate::gatherer::{GatherOrder, GatherStep, Gatherer, Load, NodeAt};
 use crate::node::Node;
+use crate::order_dues::{self, OrderDues};
 
 pub(crate) mod checked_gather;
 pub(crate) mod gather;
@@ -49,7 +53,7 @@ pub(super) type Worker = (
 /// workers whose loop another system changed, and those that went.
 pub(super) type LeftWorkers<'w, 's> = (
     Query<'w, 's, (), Changed<Gatherer>>,
-    RemovedComponents<'w, 's, Gatherer>,
+    Removals<'w, 's, Gatherer>,
 );
 
 /// The living units that gather, which the loop visits and a freed node's waiting workers are
@@ -75,8 +79,16 @@ impl GatherLoop {
     /// aimed at a drop-off of its player that takes its load returns the load, then goes back to
     /// the node it gathered last; any other ends.
     pub(crate) fn check_gathers(
-        mut parts: ParamSet<'_, '_, (GatherView<'_, '_>, Query<'_, '_, &mut Gatherer>)>,
+        mut parts: ParamSet<
+            '_,
+            '_,
+            (
+                GatherView<'_, '_>,
+                Query<'_, '_, (&StableId, &mut Gatherer)>,
+            ),
+        >,
         mut checked: Local<'_, Vec<CheckedGather>>,
+        mut index: ResMut<'_, DueIndex<Gatherer>>,
     ) {
         checked.clear();
         {
@@ -98,10 +110,10 @@ impl GatherLoop {
             load,
         } in &*checked
         {
-            let mut gatherer = gatherers
+            let (&id, mut gatherer) = gatherers
                 .get_mut(entity)
                 .expect("a gatherer read this tick");
-            gatherer.set(order);
+            gatherer.set(order, &mut OrderDues::new(&mut index, id, entity));
             gatherer.carry(load);
         }
     }
@@ -109,10 +121,13 @@ impl GatherLoop {
     /// Ends the gather order of each worker that died since the last run, as each capability ends
     /// its order of a unit at its death: a dead unit takes no order, and holds no node after its
     /// respawn.
-    pub(crate) fn forget_dead_gathers(mut workers: Query<'_, '_, &mut Gatherer, Added<Dead>>) {
-        for mut worker in &mut workers {
+    pub(crate) fn forget_dead_gathers(
+        mut workers: Query<'_, '_, (Entity, &StableId, &mut Gatherer), Added<Dead>>,
+        mut index: ResMut<'_, DueIndex<Gatherer>>,
+    ) {
+        for (entity, &id, mut worker) in &mut workers {
             if worker.order().is_some() {
-                worker.set(None);
+                worker.set(None, &mut OrderDues::new(&mut index, id, entity));
             }
         }
     }
@@ -132,7 +147,11 @@ impl GatherLoop {
             &mut SystemState<GatherView<'_, '_>>,
             &mut SystemState<LeftWorkers<'_, '_>>,
         ),
-        (mut order, mut held_nodes): (Local<'_, Ordered>, Local<'_, Vec<HeldNode>>),
+        (mut order, mut held_nodes, mut looping): (
+            Local<'_, Ordered>,
+            Local<'_, Vec<HeldNode>>,
+            Local<'_, Vec<DueUnit>>,
+        ),
     ) {
         let (changed, mut gone) = left
             .get_mut(world)
@@ -141,11 +160,13 @@ impl GatherLoop {
         if went || !changed.is_empty() {
             Self::free_left_nodes(world, workers, nodes, &mut held_nodes);
         }
-        let looping = workers
-            .iter(world)
-            .filter(|(.., gatherer)| gatherer.order().is_some())
-            .map(|(entity, &id, _)| Keyed { id, entity });
-        let mut due = order.sort(looping).iter();
+        order_dues::held::<Gatherer>(world, &mut looping);
+        let living = looping
+            .iter()
+            .filter(|unit| workers.get(world, unit.entity).is_ok());
+        let mut due = order
+            .sort(living.map(|&DueUnit { id, entity }| Keyed { id, entity }))
+            .iter();
         if due.len() == 0 {
             return;
         }
@@ -219,9 +240,10 @@ impl GatherLoop {
     /// to wait, then by stable id: it holds the node, and its gather's time runs from this tick.
     fn free(world: &mut World, workers: &mut Gatherers, entity: Entity, id: StableId) {
         let now = world.resource::<SimTick>().start();
-        let first = workers
-            .iter(world)
-            .filter_map(|(worker, &worker_id, gatherer)| {
+        let looping = world.resource::<DueIndex<Gatherer>>().peek_due(Tick::ZERO);
+        let first = looping
+            .filter_map(|unit| {
+                let (worker, &worker_id, gatherer) = workers.get(world, unit.entity).ok()?;
                 let order = gatherer.order()?;
                 let GatherStep::Waiting { since } = order.step else {
                     return None;
@@ -233,12 +255,13 @@ impl GatherLoop {
             node.hold(first.map(|(_, worker_id, _)| worker_id));
         }
         if let Some((_, _, worker)) = first {
-            let mut gatherer = world.get_mut::<Gatherer>(worker).expect("a waiting worker");
+            let gatherer = world.get::<Gatherer>(worker).expect("a waiting worker");
             let order = gatherer.order().expect("a waiting worker's loop");
-            gatherer.set(Some(GatherOrder {
+            let gathering = GatherOrder {
                 step: GatherStep::Gathering { since: now },
                 ..order
-            }));
+            };
+            Gatherer::set_in(world, worker, Some(gathering));
         }
     }
 
@@ -272,17 +295,14 @@ impl GatherLoop {
         else {
             return;
         };
-        let set = |world: &mut World, next: Option<GatherOrder>| {
-            let mut gatherer = world.get_mut::<Gatherer>(entity).expect("a worker");
-            gatherer.set(next);
-        };
+        let set = |world: &mut World, next| Gatherer::set_in(world, entity, next);
         let with = |step| Some(GatherOrder { step, ..order });
         match step {
             Step::Hold => {}
-            Step::Walk(to) => Navigation::go_to(world, entity, Some(to)),
-            Step::Stand => Navigation::go_to(world, entity, None),
+            Step::Walk(to) => Destination::go_to(world, entity, Some(to)),
+            Step::Stand => Destination::go_to(world, entity, None),
             Step::Stop => {
-                Navigation::go_to(world, entity, None);
+                Destination::go_to(world, entity, None);
                 set(world, None);
                 let left = LeftLoop {
                     worker: entity,
@@ -311,11 +331,11 @@ impl GatherLoop {
                 Self::leave(world, workers, left);
             }
             Step::Wait => {
-                Navigation::go_to(world, entity, None);
+                Destination::go_to(world, entity, None);
                 set(world, with(GatherStep::Waiting { since: now }));
             }
             Step::Take(node) => {
-                Navigation::go_to(world, entity, None);
+                Destination::go_to(world, entity, None);
                 let id = *world.get::<StableId>(entity).expect("a worker has an id");
                 if let Some(mut node) = Self::node_mut(world, node) {
                     node.hold(Some(id));
@@ -344,11 +364,11 @@ impl GatherLoop {
         node: Entity,
     ) {
         let slots = world.get::<ActionSlots>(entity).expect("a worker's slots");
-        let action_id = slots.slot(order.slot).and_then(|slot| slot.action);
-        let action = action_id.and_then(|action| world.resource::<ActionBook>().get(action));
-        let Some(&KindSpec::Gather(spec)) = action.map(|action| &action.kind) else {
-            panic!("a worker's loop is of its gather");
-        };
+        let action = slots.slot(order.slot).and_then(|slot| slot.action);
+        let gathers = world.resource::<ByAction<GatherSpec>>();
+        let spec = *action
+            .and_then(|action| gathers.get(action))
+            .expect("a worker's loop is of its gather");
         let taken = match Self::node_mut(world, node) {
             Some(mut held) => held.take(spec.take),
             None => world
@@ -361,10 +381,11 @@ impl GatherLoop {
             resource: spec.resource,
             amount: taken,
         }));
-        gatherer.set(Some(GatherOrder {
+        let to_drop_off = GatherOrder {
             step: GatherStep::ToDropOff { drop_off: None },
             ..order
-        }));
+        };
+        Gatherer::set_in(world, entity, Some(to_drop_off));
         let id = *world.get::<StableId>(node).expect("a node has an id");
         Self::free(world, workers, node, id);
     }
@@ -388,7 +409,7 @@ impl GatherLoop {
         order: GatherOrder,
         back: Option<NodeAt>,
     ) {
-        Navigation::go_to(world, entity, None);
+        Destination::go_to(world, entity, None);
         let gatherer = *world.get::<Gatherer>(entity).expect("a worker");
         if let Some(load) = gatherer.load().filter(|_| !F::PREDICTS) {
             let owner = *world
@@ -402,11 +423,12 @@ impl GatherLoop {
         }
         let mut gatherer = world.get_mut::<Gatherer>(entity).expect("a worker");
         gatherer.carry(None);
-        gatherer.set(back.map(|node| GatherOrder {
+        let back = back.map(|node| GatherOrder {
             node,
             step: GatherStep::ToNode,
             ..order
-        }));
+        });
+        Gatherer::set_in(world, entity, back);
     }
 
     /// Despawns each node that ran out, as the tick ends, of those that changed since the last

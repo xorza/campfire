@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-use campfire_log::ErrorReport;
+use campfire_common::ErrorReport;
 use campfire_store::Worker;
 
 const SERVICE: &str = "urn:schemas-upnp-org:service:WANIPConnection:1";

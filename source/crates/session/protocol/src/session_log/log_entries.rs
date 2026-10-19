@@ -1,4 +1,3 @@
-use std::mem;
 use std::ops::Range;
 
 use campfire_common::{AfterLeave, PlayerSlot, Tick};
@@ -6,7 +5,7 @@ use campfire_common::{AfterLeave, PlayerSlot, Tick};
 use crate::delegation::Delegation;
 use crate::player_input::PlayerInput;
 use crate::server_input::{LeaveReason, ServerInput};
-use crate::session_log::paged_bytes::{BytesAt, PagedBytes};
+use crate::session_log::paged_bytes::{BytesAt, BytesEnd, PagedBytes};
 use crate::session_log::paged_vec::PagedVec;
 use crate::session_log::{at, offset};
 use crate::signature::Signature;
@@ -28,6 +27,19 @@ pub(super) struct LogEntries {
     /// Every delegation a player held, the header's and the joins' and renewals', which a
     /// player's controller and a join or a renewal name by index.
     delegations: Vec<Delegation>,
+}
+
+/// Where each of the log's buffers ends at a boundary: what a load cuts the log back to, and what
+/// a server's log forgets the past before, as its journal holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct EntriesAt {
+    pub(super) entries: u32,
+    pub(super) inputs: u32,
+    payloads: BytesEnd,
+    packets: u32,
+    server: u32,
+    delegations: u32,
+    ticks: u32,
 }
 
 #[derive(Debug)]
@@ -128,10 +140,56 @@ impl LogEntries {
         self.tick_ends.push(end);
     }
 
-    /// Its tick ends, which a rewound log replays, and none from then on: the log seals each
-    /// again as its replay reaches it.
-    pub(super) fn take_tick_ends(&mut self) -> PagedVec<u32> {
-        mem::take(&mut self.tick_ends)
+    /// Where its buffers end now.
+    pub(super) fn at(&self) -> EntriesAt {
+        EntriesAt {
+            entries: self.len(),
+            inputs: self.inputs_len(),
+            payloads: self.payloads.end(),
+            packets: offset(self.packets.len()),
+            server: offset(self.server.len()),
+            delegations: offset(self.delegations.len()),
+            ticks: offset(self.tick_ends.len()),
+        }
+    }
+
+    /// Drops what was logged after `end`, as a load goes back to its save.
+    pub(super) fn truncate(&mut self, end: EntriesAt) {
+        self.entries.truncate(at(end.entries));
+        self.inputs.truncate(at(end.inputs));
+        self.payloads.truncate(end.payloads);
+        self.packets.truncate(at(end.packets));
+        self.server.truncate(at(end.server));
+        self.delegations.truncate(at(end.delegations));
+        self.tick_ends.truncate(at(end.ticks));
+    }
+
+    /// Forgets the entries and the tick ends before `end`, and the inputs before `inputs`, at most
+    /// `end`'s, with their payloads: the past a server's journal holds. Each item it keeps keeps
+    /// its index, and the delegations stay.
+    pub(super) fn forget_before(&mut self, end: EntriesAt, inputs: u32) {
+        debug_assert!(
+            inputs <= end.inputs,
+            "the inputs kept start by the boundary"
+        );
+        self.entries.forget_before(at(end.entries));
+        self.packets.forget_before(at(end.packets));
+        self.server.forget_before(at(end.server));
+        // The tick before the boundary's end stays, as the entries since it count from it.
+        self.tick_ends
+            .forget_before(at(end.ticks.saturating_sub(1)));
+        let first = self.inputs.get(at(inputs)).map(|input| input.payload);
+        self.inputs.forget_before(at(inputs));
+        self.payloads.forget_before(first);
+    }
+
+    /// The index of `delegation` among the log's, the last that equals it.
+    pub(super) fn delegation_index(&self, delegation: &Delegation) -> Option<u32> {
+        let held = self
+            .delegations
+            .iter()
+            .rposition(|held| held == delegation)?;
+        Some(offset(held))
     }
 
     pub(super) fn entry(&self, index: u32) -> Entry {

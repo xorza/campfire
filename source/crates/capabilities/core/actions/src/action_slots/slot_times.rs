@@ -4,12 +4,12 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
-use campfire_math::{Num, Rounding};
+use campfire_math::{Num, Rounding, Vec3};
 use campfire_script::LivingUnit;
 use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_stats::{PoolCost, PoolMetersMut};
-use campfire_units::UnitEntity;
+
+use campfire_units::{Body, PoolCost, PoolPayer, PoolPurse, UnitEntity};
 use campfire_values::{ActionId, Relation, Team};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -17,7 +17,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::action::Aim;
 use crate::action_book::ActionBook;
 use crate::action_call::ResolvedCast;
-use crate::action_slots::ActionSlots;
+use crate::action_slots::caster::Caster;
+use crate::action_slots::{ActionSlot, ActionSlots};
 use crate::action_target::ActionTarget;
 use crate::checked_action::CheckedAction;
 use crate::purse::Purse;
@@ -25,6 +26,7 @@ use crate::rank_fields::TogglePer;
 use crate::rank_values::ChargeRule;
 use crate::slot_aim::SlotAim;
 use crate::slot_kind::SlotKind;
+use crate::targets::Targets;
 
 /// The times of a unit's action slots, one for each slot of its `ActionSlots`, in their order:
 /// what only its owner receives of them, where every client that sees the unit receives the
@@ -50,15 +52,17 @@ pub struct SlotCharges {
     pub next: Tick,
 }
 
-/// What `SlotTimes::checked_action` reads besides the times: the match's book of actions, the
-/// tick `now`, the unit's slots and what its purse affords, the slot and target `aim` names, how
-/// the unit regards a team, `relation`, and the living unit of a stable id, `living`.
+/// What `SlotTimes::start` reads besides the times: the match's book of actions, the tick `now`,
+/// the unit as a caster, whose tags and motion may block the action, its slots and what its purse
+/// affords, the slot and target `aim` names, how the unit regards a team, `relation`, and the
+/// living unit of a stable id, `living`.
 #[derive(Debug)]
-pub struct ActionCheck<'b, 'a, R, L> {
+pub struct ActionCheck<'b, 'a, R, L, P> {
     pub book: &'b ActionBook,
     pub now: Tick,
+    pub caster: Caster<'a>,
     pub slots: &'a ActionSlots,
-    pub purse: Purse<'a>,
+    pub purse: Purse<'a, P>,
     pub aim: SlotAim,
     pub relation: R,
     pub living: L,
@@ -103,24 +107,124 @@ impl SlotTime {
     }
 }
 
+/// Where a start measures the reach of an action from: the unit's place and body, as `targets`
+/// measure reach.
+#[derive(Debug, Clone, Copy)]
+pub struct StartFrom<'a, 'w, 's> {
+    pub pos: Vec3,
+    pub body: Option<&'a Body>,
+    pub targets: &'a Targets<'w, 's>,
+}
+
+/// An action its start checked: what passed its checks, and whether its target lies within its
+/// reach, as an action measured from no place always does.
+#[derive(Debug)]
+pub struct StartChecked<'b> {
+    pub checked: CheckedAction<'b>,
+    pub reached: bool,
+}
+
+/// What the commit of an action spends of its slot: the slot, the tick `now` it commits at, the
+/// first tick it may start again, its action's charge rule at its rank, and, for a toggle it
+/// turns on, the tick it pays its cost each second from.
+#[derive(Debug, Clone, Copy)]
+pub struct SlotCommit {
+    pub slot: u8,
+    pub now: Tick,
+    pub ready_at: Tick,
+    pub charges: Option<ChargeRule>,
+    pub toggle: Option<Tick>,
+}
+
+impl SlotCommit {
+    /// What the cast `resolved` commits of its slot as it resolves at `now`: its cooldown and
+    /// charge, and its toggle turned on to pay a `second` from now.
+    pub fn cast(resolved: &ResolvedCast, now: Tick, second: Ticks) -> Self {
+        Self {
+            slot: resolved.call.aim.slot,
+            now,
+            ready_at: now.after(resolved.values.cooldown),
+            charges: resolved.values.charges,
+            toggle: resolved.values.toggle.map(|_| now.after(second)),
+        }
+    }
+}
+
 impl SlotTimes {
-    /// The action that `check`'s aim names, of a unit with `check`'s slots and these times, when it
-    /// may go on: its slot holds a learned action that is ready and, with charges, holds one, the
-    /// purse affords its cost in each pool and player resource, and its target is a living unit
-    /// the action's filter selects, or the action takes none, which drops any target the order
-    /// named.
-    pub fn checked_action<'b>(
+    /// The start step of every kind of action, which each kind's own system takes at its own
+    /// moment (04-capabilities/actions.md, Each kind calls the shared steps): `check`'s checks,
+    /// and with `from` its point target clamped into its range, as its aim clamps, and its reach
+    /// tested; none when it fails a check.
+    pub fn start<'b>(
         &self,
         check: ActionCheck<
             'b,
             '_,
             impl Fn(Team) -> Relation,
             impl Fn(StableId) -> Option<LivingUnit>,
+            impl PoolPurse,
+        >,
+        from: Option<StartFrom<'_, '_, '_>>,
+    ) -> Option<StartChecked<'b>> {
+        let mut checked = self.checked_action(check)?;
+        let reached = from.is_none_or(|from| {
+            checked.clamp(from.pos, Body::shape_of(from.body), from.targets);
+            checked.in_range(from.pos, from.body, from.targets)
+        });
+        Some(StartChecked { checked, reached })
+    }
+
+    /// The commit step's spend of the slot's time, which each kind takes at its own moment, as its
+    /// cost goes through `Payer::pay`: its cooldown to `commit.ready_at`, and under its charge
+    /// rule a charge, the timer of the next starting as the slot falls below its most; and the
+    /// toggle it turns on.
+    pub fn commit(&mut self, commit: SlotCommit) {
+        let SlotCommit {
+            slot,
+            now,
+            ready_at,
+            charges,
+            toggle,
+        } = commit;
+        let held = &mut self.0[usize::from(slot)];
+        held.ready_at = ready_at;
+        if let Some(rule) = charges {
+            let charges = held
+                .charges
+                .as_mut()
+                .expect("an action with charges filled them");
+            if charges.count == rule.max.get() {
+                charges.next = now.after(rule.recharge);
+            }
+            charges.count = charges
+                .count
+                .checked_sub(1)
+                .expect("an action starts only with a charge");
+        }
+        if let Some(next) = toggle {
+            held.toggle = Some(next);
+        }
+    }
+
+    /// The action that `check`'s aim names, of a unit with `check`'s slots and these times, when it
+    /// may go on: its caster is not blocked from it, its slot holds a learned action that is ready
+    /// and, with charges, holds one, the purse affords its cost in each pool and player resource,
+    /// and its target is a living unit the action's filter selects, or the action takes none, which
+    /// drops any target the order named.
+    fn checked_action<'b>(
+        &self,
+        check: ActionCheck<
+            'b,
+            '_,
+            impl Fn(Team) -> Relation,
+            impl Fn(StableId) -> Option<LivingUnit>,
+            impl PoolPurse,
         >,
     ) -> Option<CheckedAction<'b>> {
         let ActionCheck {
             book,
             now,
+            caster,
             slots,
             purse,
             aim,
@@ -128,6 +232,9 @@ impl SlotTimes {
             living,
         } = check;
         let (slot, time) = (slots.slot(aim.slot)?, self.slot(aim.slot)?);
+        if caster.blocked(Some(slot), book) {
+            return None;
+        }
         let (id, rank) = (slot.action?, slot.rank?);
         let action = book.get(id)?;
         let values = *action.values(rank);
@@ -173,20 +280,38 @@ impl SlotTimes {
     }
 
     /// Puts `count` slots at `at`, each ready at once, as the slots gain them there.
-    pub fn insert(&mut self, at: usize, count: usize) {
+    pub(crate) fn insert(&mut self, at: usize, count: usize) {
         self.0
             .splice(at..at, iter::repeat_n(SlotTime::READY, count));
     }
 
     /// Makes `slot` ready at once, with no charges and no toggle on, as a slot an item fills or
     /// leaves.
-    pub fn reset(&mut self, slot: u8) {
+    pub(crate) fn reset(&mut self, slot: u8) {
         self.0[usize::from(slot)] = SlotTime::READY;
     }
 
     /// Swaps the times of slots `a` and `b`, as the slots swap.
-    pub fn swap(&mut self, a: u8, b: u8) {
+    pub(crate) fn swap(&mut self, a: u8, b: u8) {
         self.0.swap(usize::from(a), usize::from(b));
+    }
+
+    /// Each slot of `slots` with its time: one time for each slot, as `SlotsMut` keeps them.
+    fn paired<'a>(
+        &'a self,
+        slots: &'a ActionSlots,
+    ) -> impl Iterator<Item = (ActionSlot, &'a SlotTime)> + 'a {
+        debug_assert_eq!(slots.len(), self.0.len(), "a unit's slots each have a time");
+        slots.iter().zip(&self.0)
+    }
+
+    /// Each slot of `slots` with its time, to change, as `paired` gives them.
+    fn paired_mut<'a>(
+        &'a mut self,
+        slots: &'a ActionSlots,
+    ) -> impl Iterator<Item = (ActionSlot, &'a mut SlotTime)> + 'a {
+        debug_assert_eq!(slots.len(), self.0.len(), "a unit's slots each have a time");
+        slots.iter().zip(&mut self.0)
     }
 
     /// Puts `slot` on cooldown until `ready_at`.
@@ -194,44 +319,11 @@ impl SlotTimes {
         self.0[usize::from(slot)].ready_at = ready_at;
     }
 
-    /// Spends what starting the action in `slot` at `now` costs of its slot: its cooldown, and
-    /// under `rule`, its action's charges at its rank, a charge, the timer of the next starting
-    /// as the slot falls below its most.
-    pub fn spend(&mut self, slot: u8, now: Tick, cooldown: Ticks, rule: Option<ChargeRule>) {
-        let slot = &mut self.0[usize::from(slot)];
-        slot.ready_at = now.after(cooldown);
-        let Some(rule) = rule else {
-            return;
-        };
-        let charges = slot
-            .charges
-            .as_mut()
-            .expect("an action with charges filled them");
-        if charges.count == rule.max.get() {
-            charges.next = now.after(rule.recharge);
-        }
-        charges.count = charges
-            .count
-            .checked_sub(1)
-            .expect("an action starts only with a charge");
-    }
-
-    /// Spends the slot of the cast that `resolved` at `now`, as `ActionSlots::finish_cast` ends
-    /// it: its cooldown and charge, and its toggle turned on to pay a `second` from now.
-    pub fn spend_cast(&mut self, resolved: &ResolvedCast, now: Tick, second: Ticks) {
-        let ResolvedCast { call, values } = *resolved;
-        let slot = call.aim.slot;
-        self.spend(slot, now, values.cooldown, values.charges);
-        if values.toggle.is_some() {
-            self.toggle_on(slot, now.after(second));
-        }
-    }
-
     /// Gives each slot of `slots` of `action` that holds charges one more, up to the most `book`
     /// gives the action at the slot's rank, its timer kept.
     pub fn add_charge(&mut self, slots: &ActionSlots, action: ActionId, book: &ActionBook) {
         let rules = book.get(action).expect("an action of the match");
-        for (held, time) in slots.iter().zip(&mut self.0) {
+        for (held, time) in self.paired_mut(slots) {
             if held.action != Some(action) {
                 continue;
             }
@@ -251,7 +343,7 @@ impl SlotTimes {
         book: &'a ActionBook,
         now: Tick,
     ) -> impl Iterator<Item = (u8, Option<SlotCharges>)> + 'a {
-        let times = self.0.iter();
+        let times = self.paired(slots).map(|(_, time)| time);
         slots
             .indexed()
             .zip(times)
@@ -265,9 +357,7 @@ impl SlotTimes {
     /// rule at its rank: the earliest of the slots that hold fewer than their most; none when
     /// each holds its most, or holds none.
     pub(crate) fn next_charge(&self, slots: &ActionSlots, book: &ActionBook) -> Option<Tick> {
-        slots
-            .iter()
-            .zip(&self.0)
+        self.paired(slots)
             .filter_map(|(slot, time)| {
                 let (rule, charges) = (slot.charge_rule(book)?, time.charges?);
                 (charges.count < rule.max.get()).then_some(charges.next)
@@ -297,10 +387,10 @@ impl SlotTimes {
         &mut self,
         slots: &ActionSlots,
         book: &ActionBook,
-        pools: &mut PoolMetersMut<'_>,
+        pools: &mut impl PoolPayer,
         keep: &PoolCost,
     ) {
-        for (held, time) in slots.iter().zip(&mut self.0) {
+        for (held, time) in self.paired_mut(slots) {
             if time.toggle.is_none() {
                 continue;
             }
@@ -312,7 +402,7 @@ impl SlotTimes {
                 continue;
             }
             let both = toggle.cost.checked_add(keep);
-            if both.is_some_and(|both| pools.read().affords(&both)) {
+            if both.is_some_and(|both| pools.affords(&both)) {
                 pools.pay(&toggle.cost);
             } else {
                 time.toggle = None;
@@ -327,7 +417,7 @@ impl SlotTimes {
             let left = at.since(now).unwrap_or(Ticks::ZERO);
             now.after(Ticks::new(left.get().saturating_sub(cut.get())))
         };
-        for (held, time) in slots.iter().zip(&mut self.0) {
+        for (held, time) in self.paired_mut(slots) {
             if held.action != Some(action) {
                 continue;
             }
@@ -351,7 +441,7 @@ impl SlotTimes {
                 .expect("a share of 0 to 1 of a time is a time");
             now.after(Ticks::new(kept))
         };
-        for (held, time) in slots.iter().zip(&mut self.0) {
+        for (held, time) in self.paired_mut(slots) {
             if held.kind != kind {
                 continue;
             }
@@ -421,9 +511,23 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU8;
+
     use campfire_values::Rank;
 
     use super::*;
+
+    #[test]
+    #[should_panic(expected = "a unit's slots each have a time")]
+    fn times_of_other_slots_than_the_units_fail_where_a_zip_would_drop_some() {
+        // Times of one slot, read against two: a zip would stop after the first, as if the second
+        // slot held no action, where the pairing panics.
+        let kind = SlotKind::new(0);
+        let one = ActionSlots::new([(ActionId::new(0), kind, Some(Rank::FIRST))]);
+        let mut times = SlotTimes::ready(&one);
+        let two = one.with_empty(kind, 1);
+        times.cut_cooldowns(&two, kind, Num::QUARTER, Tick::ZERO);
+    }
 
     #[test]
     fn a_cut_of_any_cooldown_keeps_its_share_rounded_up_to_a_tick() {
@@ -448,6 +552,54 @@ mod tests {
         assert_eq!(times.slot(0).unwrap().ready_at, Tick::new(3 << 60));
         times.cut_cooldowns(&slots, kind, Num::ONE, Tick::ZERO);
         assert_eq!(times.slot(0).unwrap().ready_at, Tick::ZERO);
+    }
+
+    #[test]
+    fn a_commit_spends_its_cooldown_a_charge_and_turns_its_toggle_on() {
+        let slots = ActionSlots::new([(ActionId::new(0), SlotKind::new(0), Some(Rank::FIRST))]);
+        let mut times = SlotTimes::ready(&slots);
+        times.set_charges(
+            0,
+            Some(SlotCharges {
+                count: 3,
+                next: Tick::ZERO,
+            }),
+        );
+        let rule = ChargeRule {
+            max: NonZeroU8::new(3).unwrap(),
+            recharge: Ticks::new(10),
+        };
+        let commit = |now: u64, toggle: Option<u64>| SlotCommit {
+            slot: 0,
+            now: Tick::new(now),
+            ready_at: Tick::new(now + 4),
+            charges: Some(rule),
+            toggle: toggle.map(Tick::new),
+        };
+        // At its most, the first charge spent starts the timer: the next comes 10 ticks from 5.
+        times.commit(commit(5, Some(35)));
+        let time = times.slot(0).unwrap();
+        assert_eq!(time.ready_at, Tick::new(9));
+        assert_eq!(
+            time.charges,
+            Some(SlotCharges {
+                count: 2,
+                next: Tick::new(15),
+            })
+        );
+        assert_eq!(time.toggle, Some(Tick::new(35)));
+        // Below its most, a second keeps the timer, and a commit with no toggle leaves it on.
+        times.commit(commit(7, None));
+        let time = times.slot(0).unwrap();
+        assert_eq!(time.ready_at, Tick::new(11));
+        assert_eq!(
+            time.charges,
+            Some(SlotCharges {
+                count: 1,
+                next: Tick::new(15),
+            })
+        );
+        assert_eq!(time.toggle, Some(Tick::new(35)));
     }
 
     #[test]

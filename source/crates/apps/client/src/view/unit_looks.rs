@@ -1,16 +1,21 @@
 use std::sync::Arc;
 
+use bevy::asset::RenderAssetUsages;
 use bevy::asset::{AssetServer, Handle};
+use bevy::ecs::bundle::Bundle;
 use bevy::ecs::component::Component;
 use bevy::ecs::resource::Resource;
-use bevy::gltf::GltfAssetLabel;
-use bevy::world_serialization::WorldAsset;
-use campfire_client_files::ClientUnit;
+use bevy::gltf::{GltfAssetLabel, GltfLoaderSettings};
+use bevy::math::Vec3;
+use bevy::transform::components::Transform;
+use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
+use campfire_client_files::{ClientUnit, ModelTop};
 use campfire_math::Num;
 use campfire_units::TypeOriginBook;
 use campfire_values::{NameId, PackageIndex, UnitType};
 
 use crate::view::client_data::ClientData;
+use crate::view::match_colors::Paint;
 use crate::view::package_source::PackageSource;
 
 /// Each unit type's look, as its package's client data gives it, by type: none for a type of no
@@ -20,11 +25,13 @@ pub(crate) struct UnitLooks {
     looks: Vec<Option<TypeLook>>,
 }
 
-/// A type's look: its models, none for a look drawn as nothing, and the angle in degrees a build
-/// preview places it at.
+/// A type's look: its models, none for a look drawn as nothing, the top of the highest of them in
+/// meters, none when the file says no model's, and the angle in degrees a build preview places
+/// it at.
 #[derive(Debug)]
 struct TypeLook {
     models: Vec<LookModel>,
+    top: Option<f32>,
     placement_angle: Num,
 }
 
@@ -37,12 +44,10 @@ pub(crate) struct LookModel {
     pub(crate) scale: f32,
 }
 
-/// What a drawn model needs once its scene is spawned: its package's place, whose material files
-/// its materials take, the names of the nodes its default look hides, and the name of the node
-/// its look turns by its unit's turret angle, if it has one.
+/// What a drawn model needs once its scene is spawned: the names of the nodes its look hides, and
+/// the name of the node its look turns by its unit's turret angle, if it has one.
 #[derive(Component, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ModelParts {
-    pub(crate) package: PackageIndex,
     pub(crate) hide: Arc<[String]>,
     pub(crate) turret: Option<Arc<str>>,
 }
@@ -54,11 +59,13 @@ impl UnitLooks {
             .iter()
             .map(|(_, origin)| {
                 let package = origin.package;
-                data.units_of(package)
+                data.of(package)
+                    .units
                     .units
                     .get(&*origin.name)
                     .map(|unit| TypeLook {
                         models: LookModel::all(package, unit, assets),
+                        top: unit.top().map(ModelTop::get),
                         placement_angle: unit.placement_angle.unwrap_or(Num::ZERO),
                     })
             })
@@ -72,6 +79,12 @@ impl UnitLooks {
         Some(&look.models)
     }
 
+    /// The top in meters of the highest model of `unit_type`'s look, as the import measured it;
+    /// none for a type of no look, or of a look whose file gives no model's.
+    pub(crate) fn top(&self, unit_type: UnitType) -> Option<f32> {
+        self.looks.get(unit_type.index())?.as_ref()?.top
+    }
+
     /// The angle in degrees a build preview places `unit_type` at: its look's, 0 for a look that
     /// gives none or a type of no look.
     pub(crate) fn placement_angle(&self, unit_type: UnitType) -> Num {
@@ -81,17 +94,33 @@ impl UnitLooks {
 }
 
 impl LookModel {
-    /// The models of `look`, a look of the package at `package`, each loading.
+    /// What a drawing's child of this model holds: its scene, its parts, its scale and `paint`.
+    pub(crate) fn bundle(&self, paint: Paint) -> impl Bundle {
+        (
+            WorldAssetRoot(self.scene.clone()),
+            self.parts.clone(),
+            Transform::from_scale(Vec3::splat(self.scale)),
+            paint,
+        )
+    }
+
+    /// The models of `look`, a look of the package at `package`, each loading, its meshes kept
+    /// on the GPU alone: the client reads no mesh's vertices, as the import measures each look's
+    /// top (02-engine-core.md, The import measures a look's height).
     pub(crate) fn all(package: PackageIndex, look: &ClientUnit, assets: &AssetServer) -> Vec<Self> {
         look.models
             .iter()
             .map(|model| Self {
-                scene: assets.load(
-                    GltfAssetLabel::Scene(0)
-                        .from_asset(PackageSource::asset_path(package, &model.model)),
-                ),
+                scene: assets
+                    .load_builder()
+                    .with_settings(|settings: &mut GltfLoaderSettings| {
+                        settings.load_meshes = RenderAssetUsages::RENDER_WORLD;
+                    })
+                    .load(
+                        GltfAssetLabel::Scene(0)
+                            .from_asset(PackageSource::asset_path(package, &model.model)),
+                    ),
                 parts: ModelParts {
-                    package,
                     hide: model.hide.as_slice().into(),
                     turret: look.turret.as_deref().map(Arc::from),
                 },
@@ -106,8 +135,9 @@ mod tests {
     use bevy::app::{App, TaskPoolPlugin};
     use bevy::asset::{AssetApp, AssetPlugin};
     use campfire_client_files::{ClientModel, ClientUnits, ModelScale};
+    use campfire_common::DeclaredName;
     use campfire_units::TypeOrigin;
-    use campfire_values::{DeclaredName, PackagePath};
+    use campfire_values::PackagePath;
 
     use super::*;
 
@@ -120,6 +150,11 @@ mod tests {
             model: PackagePath::parse(path).unwrap(),
             scale: ModelScale::ONE,
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
+            top: None,
+        };
+        let tall = |path: &str, top: f32| ClientModel {
+            top: ModelTop::new(top),
+            ..model(path, &[])
         };
         let units = |entries: Vec<(&str, Vec<ClientModel>)>| ClientUnits {
             units: entries
@@ -128,25 +163,27 @@ mod tests {
                 .collect(),
             ..ClientUnits::default()
         };
-        let mut data = ClientData {
-            units: vec![
-                units(vec![
-                    (
-                        "tank",
-                        vec![
-                            model("client/models/tank.glb", &["tank.flash"]),
-                            model("client/models/tread.glb", &[]),
-                        ],
-                    ),
-                    ("sound", Vec::new()),
-                ]),
-                units(vec![("tank", vec![model("client/models/other.glb", &[])])]),
-            ],
-            ..ClientData::default()
-        };
+        let mut data = ClientData::of_looks([
+            units(vec![
+                (
+                    "tank",
+                    vec![
+                        model("client/models/tank.glb", &["tank.flash"]),
+                        tall("client/models/tread.glb", 1.5),
+                    ],
+                ),
+                ("sound", Vec::new()),
+            ]),
+            units(vec![("tank", vec![model("client/models/other.glb", &[])])]),
+        ]);
         // The mode's tank is placed turned −135°.
         let tank = DeclaredName::new("tank").unwrap();
-        data.units[0].units.get_mut(&tank).unwrap().placement_angle = Some(Num::int(-135));
+        data.packages[0]
+            .units
+            .units
+            .get_mut(&tank)
+            .unwrap()
+            .placement_angle = Some(Num::int(-135));
         // The mode's tank, package 1's tank, a type no package's units name, and the mode's
         // sound, of a look of no models.
         let origin = |package, name: &str| TypeOrigin {
@@ -178,8 +215,7 @@ mod tests {
             .collect::<Vec<_>>()
             .try_into()
             .unwrap();
-        let parts = |package: PackageIndex, hide: &[&str]| ModelParts {
-            package,
+        let parts = |hide: &[&str]| ModelParts {
             hide: hide.iter().map(|&name| name.to_owned()).collect(),
             turret: None,
         };
@@ -188,11 +224,11 @@ mod tests {
             [
                 (
                     "package://0/client/models/tank.glb#Scene0".to_owned(),
-                    parts(PackageIndex::MODE, &["tank.flash"])
+                    parts(&["tank.flash"])
                 ),
                 (
                     "package://0/client/models/tread.glb#Scene0".to_owned(),
-                    parts(PackageIndex::MODE, &[])
+                    parts(&[])
                 ),
             ]
         );
@@ -200,7 +236,7 @@ mod tests {
             paths(types[1]).unwrap(),
             [(
                 "package://1/client/models/other.glb#Scene0".to_owned(),
-                parts(PackageIndex::new(1), &[])
+                parts(&[])
             )]
         );
         assert_eq!(paths(types[2]), None);
@@ -208,5 +244,9 @@ mod tests {
         // The tank's angle; 0 for package 1's tank, which gives none, and for the type of no look.
         let angles = types.map(|unit_type| looks.placement_angle(unit_type));
         assert_eq!(angles, [-135, 0, 0, 0].map(Num::int));
+        // The mode's tank's top, its tread's 1.5 m, of a hull whose file gives none; none for
+        // package 1's tank, whose file gives none, the type of no look, and the look of no models.
+        let tops = types.map(|unit_type| looks.top(unit_type));
+        assert_eq!(tops, [Some(1.5), None, None, None]);
     }
 }

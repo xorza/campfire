@@ -1,19 +1,13 @@
 use std::path::Path;
 
-use campfire_actions::ActionTarget;
 use campfire_capabilities::Action;
 use campfire_codec::Toml;
-use campfire_common::Tick;
-use campfire_math::Num;
+use campfire_common::{DeclaredName, Tick};
 use campfire_mode::{InputValue, ModeInput};
-use campfire_orders::OrdersAction;
-use campfire_production::BuildTarget;
-use campfire_progression::ProgressionAction;
-use campfire_sim::StableId;
 use campfire_store::InputFile;
-use campfire_values::DeclaredName;
 use serde::Deserialize;
 
+use crate::named::Named;
 use crate::order_script::error::{OrderScriptError, OrderScriptReadError};
 
 pub(crate) mod error;
@@ -21,13 +15,12 @@ pub(crate) mod error;
 /// A player's orders for their units and their mode inputs, each at a sim tick, in tick order,
 /// and optionally the tick the player leaves after: what a bot plays. It reads from TOML: an
 /// optional `end`; one `[[order]]` table each, with its `tick`, optionally `units = "<type>"`,
-/// the player's living units of that unit type as the order is due, its avatar without, and one
-/// action: `move = [x, z]` in meters, `attack = <unit>`, `cast = <slot>`, with `target = <unit>`
-/// when the action takes one, `build = { slot, x, z, angle }`, a building placed at `x`, `z` in
-/// meters and `angle` degrees, or `learn = <slot>`; and one `[[input]]` table each, with its
-/// `tick`, the mode input's `name` and its `value`, a string or a list of strings, as the mode
-/// declares the input. A unit is its stable id, which a mode that spawns in a fixed order gives
-/// each match alike.
+/// the player's living units of that unit type as the order is due, its avatar without, and its
+/// `action`, an `Action` as serde reads it with names, such as
+/// `action.orders.slot = { slot = "<action>", target.unit = "enemies:avatar" }`; and one
+/// `[[input]]` table each, with its `tick`, the mode input's `name` and its `value`, a string or
+/// a list of strings, as the mode declares the input (04-capabilities/control.md, A bot's script
+/// names what it orders).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderScript {
     orders: Vec<ScriptedOrder>,
@@ -52,12 +45,13 @@ pub enum ScriptedValue {
     List(Vec<String>),
 }
 
-/// One order of a script: the sim tick it is sent in, the units it commands, and what they do.
+/// One order of a script: the sim tick it is sent in, the units it commands, and what they do,
+/// by names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScriptedOrder {
     pub tick: Tick,
     pub units: ScriptedUnits,
-    pub action: Action,
+    pub action: Action<Named>,
 }
 
 /// The units of its player an order commands.
@@ -104,10 +98,9 @@ impl OrderScript {
         })
     }
 
-    /// The script `text` holds; an error when it is not TOML of this shape, when an order names
-    /// no action or two, or a target without a cast, when a coordinate is past what a sim number
-    /// holds, when the ticks of its orders or of its inputs do not grow, or when the script ends
-    /// before an order or an input.
+    /// The script `text` holds; an error when it is not TOML of this shape, when a coordinate is
+    /// past what a sim number holds, when the ticks of its orders or of its inputs do not grow, or
+    /// when the script ends before an order or an input.
     pub fn parse(text: &str) -> Result<Self, OrderScriptError> {
         #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
@@ -130,79 +123,23 @@ impl OrderScript {
         struct Entry {
             tick: u64,
             units: Option<DeclaredName>,
-            #[serde(rename = "move")]
-            to: Option<[Num; 2]>,
-            attack: Option<StableId>,
-            cast: Option<u8>,
-            target: Option<StableId>,
-            build: Option<BuildEntry>,
-            learn: Option<u8>,
-        }
-        #[derive(Debug, Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct BuildEntry {
-            slot: u8,
-            x: Num,
-            z: Num,
-            angle: Num,
+            action: Action<Named>,
         }
         let file: File = Toml::parse(text).map_err(OrderScriptError::Toml)?;
-        let mut orders = Vec::with_capacity(file.order.len());
+        let mut orders: Vec<ScriptedOrder> = Vec::with_capacity(file.order.len());
         for Entry {
             tick,
             units,
-            to,
-            attack,
-            cast,
-            target,
-            build,
-            learn,
+            action,
         } in file.order
         {
-            let named = [
-                to.is_some(),
-                attack.is_some(),
-                cast.is_some(),
-                build.is_some(),
-                learn.is_some(),
-            ];
-            match named.into_iter().filter(|&named| named).count() {
-                0 => return Err(OrderScriptError::NoAction { tick }),
-                1 => {}
-                _ => return Err(OrderScriptError::ManyActions { tick }),
-            }
-            if target.is_some() && cast.is_none() {
-                return Err(OrderScriptError::StrayTarget { tick });
-            }
-            let action = if let Some([x, z]) = to {
-                Action::Orders(OrdersAction::Move { x, z })
-            } else if let Some(target) = attack {
-                Action::Orders(OrdersAction::Attack { target })
-            } else if let Some(slot) = cast {
-                Action::Orders(OrdersAction::Slot {
-                    slot,
-                    target: target.map_or(ActionTarget::None, ActionTarget::Unit),
-                })
-            } else if let Some(BuildEntry { slot, x, z, angle }) = build {
-                Action::Orders(OrdersAction::Build {
-                    slot,
-                    target: BuildTarget::Point { x, z, angle },
-                })
-            } else {
-                let slot = learn.expect("an order names one action");
-                Action::Progression(ProgressionAction::Learn { slot })
-            };
-            let units = units.map_or(ScriptedUnits::Avatar, ScriptedUnits::Typed);
             let tick = Tick::new(tick);
-            if orders
-                .last()
-                .is_some_and(|last: &ScriptedOrder| last.tick > tick)
-            {
+            if orders.last().is_some_and(|last| last.tick > tick) {
                 return Err(OrderScriptError::Unordered { tick: tick.get() });
             }
             orders.push(ScriptedOrder {
                 tick,
-                units,
+                units: units.map_or(ScriptedUnits::Avatar, ScriptedUnits::Typed),
                 action,
             });
         }

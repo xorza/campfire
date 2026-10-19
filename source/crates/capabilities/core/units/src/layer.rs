@@ -1,4 +1,4 @@
-use campfire_values::NameId;
+use campfire_values::{Article, NameId, NameKind, NameScope, Named};
 use serde::{Deserialize, Serialize};
 
 /// A layer bodies move on: its index in the mode's `[navigation] layers`, the first the default.
@@ -33,4 +33,8 @@ impl NameId for Layer {
     fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+impl Named for Layer {
+    const NAMES: NameKind = NameKind::new("layer", Article::A, NameScope::Match);
 }

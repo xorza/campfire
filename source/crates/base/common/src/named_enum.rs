@@ -15,17 +15,8 @@ pub trait NamedEnum: Copy + Eq + 'static {
     /// Each member's name, in the order of `ALL`.
     const NAMES: &'static [&'static str];
 
-    /// The member's place in `ALL`.
-    fn index(self) -> usize {
-        const {
-            assert!(
-                Self::ALL.len() == Self::NAMES.len(),
-                "a name for each member"
-            );
-        };
-        let at = Self::ALL.iter().position(|&member| member == self);
-        at.expect("`ALL` holds every member")
-    }
+    /// The member's place in `ALL`, its discriminant, as the derive gives it.
+    fn index(self) -> usize;
 
     /// The member at `index` in `ALL`.
     fn at(index: usize) -> Option<Self> {
@@ -122,7 +113,7 @@ mod tests {
 
     use crate::named_enum::NamedEnum;
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll, NamedEnum)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, NamedEnum)]
     enum Side {
         North,
         South,

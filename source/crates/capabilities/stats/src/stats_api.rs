@@ -1,21 +1,18 @@
-use campfire_common::{PlayerSlot, Ticks};
+use campfire_common::PlayerSlot;
 use campfire_script::{
-    ApiBuilder, ApiOwner, ApiVersion, Applies, Checked, Ctx, DataTable, Hook, MemberSpec,
-    ScriptTicks, Status, Unit,
+    ApiBuilder, ApiOwner, ApiVersion, Applies, Checked, Ctx, MemberSpec, ScriptValue, Status, Unit,
 };
+use campfire_units::{Meter, PoolId, StatId};
 use campfire_values::{ModifierId, Rank, TagProperty};
 
-use crate::meter::Meter;
 use crate::modifier_data::{AuraData, ModifierData};
 use crate::modifier_handle::ModifierHandle;
-use crate::pool_id::PoolId;
-use crate::stat_id::StatId;
 use crate::stats_call::StatsCall;
-use crate::stats_column::StatsColumn;
+use crate::stats_column::{Carried, CarriedPick, StatsColumn};
 use crate::stats_effect::StatsEffect;
 
-/// The script API of `stats`: `ctx.add_modifier`, `ctx.remove`, the `Modifier` handle, and the
-/// planned crowd control.
+/// The script API of `stats` beside its effects' calls: `ctx.add_player_modifier`, `ctx.remove`,
+/// the `Modifier` handle, and the planned crowd control.
 #[derive(Debug)]
 pub struct StatsApi;
 
@@ -23,14 +20,15 @@ impl StatsApi {
     /// What a unit's stats give it: its level, its stats, its pools and the modifiers it
     /// carries.
     fn register_unit(api: &mut ApiBuilder<'_>) {
-        let field = |name, description| MemberSpec::field(ApiOwner::Unit, name, description);
+        let field =
+            |name, description| MemberSpec::field(ApiOwner::of::<Unit>(), name, description);
         let method = |name, signature, description| {
-            MemberSpec::method(ApiOwner::Unit, name, signature, description)
+            MemberSpec::method(ApiOwner::of::<Unit>(), name, signature, description)
         };
         api.bind(
             field("level", "its level"),
             |unit: &mut Unit| -> Checked<i64> {
-                let level = StatsColumn::level(unit.view(), unit.row_index())?;
+                let level = StatsColumn::level(unit.view(), unit.row_index()?)?;
                 Ok(i64::from(level))
             },
         )
@@ -40,7 +38,7 @@ impl StatsApi {
                 &[&["name"]],
                 "its value of a stat the mode declares",
             ),
-            |unit: Unit, stat: StatId| StatsColumn::stat(unit.view(), unit.row_index(), stat),
+            |unit: Unit, stat: StatId| StatsColumn::stat(unit.view(), unit.row_index()?, stat),
         )
         .method(
             method(
@@ -49,13 +47,13 @@ impl StatsApi {
                 "the current amount of its pool `name`",
             ),
             |unit: Unit, pool: PoolId| {
-                StatsColumn::pool(unit.view(), unit.row_index(), pool, Meter::current)
+                StatsColumn::pool(unit.view(), unit.row_index()?, pool, Meter::current)
             },
         )
         .method(
             method("pool_max", &[&["name"]], "the maximum of its pool `name`"),
             |unit: Unit, pool: PoolId| {
-                StatsColumn::pool(unit.view(), unit.row_index(), pool, Meter::max)
+                StatsColumn::pool(unit.view(), unit.row_index()?, pool, Meter::max)
             },
         )
         .method(
@@ -65,33 +63,44 @@ impl StatsApi {
                 "whether it carries the modifier of the script's package",
             ),
             |unit: Unit, id: ModifierId| {
-                StatsColumn::has_modifier(unit.view(), unit.row_index(), id)
+                StatsColumn::has_modifier(unit.view(), unit.row_index()?, id)
             },
         );
+        let modifier = method(
+            "modifier",
+            &[&["id"], &["id", "source"]],
+            "its instance of the modifier `id` of the script's package, to read or remove: the one from `source`, or the first, from no source before any, then by source; `()` with none",
+        );
+        api.method(modifier, |ctx: &Ctx, unit: Unit, id: ModifierId| {
+            Self::modifier(ctx, &unit, id, CarriedPick::First)
+        })
+        .method(
+            modifier,
+            |ctx: &Ctx, unit: Unit, id: ModifierId, source: Unit| {
+                Self::modifier(ctx, &unit, id, CarriedPick::From(source.id))
+            },
+        );
+    }
+
+    /// `unit.modifier`: the handle of `unit`'s instance of `id` that `pick` picks, or `()`.
+    fn modifier(ctx: &Ctx, unit: &Unit, id: ModifierId, pick: CarriedPick) -> Checked<ScriptValue> {
+        let carried = Carried {
+            carrier: unit.id,
+            row: unit.row_index()?,
+            id,
+            pick,
+        };
+        let mut frame = ctx.frame();
+        let call = StatsCall::of_mut(&mut frame);
+        let handle = StatsColumn::carried_handle(ctx.view(), call, carried)?;
+        Ok(handle.map_or(ScriptValue::UNIT, ScriptValue::of))
     }
 
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         ModifierHandle::register(api);
         Self::register_unit(api);
         let call = |name, signature, description| MemberSpec::call(name, signature, description);
-        let add = call(
-            "add_modifier",
-            &[&["unit", "id"], &["unit", "id", "duration_ms"]],
-            "applies the modifier `id` of the script's package to `unit` from the acting unit, with \
-             the call's action at its rank, which gives each param the modifier reads and does not \
-             declare, and returns its handle",
-        )
-        .applies(Applies::WithAction);
-        api.call(add, |ctx: &mut Ctx, target: Unit, id: ModifierId| {
-            Self::add_modifier(ctx, &target, id, None)
-        })
-        .call(
-            add,
-            |ctx: &mut Ctx, target: Unit, id: ModifierId, ms: ScriptTicks| {
-                Self::add_modifier(ctx, &target, id, Some(ms.get()))
-            },
-        )
-        .call(
+        api.call(
             call(
                 "add_player_modifier",
                 &[&["player", "id"]],
@@ -106,40 +115,25 @@ impl StatsApi {
         )
         .call(
             call(
-                "remove",
-                &[&["handle"]],
-                "ends the modifier, projectile or area at once",
+                "remove_player_modifier",
+                &[&["player", "id"]],
+                "takes the modifier `id` of the script's package from `player`, and so from each \
+                 unit it owns, if it holds it",
+            ),
+            |ctx: &mut Ctx, player: PlayerSlot, id: ModifierId| {
+                ctx.queue(StatsEffect::RemovePlayer { player, id })
+            },
+        )
+        .call(
+            call(
+                "remove_modifier",
+                &[&["m"]],
+                "ends the modifier of `m` at once",
             ),
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(StatsEffect::removing(&handle)),
-        )
-        .plan(call(
-            "purge",
-            &[&["unit", "tag"]],
-            "ends every modifier on `unit` that grants `tag`",
-        ));
-        api.hook(Hook::OnInterval, Status::Runs(ApiVersion::FIRST))
-            .tag_property(TagProperty::Immune, Status::Runs(ApiVersion::FIRST));
-        api.data::<ModifierData>(
-            &[
-                "script",
-                "duration_ms",
-                "interval_ms",
-                "stacks_expire_ms",
-                "reapply",
-                "max_stacks",
-                "stats",
-                "shield",
-                "aura",
-                "affects",
-                "params",
-                "state",
-                "tags",
-            ],
-            &[],
-        )
-        .data::<AuraData>(&["radius", "affects", "modifier"], &[])
-        .shared_data(DataTable::Mode, &["stats"], &[])
-        .shared_data(DataTable::UnitType, &["stats", "pools", "passive"], &[]);
+        );
+        api.tag_property(TagProperty::Immune, Status::Runs(ApiVersion::FIRST));
+        api.data::<ModifierData>(&[]).data::<AuraData>(&[]);
     }
 
     /// Queues modifier `id` of the call's package for `player`, one of the session's; an error
@@ -153,27 +147,5 @@ impl StatsApi {
             Rank::FIRST,
         )?;
         ctx.queue(StatsEffect::AddPlayer { player, id })
-    }
-
-    /// Queues modifier `id` of the call's package on `target`, from the acting unit, for
-    /// `duration` when given, and gives its handle; an error when the call's action at its rank
-    /// does not give a param `id` reads.
-    fn add_modifier(
-        ctx: &Ctx,
-        target: &Unit,
-        id: ModifierId,
-        duration: Option<Ticks>,
-    ) -> Checked<ModifierHandle> {
-        let mut frame = ctx.write()?;
-        let (source, action, rank) = (frame.acting(), frame.action(), frame.rank());
-        let call = StatsCall::of_mut(&mut frame);
-        StatsColumn::check_way(ctx.view(), call, id, action, rank)?;
-        let handle = StatsColumn::applied_handle(ctx.view(), call, target.id, id, source);
-        frame.queue(StatsEffect::Add {
-            target: target.id,
-            id,
-            duration,
-        });
-        Ok(handle)
     }
 }

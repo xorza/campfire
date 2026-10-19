@@ -1,12 +1,13 @@
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_sim::{IdAllocator, StableId};
-use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank};
+use campfire_values::{ActionId, ActionStart, DashDelivery, Hit, PackageIndex, Rank, Scalar};
 
 use crate::scripts::call_part::{CallParams, CallPart, CallParts, Commit};
 use crate::scripts::call_start::{CallStart, Purity};
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::frame::effects::{Effect, Effects};
+use crate::scripts::pool::Pool;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
 use crate::scripts::script_value::ScriptValue;
@@ -42,6 +43,11 @@ impl Frame {
 
     pub fn role(&self) -> Option<ScriptRole> {
         self.call.map(|call| call.role)
+    }
+
+    /// The pool the running call draws from, none for a pure call or none running.
+    pub(crate) fn pool(&self) -> Option<Pool> {
+        self.call.as_ref().and_then(Pool::of_call)
     }
 
     pub fn acting(&self) -> Option<StableId> {
@@ -109,10 +115,15 @@ impl Frame {
         self.ids.allocate()
     }
 
+    /// Starts a batch of calls in `world`, every part readied for it.
+    pub(crate) fn begin_batch(&mut self, world: &World) {
+        self.parts.begin_batch(world);
+    }
+
     /// Starts the call `start` in `world`, every part readied for it; a part that fails to ready,
     /// as a param that overflows at the call's rank, fails the call, and so does one at
     /// `ScriptLimits::CHAIN_DEPTH` of a chain of combat events, which the pass must end.
-    pub fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
+    pub(crate) fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
         if start.depth >= ScriptLimits::CHAIN_DEPTH {
             return Err(CallError::Api(ApiError::ChainTooDeep));
         }
@@ -166,17 +177,32 @@ impl Frame {
     pub fn param(&self, name: &str) -> Result<ScriptValue, ApiError> {
         self.parts.param(self.running().role.params(), name)
     }
+
+    /// The running call's param at place `at` among its call's, of the part that holds its
+    /// role's scope of params; none when no part holds them, or the call has no param there.
+    pub fn param_at(&self, at: usize) -> Option<Scalar> {
+        self.parts.param_at(self.running().role.params(), at)
+    }
 }
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use bevy_ecs::world::World;
     use campfire_common::Tick;
 
     use crate::scripts::call_start::CallStart;
+    use crate::scripts::error::CallError;
     use crate::scripts::frame::Frame;
     use crate::scripts::script_role::ScriptRole;
 
     impl Frame {
+        /// Starts the call `start` in `world` alone, as a test's probe makes one: in a batch of
+        /// its own, as `Frame::begin` says.
+        pub fn begin_alone(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
+            self.begin_batch(world);
+            self.begin(world, start)
+        }
+
         /// A frame whose mode call runs in tick `now`, as a test applies an effect in: it reads
         /// no world.
         pub fn in_tick(now: Tick) -> Self {

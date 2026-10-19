@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::num::{NonZeroU8, NonZeroU32};
 use std::slice;
 use std::sync::Arc;
@@ -7,8 +7,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
+use campfire_abilities::CastData;
 use campfire_actions::{
-    ActionBook, ActionData, ActionKind, ActionSlots, ActionTarget, Actions, SlotKind, SlotKindBook,
+    ActionBook, ActionData, ActionSlots, ActionTarget, Actions, SlotKind, SlotKindBook,
     SlotKindData, SlotKinds, SlotRanks, Targeting, UseGroup,
 };
 use campfire_capabilities::internals::*;
@@ -18,46 +19,55 @@ use campfire_combat::{
     CombatBook, Damage, DamageCause, DamagePass, Heal, HealCause, ModeCombatData, OnDeath,
     PassEntry, RecentAttackers, Respawn,
 };
-use campfire_common::{PlayerSlot, Ticks};
-use campfire_declare::{Book, ByType};
+use campfire_common::{DeclaredName, PlayerSlot, Ticks};
+use campfire_declare::internals::BookLoad;
+use campfire_declare::{ByType, Sections};
 use campfire_geometry::{Bounds, Grid, Metric};
 use campfire_items::Inventory;
 use campfire_math::{Num, Vec3};
 use campfire_mode::{
-    InputValue, MapPoint, MarkerData, MatchResult, ModeError, ModeInput, Offer, TeamManifest,
+    InputValue, MarkerData, MatchResult, ModeError, ModeInput, Offer, TeamManifest,
     UnansweredSlotEvents, *,
 };
 use campfire_navigation::{
-    ModeNavigationData, NavigationBook, OnPath, PathEnd, Route, Walker, WalkerKinds,
+    MapNavigationData, MapPathsData, ModeNavigationData, Navigation, NavigationBook, OnPath,
+    PathData, PathEnd, PathWalk, Route, Walker, WalkerKinds,
 };
-use campfire_players::{OutOfPlay, PlayerResources, PlayersWorld};
+use campfire_players::{
+    MatchEntity, OutOfPlay, Player, PlayerResources, PlayersWorld, ResourcesData,
+};
 use campfire_production::{ProductionData, Queued, TrainQueue};
-use campfire_progression::{Experience, Points, Progression, Thresholds, TrackData, TrackSet};
-use campfire_script::internals::FailureKind;
+use campfire_progression::{
+    Experience, ModeTracksData, Points, Progression, Thresholds, TrackData, TrackSet,
+};
+use campfire_script::FailureKind;
+use campfire_script::MatchNames;
 use campfire_script::{
-    ApiError, CallError, NameKind, ParamProblem, Pool, ScriptBudgets, ScriptFailures, ScriptId,
-    ScriptLimits, ScriptRole, StateDecl, StateDefault, StateType, StateValue, SyncTo,
-    SyncedStateDecl, View,
+    ApiError, CallError, ListPlace, ModeScripts, ParamProblem, Pool, ScriptBudgets, ScriptFailures,
+    ScriptId, ScriptLimits, ScriptPools, ScriptRole, StateDecl, StateDefault, StateType,
+    StateValue, SyncTo, SyncedStateDecl,
 };
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, SimComponent, SimResource, SimTick, SlotEvent,
     SlotEventKind, StableId, TickRate,
 };
 use campfire_stats::{
-    Application, Hold, Level, Life, ModifierClocks, ModifierData, Modifiers, NewInstance,
-    PlayerModifiers, PoolBook, PoolId, Pools, Reapply, StatBook, StatRule, StatShare, Stats,
-    TypePassive, UnitStats,
+    Application, Hold, Level, ModePoolsData, ModeStatsData, ModifierClocks, ModifierData,
+    Modifiers, NewInstance, PlayerModifiers, PoolBook, Pools, Reapply, StatBook, StatRule,
+    StatShare, Stats, TypePassive, UnitStats,
 };
 use campfire_units::{
-    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, MatchEntity, MoveStep,
-    Owner, Player, SyncAll, SyncNone, UnitTypeCore, Units, UnitsWorld,
+    Body, BodyForm, Dead, Destination, Facing, HeldPlayerUnits, Layer, Life, MapBook, MapPoint,
+    MetricData, ModeTagsData, MoveStep, Owner, PoolId, SyncAll, SyncNone, UnitTypeCore, Units,
+    UnitsWorld,
 };
 use campfire_values::{
-    ActionId, DamageKind, DeclaredName, EngineEnum, FilterData, MessageId, ModifierId, Names,
-    Number, PackageIndex, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar,
-    Stat, Team, TrackId, TypeScope, UnitTags, UnitType,
+    ActionId, DamageKind, EngineEnum, FilterData, MessageId, ModifierId, Names, Number,
+    PackageIndex, ParamRef, PathId, Rank, Ranked, Relation, Relations, ResourceId, Scalar, Stat,
+    Team, TrackId, TypeScope, UnitTags, UnitType,
 };
 use campfire_visibility::ModeVisibility;
+use campfire_vision::{GridData, VisionBook};
 
 /// 10 ticks a second: 100 ms is a tick.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
@@ -87,12 +97,12 @@ const STATS_3V3: [&str; 9] = [
 const SCRIPT: &str = r#"
 fn on_match_start(ctx) {
     ctx.state.phase = "start";
-    ctx.timer("once", 250, false, 7);
-    ctx.timer("every", 100, true, ());
+    ctx.after("once", 250, 7);
+    ctx.every("every", 100);
     for camp in ctx.map.markers("camp") {
         ctx.spawn_unit(camp.params.unit_type, "neutral", camp.pos);
     }
-    ctx.spawn_group("a", "mid", PathEnd::Start, ctx.p.group);
+    ctx.spawn_group("a", "mid", PathEnd::Start, ctx.params.group);
     ctx.spawn_group("b", "mid", PathEnd::End, ["grunt"]);
 }
 
@@ -104,7 +114,7 @@ fn on_timer(ctx, name, data) {
     }
 }
 
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     ctx.state.inputs += 1;
     if name == "hero" {
         pick(ctx, player, value);
@@ -113,8 +123,8 @@ fn on_mode_input(ctx, player, name, value) {
     } else if name == "rich" {
         ctx.add_resource(player, value, 9223372036854775807);
     } else if name == "gold" {
-        ctx.add_resource(player, value, ctx.p.gold);
-        ctx.add_resource(player, value, ctx.p.bounty);
+        ctx.add_resource(player, value, ctx.params.gold);
+        ctx.add_resource(player, value, ctx.params.bounty);
     } else if name == "fail" {
         ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
         throw value;
@@ -125,16 +135,16 @@ fn on_mode_input(ctx, player, name, value) {
     } else if name == "markers" {
         ctx.map.markers(value);
     } else if name == "probe" {
-        let grunts = ctx.units_tagged("grunt");
-        ctx.state.enemy = ctx.enemy_team("a");
-        ctx.state.grunts = grunts.len();
+        let grunts = ctx.all_units_tagged("grunt");
+        ctx.state.enemy = ctx.enemies("a")[0];
+        ctx.state.grunts = grunts.len() * 10 + ctx.units_tagged("grunt").len();
         ctx.state.heroes = ctx.avatars("b").len();
         ctx.state.teams = ctx.teams.len();
-        ctx.state.players = ctx.players;
+        ctx.state.players = ctx.players.len();
         ctx.state.path = grunts[1].path;
         ctx.state.team = grunts[1].team;
         ctx.state.neutral = grunts[0].team;
-        ctx.state.owner = ctx.avatars()[0].owner;
+        ctx.state.owner = ctx.avatars()[0].owner.slot;
         ctx.state.tower_path = ctx.units_tagged("tower")[0].path;
         ctx.state.kind = grunts[1].unit_type;
     }
@@ -146,7 +156,7 @@ fn on_mode_input(ctx, player, name, value) {
 const PICK: &str = r#"
 fn pick(ctx, player, hero) {
     ctx.choose(player, "hero", hero);
-    let team = ctx.team_of(player);
+    let team = player.team;
     for marker in ctx.map.markers("spawn") {
         if marker.team == team {
             let id = ctx.spawn_unit(hero, team, marker.pos, player);
@@ -156,24 +166,24 @@ fn pick(ctx, player, hero) {
 }
 "#;
 
-/// `on_mode_input` that picks the hero a `hero` input names, as `PICK` does, and passes any other
-/// input to the script's own `on_input`.
+/// `on_input` that picks the hero a `hero` input names, as `PICK` does, and passes any other
+/// input to the script's own `take_input`.
 const PICKING: &str = r#"
-fn on_mode_input(ctx, player, name, value) {
+fn on_input(ctx, player, name, value) {
     if name == "hero" {
         pick(ctx, player, value);
         return;
     }
-    on_input(ctx, player, name, value);
+    take_input(ctx, player, name, value);
 }
 "#;
 
-/// The MOBA 3v3's `on_unit_died`, `hero_died` and `share_xp` as they were when these tests
+/// The MOBA 3v3's `on_unit_death`, `hero_died` and `share_xp` as they were when these tests
 /// were written.
 const DEATHS_3V3: &str = r#"
-fn on_unit_died(ctx, unit, killer, assisters) {
+fn on_unit_death(ctx, unit, killer, assisters) {
     if unit.has_tag("core") {
-        ctx.end(ctx.enemy_team(unit.team));
+        ctx.win(ctx.enemies(unit.team)[0]);
         return;
     }
     share_xp(ctx, unit);
@@ -185,27 +195,27 @@ fn on_unit_died(ctx, unit, killer, assisters) {
         ctx.add_resource(killer.owner, "gold", unit.params.gold);
     }
     if unit.has_tag("inhibitor") {
-        ctx.respawn(unit, ctx.p.inhibitor_respawn_ms);
+        ctx.respawn(unit, ctx.params.inhibitor_respawn_ms);
     } else if unit.has_tag("objective") {
         if killer != () {
             for hero in ctx.avatars(killer.team) {
                 ctx.add_modifier(hero, "warden_blessing");
             }
         }
-        ctx.respawn(unit, ctx.p.warden_respawn_ms);
+        ctx.respawn(unit, ctx.params.warden_respawn_ms);
     } else if unit.has_tag("camp") {
-        ctx.respawn(unit, ctx.p.camp_respawn_ms);
+        ctx.respawn(unit, ctx.params.camp_respawn_ms);
     }
 }
 
 fn hero_died(ctx, hero, killer, assisters) {
-    ctx.respawn(hero, ctx.p.respawn_base_ms + ctx.p.respawn_per_level_ms * hero.level);
+    ctx.respawn(hero, ctx.params.respawn_base_ms + ctx.params.respawn_per_level_ms * hero.level);
     if killer == () || !killer.is_avatar {
         return;
     }
-    let gold = ctx.p.kill_gold;
+    let gold = ctx.params.kill_gold;
     if !ctx.state.first_blood {
-        gold += ctx.p.first_blood_gold;
+        gold += ctx.params.first_blood_gold;
         ctx.state.first_blood = true;
     }
     ctx.add_resource(killer.owner, "gold", gold);
@@ -217,17 +227,17 @@ fn hero_died(ctx, hero, killer, assisters) {
         }
     }
     for assister in heroes {
-        ctx.add_resource(assister.owner, "gold", ctx.p.assist_gold / heroes.len());
+        ctx.add_resource(assister.owner, "gold", ctx.params.assist_gold / heroes.len());
     }
 }
 
 fn share_xp(ctx, unit) {
-    let heroes = ctx.find(unit, unit.pos, ctx.p.xp_radius, "enemies:avatar");
+    let heroes = ctx.find(unit, unit.pos, ctx.params.xp_radius, "enemies:avatar");
     if heroes.is_empty() {
         return;
     }
     let xp = if unit.is_avatar {
-        ctx.p.hero_xp_base + ctx.p.hero_xp_per_level * unit.level
+        ctx.params.hero_xp_base + ctx.params.hero_xp_per_level * unit.level
     } else {
         unit.params.xp
     };
@@ -277,12 +287,13 @@ fn grunt_data() -> UnitTypeCore {
     }
 }
 
-/// A unit type of the test mode, as its books give it: 10 health, combat that keeps it when it
+/// A unit type of the test mode, as its books give it: 10 health, what becomes of it when it
 /// dies, its step, its body, its tracks, its slots, of its actions and its inventory, and its
 /// passive.
 #[derive(Debug, Clone)]
 struct TestType {
     unit_type: UnitType,
+    on_death: OnDeath,
     step: Option<MoveStep>,
     body: Option<BodyForm>,
     tracks: TrackSet,
@@ -292,10 +303,11 @@ struct TestType {
 }
 
 impl TestType {
-    /// A grunt of `unit_type`: a step of 1 m, no body, track, slot or passive.
+    /// A grunt of `unit_type`: kept when it dies, a step of 1 m, no body, track, slot or passive.
     fn grunt(unit_type: UnitType) -> Self {
         Self {
             unit_type,
+            on_death: OnDeath::Stay,
             step: Some(MoveStep::new(Num::ONE).unwrap()),
             body: None,
             tracks: TrackSet::default(),
@@ -329,7 +341,7 @@ impl TestType {
         for unit in types {
             let unit_type = unit.unit_type;
             lives.set(unit_type, Life::full(Num::int(10)));
-            deaths.set(unit_type, OnDeath::Stay);
+            deaths.set(unit_type, unit.on_death);
             steps.set_some(unit_type, unit.step);
             bodies.set_some(unit_type, unit.body);
             tracks.set_some(unit_type, (!unit.tracks.is_empty()).then_some(unit.tracks));
@@ -363,51 +375,50 @@ fn tracks() -> BTreeMap<DeclaredName, TrackData> {
 
 /// A cast of no target, cost, time or script: the test mode's spell and hero X's ability.
 fn blink_data() -> ActionData {
-    ActionData::cast(Targeting::None)
+    ActionData::of(Targeting::None, CastData::default())
 }
 
 /// Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's
 /// spawn at z = −5 and b's at 5; a's tower 8 m down the path; and a camp of a grunt in the middle.
 fn map() -> MapData {
     let grunt = ("unit_type", ModeParam::Text("grunt".to_owned()));
-    MapData {
-        grid: Some(GridData {
+    let bounds = Bounds::new([Num::int(-10), Num::int(-5)], [Num::int(10), Num::int(6)]).unwrap();
+    let mut map = MapData::planar(bounds)
+        .with(GridData {
             cell: Num::ONE,
             brush: Vec::new(),
-        }),
-        navigation: Some(MapNavigationData {
+        })
+        .with(MapNavigationData {
             cell: Num::ONE,
             walls: Vec::new(),
-        }),
-        paths: vec![PathData {
+        })
+        .with(MapPathsData(vec![PathData {
             name: DeclaredName::new("mid").unwrap(),
             points: [-10, 0, 10].map(|x| MapPoint::ground(x, 0)).into(),
-        }],
-        units: vec![PlacedUnitData {
-            path: Some(DeclaredName::new("mid").unwrap()),
-            ..PlacedUnitData::new("tower", "a", MapPoint::ground(-8, 0))
-        }],
-        markers: vec![
-            marker("a_spawn", "spawn", (0, -5), Some("a"), &[]),
-            marker("b_spawn", "spawn", (0, 5), Some("b"), &[]),
-            marker("camp", "camp", (0, 0), None, slice::from_ref(&grunt)),
-        ],
-        ..MapData::planar(
-            Bounds::new([Num::int(-10), Num::int(-5)], [Num::int(10), Num::int(6)]).unwrap(),
-        )
-    }
+            walk: PathWalk::Once,
+        }]));
+    map.units = vec![PlacedUnitData {
+        path: Some(DeclaredName::new("mid").unwrap()),
+        ..PlacedUnitData::new("tower", "a", MapPoint::ground(-8, 0))
+    }];
+    map.markers = vec![
+        marker("a_spawn", "spawn", (0, -5), Some("a"), &[]),
+        marker("b_spawn", "spawn", (0, 5), Some("b"), &[]),
+        marker("camp", "camp", (0, 0), None, slice::from_ref(&grunt)),
+    ];
+    map
 }
 
 /// `map` made spatial, each point up at `y`.
-fn raised(mut map: MapData, y: i64) -> MapData {
+fn raised(map: MapData, y: i64) -> MapData {
     let raise = |point: &mut MapPoint| {
         let MapPoint::Ground([x, z]) = *point else {
             panic!("the test map's points are on the ground");
         };
         *point = MapPoint::Space([x, Num::int(y), z]);
     };
-    map.metric = Metric::Spatial;
-    for path in &mut map.paths {
+    let mut map = map.with(MetricData(Metric::Spatial));
+    for path in &mut map.section_mut::<MapPathsData>().unwrap().0 {
         path.points.iter_mut().for_each(raise);
     }
     for unit in &mut map.units {
@@ -553,19 +564,6 @@ fn mode_files() -> ModeFiles {
         data: ModeData {
             name: MessageId::new("mode").unwrap(),
             teams: BTreeMap::new(),
-            combat: ModeCombatData {
-                damage_kinds: DAMAGE_KINDS
-                    .map(|kind| DeclaredName::new(kind).unwrap())
-                    .into(),
-                ..ModeCombatData::default()
-            },
-            navigation: ModeNavigationData {
-                layers: ["ground", "air"]
-                    .map(|name| DeclaredName::new(name).unwrap())
-                    .into(),
-                spawn_tags: Vec::new(),
-            },
-            slots: slot_kinds(),
             choices: choices(),
             inputs: [
                 ("hero", InputType::String),
@@ -580,8 +578,22 @@ fn mode_files() -> ModeFiles {
             ]
             .map(|(name, kind)| (DeclaredName::new(name).unwrap(), kind))
             .into(),
+            timers: ["a", "b", "each", "every", "late", "later", "once"]
+                .map(|name| DeclaredName::new(name).unwrap())
+                .into(),
+            marker_params: BTreeSet::new(),
             state_version: None,
             state: mode_state(),
+            player_state: [
+                ("kills = { type = \"int\", sync = \"owner\" }"),
+                ("note = { type = \"string\" }"),
+                ("title = { type = \"enum\", values = [\"rookie\", \"veteran\"], sync = \"all\" }"),
+            ]
+            .into_iter()
+            .flat_map(|field| {
+                Toml::parse::<BTreeMap<DeclaredName, SyncedStateDecl>>(field).unwrap()
+            })
+            .collect(),
             params: [
                 ("group", ModeParam::List(vec![text("grunt"), text("grunt")])),
                 ("gold", ModeParam::Value(Scalar::Int(8))),
@@ -594,24 +606,39 @@ fn mode_files() -> ModeFiles {
             .map(|(name, param)| (DeclaredName::new(name).unwrap(), param))
             .into(),
             options,
-            stats: STATS_3V3
-                .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
-                .into(),
-            pools: BTreeMap::new(),
-            resources: RESOURCES
-                .map(|name| DeclaredName::new(name).unwrap())
-                .into(),
             relations: vec![RelationData {
                 teams: ["a", "neutral"].map(|name| DeclaredName::new(name).unwrap()),
                 relation: Relation::Neutral,
                 vision: true,
             }],
-            tags: BTreeMap::new(),
-            tracks: tracks(),
             players: PlayersData::default(),
             saves: SavesData::default(),
-            supply: None,
             visibility: ModeVisibility::default(),
+            sections: Sections::default()
+                .with(ModeCombatData {
+                    damage_kinds: DAMAGE_KINDS
+                        .map(|kind| DeclaredName::new(kind).unwrap())
+                        .into(),
+                    ..ModeCombatData::default()
+                })
+                .with(ModeNavigationData {
+                    layers: ["ground", "air"]
+                        .map(|name| DeclaredName::new(name).unwrap())
+                        .into(),
+                    spawn_tags: Vec::new(),
+                })
+                .with(slot_kinds())
+                .with(ModeStatsData(
+                    STATS_3V3
+                        .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
+                        .into(),
+                ))
+                .with(ResourcesData(
+                    RESOURCES
+                        .map(|name| DeclaredName::new(name).unwrap())
+                        .into(),
+                ))
+                .with(ModeTracksData(tracks())),
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),
@@ -639,7 +666,8 @@ fn mode_files() -> ModeFiles {
 
 /// The test mode's unit types: its grunt, tower, two heroes' and crate's, the heroes on both
 /// tracks, hero X with one ability, `strike`, and hero Y with the passive `blessing`, the tower a
-/// circle of 1 m on the second layer and the crate a box of 2 by 2 m, neither of which walks.
+/// circle of 1 m on the second layer that despawns when it dies and the crate a box of 2 by 2 m,
+/// neither of which walks.
 fn test_types(types: [UnitType; 5], strike: ActionId, blessing: ModifierId) -> Vec<TestType> {
     let [grunt, tower, x, y, crate_type] = types.map(TestType::grunt);
     let hero = |grunt: TestType| TestType {
@@ -657,6 +685,7 @@ fn test_types(types: [UnitType; 5], strike: ActionId, blessing: ModifierId) -> V
             ..hero(y)
         },
         TestType {
+            on_death: OnDeath::Despawn,
             step: None,
             body: BodyForm::circle(Num::int(1)).map(|form| form.on(Layer::new(1))),
             ..tower
@@ -669,25 +698,23 @@ fn test_types(types: [UnitType; 5], strike: ActionId, blessing: ModifierId) -> V
     ]
 }
 
-/// The test mode's setup from `files`, of `script`, of the unit `types`, with its one spell.
-fn setup<'a>(
-    files: &'a ModeFiles,
-    script: ScriptId,
-    types: &[TestType],
-    spell: LoadoutSetup,
-) -> ModeSetup<'a> {
-    let unit_types = types.iter().map(|unit| unit.unit_type);
+/// The test mode's setup from `files`, of `scripts`.
+fn setup(files: &ModeFiles, scripts: ModeScripts) -> ModeSetup<'_> {
     ModeSetup {
-        script,
+        scripts,
         data: &files.data,
         picks: &files.picks,
         teams: &files.teams,
         players: 3,
-        units: ModeUnits {
-            unit_types: unit_types.collect(),
-            avatars: Names::from(["hero-x", "hero-y"]),
-            loadout: spell,
-        },
+    }
+}
+
+/// The test mode's units: the unit `types`, its two heroes, and its one spell.
+fn mode_units(types: &[TestType], spell: LoadoutSetup) -> ModeUnits {
+    ModeUnits {
+        unit_types: types.iter().map(|unit| unit.unit_type).collect(),
+        avatars: Names::from(["hero-x", "hero-y"]),
+        loadout: spell,
     }
 }
 
@@ -696,7 +723,7 @@ fn mode_match(script: &str, limits: ScriptLimits) -> Match {
     start_match(script, limits, &mode_files()).unwrap()
 }
 
-/// A match of `script`, whose `on_input` takes every mode input but a pick of a hero.
+/// A match of `script`, whose `take_input` takes every mode input but a pick of a hero.
 fn picking_match(script: &str, limits: ScriptLimits) -> Match {
     mode_match(&format!("{script}{PICKING}"), limits)
 }
@@ -718,53 +745,63 @@ fn load_mode_books(game: &mut Match, files: &ModeFiles, types: &[TestType]) -> M
     }
     // The mode's books, each loaded as the install loads it.
     let data = &files.data;
-    let mode_names = ModeNames::of(data).unwrap();
-    let resolved = {
-        let view = game.non_send::<View>();
-        let relations = &data.relations;
-        let unit_type = |name: &str| view.names().named((TypeScope::Mode, name));
-        let layers = &mode_names.layers;
+    let pool_data = data.section_or_default::<ModePoolsData>();
+    let pool_names: Arc<Names<PoolId>> =
+        Arc::new(pool_data.0.keys().map(DeclaredName::as_str).collect());
+    let navigation_data = data.section_or_default::<ModeNavigationData>();
+    let layers: Names<Layer> = navigation_data
+        .layers
+        .iter()
+        .map(DeclaredName::as_str)
+        .collect();
+    let sections = files.map.sections();
+    let ground = MapBook::of(sections, None).unwrap();
+    let navigation = NavigationBook::of(&ground, sections).unwrap();
+    let walls = Navigation::walls_of(&ground, sections, Some(&layers)).unwrap();
+    let vision = VisionBook::of(&ground, sections, files.teams.len()).unwrap();
+    let map = {
+        let names = game.resource::<MatchNames>();
+        let unit_type = |name: &str| names.named((TypeScope::Mode, name));
         let input = MapInput {
             map: &files.map,
-            heights: None,
-            teams: &files.teams,
-            relations,
-            layers,
+            relations: &data.relations,
+            teams: ModeMap::team_names(&files.teams).unwrap(),
+            paths: Some(&navigation.paths),
         };
-        ModeMap::resolve(input, unit_type).unwrap()
+        ModeMap::of(input, unit_type).unwrap()
     };
-    let stats = StatBook::new(&data.stats, Num::int(10));
+    let stats = StatBook::new(&data.section_or_default::<ModeStatsData>().0, Num::int(10));
     let stat = |stat: &Stat| stats.named(stat).ok_or_else(|| stat.clone());
     // The test mode names no life pool: the one the test match binds stays.
-    let life = data.combat.life_pool(&mode_names.pools).unwrap();
+    let combat_data = data.section_or_default::<ModeCombatData>();
+    let life = combat_data.life_pool(&pool_names).unwrap();
     let life = life.or_else(|| game.resource::<PoolBook>().life());
-    let pools = Arc::clone(&mode_names.pools);
-    let pools = PoolBook::new(&data.pools, pools, life, |_, held| stat(held)).unwrap();
-    let combat = CombatBook::new(&data.combat, RATE, stat).unwrap();
+    let pools = PoolBook::new(&pool_data.0, pool_names, life, |_, held| stat(held)).unwrap();
+    let combat = CombatBook::new(&combat_data, RATE, stat).unwrap();
     Units::change_types(game, |_, unit_types| {
         let bodies = types.iter().map(|unit| (unit.unit_type, unit.body));
-        unit_types.tag_layers(&mode_names.layers, bodies);
+        unit_types.tag_layers(&layers, bodies);
     });
-    Units::seal_types(game, &data.tags);
+    Units::seal_types(game, &data.section_or_default::<ModeTagsData>().0);
     stats.load_into(game);
     pools.load_into(game);
     TestType::load(game, types);
-    SlotKindBook(Arc::new(data.slots.clone())).load_into(game);
+    SlotKindBook(Arc::new(
+        data.section_or_default::<SlotKinds>().into_owned(),
+    ))
+    .load_into(game);
     combat.load_into(game);
-    let ResolvedMap {
-        map,
-        ground,
-        navigation,
-        vision,
-    } = resolved;
     ground.load_into(game);
     navigation.load_into(game);
+    walls.load_into(game);
     vision.load_into(game);
     {
-        let view = game.non_send::<View>();
-        let mut names = view.names_mut();
-        names.set_table(mode_names.damage_kinds);
-        names.set_table(mode_names.resources);
+        let mut names = game.resource_mut::<MatchNames>();
+        let kinds = combat_data.damage_kinds.iter().map(DeclaredName::as_str);
+        names.set_table(Arc::new(kinds.collect::<Names<DamageKind>>()));
+        let resources = data.section_or_default::<ResourcesData>();
+        let resources = resources.0.iter().map(DeclaredName::as_str);
+        names.set_table(Arc::new(resources.collect::<Names<ResourceId>>()));
     }
     let kinds: WalkerKinds = walkers.values().copied().collect();
     assert_eq!(kinds, WalkerKinds::from([Walker::of_form(None).unwrap()]));
@@ -788,6 +825,14 @@ fn start_match_setup(
     Ok(game)
 }
 
+/// The match of the test mode whose list holds `scripts`, the one at `mode` its own, for 3
+/// players, two on team `a` and one on `b`, with `limits`, after its start.
+fn listed_match(scripts: &[&str], mode: usize, limits: ScriptLimits) -> Result<Match, CallError> {
+    let mut game = installed_list(scripts, mode, limits, &mode_files(), |_| {});
+    Mode::start_held(&mut game)?;
+    Ok(game)
+}
+
 /// The match `start_match_setup` gives, before its start.
 fn installed_match(
     script: &str,
@@ -795,7 +840,19 @@ fn installed_match(
     files: &ModeFiles,
     adjust: impl FnOnce(&mut [TestType]),
 ) -> Match {
-    let scripts = ScriptBudgets::new(limits, 3);
+    installed_list(&[script], 0, limits, files, adjust)
+}
+
+/// The match `installed_match` gives, its list holding `scripts`, the one at `mode` its own, which
+/// alone takes the picking helpers.
+fn installed_list(
+    sources: &[&str],
+    mode: usize,
+    limits: ScriptLimits,
+    files: &ModeFiles,
+    adjust: impl FnOnce(&mut [TestType]),
+) -> Match {
+    let scripts = ScriptPools { limits, players: 3 };
     let declared = [
         Capability::Stats,
         Capability::Combat,
@@ -806,16 +863,14 @@ fn installed_match(
         Capability::Production,
     ];
     let mut game = Match::test_unstarted(&declared, RATE, Some(scripts));
-    let resources: Vec<&str> = files
-        .data
-        .resources
-        .iter()
-        .map(DeclaredName::as_str)
-        .collect();
-    Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &resources);
+    let resource_data = files.data.section_or_default::<ResourcesData>();
+    let resources: Vec<&str> = resource_data.0.iter().map(DeclaredName::as_str).collect();
+    Units::name_kinds(&mut game, &DAMAGE_KINDS, &POOLS, &resources);
     // The mode's tags, the layers' then those of its data, as its packages name them.
-    let layers = files.data.navigation.layers.iter();
-    let tags = layers.chain(files.data.tags.keys());
+    let navigation = files.data.section_or_default::<ModeNavigationData>();
+    let mode_tags = files.data.section_or_default::<ModeTagsData>();
+    let layers = navigation.layers.iter();
+    let tags = layers.chain(mode_tags.0.keys());
     Units::declare_tags(&mut game, tags.map(DeclaredName::as_str));
     let grunt_type = Units::load_type(&mut game, TypeScope::Mode, "grunt", &grunt_data());
     let mut load = |name: &str, tag: &str| {
@@ -830,7 +885,10 @@ fn installed_match(
     load("bolt", "projectile");
     // The stats first, as a match's books know them before any action or modifier; the mode's
     // books give the full book at install.
-    Stats::load_rules(&mut game, &files.data.stats);
+    Stats::load_rules(
+        &mut game,
+        &files.data.section_or_default::<ModeStatsData>().0,
+    );
     let blink = blink_data();
     // A spell has one rank; hero X's ability, 2.
     let strike = Actions::load(&mut game, PackageIndex::MODE, "strike", &blink, None, 2).unwrap();
@@ -843,19 +901,34 @@ fn installed_match(
     let mut spell = LoadoutSetup::default();
     spell.push("blink", blink);
     let types = [grunt_type, tower_type, x, y, crate_type];
-    Progression::load_tracks(&mut game, &files.data.tracks);
+    Progression::load_tracks(
+        &mut game,
+        &files.data.section_or_default::<ModeTracksData>().0,
+    );
     for (name, data) in &files.modifiers {
         Stats::load_modifier(&mut game, PackageIndex::MODE, name, data, None);
     }
-    let script = Units::compile_hooked(&mut game, &format!("{script}{PICK}")).unwrap();
+    let compiled: Vec<ScriptId> = sources
+        .iter()
+        .enumerate()
+        .map(|(at, script)| {
+            let source = if at == mode {
+                format!("{script}{PICK}")
+            } else {
+                (*script).to_owned()
+            };
+            Units::compile_hooked(&mut game, &source).unwrap()
+        })
+        .collect();
     let blessing = Stats::modifier(&game, PackageIndex::MODE, "blessing").unwrap();
     let mut types = test_types(types, strike, blessing);
     adjust(&mut types);
-    let setup = setup(files, script, &types, spell);
+    let units = mode_units(&types, spell);
     let load = load_mode_books(&mut game, files, &types);
-    Release::install_mode(&mut game, setup, load);
+    let scripts = ModeScripts::new(compiled, ListPlace::new(mode).unwrap());
+    Release::install_mode(&mut game, setup(files, scripts), ModeInputs { units, load });
     // The scripts name pools the data does not declare, whose maxima no stat sets.
-    Units::name_kinds(&game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
+    Units::name_kinds(&mut game, &DAMAGE_KINDS, &POOLS, &RESOURCES);
     game
 }
 
@@ -915,10 +988,12 @@ mod draws;
 mod inputs;
 mod match_end;
 mod modifiers;
+mod player_state;
 mod production;
 mod progression;
 mod restore;
 mod roles;
+mod rules_scripts;
 mod start;
 mod timers;
 mod unit_state;

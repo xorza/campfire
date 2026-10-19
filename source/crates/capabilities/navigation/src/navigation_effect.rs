@@ -2,11 +2,12 @@ use std::num::NonZeroI64;
 
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_actions::{CapabilityDoesSpec, EffectTo};
 use campfire_common::{Tick, Ticks};
-use campfire_deliveries::Teleported;
+use campfire_deliveries::{DashDelivering, Teleported};
 use campfire_math::{Num, Rounding, Vec3};
-use campfire_script::{ApiError, CallError, CapabilityRefusal, Effect, Frame, ScriptLasting, View};
+use campfire_script::{
+    ApiError, CapabilityRefusal, Effect, EffectKind, Frame, ScriptLasting, View,
+};
 use campfire_sim::{Position, SimWorld, StableId};
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, MapBook};
 use campfire_values::DashDelivery;
@@ -16,7 +17,7 @@ use crate::error::NavigationRefusal;
 use crate::navigation_column::NavigationColumn;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::Route;
+use crate::route::{RouteDues, RouteMut};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::walker::Walker;
 
@@ -79,7 +80,7 @@ impl NavigationEffect {
         lasting: ScriptLasting,
     ) -> Result<Self, ApiError> {
         Self::walker(view, id)?;
-        if distance <= Num::ZERO || distance > Position::BOUND {
+        if distance <= Num::ZERO || distance > Vec3::BOUND {
             return Err(NavigationRefusal::NotADistance.refused());
         }
         let ticks = lasting.get();
@@ -97,37 +98,6 @@ impl NavigationEffect {
         Ok(Self::Teleport { id, to })
     }
 
-    /// Queues a listed forced move of `id`, whose other unit is the acting unit or `reached`,
-    /// the unit the list reached, by the rules of the script's calls.
-    pub(crate) fn queue_listed(
-        does: CapabilityDoesSpec,
-        id: StableId,
-        reached: Option<StableId>,
-        frame: &mut Frame,
-        view: &View,
-    ) -> Result<(), CallError> {
-        let acting = frame.acting();
-        let other = |to: EffectTo| match to {
-            EffectTo::Reached => Ok(reached.expect(
-                "the load lets a move name the reached unit only in a list that reaches one",
-            )),
-            EffectTo::Source => acting.ok_or(ApiError::NoActingUnit),
-        };
-        let effect = match does {
-            CapabilityDoesSpec::Dash { to, speed } => other(to)
-                .and_then(|to| Self::dash(view, frame, id, DashTo::Unit(to), speed.number(frame))),
-            CapabilityDoesSpec::KnockBack { from, distance, ms } => other(from).and_then(|from| {
-                let from = view.row(from).ok_or(ApiError::NoActingUnit)?.pos;
-                // Whole, as the load checked, so the floor is exact.
-                let lasting = ScriptLasting::of(view.rate(), ms.number(frame).floor())?;
-                Self::knock_back(view, id, from, distance.number(frame), lasting)
-            }),
-            _ => unreachable!("navigation queues only its own listed effects"),
-        };
-        frame.queue(effect.map_err(CallError::Api)?);
-        Ok(())
-    }
-
     /// Fails unless `id` walks: only a walker moves.
     fn walker(view: &View, id: StableId) -> Result<(), ApiError> {
         if !NavigationColumn::walks(view, id) {
@@ -139,18 +109,23 @@ impl NavigationEffect {
     /// Puts the unit of `entity` at `pos`, at once: it ends its forced move and walks its route
     /// again from there, as a teleport and a box that spawns over it put a unit.
     pub(super) fn put(world: &mut World, entity: Entity, pos: Vec3, now: Tick) {
-        let mut moved = world.entity_mut(entity);
-        *moved.get_mut::<Position>().expect("a unit has a place") = Position::from(pos);
-        moved.remove::<ForcedMove>();
-        if let Ok((destination, mut route, mut progress)) =
-            moved.get_components_mut::<(&Destination, &mut Route, &mut Progress)>()
-        {
-            route.ask_again(destination.get(), &mut progress, now);
-        }
+        let id = *world.get::<StableId>(entity).expect("a unit has an id");
+        RouteDues::with(world, id, entity, |world, dues| {
+            let mut moved = world.entity_mut(entity);
+            *moved.get_mut::<Position>().expect("a unit has a place") = Position::from(pos);
+            moved.remove::<(ForcedMove, DashDelivering)>();
+            if let Ok((destination, mut route, mut progress)) =
+                moved.get_components_mut::<(&Destination, RouteMut, &mut Progress)>()
+            {
+                route.ask_again(destination.get(), &mut progress, now, dues);
+            }
+        });
     }
 }
 
 impl Effect for NavigationEffect {
+    const KIND: EffectKind = EffectKind::Change;
+
     // A unit gone or dead since the call moves no more.
     fn apply(self, world: &mut World, frame: &mut Frame) {
         let now = frame.now();
@@ -166,7 +141,15 @@ impl Effect for NavigationEffect {
         let forced = match self {
             Self::Dash {
                 to, step, delivers, ..
-            } => ForcedMove::Dash { to, step, delivers },
+            } => {
+                let forced = ForcedMove::Dash { to, step };
+                let mut moved = world.entity_mut(entity);
+                match delivers {
+                    Some(delivers) => moved.insert((forced, DashDelivering::new(delivers))),
+                    None => moved.insert(forced).remove::<DashDelivering>(),
+                };
+                return;
+            }
             Self::KnockBack {
                 from,
                 distance,
@@ -184,7 +167,10 @@ impl Effect for NavigationEffect {
                 return;
             }
         };
-        world.entity_mut(entity).insert(forced);
+        world
+            .entity_mut(entity)
+            .insert(forced)
+            .remove::<DashDelivering>();
     }
 }
 

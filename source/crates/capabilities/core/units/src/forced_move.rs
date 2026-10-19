@@ -3,9 +3,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_math::{Num, Rounding, Vec3};
-use campfire_sim::{Position, SimComponent, StableId};
+use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
-use campfire_values::{ActionStart, DashDelivery};
 use serde::{Deserialize, Serialize};
 
 use crate::unit_entity::UnitEntity;
@@ -16,13 +15,8 @@ use crate::unit_entity::UnitEntity;
 /// here, as `Dead` is, for the capabilities below navigation to read.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ForcedMove {
-    /// A dash of `step` a tick on the ground plane, more than 0, to `to`; the delivery of the
-    /// action that started it, when it is one.
-    Dash {
-        to: DashTo,
-        step: Num,
-        delivers: Option<DashDelivery>,
-    },
+    /// A dash of `step` a tick on the ground plane, more than 0, to `to`.
+    Dash { to: DashTo, step: Num },
     /// A knock back to `to`, which it reaches in `left` ticks more, at least one: each tick it
     /// goes the share of the way left that one of those ticks is.
     KnockBack { to: Vec3, left: u64 },
@@ -103,22 +97,19 @@ impl SimComponent for ForcedMove {
     // A dash of no step, or a knock back with no tick left, never ends. A dash's step, and a
     // knock back's end, lie within twice the world's bound, a distance within it from a place
     // within it, so a step past a body's reach and a way to the end fit a number. A knock back's
-    // ticks are a time's, within the tick limit. A dash's point, and the start of the action it
-    // delivers, lie within the world's bound, as every place does. The declarations, not this
-    // check, require that its unit walks, and so is no box.
+    // ticks are a time's, within the tick limit. A dash's point lies within the world's bound, as
+    // every place does. The declarations, not this check, require that its unit walks, and so is
+    // no box.
     fn check(&self, _: &World, _: Entity) -> bool {
-        let reach = 2 * Position::BOUND.to_bits().unsigned_abs();
+        let reach = 2 * Vec3::BOUND.to_bits().unsigned_abs();
         let within = |value: Num| value.to_bits().unsigned_abs() <= reach;
         match *self {
-            Self::Dash { to, step, delivers } => {
+            Self::Dash { to, step } => {
                 let point = match to {
-                    DashTo::Point(point) => Position::from(point).within_bound(),
+                    DashTo::Point(point) => point.within_bound(),
                     DashTo::Unit(_) => true,
                 };
-                let start = delivers
-                    .and_then(|delivers| delivers.start)
-                    .is_none_or(ActionStart::check);
-                step > Num::ZERO && within(step) && point && start
+                step > Num::ZERO && within(step) && point
             }
             Self::KnockBack { to, left } => {
                 (1..=Tick::LIMIT.get()).contains(&left)

@@ -12,7 +12,7 @@ use crate::body_index::BodyIndex;
 use crate::group_box::GroupBox;
 use crate::party::Party;
 use crate::pathing_grid::PathingGrid;
-use crate::route::Route;
+use crate::route::RouteMut;
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
 use crate::walker::Walker;
@@ -22,7 +22,7 @@ pub(crate) type Asking = (
     Entity,
     &'static StableId,
     &'static Position,
-    &'static mut Route,
+    RouteMut,
     Option<&'static Body>,
 );
 

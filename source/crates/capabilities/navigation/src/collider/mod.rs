@@ -4,7 +4,8 @@ use campfire_math::{Direction, Num, Vec3};
 use campfire_sim::StableId;
 use campfire_units::Layer;
 
-use crate::collider::contact::Contact;
+use crate::body_index::IndexedBody;
+use crate::collider::contact::{Contact, ContactBodies};
 
 pub(crate) mod contact;
 
@@ -45,10 +46,37 @@ impl Collider {
     /// spot part along x, the higher id towards +x.
     pub(crate) fn resolve(colliders: &mut [Self], contacts: &[Contact]) {
         debug_assert!(colliders.is_sorted_by_key(|collider| collider.id));
-        for &Contact { first, second } in contacts {
-            debug_assert!(first < second);
-            let (head, tail) = colliders.split_at_mut(second);
-            Self::part(&mut head[first], &mut tail[0]);
+        for contact in contacts {
+            match contact.bodies {
+                ContactBodies::Walkers { first, second } => {
+                    debug_assert!(first < second);
+                    let (head, tail) = colliders.split_at_mut(second);
+                    Self::part(&mut head[first], &mut tail[0]);
+                }
+                ContactBodies::Static { walker, body } => {
+                    let (walker, mut fixed) = (&mut colliders[walker], Self::fixed(&body));
+                    if walker.id < body.id {
+                        Self::part(walker, &mut fixed);
+                    } else {
+                        Self::part(&mut fixed, walker);
+                    }
+                }
+            }
+        }
+    }
+
+    /// The static body `body` as a collider: never pushed, never walking, and never gathering,
+    /// as only a walker gathers.
+    pub(crate) const fn fixed(body: &IndexedBody) -> Self {
+        Self {
+            id: body.id,
+            entity: Entity::PLACEHOLDER,
+            point: body.pos,
+            shape: body.shape,
+            layer: body.layer,
+            movable: false,
+            walking: false,
+            gathering: false,
         }
     }
 

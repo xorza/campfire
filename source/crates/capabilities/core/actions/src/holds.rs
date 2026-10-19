@@ -1,20 +1,34 @@
 use bevy_ecs::change_detection::{DetectChanges, Mut, Ref};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use campfire_sim::{DueRun, SimTick, StableId, TickClock, Unpredicted};
-use campfire_stats::{
-    Grant, GrantFrom, Grants, Hold, ModifierBook, ModifierParams, Modifiers, StatBook,
+use campfire_common::Tick;
+use campfire_sim::{
+    DueIndex, DueUnit, Removals, SimTick, StableId, TimedKept, TimedProcess, TimedRuns, Unpredicted,
 };
 
 use crate::action_book::ActionBook;
 use crate::action_slots::ActionSlots;
 use crate::action_slots::slot_times::{SlotCharges, SlotTimes};
 
-/// The holds of every action: its charges as each tick starts, and the grants of its passives
-/// then and as each stage that changes ranks or cooldowns ends.
+/// The holds of every action: its charges as each tick starts.
 #[derive(Debug)]
 pub(super) struct Holds;
+
+/// The charges of a unit's slots, which come back one at a time as their times come: a unit is
+/// due at the time its next charge comes back, as the book's charges of its slots' actions say.
+#[derive(Debug)]
+pub(super) struct Charges;
+
+impl TimedProcess for Charges {
+    const RUNS: TimedRuns = TimedRuns::EveryRole;
+    const KEPT: TimedKept = TimedKept::FollowsChanges;
+    type Parts = (&'static ActionSlots, &'static SlotTimes);
+    type Books = Res<'static, ActionBook>;
+
+    fn due(book: &Res<'_, ActionBook>, (slots, times): (&ActionSlots, &SlotTimes)) -> Option<Tick> {
+        times.next_charge(slots, book)
+    }
+}
 
 impl Holds {
     /// Keeps each unit's charges as its slots stand, as each tick starts, after the orders that
@@ -23,128 +37,48 @@ impl Holds {
     /// replicate. A unit's charges follow from its slots, its times and the book, and from the
     /// tick only as a charge comes back: so a run visits the units whose slots or times changed
     /// since its last, those a predicting client predicts again, `returned`, whose parts kept
-    /// their ticks while hidden, and those whose next charge `due` holds; every unit when the book
-    /// changed.
+    /// their ticks while hidden, and those the index of the charges holds due, and pushes each
+    /// it visits at its next charge's time; every unit when the book changed.
     pub(super) fn hold_charges(
         actions: Res<'_, ActionBook>,
         tick: Res<'_, SimTick>,
-        mut units: Query<'_, '_, (Entity, Ref<'_, ActionSlots>, &mut SlotTimes)>,
-        mut returned: RemovedComponents<'_, '_, Unpredicted>,
+        mut units: Query<'_, '_, (Entity, &StableId, Ref<'_, ActionSlots>, &mut SlotTimes)>,
+        mut returned: Removals<'_, '_, Unpredicted>,
+        mut index: ResMut<'_, DueIndex<Charges>>,
         (mut due, mut visits, mut charges): (
-            Local<'_, DueRun>,
+            Local<'_, Vec<DueUnit>>,
             Local<'_, Vec<Entity>>,
             Local<'_, Vec<(u8, Option<SlotCharges>)>>,
         ),
     ) {
         let now = tick.start();
         let every = actions.is_changed();
-        if every {
-            due.clear();
-        }
+        due.clear();
+        index.take_due(now, &mut due);
         visits.clear();
-        due.take_due(now, &mut visits);
+        visits.extend(due.iter().map(|unit| unit.entity));
         visits.extend(returned.read());
         visits.sort_unstable();
         visits.dedup();
-        let mut charge = |entity, slots: &ActionSlots, times: &mut Mut<'_, SlotTimes>| {
+        let mut charge = |entity, id, slots: &ActionSlots, times: &mut Mut<'_, SlotTimes>| {
             charges.clear();
             charges.extend(times.charges_due(slots, &actions, now));
             for &(slot, held) in &*charges {
                 times.set_charges(slot, held);
             }
             if let Some(next) = times.next_charge(slots, &actions) {
-                due.push(next, entity);
+                index.push(next, id, entity);
             }
         };
-        for (entity, slots, mut times) in &mut units {
+        for (entity, &id, slots, mut times) in &mut units {
             let changed = every || slots.is_changed() || times.is_changed();
             if changed && visits.binary_search(&entity).is_err() {
-                charge(entity, &slots, &mut times);
+                charge(entity, id, &slots, &mut times);
             }
         }
         for &entity in &*visits {
-            if let Ok((_, slots, mut times)) = units.get_mut(entity) {
-                charge(entity, &slots, &mut times);
-            }
-        }
-    }
-
-    /// Pushes the grants of each unit's passives and holds as its slots stand: the passive of each
-    /// action with a rank, and with `passive_while_ready` off cooldown, and the `hold` of each
-    /// toggle that is on, each from the unit itself at the action's rank; and none of each other.
-    /// What a unit wants follows from its slots, its modifiers and the books, and from the tick
-    /// only as a cooldown a passive waits for ends: so a run visits only the units whose slots or
-    /// modifiers changed since its last, and those whose wait `due` holds ends, unless a book
-    /// changed.
-    pub(super) fn want_passives(
-        (actions, book, stats): (
-            Res<'_, ActionBook>,
-            Res<'_, ModifierBook>,
-            Res<'_, StatBook>,
-        ),
-        clock: TickClock<'_>,
-        params: ModifierParams<'_, '_>,
-        mut grants: ResMut<'_, Grants>,
-        units: Query<
-            '_,
-            '_,
-            (
-                Entity,
-                &StableId,
-                Ref<'_, ActionSlots>,
-                Ref<'_, SlotTimes>,
-                Ref<'_, Modifiers>,
-            ),
-        >,
-        (mut due, mut visits): (Local<'_, DueRun>, Local<'_, Vec<Entity>>),
-    ) {
-        let every =
-            actions.is_changed() || book.is_changed() || stats.is_changed() || params.changed();
-        let now = clock.start();
-        if every {
-            due.clear();
-        }
-        visits.clear();
-        due.take_due(now, &mut visits);
-        visits.sort_unstable();
-        for (entity, &id, slots, times, modifiers) in &units {
-            let changed = slots.is_changed() || times.is_changed() || modifiers.is_changed();
-            if !(every || changed || visits.binary_search(&entity).is_ok()) {
-                continue;
-            }
-            grants.unit(entity, id);
-            for (slot, time) in slots.iter().zip(times.iter()) {
-                let Some(action_id) = slot.action else {
-                    continue;
-                };
-                let action = actions
-                    .get(action_id)
-                    .expect("a slot's action is in the book");
-                if let Some(passive) = action.passive {
-                    let cooling = passive.while_ready && time.ready_at > now;
-                    if slot.rank.is_some() && cooling {
-                        due.push(time.ready_at, entity);
-                    }
-                    grants.push(Grant {
-                        modifier: passive.modifier,
-                        from: GrantFrom::Itself,
-                        hold: Hold::Passive,
-                        action: Some(action_id),
-                        rank: slot.rank.filter(|_| !cooling),
-                    });
-                }
-                // A channel's hold its channel holds each tick it runs, as its progress, not its
-                // slots, changes.
-                let toggles = action.ranks.iter().any(|rank| rank.toggle.is_some());
-                if let Some(hold) = action.hold.filter(|_| toggles) {
-                    grants.push(Grant {
-                        modifier: hold,
-                        from: GrantFrom::Itself,
-                        hold: Hold::Running,
-                        action: Some(action_id),
-                        rank: slot.rank.filter(|_| time.toggle.is_some()),
-                    });
-                }
+            if let Ok((_, &id, slots, mut times)) = units.get_mut(entity) {
+                charge(entity, id, &slots, &mut times);
             }
         }
     }

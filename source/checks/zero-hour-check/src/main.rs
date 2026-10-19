@@ -1,38 +1,40 @@
 //! The Zero Hour install check, on request: imports the install `GENERALSZH_DATA` names into the
 //! directory its command line names, in place of the packages an earlier run wrote there once the
-//! new ones are whole, and checks the fingerprints of the imported package and the rules package
-//! against those it pins, which a run on Linux and a run on macOS gave. Then it checks that
-//! Tournament Desert imports as a multiplayer game of the original spawns it: 270 × 340 height
-//! samples; of its 580 objects, once its 176 road ends are dropped, 142 placed units of 41 types
-//! and 438 client objects of 22 looks, each kind's templates logged for review; and 28 markers. It
-//! checks its terrain file's 269 × 339 ground quads, its overlays, and its texture's copies and
-//! border wraps, each logged for review; that the import reports no cell of its terrain whose tile
-//! has no texture; its 286 walls of its grown cliffs; and that it loads in a match of the imported
-//! mode, where player 1 starts with America's command center at `Player_1_Start` and its dozer
-//! clear of the center's box, and the dozer, ordered to `Player_2_Start`, gets there within
-//! `DRIVE_TICKS`, in no wall's cell in any tick. It counts the trains and builds the import
+//! new ones are whole, and checks what the import gives against what it expects: what a closed
+//! form of the game's data gives, and what it measured once, which `golden.toml` beside it pins
+//! (12-zero-hour.md, The check's measures are a golden file). It checks the fingerprints of the
+//! imported package and the rules package, which a run on Linux and a run on macOS give alike;
+//! Tournament Desert's height samples, placed units and their types, client objects and their
+//! looks, each kind's templates logged for review, and markers; its terrain file's ground quads,
+//! overlays, and its texture's copies and border wraps; that the import reports no cell of its
+//! terrain whose tile has no texture; its walls of its grown cliffs; and that it loads in a match
+//! of the imported mode, where player 1 starts with America's command center at `Player_1_Start`
+//! and its dozer clear of the center's box, and the dozer, ordered to `Player_2_Start`, gets
+//! there in its pinned ticks, in no wall in any tick. It counts the trains and builds the import
 //! converts from the command sets and the buttons it drops by cause; and in a match of its own,
-//! player 1's command center trains a dozer, its dozer builds a barracks, and the barracks trains a
-//! ranger, each in its pinned ticks and paid from the 50,000 the host picks of the starting money;
-//! then its dozer builds a power plant, a supply center and a war factory, the factory trains three
-//! crusaders, and their shells destroy the bot's command center, in the pinned ticks of the first
+//! player 1's command center trains a dozer, its dozer builds a barracks, and the barracks trains
+//! a ranger, each in its ticks and paid from the 50,000 the host picks of the starting money;
+//! then its dozer builds a power plant, a supply center and a war factory, the factory trains
+//! three crusaders, and their shells destroy the bot's command center, in the ticks of the first
 //! shot, the first damage and the center's death, and the match goes on, as the bot's other
 //! buildings count for its victory. The bot plays the builder's orders, `bots/builder.toml`: it
 //! builds its base, trains its units, each counted and pinned, and attacks nothing, its units no
-//! farther from its center than the pinned distance. Every other map the game
-//! lists loads in the imported mode. It fails when `GENERALSZH_DATA` names no install, so a machine
-//! with no copy never passes as one that checked.
+//! farther from its center than the pinned distance. Every other map the game lists loads in the
+//! imported mode. It fails when `GENERALSZH_DATA` names no install, so a machine with no copy
+//! never passes as one that checked.
 //!
-//! Run it with `./drive.py zero-hour [out]`, which builds it with the `release-dev` profile and
-//! writes to `~/zh-package` unless `out` names another directory.
+//! Run it with `./drive.py zero-hour [--bless] [out]`, which builds it with the `release-dev`
+//! profile and writes to `~/zh-package` unless `out` names another directory; `--bless` writes
+//! the golden file again of what the run measured.
 
 use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use campfire_common::ErrorReport;
 use campfire_common::{ExitStatus, MapName};
 use campfire_import::{Imported, ZeroHour};
-use campfire_log::{ErrorReport, Logging};
+use campfire_log::Logging;
 use campfire_package_disk::PackageDir;
 use campfire_store::{DirEntries, DurableDir, EntryKind, ReadError};
 use tracing::{error, info};
@@ -40,12 +42,14 @@ use tracing::{error, info};
 use crate::command_line::CommandLine;
 use crate::error::CheckError;
 use crate::failure::Failure;
+use crate::golden::{Golden, Measured};
 use crate::import_check::ImportCheck;
-use crate::pins::{FINGERPRINTS, Fingerprints, MAP};
+use crate::pins::{Fingerprints, MAP};
 
 mod command_line;
 mod error;
 mod failure;
+mod golden;
 mod import_check;
 mod match_play;
 mod pins;
@@ -82,17 +86,15 @@ fn main() -> ExitCode {
 }
 
 /// Imports the install into `out`, in place of the packages an earlier run wrote there once the
-/// new ones are whole, and checks Tournament Desert; the failures it found.
+/// new ones are whole, and checks Tournament Desert against the golden file, or, in a run that
+/// blesses, writes the file again; the failures it found.
 fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
-    let imported = import(out)?;
-    let mut failures = Vec::new();
-    let given = Fingerprints {
-        game: imported.fingerprint,
-        rules: imported.rules,
+    let golden = if Golden::blessing() {
+        None
+    } else {
+        Some(Golden::read()?)
     };
-    if given != FINGERPRINTS {
-        failures.push(Failure::Fingerprints(given));
-    }
+    let imported = import(out)?;
     let map = MapName::parse(MAP).expect("a map's name");
     let game = PackageDir::new(out.join(ZeroHour::GAME));
     let mut check = ImportCheck {
@@ -100,8 +102,14 @@ fn run(out: &Path) -> Result<Vec<Failure>, CheckError> {
         game: &game,
         map: &map,
         packages: game.mode_packages(Some(&map)).map_err(CheckError::Load)?,
-        failures,
+        golden,
+        measured: Measured::default(),
+        failures: Vec::new(),
     };
+    check.fingerprints(Fingerprints {
+        game: imported.fingerprint,
+        rules: imported.rules,
+    });
     check.map()?;
     check.looks()?;
     check.other_maps();

@@ -6,7 +6,7 @@ use tracing::trace;
 /// A client frame starts, while the client plays, before it predicts sim tick `tick`, its next:
 /// at Trace, as a log line a frame is for a check that times each frame, not for every log.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct ClientFrame {
+pub(crate) struct ClientFrame {
     pub tick: Tick,
 }
 

@@ -1,14 +1,13 @@
-use campfire_actions::BuildStart;
 use campfire_codec::Toml;
 use campfire_geometry::{Bounds, Grid, Polygon};
-use campfire_navigation::{Navigation, Walker, Wall};
+use campfire_navigation::{Navigation, Walker};
 use campfire_orders::OrdersAction;
+use campfire_production::internals::TestBuild;
 use campfire_script::Filter;
 use campfire_sim::{EntityIndex, Position};
-use campfire_stats::Life;
-use campfire_units::{Layer, MapBook, StatusTags};
+use campfire_units::{BuildTarget, GroundPoint, Layer, Life, MapBook, SeenBy, Wall};
 use campfire_values::{RelationSet, Share, TeamSet};
-use campfire_vision::{SeenBy, Vision};
+use campfire_vision::{Sight, Vision};
 use serde::Deserialize;
 
 use super::*;
@@ -16,8 +15,10 @@ use super::*;
 /// A build of slot 0 at (`x`, `z`), its box unturned.
 const fn at_point(x: i64, z: i64) -> OrdersAction {
     let target = BuildTarget::Point {
-        x: Num::int(x),
-        z: Num::int(z),
+        at: GroundPoint {
+            x: Num::int(x),
+            z: Num::int(z),
+        },
         angle: Num::ZERO,
     };
     OrdersAction::Build { slot: 0, target }
@@ -101,25 +102,27 @@ impl Yard {
             resource: gold,
             amount: 15,
         };
-        let build = Actions::add_build(game, depot, Num::ONE, Ticks::new(4), Some(cost));
-        let mut builds = BuildBook::default();
-        let new = NewBuild {
-            form,
-            start: rules.start,
-            style: rules.style,
-            start_life: Some(share("0.1")),
-            refund: share("0.5"),
-            near: rules.near,
-            away: rules.away,
+        let build = TestBuild {
+            range: Num::ONE,
+            time: Ticks::new(4),
+            resource_cost: Some(cost),
+            build: NewBuild {
+                unit_type: depot,
+                form,
+                start: rules.start,
+                style: rules.style,
+                start_life: Some(share("0.1")),
+                refund: share("0.5"),
+                near: rules.near,
+                away: rules.away,
+            },
         };
-        builds.push(build, new);
-        game.insert_resource(builds);
+        let build = Production::add_build(game, build);
         // Builders, of a half meter, walk a meter a tick.
         let builder = Units::load_type(game, TypeScope::Mode, "builder", &UnitTypeCore::default());
         Units::give_type(game, builder, BodyForm::circle(Num::HALF).unwrap());
         Units::give_type(game, builder, MoveStep::new(Num::ONE).unwrap());
         Units::give_type(game, builder, Builder::default());
-        Mode::load_test_units(game);
         Self { build, builder }
     }
 
@@ -156,14 +159,29 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
         game.step();
         let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
         if tick == 7 {
-            // A restore checks a site's progress against its build's time, 4 ticks: a progress
-            // of 4 passes, one a bit past it fails.
+            // A restore checks a site's time against its build's, 4 ticks, and its progress
+            // against that time: a site of 4 ticks passes and one of 5 fails; a progress of 4
+            // passes, and one a bit past it fails.
             let site = game.part::<Site>(depot);
-            let mut restored = Site::new(site.action(), site.rank(), Num::ZERO, &[], None);
             let entity = game.unit_entity(depot);
-            restored.progress_by(Num::int(4), Num::int(8));
+            let of_time = |time| {
+                Site::new(SiteStart {
+                    action: site.action(),
+                    rank: site.rank(),
+                    time,
+                    gain: Num::ZERO,
+                    paid: &[],
+                    holder: None,
+                })
+            };
+            assert_eq!(site.time(), Num::int(4));
+            assert!(of_time(Num::int(4)).check(&game, entity));
+            assert!(!of_time(Num::int(5)).check(&game, entity));
+            let longer = of_time(Num::int(8));
+            let mut restored = SiteProgress::default();
+            restored.grow(&longer, Num::int(4));
             assert!(restored.check(&game, entity));
-            restored.progress_by(Num::EPSILON, Num::int(8));
+            restored.grow(&longer, Num::EPSILON);
             assert!(!restored.check(&game, entity));
         }
         let progress = (tick < 10).then(|| Num::int(tick - 6));
@@ -182,6 +200,10 @@ fn a_build_walks_into_range_pays_and_places_a_site_that_grows_to_its_life() {
                 StatusTags::default()
             }
         );
+        // The site that completes joins the completed sites, which no mode answers here.
+        let completed = if tick < 10 { vec![] } else { vec![depot] };
+        let sites = &game.resource::<CompletedSites>().0;
+        assert_eq!(sites.iter().copied().collect::<Vec<_>>(), completed);
     }
     assert_eq!(shop.gold(&game), 85);
     assert_eq!(Production::order_of(&game, builder), None);
@@ -326,6 +348,32 @@ fn a_build_at_a_site_its_player_does_not_see_does_nothing() {
 }
 
 #[test]
+fn a_build_at_a_point_its_team_does_not_see_is_refused() {
+    // With vision, a build needs its point in a cell its builder's team saw in the last Vision
+    // stage, as Zero Hour refuses a point under shroud. A builder at (−3, 0) of no sight sees no
+    // cell: its build at the origin ends, pays nothing and places nothing. One of 4 m of sight
+    // sees the origin's cell, whose center (0.5, 0.5) lies √(3.5² + 0.5²) ≈ 3.54 m off: it places
+    // its site, and pays 15 of its 100 gold.
+    let mut declared = ORDERING.to_vec();
+    declared.push(Capability::Vision);
+    for (sight, depots, gold) in [(None, 0, 100), (Some(4), 1, 85)] {
+        let mut game = shop_match_of(&declared);
+        let shop = Shop::place(&mut game);
+        let yard = Yard::place(&mut game, shop, Rules::of(Style::Alone));
+        let bounds = Bounds::new([Num::int(-20); 2], [Num::int(20); 2]).unwrap();
+        Vision::load_grid(&mut game, Grid::new(Num::ONE, bounds).unwrap(), &[], 3);
+        if let Some(range) = sight {
+            let sight = Sight::new(Num::int(range)).unwrap();
+            Units::give_type(&mut game, yard.builder, sight);
+        }
+        let builder = yard.builder(&mut game, halves(-6, 0), Team::new(0), 0);
+        Production::build_at(&mut game, builder, 0, 0);
+        let placed = (shop.depots(&mut game).len(), shop.gold(&game));
+        assert_eq!(placed, (depots, gold), "{sight:?}");
+    }
+}
+
+#[test]
 fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
     // A `builder` site, of a builder at (−3, 0), progresses 1 in tick 0. In tick 1 the builder
     // walks off to (−10, 0), a meter a tick: no builder, no progress. In tick 3, at (−5, 0), it is
@@ -339,8 +387,10 @@ fn a_builder_that_leaves_stops_its_site_and_one_that_comes_back_goes_on() {
     Production::build_at(&mut game, builder, 0, 0);
     let [depot] = <[StableId; 1]>::try_from(shop.depots(&mut game)).unwrap();
     let away = OrdersAction::Move {
-        x: Num::int(-10),
-        z: Num::ZERO,
+        to: GroundPoint {
+            x: Num::int(-10),
+            z: Num::ZERO,
+        },
     };
     Production::tick_ordering(&mut game, 0, builder, away);
     assert_eq!(Production::order_of(&game, builder), None);

@@ -4,8 +4,8 @@ use bevy_ecs::world::World;
 use campfire_actions::{ActionBook, ProjectileFlight, ShotDamage};
 use campfire_declare::ByType;
 use campfire_math::{Num, Vec3};
-use campfire_script::View;
-use campfire_sim::{Position, SimComponent, StableId};
+use campfire_script::MatchNames;
+use campfire_sim::{SimComponent, StableId};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use campfire_units::{DeliveryEntity, MapBook};
 use campfire_values::{ActionId, ActionStart, Rank, UnitType};
@@ -173,7 +173,7 @@ impl SimComponent for Projectile {
             .is_some_and(|spec| spec.flight() == self.flight.kind());
         let book = world.resource::<ActionBook>();
         // A line's origin and a curve's ends lie within the world's bound, as every place does.
-        let within = |at: Vec3| Position::from(at).within_bound();
+        let within = |at: Vec3| at.within_bound();
         let origin = match self.flight {
             Flight::Line { from, .. } => within(from),
             Flight::Curve { from, to, .. } => within(from) && within(to),
@@ -182,9 +182,7 @@ impl SimComponent for Projectile {
         let carries = match self.payload {
             Payload::Attack(ShotDamage {
                 action, rank, kind, ..
-            }) => {
-                book.ranked(action, rank) && world.non_send::<View>().names().has_damage_kind(kind)
-            }
+            }) => book.ranked(action, rank) && world.resource::<MatchNames>().has_damage_kind(kind),
             Payload::Action {
                 action,
                 rank,

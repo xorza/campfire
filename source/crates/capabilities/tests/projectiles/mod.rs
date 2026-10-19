@@ -3,7 +3,7 @@ use bevy_ecs::query::With;
 use campfire_capabilities::{Match, Release};
 use campfire_codec::{Binary, Toml};
 use campfire_combat::internals::Armed;
-use campfire_combat::{Combat, Deaths, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
+use campfire_combat::{Combat, OnDeath, ROLL_STREAM, RecentAttack, RecentAttackers};
 use campfire_common::{SegmentSeed, Tick};
 use campfire_declare::ByType;
 use campfire_geometry::{Bounds, Grid};
@@ -11,13 +11,13 @@ use campfire_math::{Num, Rng, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::NavigationEffect;
 use campfire_projectiles::*;
-use campfire_script::{Effect, Frame, ScriptBudgets, ScriptLimits};
+use campfire_script::{Effect, Frame, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimComponent, SimWorld, SnapshotError, StableId};
-use campfire_stats::{Life, Stats};
-use campfire_units::{BodyForm, DashTo, Dead, MapBook, UnitTypeCore, Units};
+use campfire_stats::Stats;
+use campfire_units::{BodyForm, DashTo, Dead, Deaths, Life, MapBook, SeenBy, UnitTypeCore, Units};
 use campfire_values::{FilterData, Team, TypeScope, UnitType};
-use campfire_vision::{SeenBy, Sight, Vision};
+use campfire_vision::{Sight, Vision};
 
 /// A projectile type of 15 m/s, half a meter a tick, that hits enemies; homing, or along a line
 /// of `width` for `range` that ends at its first hit when `stop_on_hit`.
@@ -59,7 +59,10 @@ const ALONG_X: Vec3 = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
 /// A match of `declared`, with combat and projectiles among them, and the stat book a weapon
 /// reads.
 fn volley_match_of(declared: &[Capability]) -> Match {
-    let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+    let budgets = ScriptPools {
+        limits: ScriptLimits::ROOMY,
+        players: 1,
+    };
     let mut game = Match::server(declared, budgets);
     Combat::load_weapon_stats(&mut game);
     game
@@ -632,6 +635,18 @@ fn a_projectile_reads_only_with_a_positive_speed_a_width_of_0_to_4096_m_and_no_n
         ),
     ] {
         assert!(refusal(text).starts_with(message), "{text}");
+    }
+    // A projectile writes each field but its defaults, and reads back what it wrote: a line of
+    // its speed alone, one of every field a line takes, and a curve that hits nothing.
+    for text in [
+        "speed = \"0.5\"\n",
+        "speed = 20\nwidth = 2\nrange = 9\nhoming = true\nstop_on_hit = true\nonce_per_cast = true\nhits = [\"enemies:structure\", \"all:wall\"]\n",
+        "speed = 20\nhits = \"none\"\n\n[curve]\nfirst = [\"0.5\", 10]\nsecond = [1, -2]\nfollow = 3\nlife_ms = 900\n",
+    ] {
+        let data = read(text).unwrap();
+        let written = Toml::write(&data);
+        assert_eq!(read(&written).unwrap(), data, "{written}");
+        assert_eq!(Toml::write(&read(&written).unwrap()), written);
     }
 }
 

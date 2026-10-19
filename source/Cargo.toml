@@ -24,8 +24,7 @@ members = [
     "crates/test/*",
     "checks/*",
 ]
-# Every member but those whose build turns `internals` on through a normal dependency, so a cargo
-# command at the root with no `--workspace` builds what ships; `campfire-rules` holds the list.
+
 default-members = [
     "checks/lan-check",
     "crates/apps/client",
@@ -151,6 +150,8 @@ bevy = { version = "=0.19.1", default-features = false, features = [
     "bevy_gltf",
     "ktx2",
     "png",
+    # A world asset, as a model's glTF scene, spawns its components by reflection, which needs each
+    # type registered, and Bevy's own plugins register theirs only through it.
     "reflect_auto_register",
     "bevy_ui",
     "bevy_ui_render",
@@ -162,7 +163,7 @@ bevy = { version = "=0.19.1", default-features = false, features = [
 attohttpc = { version = "=0.30.1", default-features = false }
 bevy_app = "=0.19.1"
 bevy_replicon = { version = "=0.44.2", default-features = false, features = ["server"] }
-bevy_ecs = { version = "=0.19.1", features = ["debug"] }
+bevy_ecs = { version = "=0.19.1", default-features = false, features = ["std", "debug"] }
 bevy_math = { version = "=0.19.1", default-features = false, features = ["std", "serialize"] }
 bevy_state = "=0.19.1"
 bevy_time = "=0.19.1"
@@ -183,9 +184,17 @@ fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"
 igd-next = "=0.18.0"
 libc = "=0.2.190"
-lightyear = { version = "=0.30.1", features = ["crossbeam", "raw_connection"] }
+lightyear = { version = "=0.30.1", default-features = false, features = [
+    "std",
+    "client",
+    "server",
+    "replication",
+    "prediction",
+    "crossbeam",
+    "raw_connection",
+] }
 lightyear_serde = "=0.30.1"
-miniz_oxide = "=0.9.1"
+miniz_oxide = "=0.8.9"
 netdev = { version = "=0.46.3", default-features = false, features = ["gateway"] }
 nostr = "=0.45.5"
 polling = "=3.11.0"
@@ -195,7 +204,7 @@ proptest = { version = "=1.11.0", default-features = false, features = ["std"] }
 quinn-proto = { version = "=0.11.19", default-features = false, features = ["rustls-ring"] }
 quinn-udp = "=0.5.16"
 quote = { version = "=1.0.47", default-features = false }
-rhai = { version = "=1.26.1", default-features = false, features = ["std", "no_float", "no_time", "internals"] }
+rhai = { version = "=1.26.1", default-features = false, features = ["std", "no_float", "no_time", "no_closure", "internals"] }
 ring = "=0.17.14"
 rustls = { version = "=0.23.45", default-features = false, features = ["ring", "std"] }
 secp256k1 = "=0.30.0"
@@ -235,15 +244,13 @@ windows = { version = "=0.62.2", features = [
 xmltree = "=0.10.3"
 zeroize = "=1.9.0"
 
-# Overflow checks stay on in dev and release: an overflow in the sim crashes on every machine,
-# never wraps silently into a state that diverges between them.
 [profile.dev]
 opt-level = 1
 debug = "line-tables-only"
-overflow-checks = true
 
 [profile.dev.package."*"]
 opt-level = 3
+debug = false
 
 [profile.release]
 lto = "fat"
@@ -264,7 +271,6 @@ codegen-units = 16
 incremental = true
 debug = "line-tables-only"
 
-# Warn, not deny: the verification chain runs clippy with `-D warnings`.
 [workspace.lints.rust]
 rust_2018_idioms = { level = "warn", priority = -1 }
 meta_variable_misuse = "warn"
@@ -374,43 +380,35 @@ private_intra_doc_links = "warn"
 redundant_explicit_links = "warn"
 unescaped_backticks = "warn"
 
-# Lightyear 0.30.1 with its confirmed history never pruned past the latest completed checkpoint,
-# its raw server keeping a `RemoteId` its link holds (15-quic-transport.md, A link's entity is its
-# peer, not its address), its aeronet link's MTU kept within the session's, and a received payload
-# kept in the form its IO backend holds, so a QUIC datagram reaches the link with no copy, until
-# upstream releases the fixes (branch main of the fork, which merges the branch of each fix).
-# Replicon 0.44.2 with a mutation kept for a client in the tick a filter hides a component from
-# it, which it otherwise drops, as a new owner the old owner's client must see
-# (14-replication-audiences.md, An owner changes by an insert alone), until upstream releases the
-# fix (simgine/bevy_replicon#782; branch master of the fork).
+
 [patch.crates-io]
-bevy_replicon = { git = "https://github.com/xorza/bevy_replicon", branch = "master" }
-lightyear = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_aeronet = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_connection = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_core = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_crossbeam = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_deterministic_replication = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_frame_interpolation = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_inputs = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_inputs_bei = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_inputs_leafwing = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_inputs_native = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_interpolation = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_link = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_messages = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_metrics = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_netcode = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_prediction = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_raw_connection = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_replication = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_serde = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_steam = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_sync = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_tools = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_transport = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_udp = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_utils = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_web = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_websocket = { git = "https://github.com/xorza/lightyear", branch = "main" }
-lightyear_webtransport = { git = "https://github.com/xorza/lightyear", branch = "main" }
+bevy_replicon = { git = "https://github.com/xorza/bevy_replicon", rev = "44fa66127b21c5523855cc17cca83793802a2041" }
+lightyear = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_aeronet = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_connection = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_core = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_crossbeam = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_deterministic_replication = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_frame_interpolation = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_inputs = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_inputs_bei = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_inputs_leafwing = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_inputs_native = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_interpolation = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_link = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_messages = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_metrics = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_netcode = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_prediction = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_raw_connection = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_replication = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_serde = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_steam = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_sync = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_tools = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_transport = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_udp = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_utils = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_web = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_websocket = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }
+lightyear_webtransport = { git = "https://github.com/xorza/lightyear", rev = "54e6be21dc278818d0d2ffe2fa774e8710c1e018" }

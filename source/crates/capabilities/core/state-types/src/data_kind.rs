@@ -44,6 +44,12 @@ pub enum DataKind {
     UnitStateTeam,
     /// A unit's script state fields of `sync = "all"`.
     UnitStateAll,
+    /// A player's script state fields of `sync = "owner"`, on its entity.
+    PlayerStateOwner,
+    /// A player's script state fields of `sync = "team"`, on its entity.
+    PlayerStateTeam,
+    /// A player's script state fields of `sync = "all"`, on its entity.
+    PlayerStateAll,
     /// State no client receives.
     Server,
 }
@@ -69,6 +75,9 @@ impl DataKind {
             Self::UnitStateOwner => "unit_state_owner",
             Self::UnitStateTeam => "unit_state_team",
             Self::UnitStateAll => "unit_state_all",
+            Self::PlayerStateOwner => "player_state_owner",
+            Self::PlayerStateTeam => "player_state_team",
+            Self::PlayerStateAll => "player_state_all",
             Self::Server => "server",
         }
     }
@@ -95,8 +104,9 @@ impl DataKind {
             | Self::Match
             | Self::ModeState
             | Self::PlayerModifiers
-            | Self::UnitStateAll => Recipients::ALL,
-            Self::UnitStateTeam => Recipients::ALLIES,
+            | Self::UnitStateAll
+            | Self::PlayerStateAll => Recipients::ALL,
+            Self::UnitStateTeam | Self::PlayerStateTeam => Recipients::ALLIES,
             Self::Pools
             | Self::Cooldowns
             | Self::Progression
@@ -106,6 +116,7 @@ impl DataKind {
             | Self::Queues
             | Self::Prediction
             | Self::UnitStateOwner
+            | Self::PlayerStateOwner
             | Self::Server => Recipients::NONE,
         }
     }
@@ -126,9 +137,12 @@ impl DataKind {
             | Self::Resources
             | Self::Supply
             | Self::Queues => Recipients::ALL,
-            Self::UnitStateOwner | Self::UnitStateTeam | Self::UnitStateAll => {
-                Recipients::SPECTATORS
-            }
+            Self::UnitStateOwner
+            | Self::UnitStateTeam
+            | Self::UnitStateAll
+            | Self::PlayerStateOwner
+            | Self::PlayerStateTeam
+            | Self::PlayerStateAll => Recipients::SPECTATORS,
             Self::Unit | Self::Match | Self::Prediction | Self::Server => Recipients::NONE,
         }
     }

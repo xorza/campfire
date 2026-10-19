@@ -1,3 +1,4 @@
+use campfire_client_files::MaterialExtras;
 use campfire_codec::Json;
 
 use crate::gltf::gltf_document::{
@@ -120,13 +121,18 @@ impl GlbBuilder {
 
     /// `material`'s index, with each extension it uses in `extensionsUsed`, in name order.
     pub(crate) fn material(&mut self, material: Material) -> usize {
-        let unlit = material
-            .extensions
-            .unlit
+        let extensions = &material.extensions;
+        let unlit = extensions.unlit.is_some().then_some("KHR_materials_unlit");
+        let extras = extensions
+            .extras
             .is_some()
-            .then_some("KHR_materials_unlit");
+            .then_some(MaterialExtras::EXTENSION);
         let used = &mut self.document.extensions_used;
-        for extension in ["KHR_materials_specular"].into_iter().chain(unlit) {
+        for extension in ["KHR_materials_specular"]
+            .into_iter()
+            .chain(unlit)
+            .chain(extras)
+        {
             if let Err(at) = used.binary_search(&extension) {
                 used.insert(at, extension);
             }

@@ -4,100 +4,117 @@ use std::num::NonZeroU32;
 use campfire_actions::ActionKind;
 use campfire_client_files::{ClientObjects, ClientUnits, MapConditions, TerrainFile};
 use campfire_codec::Binary;
-use campfire_common::MapName;
-use campfire_import::{DropCause, Imported, WeaponDrop};
+use campfire_combat::ModeCombatData;
+use campfire_common::{DeclaredName, MapName};
+use campfire_import::{DropCause, DroppedButton, DroppedWeapon, ImportLoss, Imported, WeaponDrop};
 use campfire_math::Num;
+use campfire_navigation::MapNavigationData;
 use campfire_package::ModePackages;
 use campfire_package_disk::PackageDir;
-use campfire_values::DeclaredName;
 use tracing::info;
 
 use crate::error::CheckError;
-use crate::failure::Failure;
+use crate::failure::{Differs, Failure};
+use crate::golden::{Golden, Measured};
 use crate::pins::{
-    BOT, CLIENT_OBJECTS, DRIVE_TICKS, FACTORY, FIGHT, FOUGHT, FoughtCounts, HEIGHTS, LOOKS,
-    LookCounts, MARKERS, OBJECT_LOOKS, PRODUCED, PRODUCTION, ProducedCounts, TERRAIN, TerrainDrawn,
-    UNIT_TYPES, UNITS, WALLS,
+    FactorySteps, FightSteps, Fingerprints, FoughtCounts, HZ, LookCounts, MapCounts,
+    ProducedCounts, ProductionSteps, SkirmishTicks, TerrainCounts, TerrainDrawn,
 };
 use crate::skirmish_play::{SkirmishPlay, SkirmishSteps};
 use crate::start_drive::StartDrive;
 
-/// The checks of an import against the pins, a group at a time, each failure it finds kept:
-/// the import's report, its game package, and the mode of `MAP` loaded from it.
+/// The checks of an import, a group at a time, each failure it finds kept: the import's report,
+/// its game package, the mode of `MAP` loaded from it, the values the golden file pins, none in
+/// a run that blesses, and what the checks measured of them.
 #[derive(Debug)]
 pub(crate) struct ImportCheck<'a> {
     pub(crate) imported: &'a Imported,
     pub(crate) game: &'a PackageDir,
     pub(crate) map: &'a MapName,
     pub(crate) packages: ModePackages,
+    pub(crate) golden: Option<Golden>,
+    pub(crate) measured: Measured,
     pub(crate) failures: Vec<Failure>,
 }
 
 impl ImportCheck<'_> {
+    /// The value the golden file pins of `got`, which `of` reads; `got` itself in a run that
+    /// blesses, which pins what it measures.
+    fn pinned<T>(&self, of: impl FnOnce(&Golden) -> T, got: T) -> T {
+        self.golden.as_ref().map_or(got, of)
+    }
+
+    /// The import's fingerprints, `got`.
+    pub(crate) fn fingerprints(&mut self, got: Fingerprints) {
+        let expected = self.pinned(|golden| golden.fingerprints, got);
+        self.failures
+            .extend(Differs::of(got, expected).map(Failure::Fingerprints));
+        self.measured.fingerprints = Some(got);
+    }
+
     /// Tournament Desert's heights, units, client objects, markers, terrain and walls.
     pub(crate) fn map(&mut self) -> Result<(), CheckError> {
         let files = &self.packages.mode().package.files;
-        let [columns, rows] = self
+        let heights = self
             .packages
             .heights()
             .map_or([0, 0], |grid| [grid.columns(), grid.rows()]);
-        if [columns, rows] != HEIGHTS {
-            self.failures.push(Failure::Heights { columns, rows });
-        }
         let placed = &self.packages.map().units;
-        let units = placed.len();
         let by_type = tally(placed.iter().map(|unit| unit.unit_type.as_str()));
-        let types = by_type.len();
-        if (units, types) != (UNITS, UNIT_TYPES) {
-            self.failures.push(Failure::Units { units, types });
-        }
         let client: ClientObjects = files.read_data(&ClientObjects::path(self.map))?;
-        let objects = client.objects.len();
         let by_look = tally(client.objects.iter().map(|object| object.look.as_str()));
-        let looks = by_look.len();
-        if (objects, looks) != (CLIENT_OBJECTS, OBJECT_LOOKS) {
-            self.failures
-                .push(Failure::ClientObjects { objects, looks });
-        }
         info!(units = %listed(&by_type), "Tournament Desert's units by type");
         info!(objects = %listed(&by_look), "Tournament Desert's client objects by look");
-        let markers = self.packages.map().markers.len();
-        if markers != MARKERS {
-            self.failures.push(Failure::Markers(markers));
-        }
+        let navigation = self.packages.map().section::<MapNavigationData>();
+        let counts = MapCounts {
+            heights,
+            units: placed.len(),
+            unit_types: by_type.len(),
+            client_objects: client.objects.len(),
+            object_looks: by_look.len(),
+            markers: self.packages.map().markers.len(),
+            walls: navigation.map_or(0, |navigation| navigation.walls.len()),
+        };
         let terrain = files.read_file(&TerrainFile::path(self.map))?;
         let terrain = Binary::decode::<TerrainFile>(&terrain).map_err(CheckError::Decode)?;
         let drawn = TerrainDrawn {
             quads: terrain.quads().ground.len(),
-            overlays: terrain.quads().overlays.len(),
-            copies: terrain.texture().copies.len(),
-            wraps: terrain.texture().wraps.len(),
+            counts: TerrainCounts {
+                overlays: terrain.quads().overlays.len(),
+                copies: terrain.texture().copies.len(),
+                wraps: terrain.texture().wraps.len(),
+            },
         };
-        if drawn != TERRAIN {
-            self.failures.push(Failure::Terrain(drawn));
-        }
-        let untextured = self.imported.maps[self.map].untextured_cells;
+        let untextured = self.imported.losses.iter().find_map(|loss| match loss {
+            ImportLoss::UntexturedCells { map, cells } if map == self.map => Some(*cells),
+            _ => None,
+        });
+        let untextured = untextured.unwrap_or(0);
         if untextured > 0 {
             self.failures.push(Failure::Untextured(untextured));
         }
-        let navigation = self.packages.map().navigation.as_ref();
-        let walls = navigation.map_or(0, |navigation| navigation.walls.len());
-        if walls != WALLS {
-            self.failures.push(Failure::Walls(walls));
-        }
+        let pinned = self.pinned(|golden| golden.map, counts);
+        self.failures
+            .extend(Differs::of(counts, pinned).map(Failure::Map));
+        let layers = self.pinned(|golden| golden.terrain, drawn.counts);
+        let expected = TerrainDrawn::expected(pinned.heights, layers);
+        self.failures
+            .extend(Differs::of(drawn, expected).map(Failure::Terrain));
+        self.measured.map = Some(counts);
+        self.measured.terrain = Some(drawn.counts);
         info!(
-            samples = %format!("{columns} × {rows}"),
-            units,
-            types,
-            objects,
-            looks,
-            markers,
+            samples = %format!("{} × {}", heights[0], heights[1]),
+            units = counts.units,
+            types = counts.unit_types,
+            objects = counts.client_objects,
+            looks = counts.object_looks,
+            markers = counts.markers,
             quads = drawn.quads,
-            overlays = drawn.overlays,
-            copies = drawn.copies,
-            wraps = drawn.wraps,
+            overlays = drawn.counts.overlays,
+            copies = drawn.counts.copies,
+            wraps = drawn.counts.wraps,
             untextured,
-            walls,
+            walls = counts.walls,
             "Tournament Desert loaded"
         );
         Ok(())
@@ -126,14 +143,15 @@ impl ImportCheck<'_> {
             night: 0,
             snowy: 0,
         };
-        for other in self.imported.maps.keys() {
+        for other in &self.imported.maps {
             let held: MapConditions = files.read_data(&MapConditions::path(other))?;
             drawn.night += usize::from(held.conditions.contains(&night));
             drawn.snowy += usize::from(held.conditions.contains(&snow));
         }
-        if drawn != LOOKS {
-            self.failures.push(Failure::Looks(drawn));
-        }
+        let expected = self.pinned(|golden| golden.looks, drawn);
+        self.failures
+            .extend(Differs::of(drawn, expected).map(Failure::Looks));
+        self.measured.looks = Some(drawn);
         info!(
             varied = drawn.varied,
             empty = drawn.empty,
@@ -144,38 +162,28 @@ impl ImportCheck<'_> {
         Ok(())
     }
 
-    /// Every other map the import wrote loads in the imported mode, its walls and its placed
-    /// bodies checked as a match loads them.
-    pub(crate) fn other_maps(&mut self) {
-        let mut loaded = 1;
-        for (other, imported) in &self.imported.maps {
-            if other != self.map {
-                match self.game.mode_packages(Some(other)) {
-                    Ok(_) => loaded += 1,
-                    Err(error) => self.failures.push(Failure::MapLoad {
-                        map: other.clone(),
-                        error,
-                    }),
-                }
-            }
-            if !imported.dropped_waypoints.is_empty() {
-                info!(
-                    map = %other,
-                    waypoints = %imported.dropped_waypoints.join(", "),
-                    "a map's waypoints past its bounds are dropped"
-                );
+    /// The waypoints the import dropped of every map it wrote, which loads in the imported
+    /// mode, as the import's own load checks.
+    pub(crate) fn other_maps(&self) {
+        for loss in &self.imported.losses {
+            if let ImportLoss::Waypoint { map, waypoint } = loss {
+                info!(%map, waypoint, "a map's waypoint past its bounds is dropped");
             }
         }
-        info!(
-            loaded,
-            maps = self.imported.maps.len(),
-            "the imported maps loaded"
-        );
+        info!(maps = self.imported.maps.len(), "the imported maps loaded");
     }
 
     /// The trains and builds of every command set, and the buttons dropped, by cause.
     pub(crate) fn production(&mut self) {
-        let dropped = &self.imported.dropped_buttons;
+        let dropped: Vec<&DroppedButton> = self
+            .imported
+            .losses
+            .iter()
+            .filter_map(|loss| match loss {
+                ImportLoss::Button(button) => Some(button),
+                _ => None,
+            })
+            .collect();
         let produced = ProducedCounts {
             trains: self.kind_count(ActionKind::Train),
             builds: self.kind_count(ActionKind::Build),
@@ -186,10 +194,11 @@ impl ImportCheck<'_> {
                     .count()
             }),
         };
-        if produced != PRODUCED {
-            self.failures.push(Failure::Produced(produced));
-        }
-        for dropped in dropped {
+        let expected = self.pinned(|golden| golden.produced, produced);
+        self.failures
+            .extend(Differs::of(produced, expected).map(Failure::Produced));
+        self.measured.produced = Some(produced);
+        for dropped in &dropped {
             info!(
                 button = dropped.button,
                 cause = ?dropped.cause,
@@ -206,8 +215,16 @@ impl ImportCheck<'_> {
 
     /// The weapons, the armors, the damage kinds and the bodies of no life or a wounded start.
     pub(crate) fn combat(&mut self) {
-        let combat = &self.packages.data().combat;
-        let dropped = &self.imported.dropped_weapons;
+        let combat = self.packages.data().section_or_default::<ModeCombatData>();
+        let losses = &self.imported.losses;
+        let dropped: Vec<&DroppedWeapon> = losses
+            .iter()
+            .filter_map(|loss| match loss {
+                ImportLoss::Weapon(weapon) => Some(weapon),
+                _ => None,
+            })
+            .collect();
+        let count = |kind: fn(&ImportLoss) -> bool| losses.iter().filter(|loss| kind(loss)).count();
         let fought = FoughtCounts {
             weapons: self.kind_count(ActionKind::Attack),
             dropped: WeaponDrop::ALL.map(|cause| {
@@ -218,13 +235,14 @@ impl ImportCheck<'_> {
             }),
             armors: combat.armors.len(),
             kinds: combat.damage_kinds.len(),
-            unliving: self.imported.unliving.len(),
-            wounded: self.imported.wounded.len(),
+            unliving: count(|loss| matches!(loss, ImportLoss::Unliving(_))),
+            wounded: count(|loss| matches!(loss, ImportLoss::Wounded(_))),
         };
-        if fought != FOUGHT {
-            self.failures.push(Failure::Fought(Box::new(fought)));
-        }
-        for dropped in dropped {
+        let expected = self.pinned(|golden| golden.fought, fought);
+        self.failures
+            .extend(Differs::of(fought, expected).map(Failure::Fought));
+        self.measured.fought = Some(fought);
+        for dropped in &dropped {
             info!(
                 weapon = dropped.weapon,
                 cause = ?dropped.cause,
@@ -235,9 +253,11 @@ impl ImportCheck<'_> {
     }
 
     /// The skirmish's production and fight, in a match of its own of the packages loaded again,
-    /// then the start and the dozer's drive, at 30 ticks a second; every failure the checks found.
+    /// then the start and the dozer's drive, at `HZ` ticks a second; then, in a run that blesses,
+    /// the golden file written of what the checks measured: every failure the checks found.
     pub(crate) fn plays(mut self) -> Result<Vec<Failure>, CheckError> {
-        let rate = NonZeroU32::new(30).expect("a rate");
+        let rate = u32::try_from(HZ).ok().and_then(NonZeroU32::new);
+        let rate = rate.expect("a rate");
         let played = self
             .game
             .mode_packages(Some(self.map))
@@ -249,9 +269,17 @@ impl ImportCheck<'_> {
             bot,
         }) = SkirmishPlay::run(played, rate, &mut self.failures)
         {
-            if production != PRODUCTION {
-                self.failures.push(Failure::Production(production));
-            }
+            let ticks = SkirmishTicks {
+                barracks: production.barracks_ticks,
+                factory: factory.ticks,
+                shot: fight.shot_ticks,
+                hit: fight.hit_ticks,
+                fight: fight.fight_ticks,
+            };
+            let pinned = self.pinned(|golden| golden.skirmish, ticks);
+            let expected = ProductionSteps::expected(pinned.barracks);
+            self.failures
+                .extend(Differs::of(production, expected).map(Failure::Production));
             info!(
                 dozer = production.dozer_ticks,
                 barracks = production.barracks_ticks,
@@ -259,17 +287,18 @@ impl ImportCheck<'_> {
                 money = ?production.money,
                 "player 1 trained a dozer, built a barracks and trained a ranger"
             );
-            if factory != FACTORY {
-                self.failures.push(Failure::Factory(factory));
-            }
+            let expected = FactorySteps::expected(pinned.factory);
+            self.failures
+                .extend(Differs::of(factory, expected).map(Failure::Factory));
             info!(
                 ticks = ?factory.ticks,
                 money = factory.money,
                 "player 1 built a power plant, a supply center and a war factory"
             );
-            if fight != FIGHT {
-                self.failures.push(Failure::Fight(fight));
-            }
+            let expected = FightSteps::expected(pinned);
+            self.failures
+                .extend(Differs::of(fight, expected).map(Failure::Fight));
+            self.measured.skirmish = Some(ticks);
             info!(
                 train = fight.train_ticks,
                 shot = ?fight.shot_ticks,
@@ -279,9 +308,10 @@ impl ImportCheck<'_> {
                 result = ?fight.result,
                 "player 1's crusaders' shells destroyed the bot's command center"
             );
-            if bot != BOT {
-                self.failures.push(Failure::Bot(bot));
-            }
+            let expected = self.pinned(|golden| golden.bot, bot);
+            self.failures
+                .extend(Differs::of(bot, expected).map(Failure::Bot));
+            self.measured.bot = Some(bot);
             info!(
                 built = ?bot.built,
                 farthest = bot.farthest_m,
@@ -289,9 +319,11 @@ impl ImportCheck<'_> {
             );
         }
         if let Some(drive) = StartDrive::run(self.packages, rate, &mut self.failures) {
-            if drive.ticks > DRIVE_TICKS {
-                self.failures.push(Failure::DriveTicks(drive.ticks));
-            }
+            let golden = self.golden.as_ref();
+            let expected = golden.map_or(drive.ticks, |golden| golden.drive_ticks);
+            self.failures
+                .extend(Differs::of(drive.ticks, expected).map(Failure::DriveTicks));
+            self.measured.drive_ticks = Some(drive.ticks);
             if drive.left != Num::ZERO {
                 self.failures.push(Failure::DriveShort(drive.left));
             }
@@ -302,13 +334,19 @@ impl ImportCheck<'_> {
                 "the dozer drove from player 1's start to player 2's"
             );
         }
+        if self.golden.is_none() {
+            match self.measured.into_golden() {
+                Some(golden) => golden.bless()?,
+                None => self.failures.push(Failure::Unmeasured),
+            }
+        }
         Ok(self.failures)
     }
 
     /// How many actions of `kind` the mode holds.
     fn kind_count(&self, kind: ActionKind) -> usize {
-        let actions = self.packages.content().actions.values();
-        actions.filter(|action| action.kind == kind).count()
+        let actions = self.packages.content().actions().values();
+        actions.filter(|action| action.kind() == kind).count()
     }
 }
 

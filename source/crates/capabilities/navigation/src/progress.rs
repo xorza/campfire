@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, SimComponent};
+use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use serde::{Deserialize, Serialize};
@@ -49,8 +49,7 @@ impl SimComponent for Progress {
 
     // Its place lies within the world's bound, as every place does, and it names no book.
     fn check(&self, _: &World, _: Entity) -> bool {
-        self.last_at
-            .is_none_or(|point| Position::from(point).within_bound())
+        self.last_at.is_none_or(Vec3::within_bound)
     }
 }
 

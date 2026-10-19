@@ -1,36 +1,38 @@
 use bevy::ecs::system::{Res, SystemParam};
 use campfire_common::PlayerSlot;
 use campfire_net::{JoinState, WatchRequest};
+use campfire_players::{PlayerResources, PlayerRows, ResourceAmount};
 use campfire_units::{Commanded, PlayerUnits};
-use campfire_values::{Team, TeamSet};
+use campfire_values::{ResourceId, Team, TeamSet};
 
 /// The client's own player as a system reads it: its seat and team, once the client plays, the
-/// avatar it commands, and, for a spectator, the teams it chose to watch.
+/// avatar it commands, its amounts of the player resources, and, for a spectator, the teams it
+/// chose to watch.
 #[derive(SystemParam, Debug)]
 pub(crate) struct OwnPlayer<'w, 's> {
-    state: Option<Res<'w, JoinState>>,
+    state: Res<'w, JoinState>,
     players: PlayerUnits<'w, 's>,
+    resources: PlayerRows<'w, 's, PlayerResources>,
     watch: Option<Res<'w, WatchRequest>>,
 }
 
 impl OwnPlayer<'_, '_> {
     /// The seat the client plays in; none before it plays.
     pub(crate) fn slot(&self) -> Option<PlayerSlot> {
-        self.state.as_deref()?.slot()
+        self.state.slot()
     }
 
     /// The team the client plays on; none before it plays.
     pub(crate) fn team(&self) -> Option<Team> {
-        self.state.as_deref()?.team()
+        self.state.team()
     }
 
     /// The team whose units show as friends: the client's own once it plays, and a spectator's
     /// as `OwnPlayer::side_of` says; none before either.
     pub(crate) fn side(&self) -> Option<Team> {
-        let state = self.state.as_deref()?;
-        let watching = state.watching_clock().is_some();
+        let watching = self.state.watching_clock().is_some();
         OwnPlayer::side_of(
-            state.team(),
+            self.state.team(),
             watching,
             self.watch.as_deref().map(|watch| watch.0),
         )
@@ -48,6 +50,20 @@ impl OwnPlayer<'_, '_> {
             (Some(alone), None) => Some(alone),
             _ => Some(Team::new(0)),
         }
+    }
+
+    /// The player's amount of `resource`; 0 before it plays, or before its resources reach the
+    /// client.
+    pub(crate) fn amount(&self, resource: ResourceId) -> i64 {
+        let held = self.slot().and_then(|slot| self.resources.of_slot(slot));
+        held.map_or(0, |held| held.amount(resource))
+    }
+
+    /// Whether the player holds each of `costs`, as `amount` gives its amounts.
+    pub(crate) fn affords(&self, costs: &[ResourceAmount]) -> bool {
+        costs
+            .iter()
+            .all(|cost| self.amount(cost.resource) >= cost.amount)
     }
 
     /// The avatar the client commands; none before it plays, or before the avatar spawns.

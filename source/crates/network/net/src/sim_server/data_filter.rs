@@ -16,11 +16,12 @@ use bevy_replicon::shared::replication::visibility::VisibilityScope;
 use campfire_capabilities::Release;
 use campfire_common::PlayerSlot;
 use campfire_declare::CapabilitySet;
+use campfire_players::Player;
 use campfire_sim::SimResource;
 use campfire_state_types::{
     DataKind, Declared, Recipients, Replication, Sending, SendingWays, StateTypes,
 };
-use campfire_units::{Owner, Player};
+use campfire_units::Owner;
 use campfire_values::Team;
 
 use crate::sim_server::match_visibility::MatchVisibility;
@@ -105,6 +106,12 @@ filtered_kinds! {
     UnitStateTeamKind: UnitStateTeam;
     /// A unit's script state fields of `sync = "all"`.
     UnitStateAllKind: UnitStateAll;
+    /// A player's script state fields of `sync = "owner"`.
+    PlayerStateOwnerKind: PlayerStateOwner;
+    /// A player's script state fields of `sync = "team"`.
+    PlayerStateTeamKind: PlayerStateTeam;
+    /// A player's script state fields of `sync = "all"`.
+    PlayerStateAllKind: PlayerStateAll;
 }
 
 /// The types of `K`'s kind in the state lists of every capability of the release, as one scope,

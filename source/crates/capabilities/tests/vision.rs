@@ -4,12 +4,11 @@ use campfire_deliveries::Deliveries;
 use campfire_geometry::{Bounds, Grid, Polygon};
 use campfire_math::Num;
 use campfire_mode::Mode;
-use campfire_script::internals::FailureKind;
-use campfire_script::{ApiError, ScriptBudgets, ScriptLimits, Unit};
+use campfire_script::FailureKind;
+use campfire_script::{ApiError, ScriptLimits, ScriptPools, Unit};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, Position, SimWorld, StableId};
-use campfire_stats::Life;
-use campfire_units::{BodyForm, Dead, UnitTypeCore, Units, UnitsWorld};
+use campfire_units::{BodyForm, Dead, Life, UnitTypeCore, Units, UnitsWorld};
 use campfire_values::{Relation, TagProperties, Team, TeamSet, TypeScope, VisionShare};
 use campfire_vision::*;
 
@@ -27,7 +26,7 @@ fn vision_match_of_teams(teams: usize) -> Match {
 /// tests' seers.
 fn vision_match_with_brush(teams: usize, brush: &[Polygon]) -> Match {
     let limits = ScriptLimits::ROOMY;
-    let scripts = ScriptBudgets::new(limits, 1);
+    let scripts = ScriptPools { limits, players: 1 };
     let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
     let mut game = Match::server(&declared, scripts);
     let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
@@ -233,10 +232,10 @@ fn a_reveal_shows_its_cells_to_the_caster_group_alone_for_its_time_and_no_hidden
     assert_eq!(seen(&game), [team(1), team(1), team(1)]);
     assert_eq!(*game.resource::<Reveals>(), Reveals::default());
 
-    // The mode's call, which has no acting unit, fails, as do a negative radius, a time of 0 and a
-    // negative one.
+    // The mode's call that names no team, as it has no acting unit, fails, as do a negative
+    // radius, a time of 0 and a negative one.
     let fails = [
-        (None, "2", 100, ApiError::NotForRole),
+        (None, "2", 100, ApiError::NoActingUnit),
         (Some(caster), "-1", 100, ApiError::NegativeRadius),
         (Some(caster), "2", 0, ApiError::ZeroTime),
         (Some(caster), "2", -1, ApiError::NegativeTime),

@@ -1,8 +1,7 @@
 use std::collections::BTreeMap;
 use std::f32::consts::PI;
 
-use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
 
 use crate::zero_hour::format::game_float;
 use crate::zero_hour::format::map::chunk_reader::ChunkReader;
@@ -115,7 +114,7 @@ impl MapObject {
     pub(crate) fn ground(&self) -> Option<[Num; 2]> {
         let [x, y, _] = self.pos.map(|axis| game_float::to_num(axis).ok());
         let ground = [x?, y?.checked_neg()?];
-        let bound = Position::BOUND.to_bits();
+        let bound = Vec3::BOUND.to_bits();
         ground
             .iter()
             .all(|value| value.to_bits().unsigned_abs() <= bound.unsigned_abs())

@@ -1,5 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_sim::StableId;
 
@@ -80,7 +81,7 @@ impl LiveCarriers {
 }
 
 impl Cache for LiveCarriers {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
 }

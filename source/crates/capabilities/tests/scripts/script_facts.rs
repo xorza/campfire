@@ -1,22 +1,28 @@
 use std::num::NonZeroU64;
 
+use campfire_actions::SlotKind;
 use campfire_capabilities::Release;
+use campfire_mode::{ChoiceId, MarkerTag};
+use campfire_script::internals::Undefined;
 use campfire_script::*;
-use campfire_values::EngineEnum;
+use campfire_units::{PoolId, StatId};
+use campfire_values::{
+    ActionId, DamageKind, EngineEnum, ModifierId, Named, PathId, ResourceId, Tag, Team, TrackId,
+};
 
 #[test]
 fn the_facts_are_the_names_a_script_uses_on_ctx_and_gives_the_api() {
     let source = r#"
 fn on_resolve(ctx, caster, target) {
-    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies:avatar") {
-        ctx.damage(unit, ctx.p.damage * unit.stat("armor"), "magic");
+    for unit in ctx.find(caster, caster.pos, ctx.params.radius, "enemies:avatar") {
+        ctx.damage(unit, "magic", ctx.params.damage * unit.stat("armor"));
         if !unit.has_modifier("kindle") {
             ctx.add_modifier(unit, "kindle", 100);
         }
     }
     ctx.restore(caster, "mana", caster.pool("energy") + caster.pool_max("health"));
     for camp in ctx.map.markers("camp") {}
-    ctx.grant(caster, "spell", ctx.chosen(0, "spells"));
+    ctx.grant(caster, "spell", ctx.chosen(caster.owner, "spells"));
     ctx.add_resource(caster.owner, "gold", 5);
     ctx.spawn_group("north", "mid", PathEnd::Start, ctx.units_tagged("core"));
     if caster.has_tag("slowed") { ctx.add_xp(caster, "level", 1); }
@@ -51,9 +57,9 @@ fn helper(ctx, gold) {}
         names,
         [
             ("find", call),
-            ("p", value),
+            ("params", value),
             ("damage", call),
-            ("p", value),
+            ("params", value),
             ("add_modifier", call),
             ("restore", call),
             ("map", value),
@@ -81,26 +87,25 @@ fn helper(ctx, gold) {}
     assert_eq!(
         given,
         [
-            (NameKind::Filter, "enemies:avatar"),
-            (NameKind::DamageKind, "magic"),
-            (NameKind::Stat, "armor"),
-            (NameKind::Modifier, "kindle"),
-            (NameKind::Modifier, "kindle"),
-            (NameKind::Pool, "mana"),
-            (NameKind::Pool, "energy"),
-            (NameKind::Pool, "health"),
-            (NameKind::MarkerTag, "camp"),
-            (NameKind::SlotKind, "spell"),
-            (NameKind::Choice, "spells"),
-            (NameKind::Resource, "gold"),
-            (NameKind::Team, "north"),
-            (NameKind::Path, "mid"),
-            (NameKind::Tag, "core"),
-            (NameKind::Tag, "slowed"),
-            (NameKind::Track, "level"),
+            (Filter::NAMES, "enemies:avatar"),
+            (DamageKind::NAMES, "magic"),
+            (StatId::NAMES, "armor"),
+            (ModifierId::NAMES, "kindle"),
+            (ModifierId::NAMES, "kindle"),
+            (PoolId::NAMES, "mana"),
+            (PoolId::NAMES, "energy"),
+            (PoolId::NAMES, "health"),
+            (MarkerTag::NAMES, "camp"),
+            (SlotKind::NAMES, "spell"),
+            (ChoiceId::NAMES, "spells"),
+            (ResourceId::NAMES, "gold"),
+            (Team::NAMES, "north"),
+            (PathId::NAMES, "mid"),
+            (Tag::NAMES, "core"),
+            (Tag::NAMES, "slowed"),
+            (TrackId::NAMES, "level"),
         ]
     );
-    assert!(!facts.function_pointer);
 }
 
 #[test]
@@ -137,6 +142,47 @@ fn on_x(ctx, unit) {
 }
 
 #[test]
+fn a_literal_compared_with_a_returned_name_is_a_fact_of_its_kind() {
+    // Either side of `==` and `!=`, each literal of a list written in place after `in`, and the
+    // last link of a chain count. A name compared with a variable, a field that
+    // returns no name, a name after `.p` and a list held in a variable do not; nor does a
+    // `switch`'s literal, as its member counts instead.
+    let source = r#"
+fn on_damage_taken(ctx, m, d) {
+    if d.kind == "true" || "pure" != d.kind {}
+    if m.carrier.team in ["north", "south"] {}
+    if ctx.players[0].team == "north" || ctx.unit(0).path == "mid" {}
+    if d.action == "dusk_mark" {}
+    let kinds = ["magic"];
+    if d.kind in kinds || d.kind == m.state.kind || d.amount == "a" || ctx.params.team == "x" {}
+    switch m.carrier.unit_type { "grunt" => {} }
+}
+"#;
+    let mut host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
+    let api = Release::bind_script_api(&mut host);
+    let facts = ScriptFacts::read(&host, source, &api).unwrap();
+    let compared = |member: &str, kind, name: &str| ComparedName {
+        member: member.to_owned(),
+        kind,
+        name: name.to_owned(),
+    };
+    let (damage, team) = (DamageKind::NAMES, Team::NAMES);
+    assert_eq!(
+        facts.compared,
+        [
+            compared("kind", damage, "true"),
+            compared("kind", damage, "pure"),
+            compared("team", team, "north"),
+            compared("team", team, "south"),
+            compared("team", team, "north"),
+            compared("path", PathId::NAMES, "mid"),
+            compared("action", ActionId::NAMES, "dusk_mark"),
+        ]
+    );
+    assert_eq!(facts.switched, ["unit_type"]);
+}
+
+#[test]
 fn a_call_with_its_receiver_first_reads_as_the_method_and_a_literal_index_as_data() {
     // Rhai calls `f(x, …)` as `x.f(…)`: with `ctx` first, a call of `ctx`, its names and enums
     // read from the arguments after it; with a handle first, its method; the script's own
@@ -144,14 +190,14 @@ fn a_call_with_its_receiver_first_reads_as_the_method_and_a_literal_index_as_dat
     // be read at load.
     let source = r#"
 fn on_resolve(ctx, caster, target) {
-    damage(ctx, target, 5, "fire");
+    damage(ctx, target, "fire", 5);
     spawn_group(ctx, "a", "mid", "start", []);
     let speed = stat(caster, "speed");
-    let width = ctx.p["width"];
+    let width = ctx.params["width"];
     ctx.state["round"] = 1;
     target.state["marks"] += 1;
     let name = "hidden";
-    let hidden = ctx.p[name];
+    let hidden = ctx.params[name];
     helper(ctx, caster);
 }
 
@@ -172,9 +218,9 @@ fn helper(ctx, unit) {}
         [
             ("damage", call),
             ("spawn_group", call),
-            ("p", value),
+            ("params", value),
             ("state", value),
-            ("p", value)
+            ("params", value)
         ]
     );
     let members: Vec<_> = facts
@@ -194,10 +240,10 @@ fn helper(ctx, unit) {}
     assert_eq!(
         given,
         [
-            (NameKind::DamageKind, "fire"),
-            (NameKind::Team, "a"),
-            (NameKind::Path, "mid"),
-            (NameKind::Stat, "speed"),
+            (DamageKind::NAMES, "fire"),
+            (Team::NAMES, "a"),
+            (PathId::NAMES, "mid"),
+            (StatId::NAMES, "speed"),
         ]
     );
     let string = EnumString {
@@ -212,22 +258,31 @@ fn helper(ctx, unit) {}
 }
 
 #[test]
-fn a_closure_an_anonymous_function_and_fn_make_a_function_pointer() {
+fn a_closure_fails_to_compile_and_a_function_pointer_reads_as_its_calls() {
+    // With no closures, a function that captures a variable names one its scope lacks; an
+    // anonymous function that captures nothing is one more function of the script, and `Fn`
+    // and a call through a pointer are calls of no namespace.
     let host = ScriptHost::new(NonZeroU64::new(1000).unwrap());
     let api = Release::script_api();
-    for (source, pointer) in [
-        ("fn on_x(ctx) { let x = 1; let f = || x; }", true),
-        ("fn on_x(ctx) { let f = |c| c + 1; }", true),
-        (
-            r#"fn on_x(ctx) { let f = Fn("h"); f.call(1) } fn h(c) {}"#,
-            true,
-        ),
-        ("fn on_x(ctx, name) { g(Fn(name)) } fn g(c) {}", true),
-        ("fn on_x(ctx) { h(1); } fn h(c) {}", false),
+    let error = ScriptFacts::read(&host, "fn on_x(ctx) { let x = 1; let f = || x; }", &api);
+    let error = error.unwrap_err();
+    assert_eq!(error.undefined(), Some(Undefined::Variable("x")));
+    for source in [
+        "fn on_x(ctx) { let f = |c| c + 1; }",
+        r#"fn on_x(ctx) { let f = Fn("h"); f.call(1) } fn h(c) {}"#,
+        "fn on_x(ctx, name) { g(Fn(name)) } fn g(c) {}",
     ] {
         let facts = ScriptFacts::read(&host, source, &api).unwrap();
-        assert_eq!(facts.function_pointer, pointer, "{source}");
+        assert_eq!(facts.ctx_misuse, None, "{source}");
+        assert!(
+            facts
+                .functions
+                .iter()
+                .any(|function| function.name == "on_x")
+        );
     }
+    let anonymous = ScriptFacts::read(&host, "fn on_x(ctx) { let f = |c| c + 1; }", &api).unwrap();
+    assert_eq!(anonymous.functions.len(), 2);
 }
 
 #[test]

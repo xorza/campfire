@@ -3,7 +3,6 @@ use std::slice;
 use bevy::app::{App, Plugin, Update};
 use bevy::ecs::query::{Allow, Has};
 use bevy::ecs::schedule::SystemCondition;
-use bevy::ecs::schedule::common_conditions::{not, resource_exists};
 use bevy::ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy::ecs::system::{Query, Res, ResMut};
 use bevy::input::ButtonInput;
@@ -11,7 +10,10 @@ use bevy::input::common_conditions::input_just_pressed;
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
 use bevy::math::Vec3;
-use campfire_actions::{ActionBook, ActionSlots, ActionTarget, Aim, UseGroup};
+use bevy::state::condition::in_state;
+use campfire_actions::{
+    ActionBook, ActionSlots, ActionTarget, Aim, SlotKindBook, SlotKinds, UseGroup,
+};
 use campfire_capabilities::{Action, Order};
 use campfire_interaction::Using;
 use campfire_math::Vec3 as SimVec3;
@@ -19,26 +21,28 @@ use campfire_net::PendingOrders;
 use campfire_orders::OrdersAction;
 use campfire_production::{ProductionAction, RallyTarget, TrainQueue};
 use campfire_progression::ProgressionAction;
-use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
-use campfire_units::MoveStep;
+use campfire_sim::{EntityIndex, StableId, Unpredicted};
+use campfire_units::{GroundPoint, MoveStep};
 use campfire_values::Team;
 
+use crate::input_map::{Act, InputMap, Row};
+use crate::input_mode::InputMode;
 use crate::own_player::OwnPlayer;
-use crate::placing::Placing;
 use crate::pointer::{Pointed, Pointer};
 use crate::selection::{Selection, SelectionSystems};
 use crate::view::float_num;
 
 /// Turns the player's clicks and keys into orders: a right click on a unit the own avatar may use,
-/// with the avatar selected, orders the avatar alone to use it ; else, with producers selected and
+/// with the avatar selected, orders the avatar alone to use it; else, with producers selected and
 /// no walker, it sets their rally point at the unit under the cursor or the ground point
 /// (02-engine-core.md, A command panel from the actions); else it orders the selection, as one
 /// group order, to attack an enemy under the cursor, and anywhere else but the UI to walk there,
-/// and S stops it (02-engine-core.md, A selection of the player's own units); while the player
-/// places a build, the right click is the preview's; Q, W, E and R cast the avatar's abilities of
-/// slots 0 to 3, and with Ctrl held learn their next rank; 1 to 6 cast the actions of its
-/// inventory's slots. A key aims as its slot's action takes: at the unit under the cursor, at the
-/// ground point under it, or at nothing .
+/// and the stop chord stops it (02-engine-core.md, A selection of the player's own units); while
+/// the player places a build, the right click is the preview's. The key map's cast chords cast the
+/// avatar's abilities, the slots of the kinds whose ranks the player learns, in order, and its
+/// learn chords learn their next rank, as the item chords find the inventory's slots by its kind
+/// and cast their actions. A chord aims as its slot's action takes: at the unit under the cursor,
+/// at the ground point under it, or at nothing.
 #[derive(Debug)]
 pub(crate) struct Orders;
 
@@ -54,33 +58,16 @@ type Movers<'w, 's> = Query<'w, 's, (Has<MoveStep>, Has<TrainQueue>), Allow<Unpr
 type Casters<'w, 's> =
     Query<'w, 's, (&'static ActionSlots, Option<&'static UseGroup>), Allow<Unpredicted>>;
 
-/// The keys that cast, by ability slot.
-const CAST_KEYS: [KeyCode; 4] = [KeyCode::KeyQ, KeyCode::KeyW, KeyCode::KeyE, KeyCode::KeyR];
-/// The keys that cast the actions of the inventory's slots, by inventory slot.
-const ITEM_KEYS: [KeyCode; 6] = [
-    KeyCode::Digit1,
-    KeyCode::Digit2,
-    KeyCode::Digit3,
-    KeyCode::Digit4,
-    KeyCode::Digit5,
-    KeyCode::Digit6,
-];
-/// The keys that, held, make a cast key learn.
-const LEARN_KEYS: [KeyCode; 2] = [KeyCode::ControlLeft, KeyCode::ControlRight];
-/// The key that stops.
-const STOP_KEY: KeyCode = KeyCode::KeyS;
-
 impl Plugin for Orders {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
             (
                 Self::click.run_if(
-                    input_just_pressed(MouseButton::Right)
-                        .and_then(not(resource_exists::<Placing>)),
+                    input_just_pressed(MouseButton::Right).and_then(in_state(InputMode::Select)),
                 ),
                 Self::cast.run_if(Self::cast_pressed),
-                Self::stop.run_if(input_just_pressed(STOP_KEY)),
+                Self::stop.run_if(InputMap::on(Act::Stop)),
             )
                 .in_set(OrderSystems)
                 .after(SelectionSystems),
@@ -102,7 +89,7 @@ impl Orders {
         let Some(point) = pointer.ground() else {
             return;
         };
-        let under = pointer.unit_at(point, selection.get());
+        let under = pointer.unit_under(selection.get());
         let avatar = own
             .avatar()
             .filter(|avatar| selection.get().contains(&avatar.id));
@@ -130,10 +117,10 @@ impl Orders {
     }
 
     fn cast(
-        keys: Res<'_, ButtonInput<KeyCode>>,
+        (keys, input): (Res<'_, ButtonInput<KeyCode>>, Res<'_, InputMap>),
         pointer: Pointer<'_, '_>,
         own: OwnPlayer<'_, '_>,
-        (book, avatars): (Res<'_, ActionBook>, Casters<'_, '_>),
+        (book, kinds, avatars): (Res<'_, ActionBook>, Res<'_, SlotKindBook>, Casters<'_, '_>),
         mut orders: ResMut<'_, PendingOrders>,
     ) {
         let Some(avatar) = own.avatar() else {
@@ -143,31 +130,30 @@ impl Orders {
             return;
         };
         let ground = pointer.ground();
-        let under = ground
-            .and_then(|point| pointer.unit_at(point, slice::from_ref(&avatar.id)))
+        let under = pointer
+            .unit_under(slice::from_ref(&avatar.id))
             .map(|unit| unit.id);
         let point = ground.and_then(position);
-        let ability_use = if keys.any_pressed(LEARN_KEYS) {
-            KeyUse::Learn
-        } else {
-            KeyUse::Cast
+        let row = |row, key_use| {
+            Self::abilities(slots, &kinds.0)
+                .zip(input.row(row))
+                .map(move |(slot, chord)| (slot, chord, key_use))
         };
-        let abilities = (0..)
-            .zip(&CAST_KEYS)
-            .map(|(slot, key)| (slot, key, ability_use));
-        // An item key past the inventory's slots casts nothing.
+        let abilities = row(Row::Cast, KeyUse::Cast).chain(row(Row::Learn, KeyUse::Learn));
+        // An item chord past the inventory's slots casts nothing.
         let inventory = group.map(|group| {
             let kind = group.kind();
             let count = slots.iter().filter(|held| held.kind == kind).count();
-            (slots.first_of(kind), count.min(ITEM_KEYS.len()))
+            (slots.first_of(kind), count)
         });
         let items = inventory.into_iter().flat_map(|(first, count)| {
+            let chords = input.row(Row::Items);
             (first..)
-                .zip(&ITEM_KEYS[..count])
-                .map(|(slot, key)| (slot, key, KeyUse::Cast))
+                .zip(&chords[..count.min(chords.len())])
+                .map(|(slot, chord)| (slot, chord, KeyUse::Cast))
         });
-        for (slot, &key, key_use) in abilities.chain(items) {
-            if !keys.just_pressed(key) {
+        for (slot, &chord, key_use) in abilities.chain(items) {
+            if !InputMap::chord_pressed(chord, &keys) {
                 continue;
             }
             let action = slots.slot(slot).and_then(|held| held.action);
@@ -211,7 +197,7 @@ impl Orders {
                     RallyTarget::Unit(unit.id)
                 } else {
                     let [x, z] = ground()?;
-                    RallyTarget::Point { x, z }
+                    RallyTarget::Point(GroundPoint { x, z })
                 };
                 let target = Some(target);
                 ProductionAction::Rally { target }.into()
@@ -221,15 +207,33 @@ impl Orders {
             }
             _ => {
                 let [x, z] = ground()?;
-                OrdersAction::Move { x, z }.into()
+                OrdersAction::Move {
+                    to: GroundPoint { x, z },
+                }
+                .into()
             }
         };
         Some(action)
     }
 
-    /// Whether a cast key or an item key went down this frame.
-    fn cast_pressed(keys: Res<'_, ButtonInput<KeyCode>>) -> bool {
-        keys.any_just_pressed(CAST_KEYS) || keys.any_just_pressed(ITEM_KEYS)
+    /// The slots of `slots` that hold abilities, of the kinds of `kinds` whose ranks the player
+    /// learns, in their order.
+    fn abilities<'a>(
+        slots: &'a ActionSlots,
+        kinds: &'a SlotKinds,
+    ) -> impl Iterator<Item = u8> + 'a {
+        let learned = slots
+            .indexed()
+            .filter(|(_, held)| kinds.first_rank(held.kind).is_none());
+        learned.map(|(slot, _)| slot)
+    }
+
+    /// Whether a chord of a cast, a learn or an item went down this frame.
+    fn cast_pressed(keys: Res<'_, ButtonInput<KeyCode>>, input: Res<'_, InputMap>) -> bool {
+        [Row::Cast, Row::Learn, Row::Items]
+            .into_iter()
+            .flat_map(|row| input.row(row))
+            .any(|&chord| InputMap::chord_pressed(chord, &keys))
     }
 
     /// What a key of `slot` orders as `key_use` says: a learn, or a cast at `target`.
@@ -328,15 +332,40 @@ fn position(point: Vec3) -> Option<SimVec3> {
         return None;
     };
     let point = SimVec3::new(x, y, z);
-    Position::from(point).within_bound().then_some(point)
+    point.within_bound().then_some(point)
 }
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU8;
+
+    use campfire_actions::{SlotKind, SlotKindData, SlotRanks};
+    use campfire_common::DeclaredName;
     use campfire_math::Num;
     use campfire_sim::IdAllocator;
+    use campfire_values::{ActionId, Rank};
 
     use super::*;
+
+    #[test]
+    fn the_ability_keys_cast_the_slots_of_the_kinds_whose_ranks_are_learned() {
+        // A weapon of ranks from the spawn, then two learned basics and an ultimate: Q, W and E
+        // take slots 1 to 3, whatever the weapon stands first.
+        let kind = |name, ranks: Option<u8>| SlotKindData {
+            name: DeclaredName::new(name).unwrap(),
+            ranks: ranks.map(|count| SlotRanks::new(NonZeroU8::new(count).unwrap(), None).unwrap()),
+        };
+        let kinds = [
+            kind("weapon", None),
+            kind("basic", Some(2)),
+            kind("ultimate", Some(1)),
+        ];
+        let kinds = SlotKinds::new(kinds).unwrap();
+        let held = |kind| (ActionId::new(0), SlotKind::new(kind), Some(Rank::FIRST));
+        let slots = ActionSlots::new([held(0), held(1), held(1), held(2)]);
+        let abilities: Vec<u8> = Orders::abilities(&slots, &kinds).collect();
+        assert_eq!(abilities, [1, 2, 3]);
+    }
 
     #[test]
     fn a_key_aims_as_its_action_takes() {
@@ -401,7 +430,12 @@ mod tests {
         let point = Vec3::new(3.0, 1.0, -2.5);
         // To (3, −2.5): x = 3, z = −5 / 2, the height not sent.
         let (x, z) = (Num::int(3), Num::int(-5) / Num::int(2));
-        let walk = Some(OrdersAction::Move { x, z }.into());
+        let walk = Some(
+            OrdersAction::Move {
+                to: GroundPoint { x, z },
+            }
+            .into(),
+        );
         let shrine = unit(south);
         let usable = |id| id == shrine.id;
         let click_by = |selected, under, team, point| {
@@ -437,7 +471,10 @@ mod tests {
             )
         };
         let producers = |under| click_by(Selected::Producers, under, Some(north), point);
-        assert_eq!(producers(None), rally(RallyTarget::Point { x, z }));
+        assert_eq!(
+            producers(None),
+            rally(RallyTarget::Point(GroundPoint { x, z }))
+        );
         assert_eq!(producers(Some(friend)), rally(RallyTarget::Unit(friend.id)));
         assert_eq!(producers(Some(enemy)), rally(RallyTarget::Unit(enemy.id)));
         // A ground point far off any map orders nothing, a walk or a rally.

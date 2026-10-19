@@ -1,7 +1,9 @@
 //! Builds and runs matches: wires the sim, the declared capabilities and the mode of checked
 //! packages, and feeds a session log's inputs.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 mod events;
 mod match_build;
@@ -19,8 +21,14 @@ pub use crate::session::error::{
     CheckpointBeginError, ResultMismatch, ResumeError, ServerInputRefused, SnapshotCheckError,
     StartError,
 };
-pub use crate::session::session_source::{ResumeAt, SessionSource};
+pub use crate::session::session_source::{ResumeAt, SessionSource, UncheckedSource};
 pub use crate::session::session_world::SessionWorld;
 pub use crate::session_rules::error::TermsError;
 pub use crate::session_rules::{CheckedTerms, HostChoices, SessionRules};
 pub use crate::slot_rules::error::SlotRuleError;
+
+/// What the test harness builds an arena of.
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::match_build::internals::ArenaSpec;
+}

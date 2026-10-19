@@ -4,8 +4,8 @@ use std::num::NonZeroU64;
 use std::path::Path;
 
 use Capability::{
-    Abilities, Combat, Hitboxes, Items, Mode, Navigation, Orders, Production, Progression,
-    Projectiles, Quests, Stats, Vision,
+    Abilities, Combat, Items, Mode, Navigation, Orders, Production, Progression, Projectiles,
+    Stats, Vision,
 };
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::Schedules;
@@ -15,17 +15,18 @@ use campfire_common::SegmentSeed;
 use campfire_declare::{ByType, EntityParts, Module, Role};
 use campfire_math::Vec3;
 use campfire_orders::Ai;
-use campfire_players::PlayerResources;
-use campfire_script::{ScriptBudgets, ScriptLimits, View};
+use campfire_players::{Player, PlayerResources};
+use campfire_script::{PlannedCapability, ScriptLimits, ScriptPools, View};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimUpdate, StateRegistry};
-use campfire_store::internals::SourceFiles;
+use campfire_sim::{SimUpdate, SimWorld, StateRegistry};
+use campfire_store::internals::{CargoManifest, SourceFiles};
 use campfire_store::{DirEntries, EntryKind, InputFile};
-use campfire_units::{Player, UnitTypeCore};
+use campfire_units::UnitTypeCore;
 use campfire_values::Team;
 
 use super::*;
 use crate::release::r#match::Match;
+use crate::release::match_kind::MatchKind;
 
 #[test]
 fn a_set_holds_each_capability_once_with_what_it_builds_on() {
@@ -36,6 +37,15 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
     );
     assert!(set.contains(Orders) && !set.contains(Abilities));
     assert_eq!(Release::capability_set(&[]).unwrap().iter().count(), 0);
+    // Every capability a manifest may declare is a module's of the release.
+    let rows = Release::rows();
+    let unbuilt = Capability::ALL
+        .into_iter()
+        .filter(|&capability| capability != Mode);
+    let unbuilt: Vec<Capability> = unbuilt
+        .filter(|&capability| rows.needs(capability).is_none())
+        .collect();
+    assert_eq!(unbuilt, []);
     for (declared, error) in [
         (&[Combat, Mode][..], CapabilityError::DeclaresMode),
         (
@@ -46,9 +56,6 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
             },
         ),
         (&[Combat, Vision, Combat], CapabilityError::Repeated(Combat)),
-        // A capability the design plans, of no module this release builds.
-        (&[Stats, Quests], CapabilityError::NotBuilt(Quests)),
-        (&[Hitboxes], CapabilityError::NotBuilt(Hitboxes)),
         (
             &[Projectiles],
             CapabilityError::Needs {
@@ -87,8 +94,8 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
 }
 
 /// Installs `declared` into a fresh match that runs `scripts`.
-fn installed(declared: &[Capability], budgets: Option<ScriptBudgets>) -> Match {
-    Match::test(declared, Match::TEST_RATE, budgets)
+fn installed(declared: &[Capability], pools: Option<ScriptPools>) -> Match {
+    Match::test(declared, Match::TEST_RATE, pools)
 }
 
 #[test]
@@ -100,8 +107,8 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
         think: 1,
         mode: 1,
     };
-    let scripts = ScriptBudgets::new(limits, 1);
-    let mut scripted = installed(&all, Some(scripts.clone()));
+    let scripts = ScriptPools { limits, players: 1 };
+    let mut scripted = installed(&all, Some(scripts));
     let client = installed(&all, None);
     for (world, scripts) in [(&scripted, true), (&client, false)] {
         assert_eq!(world.get_non_send::<ScriptHost>().is_some(), scripts);
@@ -125,15 +132,67 @@ fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions_and_p
         }
     }
     {
-        let mut player = scripted.spawn_empty();
-        EntityParts::<Player>::give(&mut player);
+        let player = EntityParts::<Player>::spawn(&mut scripted, ());
         assert_eq!(
-            player.get::<PlayerResources>(),
+            scripted.get::<PlayerResources>(player),
             Some(&PlayerResources::new(0))
         );
     }
     let combat_only = installed(&[Stats, Combat], Some(scripts));
     assert!(combat_only.contains_resource::<ActionBook>());
+}
+
+#[test]
+fn every_pair_of_capabilities_with_only_what_they_need_orders_every_pair_of_their_systems() {
+    // A step that a module orders against reaches it only through the modules installed, and
+    // the strict schedule refuses a pair of systems no step orders as the first tick builds it:
+    // so the match of each pair of capabilities, each with only what it needs, builds, for a
+    // server that runs scripts, one that runs none, and a predicting client. Production and
+    // navigation alone are such a pair: production's builds and gathers, which navigation
+    // brings, order against the actions' steps with no stats to order through.
+    let rows = Release::rows();
+    let limits = ScriptLimits {
+        per_call: NonZeroU64::MIN,
+        player: 1,
+        think: 1,
+        mode: 1,
+    };
+    let scripts = ScriptPools { limits, players: 1 };
+    let built: Vec<Capability> = Capability::ALL
+        .into_iter()
+        .filter(|&capability| capability != Mode)
+        .collect();
+    let mut matches = 0;
+    for (at, &first) in built.iter().enumerate() {
+        for &second in &built[at..] {
+            let mut declared = vec![first, second];
+            declared.dedup();
+            let mut next = 0;
+            while let Some(&capability) = declared.get(next) {
+                let needs = rows
+                    .needs(capability)
+                    .expect("a built capability has its row");
+                for &need in needs {
+                    if !declared.contains(&need) {
+                        declared.push(need);
+                    }
+                }
+                next += 1;
+            }
+            for mut game in [
+                installed(&declared, Some(scripts)),
+                installed(&declared, None),
+                Match::predicting(&declared),
+            ] {
+                game.step();
+                matches += 1;
+            }
+        }
+    }
+    // 12 capabilities a manifest declares: 12 alone and 12 * 11 / 2 = 66 pairs, three matches
+    // each.
+    assert_eq!(built.len(), 12);
+    assert_eq!(matches, (12 + 66) * 3);
 }
 
 #[test]
@@ -169,33 +228,39 @@ const OVERVIEW: &str = concat!(
 #[test]
 fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_installs() {
     // Each row of the table names its capabilities in its first column and its status in the
-    // second. Every capability but `mode`, which every match has, is in it once.
+    // second. Every capability but `mode`, which every match has, is in it once, and built; a
+    // planned one is the design's alone, as the script API plans names with it.
     let overview = InputFile::read_text(Path::new(OVERVIEW), DOC_LEN).unwrap();
     let table = overview
         .lines()
         .skip_while(|line| !line.starts_with("| Capability | Status |"))
         .skip(2)
         .take_while(|line| line.starts_with('|'));
-    let (mut named, mut built) = (Vec::new(), Vec::new());
+    let (mut built, mut planned) = (Vec::new(), Vec::new());
     for row in table {
         let cells: Vec<&str> = row.split('|').map(str::trim).collect();
         let row_names = cells[1].split(", ").map(|name| name.trim_matches('`'));
-        named.extend(row_names.clone());
         match cells[2] {
             "built" => built.extend(row_names),
-            "planned" => {}
+            "planned" => planned.extend(row_names),
             status => panic!("{status:?} is no status, in {row}"),
         }
     }
-    named.sort_unstable();
     let mut every: Vec<&str> = Capability::ALL
         .into_iter()
         .filter(|&capability| capability != Mode)
         .map(Capability::name)
         .collect();
     every.sort_unstable();
-    assert_eq!(named, every);
     built.sort_unstable();
+    assert_eq!(built, every);
+    planned.sort_unstable();
+    let design = PlannedCapability::ALL
+        .into_iter()
+        .map(PlannedCapability::name);
+    let mut design: Vec<&str> = design.collect();
+    design.sort_unstable();
+    assert_eq!(planned, design);
     let mut installed: Vec<&str> = Release::rows()
         .0
         .iter()
@@ -205,141 +270,147 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
     assert_eq!(built, installed);
 }
 
-/// Each capability crate's folder under this crate's and its layer, lowest first: a crate
-/// depends only on crates of lower layers, and a capability needs only capabilities of lower
-/// layers, as the structural rules ask (02-engine-core.md, Layers). This crate sits above them all.
-const LAYERS: [(&str, u8); 23] = [
-    ("core/geometry", 0),
-    ("core/state-types", 0),
-    ("core/values", 1),
-    ("core/visibility", 1),
-    ("core/script", 2),
-    ("core/declare", 3),
-    ("core/units", 4),
-    ("core/players", 5),
-    ("stats", 6),
-    ("vision", 6),
-    ("core/actions", 7),
-    ("combat", 8),
-    ("core/deliveries", 8),
-    ("interaction", 8),
-    ("items", 8),
-    ("progression", 8),
-    ("abilities", 9),
-    ("areas", 9),
-    ("navigation", 9),
-    ("projectiles", 9),
-    ("production", 10),
-    ("mode", 11),
-    ("orders", 11),
-];
+/// The capability crates under this crate's folder, each by its folder, as `core/units`, with the
+/// capability crates it depends on, by name, as its manifest lists them: the graph the layers
+/// come from (02-engine-core.md, Layers). This crate sits above them all.
+#[derive(Debug)]
+struct CapabilityCrates(Vec<CapabilityCrate>);
 
-/// The layer of the capability crate `name`, by the last part of its folder.
-fn layer(name: &str) -> Option<u8> {
-    let found = LAYERS
-        .iter()
-        .find(|(folder, _)| folder.rsplit('/').next() == Some(name));
-    found.map(|&(_, layer)| layer)
+/// A capability crate and the capability crates it depends on.
+#[derive(Debug)]
+struct CapabilityCrate {
+    folder: String,
+    depends: Vec<String>,
 }
 
-const MANIFEST_LEN: usize = 1 << 16;
+impl CapabilityCrates {
+    /// Each folder under this crate's, or under its `core`, that holds a manifest.
+    fn read() -> Self {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut folders = Vec::new();
+        for parent in ["", "core/"] {
+            for entry in DirEntries::read(&root.join(parent)).unwrap() {
+                let folder = format!("{parent}{}", entry.name.to_str().unwrap());
+                let held = DirEntries::read(&root.join(&folder)).ok();
+                let manifest = held
+                    .is_some_and(|entries| entries.iter().any(|inner| inner.name == "Cargo.toml"));
+                if entry.kind == EntryKind::Dir && manifest {
+                    folders.push(folder);
+                }
+            }
+        }
+        folders.sort_unstable();
+        let name = |folder: &str| folder.rsplit('/').next().unwrap().to_owned();
+        let names: Vec<String> = folders.iter().map(|folder| name(folder)).collect();
+        let crates = folders
+            .into_iter()
+            .map(|folder| {
+                let manifest = CargoManifest::read(&root.join(&folder));
+                let depends = CargoManifest::dependencies(&manifest)
+                    .into_iter()
+                    .filter_map(|dependency| dependency.strip_prefix("campfire-"))
+                    .filter(|dependency| names.iter().any(|name| name == dependency))
+                    .map(str::to_owned)
+                    .collect();
+                CapabilityCrate { folder, depends }
+            })
+            .collect();
+        Self(crates)
+    }
 
-/// The `campfire-<name>` crates among the dependencies of the crate in `folder` that `LAYERS`
-/// lists, by `<name>`, in the manifest's order.
-fn layered_dependencies(folder: &str) -> Vec<String> {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let path = root.join(folder).join("Cargo.toml");
-    let manifest = InputFile::read_text(&path, MANIFEST_LEN).unwrap();
-    let dependencies = manifest
-        .split("\n[")
-        .find_map(|section| section.strip_prefix("dependencies]\n"))
-        .expect("a capability crate has dependencies");
-    dependencies
-        .lines()
-        .filter_map(|line| line.strip_prefix("campfire-"))
-        .map(|name| &name[..name.find(['.', ' ']).unwrap()])
-        .filter(|name| layer(name).is_some())
-        .map(str::to_owned)
-        .collect()
+    /// The crate whose folder ends in `name`.
+    fn named(&self, name: &str) -> Option<&CapabilityCrate> {
+        self.0
+            .iter()
+            .find(|krate| krate.folder.rsplit('/').next() == Some(name))
+    }
+
+    /// The layer of the crate `name`: 0 for one that depends on no capability crate, else one
+    /// above its highest dependency's, so a crate depends only on crates of lower layers.
+    fn layer(&self, name: &str) -> Option<u8> {
+        let krate = self.named(name)?;
+        let below = krate.depends.iter().map(|dependency| {
+            self.layer(dependency)
+                .expect("a capability crate's dependency is one")
+        });
+        Some(below.map(|layer| layer + 1).max().unwrap_or(0))
+    }
 }
 
 #[test]
-fn each_capability_crate_is_listed_one_layer_above_its_highest_dependency() {
-    // Every crate under this one, a folder with a manifest, has its layer, and each layer is
-    // one above its highest dependency's, 0 for none: so no crate depends on one of its own
-    // layer or above, and no layer is higher than its dependencies make it.
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut crates = Vec::new();
-    for parent in ["", "core/"] {
-        for entry in DirEntries::read(&root.join(parent)).unwrap() {
-            let folder = format!("{parent}{}", entry.name.to_str().unwrap());
-            let manifest = root.join(&folder).join("Cargo.toml");
-            if entry.kind == EntryKind::Dir
-                && InputFile::read_if_present(&manifest, MANIFEST_LEN)
-                    .unwrap()
-                    .is_some()
-            {
-                crates.push(folder);
-            }
-        }
-    }
-    crates.sort_unstable();
-    let mut listed: Vec<&str> = LAYERS.iter().map(|&(folder, _)| folder).collect();
-    listed.sort_unstable();
-    assert_eq!(crates, listed);
-    assert!(layered_dependencies("mode").contains(&"stats".to_owned()));
-    let misplaced: Vec<String> = LAYERS
-        .iter()
-        .filter_map(|&(folder, own)| {
-            let derived = layered_dependencies(folder)
-                .iter()
-                .map(|name| layer(name).expect("a layered dependency") + 1)
-                .max()
-                .unwrap_or(0);
-            (derived != own)
-                .then(|| format!("{folder}: {own}, where its dependencies give {derived}"))
-        })
-        .collect();
-    assert_eq!(misplaced, Vec::<String>::new());
+fn the_layers_follow_the_capability_crates_manifests() {
+    // The reader sees each crate and its dependencies: the lowest crates depend on none, and
+    // the mode builds on stats, whose layer is below its own.
+    let crates = CapabilityCrates::read();
+    assert!(crates.0.len() > 20, "{crates:?}");
+    assert_eq!(crates.layer("geometry"), Some(0));
+    assert!(
+        crates
+            .named("mode")
+            .unwrap()
+            .depends
+            .contains(&"stats".to_owned())
+    );
+    assert!(crates.layer("stats") < crates.layer("mode"));
+    assert_eq!(crates.layer("release"), None);
 }
 
-/// Each capability of the release's list, with what it needs and what it uses: the mode's as
-/// its scripted part states them, which the mode's core, a part of its crate, builds on none of.
+/// Each module of the release's list, by the folder of its crate, with what it needs and what it
+/// uses: a capability's by its name, the mode's as its scripted part states them, which the
+/// mode's core, a part of its crate, builds on none of; and a core module's by its crate, which
+/// needs and uses no capability, but the release's own.
 #[derive(Debug, Default)]
-struct Edges(Vec<(Capability, &'static [Capability], &'static [Capability])>);
+struct Edges(Vec<(&'static str, &'static [Capability], &'static [Capability])>);
 
 impl ModuleVisitor for Edges {
     fn module<M: Module>(&mut self) {
-        if let Some(capability) = M::CAPABILITY.filter(|&capability| capability != Mode) {
-            self.0.push((capability, M::NEEDS, M::USES));
+        match M::CAPABILITY {
+            Some(Mode) => {}
+            Some(capability) => self.0.push((capability.name(), M::NEEDS, M::USES)),
+            None => {
+                let path = type_name::<M>();
+                let krate = path
+                    .split("::")
+                    .next()
+                    .expect("a type's path has its crate");
+                // The release's own module, which builds the match, is of this crate, above every
+                // capability.
+                if krate == "campfire_capabilities" {
+                    return;
+                }
+                let folder = krate
+                    .strip_prefix("campfire_")
+                    .expect("a core module is of a campfire crate");
+                self.0.push((folder, M::NEEDS, M::USES));
+            }
         }
     }
 
     fn scripted<M: Module>(&mut self) {
         let capability = M::CAPABILITY.expect("the scripted part is the mode's");
-        self.0.push((capability, M::NEEDS, M::USES));
+        self.0.push((capability.name(), M::NEEDS, M::USES));
     }
 }
 
 #[test]
 fn a_capabilitys_crate_depends_on_exactly_what_it_needs_or_uses() {
+    let crates = CapabilityCrates::read();
     let mut rows = Edges::default();
     Release::modules(&mut rows);
     let mut found = Vec::new();
-    for (capability, needs, uses) in rows.0 {
-        let name = capability.name();
-        let folder = LAYERS
-            .iter()
-            .map(|&(folder, _)| folder)
-            .find(|folder| folder.rsplit('/').next() == Some(name))
-            .expect("each capability of the release is a crate of `LAYERS`");
-        let mut depends: Vec<String> = layered_dependencies(folder)
-            .into_iter()
+    // The core modules are checked too: the actions' among them depends on no capability.
+    assert!(rows.0.iter().any(|&(name, ..)| name == "actions"));
+    for (name, needs, uses) in rows.0 {
+        let krate = crates
+            .named(name)
+            .expect("each module of the release is a crate's");
+        let mut depends: Vec<String> = (krate.depends.iter())
             .filter(|dependency| {
                 Capability::ALL
                     .iter()
-                    .any(|other| other.name() == dependency)
+                    .any(|other| other.name() == dependency.as_str())
             })
+            .cloned()
             .collect();
         depends.sort();
         let mut edges: Vec<String> = needs
@@ -372,7 +443,9 @@ fn production(dir: &Path, visit: &mut impl FnMut(&str, &str)) {
 /// modules' own.
 fn capability_sources(visit: &mut impl FnMut(&str, &str)) {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    for folder in LAYERS.iter().map(|&(folder, _)| folder).chain([""]) {
+    let crates = CapabilityCrates::read();
+    let folders = crates.0.iter().map(|krate| krate.folder.as_str());
+    for folder in folders.chain([""]) {
         let module = match folder.rsplit('/').next().unwrap() {
             "" => None,
             name => Some(name.replace('-', "_")),
@@ -391,9 +464,11 @@ fn capability_sources(visit: &mut impl FnMut(&str, &str)) {
 fn each_capability_installs_after_the_lower_layers_it_builds_on() {
     // The table's install order, its needs and the layers are three facts of one order: a
     // capability builds only on capabilities of lower layers, installed before it.
+    let crates = CapabilityCrates::read();
     let mut installed = Vec::new();
     for row in Release::rows().0 {
-        let own = layer(row.capability.name()).expect("an installed capability is a crate");
+        let own =
+            (crates.layer(row.capability.name())).expect("an installed capability is a crate");
         for &need in row.needs {
             assert!(
                 installed.contains(&need),
@@ -401,7 +476,7 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
                 row.capability
             );
             assert!(
-                layer(need.name()) < Some(own),
+                crates.layer(need.name()) < Some(own),
                 "{need:?} below {:?}",
                 row.capability
             );
@@ -410,10 +485,27 @@ fn each_capability_installs_after_the_lower_layers_it_builds_on() {
     }
 }
 
+/// `code` with the body of each set's place left out, where a module names the steps of the
+/// modules it builds on.
+fn outside_places(code: &str) -> String {
+    let mut out = String::new();
+    let mut rest = code;
+    while let Some(at) = rest.find("    fn place(self) -> SetPlace {") {
+        out.push_str(&rest[..at]);
+        let body = &rest[at..];
+        let end = body.find("\n    }\n").expect("a place's body ends") + "\n    }\n".len();
+        rest = &body[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
 #[test]
-fn no_module_names_another_modules_sets() {
-    // A set's order is its phase's alone: a module that named another's set would order against
-    // it, or put a system in it, outside the one list of phases.
+fn a_module_names_another_modules_sets_only_where_its_sets_run() {
+    // A set orders against the steps of the modules it builds on, which its place names; a module
+    // puts its systems in its own sets alone, so no system orders against another module's but
+    // through its set's place (02-engine-core.md, Sets order against the steps of the modules
+    // they build on).
     let module_of = |path: &str| path.split('/').next().unwrap_or_default().to_owned();
     let mut sets = Vec::new();
     capability_sources(&mut |path, code| {
@@ -428,13 +520,28 @@ fn no_module_names_another_modules_sets() {
             .any(|(module, set)| module == "actions" && set == "ActionsSet")
     );
     let mut named = Vec::new();
+    let mut placed = Vec::new();
     capability_sources(&mut |path, code| {
         let module = module_of(path);
-        let words = code.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'));
+        let outside = outside_places(code);
+        if outside.len() < code.len() && code.contains("SetPlace::at(") {
+            placed.push(module.clone());
+        }
+        // An import names the set for the place's sake; a statement of it may take lines.
+        let mut importing = false;
+        let used = outside.lines().filter(|line| {
+            importing |= line.trim_start().starts_with("use ");
+            let used = !importing;
+            importing &= !line.trim_end().ends_with(';');
+            used
+        });
+        let words =
+            used.flat_map(|line| line.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_')));
         for word in words {
+            // `NoSet`, of a module that adds no system, is no module's.
             let other = sets
                 .iter()
-                .find(|(owner, set)| set == word && *owner != module);
+                .find(|(owner, set)| set == word && *owner != module && owner != "declare");
             if let Some((owner, set)) = other {
                 named.push(format!("{path} names {owner}'s {set}"));
             }
@@ -443,6 +550,12 @@ fn no_module_names_another_modules_sets() {
     named.sort();
     named.dedup();
     assert_eq!(named, Vec::<String>::new());
+    // The capabilities do place their sets at the steps of others: the scan sees them.
+    assert!(placed.contains(&"combat".to_owned()), "{placed:?}");
+    assert_eq!(
+        outside_places("a\n    fn place(self) -> SetPlace {\n        X\n    }\nb"),
+        "a\nb"
+    );
 }
 
 /// Every lookup by name that the production code of the capabilities and the network calls, by
@@ -450,55 +563,83 @@ fn no_module_names_another_modules_sets() {
 /// spelled, a table's `named` the most. Each runs in a script call, which resolves the names it is
 /// given once, as its arguments' types take them, in the load, which resolves the packages' names
 /// once, or as a bot starts. The test fails when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 43] = [
-    // The load.
+const LOOKUPS: [(&str, &str); 71] = [
+    // The load, each module's books by their builders.
+    ("actions/action_load.rs", "named"),
+    ("actions/action_rules.rs", "named"),
+    ("actions/action_slots/mod.rs", "named"),
     ("actions/cost_target.rs", "named"),
+    ("actions/listed_effect/effect_data.rs", "named"),
+    ("actions/loaded_action.rs", "named"),
+    ("actions/slot_claims.rs", "named"),
     ("actions/slot_kinds.rs", "named"),
-    ("books/book_builder.rs", "named"),
-    ("books/unit_start/mod.rs", "named"),
+    ("areas/area_books.rs", "named"),
+    ("books/load_names.rs", "named"),
     ("combat/armor.rs", "named"),
+    ("combat/combat_books.rs", "named"),
     ("combat/mode_combat_data.rs", "named"),
+    ("combat/weapon_names.rs", "named"),
+    ("declare/book_cx.rs", "named"),
+    ("interaction/interaction_books.rs", "named"),
+    ("items/item_books.rs", "named"),
+    ("items/items_rules.rs", "named"),
     ("mode/game_map.rs", "named"),
-    ("mode/map_data.rs", "named"),
     ("mode/mode_data.rs", "named"),
     ("mode/mode_map.rs", "named"),
-    ("mode/mode_names.rs", "named"),
+    ("mode/mode_units.rs", "named"),
+    ("navigation/navigation_books.rs", "named"),
+    ("production/book_builders.rs", "named"),
+    ("progression/experience_book.rs", "named"),
+    ("progression/progression_books.rs", "named"),
+    ("stats/action_params.rs", "named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/modifier_spec.rs", "named"),
+    ("stats/modifiers_data.rs", "named"),
     ("stats/param_book.rs", "named"),
     ("stats/stat_book.rs", "named"),
+    ("stats/type_passive.rs", "named"),
+    ("stats/type_pools.rs", "named"),
+    ("units/collision_data.rs", "named"),
+    ("units/declared_tags.rs", "named"),
+    ("units/pool_id.rs", "named"),
     ("units/unit_types.rs", "named"),
+    ("units/units_rules.rs", "named"),
     ("values/stat.rs", "named"),
     // The load, and the host's settings as the server starts.
     ("visibility/mode_visibility.rs", "named"),
     ("visibility/setting/mod.rs", "named"),
     // A bot's script, each unit type it names resolved once as its bot starts.
-    ("bots/bot_script/mod.rs", "named"),
+    ("bots/bot_script/bot_names.rs", "named"),
     // The load, and a filter a script names.
     ("script/scripts/view/filter.rs", "named"),
+    ("script/scripts/view/match_names.rs", "named"),
     ("values/filter_data.rs", "named"),
     // Script calls, each argument by its type, and the mode inputs, whose names enter with the
     // players' inputs.
     ("actions/slot_kind.rs", "named"),
+    ("mode/bounty_book.rs", "named"),
     ("mode/choice_id.rs", "named"),
     ("mode/marker_tag.rs", "named"),
     ("mode/mode_api.rs", "loadout_ability_named"),
     ("mode/mode_api.rs", "offer_named"),
     ("mode/mode_call.rs", "param_named"),
+    ("mode/mode_core.rs", "named"),
     ("mode/mode_hooks.rs", "input_type_named"),
     ("mode/mode_schema.rs", "named"),
+    ("mode/mode_script.rs", "named"),
     ("mode/roster.rs", "named"),
     ("mode/roster.rs", "offer_named"),
+    ("mode/timer_id.rs", "named"),
+    ("mode/victory.rs", "named"),
     ("script/scripts/id_args.rs", "named"),
     ("script/scripts/script_api/api_builder.rs", "named"),
+    ("script/scripts/script_api/mod.rs", "hook_named"),
     ("script/scripts/script_names.rs", "named"),
     ("script/scripts/state_decl/state_schema.rs", "named"),
     ("script/scripts/view/tag_names.rs", "named"),
-    ("script/scripts/view/view_names.rs", "named"),
     ("stats/param_table.rs", "named"),
-    ("stats/pool_id.rs", "named"),
-    ("stats/stat_id.rs", "named"),
     ("stats/stats_call.rs", "named"),
+    ("units/stat_id.rs", "named"),
     ("values/name_table.rs", "named"),
 ];
 
@@ -655,9 +796,9 @@ fn each_role_of_a_module_takes_the_modules_name() {
 /// it, and the suffix of its name. A `*Book` is exactly a book, a `*Data` a table of package data.
 const SUFFIX_ROLES: [(&str, &str); 2] = [("Book", "Book"), ("DataSection", "Data")];
 
-/// The types that hold a suffix role but are named for what they are: the one generic book, a
-/// book of a value for each unit type.
-const SUFFIX_EXCEPTIONS: [&str; 1] = ["ByType"];
+/// The types that hold a suffix role but are named for what they are: the two generic books, of a
+/// value for each action and for each unit type.
+const SUFFIX_EXCEPTIONS: [&str; 2] = ["ByAction", "ByType"];
 
 /// The types `code` implements `role` for, by name: each `impl … <role> for <type>`.
 fn implementers<'c>(code: &'c str, role: &str) -> Vec<&'c str> {
@@ -799,10 +940,16 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
     // The learns are progression's, the cancels and rallies production's, the trades items'; a
     // trade, as a server runs it. No match here declares `orders`.
     let scheduled = |declared: &[Capability]| {
-        let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+        let budgets = ScriptPools {
+            limits: ScriptLimits::ROOMY,
+            players: 1,
+        };
+        let spec = MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets))
+            .set(Release::capability_set(declared).unwrap());
         let world = Match::new(
-            MatchSpec::new(SegmentSeed::ZERO, Match::TEST_RATE, Role::Server(budgets))
-                .set(Release::capability_set(declared).unwrap()),
+            spec,
+            Release::empty_books(Match::TEST_RATE),
+            MatchKind::Rules,
         );
         let schedules = world.resource::<Schedules>();
         let systems = schedules.get(SimUpdate).unwrap().systems().unwrap();
@@ -821,6 +968,8 @@ fn each_capability_schedules_its_own_orders_with_no_orders_capability() {
     assert_eq!(scheduled(&with(&all)), [true, true, true]);
 }
 
+mod books;
 mod declaration_audit;
+mod feature_installs;
 mod genre_words;
 mod prediction_reads;

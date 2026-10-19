@@ -1,7 +1,7 @@
 use campfire_common::EnumAll;
 
 use crate::scripts::error::ApiError;
-use crate::scripts::name_kind::NameKind;
+use campfire_values::{Named, Param};
 
 /// What a script serves, as the data that names it says: each role has its own hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, EnumAll)]
@@ -23,7 +23,7 @@ impl ScriptRole {
     }
 }
 
-/// Whose params a call reads as `ctx.p`, by its role: an ability's and its modifier's, or the
+/// Whose params a call reads as `ctx.params`, by its role: an ability's and its modifier's, or the
 /// mode's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, EnumAll)]
 pub enum ParamScope {
@@ -52,7 +52,7 @@ impl ParamScope {
     /// in a match with no mode, an ability's in a match with no stats.
     pub(crate) const fn missing(self) -> ApiError {
         match self {
-            Self::Action => ApiError::Unknown(NameKind::Param),
+            Self::Action => ApiError::Unknown(Param::NAMES),
             Self::Mode => ApiError::NoMode,
         }
     }

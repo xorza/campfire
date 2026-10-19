@@ -85,7 +85,8 @@ impl I64x4 {
     }
 
     /// Each lane divided by `divisor`, rounded down, as `i64::div_euclid` for a positive divisor:
-    /// for lanes below 2⁵¹ in magnitude and a divisor from 1 to 2⁵¹ − 1. Both convert to `f64`
+    /// for lanes below 2⁵¹ in magnitude and a divisor from 1 to 2⁵¹ − 1 (09-determinism-core.md,
+    /// Float lanes compute exact results). Both convert to `f64`
     /// exactly, and the quotient's floor is exact: a quotient that is not whole lies at least
     /// 1 / `divisor` below the next whole number, more than the half of its last place by which
     /// it rounds, as the lane is below 2⁵³.

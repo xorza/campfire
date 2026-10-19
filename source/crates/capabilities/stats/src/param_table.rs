@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
+use campfire_common::DeclaredName;
 use campfire_math::{Num, Rounding};
-use campfire_values::{DeclaredName, NameTable, Param, Rank, Ranked, Scalar, Stat};
+use campfire_units::StatId;
+use campfire_values::{NameTable, Param, Rank, Ranked, Scalar, Stat};
 
 use crate::param_source::ParamSource;
-use crate::stat_id::StatId;
 
 /// The params of the abilities or the modifiers of a match, one run of names for each owner, as
 /// a match reads them: a scaling param's stats as places among the stats, its ratios in one

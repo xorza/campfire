@@ -1,7 +1,6 @@
 use campfire_geometry::{Bounds, Metric};
+use campfire_units::MapPoint;
 use serde::{Deserialize, Serialize};
-
-use crate::map_point::MapPoint;
 
 /// A box of the map, from `min` to `max`, `min` below `max` on every axis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

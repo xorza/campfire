@@ -1,6 +1,7 @@
 use tempfile::TempDir;
 
 use super::*;
+use crate::dir_entries::DirEntries;
 use crate::durable_file::DurableFile;
 
 #[test]
@@ -57,9 +58,21 @@ fn a_durable_directory_is_made_once_and_its_owners_only() {
         })
     ));
     DurableDir::rename(&renamed, &path).unwrap();
-    // Removed, it goes with all it holds; a directory that is not there is not removed.
+    // Removed, it goes with all it holds; a directory that is not there is not removed. A
+    // tombstone a crash left as it removed another directory is in no listing, and goes with
+    // the next removal in its parent.
+    let left = dir.path().join(".campfire-removed.left");
+    DurableDir::create(&left).unwrap();
+    DurableFile::write(&left.join("held"), b"held").unwrap();
+    let listed = || -> Vec<OsString> {
+        let entries = DirEntries::read(dir.path()).unwrap();
+        entries.into_iter().map(|entry| entry.name).collect()
+    };
+    assert_eq!(listed(), ["a", "sessions"]);
     DurableDir::remove(&path).unwrap();
     assert!(!path.exists());
+    assert_eq!(fs::read_dir(dir.path()).unwrap().count(), 1);
+    assert_eq!(listed(), ["a"]);
     assert!(matches!(
         DurableDir::remove(&path),
         Err(PathError {

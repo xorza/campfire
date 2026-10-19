@@ -111,3 +111,7 @@ damage_kind = "physical"
 
 [units.grasping_wraps]
 projectile = { speed = "20", width = "1.6", stop_on_hit = true }
+
+# A hero's death gives 150 experience, and 25 for each level it holds.
+[experience]
+gives = { base = 150, per_level = 25 }

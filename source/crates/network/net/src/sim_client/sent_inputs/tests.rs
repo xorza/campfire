@@ -4,6 +4,7 @@ use campfire_capabilities::Order;
 use campfire_math::Num;
 use campfire_orders::OrdersAction;
 use campfire_sim::IdAllocator;
+use campfire_units::GroundPoint;
 
 use super::*;
 
@@ -32,8 +33,10 @@ fn the_inputs_keep_their_stamps_and_payloads_from_the_oldest_on() {
     let far = Order::one(
         units[0],
         OrdersAction::Move {
-            x: Num::from_bits(i64::MAX),
-            z: Num::from_bits(0),
+            to: GroundPoint {
+                x: Num::from_bits(i64::MAX),
+                z: Num::from_bits(0),
+            },
         },
     );
     assert!(!push(&mut sent, 4, 4, &far));

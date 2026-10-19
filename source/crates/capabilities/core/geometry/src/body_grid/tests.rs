@@ -1,5 +1,3 @@
-use campfire_sim::IdAllocator;
-
 use super::*;
 use crate::radius::Radius;
 use crate::shape::Shape;
@@ -10,9 +8,10 @@ fn m(tenths: i64) -> Num {
 }
 
 /// A body of `radius` tenths at `[x, z]` tenths, with the next id.
-fn placed(ids: &mut IdAllocator, [x, z]: [i64; 2], radius: i64) -> Indexed<()> {
+fn placed(ids: &mut u64, [x, z]: [i64; 2], radius: i64) -> Indexed<(), u64> {
+    *ids += 1;
     Indexed {
-        id: ids.allocate(),
+        id: *ids,
         key: (),
         body: Placed::new(
             Vec3::new(m(x), Num::ZERO, m(z)),
@@ -22,7 +21,7 @@ fn placed(ids: &mut IdAllocator, [x, z]: [i64; 2], radius: i64) -> Indexed<()> {
 }
 
 /// The ids `grid` visits for the box from `low` to `high`, in tenths, sorted, each once.
-fn visited(grid: &BodyGrid<()>, low: [i64; 2], high: [i64; 2]) -> Vec<StableId> {
+fn visited(grid: &BodyGrid<(), u64>, low: [i64; 2], high: [i64; 2]) -> Vec<u64> {
     let mut ids = Vec::new();
     grid.visit(low.map(m), high.map(m), |body| {
         ids.push(body.id);
@@ -37,9 +36,9 @@ fn visited(grid: &BodyGrid<()>, low: [i64; 2], high: [i64; 2]) -> Vec<StableId> 
 
 #[test]
 fn a_box_visits_the_bodies_of_the_cells_it_covers_grown_by_the_widest() {
-    let mut ids = IdAllocator::default();
+    let mut ids = 0;
     let mut grid = BodyGrid::default();
-    assert_eq!(visited(&grid, [0, 0], [10, 10]), []);
+    assert!(visited(&grid, [0, 0], [10, 10]).is_empty());
     // Bodies of radius 0.5 m: a cell is 2 × 0.5 = 1 m.
     let at = [[0, 0], [20, 0], [50, 0], [-30, 0], [0, 40]];
     let bodies = at.map(|at| placed(&mut ids, at, 5));
@@ -102,7 +101,7 @@ fn a_box_visits_the_bodies_of_the_cells_it_covers_grown_by_the_widest() {
         ([-20, -20], [20, 20]),
     ] {
         let got = visited(&grid, low, high);
-        let overlaps = |entry: &&Indexed<()>| {
+        let overlaps = |entry: &&Indexed<(), u64>| {
             let (at, bound) = (entry.body.pos, entry.body.shape.bound());
             let near =
                 |axis: Num, low: i64, high: i64| m(low) <= axis + bound && axis - bound <= m(high);
@@ -119,7 +118,7 @@ fn a_box_visits_the_bodies_of_the_cells_it_covers_grown_by_the_widest() {
 
 #[test]
 fn a_box_meets_every_body_whose_square_overlaps_it() {
-    let mut ids = IdAllocator::default();
+    let mut ids = 0;
     // A lattice 0.7 m apart from -5.6 to 5.6 m, radii 0 to 1.2 m: points make the base a meter,
     // and radii up to 0.5 m take its cells, up to 1 m cells of 2 m, and up to 1.2 m cells of 4 m.
     let mut lattice = Vec::new();
@@ -154,7 +153,7 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
             ([0, 500], [10, 600]),
         ] {
             let got = visited(&grid, low, high);
-            let overlaps = |entry: &&Indexed<()>| {
+            let overlaps = |entry: &&Indexed<(), u64>| {
                 let at = entry.body.pos;
                 let near = |axis: Num, low: i64, high: i64| {
                     m(low) <= axis + entry.body.shape.bound()
@@ -170,7 +169,7 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
             }
             // Exactly the bodies of the cells of their level that the box covers grown by the
             // level's widest body, 0.5, 1 and 1.2 m, whether row starts or searches find them.
-            let inside = |entry: &&Indexed<()>| {
+            let inside = |entry: &&Indexed<(), u64>| {
                 let (at, level) = (entry.body.pos, grid.levels.level(entry.body.shape.bound()));
                 let grow = m([5, 10, 12][usize::from(level)]);
                 let cell = |at: Num| grid.levels.index(level, at.to_bits());
@@ -192,7 +191,7 @@ fn a_box_meets_every_body_whose_square_overlaps_it() {
             ControlFlow::Continue(())
         });
         got.sort_unstable();
-        let in_band = |entry: &&Indexed<()>| {
+        let in_band = |entry: &&Indexed<(), u64>| {
             let level = grid.levels.level(entry.body.shape.bound());
             let grow = m([5, 10, 12][usize::from(level)]);
             let row = |at: Num| grid.levels.index(level, at.to_bits());

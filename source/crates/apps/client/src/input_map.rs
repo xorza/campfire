@@ -1,0 +1,194 @@
+use bevy::ecs::resource::Resource;
+use bevy::ecs::system::Res;
+use bevy::input::ButtonInput;
+use bevy::input::keyboard::KeyCode;
+use campfire_client_files::{Chord, InputFile, Key, Modifiers};
+
+/// The client's keys: the mode's `client/input.toml`, or the engine's own for a mode of none,
+/// each chord pressed when its key is and exactly its modifiers are held (02-engine-core.md, Keys
+/// are the mode's data).
+#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct InputMap {
+    file: InputFile,
+}
+
+/// An action of the client that its chords do, any of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Act {
+    Stop,
+    DropBuild,
+    Shop,
+    Pause,
+    Slower,
+    Faster,
+    Save,
+    Load,
+    ScrollLeft,
+    ScrollRight,
+    ScrollUp,
+    ScrollDown,
+    ZoomIn,
+    ZoomOut,
+    TurnLeft,
+    TurnRight,
+    ResetCamera,
+}
+
+/// A row of chords, one for each slot in their order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Row {
+    Cast,
+    Learn,
+    Items,
+}
+
+impl InputMap {
+    pub(crate) const fn new(file: InputFile) -> Self {
+        Self { file }
+    }
+
+    /// Whether a chord of `act` is held.
+    pub(crate) fn held(&self, act: Act, keys: &ButtonInput<KeyCode>) -> bool {
+        let modifiers = held_modifiers(keys);
+        self.chords(act)
+            .iter()
+            .any(|chord| chord.modifiers == modifiers && keys.pressed(code(chord.key)))
+    }
+
+    /// Whether a chord of `act` went down this frame.
+    pub(crate) fn pressed(&self, act: Act, keys: &ButtonInput<KeyCode>) -> bool {
+        self.chords(act)
+            .iter()
+            .any(|&chord| Self::chord_pressed(chord, keys))
+    }
+
+    /// A run condition: whether a chord of `act` went down this frame.
+    pub(crate) fn on(
+        act: Act,
+    ) -> impl FnMut(Res<'_, Self>, Res<'_, ButtonInput<KeyCode>>) -> bool + Clone {
+        move |input: Res<'_, Self>, keys: Res<'_, ButtonInput<KeyCode>>| input.pressed(act, &keys)
+    }
+
+    /// The chords of `row`, by slot.
+    pub(crate) fn row(&self, row: Row) -> &[Chord] {
+        match row {
+            Row::Cast => &self.file.cast,
+            Row::Learn => &self.file.learn,
+            Row::Items => &self.file.items,
+        }
+    }
+
+    /// Whether `chord` went down this frame.
+    pub(crate) fn chord_pressed(chord: Chord, keys: &ButtonInput<KeyCode>) -> bool {
+        chord.modifiers == held_modifiers(keys) && keys.just_pressed(code(chord.key))
+    }
+
+    /// Whether the modifiers that orbit the camera are exactly the ones held.
+    pub(crate) fn orbits(&self, keys: &ButtonInput<KeyCode>) -> bool {
+        held_modifiers(keys) == self.file.orbit
+    }
+
+    fn chords(&self, act: Act) -> &[Chord] {
+        let file = &self.file;
+        match act {
+            Act::Stop => &file.stop,
+            Act::DropBuild => &file.drop_build,
+            Act::Shop => &file.shop,
+            Act::Pause => &file.pause,
+            Act::Slower => &file.slower,
+            Act::Faster => &file.faster,
+            Act::Save => &file.save,
+            Act::Load => &file.load,
+            Act::ScrollLeft => &file.scroll_left,
+            Act::ScrollRight => &file.scroll_right,
+            Act::ScrollUp => &file.scroll_up,
+            Act::ScrollDown => &file.scroll_down,
+            Act::ZoomIn => &file.zoom_in,
+            Act::ZoomOut => &file.zoom_out,
+            Act::TurnLeft => &file.turn_left,
+            Act::TurnRight => &file.turn_right,
+            Act::ResetCamera => &file.reset_camera,
+        }
+    }
+}
+
+/// The modifiers held, each of either side.
+fn held_modifiers(keys: &ButtonInput<KeyCode>) -> Modifiers {
+    Modifiers {
+        shift: keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]),
+        control: keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]),
+        alt: keys.any_pressed([KeyCode::AltLeft, KeyCode::AltRight]),
+    }
+}
+
+/// Bevy's code of `key`, whose names are the W3C's too.
+const fn code(key: Key) -> KeyCode {
+    /// Maps each key named to Bevy's code of its name.
+    macro_rules! codes {
+        ($($name:ident),* $(,)?) => {
+            match key {
+                $(Key::$name => KeyCode::$name),*
+            }
+        };
+    }
+    codes! {
+        Backquote, Backslash, BracketLeft, BracketRight, Comma,
+        Digit0, Digit1, Digit2, Digit3, Digit4, Digit5, Digit6, Digit7, Digit8, Digit9,
+        Equal,
+        KeyA, KeyB, KeyC, KeyD, KeyE, KeyF, KeyG, KeyH, KeyI, KeyJ, KeyK, KeyL, KeyM,
+        KeyN, KeyO, KeyP, KeyQ, KeyR, KeyS, KeyT, KeyU, KeyV, KeyW, KeyX, KeyY, KeyZ,
+        Minus, Period, Quote, Semicolon, Slash,
+        Backspace, Enter, Space, Tab,
+        Delete, End, Home, Insert, PageDown, PageUp,
+        ArrowDown, ArrowLeft, ArrowRight, ArrowUp,
+        Numpad0, Numpad1, Numpad2, Numpad3, Numpad4, Numpad5, Numpad6, Numpad7, Numpad8, Numpad9,
+        NumpadAdd, NumpadDecimal, NumpadDivide, NumpadEnter, NumpadMultiply, NumpadSubtract,
+        Escape,
+        F1, F2, F3, F4, F5, F6, F7, F8, F9, F10, F11, F12,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_key_is_bevy_s_code_of_its_name() {
+        for &key in Key::ALL {
+            assert_eq!(format!("{:?}", code(key)), key.name());
+        }
+    }
+
+    #[test]
+    fn a_chord_is_pressed_with_exactly_its_modifiers() {
+        let input = InputMap::default();
+        let mut keys = ButtonInput::<KeyCode>::default();
+        // Up alone scrolls; with Alt it zooms, and scrolls no more.
+        keys.press(KeyCode::ArrowUp);
+        assert!(input.held(Act::ScrollUp, &keys) && !input.held(Act::ZoomIn, &keys));
+        keys.press(KeyCode::AltRight);
+        assert!(!input.held(Act::ScrollUp, &keys) && input.held(Act::ZoomIn, &keys));
+        // Q casts the first slot; with Control it learns it; with Shift too, it does neither.
+        let mut keys = ButtonInput::<KeyCode>::default();
+        let first = |row| input.row(row)[0];
+        keys.press(KeyCode::KeyQ);
+        assert!(InputMap::chord_pressed(first(Row::Cast), &keys));
+        assert!(!InputMap::chord_pressed(first(Row::Learn), &keys));
+        keys.clear();
+        keys.press(KeyCode::ControlLeft);
+        keys.release(KeyCode::KeyQ);
+        keys.press(KeyCode::KeyQ);
+        assert!(!InputMap::chord_pressed(first(Row::Cast), &keys));
+        assert!(InputMap::chord_pressed(first(Row::Learn), &keys));
+        assert!(input.orbits(&keys));
+        keys.press(KeyCode::ShiftLeft);
+        assert!(!InputMap::chord_pressed(first(Row::Learn), &keys));
+        assert!(!input.orbits(&keys));
+        // S stops as it goes down, and held into the next frame stops no more.
+        let mut keys = ButtonInput::<KeyCode>::default();
+        keys.press(KeyCode::KeyS);
+        assert!(input.pressed(Act::Stop, &keys));
+        keys.clear();
+        assert!(!input.pressed(Act::Stop, &keys) && keys.pressed(KeyCode::KeyS));
+    }
+}

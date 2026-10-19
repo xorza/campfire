@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::Release;
+use campfire_common::DeclaredName;
 use campfire_units::*;
-use campfire_values::{Block, DeclaredName, NameId, PackageIndex, Tag, TagSet, TypeScope};
+use campfire_values::{Block, NameId, PackageIndex, Tag, TagSet, TypeScope};
 
 #[test]
 fn a_units_tags_take_their_properties_from_the_modes_data() {

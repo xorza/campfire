@@ -1,31 +1,27 @@
 use std::collections::BTreeMap;
 use std::collections::btree_map::Entry;
 
+use std::num::NonZeroU8;
+
+use campfire_actions::{ActionKind, ActionRange, DeliveryData, RangeField, Targeting};
 use campfire_client_files::ClientUnits;
-use campfire_common::NamedEnum;
-use campfire_geometry::MAX_BOUND;
+use campfire_combat::{AttackData, ClipData, PitchData, ScatterData, SplashData, WeaponValue};
+use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_values::{DeclaredName, RelationSet};
+use campfire_projectiles::ProjectileData;
+use campfire_values::{FilterData, Number, Ranked, RelationSet, Scalar, Speed};
 use serde::Serialize;
 
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::armor_ini::ArmorIni;
 use crate::zero_hour::format::ini::damage_type::DamageType;
 use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
-use crate::zero_hour::format::ini::weapon_ini::{IniWeapon, RadiusAffects, ShotDelay, WeaponIni};
+use crate::zero_hour::format::ini::weapon_ini::{IniWeapon, RadiusAffects, ShotDelay};
 use crate::zero_hour::import_name::ImportName;
-use crate::zero_hour::import_names::ImportNames;
-use crate::zero_hour::imported_type::{INFANTRY, ImportedType, TypeProjectile};
+use crate::zero_hour::import_names::ShellNames;
+use crate::zero_hour::imported_type::{INFANTRY, ImportedType};
 use crate::zero_hour::weapon_drop::{self, WeaponDrop};
-
-/// What the combat import reads: the objects, and the weapons and armors they name.
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct CombatSources<'a> {
-    pub(crate) ini: &'a ObjectIni,
-    pub(crate) weapons: &'a WeaponIni,
-    pub(crate) armors: &'a ArmorIni,
-}
+use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// Zero Hour's combat (04-capabilities/combat.md, Armor by damage kind; 12-zero-hour.md, Life is
 /// the original's; 12-zero-hour.md, A weapon converts when it hits one target at once;
@@ -61,55 +57,13 @@ struct ShellLook {
 /// shell whose damage lands after its shot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct ImportedWeapon {
-    kind: &'static str,
-    targeting: &'static str,
-    range: Num,
-    amount: Num,
-    damage_kind: DeclaredName,
-    period_ms: u64,
+    kind: ActionKind,
+    targeting: Targeting,
+    range: Ranked<RangeField>,
+    #[serde(flatten)]
+    pub(crate) attack: AttackData,
     #[serde(skip_serializing_if = "Option::is_none")]
-    clip: Option<ImportedClip>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    delivery: Option<ImportedDelivery>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    splash: Option<ImportedSplash>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    scatter: Option<ImportedScatter>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pitch_deg: Option<[Num; 2]>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    speed: Option<Num>,
-}
-
-/// A weapon's clip: its shots, and its reload in milliseconds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-struct ImportedClip {
-    shots: u16,
-    reload_ms: u64,
-}
-
-/// The shell type a weapon fires.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct ImportedDelivery {
-    projectile: DeclaredName,
-}
-
-/// A weapon's `splash`: its `PrimaryDamageRadius`, the relations its `RadiusDamageAffects` names,
-/// and whether it spares its own unit, of no `SELF`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-struct ImportedSplash {
-    radius: Num,
-    affects: &'static str,
-    spares_source: bool,
-}
-
-/// A weapon's `scatter`: its `ScatterRadius`, and its `ScatterRadiusVsInfantry` for the tag of
-/// infantry.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-struct ImportedScatter {
-    radius: Num,
-    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
-    tags: BTreeMap<&'static str, Num>,
+    pub(crate) delivery: Option<DeliveryData>,
 }
 
 /// A weapon the import converts, and the shell it fires, if it fires one.
@@ -123,7 +77,7 @@ struct ConvertedWeapon<'a> {
 #[derive(Debug, Clone)]
 struct FiredShell<'a> {
     object: &'a IniObject,
-    projectile: TypeProjectile,
+    projectile: ProjectileData,
 }
 
 /// A weapon the import drops, by its name, and why.
@@ -137,18 +91,15 @@ pub struct DroppedWeapon {
 const QUARTER_DEG: f32 = 90.0;
 
 impl CombatImport {
-    /// The combat of `sources`, of the unit types `names` made, each type's weapons by its name;
+    /// The combat of `rules`, of the unit types `names` made, each type's weapons by its name;
     /// the shell types its weapons fire join `names`. An error for a type whose armor no file
     /// defines by the name of its case, which the game's debug build stops at as wrong data and
     /// its release build takes as no armor (`INI::parseArmorTemplate`), and for a shell type's
     /// name another object took.
-    pub(crate) fn of(
-        sources: CombatSources<'_>,
-        names: &mut ImportNames,
-    ) -> Result<Self, ZeroHourError> {
+    pub(crate) fn of(rules: &ZeroHourRules, names: &mut ShellNames) -> Result<Self, ZeroHourError> {
         let mut import = Self::default();
         let mut armors = BTreeMap::new();
-        for (name, armor) in sources.armors.iter() {
+        for (name, armor) in rules.armors.iter() {
             let id = ImportName::latin(name).declared();
             let mut shares = BTreeMap::new();
             for kind in DamageType::ALL {
@@ -169,8 +120,8 @@ impl CombatImport {
         // Each converted weapon's shell, by its action and with its weapon's name.
         let mut shells = BTreeMap::<DeclaredName, (&str, FiredShell<'_>)>::new();
         for (type_name, object_name, typed) in names.types() {
-            let object = sources
-                .ini
+            let object = rules
+                .objects
                 .object(object_name.as_bytes())
                 .expect("a typed object is in the file");
             let fight = object.fight();
@@ -178,7 +129,7 @@ impl CombatImport {
                 let armor = fight
                     .starting_armor()
                     .expect("a type's armor is its object's");
-                if sources.armors.get(armor).is_none() {
+                if rules.armors.get(armor).is_none() {
                     return Err(ZeroHourError::NoArmor {
                         object: object.name.clone(),
                         armor: armor.to_owned(),
@@ -196,11 +147,11 @@ impl CombatImport {
                 continue;
             };
             for weapon in set.weapons.iter().flatten() {
-                let converted = sources
+                let converted = rules
                     .weapons
                     .get(weapon)
                     .ok_or(WeaponDrop::NoWeapon)
-                    .and_then(|ini| ImportedWeapon::of(ini, sources.ini));
+                    .and_then(|ini| ImportedWeapon::of(ini, &rules.objects));
                 match converted {
                     Ok(converted) => {
                         let id = DeclaredName::new(&format!(
@@ -255,7 +206,7 @@ impl CombatImport {
     fn name_shells(
         &mut self,
         shells: BTreeMap<DeclaredName, (&str, FiredShell<'_>)>,
-        names: &mut ImportNames,
+        names: &mut ShellNames,
     ) -> Result<(), ZeroHourError> {
         let mut by_object = BTreeMap::<&str, Vec<(DeclaredName, &str, FiredShell<'_>)>>::new();
         for (action, (weapon, shell)) in shells {
@@ -289,8 +240,10 @@ impl CombatImport {
                     .actions
                     .get_mut(&action)
                     .expect("a shell's action is converted");
-                held.delivery = Some(ImportedDelivery {
-                    projectile: unit_type,
+                held.delivery = Some(DeliveryData::Projectile {
+                    unit_type,
+                    count: NonZeroU8::MIN,
+                    spread_deg: Num::ZERO,
                 });
             }
         }
@@ -381,38 +334,35 @@ impl ImportedWeapon {
             }
             Ok(value)
         };
-        let radius = |value: f32| {
-            let value = number(value)?;
-            if value > MAX_BOUND {
-                return Err(WeaponDrop::BadNumber);
-            }
-            Ok(value)
+        let ms = |ms: u64| {
+            i64::try_from(ms)
+                .map(Self::own)
+                .map_err(|_| WeaponDrop::BadNumber)
         };
         let clip = match weapon.clip_size {
             ..0 => return Err(WeaponDrop::BadNumber),
             0 => None,
-            size => Some(ImportedClip {
-                shots: u16::try_from(size).map_err(|_| WeaponDrop::BadNumber)?,
-                reload_ms: weapon_drop::game_ms(weapon.clip_reload_ms)?,
+            size => Some(ClipData {
+                shots: Self::own(i64::from(size)),
+                reload_ms: ms(weapon_drop::game_ms(weapon.clip_reload_ms)?)?,
             }),
         };
         let splash = match affects {
-            Some(affects) => Some(ImportedSplash {
-                radius: radius(weapon.radius)?,
-                affects: affects.name(),
-                spares_source: !weapon.affects.source,
-            }),
+            Some(affects) => {
+                let radius = number(weapon.radius)?;
+                let splash = SplashData::new(radius, affects, !weapon.affects.source);
+                Some(splash.ok_or(WeaponDrop::BadNumber)?)
+            }
             None => None,
         };
         let scatter = if scatters {
             let mut tags = BTreeMap::new();
             if weapon.infantry_scatter > 0.0 {
-                tags.insert(INFANTRY, radius(weapon.infantry_scatter)?);
+                let infantry = DeclaredName::new(INFANTRY).expect("a tag is a declared name");
+                tags.insert(infantry, number(weapon.infantry_scatter)?);
             }
-            Some(ImportedScatter {
-                radius: radius(weapon.scatter)?,
-                tags,
-            })
+            let scatter = ScatterData::new(number(weapon.scatter)?, tags);
+            Some(scatter.ok_or(WeaponDrop::BadNumber)?)
         } else {
             None
         };
@@ -423,48 +373,51 @@ impl ImportedWeapon {
         }
         let pitch_deg = if low > -180.0 || high < 180.0 {
             let [low, high] = [low.max(-QUARTER_DEG), high.min(QUARTER_DEG)];
-            if !(low < QUARTER_DEG && high > -QUARTER_DEG && low <= high) {
-                return Err(WeaponDrop::BadNumber);
-            }
             let pitch = |value: f32| game_float::to_num(value).map_err(|_| WeaponDrop::BadNumber);
-            Some([pitch(low)?, pitch(high)?])
+            Some(PitchData::new(pitch(low)?, pitch(high)?).ok_or(WeaponDrop::BadNumber)?)
         } else {
             None
         };
         // A laser's damage lands at once, and a shell's when it lands.
         let speed = if shell.is_none() && !weapon.laser && weapon.speed < IniWeapon::INSTANT {
-            let speed = number(weapon.speed)?;
-            if speed == Num::ZERO {
-                return Err(WeaponDrop::BadNumber);
-            }
-            Some(speed)
+            Some(Speed::new(number(weapon.speed)?).ok_or(WeaponDrop::BadNumber)?)
         } else {
             None
         };
         let shell = match shell {
             Some(object) => Some(FiredShell {
                 object,
-                projectile: TypeProjectile::of(weapon, object)?,
+                projectile: ImportedType::projectile(weapon, object)?,
             }),
             None => None,
         };
+        let damage = Ranked::One(Number::Value(Scalar::Decimal(number(weapon.damage)?)));
+        let range = RangeField::Range(ActionRange::meters(number(weapon.range)?));
+        let enemies = FilterData::parse("enemies").expect("the enemies' filter parses");
         Ok(ConvertedWeapon {
             weapon: Self {
-                kind: "attack",
-                targeting: "enemies",
-                range: number(weapon.range)?,
-                amount: number(weapon.damage)?,
-                damage_kind: damage_kind.kind(),
-                period_ms,
-                clip,
+                kind: ActionKind::Attack,
+                targeting: Targeting::Unit(enemies),
+                range: Ranked::One(range),
+                attack: AttackData {
+                    rate: WeaponValue::Own(ms(period_ms)?),
+                    damage: WeaponValue::Own(damage),
+                    damage_kind: damage_kind.kind(),
+                    clip,
+                    splash,
+                    scatter,
+                    pitch_deg,
+                    speed,
+                },
                 delivery: None,
-                splash,
-                scatter,
-                pitch_deg,
-                speed,
             },
             shell,
         })
+    }
+
+    /// `value` at every rank.
+    fn own(value: i64) -> Ranked<Number> {
+        Ranked::One(Number::from(value))
     }
 
     /// The relations of `affects`, as a splash's filter names them, each player a team of its
@@ -495,7 +448,9 @@ mod tests {
     use crate::zero_hour::format::ini::armor_ini::internals::ARMORS;
     use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
     use crate::zero_hour::format::ini::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
+    use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
     use crate::zero_hour::format::ini::weapon_ini::internals::WEAPONS;
+    use crate::zero_hour::import_names::ImportNames;
     use crate::zero_hour::imported_type::internals::shell_projectile;
 
     /// A rocket of no `DumbProjectileBehavior`, a missile's.
@@ -514,22 +469,28 @@ mod tests {
         let weapon = |name: &str| of(name).map(|converted| converted.weapon);
         // The rifle's 100 ms are ⌈100 × 0.03⌉ = 3 frames, written back as ⌊3 × 100 / 3⌋ = 100;
         // its reload's 700 ms are 21 frames, 700.
+        let own = ImportedWeapon::own;
+        let decimal = |value: i64| Ranked::One(Number::Value(Scalar::Decimal(Num::int(value))));
+        let range =
+            |meters: i64| Ranked::One(RangeField::Range(ActionRange::meters(Num::int(meters))));
         let rifle = ImportedWeapon {
-            kind: "attack",
-            targeting: "enemies",
-            range: Num::int(100),
-            amount: Num::int(5),
-            damage_kind: DamageType::SmallArms.kind(),
-            period_ms: 100,
-            clip: Some(ImportedClip {
-                shots: 3,
-                reload_ms: 700,
-            }),
+            kind: ActionKind::Attack,
+            targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            range: range(100),
+            attack: AttackData {
+                rate: WeaponValue::Own(own(100)),
+                damage: WeaponValue::Own(decimal(5)),
+                damage_kind: DamageType::SmallArms.kind(),
+                clip: Some(ClipData {
+                    shots: own(3),
+                    reload_ms: own(700),
+                }),
+                splash: None,
+                scatter: None,
+                pitch_deg: None,
+                speed: None,
+            },
             delivery: None,
-            splash: None,
-            scatter: None,
-            pitch_deg: None,
-            speed: None,
         };
         assert_eq!(weapon("RangerRifle"), Ok(rifle.clone()));
         assert!(of("RangerRifle").unwrap().shell.is_none());
@@ -540,21 +501,20 @@ mod tests {
         assert_eq!(
             cannon.weapon,
             ImportedWeapon {
-                range: Num::int(150),
-                amount: Num::int(60),
-                damage_kind: DamageType::ArmorPiercing.kind(),
-                period_ms: 2000,
-                clip: None,
-                splash: Some(ImportedSplash {
-                    radius: Num::int(5),
-                    affects: "all",
-                    spares_source: true,
-                }),
-                scatter: Some(ImportedScatter {
-                    radius: Num::ZERO,
-                    tags: [(INFANTRY, Num::int(10))].into(),
-                }),
-                pitch_deg: Some([Num::int(-15), Num::int(15)]),
+                range: range(150),
+                attack: AttackData {
+                    rate: WeaponValue::Own(own(2000)),
+                    damage: WeaponValue::Own(decimal(60)),
+                    damage_kind: DamageType::ArmorPiercing.kind(),
+                    clip: None,
+                    splash: SplashData::new(Num::int(5), RelationSet::All, true),
+                    scatter: ScatterData::new(
+                        Num::ZERO,
+                        [(DeclaredName::new(INFANTRY).unwrap(), Num::int(10))].into()
+                    ),
+                    pitch_deg: PitchData::new(Num::int(-15), Num::int(15)),
+                    speed: None,
+                },
                 ..rifle
             }
         );
@@ -579,10 +539,10 @@ mod tests {
         // A speed below the default lands the damage after the shot, at 2,400 m a second, but a
         // laser's lands at once.
         let bolt = weapon("Bolt").unwrap();
-        assert_eq!(bolt.speed, Some(Num::int(2400)));
+        assert_eq!(bolt.attack.speed.map(Speed::get), Some(Num::int(2400)));
         assert_eq!(
-            weapon("Beam").map(|beam| (beam.amount, beam.speed)),
-            Ok((Num::int(30), None))
+            weapon("Beam").map(|beam| (beam.attack.damage, beam.attack.speed)),
+            Ok((WeaponValue::Own(decimal(30)), None))
         );
         assert_eq!(weapon("Stinger"), Err(WeaponDrop::NotGround));
         assert_eq!(weapon("Blast"), Err(WeaponDrop::Suicide));
@@ -600,7 +560,7 @@ mod tests {
                 format!("Weapon W\n  PrimaryDamage = 5\n  DelayBetweenShots = 100\n{lines}End\n");
             ini.read(text.as_bytes()).unwrap();
             ImportedWeapon::of(ini.get("W").unwrap(), &ObjectIni::default())
-                .map(|converted| converted.weapon.pitch_deg)
+                .map(|converted| converted.weapon.attack.pitch_deg)
         };
         // A bound of the defaults, a turn either way, is none; one side's bound keeps the
         // other's default, which the engine's quarter turn holds; a bound of no target, or of no
@@ -608,11 +568,11 @@ mod tests {
         assert_eq!(pitch(""), Ok(None));
         assert_eq!(
             pitch("  MaxTargetPitch = 57\n"),
-            Ok(Some([Num::int(-90), Num::int(57)]))
+            Ok(PitchData::new(Num::int(-90), Num::int(57)))
         );
         assert_eq!(
             pitch("  MinTargetPitch = 45\n  MaxTargetPitch = 80\n"),
-            Ok(Some([Num::int(45), Num::int(80)]))
+            Ok(PitchData::new(Num::int(45), Num::int(80)))
         );
         for bound in [
             "  MinTargetPitch = 90\n",
@@ -690,22 +650,16 @@ End
 
     #[test]
     fn weapons_of_one_name_but_case_share_an_action_only_of_the_same_numbers() {
-        let mut ini = ObjectIni::default();
-        ini.read(SOLDIERS.as_bytes()).unwrap();
         let import = |guns: &str| {
+            let mut rules = ZeroHourRules::default();
+            rules.objects.read(SOLDIERS.as_bytes()).unwrap();
+            rules.weapons.read(guns.as_bytes()).unwrap();
             let mut names = ImportNames::default();
             for object in ["Gunner", "Sniper"] {
-                let object = ini.object(object.as_bytes()).unwrap();
+                let object = rules.objects.object(object.as_bytes()).unwrap();
                 names.unit_type(object, &LocomotorIni::default()).unwrap();
             }
-            let mut weapons = WeaponIni::default();
-            weapons.read(guns.as_bytes()).unwrap();
-            let sources = CombatSources {
-                ini: &ini,
-                weapons: &weapons,
-                armors: &ArmorIni::default(),
-            };
-            CombatImport::of(sources, &mut names)
+            CombatImport::of(&rules, &mut names.into_production().into_shells())
         };
         let gun = |name: &str, damage: u8| {
             format!("Weapon {name}\n  PrimaryDamage = {damage}\n  DelayBetweenShots = 100\nEnd\n")
@@ -728,19 +682,14 @@ End
                 "Object Guard\n  Body = ActiveBody ModuleTag_01\n    MaxHealth = 10\n  End\n  \
                  ArmorSet\n    Conditions = None\n    Armor = {armor}\n  End\nEnd\n"
             );
-            let mut ini = ObjectIni::default();
-            ini.read(text.as_bytes()).unwrap();
+            let mut rules = ZeroHourRules::default();
+            rules.objects.read(text.as_bytes()).unwrap();
+            rules.armors.read(ARMORS.as_bytes()).unwrap();
             let mut names = ImportNames::default();
-            let object = ini.object(b"Guard").unwrap();
+            let object = rules.objects.object(b"Guard").unwrap();
             names.unit_type(object, &LocomotorIni::default()).unwrap();
-            let mut armors = ArmorIni::default();
-            armors.read(ARMORS.as_bytes()).unwrap();
-            let sources = CombatSources {
-                ini: &ini,
-                weapons: &WeaponIni::default(),
-                armors: &armors,
-            };
-            CombatImport::of(sources, &mut names).map(|import| import.armors.len())
+            let mut names = names.into_production().into_shells();
+            CombatImport::of(&rules, &mut names).map(|import| import.armors.len())
         };
         // The fixture's two armors are written whatever the types name; an armor of another
         // case is none the game finds.
@@ -767,27 +716,25 @@ End
             )
         };
         let import = |second: &str, speeds: [u16; 2], extra: &str| {
-            let mut ini = ObjectIni::default();
-            ini.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
-            ini.read(OBJECTS.as_bytes()).unwrap();
-            ini.read((tanks(second) + extra).as_bytes()).unwrap();
+            let mut rules = ZeroHourRules::default();
+            rules.objects.read(DEFAULT_OBJECTS.as_bytes()).unwrap();
+            rules.objects.read(OBJECTS.as_bytes()).unwrap();
+            rules
+                .objects
+                .read((tanks(second) + extra).as_bytes())
+                .unwrap();
+            let text = gun("Cannon", speeds[0]) + gun("Howitzer", speeds[1]).as_str();
+            rules.weapons.read(text.as_bytes()).unwrap();
             let mut names = ImportNames::default();
-            for object in ini.objects() {
+            for object in rules.objects.objects() {
                 names.take(object).unwrap();
             }
             for object in ["Gunner", "Tower"] {
-                let object = ini.object(object.as_bytes()).unwrap();
+                let object = rules.objects.object(object.as_bytes()).unwrap();
                 names.unit_type(object, &LocomotorIni::default()).unwrap();
             }
-            let mut weapons = WeaponIni::default();
-            let text = gun("Cannon", speeds[0]) + gun("Howitzer", speeds[1]).as_str();
-            weapons.read(text.as_bytes()).unwrap();
-            let sources = CombatSources {
-                ini: &ini,
-                weapons: &weapons,
-                armors: &ArmorIni::default(),
-            };
-            let combat = CombatImport::of(sources, &mut names)?;
+            let mut names = names.into_production().into_shells();
+            let combat = CombatImport::of(&rules, &mut names)?;
             let deliveries: Vec<(String, String)> = combat
                 .actions
                 .iter()
@@ -795,7 +742,7 @@ End
                     let delivery = weapon.delivery.as_ref().unwrap();
                     (
                         id.as_str().to_owned(),
-                        delivery.projectile.as_str().to_owned(),
+                        delivery.unit_type().as_str().to_owned(),
                     )
                 })
                 .collect();

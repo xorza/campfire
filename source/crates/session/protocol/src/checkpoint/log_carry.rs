@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::bytes::Bytes;
 use crate::checkpoint::error::CheckpointDecodeError;
+use crate::control::Control;
 use crate::delegation::Delegation;
-use crate::input_chain::InputChain;
 use crate::main_key::MainKey;
 use crate::spill::Spill;
 use crate::stamp_count::StampCount;
@@ -22,23 +22,10 @@ pub struct LogCarry {
 /// One slot of a `LogCarry`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CarriedSlot {
-    pub(crate) control: CarriedControl,
+    pub(crate) control: Control<Box<Delegation>>,
     pub(crate) leaver: Option<MainKey>,
     pub(crate) stamps: StampCount,
     pub(crate) spill: Spill,
-}
-
-/// Who controls a carried slot: a player, by their current delegation and their chain as logged
-/// so far; a bot; no one; or no one but the player who left it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum CarriedControl {
-    Player {
-        delegation: Box<Delegation>,
-        chain: InputChain,
-    },
-    Bot,
-    Open,
-    Reserved,
 }
 
 /// An input logged before the boundary that applies in `tick`, from it on.
@@ -62,21 +49,10 @@ pub(crate) struct CarryWire<'a> {
 #[derive(Debug, Serialize, Deserialize)]
 struct SlotWire<'a> {
     #[serde(borrow)]
-    control: ControlWire<'a>,
+    control: Control<&'a str>,
     leaver: Option<MainKey>,
     stamps: StampCount,
     spill: Spill,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum ControlWire<'a> {
-    Player {
-        delegation: &'a str,
-        chain: InputChain,
-    },
-    Bot,
-    Open,
-    Reserved,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -94,15 +70,7 @@ impl LogCarry {
             .slots
             .iter()
             .map(|slot| SlotWire {
-                control: match &slot.control {
-                    CarriedControl::Player { delegation, chain } => ControlWire::Player {
-                        delegation: delegation.json(),
-                        chain: *chain,
-                    },
-                    CarriedControl::Bot => ControlWire::Bot,
-                    CarriedControl::Open => ControlWire::Open,
-                    CarriedControl::Reserved => ControlWire::Reserved,
-                },
+                control: slot.control.as_ref().map(|delegation| delegation.json()),
                 leaver: slot.leaver,
                 stamps: slot.stamps,
                 spill: slot.spill,
@@ -125,20 +93,14 @@ impl LogCarry {
     pub(crate) fn from_wire(wire: CarryWire<'_>) -> Result<Self, CheckpointDecodeError> {
         let mut slots = Vec::with_capacity(wire.slots.len());
         for (slot, carried) in (0..).zip(wire.slots) {
-            let control = match carried.control {
-                ControlWire::Player { delegation, chain } => CarriedControl::Player {
-                    delegation: Box::new(Delegation::parse(delegation).map_err(|error| {
-                        CheckpointDecodeError::Delegation {
-                            slot: PlayerSlot::new(slot),
-                            error,
-                        }
-                    })?),
-                    chain,
-                },
-                ControlWire::Bot => CarriedControl::Bot,
-                ControlWire::Open => CarriedControl::Open,
-                ControlWire::Reserved => CarriedControl::Reserved,
-            };
+            let control = carried.control.try_map(|delegation| {
+                Delegation::parse(delegation)
+                    .map(Box::new)
+                    .map_err(|error| CheckpointDecodeError::Delegation {
+                        slot: PlayerSlot::new(slot),
+                        error,
+                    })
+            })?;
             slots.push(CarriedSlot {
                 control,
                 leaver: carried.leaver,

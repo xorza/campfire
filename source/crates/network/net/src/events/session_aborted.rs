@@ -8,7 +8,7 @@ use tracing::info;
 /// The server started again past the restore window of the session a stop ended, or after it
 /// ended: it logged the session's end and published its log to `file`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct SessionAborted {
+pub(crate) struct SessionAborted {
     #[serde(deserialize_with = "LogLine::text")]
     pub session: SessionId,
     pub file: PathBuf,

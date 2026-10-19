@@ -13,6 +13,11 @@ pub(crate) enum ServerBotError {
     ClientSlot,
 }
 
+/// A `--watch` that names no team, as a team's name is a declared name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+#[error("no team's name")]
+pub(crate) struct TeamNameError;
+
 /// Why a server's address names no server a client can reach.
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub(crate) enum ServerAddressError {

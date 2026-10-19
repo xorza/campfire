@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 use crate::package_index::PackageIndex;
 
@@ -19,6 +20,10 @@ impl NameId for ActionId {
     fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+impl Named for ActionId {
+    const NAMES: NameKind = NameKind::new("action", Article::An, NameScope::Package);
 }
 
 #[cfg(feature = "internals")]

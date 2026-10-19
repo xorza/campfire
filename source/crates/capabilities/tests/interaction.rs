@@ -1,19 +1,21 @@
-use campfire_abilities::Abilities;
+use std::sync::Arc;
+
+use campfire_abilities::{Abilities, CastData};
 use campfire_actions::{
-    ActionData, ActionKind, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions,
-    ChannelData, RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
+    ActionData, ActionProgress, ActionRange, ActionSlots, ActionTarget, Actions, ChannelData,
+    RangeField, SlotKind, SlotTimes, Targeting, TimedSlots,
 };
 use campfire_capabilities::internals::*;
 use campfire_capabilities::{Match, Order, Release};
 use campfire_combat::Combat;
 use campfire_common::{PlayerSlot, Tick};
-use campfire_interaction::{UseSlot, UseSpec};
+use campfire_interaction::{UseActionData, UseSlot, UseSpec};
 use campfire_math::Num;
 use campfire_mode::Mode;
 use campfire_orders::OrdersAction;
 use campfire_players::Players;
 use campfire_script::internals::FailedCall;
-use campfire_script::{Filter, ScriptBudgets, ScriptFailures, ScriptLimits};
+use campfire_script::{Filter, ScriptFailures, ScriptLimits, ScriptPools};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, SimComponent, SimWorld, SnapshotError, StableId};
 use campfire_stats::Stats;
@@ -29,13 +31,13 @@ const USES: SlotKind = SlotKind::new(0);
 /// Each use's hooks: its resolve deals its object 1, each tick of its channel 10, and a cut 100.
 const USE_SCRIPT: &str = r#"
 fn on_resolve(ctx, user, target) {
-    ctx.damage(target, 1, "true");
+    ctx.damage(target, "true", 1);
 }
 fn on_channel_tick(ctx, user, target) {
-    ctx.damage(target, 10, "true");
+    ctx.damage(target, "true", 10);
 }
 fn on_interrupt(ctx, user, target) {
-    ctx.damage(target, 100, "true");
+    ctx.damage(target, "true", 100);
 }
 "#;
 
@@ -72,8 +74,14 @@ impl Objects {
             Capability::Orders,
             Capability::Interaction,
         ];
-        let mut game = Match::server(&declared, ScriptBudgets::new(ScriptLimits::ROOMY, 2));
-        Units::name_kinds(&game, &["true"], &["health", "mana", "rage"], &[]);
+        let mut game = Match::server(
+            &declared,
+            ScriptPools {
+                limits: ScriptLimits::ROOMY,
+                players: 2,
+            },
+        );
+        Units::name_kinds(&mut game, &["true"], &["health", "mana", "rage"], &[]);
         Abilities::load_types(&mut game);
         Abilities::load_stats(&mut game);
         for user in ["walking caster", "caster"] {
@@ -117,9 +125,9 @@ impl Objects {
 fn use_data(channel: Option<bool>) -> ActionData {
     let int = |value| Ranked::One(Number::Value(Scalar::Int(value)));
     ActionData {
-        kind: ActionKind::Use,
+        section: Arc::new(UseActionData::default()),
         script: Some(PackagePath::parse("use.rhai").unwrap()),
-        range: Some(Ranked::One(RangeField::Range(ActionRange::Meters(
+        range: Some(Ranked::One(RangeField::Range(ActionRange::meters(
             Num::int(2),
         )))),
         windup_ms: Some(int(100)),
@@ -128,7 +136,10 @@ fn use_data(channel: Option<bool>) -> ActionData {
             tick_ms: int(100),
             damage_interrupts,
         }),
-        ..ActionData::cast(Targeting::Unit(FilterData::parse("all").unwrap()))
+        ..ActionData::of(
+            Targeting::Unit(FilterData::parse("all").unwrap()),
+            CastData::default(),
+        )
     }
 }
 
@@ -165,7 +176,7 @@ fn busy(game: &Match, user: StableId) -> bool {
 }
 
 fn failed(game: &Match) -> Vec<FailedCall> {
-    game.non_send::<ScriptFailures>().calls()
+    game.resource::<ScriptFailures>().calls()
 }
 
 #[test]

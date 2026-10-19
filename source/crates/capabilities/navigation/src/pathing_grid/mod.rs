@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_declare::Cache;
 use campfire_geometry::Grid;
 use campfire_math::Num;
@@ -302,7 +303,7 @@ impl Clearance<'_> {
 
 /// The map's install builds it, of the map's walkers.
 impl Cache for PathingGrid {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         None
     }
 }

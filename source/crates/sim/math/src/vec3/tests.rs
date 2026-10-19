@@ -110,6 +110,16 @@ fn within_is_exact_at_the_boundary() {
     assert!(origin.within(origin, Num::ZERO));
     assert!(!origin.within(origin, -Num::EPSILON));
     assert!(!raw(i64::MAX, 0, 0).within(raw(i64::MIN, 0, 0), Num::MAX));
+    // Its order: 5 m is at the radius of 5, inside one more, and past one less.
+    let order = |radius: Num| origin.distance_order(v(3, 4, 0), radius);
+    assert_eq!(
+        [
+            order(five),
+            order(five + Num::EPSILON),
+            order(five - Num::EPSILON)
+        ],
+        [Ordering::Equal, Ordering::Less, Ordering::Greater]
+    );
     // On the ground plane the heights drop: (1, 0, 1) to (4, 9, 5) is 3 m along x and 4 m along
     // z, 5 m, whatever the heights.
     let (from, to) = (v(1, 0, 1), v(4, 9, 5));
@@ -150,8 +160,9 @@ fn normalized_rounds_each_component() {
         Some(raw(-11_863_283, 0, 11_863_283))
     );
     // Past ±2⁴⁷ bits a component is no offset of two places, and has no unit.
-    assert_eq!(raw(1 << 47, 0, 0).normalized(), None);
-    assert_eq!(raw((1 << 47) - 1, 0, 0).normalized(), Some(v(1, 0, 0)));
+    let widest = i64::try_from(coordinate::WIDEST).unwrap();
+    assert_eq!(raw(widest, 0, 0).normalized(), None);
+    assert_eq!(raw(widest - 1, 0, 0).normalized(), Some(v(1, 0, 0)));
     assert_eq!(v(0, 0, -7).normalized(), Some(v(0, 0, -1)));
     assert_eq!(Vec3::ZERO.normalized(), None);
     assert_eq!(v(1, 1, 1).direction_to(v(1, 1, 3)), Some(v(0, 0, 1)));
@@ -214,6 +225,34 @@ fn true_unit(component: i64, square: u128) -> Option<i64> {
     ((rest - 0.5).abs() > 1.0 / 1_048_576.0).then(|| exact.round() as i64)
 }
 
+/// `component · step / √square`, rounded to the nearest bit, ties to even, as a search of the
+/// exact comparisons alone finds it: the least move `m` whose `(2m + 1)² · square` reaches
+/// `(2 · component · step)²` is the value rounded half down, and a tie goes to the even one.
+fn exact_move(component: i64, step: i64, square: u128) -> i64 {
+    let twice = 2 * u128::from(component.unsigned_abs()) * u128::from(step.unsigned_abs());
+    let wanted = WideProduct::of(twice, twice);
+    let odd = |m: u128| WideProduct::of((2 * m + 1) * (2 * m + 1), square);
+    let (mut low, mut high) = (0, u128::from(component.unsigned_abs()));
+    while low < high {
+        let middle = u128::midpoint(low, high);
+        if odd(middle) >= wanted {
+            high = middle;
+        } else {
+            low = middle + 1;
+        }
+    }
+    if odd(low) == wanted && low % 2 == 1 {
+        low += 1;
+    }
+    let bits = i64::try_from(low).unwrap();
+    if component < 0 { -bits } else { bits }
+}
+
+/// A place's component, within the bound.
+fn placed() -> impl Strategy<Value = i64> {
+    prop_oneof![-(1_i64 << 44)..=(1_i64 << 44), -64_i64..64]
+}
+
 fn component() -> impl Strategy<Value = i64> {
     prop_oneof![any::<i64>(), -(1_i64 << 45)..(1_i64 << 45), -64_i64..64,]
 }
@@ -242,7 +281,7 @@ proptest! {
         // The true quotient `c · 2²⁴ / √square` by floats, within 2⁻²⁶ of it, rounds as the
         // component must wherever it lies past 2⁻²⁰ of a half.
         let components = [a.x, a.y, a.z].map(Num::to_bits);
-        let wide = components.iter().any(|&component| component.unsigned_abs() >= 1 << 47);
+        let wide = components.iter().any(|&component| u128::from(component.unsigned_abs()) >= coordinate::WIDEST.unsigned_abs());
         let Some(unit) = a.normalized() else {
             prop_assert!(wide || a == Vec3::ZERO);
             return Ok(());
@@ -252,6 +291,28 @@ proptest! {
             if let Some(rounded) = true_unit(component, squared_bits(a)) {
                 prop_assert_eq!(got.to_bits(), rounded);
             }
+        }
+    }
+
+    #[test]
+    fn step_toward_moves_each_axis_by_its_exact_share_rounded_once(
+        a in (placed(), placed(), placed()),
+        b in (placed(), placed(), placed()),
+        step in prop_oneof![0_i64..(1_i64 << 46), 0_i64..64],
+    ) {
+        let (a, b) = (raw(a.0, a.1, a.2), raw(b.0, b.1, b.2));
+        // A step that reaches the target is `step_toward_never_passes_the_target`'s.
+        if a.within(b, n(step)) {
+            return Ok(());
+        }
+        let moved = a.checked_step_toward(b, n(step)).unwrap();
+        let offset = b - a;
+        let square = offset.length_squared_bits();
+        for (from, component, at) in [(a.x, offset.x, moved.x), (a.y, offset.y, moved.y), (a.z, offset.z, moved.z)] {
+            prop_assert_eq!(
+                at.to_bits() - from.to_bits(),
+                exact_move(component.to_bits(), step, square)
+            );
         }
     }
 
@@ -326,4 +387,23 @@ fn a_unit_component_near_a_half_rounds_by_the_exact_half() {
     assert_eq!(WideProduct::of(3, 5), WideProduct { high: 0, low: 15 });
     // The high half orders first: 2¹²⁸ is past every product below it, 2¹²⁸ − 1 among them.
     assert!(WideProduct::of(1 << 64, 1 << 64) > WideProduct::of(u128::MAX, 1));
+}
+
+#[test]
+fn a_place_lies_within_the_bound_up_to_it() {
+    // 2²⁰ m, and a step of `Num` past it on each axis, or the least `Num`, is out.
+    let bound = Vec3::BOUND;
+    assert_eq!(bound, Num::from_int(1 << 20).unwrap());
+    let past = bound + Num::EPSILON;
+    for (at, within) in [
+        (Vec3::new(bound, -bound, bound), true),
+        (Vec3::new(past, Num::ZERO, Num::ZERO), false),
+        (Vec3::new(Num::ZERO, -past, Num::ZERO), false),
+        (Vec3::new(Num::ZERO, Num::ZERO, past), false),
+        (Vec3::new(Num::MIN, Num::ZERO, Num::ZERO), false),
+    ] {
+        assert_eq!(at.within_bound(), within, "{at:?}");
+    }
+    // Eight times the bound is the widest offset a direction takes, 2⁴⁷ bits.
+    assert_eq!(coordinate::WIDEST, 1 << 47);
 }

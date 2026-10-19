@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
+use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_values::{DeclaredName, PackagePath};
+use campfire_values::PackagePath;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -62,6 +63,12 @@ impl ClientUnit {
         }
     }
 
+    /// The top of the highest of its models, of those whose top is known; none when none is.
+    pub fn top(&self) -> Option<ModelTop> {
+        let tops = self.models.iter().filter_map(|model| model.top);
+        tops.reduce(|top, other| if other.0 > top.0 { other } else { top })
+    }
+
     /// Draws, on a map of `conditions`, the models of its variant whose conditions have the most
     /// in common with the map's, of a tie the one of the fewest the map lacks, of a tie the first,
     /// its own models counted first as of no condition; and holds no variant after.
@@ -86,8 +93,8 @@ impl ClientUnit {
     }
 }
 
-/// A model, a `.glb` of the package, the scale it is drawn at, and the names of its nodes its
-/// default look hides, as the glTF names them.
+/// A model, a `.glb` of the package, the scale it is drawn at, the names of its nodes its
+/// default look hides, as the glTF names them, and the top of what it draws.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ClientModel {
@@ -96,6 +103,42 @@ pub struct ClientModel {
     pub scale: ModelScale,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hide: Vec<String>,
+    /// None for a model that draws nothing, or whose file does not say
+    /// (02-engine-core.md, The import measures a look's height).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub top: Option<ModelTop>,
+}
+
+/// The height in meters of the top of what a model draws over its origin, at its scale, with
+/// its hidden nodes hidden: finite, and below the origin for a model drawn under it.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct ModelTop(f32);
+
+impl ModelTop {
+    /// `None` unless `height` is finite.
+    pub const fn new(height: f32) -> Option<Self> {
+        if height.is_finite() {
+            Some(Self(height))
+        } else {
+            None
+        }
+    }
+
+    pub const fn get(self) -> f32 {
+        self.0
+    }
+}
+
+/// A top is never NaN.
+impl Eq for ModelTop {}
+
+/// A package's file is untrusted, so a top that is not finite fails to read.
+impl<'de> Deserialize<'de> for ModelTop {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let height = f32::deserialize(deserializer)?;
+        Self::new(height).ok_or_else(|| D::Error::custom("a model's top is finite"))
+    }
 }
 
 /// The factor a model is drawn at, positive and finite, 1 when a file gives none.
@@ -155,7 +198,11 @@ mod tests {
     fn units_write_and_read_back_their_models_and_hidden_nodes() {
         let text = r#"
             [units.humvee]
-            models = [{ model = "client/models/avhummer.glb", hide = ["turretup01", "muzzlefx01"] }]
+            models = [
+                { model = "client/models/avhummer.glb", hide = ["turretup01", "muzzlefx01"], top = 2.5 },
+                { model = "client/models/avhumflag.glb", top = 3.25 },
+                { model = "client/models/avhumfx.glb" },
+            ]
 
             [units.tree]
             models = [{ model = "client/models/ptxbirch04.glb", scale = 1.25 }]
@@ -172,6 +219,11 @@ mod tests {
         assert_eq!(humvee.model.as_str(), "client/models/avhummer.glb");
         assert_eq!(humvee.hide, ["turretup01", "muzzlefx01"]);
         assert!(units.units["tree"].models[0].hide.is_empty());
+        // The look's top, its flag's 3.25 m over the hull's 2.5 m, of a model whose top it does
+        // not know, which it does not write; none of a look of no known top.
+        let top = |look: &str| units.units[look].top().map(ModelTop::get);
+        assert_eq!((top("humvee"), top("tree")), (Some(3.25), None));
+        assert_eq!(Toml::write(&units).matches("top = ").count(), 2);
         // A model's scale, 1 when it gives none, which it does not write; a client object's look.
         assert_eq!(
             (humvee.scale, units.units["tree"].models[0].scale),
@@ -195,6 +247,11 @@ mod tests {
         for scale in ["0.0", "-0.0", "-1.0", "nan", "inf"] {
             let text = format!("[units.a]\nmodels = [{{ model = \"a.glb\", scale = {scale} }}]");
             assert!(Toml::parse::<ClientUnits>(&text).is_err(), "{scale}");
+        }
+        // A top not finite; a top below the origin reads.
+        for (top, reads) in [("nan", false), ("-inf", false), ("-0.5", true)] {
+            let text = format!("[units.a]\nmodels = [{{ model = \"a.glb\", top = {top} }}]");
+            assert_eq!(Toml::parse::<ClientUnits>(&text).is_ok(), reads, "{top}");
         }
         assert!(
             Toml::parse::<ClientUnits>(

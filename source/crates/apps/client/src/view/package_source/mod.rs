@@ -13,7 +13,7 @@ use bevy::asset::io::{
 };
 use bevy::tasks::ConditionalSendFuture;
 use bevy::tasks::futures_lite::AsyncRead;
-use campfire_log::ErrorReport;
+use campfire_common::ErrorReport;
 use campfire_package::{ContentError, ModePackages, PackageReader};
 use campfire_values::{PackageIndex, PackagePath};
 use tracing::error;

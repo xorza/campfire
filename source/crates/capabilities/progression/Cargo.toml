@@ -9,6 +9,7 @@ internals = [
     "campfire-common/internals",
     "campfire-actions/internals",
     "campfire-declare/internals",
+    "campfire-geometry/internals",
     "campfire-math/internals",
     "campfire-players/internals",
     "campfire-script/internals",
@@ -23,6 +24,7 @@ internals = [
 campfire-actions.workspace = true
 campfire-common.workspace = true
 campfire-declare.workspace = true
+campfire-geometry.workspace = true
 campfire-math.workspace = true
 campfire-players.workspace = true
 campfire-script.workspace = true
@@ -37,6 +39,7 @@ serde.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+campfire-codec = { workspace = true, features = ["internals"] }
 campfire-progression = { workspace = true, features = ["internals"] }
 
 [lints]

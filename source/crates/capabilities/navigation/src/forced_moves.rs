@@ -2,16 +2,18 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
-use campfire_deliveries::{DashEnd, Deliveries};
+use campfire_deliveries::{DashDelivering, DashEnd, DeliveryQueue};
 use campfire_geometry::Shape;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted};
+use campfire_sim::{
+    DueIndex, EntityIndex, Keyed, Ordered, Position, SimTick, StableId, Unpredicted,
+};
 use campfire_units::{Body, DashTo, Dead, Destination, ForcedMove, Goal, MapBook};
 
 use crate::body_index::BodyIndex;
 use crate::pathing_grid::PathingGrid;
 use crate::progress::Progress;
-use crate::route::Route;
+use crate::route::{Route, RouteDues, RouteMut};
 use crate::route_planner::{RoutePlanner, Walkable};
 use crate::segment::Segment;
 use crate::walker::Walker;
@@ -36,7 +38,7 @@ impl ForcedMoves {
             Res<'_, EntityIndex>,
         ),
         (grid, planner): (Option<Res<'_, PathingGrid>>, Option<Res<'_, RoutePlanner>>),
-        mut deliveries: ResMut<'_, Deliveries>,
+        mut deliveries: ResMut<'_, DeliveryQueue>,
         mut units: ParamSet<
             '_,
             '_,
@@ -51,14 +53,15 @@ impl ForcedMoves {
                         &mut Position,
                         &mut ForcedMove,
                         Option<&Body>,
+                        Option<&mut DashDelivering>,
                     ),
                     Without<Dead>,
                 >,
             ),
         >,
-        mut walkers: Query<'_, '_, (&Destination, &mut Route, &mut Progress)>,
+        mut walkers: Query<'_, '_, (&StableId, &Destination, RouteMut, &mut Progress)>,
         mut commands: Commands<'_, '_>,
-        mut order: Local<'_, Ordered>,
+        (mut order, mut asks): (Local<'_, Ordered>, ResMut<'_, DueIndex<Route>>),
     ) {
         let now = tick.start();
         let ordered = {
@@ -68,7 +71,8 @@ impl ForcedMoves {
         for &Keyed { entity, .. } in ordered {
             let (at, mut forced, body) = {
                 let moving = units.p1();
-                let (_, _, &at, &forced, body) = moving.get(entity).expect("a unit in the order");
+                let (_, _, &at, &forced, body, _) =
+                    moving.get(entity).expect("a unit in the order");
                 (at, forced, body.copied())
             };
             let walker = Walker::walking(body.as_ref());
@@ -125,24 +129,21 @@ impl ForcedMoves {
                 _ => stands,
             };
             let mut moving = units.p1();
-            let (_, _, mut position, mut under_way, _) =
+            let (_, _, mut position, mut under_way, _, delivering) =
                 moving.get_mut(entity).expect("a unit in the order");
             position.set_if_neq(Position::from(place));
-            if let ForcedMove::Dash {
-                to: dash_to,
-                delivers: Some(delivery),
-                ..
-            } = &mut forced
+            if let (ForcedMove::Dash { to: dash_to, .. }, Some(mut delivering)) =
+                (forced, delivering)
             {
-                delivery.went(at.get(), stands);
+                delivering.went(at.get(), stands);
                 if ends {
-                    let target = match *dash_to {
+                    let target = match dash_to {
                         DashTo::Unit(target) => Some(target),
                         DashTo::Point(_) => None,
                     };
                     let direction = at.get().ground_offset(stands).normalized();
                     deliveries.end_dash(DashEnd {
-                        dash: *delivery,
+                        dash: *delivering,
                         target,
                         pos: place,
                         direction,
@@ -150,9 +151,12 @@ impl ForcedMoves {
                 }
             }
             if ends {
-                commands.entity(entity).remove::<ForcedMove>();
-                if let Ok((destination, mut route, mut progress)) = walkers.get_mut(entity) {
-                    route.ask_again(destination.get(), &mut progress, now);
+                commands
+                    .entity(entity)
+                    .remove::<(ForcedMove, DashDelivering)>();
+                if let Ok((&id, destination, mut route, mut progress)) = walkers.get_mut(entity) {
+                    let dues = &mut RouteDues::new(&mut asks, id, entity);
+                    route.ask_again(destination.get(), &mut progress, now, dues);
                 }
             } else {
                 under_way.set_if_neq(forced);

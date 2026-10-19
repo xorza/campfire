@@ -8,14 +8,14 @@ use tracing::info;
 /// the server ran the ticks of that most alone, and the rest of the time is lost, so it now runs
 /// behind the wall clock, and its clients' sync follows it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct TimeDropped {
+pub(crate) struct TimeDropped {
     pub dropped_ns: u64,
 }
 
 impl TimeDropped {
     /// The time a frame of `real` length drops past `bound`, the most one may advance; none for
     /// a frame within it.
-    pub fn of(real: Duration, bound: Duration) -> Option<Self> {
+    pub(crate) fn of(real: Duration, bound: Duration) -> Option<Self> {
         let dropped = real
             .checked_sub(bound)
             .filter(|dropped| !dropped.is_zero())?;

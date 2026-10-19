@@ -1,3 +1,4 @@
+use campfire_bots::BotScriptError;
 use campfire_store::DataDirError;
 use thiserror::Error;
 
@@ -23,4 +24,7 @@ pub enum LocalServerError {
     /// it keeps no files.
     #[error(transparent)]
     Open(LobbyOpenError),
+    /// A bot's script names what the match does not have.
+    #[error("a bot's script")]
+    Bots(#[source] BotScriptError),
 }

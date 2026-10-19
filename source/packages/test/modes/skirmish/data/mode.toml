@@ -1,20 +1,7 @@
 # The name players see.
 name = "mode-name"
 
-script = { package = "zero-hour", path = "scripts/mode.rhai" }
-resources = ["money"]
-
-[stats]
-life = {}
-
-[pools.life]
-max = "life"
-
-[combat]
-damage_kinds = ["explosion"]
-life = "life"
-
-[tags.counts_for_victory]
+scripts = [{ package = "zero-hour", path = "scripts/mode.rhai" }]
 
 # The name players see of each team.
 [teams.player_1]
@@ -28,10 +15,6 @@ name = "team-player-3"
 
 [teams.neutral]
 name = "team-neutral"
-
-# Whether the script ended the match.
-[state]
-ended = { type = "bool", default = false }
 
 # What each player starts with, as Zero Hour's skirmish gives it.
 [params]

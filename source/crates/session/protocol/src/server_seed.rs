@@ -8,7 +8,7 @@ const CHAIN_DOMAIN: HashDomain<SeedCommitment> = HashDomain::new("campfire/seed-
 
 /// A segment's server seed, `s_k` of the session's `SeedChain`. It predicts every hidden random
 /// outcome of its segment, so it stays secret until the segment is published.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct ServerSeed(Secret<32>);
 
@@ -21,10 +21,10 @@ impl ServerSeed {
         self.0.as_bytes()
     }
 
-    /// Whether this is segment `segment`'s seed of the chain `seed_commitment` commits to: `segment + 1`
-    /// links lead from it to the commitment.
+    /// Whether this is segment `segment`'s seed of the chain `seed_commitment` commits to: `segment
+    /// + 1` links lead from it to the commitment.
     pub fn check(&self, segment: u32, seed_commitment: &SeedCommitment) -> bool {
-        let mut seed = *self;
+        let mut seed = self.clone();
         for _ in 0..segment {
             seed = seed.earlier();
         }

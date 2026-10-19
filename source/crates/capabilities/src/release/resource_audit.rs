@@ -5,20 +5,27 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
+use bevy_ecs::message::Messages;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    Book, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind, EntityParts,
-    KindSpawn, KindVisitor, ModuleSet, OneShot, Report, Role, Scratch, SpawnParts,
+    Book, BuildFn, Cache, Callbacks, CapabilitySet, ColumnFill, Declarations, EntityKind,
+    EntityParts, ExtendFn, Fact, KindSpawn, KindVisitor, Listed, ModuleSet, OneShot, Report, Role,
+    RuleFn, Scratch, Section, SpawnParts,
 };
 use campfire_mode::ModeWorld;
-use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ScriptBudgets, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource, SimWorldBuilder};
+use campfire_script::{
+    ApiBuilder, CallParams, CallPart, HookSpec, PlannedCapability, RowReads, Status, ViewColumn,
+};
+use campfire_sim::{
+    Breach, Capability, DueIndex, HostRule, OwnResources, Removed, SimComponent, SimResource,
+    TimedProcess,
+};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_units::EntityKinds;
 use campfire_values::EngineTag;
-use campfire_visibility::OutView;
 
 use crate::release::Release;
 
@@ -38,14 +45,12 @@ pub(super) struct DeclaredResources {
 }
 
 impl DeclaredResources {
-    /// The resources of `world`, a match of `set`, that no declaration names, the release's
-    /// own, the sim's own and those of `host` aside, then, while the match runs, each scratch
+    /// The resources of `world`, a match of `set`, that no declaration names, those of `host`
+    /// aside, then, while the match runs, each scratch
     /// resource not clear, each by its name.
     pub(super) fn audit(set: CapabilitySet, world: &World, host: &[TypeId]) -> Vec<String> {
         let mut declared = Self::default();
         Release::declare(set, &mut declared);
-        declared.ids.extend(Self::release_own());
-        declared.ids.extend(SimWorldBuilder::sim_resources());
         declared.ids.extend(host);
         // Bevy's walk of the resources leaves the non-send ones out, which its storage lists.
         let components = world.components();
@@ -74,17 +79,6 @@ impl DeclaredResources {
                 .map(|check| format!("{} is not clear", check.name)),
         );
         unlisted
-    }
-
-    /// What the release puts in a match itself: its capabilities, what a client's view of it
-    /// leaves out, its role, and its script budgets.
-    const fn release_own() -> [TypeId; 4] {
-        [
-            TypeId::of::<CapabilitySet>(),
-            TypeId::of::<OutView>(),
-            TypeId::of::<Role>(),
-            TypeId::of::<ScriptBudgets>(),
-        ]
     }
 }
 
@@ -119,9 +113,19 @@ impl Declarations for DeclaredResources {
 
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
-    fn book<B: Book>(&mut self) {
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn rule(&mut self, _: RuleFn) {}
+
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {
         self.ids.push(TypeId::of::<B>());
     }
+
+    fn section<S: Section>(&mut self) {}
+
+    fn listed<L: Listed>(&mut self) {}
 
     fn sets<S: ModuleSet>(&mut self) {}
 
@@ -135,6 +139,10 @@ impl Declarations for DeclaredResources {
 
     fn cache<R: Cache>(&mut self) {
         self.ids.push(TypeId::of::<R>());
+    }
+
+    fn timed<P: TimedProcess>(&mut self) {
+        self.ids.push(TypeId::of::<DueIndex<P>>());
     }
 
     fn report<R: Report>(&mut self) {
@@ -167,9 +175,17 @@ impl Declarations for DeclaredResources {
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 
+    fn hook<H: HookSpec>(&mut self, _: Status) {}
+
+    fn plan_hook<H: HookSpec>(&mut self, _: PlannedCapability) {}
+
     fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
 
-    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {
+    fn removals<C: Component>(&mut self) {
+        self.ids.push(TypeId::of::<Messages<Removed<C>>>());
+    }
+
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, R::Out, M> + 'static) {
         self.ids.push(TypeId::of::<R>());
     }
 
@@ -181,9 +197,15 @@ impl Declarations for DeclaredResources {
         self.ids.push(TypeId::of::<R>());
     }
 
-    fn non_send_loaded<R: 'static>(&mut self) {
+    fn loaded<R: Resource>(&mut self) {
         self.ids.push(TypeId::of::<R>());
     }
 
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
+}
+
+impl OwnResources for DeclaredResources {
+    fn own<R: Resource>(&mut self) {
+        self.ids.push(TypeId::of::<R>());
+    }
 }

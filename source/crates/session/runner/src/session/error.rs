@@ -34,7 +34,7 @@ pub enum StartError {
 pub enum SnapshotCheckError {
     /// Its fingerprint is not the record's.
     #[error("the snapshot is not the one its checkpoint names")]
-    PackageFingerprint,
+    Fingerprint,
     /// It does not restore.
     #[error("the snapshot does not restore")]
     Restore(#[source] SnapshotError),

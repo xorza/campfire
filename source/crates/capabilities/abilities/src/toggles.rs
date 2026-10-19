@@ -1,11 +1,10 @@
-use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Has;
+use bevy_ecs::query::{Changed, Has};
 use bevy_ecs::system::{Local, ParamSet, Query, Res};
 use campfire_actions::{ActionBook, ActionSlots, Caster, SlotTimes, TogglePer, UseGroup};
 use campfire_sim::TickClock;
 use campfire_stats::{PoolBook, UnitPools};
-use campfire_units::Dead;
+use campfire_units::{Dead, PoolPayer, PoolPurse};
 use campfire_values::{Motion, UnitTags};
 
 use crate::Abilities;
@@ -41,17 +40,13 @@ impl Toggles {
             '_,
             '_,
             (
-                Query<'_, '_, (Entity, Ref<'_, SlotTimes>)>,
+                Query<'_, '_, Entity, Changed<SlotTimes>>,
                 ToggleUnits<'_, '_>,
             ),
         >,
         mut on: Local<'_, Vec<Entity>>,
     ) {
-        for (entity, times) in &units.p0() {
-            if times.is_changed() {
-                on.push(entity);
-            }
-        }
+        on.extend(&units.p0());
         on.sort_unstable();
         on.dedup();
         let now = clock.start();

@@ -1,32 +1,47 @@
+use campfire_actions::ActionTarget;
+use campfire_items::ItemsAction;
+use campfire_math::Num;
+use campfire_orders::OrdersAction;
+use campfire_progression::ProgressionAction;
+use campfire_units::{BuildTarget, MapPoint};
+use campfire_values::FilterData;
+
 use super::*;
+use crate::place::{MarkerPlace, Place};
+
+/// The order of `action`, with names, at `tick`, to the avatar.
+const fn order(tick: u64, action: Action<Named>) -> ScriptedOrder {
+    ScriptedOrder {
+        tick: Tick::new(tick),
+        units: ScriptedUnits::Avatar,
+        action,
+    }
+}
+
+/// The name `name`, which a test writes right.
+fn name(name: &str) -> DeclaredName {
+    DeclaredName::new(name).unwrap()
+}
+
+/// The place on the ground at `x`, `z`.
+fn at(x: Num, z: Num) -> Place {
+    Place::At(MapPoint::Ground([x, z]))
+}
 
 #[test]
 fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
     let script = OrderScript::parse(
-        "[[order]]\ntick = 30\nmove = [4, 0]\n\n[[order]]\ntick = 30\nmove = [\"-2.5\", 1]\n",
+        "[[order]]\ntick = 30\naction.orders.move.to = [4, 0]\n\n\
+         [[order]]\ntick = 30\naction.orders.move.to = [\"-2.5\", 1]\n",
     )
     .unwrap();
-    let half = Num::HALF;
     let num = |value| Num::from_int(value).unwrap();
+    let walk = |to| Action::Orders(OrdersAction::Move { to });
     assert_eq!(
         script.orders(),
         [
-            ScriptedOrder {
-                tick: Tick::new(30),
-                units: ScriptedUnits::Avatar,
-                action: Action::Orders(OrdersAction::Move {
-                    x: num(4),
-                    z: Num::ZERO
-                }),
-            },
-            ScriptedOrder {
-                tick: Tick::new(30),
-                units: ScriptedUnits::Avatar,
-                action: Action::Orders(OrdersAction::Move {
-                    x: num(-3) + half,
-                    z: num(1)
-                }),
-            },
+            order(30, walk(at(num(4), Num::ZERO))),
+            order(30, walk(at(num(-3) + Num::HALF, num(1)))),
         ]
     );
     assert_eq!(script.end(), None);
@@ -35,75 +50,32 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
     // The script may end in the tick of its last order, not before.
     let ending = |end: u64| {
         OrderScript::parse(&format!(
-            "end = {end}\n[[order]]\ntick = 9\nmove = [1, 1]\n"
+            "end = {end}\n[[order]]\ntick = 9\naction.orders = \"stop\"\n"
         ))
     };
     assert_eq!(ending(9).unwrap().end(), Some(Tick::new(9)));
     assert_eq!(ending(8), Err(OrderScriptError::EndsEarly { end: 8 }));
     let flaw = |text: &str| OrderScript::parse(text).unwrap_err();
     assert_eq!(
-        flaw("[[order]]\ntick = 9\nmove = [1, 1]\n[[order]]\ntick = 8\nmove = [1, 1]\n"),
+        flaw(
+            "[[order]]\ntick = 9\naction.orders = \"stop\"\n\
+             [[order]]\ntick = 8\naction.orders = \"stop\"\n"
+        ),
         OrderScriptError::Unordered { tick: 8 }
     );
-    // A coordinate past what a sim number holds, and an unknown action, fail the read.
-    for flawed in ["move = [99999999999999, 1]", "walk = [1, 1]"] {
+    // A coordinate past what a sim number holds, an action no capability has, two actions, no
+    // action, a filter of no set of relations, and a unit type no mode may declare, fail the
+    // read.
+    for flawed in [
+        "action.orders.move.to = [99999999999999, 1]",
+        "action.orders.walk.to = [1, 1]",
+        "action.orders = \"stop\"\naction.progression.learn.slot = \"mend\"",
+        "units = \"ranger\"",
+        "action.orders.attack.target = \"friends\"",
+        "units = \"Not A Name\"\naction.orders = \"stop\"",
+    ] {
         let text = format!("[[order]]\ntick = 9\n{flawed}\n");
         assert!(matches!(flaw(&text), OrderScriptError::Toml(_)), "{flawed}");
-    }
-    // A cast of slot 2 with no target, one of slot 0 at unit 7, an attack on unit 3, and a learn
-    // of slot 1; an order of no action, of two, or of a target with no cast is refused.
-    let actions = "[[order]]\ntick = 9\ncast = 2\n[[order]]\ntick = 9\ncast = 0\ntarget = 7\n\
-                       [[order]]\ntick = 10\nattack = 3\n[[order]]\ntick = 10\nlearn = 1\n";
-    let orders = OrderScript::parse(actions).unwrap();
-    let [first, second, third, fourth] = orders.orders() else {
-        panic!("four orders");
-    };
-    assert_eq!(
-        (fourth.tick, fourth.action),
-        (
-            Tick::new(10),
-            Action::Progression(ProgressionAction::Learn { slot: 1 })
-        )
-    );
-    assert_eq!(
-        (first.tick, first.action),
-        (
-            Tick::new(9),
-            Action::Orders(OrdersAction::Slot {
-                slot: 2,
-                target: ActionTarget::None
-            })
-        )
-    );
-    assert!(matches!(
-        (second.tick.get(), second.action),
-        (9, Action::Orders(OrdersAction::Slot { slot: 0, target: ActionTarget::Unit(unit) })) if unit.get() == 7
-    ));
-    assert!(matches!(
-        (third.tick.get(), third.action),
-        (10, Action::Orders(OrdersAction::Attack { target })) if target.get() == 3
-    ));
-    let (none, many, stray) = (
-        OrderScriptError::NoAction { tick: 9 },
-        OrderScriptError::ManyActions { tick: 9 },
-        OrderScriptError::StrayTarget { tick: 9 },
-    );
-    for (flawed, error) in [
-        ("[[order]]\ntick = 9\n", none.clone()),
-        ("[[order]]\ntick = 9\ntarget = 3\n", none),
-        (
-            "[[order]]\ntick = 9\ncast = 0\nmove = [1, 1]\n",
-            many.clone(),
-        ),
-        ("[[order]]\ntick = 9\nattack = 3\ncast = 0\n", many.clone()),
-        ("[[order]]\ntick = 9\nlearn = 0\ncast = 0\n", many),
-        (
-            "[[order]]\ntick = 9\nattack = 3\ntarget = 4\n",
-            stray.clone(),
-        ),
-        ("[[order]]\ntick = 9\nlearn = 0\ntarget = 4\n", stray),
-    ] {
-        assert_eq!(flaw(flawed), error, "{flawed}");
     }
 }
 
@@ -145,7 +117,7 @@ fn a_script_reads_its_mode_inputs_in_tick_order_or_its_flaw() {
     // A value of another shape, and a field the entry does not know.
     for flawed in [
         "[[input]]\ntick = 4\nname = \"a\"\nvalue = 3\n",
-        "[[input]]\ntick = 4\nname = \"a\"\nvalue = \"x\"\nmove = [1, 1]\n",
+        "[[input]]\ntick = 4\nname = \"a\"\nvalue = \"x\"\naction.orders = \"stop\"\n",
         "[[input]]\ntick = 4\nvalue = \"x\"\n",
     ] {
         assert!(
@@ -156,56 +128,72 @@ fn a_script_reads_its_mode_inputs_in_tick_order_or_its_flaw() {
 }
 
 #[test]
-fn an_order_names_its_units_by_type_and_a_build_its_place() {
+fn an_order_names_its_units_by_type_its_slot_and_item_by_name_its_target_by_a_filter() {
     let script = OrderScript::parse(
-        "[[order]]\ntick = 1\nunits = \"dozer\"\nbuild = { slot = 1, x = 10, z = \"-2.5\", angle = 45 }\n\
-         [[order]]\ntick = 2\nunits = \"ranger\"\nattack = 7\n",
+        "[[order]]\ntick = 1\nunits = \"dozer\"\n\
+         action.orders.build = { slot = \"barracks\", target.point = { at = [10, \"-2.5\"], angle = 45 } }\n\
+         [[order]]\ntick = 2\nunits = \"ranger\"\naction.orders.attack.target = \"enemies:avatar\"\n\
+         [[order]]\ntick = 3\naction.orders.slot = { slot = \"mend\", target = \"none\" }\n\
+         [[order]]\ntick = 3\naction.orders.slot = { slot = \"bolt\", target.point = { marker = \"west_spawn\" } }\n\
+         [[order]]\ntick = 4\naction.progression.learn.slot = \"bolt\"\n\
+         [[order]]\ntick = 5\naction.items.buy = { item = \"potion\", shop = \"allies:shop\" }\n\
+         [[order]]\ntick = 6\naction.orders.move.to.marker = \"east_spawn\"\n",
     )
     .unwrap();
-    let typed = |name| ScriptedUnits::Typed(DeclaredName::new(name).unwrap());
     let num = |value| Num::from_int(value).unwrap();
-    let [build, attack] = script.orders() else {
-        panic!("two orders");
+    let filter = |text| FilterData::parse(text).unwrap();
+    let marker = |text| Place::Marker(MarkerPlace { marker: name(text) });
+    let typed = |text| ScriptedUnits::Typed(name(text));
+    let build = OrdersAction::Build {
+        slot: name("barracks"),
+        target: BuildTarget::Point {
+            at: at(num(10), num(-3) + Num::HALF),
+            angle: num(45),
+        },
     };
-    assert_eq!(
-        *build,
+    let attack = OrdersAction::Attack {
+        target: filter("enemies:avatar"),
+    };
+    let expected = [
         ScriptedOrder {
-            tick: Tick::new(1),
             units: typed("dozer"),
-            action: Action::Orders(OrdersAction::Build {
-                slot: 1,
-                target: BuildTarget::Point {
-                    x: num(10),
-                    z: num(-3) + Num::HALF,
-                    angle: num(45),
-                },
+            ..order(1, Action::Orders(build))
+        },
+        ScriptedOrder {
+            units: typed("ranger"),
+            ..order(2, Action::Orders(attack))
+        },
+        order(
+            3,
+            Action::Orders(OrdersAction::Slot {
+                slot: name("mend"),
+                target: ActionTarget::None,
             }),
-        }
-    );
-    assert_eq!(attack.units, typed("ranger"));
-    assert!(matches!(
-        attack.action,
-        Action::Orders(OrdersAction::Attack { target }) if target.get() == 7
-    ));
-    // A build with another action is two; a build missing its angle, a target with a build,
-    // and a unit type no mode may declare, are refused.
-    let flaw = |text: &str| OrderScript::parse(text).unwrap_err();
-    let build = "build = { slot = 1, x = 1, z = 1, angle = 0 }";
-    assert_eq!(
-        flaw(&format!("[[order]]\ntick = 9\n{build}\nmove = [1, 1]\n")),
-        OrderScriptError::ManyActions { tick: 9 }
-    );
-    assert_eq!(
-        flaw(&format!("[[order]]\ntick = 9\n{build}\ntarget = 3\n")),
-        OrderScriptError::StrayTarget { tick: 9 }
-    );
-    for flawed in [
-        "[[order]]\ntick = 9\nbuild = { slot = 1, x = 1, z = 1 }\n",
-        "[[order]]\ntick = 9\nunits = \"Not A Name\"\nmove = [1, 1]\n",
-    ] {
-        assert!(
-            matches!(flaw(flawed), OrderScriptError::Toml(_)),
-            "{flawed}"
-        );
-    }
+        ),
+        order(
+            3,
+            Action::Orders(OrdersAction::Slot {
+                slot: name("bolt"),
+                target: ActionTarget::Point(marker("west_spawn")),
+            }),
+        ),
+        order(
+            4,
+            Action::Progression(ProgressionAction::Learn { slot: name("bolt") }),
+        ),
+        order(
+            5,
+            Action::Items(ItemsAction::Buy {
+                item: name("potion"),
+                shop: filter("allies:shop"),
+            }),
+        ),
+        order(
+            6,
+            Action::Orders(OrdersAction::Move {
+                to: marker("east_spawn"),
+            }),
+        ),
+    ];
+    assert_eq!(script.orders(), expected);
 }

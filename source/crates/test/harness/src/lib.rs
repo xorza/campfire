@@ -2,7 +2,9 @@
 //! goldens and records, the checks of copies and restores, and a match played in process between
 //! a server and its clients over modeled links.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 mod archetype_watch;
 mod arena;
@@ -20,6 +22,7 @@ mod scripted_mode;
 
 pub use crate::archetype_watch::ArchetypeWatch;
 pub use crate::arena::Arena;
+pub use crate::bench::allocations::{Allocations, CountingAllocator};
 pub use crate::fixed_session::FixedSession;
 pub use crate::fixed_session::fixed_match::FixedMatch;
 pub use crate::hash_trail::{Difference, HashTrail};

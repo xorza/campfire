@@ -2,25 +2,23 @@ use campfire_codec::{Binary, TaggedError};
 use serde::{Deserialize, Serialize};
 
 use crate::seed_chain::SeedChain;
-use crate::session_terms::SessionTerms;
 
 /// Starts every private record and states its version, so other bytes are refused at once.
-const PRIVATE_TAG: &[u8] = b"campfire/session-private/v2";
+const PRIVATE_TAG: &[u8] = b"campfire/session-private/v3";
 
 /// What a server keeps of a session that no one else sees, written once before its first offer:
-/// the seed chain, whose root reveals every segment's seed, and the session's terms, so a
-/// restart restores the session it opened.
+/// the seed chain, whose root reveals every segment's seed. The session's terms are its
+/// journal's header alone, so a restart has one record of them
+/// (10-sessions.md, The terms are the journal's).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionPrivate {
     pub seed_chain: SeedChain,
-    pub terms: SessionTerms,
 }
 
 impl SessionPrivate {
-    /// The most bytes a private record's file may hold: its seed chain's few dozen and its terms, a few
-    /// hundred for a mode of a handful of dependencies, so a mebibyte holds one of thousands of
-    /// dependencies and refuses a file of another kind before it is read whole.
-    pub const MAX_FILE_LEN: usize = 1 << 20;
+    /// The most bytes a private record's file may hold: its tag and its seed chain's few dozen,
+    /// with room to spare, so a file of another kind is refused before it is read whole.
+    pub const MAX_FILE_LEN: usize = 1 << 10;
 
     /// The file's bytes: the tag, then the record in postcard.
     pub fn encode(&self, out: &mut Vec<u8>) {

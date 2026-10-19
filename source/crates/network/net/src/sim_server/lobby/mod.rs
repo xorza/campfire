@@ -13,8 +13,8 @@ use campfire_protocol::{
     Delegation, InputRules, SeedChain, SessionHeader, SessionLog, SessionPrivate, SessionTerms,
     SlotPlan, SlotStart,
 };
-use campfire_runner::{HostChoices, SessionRules};
-use campfire_visibility::{HostVisibility, Visibility};
+use campfire_runner::{CheckedTerms, HostChoices, SessionRules};
+use campfire_visibility::HostVisibility;
 use lightyear::prelude::Connected;
 use tracing::info;
 
@@ -23,19 +23,20 @@ use crate::sim_server::lobby::error::{KeepFilesError, LobbyError, LobbyOpenError
 use crate::sim_server::offering::{CheckedJoins, Dismissing, JoinLinks, Joined, Offering};
 use crate::sim_server::server_bots::ServerBots;
 use crate::sim_server::server_dir::ServerDir;
+use crate::sim_server::server_match::{MatchBegin, MatchSource, NewMatch, ServerMatch};
+use crate::sim_server::server_phase::ServerPhase;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{SessionDir, SessionFiles};
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::spectators::spectators_world::SpectatorsWorldCrate;
 use crate::sim_server::viewer::Viewer;
-use crate::sim_server::{SessionStart, SimServer};
 
 pub(crate) mod error;
 
 /// A session open for players to join: the server offers each connected client the terms and a
 /// challenge, checks each answer, gives the players slots in the order they joined, those of one
-/// frame in `Offering::check_all`'s order, and starts the match when every slot is taken. A main key that joined again takes its seat back, and its
-/// older link ends.
+/// frame in `Offering::check_all`'s order, and starts the match when every slot is taken. A main
+/// key that joined again takes its seat back, and its older link ends.
 #[derive(Resource, Debug)]
 pub struct Lobby {
     offering: Offering,
@@ -47,8 +48,9 @@ pub struct Lobby {
     server: ServerSetup,
     /// The links that joined, by slot, with their delegations.
     joined: Vec<(Entity, Delegation)>,
-    /// The session's visibility, which bounds its spectators.
-    visibility: Visibility,
+    /// The session's terms as the mode's rules made them: its visibility, which bounds its
+    /// spectators, and its picks.
+    checked: CheckedTerms,
     /// Where the session's log and snapshots go as the server writes them, once it keeps them.
     files: Option<SessionFiles>,
 }
@@ -160,7 +162,7 @@ impl Lobby {
             OptionPicks::named(session_rules.options(), &options).map_err(LobbyError::Options)?;
         let terms = session_rules
             .terms(HostChoices {
-                server_key: server.key.x_only_public_key().0,
+                server_key: server.signer.public_key(),
                 seed_commitment: seed_chain.commitment(),
                 tick_hz,
                 inputs,
@@ -177,7 +179,7 @@ impl Lobby {
             bots,
             server,
             joined: Vec::with_capacity(players),
-            visibility,
+            checked: CheckedTerms { visibility, picks },
             files: None,
         })
     }
@@ -188,15 +190,20 @@ impl Lobby {
     pub fn keep_files(&mut self, data: &ServerDir) -> Result<(), KeepFilesError> {
         assert!(self.files.is_none(), "a session keeps one journal");
         let private = SessionPrivate {
-            seed_chain: self.seed_chain,
-            terms: self.terms().clone(),
+            seed_chain: self.seed_chain.clone(),
         };
-        let dir = SessionDir::create(data, &private).map_err(KeepFilesError::Dir)?;
+        let session = self.terms().session_id();
+        let dir = SessionDir::create(data, session, &private).map_err(KeepFilesError::Dir)?;
         self.files = Some(dir.start().map_err(KeepFilesError::Journal)?);
         Ok(())
     }
 
-    pub const fn terms(&self) -> &SessionTerms {
+    /// The session's terms as the mode's rules made them.
+    pub const fn checked(&self) -> &CheckedTerms {
+        &self.checked
+    }
+
+    pub fn terms(&self) -> &SessionTerms {
         &self.offering.terms
     }
 
@@ -228,7 +235,7 @@ impl Lobby {
         }
         let mut watching = Spectators::count(viewers.iter());
         for link in checked.watching.drain(..) {
-            match Spectators::place(&lobby.visibility, watching) {
+            match Spectators::place(&lobby.checked.visibility, watching) {
                 Ok(viewer) => {
                     commands.entity(link).insert((Joined, viewer));
                     watching += 1;
@@ -264,7 +271,7 @@ impl Lobby {
             return;
         }
         let lobby = world.remove_resource::<Self>().expect("the lobby is open");
-        let terms = lobby.offering.terms.clone();
+        let terms = SessionTerms::clone(&lobby.offering.terms);
         let mut joined = lobby.joined.into_iter();
         let mut links = Vec::with_capacity(lobby.players);
         let mut slots = Vec::with_capacity(terms.slots.len());
@@ -285,18 +292,20 @@ impl Lobby {
             .expect("every delegation names this session, one main key each");
         info!(%session, players = links.len(), "every slot is taken; the match starts");
         let seeds = lobby.seed_chain.seeds();
-        let start = SessionStart {
-            log,
-            seeds,
+        let begin = MatchBegin {
+            source: MatchSource::New(NewMatch {
+                log,
+                seeds,
+                files: lobby.files,
+                clients: &links,
+            }),
             packages: &lobby.packages,
-            files: lobby.files,
             server: &lobby.server,
             bots: lobby.bots,
-            offering: lobby.offering,
-            visibility: lobby.visibility,
+            checked: lobby.checked,
         };
-        SimServer::start_match(world, start, &links)
-            .expect("the lobby's terms come from its own packages");
+        ServerMatch::begin(world, begin).expect("the lobby's terms come from its own packages");
+        ServerPhase::go(world, ServerPhase::Running);
         world.start_spectators();
     }
 

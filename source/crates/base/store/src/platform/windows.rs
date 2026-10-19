@@ -1,6 +1,6 @@
 use std::fs::{File, OpenOptions};
 use std::os::windows::ffi::OsStrExt;
-use std::os::windows::fs::OpenOptionsExt;
+use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
 use std::os::windows::io::{AsRawHandle, FromRawHandle};
 use std::path::{self, Path};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -19,10 +19,10 @@ use windows::Win32::Security::{
     SID_NAME_USE, TOKEN_QUERY, TOKEN_USER, TokenUser,
 };
 use windows::Win32::Storage::FileSystem::{
-    CREATE_NEW, CreateDirectoryW, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_CREATION_DISPOSITION,
-    FILE_FLAG_BACKUP_SEMANTICS, FILE_SHARE_DELETE, FILE_SHARE_MODE, FILE_SHARE_READ,
-    FILE_SHARE_WRITE, FlushFileBuffers, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
-    MoveFileExW, OPEN_ALWAYS, OPEN_EXISTING,
+    CREATE_NEW, CreateDirectoryW, CreateFileW, FILE_ATTRIBUTE_NORMAL, FILE_ATTRIBUTE_REPARSE_POINT,
+    FILE_CREATION_DISPOSITION, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+    FILE_SHARE_DELETE, FILE_SHARE_MODE, FILE_SHARE_READ, FILE_SHARE_WRITE, FlushFileBuffers,
+    MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW, OPEN_ALWAYS, OPEN_EXISTING,
 };
 use windows::Win32::System::Console::{
     CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT, SetConsoleCtrlHandler,
@@ -219,6 +219,25 @@ impl Os {
             .read(true)
             .custom_flags(FILE_FLAG_BACKUP_SEMANTICS.0)
             .open(path)
+    }
+
+    /// A reparse point that is no link, as a cloud file's placeholder, opens again without the
+    /// flag, which would open it without its data, as cap-std opens one; a link put in its place
+    /// in the moment between is followed.
+    pub(crate) fn open_no_follow(path: &Path) -> io::Result<Option<File>> {
+        let file = OpenOptions::new()
+            .read(true)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT.0)
+            .open(path)?;
+        let metadata = file.metadata()?;
+        if metadata.file_type().is_symlink() {
+            return Ok(None);
+        }
+        if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT.0 == 0 {
+            return Ok(Some(file));
+        }
+        drop(file);
+        File::open(path).map(Some)
     }
 
     pub(crate) fn sync_dir(directory: &Path) -> io::Result<()> {

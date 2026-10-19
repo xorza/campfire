@@ -6,8 +6,8 @@ use std::time::Duration;
 
 use bevy::app::App;
 use bevy::ecs::entity::Entity;
+use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
-use campfire_log::ErrorReport;
 use campfire_mode::OptionValue;
 use campfire_net::{
     ClientDir, LocalPace, LocalRelink, LocalServer, LocalServerSetup, Os, Pace, ServerPin,

@@ -4,14 +4,16 @@ use campfire_values::{EngineEnum, Relation};
 use rhai::{Array, Dynamic, ImmutableString, Variant};
 
 use crate::script_host::error::{NumError, Raised};
+use crate::scripts::api_owner::ScriptHandle;
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::name_kind::NameKind;
+use crate::scripts::player_handle::PlayerHandle;
 use crate::scripts::script_text::ScriptText;
 use crate::scripts::script_value::ScriptValue;
 use crate::scripts::script_value::script_list::ScriptList;
 use crate::scripts::view::filter::Filter;
 use crate::scripts::view::unit::Unit;
+use campfire_values::{NameKind, Named};
 
 /// An argument of a call or a method of the script API: what Rhai passes, and what the member
 /// takes of it. A name resolves to its id, its kind of name recorded in the member's spec, and a
@@ -24,11 +26,13 @@ pub trait ScriptArg: Sized + 'static {
     /// What Rhai passes in the member's integer form: an integer for a `Num`, else `Raw`.
     type Int: Variant + Clone;
     /// The kind of name it is; none for one that names nothing.
-    const NAMES: Option<NameKind>;
+    const NAME_KIND: Option<NameKind>;
     /// The engine enum it is a member of; none for another value.
     const ENUM: Option<EngineEnum>;
     /// Whether it is a `Num`, which the member's integer form takes as an integer.
     const NUMBER: bool;
+    /// The name of its type, as the reference shows it.
+    const TYPE: &'static str;
 
     /// The argument `raw` gives in the call `ctx` runs; an error fails the call.
     fn take(raw: Self::Raw, ctx: &ArgCtx<'_>) -> Checked<Self>;
@@ -37,16 +41,18 @@ pub trait ScriptArg: Sized + 'static {
     fn take_int(raw: Self::Int, ctx: &ArgCtx<'_>) -> Checked<Self>;
 }
 
-/// Implements `ScriptArg` for each type, which Rhai passes as itself and which names nothing.
+/// Implements `ScriptArg` for each type, which Rhai passes as itself and which names nothing,
+/// its type named as the type of a handle is, or as given.
 #[macro_export]
 macro_rules! plain_script_arg {
-    ($($ty:ty),* $(,)?) => {$(
+    (@arg $ty:ty, $name:expr) => {
         impl $crate::ScriptArg for $ty {
             type Raw = $ty;
             type Int = $ty;
-            const NAMES: Option<$crate::NameKind> = None;
+            const NAME_KIND: Option<::campfire_values::NameKind> = None;
             const ENUM: Option<::campfire_values::EngineEnum> = None;
             const NUMBER: bool = false;
+            const TYPE: &'static str = $name;
 
             fn take(
                 raw: $ty,
@@ -62,14 +68,17 @@ macro_rules! plain_script_arg {
                 Ok(raw)
             }
         }
+    };
+    ($($ty:ty),* $(,)?) => {$(
+        $crate::plain_script_arg!(@arg $ty, <$ty as $crate::ScriptHandle>::NAME);
+    )*};
+    ($($ty:ty: $name:literal),* $(,)?) => {$(
+        $crate::plain_script_arg!(@arg $ty, $name);
     )*};
 }
 
 /// An argument a script gives as a text, which a call reads as what it names.
-pub trait TextArg: Sized + 'static {
-    /// The kind of name it is.
-    const NAMES: NameKind;
-
+pub trait TextArg: Named + Sized + 'static {
     /// The argument `text` names in the call `ctx` runs; an error fails the call.
     fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Self>;
 }
@@ -77,9 +86,10 @@ pub trait TextArg: Sized + 'static {
 impl<T: TextArg> ScriptArg for T {
     type Raw = ImmutableString;
     type Int = ImmutableString;
-    const NAMES: Option<NameKind> = Some(<T as TextArg>::NAMES);
+    const NAME_KIND: Option<NameKind> = Some(<T as Named>::NAMES);
     const ENUM: Option<EngineEnum> = None;
     const NUMBER: bool = false;
+    const TYPE: &'static str = "text";
 
     fn take(raw: ImmutableString, ctx: &ArgCtx<'_>) -> Checked<T> {
         T::take_text(ScriptText::of_engine(raw), ctx)
@@ -90,20 +100,19 @@ impl<T: TextArg> ScriptArg for T {
     }
 }
 
-/// Implements `TextArg` for `$ty`, a name of `$kind` that `$find` resolves, given the call's
+/// Implements `TextArg` for `$ty`, a name of its kind that `$find` resolves, given the call's
 /// `ctx` and the name a script gives; a name it does not resolve fails the call.
 #[macro_export]
 macro_rules! name_script_arg {
-    ($ty:ty, $kind:expr, $find:expr) => {
+    ($ty:ty, $find:expr) => {
         impl $crate::TextArg for $ty {
-            const NAMES: $crate::NameKind = $kind;
-
             fn take_text(
                 text: $crate::ScriptText,
                 ctx: &$crate::ArgCtx<'_>,
             ) -> $crate::Checked<$ty> {
                 let find: fn(&$crate::Ctx, &str) -> Option<$ty> = $find;
-                find(ctx.get(), &text).ok_or_else(|| $crate::ApiError::Unknown($kind).fail().into())
+                let kind = <$ty as ::campfire_values::Named>::NAMES;
+                find(ctx.get(), &text).ok_or_else(|| $crate::ApiError::Unknown(kind).fail().into())
             }
         }
     };
@@ -116,10 +125,11 @@ macro_rules! enum_script_arg {
         impl $crate::ScriptArg for $ty {
             type Raw = $ty;
             type Int = $ty;
-            const NAMES: Option<$crate::NameKind> = None;
+            const NAME_KIND: Option<::campfire_values::NameKind> = None;
             const ENUM: Option<::campfire_values::EngineEnum> =
                 Some(<$ty as ::campfire_values::ScriptEnum>::ENUM);
             const NUMBER: bool = false;
+            const TYPE: &'static str = stringify!($ty);
 
             fn take(
                 raw: $ty,
@@ -138,15 +148,17 @@ macro_rules! enum_script_arg {
     )*};
 }
 
-plain_script_arg!((), i64, bool, Vec3, Unit);
+plain_script_arg!((): "()", i64: "int", bool: "bool");
+plain_script_arg!(Vec3, Unit, PlayerHandle);
 enum_script_arg!(Relation);
 
 impl ScriptArg for Num {
     type Raw = Self;
     type Int = i64;
-    const NAMES: Option<NameKind> = None;
+    const NAME_KIND: Option<NameKind> = None;
     const ENUM: Option<EngineEnum> = None;
     const NUMBER: bool = true;
+    const TYPE: &'static str = "Num";
 
     fn take(raw: Self, _: &ArgCtx<'_>) -> Checked<Self> {
         Ok(raw)
@@ -159,33 +171,35 @@ impl ScriptArg for Num {
     }
 }
 
-/// A player a script names by its slot, which the session has; another fails the call.
+/// A player a script holds, as the slot of its handle.
 impl ScriptArg for PlayerSlot {
-    type Raw = i64;
-    type Int = i64;
-    const NAMES: Option<NameKind> = None;
+    type Raw = PlayerHandle;
+    type Int = PlayerHandle;
+    const NAME_KIND: Option<NameKind> = None;
     const ENUM: Option<EngineEnum> = None;
     const NUMBER: bool = false;
+    const TYPE: &'static str = PlayerHandle::NAME;
 
-    fn take(raw: i64, ctx: &ArgCtx<'_>) -> Checked<Self> {
-        ctx.get().view().names().player(raw)
+    fn take(raw: PlayerHandle, _: &ArgCtx<'_>) -> Checked<Self> {
+        Ok(raw.slot())
     }
 
-    fn take_int(raw: i64, ctx: &ArgCtx<'_>) -> Checked<Self> {
-        Self::take(raw, ctx)
+    fn take_int(raw: PlayerHandle, _: &ArgCtx<'_>) -> Checked<Self> {
+        Ok(raw.slot())
     }
 }
 
 /// Implements `ScriptArg` for each type of `scripts` that stands for an engine type, which Rhai
 /// passes as the engine's, and `$of` takes.
 macro_rules! engine_script_arg {
-    ($($ty:ty: $raw:ty => $of:expr),* $(,)?) => {$(
+    ($($ty:ty: $raw:ty => $of:expr, $name:literal),* $(,)?) => {$(
         impl ScriptArg for $ty {
             type Raw = $raw;
             type Int = $raw;
-            const NAMES: Option<NameKind> = None;
+            const NAME_KIND: Option<NameKind> = None;
             const ENUM: Option<EngineEnum> = None;
             const NUMBER: bool = false;
+            const TYPE: &'static str = $name;
 
             fn take(raw: $raw, _: &ArgCtx<'_>) -> Checked<$ty> {
                 Ok($of(raw))
@@ -199,17 +213,15 @@ macro_rules! engine_script_arg {
 }
 
 engine_script_arg!(
-    ScriptValue: Dynamic => ScriptValue::of_engine,
-    ScriptText: ImmutableString => ScriptText::of_engine,
-    ScriptList: Array => ScriptList::of_engine,
+    ScriptValue: Dynamic => ScriptValue::of_engine, "any",
+    ScriptText: ImmutableString => ScriptText::of_engine, "text",
+    ScriptList: Array => ScriptList::of_engine, "array",
 );
 
 /// A filter a script gives, its tags among the match's.
 impl TextArg for Filter {
-    const NAMES: NameKind = NameKind::Filter;
-
     fn take_text(text: ScriptText, ctx: &ArgCtx<'_>) -> Checked<Self> {
-        let filter = Self::parse(&text, ctx.get().view().names().tags());
+        let filter = ctx.get().view().filter(&text);
         Ok(filter.map_err(ApiError::fail)?)
     }
 }

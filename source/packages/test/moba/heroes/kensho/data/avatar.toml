@@ -53,8 +53,8 @@ interval_ms = 180
 tags = ["untargetable"]
 
 [modifiers.flicker_strike.state]
-last = { type = "entity" }
-struck = { type = "entity_list" }
+last = { type = "unit" }
+struck = { type = "unit_list" }
 left = { type = "int", default = 0 }
 
 [actions.still_mind]
@@ -120,3 +120,7 @@ windup_ms = 250
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
+
+# A hero's death gives 150 experience, and 25 for each level it holds.
+[experience]
+gives = { base = 150, per_level = 25 }

@@ -2,6 +2,7 @@ use std::ops::ControlFlow;
 
 use campfire_geometry::{BodyGrid, Indexed, Placed, Shape};
 use campfire_math::{Num, Vec3};
+use campfire_sim::StableId;
 use campfire_values::Team;
 
 use crate::scripts::view::filter::Filter;
@@ -13,7 +14,7 @@ use crate::scripts::view::view_rows::ViewRows;
 /// reaches by distance indexes once after each read; and the rows such a query found.
 #[derive(Debug, Default)]
 pub(crate) struct TargetIndex {
-    bodies: BodyGrid<usize>,
+    bodies: BodyGrid<usize, StableId>,
     indexed: bool,
     found: Vec<usize>,
 }
@@ -58,7 +59,7 @@ impl TargetIndex {
         rows: &ViewRows,
         query: TargetQuery<'_>,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-        visit: impl FnMut(&Indexed<usize>),
+        visit: impl FnMut(&Indexed<usize, StableId>),
     ) {
         self.index(rows.units());
         Self::each_reached(&self.bodies, rows, query, seen, visit);
@@ -82,11 +83,11 @@ impl TargetIndex {
 
     /// Calls `visit` with each body of `bodies` that `query` reaches and `seen` lets.
     fn each_reached(
-        bodies: &BodyGrid<usize>,
+        bodies: &BodyGrid<usize, StableId>,
         rows: &ViewRows,
         query: TargetQuery<'_>,
         seen: impl Fn(&ViewColumns, usize) -> bool,
-        mut visit: impl FnMut(&Indexed<usize>),
+        mut visit: impl FnMut(&Indexed<usize, StableId>),
     ) {
         let TargetQuery {
             team,

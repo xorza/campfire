@@ -1,8 +1,8 @@
 use campfire_math::Num;
 
 use super::*;
-use crate::zero_hour::format::ini::object_ini::build_data::{Prerequisite, ProductionExit};
 use crate::zero_hour::format::ini::object_ini::fight_data::{IniShell, IniTurret};
+use crate::zero_hour::format::ini::object_ini::ini_build::{Prerequisite, ProductionExit};
 use crate::zero_hour::format::ini::object_ini::internals::{DEFAULT_OBJECTS, OBJECTS};
 
 /// Objects of each kind a placed object can be, their reskins, and lists of each form.
@@ -397,7 +397,7 @@ End
 
 #[test]
 fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
-    fn build(ini: &ObjectIni, name: &str) -> BuildData {
+    fn build(ini: &ObjectIni, name: &str) -> IniBuild {
         ini.objects[name].build().clone()
     }
     let mut ini = ObjectIni::default();
@@ -407,7 +407,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
     // points of `X:` and `Y:`, the height dropped, and the angle its placement shows at.
     assert_eq!(
         build(&ini, "AmericaCommandCenter"),
-        BuildData {
+        IniBuild {
             cost: 2000,
             time: 45.0,
             command_set: Some("AmericaCommandCenterCommandSet".to_owned()),
@@ -446,7 +446,7 @@ fn an_object_gives_production_its_cost_time_set_prerequisites_queue_and_exit() {
         build(&ini, "AmericaPowerPlant").prerequisites,
         [Prerequisite::Science("SCIENCE_AMERICA".to_owned())]
     );
-    assert_eq!(build(&ini, "AmericaFireBase"), BuildData::default());
+    assert_eq!(build(&ini, "AmericaFireBase"), IniBuild::default());
     // A reskin keeps its base's, as its table sets none of them; a second `Prerequisites` block
     // starts the list again.
     ini.read(

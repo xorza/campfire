@@ -1,25 +1,33 @@
 use std::slice;
 
 use bevy_ecs::world::World;
-use campfire_actions::{ActionProgress, ActionSlots, SlotKind, SlotTimes, SlotsMut, TimedSlots};
+use campfire_actions::{ActionSlots, SlotKind, SlotsMut, SlotsMutItem, TimedSlots};
 use campfire_combat::Respawn;
 use campfire_common::{PlayerSlot, Ticks};
 use campfire_declare::ByType;
+use campfire_math::Num;
 use campfire_players::{HeldOut, PlayersWorld};
-use campfire_script::{Effect, Frame};
+use campfire_script::{Effect, EffectKind, Frame, ListPlace};
 use campfire_sim::{SimTick, SimWorld, StableId};
 use campfire_units::{SpawnAt, Spawner, UnitsWorld};
 use campfire_values::{ActionId, Rank, Relation, Team};
 
+use crate::bounty_share::BountyShare;
 use crate::match_end::{MatchEnd, MatchResult};
 use crate::save_asked::SaveAsked;
 use crate::spawn_group::SpawnGroup;
+use crate::timer_id::TimerId;
 use crate::timers::{TimerStart, Timers};
 
 /// A change to the match that a mode call queued.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ModeEffect {
     Timer(TimerStart),
+    /// The end of every timer of the name that the script at `owner` set.
+    CancelTimer {
+        owner: ListPlace,
+        name: TimerId,
+    },
     End(MatchResult),
     /// A unit the call spawns, owned by the player it names, if it names one, with the grants
     /// the call gave it, which its slots spawn with.
@@ -51,6 +59,11 @@ pub(crate) enum ModeEffect {
         slot: PlayerSlot,
         out: bool,
     },
+    /// Sets `slot`'s bounty share, 0 or more, of a mode of a `[bounty]`.
+    SetBountyShare {
+        slot: PlayerSlot,
+        share: Num,
+    },
     /// A save, at the end of the tick.
     Save,
 }
@@ -65,27 +78,27 @@ pub(crate) struct SlotGrant {
 }
 
 impl SlotGrant {
-    fn apply(&self, unit: &mut SlotsMut<'_>) {
+    fn apply(&self, unit: &mut SlotsMutItem<'_, '_>) {
         unit.grant(self.kind, &self.abilities, self.rank);
+    }
+
+    fn add_to(&self, slots: ActionSlots) -> ActionSlots {
+        slots.with_granted(self.kind, &self.abilities, self.rank)
     }
 }
 
 /// `slots` with each of `grants`, in order, every slot ready and nothing under way.
-fn granted(mut slots: ActionSlots, grants: &[SlotGrant]) -> TimedSlots {
-    let mut times = SlotTimes::ready(&slots);
-    let mut progress = ActionProgress::default();
-    let mut unit = SlotsMut {
-        slots: &mut slots,
-        times: &mut times,
-        progress: &mut progress,
-    };
-    for grant in grants {
-        grant.apply(&mut unit);
-    }
-    TimedSlots::new(slots)
+fn granted(slots: ActionSlots, grants: &[SlotGrant]) -> TimedSlots {
+    TimedSlots::new(
+        grants
+            .iter()
+            .fold(slots, |slots, grant| grant.add_to(slots)),
+    )
 }
 
 impl Effect for ModeEffect {
+    const KIND: EffectKind = EffectKind::Change;
+
     /// Applies the effect, which a call of the mode's script queued, in the call's tick; a grant
     /// puts its abilities in its kind of a unit, after the slots of that kind it has, at the
     /// kind's first rank, and nothing for a unit that is gone. A spawned unit's grants make its
@@ -94,6 +107,9 @@ impl Effect for ModeEffect {
         let now = frame.now();
         match self {
             Self::Timer(start) => world.resource_mut::<Timers>().set(now, start),
+            Self::CancelTimer { owner, name } => {
+                world.resource_mut::<Timers>().cancel(owner, name);
+            }
             Self::End(result) => {
                 let tick = world.resource::<SimTick>().start();
                 let entity = world
@@ -102,16 +118,15 @@ impl Effect for ModeEffect {
                 world.entity_mut(entity).insert(MatchEnd::new(tick, result));
             }
             Self::SpawnUnit { at, grants } => {
-                let spawner = world.non_send::<Spawner>().clone();
                 if grants.is_empty() {
-                    spawner.spawn(world, at, ());
+                    Spawner::spawn(world, at, ());
                 } else {
                     let book = world.get_resource::<ByType<ActionSlots>>();
                     let slots = book
                         .and_then(|book| book.get(at.unit_type))
                         .cloned()
                         .unwrap_or_else(|| ActionSlots::new([]));
-                    spawner.spawn(world, at, granted(slots, &grants));
+                    Spawner::spawn(world, at, granted(slots, &grants));
                 }
             }
             Self::SpawnGroup(group) => group.spawn(world),
@@ -120,15 +135,8 @@ impl Effect for ModeEffect {
                     return;
                 };
                 let mut unit = world.entity_mut(entity);
-                let held = unit
-                    .get_components_mut::<(&mut ActionSlots, &mut SlotTimes, &mut ActionProgress)>(
-                    );
-                if let Ok((mut slots, mut times, mut progress)) = held {
-                    grant.apply(&mut SlotsMut {
-                        slots: &mut slots,
-                        times: &mut times,
-                        progress: &mut progress,
-                    });
+                if let Ok(mut held) = unit.get_components_mut::<SlotsMut>() {
+                    grant.apply(&mut held);
                 } else {
                     let granted = granted(ActionSlots::new([]), slice::from_ref(&grant));
                     unit.insert(granted);
@@ -157,6 +165,12 @@ impl Effect for ModeEffect {
                 } else {
                     player.remove::<HeldOut>();
                 }
+            }
+            Self::SetBountyShare { slot, share } => {
+                let player = world
+                    .player_entity(slot)
+                    .expect("every slot has its entity");
+                world.entity_mut(player).insert(BountyShare(share));
             }
             // The boundary that ends the call's tick, whatever the call counts its time from, as an
             // input's call counts from the tick's start; the match's start asks for its own.

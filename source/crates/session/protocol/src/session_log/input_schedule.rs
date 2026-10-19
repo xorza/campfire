@@ -27,7 +27,7 @@ pub(super) struct InputSchedule {
 /// Orders the inputs of one tick by slot, then by when they were logged, which for one player is
 /// their chain's order, whatever order the players' inputs arrived in, so the host cannot choose
 /// who acts first.
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct Due {
     pub(super) tick: Tick,
     pub(super) slot: PlayerSlot,
@@ -110,6 +110,26 @@ impl InputSchedule {
         &self.due
     }
 
+    /// The schedule of `rules` at a boundary a checkpoint's carry records: each slot's spill, by
+    /// slot, and the inputs still to apply there.
+    pub(super) fn restored(
+        rules: InputRules,
+        spills: Vec<Spill>,
+        pending: impl IntoIterator<Item = Due>,
+    ) -> Self {
+        Self {
+            rules,
+            pending: pending.into_iter().map(Reverse).collect(),
+            due: Vec::new(),
+            spills,
+        }
+    }
+
+    /// The first logged of the inputs still to apply; none when none is.
+    pub(super) fn earliest_index(&self) -> Option<u32> {
+        self.pending.iter().map(|Reverse(due)| due.index).min()
+    }
+
     /// The inputs still to apply, earliest first, then by slot and in the order logged.
     pub(super) fn pending(&self) -> Vec<&Due> {
         let mut due: Vec<&Due> = self.pending.iter().map(|Reverse(due)| due).collect();
@@ -117,35 +137,22 @@ impl InputSchedule {
         due
     }
 
-    /// The schedule of no input, its spills afresh, as a replay starts it.
-    pub(super) fn reset(&mut self) {
-        self.pending.clear();
-        self.due.clear();
-        self.spills.fill(Spill::default());
-    }
-
     /// Queues again what the logged entry `at` of `entries` scheduled before `next`, as a replay
-    /// does; whether it is a server input.
-    pub(super) fn replay(&mut self, entries: &LogEntries, at: u32, next: Tick) -> bool {
+    /// does.
+    pub(super) fn replay(&mut self, entries: &LogEntries, at: u32, next: Tick) {
         match entries.entry(at) {
             Entry::Packet(packet) => {
                 for index in entries.packet(packet).inputs.clone() {
                     self.schedule(entries, index, next);
                 }
-                false
             }
-            Entry::Server(server) => {
-                match entries.server(server).served {
-                    Served::Bot { input } => {
-                        self.schedule(entries, input, next);
-                    }
-                    Served::Join { slot, .. } | Served::Leave { slot, .. } => self.forget(slot),
-                    Served::Renew { .. }
-                    | Served::Connected { .. }
-                    | Served::Disconnected { .. } => {}
+            Entry::Server(server) => match entries.server(server).served {
+                Served::Bot { input } => {
+                    self.schedule(entries, input, next);
                 }
-                true
-            }
+                Served::Join { slot, .. } | Served::Leave { slot, .. } => self.forget(slot),
+                Served::Renew { .. } | Served::Connected { .. } | Served::Disconnected { .. } => {}
+            },
         }
     }
 }

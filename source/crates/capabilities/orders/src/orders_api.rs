@@ -1,7 +1,6 @@
 use campfire_actions::ActionsColumn;
 use campfire_script::{
-    ApiBuilder, ApiError, ApiVersion, CapabilityRefusal, Checked, Ctx, DataTable, Hook, MemberSpec,
-    RoleSet, ScriptPosition, Status, Unit,
+    ApiBuilder, CapabilityRefusal, Checked, Ctx, MemberSpec, RoleSet, ScriptPosition, Unit,
 };
 
 use crate::ai_data::AiData;
@@ -21,85 +20,70 @@ impl OrdersApi {
         api.call(
             order(
                 "order_attack",
-                &[&["unit", "target"]],
-                "`unit` attacks `target`, a living enemy that one of its weapons selects",
+                &[&["target"]],
+                "the unit that thinks attacks `target`, a living enemy that one of its weapons selects",
             ),
-            |ctx: &mut Ctx, unit: Unit, target: Unit| Self::attack(ctx, &unit, &target),
+            |ctx: &mut Ctx, target: Unit| Self::attack(ctx, &target),
         )
         .call(
             order(
                 "order_follow_path",
-                &[&["unit"]],
-                "`unit` drops its target and walks its path again",
+                &[&[]],
+                "the unit that thinks drops its target and walks its path again",
             ),
-            |ctx: &mut Ctx, unit: Unit| Self::order(ctx, &unit, UnitOrder::FollowPath),
+            |ctx: &mut Ctx| ctx.queue(OrdersEffect(UnitOrder::FollowPath)),
         )
         .call(
             order(
                 "order_move",
-                &[&["unit", "pos"]],
-                "`unit` drops its target and walks to `pos`, within the map, off its path",
+                &[&["pos"]],
+                "the unit that thinks drops its target and walks to `pos`, within the map, off its path",
             ),
-            |ctx: &mut Ctx, unit: Unit, to: ScriptPosition| {
+            |ctx: &mut Ctx, to: ScriptPosition| {
                 let to = to.get();
-                Self::order(ctx, &unit, UnitOrder::Move {
-                        x: to.x,
-                        z: to.z,
-                        party: None,
-                    })
+                ctx.queue(OrdersEffect(UnitOrder::Move {
+                    x: to.x,
+                    z: to.z,
+                    party: None,
+                }))
             },
         )
         .call(
             order(
                 "order_reset",
-                &[&["unit"]],
-                "`unit` drops its target and walks home, taking no order until there, where its pools fill",
+                &[&[]],
+                "the unit that thinks drops its target and walks home, taking no order until there, where its pools fill",
             ),
-            |ctx: &mut Ctx, unit: Unit| {
-                let reset = Self::order(ctx, &unit, UnitOrder::Reset);
-                // The acting unit, which only a unit the mode spawned is, holds its spawn place
-                // as a part the modules declare.
-                debug_assert!(
-                    reset.is_err() || unit.read(|row| row.spawn.is_some()),
-                    "the acting unit holds its spawn place"
-                );
-                reset
-            },
+            |ctx: &mut Ctx| ctx.queue(OrdersEffect(UnitOrder::Reset)),
         )
         .plan(order(
             "order_action",
-            &[&["unit", "slot", "target"]],
-            "`unit` casts the action in its slot `slot` at `target`, as a player's action order does",
+            &[&["slot", "target"]],
+            "the unit that thinks casts the action in its slot `slot` at `target`, as a player's action order does",
         ))
-        .hook(Hook::OnThink, Status::Runs(ApiVersion::FIRST))
-        .data::<AiData>(&["ai", "think_ms"], &[])
-        .shared_data(DataTable::UnitType, &["orders"], &[]);
+        .data::<AiData>(&[]);
     }
 
-    /// Queues an attack of `unit` on `target`, a living enemy that one of its learned weapons
-    /// selects, as the attack order of a player needs.
-    fn attack(ctx: &Ctx, unit: &Unit, target: &Unit) -> Checked<()> {
+    /// Queues an attack of the unit that thinks on `target`, a living enemy that one of its
+    /// learned weapons selects, as the attack order of a player needs.
+    fn attack(ctx: &Ctx, target: &Unit) -> Checked<()> {
         let view = ctx.view();
-        unit.read(|ordered| {
-            target.read(|aimed| {
+        let acting = ctx.acting().and_then(|id| view.unit(id));
+        let unit = acting.expect("an AI's call acts as the unit that thinks");
+        let (row, aimed) = (unit.row_index()?, target.row_index()?);
+        let refusal = view.read_row(row, |ordered| {
+            view.read_row(aimed, |aimed| {
                 let relation = view.relation(ordered.team, aimed.team);
                 if !aimed.alive || !relation.may_attack() {
-                    return Err(OrdersRefusal::NotAnEnemy.fail());
+                    return Some(OrdersRefusal::NotAnEnemy);
                 }
-                if !ActionsColumn::armed_against(view, unit.row_index(), ordered, aimed) {
-                    return Err(ApiError::NoAttack.fail());
-                }
-                Ok(())
+                let armed = ActionsColumn::armed_against(view, row, ordered, aimed);
+                (!armed).then_some(OrdersRefusal::NoAttack)
             })
-        })?;
-        Self::order(ctx, unit, UnitOrder::Attack { target: target.id })
-    }
-
-    /// Queues `order` for `unit`, which must be the unit that thinks.
-    fn order(ctx: &Ctx, unit: &Unit, order: UnitOrder) -> Checked<()> {
-        if ctx.acting() != Some(unit.id) {
-            return Err(OrdersRefusal::OtherUnit.fail().into());
+        });
+        if let Some(refusal) = refusal {
+            return Err(refusal.fail().into());
         }
-        ctx.queue(OrdersEffect(order))
+        ctx.queue(OrdersEffect(UnitOrder::Attack { target: target.id }))
     }
 }

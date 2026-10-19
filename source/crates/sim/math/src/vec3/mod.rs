@@ -1,15 +1,15 @@
+use std::cmp::Ordering;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use serde::{Deserialize, Serialize};
 
+use crate::coordinate;
 use crate::direction::Direction;
 use crate::num::{Num, SinCos};
 use crate::rounding::Rounding;
-use crate::vec3::step_moves::StepMoves;
 
 #[cfg(feature = "internals")]
 pub(crate) mod bench;
-mod step_moves;
 
 /// A 3D vector of `Num`s; the ground plane is x and z, height is y.
 ///
@@ -23,6 +23,10 @@ pub struct Vec3 {
 
 impl Vec3 {
     pub const ZERO: Self = Self::new(Num::ZERO, Num::ZERO, Num::ZERO);
+
+    /// 2²⁰ m: the bound of every coordinate of a place, which a map's bounds lie within, so exact
+    /// squared distances between two places fit a `u128` with room to spare.
+    pub const BOUND: Num = Num::from_bits(1 << coordinate::BOUND_BITS);
 
     pub const fn new(x: Num, y: Num, z: Num) -> Self {
         Self { x, y, z }
@@ -110,17 +114,30 @@ impl Vec3 {
             .expect("Vec3 overflow in distance")
     }
 
-    /// Whether `other` is at most `radius` away, decided exactly and without a square root.
-    pub const fn within(self, other: Self, radius: Num) -> bool {
+    /// How the distance to `other` lies against `radius`, decided exactly and without a square
+    /// root; past it for a negative radius.
+    pub const fn distance_order(self, other: Self, radius: Num) -> Ordering {
         if radius.to_bits() < 0 {
-            return false;
+            return Ordering::Greater;
         }
         let Some(offset) = other.checked_sub(self) else {
             // A component difference beyond `Num` is farther than any radius.
-            return false;
+            return Ordering::Greater;
         };
         let reach = radius.to_bits().cast_unsigned() as u128;
-        offset.length_squared_bits() <= reach * reach
+        let (square, reach) = (offset.length_squared_bits(), reach * reach);
+        if square < reach {
+            Ordering::Less
+        } else if square == reach {
+            Ordering::Equal
+        } else {
+            Ordering::Greater
+        }
+    }
+
+    /// Whether `other` is at most `radius` away, decided exactly and without a square root.
+    pub const fn within(self, other: Self, radius: Num) -> bool {
+        !matches!(self.distance_order(other, radius), Ordering::Greater)
     }
 
     /// The vector with its height dropped: its point on the ground plane.
@@ -137,6 +154,14 @@ impl Vec3 {
             .expect("Vec3 overflow in ground_offset")
     }
 
+    /// Whether each of its coordinates lies within ±`BOUND`, as a place's does.
+    pub const fn within_bound(self) -> bool {
+        let bound = Self::BOUND.to_bits().unsigned_abs();
+        self.x.to_bits().unsigned_abs() <= bound
+            && self.y.to_bits().unsigned_abs() <= bound
+            && self.z.to_bits().unsigned_abs() <= bound
+    }
+
     /// Whether `other` is at most `radius` away on the ground plane, heights dropped, decided
     /// exactly: the range test of a planar map.
     pub const fn within_ground(self, other: Self, radius: Num) -> bool {
@@ -151,7 +176,7 @@ impl Vec3 {
         let vector = [self.x, self.y, self.z].map(|component| i128::from(component.to_bits()));
         if vector
             .iter()
-            .any(|component| component.unsigned_abs() >= 1 << 47)
+            .any(|component| component.unsigned_abs() >= coordinate::WIDEST.unsigned_abs())
         {
             return None;
         }
@@ -171,18 +196,31 @@ impl Vec3 {
     }
 
     /// The point `step` along the way to `target`, or `target` when it is at most `step` away.
-    /// Each component moves by `offset · step / distance`, rounded once, so it never passes the
-    /// target's. `None` when the offset or the distance does not fit a `Num`.
+    /// Each component moves by `offset · step / distance` of the exact distance, rounded once to
+    /// the nearest 2⁻²⁴, ties to even, as `normalized` rounds a unit, so it never passes the
+    /// target's. `None` when the offset does not fit a `Num`, or has a component past ±2⁴⁷ bits,
+    /// 2²³ m, beyond any offset of two places.
     pub fn checked_step_toward(self, target: Self, step: Num) -> Option<Self> {
         debug_assert!(step >= Num::ZERO, "Vec3::step_toward with a negative step");
         if self.within(target, step) {
             return Some(target);
         }
         let offset = target.checked_sub(self)?;
-        // The exact distance is above `step`, so the rounded one is at least `step`: every
-        // ratio below is at most 1, and each move at most its offset.
-        let distance = offset.checked_length()?.to_bits();
-        let moves = StepMoves::new(step.to_bits(), distance).of([offset.x, offset.y, offset.z]);
+        let vector =
+            [offset.x, offset.y, offset.z].map(|component| i128::from(component.to_bits()));
+        if vector
+            .iter()
+            .any(|component| component.unsigned_abs() >= coordinate::WIDEST.unsigned_abs())
+        {
+            return None;
+        }
+        // The exact distance is above `step`, so each move is below its offset.
+        let direction = Direction::of(vector).expect("an offset past the step is no zero vector");
+        let square = offset.length_squared_bits();
+        let step = step.to_bits().unsigned_abs();
+        let unit = direction.unit();
+        let moves: [Num; 3] =
+            [0, 1, 2].map(|axis| step_component(unit[axis], vector[axis], step, square));
         // A move ends between the start and the target, so its sum cannot wrap, and the wrapping
         // step skips the check a release build makes.
         let advance = |from: Num, moved: Num| {
@@ -278,6 +316,31 @@ fn unit_component(unit: i64, component: i128, square: u128) -> Num {
     };
     let bits = (floor + u64::from(up)).cast_signed();
     Num::from_bits(if unit < 0 { -bits } else { bits })
+}
+
+/// The move along an axis of a step of `step` bits toward an offset whose squared length is
+/// `square`, of the offset's `component`: `component · step / √square`, rounded once to the
+/// nearest bit, ties to even. From `unit`, the direction's axis at 2⁻⁶², within 2⁻⁶² of the true
+/// one, the estimate lies within one bit of the move, which the exact comparison of
+/// `(2 · component · step)²` with `(2m ± 1)² · square` then decides, as `unit_component` decides a
+/// unit's half.
+fn step_component(unit: i64, component: i128, step: u64, square: u128) -> Num {
+    let estimate = (u128::from(unit.unsigned_abs()) * u128::from(step) + (1 << 61)) >> 62;
+    let twice = 2 * component.unsigned_abs() * u128::from(step);
+    let wanted = WideProduct::of(twice, twice);
+    let odd = |m: u128| WideProduct::of((2 * m + 1) * (2 * m + 1), square);
+    let mut moved = estimate;
+    let above = odd(moved);
+    if wanted > above || (wanted == above && moved % 2 == 1) {
+        moved += 1;
+    } else if moved > 0 {
+        let below = odd(moved - 1);
+        if wanted < below || (wanted == below && moved % 2 == 1) {
+            moved -= 1;
+        }
+    }
+    let bits = i64::try_from(moved).expect("a move is below its offset");
+    Num::from_bits(if component < 0 { -bits } else { bits })
 }
 
 /// A product of two `u128`s, exact: its high and its low 128 bits, which order as the product

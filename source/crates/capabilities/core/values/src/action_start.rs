@@ -1,5 +1,4 @@
 use campfire_math::{Num, Vec3};
-use campfire_sim::Position;
 use serde::{Deserialize, Serialize};
 
 /// How an action started: where its unit stood, and, for a charged action, the share of its most
@@ -18,6 +17,6 @@ impl ActionStart {
         let charge = self
             .charge
             .is_none_or(|charge| (Num::ZERO..=Num::ONE).contains(&charge));
-        Position::from(self.origin).within_bound() && charge
+        self.origin.within_bound() && charge
     }
 }

@@ -1,0 +1,51 @@
+# What the Zero Hour check measured, which it pins: `./drive.py zero-hour --bless` writes it again.
+
+drive_ticks = 1717
+
+[fingerprints]
+game = "4f57092a76927848267d3f2d3ecf51f55e8eee4d382792c07d5cbba935f4237b"
+rules = "5b8fc5664737521c750fd597e319615900bd713c8100f6175bfd7e4f022d4d58"
+
+[map]
+heights = [270, 340]
+units = 142
+unit_types = 41
+client_objects = 438
+object_looks = 22
+markers = 28
+walls = 286
+
+[terrain]
+overlays = 19041
+copies = 300
+wraps = 19
+
+[looks]
+varied = 382
+empty = 273
+night = 15
+snowy = 17
+
+[produced]
+trains = 187
+builds = 138
+dropped = [0, 22, 4, 36, 24, 0, 0, 0]
+
+[fought]
+weapons = 29
+dropped = [0, 52, 9, 0, 2, 0, 7, 1, 0, 4, 6, 2, 0, 3, 4, 0, 2]
+armors = 53
+kinds = 38
+unliving = 38
+wounded = 0
+
+[skirmish]
+barracks = 706
+factory = [483, 688, 1091]
+shot = 816
+hit = 827
+fight = 2567
+
+[bot]
+built = [1, 2, 1, 1, 1, 1, 2, 1, 2, 1]
+farthest_m = 310

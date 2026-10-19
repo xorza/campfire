@@ -4,7 +4,7 @@ use bevy::camera::Camera;
 use bevy::ecs::query::{Allow, With, Without};
 use bevy::ecs::system::{Query, Res, Single, SystemParam};
 use bevy::math::primitives::InfinitePlane3d;
-use bevy::math::{Rect, Vec2, Vec3};
+use bevy::math::{Ray3d, Rect, Vec2, Vec3};
 use bevy::picking::hover::HoverMap;
 use bevy::picking::pointer::PointerId;
 use bevy::transform::components::{GlobalTransform, Transform};
@@ -18,11 +18,12 @@ use campfire_values::Team;
 use crate::own_player::OwnPlayer;
 use crate::view::client_data::ClientData;
 use crate::view::drawing::Drawing;
-use crate::view::footing::Footing;
+use crate::view::footing;
 use crate::view::look::Shape;
 
 /// What the cursor points at, as the player sees the match: the ground point under it, and the
-/// living unit drawn there.
+/// living unit whose drawing the cursor's ray meets first, as Zero Hour picks a drawable by the
+/// ray through the cursor.
 #[derive(SystemParam)]
 pub(crate) struct Pointer<'w, 's> {
     window: Single<'w, 's, &'static Window, With<PrimaryWindow>>,
@@ -31,7 +32,7 @@ pub(crate) struct Pointer<'w, 's> {
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, (&'static Transform, &'static Shape)>,
     data: Res<'w, ClientData>,
-    hovers: Option<Res<'w, HoverMap>>,
+    hovers: Res<'w, HoverMap>,
     nodes: Query<'w, 's, (), With<Node>>,
 }
 
@@ -61,10 +62,7 @@ impl Pointer<'_, '_> {
     /// Whether the cursor is over a node of the UI, the shop panel or the inventory bar, which
     /// takes its clicks from the match.
     pub(crate) fn over_ui(&self) -> bool {
-        let hits = self
-            .hovers
-            .as_deref()
-            .and_then(|hovers| hovers.get(&PointerId::Mouse));
+        let hits = self.hovers.get(&PointerId::Mouse);
         hits.is_some_and(|hits| hits.keys().any(|&hit| self.nodes.contains(hit)))
     }
 
@@ -77,29 +75,33 @@ impl Pointer<'_, '_> {
     /// The point of the ground under the cursor, when the cursor is over the window and the ground:
     /// the drawn ground of a map with heights, else the plane at height 0.
     pub(crate) fn ground(&self) -> Option<Vec3> {
-        let (camera, place) = *self.camera;
-        let ray = camera.viewport_to_world(place, self.cursor()?).ok()?;
+        let ray = self.ray()?;
         match self.data.heights.as_ref() {
             Some(heights) => heights.hit(ray.origin, *ray.direction),
             None => ray.plane_intersection_point(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y)),
         }
     }
 
-    /// The living unit drawn over `point` of the ground, of those not in `except`, a list in
-    /// stable id order.
-    pub(crate) fn unit_at(&self, point: Vec3, except: &[StableId]) -> Option<Pointed> {
+    /// The living unit under the cursor, of those not in `except`, a list in stable id order.
+    pub(crate) fn unit_under(&self, except: &[StableId]) -> Option<Pointed> {
         debug_assert!(
             except.is_sorted(),
             "a binary search needs the list in order"
         );
-        self.nearest(point, |unit| except.binary_search(&unit.id).is_err())
+        self.nearest(|unit| except.binary_search(&unit.id).is_err())
     }
 
-    /// The living unit of the player's own drawn over `point` of the ground.
-    pub(crate) fn own_unit_at(&self, point: Vec3) -> Option<StableId> {
+    /// The living unit of the player's own under the cursor.
+    pub(crate) fn own_unit_under(&self) -> Option<StableId> {
         let slot = self.own.slot();
-        let unit = self.nearest(point, |unit| unit.owned_by(slot))?;
+        let unit = self.nearest(|unit| unit.owned_by(slot))?;
         Some(unit.id)
+    }
+
+    /// The ray from the camera through the cursor, when the cursor is over the window.
+    fn ray(&self) -> Option<Ray3d> {
+        let (camera, place) = *self.camera;
+        camera.viewport_to_world(place, self.cursor()?).ok()
     }
 
     /// Adds to `out` each living unit of the player's own whose ground point shows within `rect`
@@ -112,18 +114,15 @@ impl Pointer<'_, '_> {
         out.extend(shown_within(rect, self.own.slot(), shown));
     }
 
-    /// Of the living units, the one drawn over `point` that `keep` keeps, as `nearest_over` picks.
-    fn nearest(&self, point: Vec3, keep: impl Fn(Pointed) -> bool) -> Option<Pointed> {
-        let drawn = self
-            .drawn()
-            .filter(|&(unit, _, _)| keep(unit))
-            .map(|(unit, at, footing)| (unit, Vec2::new(at.x, at.z), footing));
-        nearest_over(Vec2::new(point.x, point.z), drawn)
+    /// Of the living units, the one under the cursor that `keep` keeps, as `nearest_hit` picks.
+    fn nearest(&self, keep: impl Fn(Pointed) -> bool) -> Option<Pointed> {
+        let ray = self.ray()?;
+        let drawn = self.drawn().filter(|&(unit, _, _)| keep(unit));
+        nearest_hit(ray.origin, *ray.direction, drawn)
     }
 
-    /// Each living unit with a drawing: where the drawing stands, and what it covers of the
-    /// ground.
-    fn drawn(&self) -> impl Iterator<Item = (Pointed, Vec3, Footing)> {
+    /// Each living unit with a drawing: where the drawing stands, and its shape.
+    fn drawn(&self) -> impl Iterator<Item = (Pointed, Vec3, Shape)> {
         self.units.iter().filter_map(|(&id, &team, owner, drawn)| {
             let (transform, shape) = self.drawings.get(drawn.root()).ok()?;
             let unit = Pointed {
@@ -131,7 +130,7 @@ impl Pointer<'_, '_> {
                 team,
                 owner: owner.map(|owner| owner.slot()),
             };
-            Some((unit, transform.translation, shape.footing))
+            Some((unit, transform.translation, *shape))
         })
     }
 }
@@ -159,17 +158,31 @@ fn shown_within(
         .map(|(unit, _)| unit.id)
 }
 
-/// Of the drawings on the ground, each a unit's center and what it covers, the unit whose drawing
-/// covers `point` and whose center is nearest it; the lower stable id on a tie.
-fn nearest_over(
-    point: Vec2,
-    drawings: impl Iterator<Item = (Pointed, Vec2, Footing)>,
+/// Of the drawings, each a unit's base point and its shape, the unit whose drawing the ray from
+/// `origin` along `direction` meets first; the lower stable id on a tie.
+fn nearest_hit(
+    origin: Vec3,
+    direction: Vec3,
+    drawings: impl Iterator<Item = (Pointed, Vec3, Shape)>,
 ) -> Option<Pointed> {
     drawings
-        .filter(|&(_, center, footing)| footing.covers(point - center))
-        .map(|(unit, center, _)| (unit, point.distance_squared(center)))
+        .filter_map(|(unit, base, shape)| Some((unit, entry(origin, direction, base, shape)?)))
         .min_by(|a, b| a.1.total_cmp(&b.1).then(a.0.id.cmp(&b.0.id)))
         .map(|(unit, _)| unit)
+}
+
+/// How far along the ray from `origin` along `direction` it first meets the drawing that stands
+/// at `base` with `shape`: its footing raised `shape.height`, a circle's as a cylinder, a box's as
+/// a box; none when it misses, or meets it only behind the origin.
+fn entry(origin: Vec3, direction: Vec3, base: Vec3, shape: Shape) -> Option<f32> {
+    let from = Vec2::new(origin.x - base.x, origin.z - base.z);
+    let way = Vec2::new(direction.x, direction.z);
+    let flat = shape.footing.crossed(from, way)?;
+    let half = shape.height / 2.0;
+    let high = footing::span(origin.y - base.y - half, direction.y, half)?;
+    let near = flat.start.max(high.start).max(0.0);
+    let far = flat.end.min(high.end);
+    (near <= far).then_some(near)
 }
 
 /// A system param holds borrows of the world, whose queries print nothing of use.
@@ -186,51 +199,98 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
+    use crate::view::footing::Footing;
 
     #[test]
-    fn the_nearest_unit_whose_drawing_holds_the_point_is_the_one_pointed_at() {
+    fn the_unit_whose_drawing_the_ray_meets_first_is_the_one_pointed_at() {
         let mut ids = IdAllocator::default();
         let mut unit = || Pointed {
             id: ids.allocate(),
             team: Team::new(0),
             owner: None,
         };
-        // An avatar of 0.5 m at the origin, a unit of 1 m at x = 1, a creep of 0.35 m at x = 0.25,
-        // an avatar at x = 4, and a unit of a higher id drawn where the first stands.
-        let [avatar, wide, creep, far, twin] = [unit(), unit(), unit(), unit(), unit()];
-        let circle = Footing::Circle;
-        let circles = [
-            (avatar, Vec2::new(0.0, 0.0), circle(0.5)),
-            (wide, Vec2::new(1.0, 0.0), circle(1.0)),
-            (creep, Vec2::new(0.25, 0.0), circle(0.35)),
-            (far, Vec2::new(4.0, 0.0), circle(0.5)),
-            (twin, Vec2::new(0.0, 0.0), circle(0.5)),
-        ];
-        let at = |x: f32, z: f32| nearest_over(Vec2::new(x, z), circles.into_iter());
-        // At x = 0.2: inside the avatar (0.2 away), the wide unit (0.8) and the creep (0.05); the
-        // creep is nearest.
-        assert_eq!(at(0.2, 0.0), Some(creep));
-        // At x = 0.625: outside the avatar (0.625 > 0.5) and the creep (0.375 > 0.35); inside the
-        // wide unit.
-        assert_eq!(at(0.625, 0.0), Some(wide));
-        // At 0.25 behind the origin: the avatar and its twin, as near; the lower id.
-        assert_eq!(at(0.0, -0.25), Some(avatar));
-        // On the far avatar's edge, exactly 0.5 away, it holds; a quarter meter aside, 0.559 away,
-        // it does not.
-        assert_eq!(at(4.5, 0.0), Some(far));
-        assert_eq!(at(4.5, 0.25), None);
-        assert_eq!(at(3.0, 0.0), None);
-        // A box of half sides 2 and 0.5 at (10, 0), turned a quarter: Bevy turns its x axis to
-        // (0, -1), so it reaches 2 along z and 0.5 along x. It covers (10.4, 1.9), not (11, 0).
-        let building = unit();
-        let boxed = Footing::Box {
-            half: [2.0, 0.5],
-            yaw: FRAC_PI_2,
+        let circle = |radius, height| Shape {
+            radius,
+            height,
+            footing: Footing::Circle(radius),
         };
-        let drawings = [(building, Vec2::new(10.0, 0.0), boxed)];
-        let at = |x: f32, z: f32| nearest_over(Vec2::new(x, z), drawings.into_iter());
-        assert_eq!(at(10.4, 1.9), Some(building));
-        assert_eq!(at(11.0, 0.0), None);
+        // An avatar of 0.5 m and 2 m tall at the origin, a creep of 0.5 m 3 m behind it, and a
+        // unit of a higher id drawn where the avatar stands.
+        let [avatar, creep, twin] = [unit(), unit(), unit()];
+        let drawings = [
+            (avatar, Vec3::ZERO, circle(0.5, 2.0)),
+            (creep, Vec3::new(0.0, 0.0, -3.0), circle(0.5, 2.0)),
+            (twin, Vec3::ZERO, circle(0.5, 2.0)),
+        ];
+        let pick = |origin: Vec3, direction: Vec3, drawings: &[(Pointed, Vec3, Shape)]| {
+            nearest_hit(origin, direction, drawings.iter().copied())
+        };
+        // A ray at 1 m along -z from z = 10 meets the avatar's side at z = 0.5, 9.5 along, and
+        // the creep's at 12.5: the avatar, the lower id of the two drawn there.
+        let level = (Vec3::new(0.0, 1.0, 10.0), Vec3::NEG_Z);
+        assert_eq!(
+            entry(level.0, level.1, Vec3::ZERO, circle(0.5, 2.0)),
+            Some(9.5)
+        );
+        assert_eq!(pick(level.0, level.1, &drawings), Some(avatar));
+        // At 3 m, over their tops, it meets none; half a meter aside, 0.75 off the axis, none.
+        assert_eq!(
+            pick(Vec3::new(0.0, 3.0, 10.0), Vec3::NEG_Z, &drawings),
+            None
+        );
+        assert_eq!(
+            pick(Vec3::new(0.75, 1.0, 10.0), Vec3::NEG_Z, &drawings),
+            None
+        );
+        // Straight down onto the creep: it meets the creep's top at 2 m, 8 along from 10 m up.
+        let down = (Vec3::new(0.0, 10.0, -3.0), Vec3::NEG_Y);
+        assert_eq!(pick(down.0, down.1, &drawings), Some(creep));
+        assert_eq!(
+            entry(down.0, down.1, Vec3::new(0.0, 0.0, -3.0), circle(0.5, 2.0)),
+            Some(8.0)
+        );
+        // A ray that starts inside a drawing meets it where it starts.
+        assert_eq!(
+            entry(
+                Vec3::new(0.0, 1.0, 0.0),
+                Vec3::NEG_Z,
+                Vec3::ZERO,
+                circle(0.5, 2.0)
+            ),
+            Some(0.0)
+        );
+
+        // A building of half sides 2 m and 10 m tall: a level ray at 5 m from z = 20 meets its
+        // wall at z = 2, 18 along, where its footing lies under no ground point the ray crosses,
+        // and the creep behind it is hidden.
+        let building = unit();
+        let tall = Shape {
+            radius: 2.0,
+            height: 10.0,
+            footing: Footing::Box {
+                half: [2.0, 2.0],
+                yaw: 0.0,
+            },
+        };
+        let behind = (creep, Vec3::new(0.0, 0.0, -5.0), circle(0.5, 2.0));
+        let city = [(building, Vec3::ZERO, tall), behind];
+        let wall = (Vec3::new(0.0, 5.0, 20.0), Vec3::NEG_Z);
+        assert_eq!(entry(wall.0, wall.1, Vec3::ZERO, tall), Some(18.0));
+        assert_eq!(pick(wall.0, wall.1, &city), Some(building));
+        assert_eq!(pick(Vec3::new(0.0, 11.0, 20.0), Vec3::NEG_Z, &city), None);
+        // Turned a quarter, a box of half sides 2 and 0.5 reaches 2 along z and 0.5 along x: a
+        // ray along x at z = 1.9 meets it, one at z = 2.1 passes by.
+        let turned = Shape {
+            radius: 2.0,
+            height: 1.0,
+            footing: Footing::Box {
+                half: [2.0, 0.5],
+                yaw: FRAC_PI_2,
+            },
+        };
+        let along = |z| entry(Vec3::new(-10.0, 0.5, z), Vec3::X, Vec3::ZERO, turned);
+        assert!(along(1.9).is_some());
+        assert_eq!(along(2.1), None);
     }
 
     #[test]

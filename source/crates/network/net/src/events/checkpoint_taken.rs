@@ -6,7 +6,7 @@ use tracing::info;
 /// The server logged the record of the checkpoint that starts segment `segment` at the boundary
 /// before tick `tick`, its snapshot written.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct CheckpointTaken {
+pub(crate) struct CheckpointTaken {
     pub segment: u32,
     pub tick: Tick,
 }

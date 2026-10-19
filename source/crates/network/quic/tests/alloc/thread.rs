@@ -1,10 +1,7 @@
 use campfire_common::internals::{AllocAudit, CountingAllocator};
 use campfire_quic::internals::ThreadFixture;
 
-/// The most packets `quinn-proto` 0.11.19 sends before its first key update, which it draws from
-/// 10..1000 so that a peer that cannot update fails early, and which allocates the next keys. The
-/// next one comes at the cipher's confidentiality limit, millions of packets later.
-const FIRST_KEY_UPDATE: usize = 1_000;
+use crate::loopback::FIRST_KEY_UPDATE;
 
 /// The server thread's pass over one read of a slot of 1, 3 or 8 datagrams that GRO joined,
 /// which serves and acknowledges them, allocates nothing: the slot's copy goes into an arena of

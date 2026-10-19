@@ -1,7 +1,7 @@
 use bevy_ecs::world::World;
 use campfire_actions::ActionBook;
 use campfire_math::Num;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_sim::StableId;
 use campfire_values::{ActionId, DamageKind, Hit, Rank};
 use serde::{Deserialize, Serialize};
@@ -37,7 +37,7 @@ impl Damage {
     /// one, and a kind the mode declares, which `calc_damage` reads by its name.
     pub(crate) fn known(&self, world: &World) -> bool {
         let book = world.resource::<ActionBook>();
-        let names = world.get_non_send::<View>().map(View::names);
+        let names = world.get_resource::<MatchNames>();
         self.action.is_none_or(|action| book.get(action).is_some())
             && names.is_some_and(|names| names.has_damage_kind(self.kind))
     }

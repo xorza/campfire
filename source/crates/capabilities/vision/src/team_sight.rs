@@ -2,9 +2,12 @@ use std::fmt::Debug;
 
 use bevy_ecs::query::{QueryItem, ReadOnlyQueryData};
 use campfire_declare::RoleForm;
+use campfire_math::Vec3;
+use campfire_units::SeenBy;
 use campfire_values::Team;
 
-use crate::seen_by::SeenBy;
+use crate::fog::Fog;
+use crate::vision_grid::VisionGrid;
 
 /// How a match tells whether a team sees a unit, for a check of what a player's order may aim at:
 /// by the server's vision, or, on a predicting client, by what the client holds, as the server
@@ -17,6 +20,9 @@ pub trait TeamSight: RoleForm {
     /// Whether `team` sees the unit of `seen`; `None` when no vision stage has spoken of it, which
     /// the caller decides.
     fn sees(seen: QueryItem<'_, '_, Self::Seen>, team: Team) -> Option<bool>;
+
+    /// Whether `team` sees the point `pos` of the ground, as `fog` holds `grid`'s cells.
+    fn sees_point(fog: &Fog, grid: &VisionGrid, pos: Vec3, team: Team) -> bool;
 }
 
 /// The server's sight: the teams the last Vision stage found see a unit, `SeenBy`.
@@ -29,6 +35,10 @@ impl TeamSight for ByVision {
     fn sees(seen: Option<&SeenBy>, team: Team) -> Option<bool> {
         let teams = seen.and_then(|seen| seen.get())?;
         Some(teams.contains(team))
+    }
+
+    fn sees_point(fog: &Fog, grid: &VisionGrid, pos: Vec3, team: Team) -> bool {
+        fog.sees_point(grid, pos, team)
     }
 }
 
@@ -52,5 +62,10 @@ impl TeamSight for ByHolding {
 
     fn sees((): (), _: Team) -> Option<bool> {
         Some(true)
+    }
+
+    /// The client holds no fog: the server, which does, decides.
+    fn sees_point(_: &Fog, _: &VisionGrid, _: Vec3, _: Team) -> bool {
+        true
     }
 }

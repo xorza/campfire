@@ -1,7 +1,7 @@
-//! The first half of the prototype's gate, without the network: a match of the test lane mode run from
-//! its session log and the replay of that log in a bare `World` agree on the state hash after
-//! every tick, and so does the replay of the log's file with the packages a verifier holds. So
-//! does the MOBA 3v3's, whose players learn ranks.
+//! The first half of the prototype's gate, without the network: a match of the test lane mode run
+//! from its session log and the replay of that log in a bare `World` agree on the state hash after
+//! every tick, and so does the replay of the log's file with the packages a verifier holds. So does
+//! the MOBA 3v3's, whose players learn ranks.
 
 use std::num::NonZeroU32;
 use std::ops::Range;
@@ -9,11 +9,11 @@ use std::path::Path;
 
 use campfire_actions::{ActionProgress, ActionSlots};
 use campfire_capabilities::{Match, Order};
+use campfire_common::ErrorReport;
 use campfire_common::{
     AfterLeave, PackageFingerprint, PlayerSlot, StateHash, Tick, Ticks, Version,
 };
 use campfire_harness::{FixedMatch, FixedSession, HashTrail, MatchUnits, Moba3v3};
-use campfire_log::ErrorReport;
 use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_orders::OrdersAction;
@@ -27,14 +27,13 @@ use campfire_protocol::{
 };
 use campfire_runner::{
     Replay, ReplayError, ResultMismatch, ServerInputRefused, Session, SessionSource, SessionWorld,
-    SlotRuleError, SnapshotCheckError, StartError, TermsError,
+    SlotRuleError, SnapshotCheckError, StartError, TermsError, UncheckedSource,
 };
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, StateRegistry};
-use campfire_stats::Life;
 use campfire_store::internals::{PinnedFile, Scratch};
 use campfire_store::{AppendWriter, PathError, ReadError};
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_units::Destination;
+use campfire_units::{Destination, GroundPoint, Life};
 use campfire_values::Rank;
 use campfire_verifier::{VerifyError, verify_file, verify_log};
 
@@ -177,7 +176,7 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
     fixed
         .game_mut()
         .session_mut()
-        .record_checkpoint(record, &FixedSession::server_signer())
+        .record_checkpoint(record)
         .unwrap();
     play(&mut fixed, &orders, 40..72, &mut trail);
     let game = fixed.game_mut();
@@ -186,9 +185,7 @@ fn checkpointed(snapshot: &mut Vec<u8>, hash: Option<StateHash>, outcome: Option
         outcome: outcome.unwrap_or(ended.outcome),
         ..ended
     };
-    game.session_mut()
-        .record_result(result, &FixedSession::server_signer())
-        .unwrap();
+    game.session_mut().record_result(result).unwrap();
     game.session_mut().reveal_seed();
     Run { fixed, trail }
 }
@@ -218,36 +215,54 @@ fn replayed<'p>(
 struct FileJournal(AppendWriter);
 
 impl RecordSink for FileJournal {
-    fn append(&self, write: &mut dyn FnMut(&mut Vec<u8>)) {
-        self.0.append(write);
+    fn append(&self, records: u64, write: &mut dyn FnMut(&mut Vec<u8>)) {
+        self.0.append(records, write);
     }
 }
 
 #[test]
-fn the_log_rebuilt_from_a_matchs_journal_is_the_log_in_memory() {
+fn a_matchs_journal_publishes_the_log_its_twin_of_no_journal_holds() {
     // The orders' match, journaled from its start, checkpointed before tick 40 and ended before
-    // tick 72; the journal on disk holds every record once the match drops.
+    // tick 72, and its twin, which keeps no journal; the journal on disk holds every record once
+    // the match drops.
     let scratch = Scratch::new_in(env!("CARGO_TARGET_TMPDIR"));
     let path = scratch.path("journal");
     let mut fixed = session().start();
+    let mut twin = session().start();
     fixed
         .game_mut()
         .session_mut()
         .keep_journal(Box::new(FileJournal(
             AppendWriter::create("journal", &path, JournalFrames::TAG).unwrap(),
         )));
-    let mut trail = HashTrail::default();
     let orders = ORDERS.each_ref();
-    play(&mut fixed, &orders, 0..40, &mut trail);
-    fixed.checkpoint(&mut Vec::new());
-    play(&mut fixed, &orders, 40..72, &mut trail);
-    fixed.end();
-    let bytes = encoded(fixed.game().session().log());
+    for game in [&mut fixed, &mut twin] {
+        let mut trail = HashTrail::default();
+        play(game, &orders, 0..40, &mut trail);
+        game.checkpoint(&mut Vec::new());
+        play(game, &orders, 40..72, &mut trail);
+        game.end();
+    }
+    // The journaled log forgot what came before its checkpoint; its twin holds every entry.
+    let held = fixed.game().session().log();
+    assert_eq!(held.next_tick(), twin.game().session().log().next_tick());
     drop(fixed);
     let file = scratch.read(&path);
-    let mut rebuilt = SessionLog::from_journal(JournalFrames::new(&file).unwrap()).unwrap();
-    rebuilt.reveal_seed(FixedSession::seed(1));
-    assert_eq!(encoded(&rebuilt), bytes);
+    let mut published = Vec::new();
+    let mut walk = |visit: &mut dyn FnMut(&[u8])| {
+        for record in JournalFrames::new(&file).unwrap() {
+            visit(record);
+        }
+    };
+    SessionLog::publish(&mut walk, &FixedSession::seed(1), &mut published).unwrap();
+    assert_eq!(published, encoded(twin.game().session().log()));
+    // The log its journal rebuilds forgets the same past, and stands where its twin does.
+    let rebuilt =
+        SessionLog::from_journal(JournalFrames::new(&file).unwrap(), Version::ENGINE).unwrap();
+    let whole = twin.game().session().log();
+    assert_eq!(rebuilt.next_tick(), whole.next_tick());
+    assert_eq!(rebuilt.result(), whole.result());
+    assert!(rebuilt.checkpoints().eq(whole.checkpoints()));
 }
 
 #[test]
@@ -274,11 +289,15 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     // Seeds that reach segment 0 alone do not start the log of two.
     let first = ServerSeeds::new(0, FixedSession::seed(0));
     assert!(matches!(
-        Session::start_match(SessionSource {
-            log: SessionLog::decode(&encoded(log)).unwrap().rewound(),
-            seeds: first,
-            packages: &packages(),
-        }),
+        Session::start_match(
+            SessionSource::check(UncheckedSource {
+                log: SessionLog::decode(&encoded(log)).unwrap(),
+                seeds: first,
+                packages: &packages(),
+                signer: None,
+            })
+            .unwrap()
+        ),
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
     assert_eq!(replay.check_snapshot(&record, &snapshot), Ok(()));
@@ -288,7 +307,7 @@ fn a_log_checkpointed_at_tick_40_verifies_and_fails_at_the_checkpoint_with_anoth
     *other.last_mut().unwrap() ^= 1;
     assert_eq!(
         replay.check_snapshot(&record, &other),
-        Err(SnapshotCheckError::PackageFingerprint)
+        Err(SnapshotCheckError::Fingerprint)
     );
     assert_eq!(replay.check_snapshot(&record, &snapshot), Ok(()));
 
@@ -366,8 +385,10 @@ fn move_order(fixed: &FixedMatch, slot: u32, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order::one(
         MatchUnits::of(fixed.game()).hero(slot),
         OrdersAction::Move {
-            x: Num::int(x),
-            z: Num::int(z),
+            to: GroundPoint {
+                x: Num::int(x),
+                z: Num::int(z),
+            },
         },
     )])
 }
@@ -488,7 +509,8 @@ fn a_log_with_a_bot_and_a_player_who_leaves_and_returns_replays_to_the_same_hash
     // does not start it.
     let mut log = session.log();
     let to_bot = leave(AfterLeave::Bot);
-    log.serve(to_bot, &FixedSession::server_signer()).unwrap();
+    log.serve(to_bot, &FixedSession::server_signer(), None)
+        .unwrap();
     log.reveal_seed(FixedSession::seed(0));
     let refused = refusal(&log, &store());
     assert!(
@@ -691,11 +713,15 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         Some(VerifyError::Start(StartError::Seed(SeedError::NotRevealed)))
     ));
     assert!(matches!(
-        Session::start_match(SessionSource {
-            log: session.log(),
-            seeds: ServerSeeds::new(0, ServerSeed::new([8; 32])),
-            packages: &packages(),
-        }),
+        Session::start_match(
+            SessionSource::check(UncheckedSource {
+                log: session.log(),
+                seeds: ServerSeeds::new(0, ServerSeed::new([8; 32])),
+                packages: &packages(),
+                signer: None,
+            })
+            .unwrap()
+        ),
         Err(StartError::Seed(SeedError::WrongSeed))
     ));
 
@@ -763,11 +789,15 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         NonZeroU32::new(30).unwrap(),
         1,
     );
-    let refused = Session::start_match(SessionSource {
-        log: thrown.log(),
-        seeds: FixedSession::seeds(),
-        packages: thrown.packages(),
-    })
+    let refused = Session::start_match(
+        SessionSource::check(UncheckedSource {
+            log: thrown.log(),
+            seeds: FixedSession::seeds(),
+            packages: thrown.packages(),
+            signer: None,
+        })
+        .unwrap(),
+    )
     .err();
     let Some(refused @ StartError::MatchStart(_)) = refused else {
         panic!("{refused:?}");
@@ -826,9 +856,7 @@ fn each_step_a_log_file_fails_at_is_its_own_case() {
     scratch.write(&named, "other");
     assert!(matches!(
         verify(&packages, "match.log", Some("snapshots")),
-        Err(VerifyError::Snapshot(
-            SnapshotCheckError::PackageFingerprint
-        ))
+        Err(VerifyError::Snapshot(SnapshotCheckError::Fingerprint))
     ));
     // A checkpoint whose state its replay does not reach.
     let forged = StateHash::new([7; 32]);

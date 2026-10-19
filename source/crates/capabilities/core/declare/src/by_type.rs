@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_values::{NameId, UnitType};
 
 use crate::book::Book;
@@ -27,6 +27,24 @@ impl<T: Send + Sync + 'static> ByType<T> {
     /// The values of the types that have one, by type.
     pub fn values(&self) -> impl Iterator<Item = &T> {
         self.entries.iter().flatten()
+    }
+
+    /// Each type that has a value, with it, by type.
+    pub fn iter(&self) -> impl Iterator<Item = (UnitType, &T)> {
+        let entries = self.entries.iter().enumerate();
+        entries.filter_map(|(at, value)| Some((UnitType::at(at), value.as_ref()?)))
+    }
+
+    /// Whether no type has a value.
+    pub fn is_empty(&self) -> bool {
+        self.values().next().is_none()
+    }
+
+    /// Takes `unit_type`'s value out, as an extension of the book changes it before the book is
+    /// shared.
+    pub fn take(&mut self, unit_type: UnitType) -> Option<T> {
+        let entries = Arc::get_mut(&mut self.entries).expect("a book is built before it is shared");
+        entries.get_mut(unit_type.index())?.take()
     }
 
     /// Gives `unit_type` `value`, when it is some, as `set` does.
@@ -68,7 +86,7 @@ impl<T: Send + Sync + 'static> Default for ByType<T> {
 impl<T: PerType> Book for ByType<T> {
     const SCRIPTS_ONLY: bool = T::SCRIPTS_ONLY;
 
-    fn share(&self, _: &View) {}
+    fn share(&self, _: &mut MatchNames) {}
 }
 
 #[cfg(test)]

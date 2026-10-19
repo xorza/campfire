@@ -1,7 +1,7 @@
-use std::str::FromStr;
+use std::fmt;
+use std::str::{self, FromStr};
 
-use derive_more::Display;
-use serde::de::Error;
+use serde::de::{Error, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use crate::version::error::NotVersion;
@@ -11,12 +11,69 @@ pub(crate) mod error;
 /// A version as `major.minor.patch`, each a decimal with no leading zero but a lone one, as
 /// Semantic Versioning has it, so one version has one spelling: a package's, the engine release
 /// a package targets, and the engine release a session runs on, whose terms hash its text.
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[display("{major}.{minor}.{patch}")]
+/// It keeps its text, the one spelling of its parts, so a write or a hash of it formats nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Version {
     major: u32,
     minor: u32,
     patch: u32,
+    text: VersionText,
+}
+
+/// A version's text: its bytes, which three `u32` parts and two dots fit in, and how many it has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct VersionText {
+    bytes: [u8; Self::MAX_LEN],
+    len: u8,
+}
+
+impl VersionText {
+    /// `4294967295.4294967295.4294967295`.
+    const MAX_LEN: usize = 32;
+
+    /// The text of `parts`, joined by dots.
+    const fn of(parts: [u32; 3]) -> Self {
+        let mut text = Self {
+            bytes: [0; Self::MAX_LEN],
+            len: 0,
+        };
+        let mut at = 0;
+        while at < 3 {
+            if at > 0 {
+                text.push(b'.');
+            }
+            text.push_decimal(parts[at]);
+            at += 1;
+        }
+        text
+    }
+
+    const fn push(&mut self, byte: u8) {
+        self.bytes[self.len as usize] = byte;
+        self.len += 1;
+    }
+
+    /// Pushes `value`'s decimal digits, with no leading zero but a lone one.
+    const fn push_decimal(&mut self, value: u32) {
+        let mut digits = [0_u8; 10];
+        let (mut count, mut rest) = (0, value);
+        loop {
+            digits[count] = b'0' + (rest % 10) as u8;
+            count += 1;
+            rest /= 10;
+            if rest == 0 {
+                break;
+            }
+        }
+        while count > 0 {
+            count -= 1;
+            self.push(digits[count]);
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        str::from_utf8(&self.bytes[..usize::from(self.len)]).expect("a version's text is ASCII")
+    }
 }
 
 impl Version {
@@ -31,7 +88,13 @@ impl Version {
             major,
             minor,
             patch,
+            text: VersionText::of([major, minor, patch]),
         }
+    }
+
+    /// Its one spelling, `major.minor.patch`.
+    pub fn as_str(&self) -> &str {
+        self.text.as_str()
     }
 
     /// `text` as a version; `None` unless it is three decimals joined by dots, each with no
@@ -83,15 +146,37 @@ impl FromStr for Version {
 /// As its text, which a log's header, an offer and a package's manifest carry.
 impl Serialize for Version {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.collect_str(self)
+        serializer.serialize_str(self.as_str())
     }
 }
 
-/// A log, a message or a manifest is untrusted, so a text `parse` refuses fails to decode.
+/// A log, a message or a manifest is untrusted, so a text `parse` refuses fails to decode. The
+/// text is read where the decoder holds it, borrowed or not, and copied nowhere.
 impl<'de> Deserialize<'de> for Version {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        Self::parse(&text).ok_or_else(|| D::Error::custom(NotVersion))
+        deserializer.deserialize_str(VersionVisitor)
+    }
+}
+
+impl fmt::Display for Version {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// What reads a version's text.
+#[derive(Debug)]
+struct VersionVisitor;
+
+impl Visitor<'_> for VersionVisitor {
+    type Value = Version;
+
+    fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("a version as major.minor.patch")
+    }
+
+    fn visit_str<E: Error>(self, text: &str) -> Result<Version, E> {
+        Version::parse(text).ok_or_else(|| E::custom(NotVersion))
     }
 }
 
@@ -108,9 +193,14 @@ mod tests {
             ("12.340.5", Version::new(12, 340, 5)),
             ("10.0.100", Version::new(10, 0, 100)),
             ("4294967295.0.0", Version::new(u32::MAX, 0, 0)),
+            (
+                "4294967295.4294967295.4294967295",
+                Version::new(u32::MAX, u32::MAX, u32::MAX),
+            ),
         ] {
             assert_eq!(text.parse(), Ok(version), "{text}");
             assert_eq!(version.to_string(), text);
+            assert_eq!(version.as_str(), text);
         }
         // Too few or too many parts, an empty one, a leading zero, a sign, a letter or a space,
         // a pre-release, and a part past a `u32`.

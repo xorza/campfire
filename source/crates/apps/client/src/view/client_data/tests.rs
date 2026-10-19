@@ -1,5 +1,5 @@
 use bevy::math::{UVec2, Vec2};
-use campfire_client_files::{Blend, GroundQuad, TerrainQuads, TerrainSurface, TerrainTexture};
+use campfire_client_files::{GroundQuad, TerrainQuads, TerrainSurface, TerrainTexture};
 use campfire_math::Num;
 use campfire_store::internals::Scratch;
 
@@ -7,56 +7,27 @@ use super::*;
 use crate::view::package_source::internals::package;
 
 #[test]
-fn a_package_gives_its_units_and_its_material_files_and_skips_what_does_not_read() {
+fn a_package_gives_its_units_and_skips_a_file_that_does_not_read() {
     let scratch = Scratch::new();
     let units = br#"[units.tank]
 models = [{ model = "client/models/tank.glb", hide = ["tank.flash"] }]
 "#;
-    let flash = br#"base_color = [1.0, 1.0, 1.0, 1.0]
-emissive = [1.0, 0.0, 0.0]
-metallic = 0.0
-roughness = 1.0
-specular = 0.0
-unlit = false
-blend = { mode = "add" }
-depth_write = false
-depth_bias = 0
-double_sided = true
-"#;
-    let files = package(
-        &scratch,
-        "mode",
-        &[
-            ("client/units.toml", units),
-            ("client/materials/tank_3.toml", flash),
-            ("client/materials/broken.toml", b"blend = 1"),
-            ("client/materials/notes.txt", b"no material"),
-        ],
-    );
+    let files = package(&scratch, "mode", &[("client/units.toml", units)]);
     let none = package(&scratch, "bare", &[("data/units.toml", b"")]);
+    let broken = package(&scratch, "broken", &[("client/units.toml", b"units = 1")]);
     let mut data = ClientData::default();
     data.read_package(PackageIndex::MODE, &files);
     data.read_package(PackageIndex::new(1), &none);
-    // The tank's model, with the node it hides; a package with no units has none.
-    let tank = &data.units[0].units["tank"].models[0];
+    data.read_package(PackageIndex::new(2), &broken);
+    // The tank's model, with the node it hides; a package with no units has none, as one whose
+    // units do not read.
+    let tank = &data.of(PackageIndex::MODE).units.units["tank"].models[0];
     assert_eq!(
         (tank.model.as_str(), tank.hide.as_slice()),
         ("client/models/tank.glb", &["tank.flash".to_owned()][..])
     );
-    assert!(data.units[1].units.is_empty());
-    // The material file by its package and name; the one that does not read, and the file
-    // that is no TOML, are not there.
-    let names: Vec<&str> = data
-        .materials_of(PackageIndex::MODE)
-        .keys()
-        .map(String::as_str)
-        .collect();
-    assert_eq!(names, ["tank_3"]);
-    assert_eq!(
-        data.materials_of(PackageIndex::MODE)["tank_3"].blend,
-        Blend::Add
-    );
-    assert!(data.materials_of(PackageIndex::new(1)).is_empty());
+    assert!(data.of(PackageIndex::new(1)).units.units.is_empty());
+    assert!(data.of(PackageIndex::new(2)).units.units.is_empty());
 }
 
 #[test]
@@ -92,14 +63,16 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
         ],
     );
     let mut data = ClientData {
-        units: vec![looks.clone()],
+        packages: vec![PackageClient {
+            units: looks.clone(),
+        }],
         ..ClientData::default()
     };
-    data.read_map(&mode, &map);
+    data.read_map(&mode, &map, None);
     // The map's lights, and its one oak at (3, −2.5), 1 m up, turned 90°. A night map: the lamp
     // draws its night models, and keeps no variant.
-    assert_eq!(data.lights.unwrap().lights.len(), 1);
-    let lamp = &data.units[0].units["lamp"];
+    assert_eq!(data.lights.as_ref().unwrap().lights.len(), 1);
+    let lamp = &data.of(PackageIndex::MODE).units.units["lamp"];
     assert_eq!(lamp.models[0].model.as_str(), "client/models/lit.glb");
     assert!(lamp.variants.is_empty());
     let oak = &data.objects.objects[0];
@@ -119,11 +92,13 @@ variants = [{ conditions = ["night"], models = [{ model = "client/models/lit.glb
     );
     for files in [package(&scratch, "bare", &[]), broken] {
         let mut data = ClientData {
-            units: vec![looks.clone()],
+            packages: vec![PackageClient {
+                units: looks.clone(),
+            }],
             ..ClientData::default()
         };
-        data.read_map(&files, &map);
-        let lamp = &data.units[0].units["lamp"];
+        data.read_map(&files, &map, None);
+        let lamp = &data.of(PackageIndex::MODE).units.units["lamp"];
         assert_eq!(lamp.models[0].model.as_str(), "client/models/lamp.glb");
         assert!(data.objects.objects.is_empty());
         assert!(data.lights.is_none() && data.camera.is_none() && data.heights.is_none());
@@ -169,18 +144,14 @@ fn a_map_keeps_its_terrain_over_its_heights_and_splits_their_cells_as_it_draws_t
         };
         Binary::encode(&TerrainFile::new(quads, texture, surface).unwrap())
     };
-    let heights = Binary::encode(&grid);
     let read = |name: &str, terrain: &[u8]| {
         let files = package(
             &scratch,
             name,
-            &[
-                ("map/desert/heights.bin", heights.as_slice()),
-                ("client/maps/desert/terrain.bin", terrain),
-            ],
+            &[("client/maps/desert/terrain.bin", terrain)],
         );
         let mut data = ClientData::default();
-        data.read_map(&files, &map);
+        data.read_map(&files, &map, Some(grid.clone()));
         data
     };
     // A terrain of the grid's two cells, the first flipped, is kept, and the heights split as it

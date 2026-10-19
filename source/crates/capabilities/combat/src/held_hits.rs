@@ -1,6 +1,9 @@
+use bevy_ecs::observer::On;
 use bevy_ecs::resource::Resource;
+use bevy_ecs::system::ResMut;
 use bevy_ecs::world::World;
 use campfire_common::Tick;
+use campfire_deliveries::Died;
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
@@ -29,6 +32,14 @@ impl HeldHits {
     /// nothing.
     pub(crate) fn lands_by(&self, now: Tick) -> bool {
         self.0.iter().any(|hit| hit.lands <= now)
+    }
+
+    /// Drops each hit on the unit `died` names, which it can no more land on, as a respawn would
+    /// put the same unit back first.
+    pub(crate) fn drop_died(died: On<'_, '_, Died>, held: Option<ResMut<'_, Self>>) {
+        if let Some(mut held) = held {
+            held.0.retain(|hit| hit.damage.target != died.id);
+        }
     }
 
     /// Moves the damage of each hit that lands by `now` into `due`, in the order shot.

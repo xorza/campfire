@@ -204,7 +204,7 @@ pub(crate) fn snapshot(c: &mut Criterion) {
 /// untimed.
 pub(crate) fn state_delta(c: &mut Criterion) {
     let mut world = units_world();
-    let mut registry = units_registry();
+    let registry = units_registry();
     let mut delta = StateDelta::default();
     registry.track(&mut world, &mut delta);
     let mut copy = World::new();
@@ -258,7 +258,7 @@ pub(crate) fn state_delta(c: &mut Criterion) {
 
 /// The registry of `units_world`'s state types.
 fn units_registry() -> StateRegistry {
-    let mut registry = StateRegistry::new();
+    let mut registry = StateRegistry::builder();
     registry.register_component::<Position>();
     registry.register_component::<Velocity>();
     registry.register_component::<Health>();
@@ -267,5 +267,5 @@ fn units_registry() -> StateRegistry {
     registry.register_component::<Target>();
     registry.register_component::<Cooldowns>();
     registry.register_component::<Stats>();
-    registry
+    registry.build()
 }

@@ -1,7 +1,9 @@
 # The name players see.
 name = "mode-name"
 
-script = "scripts/mode.rhai"
+scripts = ["scripts/mode.rhai"]
+# The names its script's timers take.
+timers = ["income", "pick_end", "wave"]
 # What its players earn and spend.
 resources = ["gold"]
 
@@ -87,7 +89,6 @@ spells = "string_list"
 [state]
 phase = { type = "string", default = "pick", sync = "all" }
 first_blood = { type = "bool", default = false, sync = "all" }
-ended = { type = "bool", default = false }
 
 [params]
 pick_ms = 60000
@@ -101,9 +102,6 @@ respawn_per_level_ms = 2500
 kill_gold = 300
 first_blood_gold = 100
 assist_gold = 150
-hero_xp_base = 150
-hero_xp_per_level = 25
-xp_radius = "16.0"
 inhibitor_respawn_ms = 240000
 camp_respawn_ms = 60000
 warden_respawn_ms = 360000
@@ -364,3 +362,12 @@ name = "team-camps"
 # stand on.
 [navigation]
 spawn_tags = ["camp", "spawn"]
+
+# A creep's, a tower's or a camp's death pays its gold to the hero that killed it.
+[bounty]
+killer = "enemies:avatar"
+
+# A death's experience splits evenly among the enemy heroes within 16 m of it.
+[experience]
+track = "level"
+to = { radius = "16.0", filter = "enemies:avatar" }

@@ -1,11 +1,11 @@
 use std::slice;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::rank::Rank;
 
 /// One value for every rank, or one per rank.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum Ranked<T> {
     One(T),

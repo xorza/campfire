@@ -1,5 +1,5 @@
-use campfire_script::{NameKind, name_script_arg};
-use campfire_values::NameId;
+use campfire_script::name_script_arg;
+use campfire_values::{Article, NameId, NameKind, NameScope, Named};
 use serde::{Deserialize, Serialize};
 
 /// A slot kind of the mode: its place in the mode's `[[slots]]`. A unit's slots go kind after
@@ -27,6 +27,10 @@ impl NameId for SlotKind {
     }
 }
 
-name_script_arg!(SlotKind, NameKind::SlotKind, |ctx, name| {
+name_script_arg!(SlotKind, |ctx, name| {
     ctx.view().names().table::<SlotKind>()?.named(name)
 });
+
+impl Named for SlotKind {
+    const NAMES: NameKind = NameKind::new("slot kind", Article::A, NameScope::Match);
+}

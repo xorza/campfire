@@ -8,7 +8,13 @@ pub enum StateType {
     Num,
     Bool,
     String,
-    Entity,
-    EntityList,
+    Unit,
+    UnitList,
     Vec,
+    IntList,
+    NumList,
+    BoolList,
+    StringList,
+    /// A text that is one of the field's declared members.
+    Enum,
 }

@@ -1,13 +1,20 @@
 //! A server that stops mid-match and starts again on its data directory: within the restore
 //! window it replays its log and plays on; past it, it ends the session aborted and publishes
-//! its log; and it refuses a session of another release, naming it.
+//! its log; it cuts a torn journal at its first bad frame; and it refuses a journal of another
+//! session than its directory's, and a seed chain the session's terms do not commit to.
 
-use campfire_common::{StateHash, Tick, Version};
+use std::num::NonZeroU32;
+use std::sync::Arc;
+
+use campfire_common::{StateHash, Tick};
 use campfire_harness::{End, HashTrail, InProcessMatch, LinkModel, MatchSetup};
-use campfire_net::{Publisher, RestoreError, ServerDir, SessionDir, TickHashes};
+use campfire_log::internals::LogCheck;
+use campfire_net::internals::TickHashes;
+use campfire_net::{JournalCut, Publisher, RestoreError, ServerDir, SessionDir};
 use campfire_protocol::internals::TestKey;
-use campfire_protocol::{Entropy, Outcome, SessionLog, SessionPrivate, Signer};
+use campfire_protocol::{Entropy, Outcome, SeedChain, SessionLog, SessionPrivate, Signer};
 use campfire_runner::{Replay, Session};
+use campfire_store::DurableDir;
 use campfire_store::internals::Scratch;
 
 /// The scenario's match, its server's data in `scratch`, after 90 steps; with the state hash after
@@ -54,7 +61,7 @@ fn a_restarted_server_replays_its_log_and_plays_on() {
 }
 
 #[test]
-fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused() {
+fn a_session_past_its_window_ends_aborted_its_journal_cut_at_a_tear() {
     let scratch = Scratch::new();
     let (mut local, before) = played(&scratch);
     let cut = local.next_tick(End::Server);
@@ -66,36 +73,59 @@ fn a_session_past_its_window_ends_aborted_and_one_of_another_release_is_refused(
         .session_id();
     local.stop_server();
 
-    // The private record, at its path in the session's directory, names another release: the
-    // restore refuses it, naming the release.
+    // Under the name of another session, the directory's journal is refused, naming its own.
     let stopped = ServerDir::open(&scratch.path("data")).unwrap();
-    let path = scratch
-        .path("data/sessions")
-        .join(id.to_string())
-        .join("private");
+    let session_dir = scratch.path("data/sessions").join(id.to_string());
+    let other = scratch.path("data/sessions").join("0".repeat(64));
+    DurableDir::rename(&session_dir, &other).unwrap();
+    let refused = SessionDir::find(&stopped).unwrap().unwrap().restore().err();
+    assert!(
+        matches!(&refused, Some(RestoreError::OtherSession(session)) if *session == id),
+        "{refused:?}"
+    );
+    DurableDir::rename(&other, &session_dir).unwrap();
+
+    // The private record, at its path in the session's directory, holds another seed chain than
+    // the one the journal's terms commit to: the restore refuses it.
+    let path = session_dir.join("private");
     let ours = scratch.read(&path);
-    let mut private = SessionPrivate::decode(&ours).unwrap();
-    private.terms.release = Version::new(0, 0, 9);
     let mut bytes = Vec::new();
-    private.encode(&mut bytes);
+    let seed_chain = SeedChain::new([7; 32], NonZeroU32::MIN);
+    SessionPrivate { seed_chain }.encode(&mut bytes);
     scratch.write(&path, bytes);
     let dir = SessionDir::find(&stopped).unwrap().unwrap();
     let refused = dir.restore().err();
     assert!(
-        matches!(&refused, Some(RestoreError::OtherRelease(release)) if *release == Version::new(0, 0, 9)),
+        matches!(&refused, Some(RestoreError::OtherSeedChain)),
         "{refused:?}"
     );
-
-    // Its own release: past the window, the session ends aborted before the tick it stopped
-    // at, in the state the server left, and its log, published, replays to every hash.
     scratch.write(&path, ours);
+
+    // A journal whose tail is no whole frame, as a crash or a bad disk leaves one, is cut there:
+    // the restore logs the 5 bytes it drops, and the journal holds its whole frames alone.
+    let journal = session_dir.join("journal");
+    let whole = scratch.read(&journal);
+    scratch.write(&journal, [whole.as_slice(), &[0xAB; 5]].concat());
+    let log = LogCheck::start();
     let session = dir.restore().unwrap().unwrap();
+    assert_eq!(
+        log.take::<JournalCut>(),
+        [JournalCut {
+            session: id,
+            bytes: 5,
+        }]
+    );
+    assert_eq!(session.journal_len, u64::try_from(whole.len()).unwrap());
+    assert_eq!(scratch.read(&journal), whole);
+
+    // Past the window, the session ends aborted before the tick it stopped at, in the state the
+    // server left, and its log, published, replays to every hash.
     let key = TestKey::server();
     let file = session
         .abort(Publisher {
             data: &stopped,
             packages: local.packages(),
-            signer: &Signer::new(key, Entropy::Fixed(6)),
+            signer: &Arc::new(Signer::new(key, Entropy::Fixed(6))),
         })
         .unwrap();
     assert!(SessionDir::find(&stopped).unwrap().is_none());

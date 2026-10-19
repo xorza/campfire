@@ -8,7 +8,8 @@ use campfire_protocol::SessionLog;
 use campfire_runner::SessionWorld;
 use campfire_sim::internals::StageClock;
 use campfire_sim::{SimSet, SimWorld, StateDelta};
-use campfire_stats::{Life, Pools};
+use campfire_stats::Pools;
+use campfire_units::Life;
 use criterion::{Criterion, Throughput};
 
 use crate::fixed_session::fixed_match::FixedMatch;

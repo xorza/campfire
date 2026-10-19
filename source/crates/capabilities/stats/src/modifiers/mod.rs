@@ -2,11 +2,14 @@ use std::ops::{Deref, Range};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
+use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::world::{DeferredWorld, World};
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::StateValue;
-use campfire_sim::{SimComponent, StableId, TickRate};
+use campfire_sim::{
+    DueIndex, SimComponent, StableId, TickRate, TimedKept, TimedProcess, TimedRuns,
+};
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
 use campfire_values::ModifierId;
@@ -27,8 +30,11 @@ pub(crate) mod modifier_clocks;
 /// and what each adds to its stats: a change here derives the unit's stats again. Each
 /// instance's stack ends and stat shares sit in one buffer each, instance after instance, so a
 /// copy of a unit's modifiers, as a rollback makes, allocates a buffer per kind, not per
-/// instance. Its clocks, which derive nothing, are `ModifierClocks`, in the same order.
+/// instance. Its clocks, which derive nothing, are `ModifierClocks`, in the same order. Its
+/// hook pushes its unit into the index of the ends at each insert, a spawn's and a restore's
+/// alike.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[component(on_insert = Modifiers::pushed)]
 pub struct Modifiers {
     instances: Vec<Instance>,
     ends: Vec<StackEnd>,
@@ -66,6 +72,37 @@ impl Modifiers {
     pub fn stacked(&self) -> impl Iterator<Item = ModifierId> + Clone + '_ {
         let stacked = self.instances.iter().filter(|instance| instance.stacks > 0);
         stacked.map(|instance| instance.id)
+    }
+
+    /// The first tick an application or a stack of its instances ends, which `expire` takes; none
+    /// when none ends by a tick.
+    pub(crate) fn next_end(&self) -> Option<Tick> {
+        let ends = self.iter().filter_map(|carried| {
+            let applied = match carried.instance.lifetime.applied {
+                Some(Ends::At(until)) => Some(until),
+                Some(Ends::Never) | None => None,
+            };
+            let stack = carried.stack_ends.first().map(|end| end.until);
+            applied.into_iter().chain(stack).min()
+        });
+        ends.min()
+    }
+
+    /// Pushes the unit that carries them into the index of the ends, at their first, in a match
+    /// that ends them.
+    fn pushed(mut world: DeferredWorld<'_>, context: HookContext) {
+        let entity = context.entity;
+        let (Some(modifiers), Some(&id)) =
+            (world.get::<Self>(entity), world.get::<StableId>(entity))
+        else {
+            return;
+        };
+        let Some(at) = modifiers.next_end() else {
+            return;
+        };
+        if let Some(mut index) = world.get_resource_mut::<DueIndex<Self>>() {
+            index.push(at, id, entity);
+        }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = Carried<'_>> + Clone {
@@ -228,14 +265,7 @@ impl Modifiers {
     /// or whose stacks ending one by one all ended, but a passive, which stays with none;
     /// whether any ended.
     pub(crate) fn expire(&mut self, clocks: &mut ModifierClocks, now: Tick) -> Touched {
-        let reached = self.iter().any(|carried| {
-            matches!(carried.instance.lifetime.applied, Some(Ends::At(until)) if until <= now)
-                || carried
-                    .stack_ends
-                    .first()
-                    .is_some_and(|end| end.until <= now)
-        });
-        if !reached {
+        if self.next_end().is_none_or(|end| end > now) {
             return Touched::default();
         }
         let mut removed = false;
@@ -450,8 +480,8 @@ impl Modifiers {
         clocks.remove(at);
     }
 
-    /// Takes the numbers of `instance`, an application of the same modifier from the same source, to
-    /// the instance at `at`, and joins its lifetime, keeping the stacks, when they end, and the
+    /// Takes the numbers of `instance`, an application of the same modifier from the same source,
+    /// to the instance at `at`, and joins its lifetime, keeping the stacks, when they end, and the
     /// script state. Its interval takes the new length from the next on, and the next keeps its
     /// tick, so no refresh puts it off.
     fn renew<S, T>(&mut self, clocks: &mut ModifierClocks, at: usize, instance: NewInstance<S, T>)
@@ -546,6 +576,19 @@ impl Carried<'_> {
     }
 }
 
+/// A unit is due as the first application or stack of its modifiers ends
+/// (04-capabilities/00-overview.md, One due index for each timed process).
+impl TimedProcess for Modifiers {
+    const RUNS: TimedRuns = TimedRuns::EveryRole;
+    const KEPT: TimedKept = TimedKept::BySetters;
+    type Parts = &'static Self;
+    type Books = ();
+
+    fn due((): &(), modifiers: &Self) -> Option<Tick> {
+        modifiers.next_end()
+    }
+}
+
 impl SimComponent for Modifiers {
     const NAME: &'static str = "stats.modifiers";
     type Host = UnitEntity;
@@ -634,7 +677,7 @@ impl<'de> Deserialize<'de> for Modifiers {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
-    use bevy_ecs::bundle::Bundle;
+    use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 
     use crate::application::Application;
     use crate::modifiers::Modifiers;
@@ -642,7 +685,9 @@ pub(crate) mod internals {
 
     impl Modifiers {
         /// A unit's modifiers and their clocks, of `applications` applied in order.
-        pub fn bundle(applications: impl IntoIterator<Item = Application>) -> impl Bundle {
+        pub fn bundle(
+            applications: impl IntoIterator<Item = Application>,
+        ) -> impl Bundle<Effect: NoBundleEffect> {
             let (mut modifiers, mut clocks) = (Self::default(), ModifierClocks::default());
             for application in applications {
                 modifiers.apply(&mut clocks, application);

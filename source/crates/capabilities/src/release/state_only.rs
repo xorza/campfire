@@ -4,15 +4,20 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::event::Event;
 use bevy_ecs::lifecycle::ComponentHook;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::SystemCondition;
 use bevy_ecs::system::{IntoObserverSystem, IntoSystem};
 use bevy_ecs::world::World;
 use campfire_declare::{
-    Book, Cache, Callbacks, ColumnFill, Declarations, EntityKind, KindSpawn, KindVisitor,
-    ModuleSet, OneShot, Report, Role, Scratch,
+    Book, BuildFn, Cache, Callbacks, ColumnFill, Declarations, EntityKind, ExtendFn, Fact,
+    KindSpawn, KindVisitor, Listed, ModuleSet, OneShot, Report, Role, RuleFn, Scratch, Section,
 };
-use campfire_script::{ApiBuilder, CallParams, CallPart, RowReads, ViewColumn};
-use campfire_sim::{Breach, Capability, HostRule, SimComponent, SimResource};
+use campfire_script::{
+    ApiBuilder, CallParams, CallPart, HookSpec, PlannedCapability, RowReads, Status, ViewColumn,
+};
+use campfire_sim::{
+    Breach, Capability, HostRule, OwnResources, SimComponent, SimResource, TimedProcess,
+};
 use campfire_state_types::{Replication, StateTypes};
 use campfire_values::EngineTag;
 
@@ -58,13 +63,25 @@ impl<T: StateTypes> Declarations for StateOnly<'_, T> {
 
     fn check<C: SimComponent>(&mut self, _: fn(&World) -> Result<(), Breach>) {}
 
-    fn book<B: Book>(&mut self) {}
+    fn book<B: Book>(&mut self, _: BuildFn<B>) {}
+
+    fn fact<F: Fact>(&mut self, _: BuildFn<F>) {}
+
+    fn extend<B: Send + Sync + 'static>(&mut self, _: ExtendFn<B>) {}
+
+    fn rule(&mut self, _: RuleFn) {}
+
+    fn section<S: Section>(&mut self) {}
+
+    fn listed<L: Listed>(&mut self) {}
 
     fn sets<S: ModuleSet>(&mut self) {}
 
     fn scratch<R: Scratch>(&mut self) {}
 
     fn cache<R: Cache>(&mut self) {}
+
+    fn timed<P: TimedProcess>(&mut self) {}
 
     fn report<R: Report>(&mut self) {}
 
@@ -88,11 +105,17 @@ impl<T: StateTypes> Declarations for StateOnly<'_, T> {
 
     fn api(&mut self, _: fn(&mut ApiBuilder<'_>)) {}
 
+    fn hook<H: HookSpec>(&mut self, _: Status) {}
+
+    fn plan_hook<H: HookSpec>(&mut self, _: PlannedCapability) {}
+
     fn observer<E: Event, B: Bundle, M>(&mut self, _: impl IntoObserverSystem<E, B, M>) {}
 
-    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, (), M> + 'static) {}
+    fn removals<C: Component>(&mut self) {}
 
-    fn non_send_loaded<R: 'static>(&mut self) {}
+    fn one_shot<R: OneShot, M>(&mut self, _: impl IntoSystem<R::In, R::Out, M> + 'static) {}
+
+    fn loaded<R: Resource>(&mut self) {}
 
     fn stages_run_if<M>(&mut self, _: impl SystemCondition<M> + Clone) {}
 
@@ -101,4 +124,8 @@ impl<T: StateTypes> Declarations for StateOnly<'_, T> {
     fn on_insert<C: Component>(&mut self, _: ComponentHook) {}
 
     fn non_send<R: 'static>(&mut self, _: fn(&World, &Role) -> Option<R>) {}
+}
+
+impl<T: StateTypes> OwnResources for StateOnly<'_, T> {
+    fn own<R: Resource>(&mut self) {}
 }

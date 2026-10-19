@@ -1,26 +1,26 @@
 use std::num::NonZeroU32;
 
-use campfire_actions::ActionTarget;
-use campfire_bots::{BotScript, OrderScript};
+use campfire_actions::{ActionTarget, TypeSlotsData};
+use campfire_bots::{BotNames, BotScript, OrderScript};
 use campfire_capabilities::Order;
-use campfire_common::PlayerSlot;
+use campfire_common::{DeclaredName, PlayerSlot};
 use campfire_harness::{FixedSession, MatchUnits};
 use campfire_math::Num;
 use campfire_mode::{MatchEnd, OptionPicks, OptionValue};
 use campfire_orders::OrdersAction;
 use campfire_package::ModePackages;
 use campfire_players::{OrderUnits, PlayersWorld};
-use campfire_production::{BuildTarget, Site, TrainQueue};
+use campfire_production::{Site, TrainQueue};
 use campfire_projectiles::Projectile;
 use campfire_protocol::{InputRules, SlotPlan};
+use campfire_script::MatchNames;
 use campfire_sim::StableId;
-use campfire_stats::Life;
-use campfire_units::UnitsWorld;
-use campfire_values::{DeclaredName, Names, ResourceId};
+use campfire_units::{BuildTarget, GroundPoint, Life, UnitsWorld};
+use campfire_values::ResourceId;
 
 use crate::failure::Failure;
 use crate::match_play::{CENTER, DOZER, MatchPlay};
-use crate::pins::{BOT_TYPES, BotBase, FactorySteps, FightSteps, ProductionSteps};
+use crate::pins::{BOT_TYPES, BotBase, CRUSADERS, FactorySteps, FightSteps, HZ, ProductionSteps};
 
 /// The unit types the play makes beside the start's.
 const BARRACKS: &str = "americabarracks";
@@ -29,10 +29,7 @@ const FACTORY: &str = "americawarfactory";
 const CRUSADER: &str = "americatankcrusader";
 
 /// The most ticks the play waits for a step, past which it never ends.
-const STEP_LIMIT: u64 = 30 * 60 * 5;
-
-/// How many crusaders the war factory trains and sends to fight, as the money left pays for.
-const CRUSADERS: usize = 3;
+const STEP_LIMIT: u64 = HZ * 60 * 5;
 
 /// The most trains a factory queues, its `MaxQueueEntries`, which the play keeps it below.
 const QUEUE: usize = 9;
@@ -98,7 +95,8 @@ struct Building {
     at: [i64; 3],
 }
 
-/// What the play reads of its match: player 1's money, and the slots of its types' actions.
+/// What the play reads of its match: player 1's money, which the match names, and the slots of
+/// its types' actions.
 #[derive(Debug)]
 struct Play<'a> {
     packages: &'a ModePackages,
@@ -115,16 +113,6 @@ impl SkirmishPlay {
         rate: NonZeroU32,
         failures: &mut Vec<Failure>,
     ) -> Option<SkirmishSteps> {
-        let names: Names<ResourceId> = packages
-            .data()
-            .resources
-            .iter()
-            .map(DeclaredName::as_str)
-            .collect();
-        let Some(money) = names.named("money") else {
-            failures.push(Failure::NoMoney);
-            return None;
-        };
         let start_money: OptionValue = START_MONEY.parse().expect("the play's option");
         let options = &packages.data().options;
         let picks = match OptionPicks::named(options, &[start_money]) {
@@ -136,7 +124,9 @@ impl SkirmishPlay {
         };
         let script = OrderScript::parse(BUILDER).map_err(Failure::BotOrders);
         let bot = script.and_then(|script| {
-            BotScript::new(&script, &packages.unit_types()).map_err(Failure::BotType)
+            let books = packages.name_books();
+            let names = BotNames::new(&books);
+            BotScript::new(&script, &names).map_err(Failure::BotNames)
         });
         let bot = match bot {
             Ok(bot) => bot,
@@ -148,11 +138,17 @@ impl SkirmishPlay {
         let plan = [SlotPlan::Player, SlotPlan::Bot];
         let session =
             FixedSession::planned(packages, rate, InputRules::ROOMY, plan).picked(picks.places());
+        let mut playing = MatchPlay::new(session.start());
+        let names = playing.game().resource::<MatchNames>();
+        let Some(money) = names.named::<ResourceId>("money") else {
+            failures.push(Failure::NoMoney);
+            playing.end();
+            return None;
+        };
         let play = Play {
             packages: session.packages(),
             money,
         };
-        let mut playing = MatchPlay::new(session.start());
         let played = play.steps(&mut playing, bot);
         playing.end();
         match played {
@@ -190,7 +186,10 @@ impl Play<'_> {
         let [x, z, angle] = BARRACKS_AT.map(Num::int);
         let build = OrdersAction::Build {
             slot: self.slot(DOZER, "build_americabarracks")?,
-            target: BuildTarget::Point { x, z, angle },
+            target: BuildTarget::Point {
+                at: GroundPoint { x, z },
+                angle,
+            },
         };
         let barracks_ticks = self.until(play, dozer, build, |play| {
             let built = play.owned(BARRACKS, 0)?;
@@ -240,7 +239,10 @@ impl Play<'_> {
             let [x, z, angle] = building.at.map(Num::int);
             let build = OrdersAction::Build {
                 slot: self.slot(DOZER, building.action)?,
-                target: BuildTarget::Point { x, z, angle },
+                target: BuildTarget::Point {
+                    at: GroundPoint { x, z },
+                    angle,
+                },
             };
             *ticks = self.until(play, dozer, build, |play| {
                 let built = play.owned(building.unit, 0)?;
@@ -264,8 +266,9 @@ impl Play<'_> {
             slot: self.slot(FACTORY, "train_americatankcrusader")?,
             target: ActionTarget::None,
         };
+        let crusaders = usize::from(CRUSADERS);
         let mut train_ticks = 0;
-        while play.owned(CRUSADER, 0)?.len() < CRUSADERS {
+        while play.owned(CRUSADER, 0)?.len() < crusaders {
             if train_ticks == STEP_LIMIT {
                 return Err(Failure::ProductionStep(train));
             }
@@ -273,7 +276,7 @@ impl Play<'_> {
                 .unit(factory)
                 .get::<TrainQueue>()
                 .map_or(0, |queue| queue.entries().len());
-            if play.owned(CRUSADER, 0)?.len() + queued < CRUSADERS && queued < QUEUE {
+            if play.owned(CRUSADER, 0)?.len() + queued < crusaders && queued < QUEUE {
                 play.order(&[Order::one(factory, train)]);
             }
             play.step();
@@ -377,7 +380,7 @@ impl Play<'_> {
             .content()
             .units
             .get(unit)
-            .and_then(|held| held.slots.get(&command))
+            .and_then(|held| held.section::<TypeSlotsData>()?.0.get(&command))
             .and_then(|slots| slots.iter().position(|held| held.as_str() == action))
             .ok_or(Failure::NoAction { unit, action })?;
         Ok(u8::try_from(at).expect("a unit's slots fit a u8"))

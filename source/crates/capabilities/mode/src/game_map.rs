@@ -2,8 +2,9 @@ use std::collections::BTreeSet;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use campfire_script::{ScriptList, ScriptText, ScriptValue, plain_script_arg};
-use campfire_values::{DeclaredName, NameId, Names};
+use campfire_common::DeclaredName;
+use campfire_script::{ScriptHandle, ScriptList, ScriptText, ScriptValue, plain_script_arg};
+use campfire_values::{NameId, Names};
 
 use crate::marker::{Marker, MarkerInfo};
 use crate::marker_spec::MarkerSpec;
@@ -12,7 +13,7 @@ use crate::marker_tag::MarkerTag;
 /// `ctx.map`: the map's paths, by name, and its markers, in the map's order, with the tags they
 /// hold. A clone shares them, as each `ctx.map` read gives one.
 #[derive(Debug, Clone, Default)]
-pub struct GameMap(Rc<MapParts>);
+pub(crate) struct GameMap(Rc<MapParts>);
 
 /// The parts of a `GameMap`.
 #[derive(Debug, Default)]
@@ -32,7 +33,7 @@ impl GameMap {
     /// The map of `paths`, by name, and `markers`, their params as scripts read them; its tags
     /// are its markers' and the mode's `spawn_tags`, which a script may name on a map with no
     /// marker of one, as a mode names the markers it spawns at whatever map it plays.
-    pub fn new(
+    pub(crate) fn new(
         paths: impl Iterator<Item = ScriptText>,
         markers: &[MarkerSpec],
         spawn_tags: &[DeclaredName],
@@ -106,12 +107,39 @@ impl GameMap {
 
 plain_script_arg!(GameMap);
 
+impl ScriptHandle for GameMap {
+    const NAME: &'static str = "Map";
+    const TITLE: &'static str = "Map, `ctx.map`";
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_math::Vec3;
+
+    use crate::game_map::GameMap;
+    use crate::internals::MarkerOf;
+
+    impl GameMap {
+        /// The point of the first marker of `of.tag`, in the map's order, whose param `of.param`
+        /// is the text `of.value`; none for no such marker, or one of no point.
+        pub(crate) fn point_of(&self, of: MarkerOf<'_>) -> Option<Vec3> {
+            let tag = self.0.tags.named(of.tag)?;
+            let named = self.held(tag).iter().find_map(|&at| {
+                let info = self.0.markers[at as usize].info();
+                let param = info.params.get(of.param)?.into_text()?;
+                (param.as_str() == of.value).then_some(info)
+            })?;
+            named.pos
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
 
+    use campfire_common::DeclaredName;
     use campfire_script::ScriptText;
-    use campfire_values::DeclaredName;
 
     use crate::game_map::GameMap;
     use crate::marker_spec::MarkerSpec;

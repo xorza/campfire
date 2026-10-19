@@ -1,6 +1,8 @@
+use campfire_common::DeclaredName;
+use campfire_declare::{Section, SectionTable};
 use campfire_math::Num;
 use campfire_script::{DataSection, DataTable};
-use campfire_values::{DeclaredName, FilterData};
+use campfire_values::FilterData;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -67,9 +69,14 @@ impl<'de> Deserialize<'de> for AreaData {
 }
 
 impl DataSection for AreaData {
-    const TABLE: DataTable = DataTable::Area;
+    const TABLE: DataTable = DataTable::new("A unit type's `area`");
 }
 
 impl DataSection for AreaInsideData {
-    const TABLE: DataTable = DataTable::AreaInside;
+    const TABLE: DataTable = DataTable::new("An area's `inside`");
+}
+
+impl Section for AreaData {
+    const TABLE: SectionTable = SectionTable::DeliveryType;
+    const KEY: &'static str = "area";
 }

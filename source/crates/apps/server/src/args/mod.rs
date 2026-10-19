@@ -5,7 +5,7 @@ use std::time::Duration;
 use campfire_bots::{OrderScript, OrderScriptReadError};
 use campfire_common::MapName;
 use campfire_mode::OptionValue;
-use campfire_net::{ServerBots, SessionTimes, SlotBotFile};
+use campfire_net::{SessionTimes, SlotBotFile, SlotScript};
 use campfire_visibility::{HostVisibility, SettingValue};
 use clap::Parser;
 
@@ -96,10 +96,18 @@ impl From<CommandLine> for Args {
     }
 }
 
+/// The scripts of the server's bots as their files read, their names not resolved yet: one for
+/// each slot the command line gives a bot, and the takeover script.
+#[derive(Debug)]
+pub(crate) struct BotScripts {
+    pub(crate) slots: Vec<SlotScript>,
+    pub(crate) takeover: Option<OrderScript>,
+}
+
 impl Args {
-    /// The server's bots, their scripts read from their files; an error naming a file that does
+    /// The scripts of the server's bots, read from their files; an error naming a file that does
     /// not read.
-    pub(crate) fn server_bots(&self) -> Result<ServerBots, OrderScriptReadError> {
+    pub(crate) fn bot_scripts(&self) -> Result<BotScripts, OrderScriptReadError> {
         let slots = self
             .bots
             .iter()
@@ -110,7 +118,7 @@ impl Args {
             .as_deref()
             .map(OrderScript::read)
             .transpose()?;
-        Ok(ServerBots { slots, takeover })
+        Ok(BotScripts { slots, takeover })
     }
 }
 

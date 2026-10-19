@@ -19,8 +19,9 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 | `prediction` | What only the owner's prediction reads |
 | `resources`, `supply`, `queues`, `player_modifiers` | A player's |
 | `match` | The match's public state: relations, its end, who is out of play |
-| `mode_state` | The mode's script state |
+| `mode_state` | The state of the mode's own script |
 | `unit_state_owner`, `unit_state_team`, `unit_state_all` | A unit's script state of each `sync` but `none` |
+| `player_state_owner`, `player_state_team`, `player_state_all` | A player's script state of each `sync` but `none` |
 | `server` | What never leaves the server |
 
 - **One kind for each type.** A filter hides whole components, so a component of two kinds is split along them, as `Pools` into `Life` and `Pools`, and `ActionSlots` into `ActionSlots` and `SlotTimes`.
@@ -59,6 +60,7 @@ Who receives each part of the state, and how a mode and its host set it. A mode 
 
 - **Each capability names its state types once.** A module's declarations list every type it adds, and the install, the network's registration and the data filters all read that list; each type declares how it is sent, once, on insert, on change, predicted, or never.
 - **One replicon filter for each kind.** Units keep their vision rooms; the player and match entities stand in every team's room, so every seated link and spectator receives them.
+- **An entity spawns with its replication.** On the server, each kind's marker requires `Replicate`, empty `Rooms` and, of a kind its owner predicts, a `PredictionTarget` of no link, so an entity spawns whole; its show after the sim tick it came in fills its rooms and its owner's link in place, as an observer of the marker lists it, so no link receives it before the tick it replicates in, and a link's `LinkOf` requires its `ReplicationSender`. Refused: the parts inserted at the show, a second move of each entity between archetypes; and the rooms filled as the marker comes, which showed the match's entities in the frame that opened the match, before its first tick, and left the client's match unstarted.
 - **An owner changes by an insert alone.** `Owner` is immutable, so a change of owner is a new insert each filter follows by its observers, and no code writes an owner in place, where a filter would keep the old one.
 - **A unit's owner is a player of its team.** The owner's client then holds its unit wherever its team sees it, with no path around the team's vision; a change of owner to another team moves the unit with it, as a capture does in Zero Hour and Dominate in Dota.
 

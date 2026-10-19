@@ -1,30 +1,29 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use campfire_client_files::Blend;
+use campfire_client_files::{Blend, TeamPaint};
 
 use crate::gltf::glb_builder::GlbBuilder;
 use crate::gltf::gltf_document::{Attributes, Mesh, Node, Primitive, TextureRef};
+use crate::pose::Pose;
+use crate::zero_hour::axes;
 use crate::zero_hour::error::ModelError;
 use crate::zero_hour::format::w3d::hierarchy::Hierarchy;
 use crate::zero_hour::format::w3d::hlod::SubObject;
 use crate::zero_hour::format::w3d::w3d_mesh::{Pass, Stage, VertexMaterial, W3dMesh};
 use crate::zero_hour::game_path;
-use crate::zero_hour::model_import::NamedMaterial;
 use crate::zero_hour::model_import::model_textures::ModelTextures;
 use crate::zero_hour::model_import::w3d_material::{
     self, KeyMaterial, MaterialKey, Source, Surface,
 };
 use crate::zero_hour::model_parts::{ModelParts, Part, PivotName};
-use crate::zero_hour::pose::{self, Pose};
 
-/// A model as it is built: its glTF, its materials by their keys, the files they need, and the
-/// textures no archive holds.
+/// A model as it is built: its glTF, its materials by their keys, and the textures no archive
+/// holds.
 #[derive(Debug)]
 pub(super) struct ModelBuilder {
     name: String,
     pub(super) glb: GlbBuilder,
     keys: Vec<MaterialKey>,
-    pub(super) materials: Vec<NamedMaterial>,
     pub(super) missing_textures: BTreeSet<String>,
 }
 
@@ -35,7 +34,6 @@ impl ModelBuilder {
             name: name.to_owned(),
             glb: GlbBuilder::new(),
             keys: Vec::new(),
-            materials: Vec::new(),
             missing_textures: BTreeSet::new(),
         }
     }
@@ -55,13 +53,13 @@ impl ModelBuilder {
         {
             return Err(ModelError::Pivot);
         }
-        let poses = Pose::of_each(&hierarchy.pivots);
+        let poses = hierarchy.poses();
         for pivot in &hierarchy.pivots {
-            let pose = Pose::of(pivot);
+            let pose = pivot.pose();
             self.glb.document.nodes.push(Node {
                 name: pivot.name.clone(),
-                translation: Some(pose::y_up(pose.translation)),
-                rotation: Some(pose::y_up_rotation(pose.rotation)),
+                translation: Some(axes::y_up(pose.translation)),
+                rotation: Some(axes::y_up_rotation(pose.rotation)),
                 ..Node::default()
             });
         }
@@ -180,8 +178,8 @@ impl ModelBuilder {
         let mut normals = Vec::with_capacity(mesh.normals.len());
         for (vertex, (position, normal)) in mesh.positions.iter().zip(&mesh.normals).enumerate() {
             let pose = pose_of(vertex)?;
-            positions.push(pose::y_up(pose.place(*position)));
-            normals.push(pose::y_up(pose.rotate(*normal)));
+            positions.push(axes::y_up(pose.place(*position)));
+            normals.push(axes::y_up(pose.rotate(*normal)));
         }
         Self::fill_zero_normals(&positions, &mesh.triangles, &mut normals);
         let position = self.glb.positions(&positions);
@@ -220,8 +218,10 @@ impl ModelBuilder {
             }
             for ((texture, shader, material), indices) in groups {
                 let shader = *mesh.shader(shader);
+                let surface = self.surface(mesh, texture, textures);
                 let key = MaterialKey {
-                    surface: self.surface(mesh, texture, textures),
+                    team: Self::team_paint(mesh, true, texture, &surface),
+                    surface,
                     source: Source::Pass {
                         shader,
                         material: *mesh.material(material),
@@ -260,8 +260,10 @@ impl ModelBuilder {
             }
             let texcoord = Some(self.coordinates(detail, mesh.positions.len()));
             for ((texture, _), (blend, indices)) in groups {
+                let surface = self.surface(mesh, texture, textures);
                 let key = MaterialKey {
-                    surface: self.surface(mesh, texture, textures),
+                    team: Self::team_paint(mesh, false, texture, &surface),
+                    surface,
                     source: Source::Detail { blend },
                     two_sided: mesh.two_sided(),
                     depth_bias,
@@ -318,6 +320,20 @@ impl ModelBuilder {
     /// What a triangle of the texture `id` of `mesh` is drawn with: nothing for none, the
     /// archives' file of its name, or `MissingTexture` for a name no archive holds, which the
     /// report names.
+    /// How a team colors a material of `mesh`, of a pass's vertex materials if `pass`, of the
+    /// texture `id` that draws as `surface`: a texture no archive holds draws as the game's
+    /// `MissingTexture`, which no team recolors.
+    fn team_paint(mesh: &W3dMesh, pass: bool, id: Option<u32>, surface: &Surface) -> TeamPaint {
+        let texture = id
+            .filter(|_| matches!(surface, Surface::Texture { .. }))
+            .map(|id| {
+                mesh.textures[usize::try_from(id).expect("a u32 fits usize")]
+                    .name
+                    .as_str()
+            });
+        w3d_material::team_paint(&mesh.name, pass, texture)
+    }
+
     fn surface(&mut self, mesh: &W3dMesh, id: Option<u32>, textures: &ModelTextures) -> Surface {
         let Some(id) = id else {
             return Surface::Untextured;
@@ -381,28 +397,20 @@ impl ModelBuilder {
         }
     }
 
-    /// The glTF material of `key`, the model's `<name>_<index>`, made at its first use, and the
-    /// material file beside it when its key gives one.
+    /// The glTF material of `key`, the model's `<name>_<index>`, made at its first use.
     fn material(&mut self, key: MaterialKey) -> Result<usize, ModelError> {
         if let Some(at) = self.keys.iter().position(|known| *known == key) {
             return Ok(at);
         }
         let name = format!("{}_{}", self.name, self.keys.len());
         let model = game_path::model(&self.name)?;
-        let KeyMaterial {
-            mut gltf,
-            texture,
-            file,
-        } = key.convert(&name, &model)?;
+        let KeyMaterial { mut gltf, texture } = key.convert(&name, &model)?;
         gltf.pbr.texture = texture.map(|texture| TextureRef {
             index: self
                 .glb
                 .texture(texture.uri, texture.wrap_s, texture.wrap_t),
         });
         let at = self.glb.material(gltf);
-        if let Some(file) = file {
-            self.materials.push(NamedMaterial { name, file });
-        }
         self.keys.push(key);
         debug_assert_eq!(at, self.keys.len() - 1, "a key is its material's index");
         Ok(at)

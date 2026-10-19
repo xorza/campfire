@@ -3,7 +3,9 @@
 //! configuration, one canonical form and one error type. A proxy crate: the formats' calls, which
 //! `clippy.toml` denies every other crate, are made here alone.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::disallowed_methods,
     clippy::disallowed_types,
@@ -19,18 +21,22 @@ mod error;
 mod json;
 mod json_value;
 mod sink;
+mod struct_fields;
 mod toml;
 #[cfg(feature = "internals")]
 mod toml_document;
 mod toml_table;
+mod toml_value;
 
 pub use crate::binary::{Binary, Taken};
 pub use crate::error::{BinaryError, JsonError, TaggedError, TomlError};
 pub use crate::json::Json;
 pub use crate::json_value::JsonValue;
 pub use crate::sink::Sink;
+pub use crate::struct_fields::StructFields;
 pub use crate::toml::Toml;
 pub use crate::toml_table::TomlTable;
+pub use crate::toml_value::TomlValue;
 
 /// What the tests of the engine's crates use of the formats: a TOML document they edit, and its
 /// values.

@@ -1,13 +1,33 @@
 use campfire_math::Num;
 use campfire_values::Distance;
 use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// How far an action reaches. In data: meters, or `global`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionRange {
-    Meters(Num),
+    Meters(Distance),
     Global,
+}
+
+impl ActionRange {
+    /// A reach of `meters`, which a caller gives never negative.
+    pub const fn meters(meters: Num) -> Self {
+        match Distance::new(meters) {
+            Some(meters) => Self::Meters(meters),
+            None => panic!("a range is never negative"),
+        }
+    }
+}
+
+/// As data writes it: its meters, or `global`.
+impl Serialize for ActionRange {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Meters(meters) => meters.get().serialize(serializer),
+            Self::Global => serializer.serialize_str("global"),
+        }
+    }
 }
 
 /// Every value that is not a range fails with the one message, a word or a number past what a
@@ -27,9 +47,7 @@ impl<'de> Deserialize<'de> for ActionRange {
         }
         let refused = || D::Error::custom("a range is meters from 0, or global");
         match Written::deserialize(deserializer).map_err(|_| refused())? {
-            Written::Meters(meters) => Distance::new(meters)
-                .map(|meters| Self::Meters(meters.get()))
-                .ok_or_else(refused),
+            Written::Meters(meters) => Distance::new(meters).map(Self::Meters).ok_or_else(refused),
             Written::Word(Word::Global) => Ok(Self::Global),
         }
     }
@@ -50,12 +68,12 @@ mod tests {
         let read = |value: &str| {
             Toml::parse::<Field>(&format!("range = {value}")).map(|field| field.range)
         };
-        assert_eq!(read("5").unwrap(), ActionRange::Meters(Num::int(5)));
+        assert_eq!(read("5").unwrap(), ActionRange::meters(Num::int(5)));
         assert_eq!(
             read("\"1.25\"").unwrap(),
-            ActionRange::Meters(Num::int(5) / Num::int(4))
+            ActionRange::meters(Num::int(5) / Num::int(4))
         );
-        assert_eq!(read("0").unwrap(), ActionRange::Meters(Num::ZERO));
+        assert_eq!(read("0").unwrap(), ActionRange::Meters(Distance::ZERO));
         assert_eq!(read("\"global\"").unwrap(), ActionRange::Global);
         for refused in ["-1", "\"-0.5\"", "\"far\"", "1.5", "1099511627776"] {
             let error = read(refused).unwrap_err().to_string();

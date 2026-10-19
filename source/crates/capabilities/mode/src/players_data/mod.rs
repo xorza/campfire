@@ -33,7 +33,7 @@ impl Default for PlayersData {
 }
 
 impl DataSection for PlayersData {
-    const TABLE: DataTable = DataTable::Players;
+    const TABLE: DataTable = DataTable::new("The mode's `[players]`");
 }
 
 #[cfg(test)]

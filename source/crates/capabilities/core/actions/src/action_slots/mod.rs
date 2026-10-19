@@ -1,12 +1,14 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::QueryData;
 use bevy_ecs::world::World;
-use campfire_declare::PerType;
+use campfire_declare::{BookCx, BookError, BookPlace, ByType, PerType};
 use campfire_math::Num;
+use campfire_script::UnknownName;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentPredicted};
 use campfire_units::UnitEntity;
-use campfire_values::{ActionId, Rank, Relation, TagSet};
+use campfire_values::{ActionId, Named, Rank, Relation, TagSet};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -15,14 +17,18 @@ use crate::action_book::ActionBook;
 use crate::action_kind::ActionKind;
 use crate::action_range::ActionRange;
 use crate::action_slots::action_progress::ActionProgress;
+use crate::action_slots::action_progress::progress_dues::ProgressDues;
 use crate::action_slots::slot_times::SlotTimes;
 use crate::rank_values::{ChargeRule, RankValues};
 use crate::slot_kind::SlotKind;
 use crate::slot_kind_book::SlotKindBook;
+use crate::type_slots_data::TypeSlotsData;
 
 pub(crate) mod action_progress;
+pub(crate) mod caster;
 pub(crate) mod slot_times;
 pub(crate) mod timed_slots;
+pub(crate) mod use_group;
 
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank,
 /// whose times its `SlotTimes` holds, and what it has under way its `ActionProgress`.
@@ -59,6 +65,43 @@ impl ActionSlot {
 }
 
 impl ActionSlots {
+    /// The slots each unit type that stands spawns with of its package's actions, kind after kind,
+    /// each at its kind's first rank, as its `slots` places them; an error for a kind the mode
+    /// does not declare or an action its package does not have. An inventory and a use slot add
+    /// their own empty slots to the type's.
+    pub fn book(cx: &BookCx<'_>) -> Result<ByType<Self>, BookError> {
+        let kinds = &cx.book::<SlotKindBook>()?.0;
+        let actions = cx.book::<ActionBook>()?;
+        let mut book = ByType::default();
+        for unit in cx.standing() {
+            let Some(slots) = unit.data.section::<TypeSlotsData>() else {
+                continue;
+            };
+            let unknown =
+                |name| BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name);
+            let mut held = Vec::new();
+            for (kind, ids) in &slots.0 {
+                let named = kinds.names().named(kind.as_str());
+                let kind = named.ok_or_else(|| unknown(UnknownName::new(SlotKind::NAMES, kind)))?;
+                let rank = kinds.first_rank(kind);
+                for id in ids {
+                    let action = actions.names().named((unit.package, id.as_str()));
+                    let action =
+                        action.ok_or_else(|| unknown(UnknownName::new(ActionId::NAMES, id)))?;
+                    held.push((action, kind, rank));
+                }
+            }
+            if held.is_empty() {
+                continue;
+            }
+            held.sort_by_key(|&(_, kind, _)| kind);
+            book.set(unit.unit_type, Self::new(held));
+        }
+        Ok(book)
+    }
+}
+
+impl ActionSlots {
     /// The slot of the first learned weapon of these slots, of `book`, whose filter selects a unit
     /// of `tags` its unit regards with `relation`, ready or not; or with `None`, the first learned
     /// weapon at all.
@@ -86,14 +129,14 @@ impl ActionSlots {
         let ActionRange::Meters(range) = self.range_in(book, slot) else {
             panic!("a build's and a gather's ranks reach in meters, as their book checked");
         };
-        range
+        range.get()
     }
 
     /// The kind of the action in `slot`, as `book` gives it; none for a slot that is missing or
     /// holds none.
     pub fn kind_in(&self, book: &ActionBook, slot: u8) -> Option<ActionKind> {
         let action = self.slot(slot)?.action?;
-        Some(book.get(action)?.kind.kind())
+        Some(book.get(action)?.kind)
     }
 
     /// The most slots a unit holds: every index a `u8` holds.
@@ -129,6 +172,32 @@ impl ActionSlots {
         });
         self.insert(kind, added);
         self
+    }
+
+    /// The same slots with `actions` in `kind` at `rank`, after the slots of that kind, as a new
+    /// unit's are, before it has times.
+    #[must_use]
+    pub fn with_granted(
+        mut self,
+        kind: SlotKind,
+        actions: &[ActionId],
+        rank: Option<Rank>,
+    ) -> Self {
+        self.insert(kind, Self::granted(kind, actions, rank));
+        self
+    }
+
+    /// The slots of `actions`, in `kind` at `rank`, as a grant adds them.
+    fn granted(
+        kind: SlotKind,
+        actions: &[ActionId],
+        rank: Option<Rank>,
+    ) -> impl ExactSizeIterator<Item = ActionSlot> + '_ {
+        actions.iter().map(move |&action| ActionSlot {
+            action: Some(action),
+            kind,
+            rank,
+        })
     }
 
     /// Puts `added`, slots of `kind`, after the slots of that kind it has; the slots of later
@@ -179,34 +248,42 @@ impl ActionSlots {
     }
 }
 
-/// A unit's slot table, to change, with the parts that follow each change: the slots' times, and
-/// what it has under way.
-#[derive(Debug)]
-pub struct SlotsMut<'a> {
-    pub slots: &'a mut ActionSlots,
-    pub times: &'a mut SlotTimes,
-    pub progress: &'a mut ActionProgress,
+/// A unit's slot table, to change, with the parts that follow each change of its slots: their
+/// times, and what it has under way, one entry of each for each slot, so a change of the slots
+/// changes the others with it, and none gets out of step.
+#[derive(QueryData, Debug)]
+#[query_data(mutable, derive(Debug))]
+pub struct SlotsMut {
+    slots: &'static mut ActionSlots,
+    times: &'static mut SlotTimes,
+    progress: &'static mut ActionProgress,
 }
 
-impl SlotsMut<'_> {
+impl SlotsMutItem<'_, '_> {
+    pub fn slots(&self) -> &ActionSlots {
+        &self.slots
+    }
+
+    /// What the unit has under way, to change through its own mutators, which leave its slots.
+    pub fn progress(&mut self) -> &mut ActionProgress {
+        &mut self.progress
+    }
+
     /// Puts `actions` in `kind` at `rank`, each ready at once, after the slots of that kind it
     /// has: the slots of later kinds, and an action under way or cut from one, move along.
     pub fn grant(&mut self, kind: SlotKind, actions: &[ActionId], rank: Option<Rank>) {
-        let added = actions.iter().map(|&action| ActionSlot {
-            action: Some(action),
-            kind,
-            rank,
-        });
-        let at = self.slots.insert(kind, added);
+        let at = self
+            .slots
+            .insert(kind, ActionSlots::granted(kind, actions, rank));
         self.times.insert(at, actions.len());
         self.progress.slots_added(at, actions.len());
     }
 
     /// Puts `action`, or none, in `slot` afresh: ready at once, with no charges and no toggle
     /// on, as a slot an item fills or leaves; what is under way from the slot stops, a channel
-    /// cut.
-    pub fn fill(&mut self, slot: u8, action: Option<ActionId>) {
-        self.progress.slot_emptied(slot);
+    /// cut, which makes its unit due in `dues`.
+    pub fn fill(&mut self, slot: u8, action: Option<ActionId>, dues: &mut ProgressDues<'_>) {
+        self.progress.slot_emptied(slot, dues);
         self.slots.slots[usize::from(slot)].action = action;
         self.times.reset(slot);
     }

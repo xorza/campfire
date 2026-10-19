@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 
 /// A kind of damage, by its place in the mode's `[combat] damage_kinds`.
@@ -21,6 +22,10 @@ impl NameId for DamageKind {
     fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+impl Named for DamageKind {
+    const NAMES: NameKind = NameKind::new("damage kind", Article::A, NameScope::Match);
 }
 
 #[cfg(feature = "internals")]

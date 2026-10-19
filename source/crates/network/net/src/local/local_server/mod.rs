@@ -9,11 +9,10 @@ use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
+use campfire_common::ErrorReport;
 use campfire_common::{ChannelBinding, PlayerSlot, TlsKey};
-use campfire_log::ErrorReport;
 use campfire_mode::OptionValue;
 use campfire_package::ModePackages;
-use campfire_protocol::Signer;
 use campfire_quic::{LinkBinding, QuicEndpoint};
 use campfire_sim::TickRate;
 use campfire_store::Worker;
@@ -33,14 +32,15 @@ use crate::os::Os;
 use crate::pace::Pace;
 use crate::session_times::SessionTimes;
 use crate::sim_client::server_pin::ServerPin;
+use crate::sim_server::ServerFrameSystems;
 use crate::sim_server::lobby::{Lobby, LobbyOpening};
-use crate::sim_server::pending_restore::PendingRestore;
-use crate::sim_server::server_bots::{ServerBots, SlotBot};
+use crate::sim_server::pending_restore::{PendingRestore, UncheckedRestore};
+use crate::sim_server::server_bots::{ServerBots, SlotScript};
 use crate::sim_server::server_dir::ServerDir;
 use crate::sim_server::server_setup::ServerSetup;
 use crate::sim_server::session_dir::{Publisher, SessionDir};
 use crate::sim_server::sim_server_plugins::SimServerPlugins;
-use crate::sim_server::sim_server_world::{SimServerWorld, StopRequest};
+use crate::sim_server::sim_server_world::{SessionOpening, SimServerWorld, StopRequest};
 
 pub(crate) mod error;
 
@@ -95,7 +95,7 @@ pub struct LocalServerSetup {
     /// Its data directory, which it holds locked while it runs.
     pub data: PathBuf,
     /// The bots it plays, none in slot 0.
-    pub bots: Vec<SlotBot>,
+    pub bots: Vec<SlotScript>,
     /// The values the player picks of the mode's options, the others their defaults.
     pub options: Vec<OptionValue>,
     pub pace: Arc<Pace>,
@@ -124,28 +124,27 @@ impl LocalServer {
             os,
         } = setup;
         let dir = ServerDir::open(&data).map_err(LocalServerError::Data)?;
-        let key = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
+        let signer = KeyFile::read_or_create(&dir.layout().key_file(), os.entropy)
             .map_err(LocalServerError::Key)?;
+        let signer = Arc::new(signer);
+        let key = signer.public_key();
         Self::end_earlier(Publisher {
             data: &dir,
             packages: &packages,
-            signer: &Signer::new(key, os.entropy),
+            signer: &signer,
         })?;
         let server = ServerSetup {
-            key,
+            signer,
             times: SessionTimes::DEFAULT,
             os,
         };
+        let bots = ServerBots::new(bots, None, &packages).map_err(LocalServerError::Bots)?;
         let slots = u32::try_from(packages.manifest().slots()).expect("slots fit u32");
         let open = (1..slots)
             .map(PlayerSlot::new)
-            .filter(|&slot| bots.iter().all(|bot| bot.slot != slot))
+            .filter(|&slot| bots.slots.iter().all(|bot| bot.slot != slot))
             .collect();
         let tick_hz = packages.manifest().tick_hz.default();
-        let bots = ServerBots {
-            slots: bots,
-            takeover: None,
-        };
         let opening = LobbyOpening {
             packages: Arc::clone(&packages),
             bots: bots.clone(),
@@ -169,15 +168,18 @@ impl LocalServer {
             restart: Arc::new(AtomicBool::new(false)),
             relinks: relinks.clone(),
         };
+        let opening = SessionOpening::New(Box::new(lobby));
+        let session = opening.span();
         let worker = Worker::start("local server", move || {
+            let _session = session.entered();
             let mut app = runs.app(server_io, dir);
-            app.insert_resource(lobby);
+            app.world_mut().open_session(opening);
             runs.run(app);
         });
         Ok(Self {
             stop,
             pin: ServerPin {
-                key: key.x_only_public_key().0,
+                key,
                 tls_key: TLS_KEY,
                 tick_hz,
             },
@@ -280,12 +282,15 @@ impl Runs {
         let session = SessionDir::waiting(&dir).map_err(LocalServerError::Waiting)?;
         let (client_io, server_io) = CrossbeamIo::new_pair();
         let mut app = self.app(server_io, dir);
-        app.insert_resource(PendingRestore {
+        let restore = PendingRestore::check(UncheckedRestore {
             session: session.expect("the session that loaded, whose match started"),
             packages: Arc::clone(&self.packages),
             server: self.server.clone(),
             bots: self.bots.clone(),
-        });
+        })
+        .expect("the packages that ran the session admit its terms");
+        app.world_mut()
+            .open_session(SessionOpening::Restored(Box::new(restore)));
         self.relinks.give(client_io);
         Ok(app)
     }
@@ -309,7 +314,7 @@ impl Runs {
         app.insert_resource(dir);
         app.insert_resource(Stop(Arc::clone(&self.stop)));
         app.insert_resource(Restart(Arc::clone(&self.restart)));
-        app.add_systems(Update, LocalServer::watch.after(PendingRestore::run));
+        app.add_systems(Update, LocalServer::watch.after(ServerFrameSystems::Saves));
         // A raw server starts once linked, and in-process channels have no socket to link it.
         let server = app.world_mut().spawn((RawServer, Linked)).id();
         let address = SocketAddr::from(([127, 0, 0, 1], 1));

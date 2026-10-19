@@ -126,13 +126,16 @@ impl IniLine<'_> {
     /// The value of a field of a whole number: its longest prefix of one, as `sscanf`'s `%d`
     /// reads it, the rest of the token ignored.
     pub(crate) fn int(&self) -> Result<i32, IniError> {
-        let value = self.value()?;
+        IniLine::int_of(self.value()?, self.number)
+    }
+
+    /// `value`'s longest prefix of a whole number, as `int` reads a field's, of the line `line`.
+    fn int_of(value: &str, line: usize) -> Result<i32, IniError> {
         let digits = value.strip_prefix(['+', '-']).unwrap_or(value);
         let end = value.len() - digits.len() + IniLine::digits(digits);
-        value[..end].parse().map_err(|error| IniError::Number {
-            line: self.number,
-            error,
-        })
+        value[..end]
+            .parse()
+            .map_err(|error| IniError::Number { line, error })
     }
 
     /// The value of a field of a real number: its longest prefix of one, as `sscanf`'s `%f` and
@@ -155,22 +158,41 @@ impl IniLine<'_> {
     /// order, of either case, then its real number, its tokens cut at every `:` as well, as
     /// `INI::getNextSubToken` cuts them, so `X:-18.0` and `X: -18.0` are alike.
     pub(crate) fn coord<const N: usize>(&self, labels: [&str; N]) -> Result<[f32; N], IniError> {
+        self.labelled(labels, IniLine::real_of)
+    }
+
+    /// The value of a field of whole numbers by label, as `INI::parseRGBColor` reads `R:100
+    /// G:114 B:245`: the labels as `coord` reads them, each number as `scanInt` reads it.
+    pub(crate) fn int_coord<const N: usize>(
+        &self,
+        labels: [&str; N],
+    ) -> Result<[i32; N], IniError> {
+        self.labelled(labels, IniLine::int_of)
+    }
+
+    /// Each of `labels` in order, of either case, then its value, read by `read`, its tokens
+    /// cut at every `:` as well.
+    fn labelled<T: Copy + Default, const N: usize>(
+        &self,
+        labels: [&str; N],
+        read: fn(&str, usize) -> Result<T, IniError>,
+    ) -> Result<[T; N], IniError> {
         let mut parts = self.tokens[1..]
             .iter()
             .flat_map(|token| token.split(':'))
             .filter(|part| !part.is_empty());
-        let mut coord = [0.0; N];
-        for (label, at) in labels.iter().zip(&mut coord) {
+        let mut values = [T::default(); N];
+        for (label, at) in labels.iter().zip(&mut values) {
             let labelled = parts
                 .next()
                 .is_some_and(|part| part.eq_ignore_ascii_case(label));
             let value = parts.next().filter(|_| labelled);
-            *at = IniLine::real_of(
+            *at = read(
                 value.ok_or(IniError::Coord { line: self.number })?,
                 self.number,
             )?;
         }
-        Ok(coord)
+        Ok(values)
     }
 
     /// `value` as a real number, as `real` reads a field's, of the line `line`.

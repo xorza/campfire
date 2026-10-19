@@ -24,7 +24,10 @@
 
 ## Waypoint paths
 
-- **Paths as lanes and patrols.** A unit walks a map's path in its spawn's direction while it has no other order, routing round the structures between waypoints.
+- **Paths as lanes and patrols.** A unit walks a map's path in its spawn's direction while it has no other order, routing round the structures between waypoints; past the last waypoint it stays, goes on to the first, or turns back, as the path's `walk` says.
+- **A path says how it is walked.** The walk is the path's map data, as a Zero Hour map's waypoint path holds its own links and its `biDirectional` flag, so a lane and a patrol differ by their paths. Refused: a walk for each walker, which each spawn call and placement would repeat.
+- **Navigation follows paths.** Path walkers walk in navigation, before orders' chase, so a path's walk, its end and its hook are one crate's; orders only tells a walker to leave its path or rejoin it.
+- **A path's end runs a hook.** A walker that reaches its last waypoint runs `on_path_end`, queued on the server by stable id in its tick; a predicting client walks alike and runs no hook.
 
 ## Forced movement
 
@@ -38,9 +41,11 @@
 
 - **A map that loads can be walked at its start.** The load checks, for each layer's widest walker, that each path's waypoints reach each other and that each marker of the mode's spawn tags is a place it may stand, using the regions the match uses.
 - **Placed obstacles may overlap.** Placed static bodies may overlap walls and each other, as they block alike: Zero Hour's maps hold thousands of such overlaps and the original has no rule against them. A placement at run time still refuses an overlap ([Production](production.md#placement)).
+- **Walker classes and a route budget, planned.** A mode declares its walker classes, so the clearance and region sets are one for each class, not one for each distinct radius, once a Zero Hour import's count of distinct walker radii is measured; and a route budget for each tick takes the place of the map's cell count as the route work limit.
 
 ## Collision
 
+- **Collision reads the walkers alone.** The Collide stage reads only the units that can walk into its colliders, and a contact of a walker with a static body keeps that body as the static index holds it, as the static bodies never move, so the stage costs the walkers, not every body. Refused: every body read into the colliders each tick, and a search of them for the body each static contact names.
 - **Pairs part by exact steps.** Each overlapping pair on one layer parts along the line between them, pair by pair in stable-id order, each coordinate rounded away from zero.
 - **A standing body blocks.** A walker that runs into a unit that stands takes the whole overlap, so a standing unit's body blocks; a unit that cannot walk leaves all of it to the other.
 - **Gatherers in their loop do not collide** ([Production](production.md#gathering)).

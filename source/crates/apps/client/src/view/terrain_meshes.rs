@@ -27,6 +27,22 @@ pub(crate) struct TerrainMesh {
     pub(crate) indices: Vec<u32>,
 }
 
+/// A quad of the grid: its cell, its texture coordinates in texels at each corner, and the diagonal
+/// its triangles meet on.
+#[derive(Debug, Clone, Copy)]
+struct CellQuad {
+    cell: usize,
+    uv: [Vec2; 4],
+    diagonal: Diagonal,
+}
+
+/// The diagonal a quad's two triangles meet on, by its corners, which go round the cell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Diagonal {
+    ZeroTwo,
+    OneThree,
+}
+
 /// The grid's samples on the engine's axes, each with its normal, row after row.
 #[derive(Debug)]
 struct Samples {
@@ -48,11 +64,21 @@ impl TerrainMeshes {
         let size = size.as_vec2();
         let mut ground = TerrainMesh::default();
         for (cell, quad) in quads.ground.iter().enumerate() {
-            ground.quad(&samples, cell, quad.uv, quad.flip, size);
+            let quad = CellQuad {
+                cell,
+                uv: quad.uv,
+                diagonal: Diagonal::of(quad.flip),
+            };
+            ground.quad(&samples, quad, size);
         }
         let mut overlay = TerrainMesh::default();
         for each in &quads.overlays {
-            overlay.quad(&samples, each.cell as usize, each.uv, each.flip, size);
+            let quad = CellQuad {
+                cell: each.cell as usize,
+                uv: each.uv,
+                diagonal: Diagonal::of(each.flip),
+            };
+            overlay.quad(&samples, quad, size);
             overlay.colors.extend(
                 each.alpha
                     .map(|alpha| Vec4::new(1.0, 1.0, 1.0, f32::from(alpha) / 255.0)),
@@ -80,9 +106,9 @@ impl TerrainMesh {
         }
     }
 
-    /// Adds the quad of `cell`, of texture coordinates `uv` in texels of `size`, its triangles
-    /// meeting on the diagonal from corner 1 to 3 when it is `flip`ped, else from 0 to 2.
-    fn quad(&mut self, samples: &Samples, cell: usize, uv: [Vec2; 4], flip: bool, size: Vec2) {
+    /// Adds `quad`, of a texture `size` texels.
+    fn quad(&mut self, samples: &Samples, quad: CellQuad, size: Vec2) {
+        let CellQuad { cell, uv, diagonal } = quad;
         let first = u32::try_from(self.positions.len()).expect("a map's vertices fit u32");
         let cells = samples.columns - 1;
         let at = cell / cells * samples.columns + cell % cells;
@@ -94,12 +120,23 @@ impl TerrainMesh {
         }
         // The grid's rows run to the engine's +z, so its corners go clockwise seen from above,
         // and each triangle takes them backwards to face up.
-        let triangles = if flip {
-            [0, 3, 1, 1, 3, 2]
-        } else {
-            [0, 2, 1, 0, 3, 2]
+        let triangles = match diagonal {
+            Diagonal::OneThree => [0, 3, 1, 1, 3, 2],
+            Diagonal::ZeroTwo => [0, 2, 1, 0, 3, 2],
         };
         self.indices.extend(triangles.map(|corner| first + corner));
+    }
+}
+
+impl Diagonal {
+    /// The diagonal of a quad a terrain file gives `flipped` or not: from corner 1 to 3 when
+    /// flipped, else from 0 to 2.
+    const fn of(flipped: bool) -> Self {
+        if flipped {
+            Self::OneThree
+        } else {
+            Self::ZeroTwo
+        }
     }
 }
 

@@ -1,11 +1,11 @@
 use bevy_ecs::change_detection::{DetectChanges, Ref};
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::RemovedComponents;
 use bevy_ecs::query::Allow;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Query, Res, ResMut};
+use bevy_ecs::world::World;
 use campfire_declare::Cache;
-use campfire_sim::Unpredicted;
+use campfire_sim::{Removals, Unpredicted};
 
 use crate::modifier_book::ModifierBook;
 use crate::modifiers::Modifiers;
@@ -17,7 +17,7 @@ use crate::modifiers::Modifiers;
 pub(crate) struct AuraCarriers(Vec<Entity>);
 
 impl Cache for AuraCarriers {
-    fn installed() -> Option<Self> {
+    fn installed(_: &World) -> Option<Self> {
         Some(Self::default())
     }
 }
@@ -31,7 +31,7 @@ impl AuraCarriers {
     pub(crate) fn track(
         book: Res<'_, ModifierBook>,
         units: Query<'_, '_, (Entity, Ref<'_, Modifiers>), Allow<Unpredicted>>,
-        mut gone: RemovedComponents<'_, '_, Modifiers>,
+        mut gone: Removals<'_, '_, Modifiers>,
         mut carriers: ResMut<'_, Self>,
     ) {
         for entity in gone.read() {

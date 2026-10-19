@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::PlayerSlot;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_sim::SimComponent;
 use campfire_state_types::{DataKind, Replication, SentOnInsert};
 use campfire_values::Team;
@@ -39,7 +39,7 @@ impl SimComponent for Owner {
     fn check(&self, world: &World, entity: Entity) -> bool {
         world
             .get::<Team>(entity)
-            .is_some_and(|&team| world.non_send::<View>().names().plays_for(self.0, team))
+            .is_some_and(|&team| world.resource::<MatchNames>().plays_for(self.0, team))
     }
 }
 

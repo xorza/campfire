@@ -4,36 +4,32 @@ use bevy_app::{
     App, FixedUpdate, Last, Plugin, PostUpdate, RunFixedMainLoop, RunFixedMainLoopSystems, Update,
 };
 use bevy_ecs::entity::Entity;
-use bevy_ecs::lifecycle::Add;
-use bevy_ecs::observer::On;
 use bevy_ecs::query::{Added, QueryState};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use bevy_state::app::AppExtStates;
+use bevy_state::condition::in_state;
 use bevy_time::{Real, Time, Virtual};
-use campfire_combat::Deaths;
+use campfire_common::ErrorReport;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_declare::CapabilitySet;
-use campfire_log::{ErrorReport, LogEvent};
+use campfire_log::LogEvent;
 use campfire_mode::MatchEnd;
-use campfire_package::ModePackages;
-use campfire_protocol::{
-    Applied, Controller, InputError, PlayerPacket, ServerInput, ServerSeeds, SessionLog,
-    SessionTerms, Signer,
-};
+use campfire_protocol::{Applied, Controller, InputError, PlayerPacket};
 use campfire_quic::{CloseLink, QuicPlugin};
-use campfire_runner::{Session, SessionRules, SessionSource, SessionWorld, StartError};
-use campfire_sim::{SimTick, SimWorld, TickRate};
-use campfire_visibility::Visibility;
-use lightyear::core::tick::TickDuration;
+use campfire_runner::{Session, SessionWorld};
+use campfire_script::ScriptPrints;
+use campfire_sim::SimTick;
+use campfire_units::Deaths;
 use lightyear::prelude::server::ServerPlugins;
 use lightyear::prelude::{
     LinkOf, LinkSystems, LocalTimeline, MessageReceiver, MessageSender, ReplicationSender,
     RoomAllocator, RoomPlugin,
 };
-use tracing::{trace, trace_span};
+use tracing::trace_span;
 
 use crate::close_code::CloseCode;
 use crate::events::input_logged::InputLogged;
@@ -43,6 +39,7 @@ use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 use crate::events::log_filled::LogFilled;
 use crate::events::match_ended::MatchEnded;
 use crate::events::save_refused::SaveRefused;
+use crate::events::script_printed::ScriptPrinted;
 use crate::events::server_frame::ServerFrame;
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::time_dropped::TimeDropped;
@@ -55,30 +52,21 @@ use crate::net_protocol::input_ack::InputAck;
 use crate::net_protocol::input_message::InputMessage;
 use crate::net_protocol::save_command::SaveCommand;
 use crate::net_protocol::{MatchChannel, NetProtocol};
-use crate::pace::PaceSpeed;
 use crate::sim_server::bot_driver::BotDriver;
 use crate::sim_server::checkpoints::Checkpoints;
 use crate::sim_server::data_filter::DataFilters;
 use crate::sim_server::door::Door;
-use crate::sim_server::error::RestoreMatchError;
-use crate::sim_server::journal_watch::{JournalFrom, JournalWatch};
+use crate::sim_server::journal_watch::JournalWatch;
 use crate::sim_server::kind_shows::{KindShows, Shows};
 use crate::sim_server::lobby::Lobby;
-use crate::sim_server::match_visibility::MatchVisibility;
 use crate::sim_server::offering::{Dismissing, Offered, Offering};
 use crate::sim_server::pending_restore::PendingRestore;
 use crate::sim_server::player_link::PlayerLink;
 use crate::sim_server::receipts::Receipts;
-use crate::sim_server::seats::Seats;
-use crate::sim_server::server_bots::ServerBots;
-use crate::sim_server::server_setup::ServerSetup;
-use crate::sim_server::server_signer::ServerSigner;
-use crate::sim_server::session_dir::SessionFiles;
+use crate::sim_server::server_phase::ServerPhase;
 use crate::sim_server::sim_server_world::{SimServerWorld, SimServerWorldCrate};
-use crate::sim_server::snapshot_dir::SnapshotDir;
 use crate::sim_server::spectators::Spectators;
 use crate::sim_server::team_rooms::TeamRooms;
-use crate::sim_server::tick_hashes::TickHashes;
 use crate::sim_server::viewer::Viewer;
 
 pub(crate) mod bot_driver;
@@ -99,8 +87,9 @@ pub(crate) mod seats;
 pub(crate) mod server_bots;
 pub(crate) mod server_dir;
 pub(crate) mod server_layout;
+pub(crate) mod server_match;
+pub(crate) mod server_phase;
 pub(crate) mod server_setup;
-pub(crate) mod server_signer;
 pub(crate) mod session_dir;
 pub(crate) mod session_journal;
 pub(crate) mod sim_server_plugins;
@@ -109,6 +98,7 @@ pub(crate) mod slot_bot_file;
 pub(crate) mod snapshot_dir;
 pub(crate) mod spectators;
 pub(crate) mod team_rooms;
+#[cfg(feature = "internals")]
 pub(crate) mod tick_hashes;
 pub(crate) mod viewer;
 
@@ -142,15 +132,28 @@ impl Plugin for SimServer {
         let rooms = TeamRooms::new(&mut app.world_mut().resource_mut::<RoomAllocator>());
         app.insert_resource(rooms);
         app.insert_resource(self.hosting);
-        app.add_observer(
-            |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
-                commands.entity(added.entity).insert(ReplicationSender);
-            },
-        );
+        app.register_required_components_with::<LinkOf, ReplicationSender>(|| ReplicationSender);
         app.init_resource::<Faults>();
+        app.init_state::<ServerPhase>();
+        app.configure_sets(
+            Update,
+            (
+                ServerFrameSystems::Intake,
+                ServerFrameSystems::Door,
+                ServerFrameSystems::SessionUpkeep,
+                ServerFrameSystems::Receipts,
+                ServerFrameSystems::Saves,
+            )
+                .chain(),
+        );
         app.add_systems(
             Update,
-            PendingRestore::run.run_if(resource_exists::<PendingRestore>),
+            (
+                PendingRestore::run.run_if(in_state(ServerPhase::Restoring)),
+                Spectators::choose_teams,
+            )
+                .chain()
+                .in_set(ServerFrameSystems::Intake),
         );
         app.add_systems(
             Update,
@@ -161,7 +164,8 @@ impl Plugin for SimServer {
                 Lobby::start_when_full,
             )
                 .chain()
-                .run_if(resource_exists::<Lobby>),
+                .run_if(in_state(ServerPhase::Lobby))
+                .in_set(ServerFrameSystems::Door),
         );
         // Each system that logs checks that the session runs as it starts, as another system of
         // the frame may end it.
@@ -169,36 +173,39 @@ impl Plugin for SimServer {
             Update,
             (Offering::offer_links::<Door>, Door::take_joins, Door::watch)
                 .chain()
-                .distributive_run_if(resource_exists::<Door>)
-                .distributive_run_if(session_running),
+                .after(Lobby::start_when_full)
+                .distributive_run_if(in_state(ServerPhase::Running))
+                .distributive_run_if(session_running)
+                .in_set(ServerFrameSystems::Door),
+        );
+        app.add_systems(
+            Update,
+            (
+                Checkpoints::finish.run_if(resource_exists::<Checkpoints>),
+                JournalWatch::warn_slow.run_if(resource_exists::<JournalWatch>),
+            )
+                .chain()
+                .in_set(ServerFrameSystems::SessionUpkeep),
         );
         app.add_systems(
             Update,
             Receipts::give
-                .after(Door::watch)
-                .run_if(resource_exists::<Receipts>)
-                .run_if(session_running),
-        );
-        app.add_systems(
-            Update,
-            Checkpoints::finish.run_if(resource_exists::<Checkpoints>),
-        );
-        app.add_systems(
-            Update,
-            JournalWatch::warn_slow.run_if(resource_exists::<JournalWatch>),
+                .run_if(in_state(ServerPhase::Running))
+                .run_if(session_running)
+                .in_set(ServerFrameSystems::Receipts),
         );
         app.add_systems(
             Update,
             Self::take_save_commands
-                .after(Door::watch)
-                .run_if(resource_exists::<Door>)
-                .run_if(session_running),
+                .run_if(in_state(ServerPhase::Running))
+                .run_if(session_running)
+                .in_set(ServerFrameSystems::Saves),
         );
-        app.add_systems(Update, Spectators::choose_teams);
         app.add_observer(Spectators::leave);
         Viewer::follow_links(app);
         Viewer::follow_out_of_play(app);
         app.add_systems(Last, Dismissing::tell);
+        app.add_systems(Last, JournalWatch::flush.run_if(resource_exists::<Session>));
         app.add_systems(
             PostUpdate,
             (Dismissing::end, Offered::close_silent).after(LinkSystems::Send),
@@ -213,7 +220,7 @@ impl Plugin for SimServer {
                 report_catch_up.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
                 report_dropped_time.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
             )
-                .distributive_run_if(resource_exists::<MatchClock>)
+                .distributive_run_if(in_state(ServerPhase::Running))
                 .distributive_run_if(session_running),
         );
         app.add_systems(
@@ -221,16 +228,29 @@ impl Plugin for SimServer {
             (
                 BotDriver::drive,
                 run_sim_tick,
-                record_hash.run_if(resource_exists::<TickHashes>),
                 // Right after the tick, before any entry of the next.
                 Self::at_boundary,
                 report_deaths,
+                report_prints,
                 report_end,
             )
                 .chain()
                 .in_set(SimTickSystems),
         );
-        app.configure_sets(FixedUpdate, SimTickSystems.run_if(sim_tick_due));
+        #[cfg(feature = "internals")]
+        app.add_systems(
+            FixedUpdate,
+            tick_hashes::TickHashes::record
+                .after(run_sim_tick)
+                .before(Self::at_boundary)
+                .in_set(SimTickSystems),
+        );
+        app.configure_sets(
+            FixedUpdate,
+            SimTickSystems
+                .run_if(in_state(ServerPhase::Running))
+                .run_if(sim_tick_due),
+        );
         app.configure_sets(
             FixedUpdate,
             Shows
@@ -241,43 +261,24 @@ impl Plugin for SimServer {
     }
 }
 
+/// The steps of the server's frame in `Update`, in their order, after Lightyear's: what comes in
+/// from outside the session, a restore waiting or a spectator's choice; the door, which seats
+/// players, before the match in the lobby and after it at the door; the session's upkeep, its
+/// checkpoints and journal; the receipts of what the journal made durable; and the players'
+/// save commands, last, as a load ends the run. An app's own system of `Update` goes after them.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ServerFrameSystems {
+    Intake,
+    Door,
+    SessionUpkeep,
+    Receipts,
+    Saves,
+}
+
 /// The systems of a fixed tick that runs a sim tick, whose condition is checked once, before the
 /// first of them, so the tick runs whole even when it ends the session.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct SimTickSystems;
-
-/// The session went back to a save: its server starts again on its data, which restores the
-/// match from it.
-#[derive(Resource, Debug)]
-struct Reload;
-
-/// What a match starts from: the log of its header, the seeds of its segments, its mode's
-/// packages, its journal and snapshots' directory if the server keeps them, and the server's
-/// setup.
-#[derive(Debug)]
-pub(crate) struct SessionStart<'a> {
-    pub(crate) log: SessionLog,
-    pub(crate) seeds: ServerSeeds,
-    pub(crate) packages: &'a ModePackages,
-    pub(crate) files: Option<SessionFiles>,
-    pub(crate) server: &'a ServerSetup,
-    pub(crate) bots: ServerBots,
-    /// The lobby's offering, which the door offers from then on.
-    pub(crate) offering: Offering,
-    /// The visibility the terms carry, as the lobby made it.
-    pub(crate) visibility: Visibility,
-}
-
-/// What a match runs with from the next fixed tick, as it starts or restores, its journal kept
-/// already: the offering its door offers, the snapshots' directory when the server keeps them,
-/// its seats, and the server's bots.
-#[derive(Debug)]
-struct MatchRun {
-    offering: Offering,
-    snapshots: Option<SnapshotDir>,
-    seats: Seats,
-    bots: ServerBots,
-}
 
 /// The save commands' links, each with its player.
 type SaveLinks = QueryState<(
@@ -292,10 +293,10 @@ impl SimServer {
     /// gives that it ends there. A checkpoint still on its thread that is not written then is a
     /// fault, as the log can not be published.
     fn at_boundary(world: &mut World) {
-        let log = world.session().log();
-        let ends = if log.full() {
+        let session = world.session();
+        let ends = if session.log_full() {
             LogFilled {
-                tick: log.next_tick(),
+                tick: session.log().next_tick(),
             }
             .log();
             true
@@ -333,166 +334,6 @@ impl SimServer {
                 Err(refusal) => SaveRefused { refusal }.log(),
             }
         }
-    }
-
-    /// Starts the match of `start.log`'s header in the next fixed tick, recording into its log,
-    /// each segment drawing from its seed. From then on a frame advances the server's clock by
-    /// the ticks of the max input delay less one at most, a tick at least, so a burst after a
-    /// stall makes no on-time input late; a longer frame's time past that is dropped, and logged.
-    /// `clients` are the links of the players, each with its slot; each learns its slot and the
-    /// start tick. The server's bots play their slots.
-    /// From the first tick on, every unit replicates to the clients whose team sees it, and the
-    /// owner's client predicts it, but a projectile or an area. With its files, the log goes into
-    /// the journal as the server logs it, `JournalWatch` watches it, and the server takes the
-    /// checkpoints due. The door takes the joins from then on.
-    fn start_match(
-        world: &mut World,
-        start: SessionStart<'_>,
-        clients: &[(PlayerSlot, Entity)],
-    ) -> Result<(), StartError> {
-        let SessionStart {
-            log,
-            seeds,
-            packages,
-            files,
-            server,
-            bots,
-            offering,
-            visibility,
-        } = start;
-        assert_eq!(
-            clients.len(),
-            log.header().players().count(),
-            "one client per player"
-        );
-        let terms = log.header().terms.clone();
-        Self::take_terms(world, &terms, visibility);
-        let slots = log.slot_count();
-        world.insert_resource(ServerSigner(Signer::new(server.key, server.os.entropy)));
-        Session::start(
-            world,
-            SessionSource {
-                log,
-                seeds,
-                packages,
-            },
-        )?;
-        let snapshots = files.map(|SessionFiles { journal, snapshots }| {
-            JournalWatch::keep(world, journal, JournalFrom::Start);
-            snapshots
-        });
-        let run = MatchRun {
-            offering,
-            snapshots,
-            seats: Seats::empty(slots),
-            bots,
-        };
-        Self::run_match(world, run);
-        for &(slot, client) in clients {
-            Door::seat_new(world, client, slot);
-        }
-        Ok(())
-    }
-
-    /// Takes the session's `terms` before its match starts or restores: bounds the server's
-    /// frames, so a frame advances its clock by the ticks of the max input delay less one at
-    /// most, a tick at least, each as long as the clock's tick now, which a local match's pace may
-    /// have set; and keeps their `visibility`, the one copy of it, which each data filter takes
-    /// its audience from as the match's entities spawn.
-    fn take_terms(world: &mut World, terms: &SessionTerms, visibility: Visibility) {
-        let session = TickRate::new(terms.tick_hz).length();
-        let tick = world.resource::<TickDuration>().0;
-        assert!(
-            PaceSpeed::ALL
-                .iter()
-                .any(|speed| speed.tick(session) == tick),
-            "the server ticks at the session's rate at a speed, not every {tick:?}"
-        );
-        let burst = terms.inputs.max_delay.get().saturating_sub(1).max(1);
-        let burst = u32::try_from(burst).expect("a max input delay of a LAN session fits u32");
-        world
-            .resource_mut::<Time<Virtual>>()
-            .set_max_delta(tick * burst);
-        world.insert_resource(MatchVisibility(visibility));
-    }
-
-    /// Runs the match of the world's session from the next fixed tick, as it starts or restores:
-    /// the door offers `run.offering`, the checkpoints go into the snapshots' directory when the
-    /// server keeps them, the players sit in `run.seats`, and the server's bots play their slots.
-    fn run_match(world: &mut World, run: MatchRun) {
-        let MatchRun {
-            offering,
-            snapshots,
-            seats,
-            bots,
-        } = run;
-        world.insert_resource(Door::new(offering));
-        if let Some(snapshots) = snapshots {
-            Checkpoints::start(world, snapshots);
-        }
-        let log = world.resource::<Session>().log();
-        let (slots, next) = (log.slot_count(), log.next_tick());
-        world.insert_resource(seats);
-        world.insert_resource(Receipts::new(slots));
-        let start = world.resource::<LocalTimeline>().tick() + 1;
-        world.insert_resource(MatchClock::new(start, next));
-        world.insert_resource(FrameStart(next));
-        let driver = BotDriver::new(bots, next, world);
-        world.insert_resource(driver);
-    }
-
-    /// Restores the match of `restore`, a session a crash or a failed journal ended, of the mode
-    /// its packages hold, on its server: builds it from the snapshot of the latest
-    /// checkpoint whose record the log holds, or from tick 0 with none, and replays its log from
-    /// there to the tick the server stopped before, keeping each tick's state hash while the
-    /// world holds `TickHashes`; a checkpoint begun with no record is taken again as the replay
-    /// reaches its boundary, and one due at the last boundary, as a save the mode asked for,
-    /// begins there. It logs `Disconnected` for each slot a player controls, whose grace
-    /// period runs from then, and runs the match on from the next fixed tick, so the ticks the
-    /// stop lost take no time in the sim. The journal goes on from its last record, and
-    /// `JournalWatch` watches it. No client is linked: the players come back through the door.
-    pub(crate) fn restore_match(
-        world: &mut World,
-        restore: PendingRestore,
-    ) -> Result<(), RestoreMatchError> {
-        let PendingRestore {
-            session: restored,
-            packages,
-            server,
-            bots,
-        } = restore;
-        let terms = restored.log.header().terms.clone();
-        // The rules of the packages the server runs now may not admit the terms it ran under.
-        let visibility = SessionRules::of(&packages)
-            .check(&terms)
-            .map_err(|error| RestoreMatchError::Start(StartError::Terms(error)))?
-            .visibility;
-        Self::take_terms(world, &terms, visibility);
-        let slots = restored.log.slot_count();
-        let signer = Signer::new(server.key, server.os.entropy);
-        let snapshots = restored.replay(world, &packages, signer, |world| {
-            if world.contains_resource::<TickHashes>() {
-                record_hash(world);
-            }
-        })?;
-        let players: Vec<PlayerSlot> = world.resource::<Session>().log().player_slots().collect();
-        let now = world.resource::<Time<Real>>().elapsed();
-        let run = MatchRun {
-            offering: Offering::new(terms, &server),
-            snapshots: Some(snapshots),
-            seats: Seats::gone(slots, players.iter().copied(), now),
-            bots,
-        };
-        Self::run_match(world, run);
-        // The stop may have come after the tick before this boundary, before the save it made due
-        // here began. The session may end there, and then logs nothing more.
-        Self::at_boundary(world);
-        if world.resource::<Session>().log().result().is_none() {
-            for &slot in &players {
-                Door::serve_unless_full(world, ServerInput::Disconnected { slot });
-            }
-        }
-        Ok(())
     }
 }
 
@@ -613,20 +454,21 @@ fn report_dropped_time(real: Res<'_, Time<Real>>, virtual_time: Res<'_, Time<Vir
     }
 }
 
-/// The match has started and its session has not ended, so this fixed tick runs a sim tick.
+/// The running match's clock has reached its first tick and its session has not ended, so this
+/// fixed tick runs a sim tick. A condition's parameters are checked whatever the conditions
+/// before it give, so a phase without a match reads none.
 fn sim_tick_due(
     timeline: Res<'_, LocalTimeline>,
     clock: Option<Res<'_, MatchClock>>,
     session: Option<Res<'_, Session>>,
-    reload: Option<Res<'_, Reload>>,
 ) -> bool {
-    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some())
-        && session_running(session, reload)
+    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some()) && session_running(session)
 }
 
-/// The session has started, has not ended, and has not gone back to a save.
-fn session_running(session: Option<Res<'_, Session>>, reload: Option<Res<'_, Reload>>) -> bool {
-    reload.is_none() && session.is_some_and(|session| session.log().result().is_none())
+/// The running match's session has not ended, which it may within a frame; none before the
+/// match begins.
+fn session_running(session: Option<Res<'_, Session>>) -> bool {
+    session.is_some_and(|session| session.log().result().is_none())
 }
 
 fn run_sim_tick(world: &mut World) {
@@ -641,11 +483,23 @@ fn run_sim_tick(world: &mut World) {
     world.run_session_tick();
 }
 
-fn record_hash(world: &mut World) {
-    let hash = world.state_hash();
-    let mut hashes = world.resource_mut::<TickHashes>();
-    trace!(tick = hashes.get().len(), %hash, "hashed the state");
-    hashes.push(hash);
+/// What a replayed tick of a restore leaves: a test's hash of it, which a test's build keeps.
+#[cfg_attr(
+    not(feature = "internals"),
+    expect(
+        clippy::missing_const_for_fn,
+        reason = "a test's build keeps the tick's hash, which no const fn computes"
+    )
+)]
+fn replayed(
+    #[cfg_attr(
+        not(feature = "internals"),
+        expect(unused_variables, reason = "only a test's build keeps a tick's hash")
+    )]
+    world: &mut World,
+) {
+    #[cfg(feature = "internals")]
+    tick_hashes::TickHashes::record(world);
 }
 
 /// Logs each unit that died in the tick just run, from combat's record of the tick's deaths,
@@ -661,6 +515,20 @@ fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
     }
     for death in deaths.iter() {
         UnitDied::of(ran, &death).log();
+    }
+}
+
+/// Logs what the scripts printed in the tick just run.
+fn report_prints(tick: Res<'_, SimTick>, prints: Option<Res<'_, ScriptPrints>>) {
+    let Some(prints) = prints else {
+        return;
+    };
+    let ran = Tick::new(tick.start().get() - 1);
+    if prints.tick() != ran {
+        return;
+    }
+    for print in prints.iter() {
+        ScriptPrinted::of(ran, print).log();
     }
 }
 

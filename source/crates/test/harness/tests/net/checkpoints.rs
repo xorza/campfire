@@ -6,14 +6,16 @@
 
 use std::num::{NonZeroU8, NonZeroU32};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bevy_app::AppExit;
 use campfire_common::{ExitStatus, StateHash, Tick};
 use campfire_harness::{End, InProcessMatch, LinkModel, MatchSetup};
 use campfire_net::internals::SimServerWorldInternals;
+use campfire_net::internals::TickHashes;
 use campfire_net::{
-    AbortError, CheckpointFailed, LogFilled, Publisher, RestoreMatchError, SeedsRanOut, ServerDir,
-    SessionDir, SimServerWorld, StopRequest, TickHashes,
+    AbortError, CheckpointFailed, LogFilled, MatchBeginError, Publisher, SeedsRanOut, ServerDir,
+    SessionDir, SimServerWorld, StopRequest,
 };
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{Entropy, JournalFrames, Outcome, SeedChain, SessionLog, Signer};
@@ -25,9 +27,9 @@ use campfire_store::{EntryKind, InputFile};
 /// The chain of the scenario's sessions, of room for three checkpoints.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::new(4).unwrap());
 
-/// The scenario's match, its server's data in `scratch`, checkpointed before ticks 30 and 160, after
-/// 180 steps with both records logged; with the state hash after each tick the server ran. The
-/// second checkpoint's delta holds the changes from tick 130 on: the server sent those before
+/// The scenario's match, its server's data in `scratch`, checkpointed before ticks 30 and 160,
+/// after 180 steps with both records logged; with the state hash after each tick the server ran.
+/// The second checkpoint's delta holds the changes from tick 130 on: the server sent those before
 /// it, 100 ticks after the first.
 fn checkpointed(scratch: &Scratch) -> (InProcessMatch, Vec<StateHash>) {
     let mut local = InProcessMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
@@ -75,10 +77,15 @@ fn snapshots(scratch: &Scratch, local: &InProcessMatch) -> PathBuf {
 /// its state hash, and the replay from tick 0 meets each checkpoint's hash and the result.
 fn verifies(local: &mut InProcessMatch, snapshots: &Path) {
     local.server_mut().world_mut().end_session().unwrap();
-    let file =
-        SessionDir::publish(local.server().world().resource::<ServerDir>(), log(local)).unwrap();
-    let published =
-        SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
+    local.server_mut().world_mut().session_mut().close_journal();
+    let held = log(local);
+    let revealed = held.revealed_seeds().unwrap();
+    let last = revealed.seed(held.segment()).unwrap().clone();
+    let id = held.session_id();
+    let data = local.server().world().resource::<ServerDir>();
+    let file = SessionDir::publish(data, id, &last).unwrap();
+    let bytes = InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap();
+    let published = SessionLog::decode(&bytes).unwrap();
     let mut replay = Replay::of(published, local.packages()).unwrap();
     let records: Vec<_> = replay
         .game()
@@ -130,7 +137,7 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
         session.abort(Publisher {
             data,
             packages: local.packages(),
-            signer: &Signer::new(TestKey::server(), Entropy::Fixed(6)),
+            signer: &Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(6))),
         })
     };
     // With the latest snapshot gone, it reads that snapshot, and fails.
@@ -139,7 +146,7 @@ fn an_abort_resumes_from_the_latest_checkpoint_as_a_restart_does() {
     scratch.remove(&latest);
     assert!(matches!(
         abort(&data),
-        Err(AbortError::Replay(RestoreMatchError::ReadSnapshot(_)))
+        Err(AbortError::Replay(MatchBeginError::ReadSnapshot(_)))
     ));
     scratch.write(&latest, kept);
     let file = abort(&data).unwrap();
@@ -262,9 +269,13 @@ fn a_checkpoint_past_the_seed_chain_or_a_full_log_ends_the_session() {
             tick: Tick::new(11)
         }]
     );
-    let mut bytes = Vec::new();
-    log(&local).encode(&mut bytes);
-    SessionLog::decode(&bytes).unwrap();
+    local.server_mut().world_mut().session_mut().close_journal();
+    let held = log(&local);
+    let revealed = held.revealed_seeds().unwrap();
+    let last = revealed.seed(held.segment()).unwrap().clone();
+    let data = local.server().world().resource::<ServerDir>();
+    let file = SessionDir::publish(data, held.session_id(), &last).unwrap();
+    SessionLog::decode(&InputFile::read(&file, SessionLog::MAX_FILE_LEN).unwrap()).unwrap();
 }
 
 #[test]

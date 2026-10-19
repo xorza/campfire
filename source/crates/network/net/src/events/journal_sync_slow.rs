@@ -6,7 +6,7 @@ use tracing::warn;
 /// the slowest since the last of these. The server plays on, as a sync that returns late loses
 /// nothing; whether a disk that stops answering ends the server is its host's watchdog's call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct JournalSyncSlow {
+pub(crate) struct JournalSyncSlow {
     pub took_ns: u64,
 }
 

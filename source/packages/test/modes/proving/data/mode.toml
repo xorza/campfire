@@ -1,7 +1,9 @@
 # The name players see.
 name = "mode-name"
 
-script = "scripts/mode.rhai"
+scripts = ["scripts/mode.rhai"]
+# The names its script's timers take.
+timers = ["first_wave", "income", "wave"]
 resources = ["gold"]
 
 [combat]

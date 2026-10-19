@@ -98,6 +98,33 @@ fn mul_rounds_to_nearest_even() {
 }
 
 #[test]
+fn a_product_of_three_rounds_once() {
+    // The bits 17 117 393, 1 978 348 and 8 312 022: their product over 2⁴⁸ is 1 000 016.58…, so
+    // rounds up to 1 000 017; the product of two rounded first, 2 018 461.24… to 2 018 461, then
+    // times the third over 2²⁴, 1 000 016.46…, gives 1 000 016.
+    let [a, b, c] = [17_117_393, 1_978_348, 8_312_022].map(Num::from_bits);
+    let nearest = Rounding::NearestEven;
+    assert_eq!(
+        a.checked_mul_mul(b, c, nearest),
+        Some(Num::from_bits(1_000_017))
+    );
+    let two = a.checked_mul(b, nearest).unwrap().checked_mul(c, nearest);
+    assert_eq!(two, Some(Num::from_bits(1_000_016)));
+    // A sign, the floor, and a product past an `i128`, or past a `Num`, give none.
+    assert_eq!(
+        (-a).checked_mul_mul(b, c, nearest),
+        Some(Num::from_bits(-1_000_017))
+    );
+    assert_eq!(
+        a.checked_mul_mul(b, c, Rounding::Floor),
+        Some(Num::from_bits(1_000_016))
+    );
+    assert_eq!(Num::MAX.checked_mul_mul(Num::MAX, Num::MAX, nearest), None);
+    let big = Num::from_int(1 << 20).unwrap();
+    assert_eq!(big.checked_mul_mul(big, big, nearest), None);
+}
+
+#[test]
 fn mul_overflow_boundary() {
     let big = Num::from_int(1 << 38).unwrap();
     let two = Num::from_int(2).unwrap();

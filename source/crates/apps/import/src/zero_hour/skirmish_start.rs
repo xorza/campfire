@@ -1,12 +1,11 @@
+use campfire_common::DeclaredName;
 use campfire_math::Num;
-use campfire_values::DeclaredName;
 
 use crate::zero_hour::error::{TypeError, ZeroHourError};
 use crate::zero_hour::format::game_float;
-use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
-use crate::zero_hour::format::ini::object_ini::{IniObject, ObjectIni};
-use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
+use crate::zero_hour::format::ini::object_ini::IniObject;
 use crate::zero_hour::import_names::ImportNames;
+use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 /// The player template a skirmish starts its players as, until a faction choice comes
 /// (12-zero-hour.md, A skirmish starts with the faction's start objects).
@@ -25,17 +24,16 @@ pub(crate) struct SkirmishStart {
 }
 
 impl SkirmishStart {
-    /// The start of `FACTION` in `templates`, its objects of `ini` unit types `names` takes, of
-    /// `locomotors`; an error for a template or an object the install lacks, or an object that
-    /// gives no unit type.
+    /// The start of `FACTION` in the rules' templates, its objects unit types `names` takes; an
+    /// error for a template or an object the install lacks, or an object that gives no unit
+    /// type.
     pub(crate) fn of(
-        templates: &PlayerTemplateIni,
-        ini: &ObjectIni,
-        locomotors: &LocomotorIni,
+        rules: &ZeroHourRules,
         names: &mut ImportNames,
     ) -> Result<Self, ZeroHourError> {
+        let (ini, locomotors) = (&rules.objects, &rules.locomotors);
         let no_start = || ZeroHourError::NoStart(FACTION.to_owned());
-        let template = templates.get(FACTION).ok_or_else(no_start)?;
+        let template = rules.templates.get(FACTION).ok_or_else(no_start)?;
         let building = template.building.as_deref().ok_or_else(no_start)?;
         let object = |name: &str| {
             ini.object(name.as_bytes())
@@ -80,16 +78,14 @@ mod tests {
 
     #[test]
     fn a_skirmish_starts_with_its_factions_objects_and_offset() {
-        let mut ini = ObjectIni::default();
-        for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
-            ini.read(objects.as_bytes()).unwrap();
-        }
-        let mut locomotors = LocomotorIni::default();
-        locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
         let start = |templates: &str| {
-            let mut read = PlayerTemplateIni::default();
-            read.read(templates.as_bytes()).unwrap();
-            SkirmishStart::of(&read, &ini, &locomotors, &mut ImportNames::default())
+            let mut rules = ZeroHourRules::default();
+            for objects in [DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS] {
+                rules.objects.read(objects.as_bytes()).unwrap();
+            }
+            rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
+            rules.templates.read(templates.as_bytes()).unwrap();
+            SkirmishStart::of(&rules, &mut ImportNames::default())
         };
         // America's command center, of a sphere of radius 25, and its dozer, 12.5 m along +z.
         let name = |name: &str| DeclaredName::new(name).unwrap();

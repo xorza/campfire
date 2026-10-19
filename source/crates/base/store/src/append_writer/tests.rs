@@ -65,13 +65,13 @@ fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() 
     for (append, sync) in [(true, false), (false, true)] {
         let writer = AppendWriter::start("failing", FailingFile { append, sync });
         let watch = writer.watch();
-        writer.append(|out| out.extend_from_slice(b"lost"));
+        writer.append(1, |out| out.extend_from_slice(b"lost"));
         while !watch.settled() {
             thread::yield_now();
         }
         // Stopped, it takes no record more. The failure is taken once, through the watch after
         // a drop, or from the close.
-        writer.append(|_| unreachable!("a stopped writer takes no record"));
+        writer.append(1, |_| unreachable!("a stopped writer takes no record"));
         let failure = if append {
             drop(writer);
             watch.take_failure()
@@ -81,7 +81,7 @@ fn a_writer_whose_file_fails_reports_the_failure_once_and_keeps_nothing_after() 
         let step = match &failure {
             Some(AppendError::Write(error)) => (true, false, error.to_string()),
             Some(AppendError::Sync(error)) => (false, true, error.to_string()),
-            None => panic!("the failure is reported"),
+            other => panic!("the file's failure is reported: {other:?}"),
         };
         let message = if append {
             "append failed"
@@ -102,10 +102,14 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
     let slow_after = Duration::from_millis(200);
     let (sync, gate) = mpsc::channel();
     let (entered, in_sync) = mpsc::channel();
-    let writer = AppendWriter::start_slow_after("gated", GatedFile { gate, entered }, slow_after);
+    let bounds = AppendBounds {
+        slow_after,
+        ..AppendWriter::BOUNDS
+    };
+    let writer = AppendWriter::start_bounded("gated", GatedFile { gate, entered }, bounds);
     let watch = writer.watch();
     assert!(watch.settled());
-    writer.append(|out| out.extend_from_slice(b"held"));
+    writer.append(1, |out| out.extend_from_slice(b"held"));
     assert!(!watch.settled());
     in_sync.recv().unwrap();
     sync.send(()).unwrap();
@@ -117,7 +121,7 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
 
     // Held 300 ms from when the sync began, after the writer's clock started: slow, by at least
     // that, and taken once.
-    writer.append(|out| out.extend_from_slice(b"slow"));
+    writer.append(1, |out| out.extend_from_slice(b"slow"));
     in_sync.recv().unwrap();
     let held = Duration::from_millis(300);
     thread::sleep(held);
@@ -132,6 +136,47 @@ fn a_writer_is_settled_once_its_records_are_synced_and_a_slow_sync_is_seen() {
 }
 
 #[test]
+fn a_writer_fails_once_its_sync_hangs_or_its_records_wait_past_the_bound() {
+    // Hung past 100 ms, for a test that holds the sync 150 ms; the bound of the records that
+    // wait is 8 bytes, so only the second record of 5 bytes passes it.
+    let bounds = AppendBounds {
+        hung_after: Duration::from_millis(100),
+        max_behind: 8,
+        ..AppendWriter::BOUNDS
+    };
+    let held = Duration::from_millis(150);
+    for hung in [true, false] {
+        let (release, gate) = mpsc::channel();
+        let (entered, in_sync) = mpsc::channel();
+        let writer = AppendWriter::start_bounded("held", GatedFile { gate, entered }, bounds);
+        let watch = writer.watch();
+        writer.append(1, |out| out.extend_from_slice(b"held"));
+        in_sync.recv().unwrap();
+        if hung {
+            // Asked before the bound, the sync that runs is no failure yet.
+            assert!(watch.take_failure().is_none());
+            thread::sleep(held);
+        } else {
+            writer.append(1, |out| out.extend_from_slice(b"five!"));
+            assert!(watch.take_failure().is_none());
+            writer.append(1, |out| out.extend_from_slice(b"five!"));
+        }
+        let failure = watch.take_failure();
+        match (hung, &failure) {
+            (true, Some(AppendError::Hung { running })) => assert!(*running >= held, "{running:?}"),
+            (false, Some(AppendError::Behind { bytes: 10 })) => {}
+            _ => panic!("{hung}: {failure:?}"),
+        }
+        // Stopped, it takes no record more, and the sync that returns late fails it no more.
+        assert!(watch.settled());
+        writer.append(1, |_| unreachable!("a stopped writer takes no record"));
+        release.send(()).unwrap();
+        assert!(writer.close().is_none());
+        assert_eq!(watch.durable(), 1);
+    }
+}
+
+#[test]
 fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
     // The worker's sync waits for a word that comes only once the test saw the drop return.
     let (release, gate) = mpsc::channel();
@@ -140,10 +185,10 @@ fn a_writer_dropped_in_a_panic_returns_while_its_sync_does_not() {
         let _returned = SendOnDrop(returned);
         let (entered, in_sync) = mpsc::channel();
         let writer = AppendWriter::start("held", GatedFile { gate, entered });
-        writer.append(|out| out.extend_from_slice(b"held"));
+        writer.append(1, |out| out.extend_from_slice(b"held"));
         in_sync.recv().unwrap();
         // A record that panics as it is written poisons the lock the drop takes.
-        writer.append(|_| panic!("the owner panics"));
+        writer.append(1, |_| panic!("the owner panics"));
     });
     dropped
         .recv_timeout(Duration::from_secs(10))
@@ -161,19 +206,21 @@ fn a_new_file_holds_its_head_then_its_records_and_a_reopen_cuts_a_torn_tail() {
     let writer = AppendWriter::create("journal", &path, b"head/").unwrap();
     let watch = writer.watch();
     for record in [&b"first/"[..], b"", b"third/"] {
-        writer.append(|out| out.extend_from_slice(record));
+        writer.append(1, |out| out.extend_from_slice(record));
     }
+    // Two records in one append, as a journal hands a frame's records, count as two.
+    writer.append(2, |out| out.extend_from_slice(b"fourth/fifth/"));
     // Dropped, the writer writes and syncs what it holds.
     drop(writer);
-    assert_eq!(watch.durable(), 3);
+    assert_eq!(watch.durable(), 5);
     assert!(watch.take_failure().is_none());
-    assert_eq!(fs::read(&path).unwrap(), b"head/first/third/");
+    assert_eq!(fs::read(&path).unwrap(), b"head/first/third/fourth/fifth/");
 
     // A crash tore the last record: reopened at the end of the whole ones, the file loses the
     // tear and goes on after them.
     fs::write(&path, b"head/first/thi").unwrap();
     let writer = AppendWriter::reopen("journal", &path, 11).unwrap();
-    writer.append(|out| out.extend_from_slice(b"after/"));
+    writer.append(1, |out| out.extend_from_slice(b"after/"));
     drop(writer);
     assert_eq!(fs::read(&path).unwrap(), b"head/first/after/");
 

@@ -1,7 +1,8 @@
 use bevy_ecs::entity::Entity;
+use campfire_actions::ChargeRule;
 use campfire_common::Ticks;
 use campfire_math::{Num, Vec3};
-use campfire_stats::PoolCost;
+use campfire_units::PoolCost;
 use campfire_values::{Rank, UnitType};
 
 /// What a builder does with its build order this tick.
@@ -27,5 +28,6 @@ pub struct Start {
     pub(super) angle: Num,
     pub(super) cost: PoolCost,
     pub(super) cooldown: Ticks,
+    pub(super) charges: Option<ChargeRule>,
     pub rank: Rank,
 }

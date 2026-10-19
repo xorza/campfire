@@ -12,7 +12,7 @@ mod showcase;
 use bevy_ecs::world::World;
 use campfire_actions::{ActionProgress, ActionSlot, ActionSlots, SlotKind};
 use campfire_capabilities::Match;
-use campfire_combat::{Deaths, Respawn};
+use campfire_combat::Respawn;
 use campfire_common::Tick;
 use campfire_harness::{
     ArchetypeWatch, FixedMatch, MatchRecord, MatchUnits, Moba3v3, ScriptedMode,
@@ -25,8 +25,8 @@ use campfire_runner::SessionWorld;
 use campfire_script::{ScriptFailures, ScriptHost, StateValue};
 use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{EntityIndex, Position, SimWorld, StableId, TickRate};
-use campfire_stats::{Level, Life, Stats};
-use campfire_units::{Dead, Owner};
+use campfire_stats::{Level, Stats};
+use campfire_units::{Dead, Deaths, Life, Owner};
 use campfire_values::{PackageIndex, Rank, Scalar, Team, UnitType};
 
 use crate::runner::match_3v3::showcase::Showcase;
@@ -175,13 +175,13 @@ fn run(moba: &ScriptedMode<Moba3v3>) -> Run<'_> {
     let mut deaths = Vec::new();
     let mut seen = Seen::default();
     let mut showcase = Showcase::default();
-    let mut watch = ArchetypeWatch::of(fixed.game());
+    let mut watch = ArchetypeWatch::of(fixed.game_mut());
     for tick in 0..TICKS {
         moba.play_tick(&mut fixed, tick);
         record.tick(fixed.game_mut());
         watch.tick(fixed.game(), tick);
         let game = fixed.game();
-        let failures = game.non_send::<ScriptFailures>();
+        let failures = game.resource::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
             "tick {tick}: {:?}",

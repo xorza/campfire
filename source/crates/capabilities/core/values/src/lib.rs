@@ -3,7 +3,9 @@
 //! components of a unit's identity that the script view reads: its team, its type, its tags,
 //! and the teams' relations.
 
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 
 mod action_id;
 mod action_start;
@@ -11,15 +13,16 @@ mod bits256;
 mod block;
 mod damage_kind;
 mod dash_delivery;
-mod declared_name;
 mod distance;
 mod engine_enum;
 mod engine_tag;
 mod error;
 mod filter_data;
 mod hit;
+mod item_id;
 mod message_id;
 mod modifier_id;
+mod name_kind;
 mod name_table;
 mod names;
 mod number;
@@ -55,15 +58,16 @@ pub use crate::bits256::Bits256;
 pub use crate::block::Block;
 pub use crate::damage_kind::DamageKind;
 pub use crate::dash_delivery::DashDelivery;
-pub use crate::declared_name::DeclaredName;
 pub use crate::distance::Distance;
 pub use crate::engine_enum::EngineEnum;
 pub use crate::engine_tag::EngineTag;
 pub use crate::error::{NamesError, TimeTooLarge};
 pub use crate::filter_data::{FilterData, FilterSyntax, FilterTag, TagTerm};
 pub use crate::hit::Hit;
+pub use crate::item_id::ItemId;
 pub use crate::message_id::MessageId;
 pub use crate::modifier_id::ModifierId;
+pub use crate::name_kind::{Article, NameKind, NameScope, Named};
 pub use crate::name_table::NameTable;
 pub use crate::names::{NameId, NameKey, Names};
 pub use crate::number::{Number, ParamRef};

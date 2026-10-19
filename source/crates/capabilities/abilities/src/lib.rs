@@ -1,4 +1,6 @@
-#![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
+// A float's rounding and its NaNs differ by target and by a thread's flags, so the sim computes
+// in none (09-determinism-core.md, One step: an `i128`, rounded once).
+#![warn(clippy::float_arithmetic)]
 #![expect(
     clippy::needless_pass_by_value,
     reason = "Bevy systems take `Res` and `Query` by value"
@@ -8,22 +10,28 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
+use crate::casts::CastDue;
+use crate::channels::ChannelDue;
+use crate::channels::{OnChannelTick, OnInterrupt};
 use bevy_ecs::schedule::{IntoScheduleConfigs, SystemSet};
-use campfire_actions::{ActionTarget, CastSpends};
+use campfire_actions::{Action, ActionBook, ActionTarget, ActionsSet, CastSpends, OnResolve};
 use campfire_common::{EnumAll, Ticks};
-use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, Phase, SetPlace};
+use campfire_declare::{Declarations, InstallCx, Module, ModuleSet, SetPlace};
 use campfire_deliveries::Deliverers;
-use campfire_script::{ScriptValue, View};
+use campfire_script::{ApiVersion, ScriptValue, Status, View};
 use campfire_sim::{Capability, TickRate};
+use campfire_units::Due;
 
 mod abilities_api;
 mod abilities_effect;
+mod cast_data;
 mod casts;
 mod channels;
 mod error;
 mod toggles;
 
 pub use crate::abilities_api::AbilitiesApi;
+pub use crate::cast_data::CastData;
 pub use crate::casts::Casts;
 pub use crate::channels::Channels;
 pub use crate::error::AbilitiesRefusal;
@@ -36,7 +44,7 @@ pub struct Abilities;
 
 /// The steps of `abilities`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash, EnumAll)]
-pub(crate) enum AbilitiesSet {
+pub enum AbilitiesSet {
     /// Before the holds follow: toggles pay their seconds or turn off.
     Toggles,
     /// The due casts start.
@@ -46,14 +54,13 @@ pub(crate) enum AbilitiesSet {
 }
 
 impl ModuleSet for AbilitiesSet {
-    const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
     const ALL: &'static [Self] = &Self::ALL;
 
     fn place(self) -> SetPlace {
-        SetPlace::Phase(match self {
-            Self::Toggles => Phase::Toggles,
-            Self::StartCasts => Phase::Start,
-            Self::Resolve => Phase::CastResolve,
+        SetPlace::at(match self {
+            Self::Toggles => ActionsSet::Toggle,
+            Self::StartCasts => ActionsSet::Start,
+            Self::Resolve => ActionsSet::Cast,
         })
     }
 }
@@ -62,12 +69,18 @@ impl Module for Abilities {
     const CAPABILITY: Option<Capability> = Some(Capability::Abilities);
     const NEEDS: &'static [Capability] = &[Capability::Stats];
     const USES: &'static [Capability] = &[];
+    type Set = AbilitiesSet;
 
     fn declare<D: Declarations>(d: &mut D) {
-        d.sets::<AbilitiesSet>();
+        d.scratch::<Due<CastDue>>();
+        d.scratch::<Due<ChannelDue>>();
         d.calls::<Deliverers>();
         d.calls::<CastSpends>();
+        d.listed::<CastData>();
         d.api(AbilitiesApi::register);
+        d.hook::<OnResolve>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnChannelTick>(Status::Runs(ApiVersion::FIRST));
+        d.hook::<OnInterrupt>(Status::Runs(ApiVersion::FIRST));
     }
 
     /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
@@ -76,20 +89,38 @@ impl Module for Abilities {
     /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
     /// only cools down, as the server's does. On the server, each toggle that is on pays its cost
-    /// each second, as the toggle's cost is the server's.
-    fn install(cx: &mut InstallCx<'_>) {
-        cx.systems(Casts::start_casts.in_set(AbilitiesSet::StartCasts));
-        cx.unscripted(
-            (Casts::predict_casts, Channels::predict_channels)
-                .chain()
-                .in_set(AbilitiesSet::Resolve),
-        );
-        cx.scripted(
-            (Casts::resolve_casts, Channels::run_channels)
-                .chain()
-                .in_set(AbilitiesSet::Resolve),
-        );
-        cx.server(Toggles::run_toggles.in_set(AbilitiesSet::Toggles));
+    /// each second, as the toggle's cost is the server's. The channels and the toggles install
+    /// only in a match whose actions have them (02-engine-core.md, Books before the install).
+    fn install(cx: &mut InstallCx<'_, Self::Set>) {
+        let actions = cx.book::<ActionBook>();
+        let channels = actions.is_some_and(|book| book.iter().any(Action::channels));
+        let toggles = actions.is_some_and(|book| book.iter().any(Action::toggles));
+        cx.add(AbilitiesSet::StartCasts, Casts::start_casts);
+        if channels {
+            cx.unscripted(
+                AbilitiesSet::Resolve,
+                (Casts::predict_casts, Channels::predict_channels).chain(),
+            );
+            cx.scripted(
+                AbilitiesSet::Resolve,
+                (
+                    Casts::collect_casts,
+                    Casts::resolve_casts,
+                    Channels::collect_channels,
+                    Channels::run_channels,
+                )
+                    .chain(),
+            );
+        } else {
+            cx.unscripted(AbilitiesSet::Resolve, Casts::predict_casts);
+            cx.scripted(
+                AbilitiesSet::Resolve,
+                (Casts::collect_casts, Casts::resolve_casts).chain(),
+            );
+        }
+        if toggles {
+            cx.server(AbilitiesSet::Toggles, Toggles::run_toggles);
+        }
     }
 }
 
@@ -120,14 +151,16 @@ pub mod internals {
 
     use bevy_ecs::world::World;
     use campfire_actions::{
-        ActionProgress, ActionSlot, ActionSlots, ActionTarget, InProgress, SlotTime, SlotTimes,
+        ActionProgress, ActionSlot, ActionSlots, ActionTarget, InProgress, ProgressDues, SlotTime,
+        SlotTimes,
     };
     use campfire_math::Num;
     use campfire_script::internals::FailedCall;
     use campfire_script::{Hook, ScriptFailures};
     use campfire_sim::internals::SimWorldInternals;
     use campfire_sim::{SimWorld, StableId};
-    use campfire_stats::{ModifierClocks, Modifiers, PoolId, Pools, StatRule, Stats};
+    use campfire_stats::{ModifierClocks, Modifiers, Pools, StatRule, Stats};
+    use campfire_units::PoolId;
     use campfire_values::{PackageIndex, Stat};
 
     use crate::Abilities;
@@ -161,8 +194,11 @@ pub mod internals {
         /// would make it.
         pub fn casts(world: &mut World, casts: &[(StableId, ActionTarget)]) {
             for &(id, target) in casts {
-                let mut progress = world.part_mut::<ActionProgress>(id);
-                progress.order(0, target);
+                let entity = world.unit_entity(id);
+                ProgressDues::change(world, id, entity, |progress, dues| {
+                    progress.order(0, target, dues);
+                })
+                .expect("a caster has its progress");
             }
             world.step();
         }
@@ -197,7 +233,7 @@ pub mod internals {
         }
 
         pub fn failed_calls(world: &World) -> Vec<FailedCall> {
-            world.non_send::<ScriptFailures>().calls()
+            world.resource::<ScriptFailures>().calls()
         }
 
         /// Gives `id` the modifier `name` from itself.

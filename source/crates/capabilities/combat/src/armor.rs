@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 
+use campfire_common::DeclaredName;
 use campfire_declare::PerType;
 use campfire_math::{Num, Rounding};
-use campfire_script::{NameKind, UnknownName};
-use campfire_values::{DamageKind, DeclaredName, NameId, Names};
+use campfire_script::UnknownName;
+use campfire_values::{Article, DamageKind, NameId, NameKind, NameScope, Named, Names};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -31,7 +32,7 @@ impl Armor {
         for (kind, share) in shares {
             let kind = kinds
                 .named(kind.as_str())
-                .ok_or_else(|| UnknownName::new(NameKind::DamageKind, kind))?;
+                .ok_or_else(|| UnknownName::new(DamageKind::NAMES, kind))?;
             table[kind.index()] = share.0;
         }
         Ok(Self(table.into()))
@@ -67,6 +68,10 @@ impl<'de> Deserialize<'de> for ArmorShare {
     }
 }
 
+impl Named for Armor {
+    const NAMES: NameKind = NameKind::new("armor", Article::An, NameScope::Match);
+}
+
 #[cfg(test)]
 mod tests {
     use campfire_codec::Toml;
@@ -99,7 +104,7 @@ mod tests {
         assert_eq!(
             Armor::of(&stranger, &kinds),
             Err(UnknownName::new(
-                NameKind::DamageKind,
+                DamageKind::NAMES,
                 &DeclaredName::new("laser").unwrap()
             ))
         );

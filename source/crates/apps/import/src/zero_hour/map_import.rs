@@ -6,18 +6,17 @@ use campfire_client_files::{
     TerrainSurface,
 };
 use campfire_codec::{Binary, Toml};
-use campfire_geometry::{Bounds, Metric};
+use campfire_common::DeclaredName;
+use campfire_geometry::Bounds;
 use campfire_math::Num;
-use campfire_mode::{
-    GroundData, MapData, MapNavigationData, MapPoint, MarkerData, ModeParam, PlacedUnitData,
-};
-use campfire_units::{CellSplit, CoarseSpan, Ground, HeightGrid};
-use campfire_values::DeclaredName;
+use campfire_mode::{MarkerData, ModeParam, PlacedUnitData};
+use campfire_navigation::MapNavigationData;
+use campfire_units::{BoundsData, CellSplit, CoarseSpan, Ground, GroundData, HeightGrid, MapPoint};
+use serde::Serialize;
 
 use crate::zero_hour::cliff_walls::{CellFrame, CliffWalls};
 use crate::zero_hour::error::MapError;
-use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
-use crate::zero_hour::format::ini::object_ini::{ObjectIni, PlacedAs};
+use crate::zero_hour::format::ini::object_ini::PlacedAs;
 use crate::zero_hour::format::look_conditions::LookConditions;
 use crate::zero_hour::format::map::map_file::{GameLight, MapFile, MapHeights};
 use crate::zero_hour::format::map::map_object::Placement;
@@ -26,6 +25,20 @@ use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::terrain_atlas::{ClassTexture, TerrainAtlas};
 use crate::zero_hour::terrain_cells::TerrainCells;
+use crate::zero_hour::zero_hour_rules::ZeroHourRules;
+
+/// A map's `map/<name>/map.toml` as the import writes it: a planar map of its bounds, its ground
+/// and its navigation, the sections it gives, then the units and markers of the mode's own.
+#[derive(Debug, Serialize)]
+struct MapToml {
+    bounds: BoundsData,
+    ground: GroundData,
+    navigation: MapNavigationData,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    units: Vec<PlacedUnitData>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    markers: Vec<MarkerData>,
+}
 
 /// One map's files in the package: `map/<name>/map.toml`, `map/<name>/heights.bin`,
 /// `client/maps/<name>/terrain.bin`, `client/maps/<name>/lights.toml` and
@@ -81,14 +94,13 @@ impl SkirmishPoint {
     }
 }
 
-/// What a map import reads and adds to beside its file: the object INI and the locomotors its
-/// objects name, the names the objects took so far, with the unit types of the maps, the looks of
-/// the package's `client/units.toml`, how many of the map's lights the game draws, and the
+/// What a map import reads and adds to beside its file: the install's rules, of the objects and the
+/// locomotors they name, the names the objects took so far, with the unit types of the maps, the
+/// looks of the package's `client/units.toml`, how many of the map's lights the game draws, and the
 /// settings of `GameData.ini` its terrain is drawn by.
 #[derive(Debug)]
 pub(crate) struct MapSources<'a> {
-    pub(crate) ini: &'a ObjectIni,
-    pub(crate) locomotors: &'a LocomotorIni,
+    pub(crate) rules: &'a ZeroHourRules,
     pub(crate) names: &'a mut ImportNames,
     pub(crate) looks: &'a ClientUnits,
     pub(crate) lights: usize,
@@ -152,14 +164,14 @@ impl MapImport {
     /// first light's, as the game takes it.
     pub(crate) fn new(file: &MapFile, sources: MapSources<'_>) -> Result<Self, MapError> {
         let MapSources {
-            ini,
-            locomotors,
+            rules,
             names,
             looks,
             lights,
             game,
             textures,
         } = sources;
+        let (ini, locomotors) = (&rules.objects, &rules.locomotors);
         let heights = Self::heights(&file.heights)?;
         // The ground a match loads, checked as its load checks it, so a map the load would refuse
         // is refused here, not by the match.
@@ -319,16 +331,13 @@ impl MapImport {
             rows: file.heights.depth,
         };
         let walls = CliffWalls::of(&cliffs, file.heights.width).walls(frame, bounds);
-        let map = MapData {
-            metric: Metric::Planar,
-            bounds,
-            ground: Some(ground),
-            grid: None,
-            navigation: Some(MapNavigationData {
+        let map = MapToml {
+            bounds: BoundsData(bounds),
+            ground,
+            navigation: MapNavigationData {
                 cell: Num::int(PATHFIND_CELL),
                 walls,
-            }),
-            paths: Vec::new(),
+            },
             units: bridges,
             markers,
         };
@@ -430,15 +439,30 @@ mod tests {
     use std::mem;
 
     use campfire_client_files::ClientUnit;
-    use campfire_units::GroundError;
+    use campfire_codec::TomlTable;
+    use campfire_declare::SectionReaders;
+    use campfire_mode::MapData;
+    use campfire_units::{GroundError, MetricData};
 
     use super::*;
     use crate::zero_hour::format::ini::locomotor_ini::internals::LOCOMOTORS;
+    use crate::zero_hour::format::ini::object_ini::ObjectIni;
     use crate::zero_hour::format::ini::object_ini::internals::{
         DEFAULT_OBJECTS, MORE_OBJECTS, OBJECTS,
     };
     use crate::zero_hour::format::map::map_file::internals::map;
     use crate::zero_hour::format::map::terrain::{BlendShape, BlendTile};
+
+    /// The map of `text`, read as the engine reads the sections the import writes.
+    fn read_map(text: &str) -> MapData {
+        let mut readers = SectionReaders::default();
+        readers.add::<MetricData>(None);
+        readers.add::<BoundsData>(None);
+        readers.add::<GroundData>(None);
+        readers.add::<MapNavigationData>(None);
+        let raw = Toml::parse::<TomlTable>(text).unwrap();
+        raw.read_with(MapData::seed(&readers)).unwrap()
+    }
 
     /// The fixture map's `data/units.toml`.
     const UNITS_TOML: &str = r#"[units.americatankcrusader]
@@ -458,12 +482,9 @@ radius = "5"
 height = "1"
 
 [units.americatankcrusader.combat]
-on_death = "despawn"
 
 [units.americatankcrusader.turret]
 turn_rate = "180"
-tolerance_deg = "2.0053522586822509765625"
-slot = "weapon"
 
 [units.fortresswall]
 tags = ["structure"]
@@ -492,7 +513,11 @@ tags = ["wall"]
         names: &mut ImportNames,
         lights: usize,
     ) -> Result<MapImport, MapError> {
-        let ini = objects();
+        let mut rules = ZeroHourRules {
+            objects: objects(),
+            ..ZeroHourRules::default()
+        };
+        rules.locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
         let objects = ["oak", "rock", "rockred", "bush"].map(|look| {
             (
                 DeclaredName::new(look).unwrap(),
@@ -503,11 +528,8 @@ tags = ["wall"]
             objects: objects.into(),
             ..ClientUnits::default()
         };
-        let mut locomotors = LocomotorIni::default();
-        locomotors.read(LOCOMOTORS.as_bytes()).unwrap();
         let sources = MapSources {
-            ini: &ini,
-            locomotors: &locomotors,
+            rules: &rules,
             names,
             looks: &looks,
             lights,
@@ -619,7 +641,7 @@ tags = ["wall"]
         // −1,493,172,476. The wall at (10, 0), which the map lists after both, comes first, as the
         // game spawns bridge-like objects before the others. The waypoint at (12.5, 7.5) is marker
         // `w3`. The road's end is none.
-        let map: MapData = Toml::parse(&imported.map).unwrap();
+        let map = read_map(&imported.map);
         let decimal = |text: &str| text.parse::<Num>().unwrap();
         let ground = |x: &str, z: &str| MapPoint::Ground([decimal(x), decimal(z)]);
         let unit = |unit_type: &str, pos, angle: i64, height: Num| PlacedUnitData {
@@ -668,7 +690,7 @@ tags = ["wall"]
         // x 30, to x 35; the wall's box, of reach 10 and 2.5 from (10, 0), lies within; not the
         // tree's x of 50, which the sim does not hold.
         let bounds = Toml::parse("min = [-10, -15]\nmax = [35, 10]").unwrap();
-        assert_eq!(map.bounds, bounds);
+        assert_eq!(map.bounds(), bounds);
         // The ground of the original's logic: split on the file's 1 to 3, and the partition's
         // cells of 40 from the world's corner over the boundary of 2 × 1 cells, x 0 to 20 and the
         // original's y 0 to 10, the engine's z 0 to −10. A boundary past the heights, 9 cells to
@@ -683,7 +705,7 @@ tags = ["wall"]
             split: CellSplit::OneThree,
             high: Some(span),
         };
-        assert_eq!(map.ground, Some(ground));
+        assert_eq!(map.ground_data(), Some(ground));
         let mut wide = file.clone();
         wide.heights.boundary = Some([9, 1]);
         assert!(import(&wide, &mut names, 3).is_ok());
@@ -730,16 +752,14 @@ tags = ["wall"]
         // west is (−10, −10), and column `x` x from −10 + 10 x. In the bounds, the walls are x
         // −10 to 10 by z 0 to 10, x −10 to 30 by z −10 to 0, and x 10 to 30 by z −20 to −10 cut
         // at the bounds' z −15.
-        let navigation = map.navigation.unwrap();
+        let navigation = map.section::<MapNavigationData>().unwrap();
         assert_eq!(navigation.cell, Num::int(10));
         let square = |[x0, z0, x1, z1]: [i64; 4]| {
             [[x0, z0], [x1, z0], [x1, z1], [x0, z1]]
                 .map(|[x, z]| MapPoint::Ground([Num::int(x), Num::int(z)]))
                 .to_vec()
         };
-        let walls: Vec<_> = navigation
-            .walls
-            .into_iter()
+        let walls: Vec<_> = (navigation.walls.iter().cloned())
             .map(|wall| wall.points)
             .collect();
         assert_eq!(
@@ -755,7 +775,11 @@ tags = ["wall"]
         // second within 33,644,228 · 2⁻²⁴°; the wall is a structure, a box of 2 · 10 by 2 · 2.5
         // m, whose highlander body gives it no life; the fence is a wall of no body. Each body
         // has the game's default height, 1 m, as no geometry names its own.
-        let units = mem::take(&mut names).close().bare_file();
+        let units = mem::take(&mut names)
+            .into_production()
+            .into_shells()
+            .close()
+            .bare_file();
         assert_eq!(units.text, UNITS_TOML);
         assert_eq!(units.max_speed, Some(Num::int(61) / Num::int(2)));
 
@@ -766,8 +790,8 @@ tags = ["wall"]
         for (x, kept) in [(35.0, true), (35.5, false)] {
             file.objects[waypoint].pos[0] = x;
             let moved = import(&file, &mut names, 3).unwrap();
-            let map = Toml::parse::<MapData>(&moved.map).unwrap();
-            assert_eq!(map.bounds, bounds);
+            let map = read_map(&moved.map);
+            assert_eq!(map.bounds(), bounds);
             assert_eq!(map.markers.len(), usize::from(kept));
             let dropped: &[&str] = if kept { &[] } else { &["Fixture_Center"] };
             assert_eq!(moved.dropped_waypoints, dropped);
@@ -788,11 +812,8 @@ tags = ["wall"]
                 (point.id, point.name) = (id, name.as_bytes().to_vec());
                 placed.objects.push(object);
             }
-            let markers = Toml::parse::<MapData>(
-                &import(&placed, &mut ImportNames::default(), 3).unwrap().map,
-            )
-            .unwrap()
-            .markers;
+            let markers =
+                read_map(&import(&placed, &mut ImportNames::default(), 3).unwrap().map).markers;
             markers
                 .iter()
                 .map(|marker| marker.tags.len())

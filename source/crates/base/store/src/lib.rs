@@ -11,6 +11,8 @@
 )]
 
 mod append_writer;
+#[cfg(feature = "internals")]
+mod cargo_manifest;
 mod data_dir;
 mod dir_entries;
 mod durable_dir;
@@ -63,9 +65,10 @@ pub use crate::stream_writer::stream_sender::StreamSender;
 pub use crate::worker::Worker;
 
 /// What the tests of the engine's crates use of files: a test's own directory, the files it pins,
-/// the workspace's sources, a race of writers and a link.
+/// the workspace's sources and manifests, a race of writers and a link.
 #[cfg(feature = "internals")]
 pub mod internals {
+    pub use crate::cargo_manifest::CargoManifest;
     pub use crate::pinned_file::PinnedFile;
     pub use crate::platform::file_link::FileLink;
     pub use crate::race::Race;

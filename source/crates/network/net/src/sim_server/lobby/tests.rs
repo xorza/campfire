@@ -3,18 +3,18 @@ use std::time::Duration;
 
 use bevy_ecs::system::RunSystemOnce;
 use campfire_bots::OrderScript;
-use campfire_common::ChannelBinding;
+use campfire_common::{ChannelBinding, DeclaredName};
 use campfire_mode::PickError;
 use campfire_protocol::internals::TestKey;
 use campfire_protocol::{
     ConnectAnswer, ConnectChallenge, ConnectError, DelegationError, DelegationTerms, Entropy,
-    SeedContribution,
+    SeedContribution, Signer,
 };
 use campfire_state_types::DataKind;
 use campfire_store::internals::Scratch;
 use campfire_test_packages::TestMode;
-use campfire_values::{DeclaredName, Scalar};
-use campfire_visibility::{OutView, Setting, SpectatorFog, VisibilityError};
+use campfire_values::Scalar;
+use campfire_visibility::{OutView, Setting, SpectatorFog, Visibility, VisibilityError};
 use lightyear::prelude::{PeerId, RemoteId, Tick};
 
 use super::*;
@@ -22,7 +22,7 @@ use crate::net_protocol::join::{Join, JoinRole};
 use crate::os::{Clock, Os};
 use crate::session_times::SessionTimes;
 use crate::sim_server::offering::Offered;
-use crate::sim_server::server_bots::SlotBot;
+use crate::sim_server::server_bots::SlotScript;
 
 /// A session of the lane mode's 2 slots, with bots in slots `bots` and slots `open` open.
 fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
@@ -38,20 +38,18 @@ fn setup(bots: &[u32], open: &[u32]) -> LobbySetup {
 /// The opening of a session of the lane mode, with bots in slots `bots` and slots `open` open.
 fn opening(bots: &[u32], open: &[u32]) -> LobbyOpening {
     let script = OrderScript::parse("end = 1").unwrap();
+    let packages = TestMode::Lane.packages();
+    let slots = bots
+        .iter()
+        .map(|&slot| SlotScript::new(slot, script.clone()));
     LobbyOpening {
-        packages: Arc::new(TestMode::Lane.packages()),
-        bots: ServerBots {
-            slots: bots
-                .iter()
-                .map(|&slot| SlotBot::new(slot, script.clone()))
-                .collect(),
-            takeover: None,
-        },
+        bots: ServerBots::new(slots, None, &packages).unwrap(),
+        packages: Arc::new(packages),
         open: open.iter().copied().map(PlayerSlot::new).collect(),
         host: HostVisibility::default(),
         options: Vec::new(),
         server: ServerSetup {
-            key: TestKey::server(),
+            signer: Arc::new(Signer::new(TestKey::server(), Entropy::Fixed(5))),
             times: SessionTimes::DEFAULT,
             os: Os {
                 clock: Clock::manual(TestKey::NOW),
@@ -85,7 +83,11 @@ fn the_lobby_takes_the_hosts_visibility_where_the_mode_leaves_it() {
             settings: settings.iter().map(|text| text.parse().unwrap()).collect(),
             max_spectators,
         };
-        Lobby::new(setup).map(|lobby| Visibility::decode(&lobby.terms().visibility).unwrap())
+        Lobby::new(setup).map(|lobby| {
+            let terms = Visibility::decode(&lobby.terms().visibility).unwrap();
+            assert_eq!(terms, lobby.checked().visibility);
+            terms
+        })
     };
     let visibility = hosted(&["spectators=teams", "out=spectators"], 2).unwrap();
     assert_eq!(visibility.spectators(), SpectatorFog::Teams);
@@ -249,8 +251,8 @@ fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
         lobby.offering.check(&offered, &join(3, delegation.json())),
         Ok(delegation.clone())
     );
-    // An answer over another TLS session's binding, as a relay between two sessions gives, and a delegation
-    // that is not an event.
+    // An answer over another TLS session's binding, as a relay between two sessions gives, and a
+    // delegation that is not an event.
     assert_eq!(
         lobby.offering.check(&offered, &join(4, delegation.json())),
         Err(JoinError::Connect(ConnectError::BadAnswer))

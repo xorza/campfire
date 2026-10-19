@@ -1,7 +1,8 @@
-use campfire_capabilities::{PackageContent, UnitTypeData};
+use campfire_capabilities::{PackageContent, Release};
 use campfire_codec::TomlTable;
+use campfire_declare::{UnitDefaults, UnitTypeData};
 use campfire_values::MessageId;
-use serde::de::Error;
+use serde::de::{DeserializeSeed, Error};
 use serde::{Deserialize, Deserializer};
 
 use crate::files::content_table::ContentTable;
@@ -16,8 +17,15 @@ pub(crate) struct AvatarFile {
     pub(crate) content: PackageContent,
 }
 
-impl<'de> Deserialize<'de> for AvatarFile {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+/// What reads an avatar's file, as serde's seed, of the mode's `defaults`, which lie under its
+/// unit types' sections.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AvatarSeed<'d>(pub(crate) &'d UnitDefaults);
+
+impl<'de> DeserializeSeed<'de> for AvatarSeed<'_> {
+    type Value = AvatarFile;
+
+    fn deserialize<D: Deserializer<'de>>(self, deserializer: D) -> Result<AvatarFile, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
             name: MessageId,
@@ -25,9 +33,11 @@ impl<'de> Deserialize<'de> for AvatarFile {
             rest: TomlTable,
         }
         let Fields { name, mut rest } = Fields::deserialize(deserializer)?;
-        let content = ContentTable::take(&mut rest)?;
-        let unit: UnitTypeData = rest.read().map_err(D::Error::custom)?;
-        Ok(Self {
+        let content = ContentTable::take(&mut rest, self.0)?;
+        let readers = Release::sections();
+        let unit = rest.read_with(UnitTypeData::seed(&readers, self.0));
+        let unit = unit.map_err(D::Error::custom)?;
+        Ok(AvatarFile {
             name,
             unit,
             content,

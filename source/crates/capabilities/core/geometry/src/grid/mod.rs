@@ -1,7 +1,5 @@
 use std::ops::{Range, RangeInclusive};
 
-use campfire_sim::Position;
-
 use campfire_math::{Flat, FloorRoot, I64x4, Num, Rounding, Vec3};
 
 use crate::body_box::BodyBox;
@@ -28,7 +26,7 @@ impl Grid {
     /// The grid of `cell`-meter cells over `bounds`; `None` unless `cell` is positive and at most
     /// the world's bound, and the cells are at most `MAX_CELLS`.
     pub fn new(cell: Num, bounds: Bounds) -> Option<Self> {
-        if cell <= Num::ZERO || cell > Position::BOUND {
+        if cell <= Num::ZERO || cell > Vec3::BOUND {
             return None;
         }
         let (min, max) = (bounds.min(), bounds.max());
@@ -269,7 +267,7 @@ impl Grid {
         let twice = |value: Num| {
             i64::try_from(halves::of(value)).expect("a coordinate within the bound fits i64")
         };
-        let reach = 2 * radius.to_bits().min(8 * Position::BOUND.to_bits());
+        let reach = 2 * radius.to_bits().min(8 * Vec3::BOUND.to_bits());
         let min = self.bounds.min();
         let from = [twice(pos.x) - twice(min[0]), twice(pos.z) - twice(min[1])];
         Rows {
@@ -312,7 +310,8 @@ impl Grid {
     }
 
     /// The rows of `rows_one_by_one`, four a step. The center of column x lies within `half` of
-    /// `from[0]` when x is from ⌈(from₀ − half − cell) / 2·cell⌉ to ⌊(from₀ + half − cell) / 2·cell⌋.
+    /// `from[0]` when x is from ⌈(from₀ − half − cell) / 2·cell⌉ to ⌊(from₀ + half − cell) /
+    /// 2·cell⌋.
     fn rows_in_lanes(&self, rows: &Rows, reveal: &mut impl FnMut(Range<usize>)) {
         let cell = self.cell.to_bits();
         let Rows {

@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules};
+use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::world::World;
 use campfire_actions::CostTarget;
 use campfire_common::Tick;
-use campfire_script::{Filter, ScriptNames, TagNames, View};
+use campfire_script::{Filter, MatchNames, TagNames};
 use campfire_sim::internals::SimWorldInternals;
-use campfire_sim::{SimSet, SimTick, SimUpdate, StableId};
-use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, PoolId, StatId, Stats};
+use campfire_sim::{SimSet, SimTick, StableId};
+use campfire_stats::{CarriedMut, ModifierBook, ModifierData, Modifiers, Stats};
 use campfire_units::internals::TEST_PACKAGE;
-use campfire_units::{StatusTags, TagBook, Units};
+use campfire_units::{PoolId, StatId, StatusTags, TagBook, Units};
 use campfire_values::{
     Block, DamageKind, Names, RelationSet, ResourceId, Stat, TagProperties, UnitType,
 };
@@ -46,7 +46,7 @@ pub trait UnitsFixtures {
 
     /// Names, for the scripts of a match with no mode, its `damage_kinds`, its `pools` and its
     /// players' `resources`, each by id, as a mode's books name them.
-    fn name_kinds(world: &World, damage_kinds: &[&str], pools: &[&str], resources: &[&str]);
+    fn name_kinds(world: &mut World, damage_kinds: &[&str], pools: &[&str], resources: &[&str]);
 }
 
 impl UnitsFixtures for Units {
@@ -86,9 +86,7 @@ impl UnitsFixtures for Units {
             if wanted && !held {
                 Stats::give_modifier(world, id, modifier, None, false);
             } else if !wanted && held {
-                CarriedMut::of(world, entity)
-                    .unwrap()
-                    .remove(modifier, None);
+                CarriedMut::with(world, entity, |carried| carried.remove(modifier, None)).unwrap();
             }
         }
         let unit = world.entity(entity);
@@ -124,24 +122,21 @@ impl UnitsFixtures for Units {
                 Self::set_blocks(world, id, blocks);
             }
         };
-        world
-            .resource_mut::<Schedules>()
-            .add_systems(SimUpdate, block.in_set(stage));
+        world.add_tick_systems(block.in_set(stage));
     }
 
-    fn name_kinds(world: &World, damage_kinds: &[&str], pools: &[&str], resources: &[&str]) {
-        let view = world.non_send::<View>();
+    fn name_kinds(world: &mut World, damage_kinds: &[&str], pools: &[&str], resources: &[&str]) {
         let resources = Arc::new(resources.iter().copied().collect());
         let kinds = Arc::new(damage_kinds.iter().copied().collect());
         let pools: Names<PoolId> = pools.iter().copied().collect();
-        let mut names = view.names_mut();
+        let mut names = world.resource_mut::<MatchNames>();
         names.set_table::<DamageKind>(kinds);
         names.set_table::<ResourceId>(resources);
         names.set_table(Arc::new(pools));
     }
 }
 
-/// The test fixtures of `View` that need a crate above its own.
+/// The test fixtures of `MatchNames` that need a crate above its own.
 pub trait ViewFixtures {
     /// The place of `stat` among the stats the mode declares; `None` when it does not declare
     /// it.
@@ -152,19 +147,15 @@ pub trait ViewFixtures {
     fn cost_target(&self, name: &str) -> Option<CostTarget>;
 }
 
-impl ViewFixtures for View {
+impl ViewFixtures for MatchNames {
     fn stat_index(&self, stat: &Stat) -> Option<StatId> {
-        let names = self.names();
-        names.table::<StatId>()?.named(stat.name())
+        self.table::<StatId>()?.named(stat.name())
     }
 
     fn cost_target(&self, name: &str) -> Option<CostTarget> {
         let (no_pools, no_resources) = (Names::default(), Names::default());
-        let names = self.names();
-        let pools = names
-            .table::<PoolId>()
-            .map_or(&no_pools, ScriptNames::names);
-        let resources = names.table().map_or(&no_resources, ScriptNames::names);
+        let pools = self.table::<PoolId>().unwrap_or(&no_pools);
+        let resources = self.table().unwrap_or(&no_resources);
         CostTarget::named(pools, resources, name)
     }
 }

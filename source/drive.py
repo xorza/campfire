@@ -79,6 +79,11 @@ LAN_BINARIES = (
     "campfire-lan-check", "campfire-server", "campfire-client", "campfire-verifier",
 )
 
+# The binaries a release ships, each stripped, with its debug info beside it.
+SHIPPED_BINARIES = (
+    "campfire-client", "campfire-server", "campfire-verifier", "campfire-import",
+)
+
 # The lines a step does not print: cargo's progress; nextest's run header and its notices of a
 # test still running, as its summary lists each slow test; cargo's tallies of the diagnostics a
 # step prints one by one, and nextest's of its failures.
@@ -107,6 +112,54 @@ ERROR_CODE = re.compile(r"^E\d{4}$")
 CARGO_LINT = re.compile(r"^\s*= note: `cargo::[\w-]+` is set to `warn`")
 
 
+class DebugSplit(enum.Enum):
+    """How a platform's release build keeps its debug info beside its binary
+    (02-engine-core.md, A release keeps its debug info beside its binaries)."""
+
+    # `objcopy` copies it into `<bin>.debug`, then strips the binary and links that file by name.
+    OBJCOPY = enum.auto()
+    # Cargo packs it into `<bin>.dSYM`, and `strip -S` drops it from the binary.
+    DSYM = enum.auto()
+    # The linker writes it into `<crate>.pdb` already, which goes beside the binary.
+    PDB = enum.auto()
+
+    def build_env(self) -> dict[str, str]:
+        if self is DebugSplit.DSYM:
+            return {"CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO": "packed"}
+        return {}
+
+    def steps(self, name: str, built: Path, out: Path) -> list[Step]:
+        """The steps that put the binary `built` of the package `name` in `out`, stripped, and
+        its debug info beside it."""
+        shipped = out / built.name
+        def step(what: str, *argv: str | Path) -> Step:
+            return Step(f"{what} {name}", Kind.PROGRAM, tuple(map(str, argv)), needs_previous=True)
+        if self is DebugSplit.OBJCOPY:
+            debug = out / f"{built.name}.debug"
+            return [
+                step("debug", "objcopy", "--only-keep-debug", built, debug),
+                step("strip", "objcopy", "--strip-debug", f"--add-gnu-debuglink={debug}", built, shipped),
+            ]
+        if self is DebugSplit.DSYM:
+            return [
+                step("strip", "strip", "-S", "-o", shipped, built),
+                step("debug", *COPY_TREE, built.with_name(f"{built.name}.dSYM"), out / f"{built.name}.dSYM"),
+            ]
+        pdb = built.with_name(f"{name.replace('-', '_')}.pdb")
+        return [step("binary", *COPY_FILE, built, shipped), step("debug", *COPY_FILE, pdb, out / pdb.name)]
+
+
+# Copies with no shell, the same on every OS.
+COPY_FILE = (sys.executable, "-c", "import shutil, sys; shutil.copy2(sys.argv[1], sys.argv[2])")
+COPY_TREE = (
+    sys.executable, "-c",
+    "import shutil, sys; shutil.rmtree(sys.argv[2], True); shutil.copytree(sys.argv[1], sys.argv[2])",
+)
+MAKE_DIR = (
+    sys.executable, "-c", "import pathlib, sys; pathlib.Path(sys.argv[1]).mkdir(parents=True, exist_ok=True)",
+)
+
+
 @dataclass(frozen=True)
 class Platform:
     """What differs between the OSes the driver runs on: no caller tests the OS."""
@@ -115,15 +168,16 @@ class Platform:
     cross_target: str | None = None
     # Formatting is the same on every OS, so CI checks it on one.
     formats_in_ci: bool = False
+    debug_split: DebugSplit = DebugSplit.OBJCOPY
 
 
 def current_platform() -> Platform:
     if sys.platform.startswith("linux"):
         return Platform(cross_target="x86_64-pc-windows-gnu", formats_in_ci=True)
     if sys.platform == "darwin":
-        return Platform()
+        return Platform(debug_split=DebugSplit.DSYM)
     if sys.platform == "win32":
-        return Platform(exe_suffix=".exe")
+        return Platform(exe_suffix=".exe", debug_split=DebugSplit.PDB)
     raise SystemExit(f"drive.py: {sys.platform} is not a platform Campfire runs on")
 
 
@@ -348,6 +402,12 @@ def bench_step(args: list[str]) -> Step:
     return Step("bench", Kind.PROGRAM, argv, always_runs=True)
 
 
+def bench_check_step() -> Step:
+    # Criterion's `--test` runs each case once, so a bench that no longer runs fails the gate; the
+    # same selection as `bench`'s, so the two share one build.
+    return replace(bench_step(["--", "--test"]), name="benches", always_runs=False)
+
+
 def shown_path(path: Path) -> str:
     try:
         return path.relative_to(SOURCE).as_posix()
@@ -522,15 +582,20 @@ def run_step(step: Step, shown: set[str], note: str = "") -> Outcome:
 
 
 def run_steps(command: str, steps: list[Step], reuse: bool = False) -> int:
-    """Runs `steps`, each after the one before it, past failures: a step that builds is skipped
-    once one found code that does not compile, and a step that needs the one before it when that
-    one did not pass. With `reuse`, outside CI, each step runs only as `Passes` allows."""
+    """Runs `steps`, each after the one before it. Outside CI, the first step that fails skips the
+    rest, as a fix comes before what follows; CI runs on past failures, so one run lists each: a
+    step that builds is skipped there once one found code that does not compile, and a step that
+    needs the one before it when that one did not pass. With `reuse`, outside CI, each step runs
+    only as `Passes` allows."""
     passes = Passes() if reuse and not IN_CI else None
     shown: set[str] = set()
     outcomes: list[Outcome] = []
     broken: str | None = None
+    failed: str | None = None
     for step in steps:
-        if broken is not None and step.kind is not Kind.FORMAT:
+        if failed is not None:
+            outcome = Outcome(step.name, Status.SKIP, note=f"{failed} did not pass")
+        elif broken is not None and step.kind is not Kind.FORMAT:
             note = f"{broken} found code that does not compile"
             outcome = Outcome(step.name, Status.SKIP, note=note)
         elif step.needs_previous and outcomes and outcomes[-1].status is not Status.OK:
@@ -541,6 +606,8 @@ def run_steps(command: str, steps: list[Step], reuse: bool = False) -> int:
             outcome = run_step(step, shown)
         if outcome.broken and broken is None:
             broken = outcome.name
+        if outcome.status is Status.FAIL and not IN_CI:
+            failed = outcome.name
         print(outcome.line())
         record(command, outcome)
         outcomes.append(outcome)
@@ -797,21 +864,45 @@ ZERO_HOUR_OUT = Path.home() / "zh-package"
 
 
 def zero_hour(args: list[str]) -> int:
-    out = args or [str(ZERO_HOUR_OUT)]
+    # `--bless` writes the check's golden file again of what the run measured.
+    env = {"CAMPFIRE_BLESS": "1"} if "--bless" in args else {}
+    out = [arg for arg in args if arg != "--bless"] or [str(ZERO_HOUR_OUT)]
     argv = cargo(
         "run", "--profile", "release-dev", "--locked", "-p", "campfire-zero-hour-check", "--", *out,
     )
-    return run_steps("zero-hour", [Step("zero hour", Kind.PROGRAM, argv, always_runs=True)])
+    step = Step("zero hour", Kind.PROGRAM, argv, env, always_runs=True)
+    return run_steps("zero-hour", [step])
+
+
+def package(args: list[str]) -> int:
+    # The release profile ships: fat LTO, and its debug info full, which each platform then moves
+    # out of the binary into a file beside it, in target/package.
+    refuse_arguments("package", args)
+    packages = [arg for name in SHIPPED_BINARIES for arg in ("-p", name)]
+    build = Step(
+        "release build", Kind.CHECK,
+        cargo("build", "--release", "--locked", "--bins", *packages, JSON),
+        PLATFORM.debug_split.build_env(), always_runs=True,
+    )
+    out = workspace().target / "package"
+    steps = [build, Step("package dir", Kind.PROGRAM, (*MAKE_DIR, str(out)), needs_previous=True)]
+    release = workspace().target / "release"
+    for name in SHIPPED_BINARIES:
+        steps += PLATFORM.debug_split.steps(name, release / f"{name}{PLATFORM.exe_suffix}", out)
+    return run_steps("package", steps)
 
 
 def gate(args: list[str]) -> int:
     refuse_arguments("gate", args)
     steps = []
-    if not IN_CI or PLATFORM.formats_in_ci:
+    # Outside CI the gate writes the format, as a check does; in CI an unformatted tree fails it.
+    if not IN_CI:
+        steps.append(fmt_step())
+    elif PLATFORM.formats_in_ci:
         steps.append(fmt_check_step())
     steps += [lint_step(), ship_step(), tests_step()]
     # After the tests, so target/debug holds the LAN check's build of each binary, which CI keeps.
-    steps += [lan_build_step(), lan_run_step()]
+    steps += [lan_build_step(), lan_run_step(), bench_check_step()]
     # CI checks Windows on Windows itself.
     if not IN_CI and PLATFORM.cross_target is not None:
         steps.append(cross_step(PLATFORM.cross_target))
@@ -825,9 +916,12 @@ COMMANDS: dict[str, tuple[Callable[[list[str]], int], str, str]] = {
     "bench": (bench, "[cargo bench args]", "the benches of every crate that has one"),
     "lan": (lan, "", "the LAN check"),
     "zero-hour": (
-        zero_hour, "[out]", "the Zero Hour check, which needs GENERALSZH_DATA; writes ~/zh-package",
+        zero_hour,
+        "[--bless] [out]",
+        "the Zero Hour check, which needs GENERALSZH_DATA; writes ~/zh-package; --bless its golden",
     ),
     "gate": (gate, "", "every step CI runs"),
+    "package": (package, "", "the shipped binaries, stripped, with their debug info, in target/package"),
 }
 
 

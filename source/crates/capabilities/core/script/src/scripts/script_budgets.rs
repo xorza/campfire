@@ -3,6 +3,7 @@ use bevy_ecs::resource::Resource;
 use crate::script_host::budget::Budget;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::scripts::script_pools::ScriptPools;
 
 /// What each pool has left in the running tick. Not state: every tick starts with the full
 /// limits, and a call that ran out changed nothing.
@@ -16,8 +17,9 @@ pub struct ScriptBudgets {
 }
 
 impl ScriptBudgets {
-    /// Full budgets within `limits`, one for each of `players` player slots.
-    pub fn new(limits: ScriptLimits, players: u32) -> Self {
+    /// Full budgets of `pools`.
+    pub fn full(pools: ScriptPools) -> Self {
+        let ScriptPools { limits, players } = pools;
         let players = usize::try_from(players).expect("a slot count fits usize");
         Self {
             limits,
@@ -27,12 +29,8 @@ impl ScriptBudgets {
         }
     }
 
-    /// The limits it starts each tick with.
-    pub const fn limits(&self) -> ScriptLimits {
-        self.limits
-    }
-
-    pub fn begin_tick(&mut self) {
+    /// Fills every pool again, as a tick starts.
+    pub fn refill(&mut self) {
         self.players.fill(Budget::new(self.limits.player));
         self.think = Budget::new(self.limits.think);
         self.mode = Budget::new(self.limits.mode);

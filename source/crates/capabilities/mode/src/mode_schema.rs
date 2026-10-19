@@ -1,73 +1,65 @@
 use campfire_script::{
-    HookSet, ScriptId, ScriptRole, ScriptValue, StateSchema, StateValue, SyncTo,
+    Hook, HookSet, ListPlace, ListedScript, ModeScripts, ScriptId, ScriptRole, StateSchema,
+    StateValue, SyncTo,
 };
 use campfire_units::ScriptBook;
 use campfire_values::NameTable;
 
 use crate::mode_data::{InputType, ModeData};
-use crate::option_picks::OptionPicks;
 
 /// The one run of each of the schema's tables.
 const RUN: usize = 0;
 
-/// The mode's script and what its data declares: the hooks the script defines, the params, each
-/// option's picked value among them, the state fields and the input types. Package data, not
-/// state.
+/// The mode's scripts and what its data declares: the hooks each script defines, the state
+/// fields, the players' state fields and the input types. Package data, not state.
 #[derive(Debug)]
 pub(crate) struct ModeSchema {
-    pub(crate) script: ScriptId,
-    /// Which of the mode's hooks the engine calls its script defines.
+    /// In its list's order, each with the hooks of the mode's role it defines.
+    pub(crate) scripts: Box<[ListedScript]>,
+    /// The place of the mode's own script, which holds the state and the choices.
+    pub(crate) mode: ListPlace,
+    /// Which of the mode's hooks the engine calls one of its scripts defines.
     pub(crate) hooks: HookSet,
-    /// One run each; each param as `ctx.p` reads it, converted once.
-    params: NameTable<ScriptValue>,
     /// The state's fields, each of class `none` or `all`.
     pub(crate) state: StateSchema,
+    /// The fields of each player's state.
+    pub(crate) players: StateSchema,
     inputs: NameTable<InputType>,
 }
 
 impl ModeSchema {
-    /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives,
-    /// its options of the values `picks` gives.
-    pub(crate) fn new(
-        script: ScriptId,
-        scripts: &ScriptBook,
-        data: &ModeData,
-        picks: &OptionPicks,
-    ) -> Self {
+    /// The schema of `data`, whose scripts are `scripts`, each defining the hooks `book` gives.
+    pub(crate) fn new(scripts: &ModeScripts, book: &ScriptBook, data: &ModeData) -> Self {
+        let mode = scripts.mode_place();
+        let scripts: Box<[ListedScript]> = scripts
+            .iter()
+            .map(|script| ListedScript {
+                script,
+                hooks: book.defines(Some(script), ScriptRole::Mode),
+            })
+            .collect();
+        let hooks = scripts.iter().flat_map(|listed| &listed.hooks).collect();
         let mut schema = Self {
-            script,
-            hooks: scripts.defines(Some(script), ScriptRole::Mode),
-            params: NameTable::default(),
+            scripts,
+            mode,
+            hooks,
             state: StateSchema::new(
                 data.state
                     .iter()
                     .map(|(name, field)| (name.as_str(), field.sync, &field.decl)),
             ),
+            players: StateSchema::new(
+                data.player_state
+                    .iter()
+                    .map(|(name, field)| (name.as_str(), field.sync, &field.decl)),
+            ),
             inputs: NameTable::default(),
         };
-        let params = data
-            .params
-            .iter()
-            .map(|(name, param)| (name, param.to_value()));
-        let options = picks
-            .values(&data.options)
-            .map(|(name, value)| (name, ScriptValue::from(value)));
-        schema.params.push(
-            params
-                .chain(options)
-                .map(|(name, value)| (name.as_str(), value)),
-        );
         let inputs = data.inputs.iter();
         schema
             .inputs
             .push(inputs.map(|(name, &kind)| (name.as_str(), kind)));
         schema
-    }
-
-    /// The param `name`, as `ctx.p` reads it.
-    pub(crate) fn param_named(&self, name: &str) -> Option<ScriptValue> {
-        let at = self.params.named(RUN, name)?;
-        Some(self.params.values(RUN)[at].clone())
     }
 
     /// Fills `into` with every state field, in the order of their names, from the fields of
@@ -104,6 +96,18 @@ impl ModeSchema {
             };
             class.push(value.clone());
         }
+    }
+
+    /// The one script that defines `hook`, a pure hook, and its place: the load refuses a mode
+    /// whose list holds two (03-game-scripting.md, A pure hook in one script).
+    pub(crate) fn pure_script(&self, hook: Hook) -> Option<(ListPlace, ScriptId)> {
+        let (at, listed) = self
+            .scripts
+            .iter()
+            .enumerate()
+            .find(|(_, listed)| listed.hooks.contains(hook))?;
+        let place = ListPlace::new(at).expect("a mode's list is within its limit");
+        Some((place, listed.script))
     }
 
     /// The input type `name`.

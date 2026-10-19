@@ -5,12 +5,11 @@ use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
 use campfire_navigation::Navigation;
 use campfire_orders::OrdersAction;
-use campfire_production::{BuildTarget, Production};
+use campfire_production::Production;
 use campfire_sim::StableId;
 use campfire_sim::internals::SimWorldInternals;
-use campfire_units::{BodyForm, Owner};
+use campfire_units::{BodyForm, BuildTarget, GroundPoint, Owner, SeenBy};
 use campfire_values::{Team, TeamSet, UnitType};
-use campfire_vision::SeenBy;
 
 use crate::fixtures::navigation::NavigationFixtures;
 use crate::order::{Action, Order};
@@ -67,8 +66,10 @@ impl ProductionFixtures for Production {
 
     fn build_at(world: &mut World, builder: StableId, x: i64, z: i64) {
         let target = BuildTarget::Point {
-            x: Num::int(x),
-            z: Num::int(z),
+            at: GroundPoint {
+                x: Num::int(x),
+                z: Num::int(z),
+            },
             angle: Num::ZERO,
         };
         Self::tick_ordering(world, 0, builder, OrdersAction::Build { slot: 0, target });

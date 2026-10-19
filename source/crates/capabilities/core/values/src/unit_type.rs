@@ -5,6 +5,7 @@ use campfire_sim::{OnAny, SimComponent};
 use campfire_state_types::{DataKind, Replication, SentOnce};
 use serde::{Deserialize, Serialize};
 
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 use crate::type_scope::TypeScope;
 use crate::unit_tags::UnitTags;
@@ -50,4 +51,8 @@ impl SimComponent for UnitType {
 impl Replication for UnitType {
     const KIND: DataKind = DataKind::Unit;
     type Sending = SentOnce;
+}
+
+impl Named for UnitType {
+    const NAMES: NameKind = NameKind::new("unit type", Article::A, NameScope::Match);
 }

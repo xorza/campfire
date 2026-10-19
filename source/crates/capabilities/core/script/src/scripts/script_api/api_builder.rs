@@ -1,22 +1,23 @@
-use std::any::TypeId;
-
+use campfire_codec::StructFields;
 use campfire_sim::Capability;
 use campfire_values::{ScriptEnum, TagProperty};
 use rhai::{Dynamic, ImmutableString, Module, NativeCallContext};
 
 use crate::script_host::ScriptHost;
+use crate::scripts::api_owner::ScriptHandle;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::arg_ctx::ArgCtx;
 use crate::scripts::ctx_fn::{CtxFn, GetFn, MethodFn};
 use crate::scripts::data_section::DataSection;
 use crate::scripts::data_table::DataTable;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::hook::Hook;
+use crate::scripts::hook::{Hook, HookSpec};
 use crate::scripts::member_kind::{GETTER, MemberKind};
 use crate::scripts::member_spec::MemberSpec;
+use crate::scripts::planned_capability::PlannedCapability;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
-use crate::scripts::script_api::api_member::ApiMember;
+use crate::scripts::script_api::api_member::{ApiMember, FormOutput};
 use crate::scripts::script_api::data_field::DataField;
 use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::hook_status::HookStatus;
@@ -67,9 +68,9 @@ impl<'a> ApiBuilder<'a> {
         spec
     }
 
-    /// Registers `T` as scripts name its type.
-    pub fn ty<T: ScriptType>(&mut self, name: &str) -> &mut Self {
-        self.host.engine_mut().register_type_with_name::<T>(name);
+    /// Registers `T` under its name in scripts.
+    pub fn ty<T: ScriptHandle>(&mut self) -> &mut Self {
+        self.host.engine_mut().register_type_with_name::<T>(T::NAME);
         self
     }
 
@@ -119,7 +120,11 @@ impl<'a> ApiBuilder<'a> {
             spec.name
         );
         f.register(self.host.engine_mut(), &spec.kind.bound_name(spec.name));
-        self.record_runs(spec, F::output());
+        let output = FormOutput {
+            ty: F::output(),
+            names: F::NAME_KIND,
+        };
+        self.record_runs(spec, output, &[]);
         self
     }
 
@@ -144,7 +149,11 @@ impl<'a> ApiBuilder<'a> {
             &spec.kind.bound_name(spec.name),
             spec.roles,
         );
-        self.record_runs(spec, F::output());
+        let output = FormOutput {
+            ty: F::output(),
+            names: F::NAME_KIND,
+        };
+        self.record_runs(spec, output, F::TYPES);
         self
     }
 
@@ -176,17 +185,22 @@ impl<'a> ApiBuilder<'a> {
             );
         }
         f.register(self.host.engine_mut(), &spec.kind.bound_name(spec.name));
-        self.record_runs(spec, F::output());
+        let output = FormOutput {
+            ty: F::output(),
+            names: F::NAME_KIND,
+        };
+        self.record_runs(spec, output, F::TYPES);
         self
     }
 
-    /// Records `spec`, which runs, of a form that gives a value of the type `output`.
-    fn record_runs(&mut self, spec: MemberSpec, output: TypeId) {
+    /// Records `spec`, which runs, of a form that gives `output`.
+    fn record_runs(&mut self, spec: MemberSpec, output: FormOutput, types: &[&'static str]) {
         self.api.record(ApiMember {
             spec,
             writable: false,
-            status: Status::Runs(ApiVersion::FIRST),
+            status: Status::Runs(spec.since),
             output: Some(output),
+            types: types.iter().map(|&ty| vec![ty]).collect(),
         });
     }
 
@@ -213,8 +227,9 @@ impl<'a> ApiBuilder<'a> {
         self.api.record(ApiMember {
             spec,
             writable: true,
-            status: Status::Runs(ApiVersion::FIRST),
+            status: Status::Runs(spec.since),
             output: None,
+            types: Vec::new(),
         });
         self
     }
@@ -227,27 +242,30 @@ impl<'a> ApiBuilder<'a> {
             writable: false,
             status: Status::Planned,
             output: None,
+            types: Vec::new(),
         });
         self
     }
 
-    /// Records whether the release calls `hook`, as the code that calls it says, of the
+    /// Records whether the release calls the hook `H`, as the code that calls it says, of the
     /// capability of the module that calls it and binds.
-    pub fn hook(&mut self, hook: Hook, status: Status) -> &mut Self {
+    pub fn hook<H: HookSpec>(&mut self, status: Status) -> &mut Self {
         self.api.record_hook(HookStatus {
-            hook,
+            hook: Hook::of::<H>(),
             status,
             capability: self.capability,
+            planned_in: None,
         });
         self
     }
 
-    /// Records `hook` as planned, of `capability`, whose module does not bind yet.
-    pub fn plan_hook(&mut self, hook: Hook, capability: Capability) -> &mut Self {
+    /// Records the hook `H` as planned with `planned`, a capability the release does not build.
+    pub fn plan_hook<H: HookSpec>(&mut self, planned: PlannedCapability) -> &mut Self {
         self.api.record_hook(HookStatus {
-            hook,
+            hook: Hook::of::<H>(),
             status: Status::Planned,
-            capability: Some(capability),
+            capability: None,
+            planned_in: Some(planned),
         });
         self
     }
@@ -258,52 +276,73 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records the fields of `T`'s table the release reads, `runs`, and those it plans.
-    pub fn data<T: DataSection>(
-        &mut self,
-        runs: &[&'static str],
-        planned: &[&'static str],
-    ) -> &mut Self {
-        self.api
-            .record_data(T::TABLE, runs, planned, self.capability);
+    /// Records the fields of `T`'s table, as serde reads them, each of the status `statuses`
+    /// gives it, or read since the first version.
+    pub fn data<T: DataSection>(&mut self, statuses: &[(&'static str, Status)]) -> &mut Self {
+        let fields = StructFields::of::<T>();
+        assert!(
+            statuses.iter().all(|(name, _)| fields.contains(name)),
+            "the fields of {} given a status are fields of its type",
+            T::TABLE.title()
+        );
+        for &name in fields {
+            let given = statuses.iter().find(|(held, _)| *held == name);
+            let status = given.map_or(Status::Runs(ApiVersion::FIRST), |&(_, status)| status);
+            self.record_field(T::TABLE, name, status);
+        }
         self
     }
 
-    /// Records the fields of `table`, the mode's or a unit type's, which many modules share, that
-    /// the release reads, `runs`, and those it plans: the module's own.
-    pub fn shared_data(
+    /// Records `fields`, the module's own fields of `T`'s table, whose type several modules read,
+    /// as read since the first version: each a field serde reads of `T`.
+    pub fn own_fields<T: DataSection>(&mut self, fields: &[&'static str]) -> &mut Self {
+        let read = StructFields::of::<T>();
+        assert!(
+            fields.iter().all(|name| read.contains(name)),
+            "the fields of {} a module owns are fields of its type",
+            T::TABLE.title()
+        );
+        for &name in fields {
+            self.record_field(T::TABLE, name, Status::Runs(ApiVersion::FIRST));
+        }
+        self
+    }
+
+    /// Records `key`, a key of `table` that the module declares, a section, a member of an open
+    /// set, or a key the package load reads, as the mode file's `script`, as a field of `table`
+    /// of `status`.
+    pub fn key(&mut self, table: DataTable, key: &'static str, status: Status) -> &mut Self {
+        self.record_field(table, key, status);
+        self
+    }
+
+    /// Records the field `name` of `table`, of `status` and of the module's capability.
+    fn record_field(&mut self, table: DataTable, name: &'static str, status: Status) {
+        self.api.record_field(DataField {
+            table,
+            name,
+            status,
+            capability: self.capability,
+        });
+    }
+
+    /// Records `fields` of `table`, each by its name, which the release reads since `since`: a
+    /// table whose fields several modules give, as an action's, each its own.
+    pub fn fields(
         &mut self,
         table: DataTable,
-        runs: &[&'static str],
-        planned: &[&'static str],
+        since: ApiVersion,
+        fields: impl IntoIterator<Item = &'static str>,
     ) -> &mut Self {
-        assert!(
-            matches!(table, DataTable::Mode | DataTable::UnitType),
-            "{table:?} is one module's, which `data` records by its type"
-        );
-        self.api.record_data(table, runs, planned, self.capability);
-        self
-    }
-
-    /// Records `fields` of an action's data, each by its name with its status.
-    pub fn action_fields(
-        &mut self,
-        fields: impl IntoIterator<Item = (&'static str, Status)>,
-    ) -> &mut Self {
-        for (name, status) in fields {
-            self.api.record_field(DataField {
-                table: DataTable::Action,
-                name,
-                status,
-                capability: self.capability,
-            });
+        for name in fields {
+            self.record_field(table, name, Status::Runs(since));
         }
         self
     }
 
     /// Binds `get` as the indexer of `T`, through which scripts read names the data declares, as
-    /// `ctx.p.<name>`, and as the getter of each such name scripts use: the load check reads those
-    /// names against the data, and each member that gives a `T` leads to data. `get` has the
+    /// `ctx.params.<name>`, and as the getter of each such name scripts use: the load check reads
+    /// those names against the data, and each member that gives a `T` leads to data. `get` has the
     /// running call's `ctx`, found when it reads it.
     pub fn index<T: ScriptType>(
         &mut self,

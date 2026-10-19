@@ -12,6 +12,7 @@ use bevy_ecs::entity::Entity;
 use campfire_common::ExitStatus;
 use campfire_log::LogLine;
 use campfire_net::Listening;
+use campfire_protocol::SessionId;
 use campfire_quic::{LinkEnd, LinkTimes, QuicEndpoint, QuicPlugin};
 use campfire_store::internals::Scratch;
 use campfire_store::{InputFile, StopSignals};
@@ -37,14 +38,23 @@ fn until<T>(what: &str, mut step: impl FnMut() -> Option<T>) -> T {
 }
 
 /// The `Listening` event among the whole lines of the JSON log at `log`, once it holds one; the
-/// line the server writes meanwhile is cut, maybe within a character.
+/// line the server writes meanwhile is cut, maybe within a character. The server logs it inside
+/// the root span of its session, which names the session by its id.
 fn listening(log: &Path) -> Option<Listening> {
     let bytes = InputFile::read_if_present(log, LOG_MAX).unwrap()?;
     String::from_utf8_lossy(&bytes)
         .split_inclusive('\n')
         .filter(|line| line.ends_with('\n'))
-        .find_map(|line| LogLine::parse(line).unwrap().read::<Listening>())
-        .map(Result::unwrap)
+        .find_map(|line| {
+            let line = LogLine::parse(line).unwrap();
+            let listening = line.read::<Listening>()?.unwrap();
+            let session = line.span_text("session", "id");
+            assert!(
+                session.is_some_and(|id| id.parse::<SessionId>().is_ok()),
+                "{session:?}"
+            );
+            Some(listening)
+        })
 }
 
 #[test]

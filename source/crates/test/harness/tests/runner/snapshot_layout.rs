@@ -8,8 +8,8 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 
 use campfire_capabilities::Release;
+use campfire_common::ErrorReport;
 use campfire_harness::ProvingMatch;
-use campfire_log::ErrorReport;
 use campfire_sim::StateRegistry;
 use campfire_store::InputFile;
 use campfire_store::internals::PinnedFile;

@@ -270,8 +270,9 @@ impl Install {
     }
 
     /// The archives under `dir`, `at` its path in the install: each file, or link to one, whose
-    /// name ends in `.big`, ignoring case, as the game's search finds them. A name that is not
-    /// UTF-8 sorts by its lossy text, and opens by its own.
+    /// name ends in `.big`, ignoring case, as the game's search finds them, a link by its
+    /// target's path, as a read follows no link. A name that is not UTF-8 sorts by its lossy
+    /// text, and opens by its own.
     fn find(dir: &Path, at: &str, found: &mut Vec<Found>) -> Result<(), ZeroHourError> {
         for entry in DirEntries::read(dir)? {
             let name = format!("{at}{}", entry.name.to_string_lossy());
@@ -281,7 +282,11 @@ impl Install {
                 .is_some_and(|extension| extension.eq_ignore_ascii_case("big"));
             match entry.kind {
                 EntryKind::Dir => Self::find(&path, &format!("{name}/"), found)?,
-                EntryKind::File | EntryKind::Link if big => found.push(Found { name, path }),
+                EntryKind::File if big => found.push(Found { name, path }),
+                EntryKind::Link if big => {
+                    let path = DirEntries::link_target(&path)?;
+                    found.push(Found { name, path });
+                }
                 EntryKind::File | EntryKind::Link | EntryKind::Other => {}
             }
         }
@@ -334,6 +339,9 @@ pub(crate) mod internals {
     const GAME_DATA: &[u8] =
         b"GameData\n  AdjustCliffTextures = Yes\n  Use3WayTerrainBlends = 0\nEnd\n";
 
+    /// The fixture's `Mouse.ini`: a press of 167 ms or less that does not drag is a click.
+    const MOUSE: &[u8] = b"Mouse\n  DragToleranceMS = 167\nEnd\nMouseCursor Normal\nEnd\n";
+
     /// The fixture map's file, packed by `RefPack` as the game ships most maps.
     pub(crate) fn packed_map() -> Vec<u8> {
         let plain = map(8);
@@ -341,10 +349,10 @@ pub(crate) mod internals {
         [&b"EAR\0"[..], &len, &literal(&plain)].concat()
     }
 
-    /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture
-    /// map in its folder, a map outside one, the two textures, a terrain texture, the terrain
-    /// types, the game data, the object INI files, and the models, `Rock01.w3d` in the language
-    /// folder `English` and, unread, outside it; `b.big`, `c.BIG`, base Generals'
+    /// An install whose archives each hold `shared.ini`: `A.big`, which also holds the fixture map
+    /// in its folder, a map outside one, the two textures, a terrain texture, the terrain types,
+    /// the game data, the mouse's, the object INI files, and the models, `Rock01.w3d` in the
+    /// language folder `English` and, unread, outside it; `b.big`, `c.BIG`, base Generals'
     /// `ZH_Generals/base.big`, and the duplicate `Data/INI/INIZH.big`, beside a file that is no
     /// archive.
     pub(crate) fn fixture(scratch: &Scratch) {
@@ -363,6 +371,7 @@ pub(crate) mod internals {
                 ("Art\\Terrain\\TSand.tga", &sign),
                 ("Data\\INI\\Terrain.ini", TERRAIN_TYPES),
                 ("Data\\INI\\GameData.ini", GAME_DATA),
+                ("Data\\INI\\Mouse.ini", MOUSE),
                 ("Data\\INI\\Locomotor.ini", LOCOMOTORS.as_bytes()),
                 ("Data\\INI\\Weapon.ini", WEAPONS.as_bytes()),
                 ("Data\\INI\\Armor.ini", ARMORS.as_bytes()),

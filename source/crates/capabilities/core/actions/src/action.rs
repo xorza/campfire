@@ -3,8 +3,9 @@ use campfire_players::ResourceAmount;
 use campfire_script::{Filter, Hook, HookSet, ScriptId};
 use campfire_values::{ModifierId, PackageIndex, Rank, Relation, TagSet};
 
+use crate::action_kind::ActionKind;
 use crate::delivery::Delivery;
-use crate::kind_spec::KindSpec;
+use crate::rank_fields::TogglePer;
 use crate::rank_values::RankValues;
 
 /// An action as a match runs it.
@@ -12,16 +13,15 @@ use crate::rank_values::RankValues;
 pub struct Action {
     /// Its package: `PackageIndex::MODE` the mode, then each package the mode depends on.
     pub package: PackageIndex,
-    pub kind: KindSpec,
+    pub kind: ActionKind,
     /// The modifier its unit holds while it has a rank, and whether only while it is ready.
-    pub(crate) passive: Option<Passive>,
+    pub passive: Option<Passive>,
     /// The modifier its unit holds while its toggle is on or its channel runs.
     pub hold: Option<ModifierId>,
     pub aim: Aim,
     /// Its capability fields at each rank, from rank 1.
     pub ranks: Vec<RankValues>,
-    /// Its cost in its caster's player's resources at each rank, one run of the same resources
-    /// each, rank after rank.
+    /// Its costs in its caster's player's resources, each rank's run where its values say.
     pub resource_costs: Box<[ResourceAmount]>,
     /// Its script, if it has one, and the action hooks the script defines: a script may serve
     /// only the action's modifiers.
@@ -36,7 +36,7 @@ pub struct Action {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Passive {
     pub modifier: ModifierId,
-    pub(crate) while_ready: bool,
+    pub while_ready: bool,
 }
 
 /// What an action aims at, as a match runs it: a unit target's filter resolved against the
@@ -56,6 +56,22 @@ impl Action {
     /// Its script, when it defines `hook`.
     pub fn hook(&self, hook: Hook) -> Option<ScriptId> {
         self.script.filter(|_| self.hooks.contains(hook))
+    }
+
+    /// Whether a rank of it toggles.
+    pub fn toggles(&self) -> bool {
+        self.ranks.iter().any(|values| values.toggle.is_some())
+    }
+
+    /// Whether a rank of it toggles, paying its cost `per`.
+    pub fn toggles_per(&self, per: TogglePer) -> bool {
+        let mut toggles = self.ranks.iter().filter_map(|values| values.toggle);
+        toggles.any(|toggle| toggle.per == per)
+    }
+
+    /// Whether a rank of it channels.
+    pub fn channels(&self) -> bool {
+        self.ranks.iter().any(|values| values.channel.is_some())
     }
 
     /// Whether `rank` is one of its ranks, from 1 to its last.
@@ -87,16 +103,14 @@ impl Action {
 
     /// Its cost at `rank`, one of its ranks, in its caster's player's resources.
     pub fn resource_cost(&self, rank: Rank) -> &[ResourceAmount] {
-        let per_rank = self.resource_costs.len() / self.ranks.len().max(1);
-        let start = rank.index() * per_rank;
-        &self.resource_costs[start..start + per_rank]
+        &self.resource_costs[self.values(rank).resource_cost.range()]
     }
 
     /// The filter of the units it may attack, for a weapon, which the load lets aim only at a
     /// unit; `None` for another kind.
     pub(crate) const fn weapon_filter(&self) -> Option<Filter> {
-        match (&self.kind, self.aim) {
-            (KindSpec::Attack(_), Aim::Unit(filter)) => Some(filter),
+        match (self.kind, self.aim) {
+            (ActionKind::Attack, Aim::Unit(filter)) => Some(filter),
             _ => None,
         }
     }

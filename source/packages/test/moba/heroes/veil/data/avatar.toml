@@ -111,3 +111,7 @@ projectile = { speed = "10", homing = true }
 
 [units.smoke_ring]
 area = { radius = "3.0", duration_ms = 8000, inside = { self = "smoke_ring_cover", enemies = "smoke_ring_slow" } }
+
+# A hero's death gives 150 experience, and 25 for each level it holds.
+[experience]
+gives = { base = 150, per_level = 25 }

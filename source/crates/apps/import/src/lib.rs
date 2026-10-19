@@ -3,6 +3,7 @@
 //! (12-zero-hour.md, Zero Hour is the first import).
 
 mod gltf;
+mod pose;
 mod texture;
 mod zero_hour;
 
@@ -18,6 +19,7 @@ pub use crate::zero_hour::format::map::error::{Chunk, MapReadError, Packing, Ter
 pub use crate::zero_hour::format::ref_pack::error::RefPackError;
 pub use crate::zero_hour::format::w3d::error::W3dError;
 pub use crate::zero_hour::game_version::GameVersion;
+pub use crate::zero_hour::import_loss::ImportLoss;
 pub use crate::zero_hour::production_import::{DropCause, DroppedButton};
 pub use crate::zero_hour::weapon_drop::WeaponDrop;
-pub use crate::zero_hour::{Imported, ImportedMap, SkipReason, SkippedModel, ZeroHour};
+pub use crate::zero_hour::{Imported, SkipReason, SkippedModel, ZeroHour};

@@ -5,7 +5,7 @@ use std::num::NonZeroU32;
 
 use campfire_actions::ActionSlots;
 use campfire_capabilities::{Action, Order};
-use campfire_combat::Deaths;
+use campfire_combat::{Combat, DamageCause};
 use campfire_common::{StateHash, Tick};
 use campfire_harness::{ArchetypeWatch, FixedMatch, FixedSession, MatchRecord, MatchUnits};
 use campfire_math::Num;
@@ -13,11 +13,12 @@ use campfire_navigation::PathWalker;
 use campfire_package::ModePackages;
 use campfire_progression::{Experience, Points};
 use campfire_runner::{ScriptCallFailed, SessionWorld};
-use campfire_script::{Hook, ScriptFailures};
+use campfire_script::ScriptFailures;
 use campfire_sim::{SimWorld, StableId};
 use campfire_stats::Level;
 use campfire_test_packages::{Edit, PackageTree, TestMode};
-use campfire_values::{Rank, Team, TrackId};
+use campfire_units::{Dead, Deaths, Units};
+use campfire_values::{Rank, Team, TrackId, UnitType};
 
 /// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
 /// its ultimate, its points, its experience and its level.
@@ -72,7 +73,7 @@ mod scripted_match {
         let mut east = Vec::new();
         let mut felled = Vec::new();
         let mut seen = Vec::new();
-        let mut watch = ArchetypeWatch::of(fixed.game());
+        let mut watch = ArchetypeWatch::of(fixed.game_mut());
         for tick in 0..TICKS {
             // Tick 1: the walker learns its first ability with its spawn point. As they meet, it
             // attacks the first east creep, and the second once the first falls. Once both fell, it
@@ -128,7 +129,7 @@ mod scripted_match {
                     .collect();
             }
             let world = fixed.game();
-            let failures = world.non_send::<ScriptFailures>();
+            let failures = world.resource::<ScriptFailures>();
             assert!(
                 failures.get().is_empty(),
                 "tick {tick}: {:?}",
@@ -149,9 +150,9 @@ mod scripted_match {
         }
         record.check("lane");
         watch.assert_kept();
-        // After tick 1: its first ability at rank 1, for its one point. Each creep it fells gives it
-        // 60 experience: 120 after the second, past level 2's 100, which gives a point. Its ultimate
-        // needs level 3, and its first ability's rank 2 level 2: the point goes to that.
+        // After tick 1: its first ability at rank 1, for its one point. Each creep it fells gives
+        // it 60 experience: 120 after the second, past level 2's 100, which gives a point. Its
+        // ultimate needs level 3, and its first ability's rank 2 level 2: the point goes to that.
         let progress = |ranks, points, xp, level| Progress {
             ranks,
             points,
@@ -221,7 +222,7 @@ fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
     let failed = |tick, unit| ScriptCallFailed {
         tick: Tick::new(tick),
         unit: Some(unit),
-        hook: Hook::OnThink,
+        hook: "on_think".to_owned(),
         error: "script call raised \"no think\"".to_owned(),
     };
     assert_eq!(
@@ -245,4 +246,42 @@ fn hashes(packages: ModePackages) -> Vec<StateHash> {
             fixed.game().state_hash()
         })
         .collect()
+}
+
+#[test]
+fn a_kill_gives_its_killer_the_victims_experience_and_an_allys_kill_gives_none() {
+    // The first wave spawns in tick 0. The walker fells a creep of the other team: it takes the
+    // creep's 60; it fells one of its own team, an ally's kill: it takes none.
+    let session = FixedSession::new(TestMode::Lane.packages(), NonZeroU32::new(30).unwrap(), 2);
+    let mut fixed = session.start();
+    fixed.game_mut().run_tick_alone();
+    let walker = MatchUnits::of(fixed.game()).hero(0);
+    let creep = Units::type_named(fixed.game(), "creep").unwrap();
+    let team =
+        |fixed: &FixedMatch, id| *MatchUnits::of(fixed.game()).unit(id).get::<Team>().unwrap();
+    let ours = team(&fixed, walker);
+    let creep_of = |fixed: &FixedMatch, own: bool| {
+        let units = MatchUnits::of(fixed.game());
+        let found = units.all().find(|(_, unit)| {
+            unit.get::<UnitType>() == Some(&creep)
+                && (unit.get::<Team>() == Some(&ours)) == own
+                && !unit.contains::<Dead>()
+        });
+        found.map(|(id, _)| id).unwrap()
+    };
+    let fell = |fixed: &mut FixedMatch, victim| {
+        Combat::damage(
+            fixed.game_mut(),
+            Some(walker),
+            victim,
+            100_000,
+            DamageCause::Effect,
+        );
+        fixed.game_mut().run_tick_alone();
+        Progress::of(fixed, walker).xp
+    };
+    let enemy = creep_of(&fixed, false);
+    assert_eq!(fell(&mut fixed, enemy), Num::int(60));
+    let ally = creep_of(&fixed, true);
+    assert_eq!(fell(&mut fixed, ally), Num::int(60));
 }

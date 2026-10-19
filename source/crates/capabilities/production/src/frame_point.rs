@@ -1,21 +1,19 @@
 use campfire_math::{Num, SinCos, Vec3};
-use campfire_sim::Position;
 use serde::Deserialize;
 
 use crate::error::PointPastBound;
 
 /// A point in a producer's own frame, `[x, z]` in meters from its position, each within
-/// `Position::BOUND`: where its trained units come out, or go with no rally point set. It turns
+/// `Vec3::BOUND`: where its trained units come out, or go with no rally point set. It turns
 /// with the producer as its box body turns by its angle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "[Num; 2]")]
 pub struct FramePoint([Num; 2]);
 
 impl FramePoint {
-    /// `[x, z]`; `None` for a coordinate past `Position::BOUND`.
+    /// `[x, z]`; `None` for a coordinate past `Vec3::BOUND`.
     pub fn new(point: [Num; 2]) -> Option<Self> {
-        let within =
-            |at: &Num| at.to_bits().unsigned_abs() <= Position::BOUND.to_bits().unsigned_abs();
+        let within = |at: &Num| at.to_bits().unsigned_abs() <= Vec3::BOUND.to_bits().unsigned_abs();
         point.iter().all(within).then_some(Self(point))
     }
 

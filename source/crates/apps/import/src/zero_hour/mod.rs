@@ -3,12 +3,13 @@ use std::path::Path;
 
 use bevy_math::UVec2;
 use campfire_client_files::{
-    CameraFile, ClientObjects, ClientUnits, MapConditions, MapLights, TerrainFile,
+    CameraFile, ClientObjects, ClientUnits, HudFile, MapConditions, MapLights, ShownBars,
+    TeamColors, TerrainFile,
 };
 use campfire_codec::Toml;
 use campfire_common::{MapName, PackageFingerprint};
 use campfire_math::Num;
-use campfire_package_disk::{PackageWriter, WriteError};
+use campfire_package_disk::{PackageDir, PackageWriter, WriteError};
 use campfire_store::DurableDir;
 use campfire_units::HeightGrid;
 use campfire_values::PackagePath;
@@ -16,24 +17,16 @@ use campfire_values::PackagePath;
 use crate::texture::dds_file::DdsFile;
 use crate::texture::tga_file::{TgaAlpha, TgaFile, TgaHeader};
 use crate::zero_hour::archive_path::ArchivePath;
-use crate::zero_hour::combat_import::{CombatImport, CombatSources, DroppedWeapon};
+use crate::zero_hour::combat_import::CombatImport;
 use crate::zero_hour::error::ZeroHourError;
 use crate::zero_hour::format::csf::string_table::StringTable;
-use crate::zero_hour::format::ini::armor_ini::ArmorIni;
-use crate::zero_hour::format::ini::command_button_ini::CommandButtonIni;
-use crate::zero_hour::format::ini::command_set_ini::CommandSetIni;
 use crate::zero_hour::format::ini::error::IniError;
-use crate::zero_hour::format::ini::game_data_ini::GameDataIni;
-use crate::zero_hour::format::ini::locomotor_ini::LocomotorIni;
-use crate::zero_hour::format::ini::multiplayer_ini::MultiplayerIni;
-use crate::zero_hour::format::ini::object_ini::ObjectIni;
-use crate::zero_hour::format::ini::player_template_ini::PlayerTemplateIni;
 use crate::zero_hour::format::ini::terrain_ini::TerrainIni;
-use crate::zero_hour::format::ini::weapon_ini::WeaponIni;
 use crate::zero_hour::format::map::map_file::MapFile;
 use crate::zero_hour::format::map::terrain::TextureClass;
 use crate::zero_hour::game_data::GameData;
 use crate::zero_hour::game_version::GameVersion;
+use crate::zero_hour::import_loss::ImportLoss;
 use crate::zero_hour::import_name::ImportName;
 use crate::zero_hour::import_names::ImportNames;
 use crate::zero_hour::install::{Install, InstallTexture, TextureKind};
@@ -41,13 +34,15 @@ use crate::zero_hour::look_writer::LookWriter;
 use crate::zero_hour::map_import::{MapImport, MapSources};
 use crate::zero_hour::model_assets::ModelAssets;
 use crate::zero_hour::model_writer::{ModelReport, ModelWriter};
-use crate::zero_hour::production_import::{CommandSources, DroppedButton, ProductionImport};
+use crate::zero_hour::production_import::ProductionImport;
 use crate::zero_hour::rules_package::{ModeImport, RULES_FILES};
 use crate::zero_hour::skirmish_start::SkirmishStart;
 use crate::zero_hour::terrain_atlas::ClassTexture;
 use crate::zero_hour::unit_types::TypeAdditions;
+use crate::zero_hour::zero_hour_rules::ZeroHourRules;
 
 pub(crate) mod archive_path;
+pub(crate) mod axes;
 pub(crate) mod camera_import;
 pub(crate) mod cliff_walls;
 pub(crate) mod combat_import;
@@ -56,6 +51,7 @@ pub(crate) mod format;
 pub(crate) mod game_data;
 pub(crate) mod game_path;
 pub(crate) mod game_version;
+pub(crate) mod import_loss;
 pub(crate) mod import_name;
 pub(crate) mod import_names;
 pub(crate) mod imported_type;
@@ -66,7 +62,6 @@ pub(crate) mod model_assets;
 pub(crate) mod model_import;
 pub(crate) mod model_parts;
 pub(crate) mod model_writer;
-pub(crate) mod pose;
 pub(crate) mod production_import;
 pub(crate) mod rules_package;
 pub(crate) mod skirmish_start;
@@ -74,40 +69,18 @@ pub(crate) mod terrain_atlas;
 pub(crate) mod terrain_cells;
 pub(crate) mod unit_types;
 pub(crate) mod weapon_drop;
+pub(crate) mod zero_hour_rules;
 
-/// What an import wrote: the package's fingerprint, the models the objects name that the
-/// package lacks, the textures its models name that no archive holds, which they draw
-/// untextured, and each map it wrote.
+/// What an import wrote: the packages' fingerprints, each map, by name, which loads, and what
+/// it does not hold of the install, in the order the import met it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Imported {
     /// The imported package's.
     pub fingerprint: PackageFingerprint,
     /// The rules package's, beside it.
     pub rules: PackageFingerprint,
-    pub skipped_models: Vec<SkippedModel>,
-    pub missing_textures: Vec<String>,
-    /// Each map the import wrote, by name.
-    pub maps: BTreeMap<MapName, ImportedMap>,
-    /// The command buttons the import does not convert, each with why (12-zero-hour.md, Every
-    /// command set's trains and builds are imported).
-    pub dropped_buttons: Vec<DroppedButton>,
-    /// The weapons the import does not convert, each with why (12-zero-hour.md, A weapon converts
-    /// when it hits one target at once).
-    pub dropped_weapons: Vec<DroppedWeapon>,
-    /// The unit types' objects whose body the import gives no life (12-zero-hour.md, Life is the
-    /// original's).
-    pub unliving: Vec<String>,
-    /// The unit types' objects whose body starts below its most life, which the engine starts
-    /// full.
-    pub wounded: Vec<String>,
-}
-
-/// What the import wrote of a map: its count of cells whose terrain draws a tile of no texture,
-/// and the waypoints it dropped, past its bounds, by name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ImportedMap {
-    pub untextured_cells: usize,
-    pub dropped_waypoints: Vec<String>,
+    pub maps: Vec<MapName>,
+    pub losses: Vec<ImportLoss>,
 }
 
 /// A model the objects name that the package lacks, and why.
@@ -164,26 +137,36 @@ impl ZeroHour {
         DurableDir::create_new(out).map_err(WriteError::CreateDir)?;
         let rules = Self::write_rules(&out.join(Self::RULES))?;
         let mut writer = PackageWriter::create(&out.join(Self::GAME))?;
-        let terrain_types = self.read_inis("Terrain", TerrainIni::default(), TerrainIni::read)?;
-        let game_data = self.read_inis("GameData", GameDataIni::default(), GameDataIni::read)?;
-        let camera = camera_import::camera_file(&game_data).ok_or(ZeroHourError::Camera)?;
+        let game = ZeroHourRules::read(self)?;
+        let camera = camera_import::camera_file(&game.game_data, &game.mouse)
+            .ok_or(ZeroHourError::Camera)?;
         let text = Toml::write(&camera);
         writer.write(CameraFile::path(), text.as_bytes())?;
-        let ini = self.read_inis("Object", ObjectIni::default(), ObjectIni::read)?;
-        let locomotors =
-            self.read_inis("Locomotor", LocomotorIni::default(), LocomotorIni::read)?;
+        // The game draws a bar only over a unit selected or under the cursor
+        // (`Drawable::drawHealthBar`).
+        let hud = HudFile {
+            bars: ShownBars::Selected,
+        };
+        writer.write(HudFile::path(), Toml::write(&hud).as_bytes())?;
+        // The players' colors, each team's by its index (02-engine-core.md, Team colors in the
+        // one material).
+        if let Some(colors) = TeamColors::new(game.multiplayer.colors().to_vec()) {
+            writer.write(TeamColors::path(), Toml::write(&colors).as_bytes())?;
+        }
         let mut models = ModelWriter::new(ModelAssets::new(&self.install)?, &mut writer);
         let mut object_names = ImportNames::default();
         let mut looks = LookWriter {
             models: &mut models,
         }
-        .units(&ini, &mut object_names)?;
+        .units(&game.objects, &mut object_names)?;
         let ModelReport {
             skipped,
             missing_textures,
         } = models.report();
+        let mut losses: Vec<ImportLoss> = skipped.into_iter().map(ImportLoss::Model).collect();
+        losses.extend(missing_textures.into_iter().map(ImportLoss::Texture));
         let mut names = BTreeMap::<MapName, String>::new();
-        let mut maps = BTreeMap::new();
+        let mut maps = Vec::new();
         let mut class_sizes = BTreeMap::new();
         for map in self.install.maps() {
             let name = ImportName::of(map.folder.as_bytes()).map();
@@ -203,15 +186,14 @@ impl ZeroHour {
                 .terrain
                 .classes
                 .iter()
-                .map(|class| self.class_texture(class, &terrain_types, &mut class_sizes))
+                .map(|class| self.class_texture(class, &game.terrain, &mut class_sizes))
                 .collect::<Result<Vec<_>, _>>()?;
             let sources = MapSources {
-                ini: &ini,
-                locomotors: &locomotors,
+                rules: &game,
                 names: &mut object_names,
                 looks: &looks,
-                lights: game_data.global_lights(),
-                game: GameData::of(&game_data),
+                lights: game.game_data.global_lights(),
+                game: GameData::of(&game.game_data),
                 textures: &textures,
             };
             let imported = MapImport::new(&file, sources).map_err(in_map)?;
@@ -222,13 +204,18 @@ impl ZeroHour {
             writer.write(MapConditions::path(&name), imported.conditions.as_bytes())?;
             writer.write(MapLights::path(&name), imported.lights.as_bytes())?;
             writer.write(ClientObjects::path(&name), imported.objects.as_bytes())?;
-            maps.insert(
-                name,
-                ImportedMap {
-                    untextured_cells: imported.untextured,
-                    dropped_waypoints: imported.dropped_waypoints,
-                },
-            );
+            if imported.untextured > 0 {
+                losses.push(ImportLoss::UntexturedCells {
+                    map: name.clone(),
+                    cells: imported.untextured,
+                });
+            }
+            let waypoints = imported.dropped_waypoints.into_iter();
+            losses.extend(waypoints.map(|waypoint| ImportLoss::Waypoint {
+                map: name.clone(),
+                waypoint,
+            }));
+            maps.push(name);
         }
         for InstallTexture { path, kind } in self.install.textures() {
             let bytes = self.install.read(&path)?;
@@ -245,43 +232,12 @@ impl ZeroHour {
             };
             writer.write(path.texture_path()?, &ktx2)?;
         }
-        let templates = self.read_inis(
-            "PlayerTemplate",
-            PlayerTemplateIni::default(),
-            PlayerTemplateIni::read,
-        )?;
-        let start = SkirmishStart::of(&templates, &ini, &locomotors, &mut object_names)?;
-        let sets = self.read_inis("CommandSet", CommandSetIni::default(), CommandSetIni::read)?;
-        let buttons = self.read_inis(
-            "CommandButton",
-            CommandButtonIni::default(),
-            CommandButtonIni::read,
-        )?;
-        let multiplayer = self.read_inis(
-            "Multiplayer",
-            MultiplayerIni::default(),
-            MultiplayerIni::read,
-        )?;
-        let money = multiplayer.money()?;
-        let strings = self.string_table()?;
-        let sources = CommandSources {
-            ini: &ini,
-            sets: &sets,
-            buttons: &buttons,
-            locomotors: &locomotors,
-            strings: &strings,
-        };
-        let production = ProductionImport::of(sources, &mut object_names);
-        let weapons = self.read_inis("Weapon", WeaponIni::default(), WeaponIni::read)?;
-        let armors = self.read_inis("Armor", ArmorIni::default(), ArmorIni::read)?;
-        let combat = CombatImport::of(
-            CombatSources {
-                ini: &ini,
-                weapons: &weapons,
-                armors: &armors,
-            },
-            &mut object_names,
-        )?;
+        let start = SkirmishStart::of(&game, &mut object_names)?;
+        let money = game.multiplayer.money()?;
+        let mut object_names = object_names.into_production();
+        let production = ProductionImport::of(&game, &mut object_names);
+        let mut object_names = object_names.into_shells();
+        let combat = CombatImport::of(&game, &mut object_names)?;
         combat.add_shell_looks(&mut looks);
         let text = Toml::write(&looks);
         writer.write(ClientUnits::path(), text.as_bytes())?;
@@ -311,16 +267,26 @@ impl ZeroHour {
         let max_move_speed = units.max_speed.filter(|speed| *speed > Num::ZERO);
         let manifest = rules_package::mode_manifest(max_move_speed.unwrap_or(Num::ONE));
         writer.write(fixed("manifest.toml"), manifest.as_bytes())?;
+        let fingerprint = writer.finish()?;
+        // The engine's own load of each map is the check of what the import wrote, so it
+        // repeats none of the load's game.
+        let game = PackageDir::new(out.join(Self::GAME));
+        for map in &maps {
+            game.mode_packages(Some(map))
+                .map_err(|error| ZeroHourError::Load {
+                    map: map.clone(),
+                    error: Box::new(error),
+                })?;
+        }
+        losses.extend(production.dropped.into_iter().map(ImportLoss::Button));
+        losses.extend(combat.dropped.into_iter().map(ImportLoss::Weapon));
+        losses.extend(combat.unliving.into_iter().map(ImportLoss::Unliving));
+        losses.extend(combat.wounded.into_iter().map(ImportLoss::Wounded));
         Ok(Imported {
-            fingerprint: writer.finish()?,
+            fingerprint,
             rules,
-            skipped_models: skipped,
-            missing_textures,
             maps,
-            dropped_buttons: production.dropped,
-            dropped_weapons: combat.dropped,
-            unliving: combat.unliving,
-            wounded: combat.wounded,
+            losses,
         })
     }
 }

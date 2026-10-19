@@ -3,7 +3,7 @@ use campfire_actions::ProjectileFlight;
 use campfire_declare::ByType;
 use campfire_deliveries::Delivering;
 use campfire_math::Vec3;
-use campfire_script::{Effect, Frame};
+use campfire_script::{Effect, EffectKind, Frame};
 use campfire_sim::StableId;
 use campfire_units::MapBook;
 use campfire_values::UnitType;
@@ -31,6 +31,8 @@ pub(crate) enum Toward {
 }
 
 impl Effect for ProjectilesEffect {
+    const KIND: EffectKind = EffectKind::Change;
+
     /// Applies the effect: a launch this tick, its own cast, from the point of the map's bounds
     /// nearest where it says, homing on its unit, on a curve to its unit's center for a type
     /// that flies one, or along its direction. A direction of no length, or a curve's unit that

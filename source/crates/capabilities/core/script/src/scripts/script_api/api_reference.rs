@@ -4,8 +4,8 @@ use campfire_sim::Capability;
 
 use crate::scripts::api_owner::ApiOwner;
 use crate::scripts::data_table::DataTable;
-use crate::scripts::hook::Hook;
 use crate::scripts::member_kind::MemberKind;
+use crate::scripts::planned_capability::PlannedCapability;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_role::ScriptRole;
@@ -38,14 +38,21 @@ impl ApiReference<'_> {
                 names.join(", ")
             }
         };
-        let capability = ApiReference::capability;
-        for owner in ApiOwner::ALL {
+        let capability = ApiReference::owner;
+        let mut owners: Vec<_> = self
+            .0
+            .members
+            .iter()
+            .map(|member| member.spec.owner)
+            .collect();
+        owners.dedup();
+        for owner in owners {
             let members = self
                 .0
                 .members
                 .iter()
                 .filter(|member| member.spec.owner == owner);
-            let ctx = owner == ApiOwner::Ctx;
+            let ctx = owner == ApiOwner::CTX;
             write!(out, "\n## {}\n\n", owner.title())?;
             out.push_str(if ctx {
                 "| Name | Form | Roles | Capability | Status | What it is |\n| --- | --- | --- | --- | --- | --- |\n"
@@ -54,20 +61,29 @@ impl ApiReference<'_> {
             });
             for member in members {
                 let spec = &member.spec;
-                let form = match (spec.kind, member.writable) {
+                let mut form = match (spec.kind, member.writable) {
                     (MemberKind::Field | MemberKind::Value, true) => "written and read".to_owned(),
                     (MemberKind::Field | MemberKind::Value, false) => "read".to_owned(),
                     (MemberKind::Operator, _) => "operator".to_owned(),
                     (MemberKind::Call | MemberKind::Method, _) => {
+                        let typed = |(at, name): (usize, &&str)| member.typed_arg(at, name);
                         let forms: Vec<_> = spec
                             .forms
                             .iter()
-                            .map(|form| format!("`({})`", form.join(", ")))
+                            .map(|form| {
+                                let args: Vec<_> = form.iter().enumerate().map(typed).collect();
+                                format!("`({})`", args.join(", "))
+                            })
                             .collect();
                         forms.join(" or ") + member.name_args_text().as_str()
                     }
                 };
-                let roles = if ctx {
+                if let Some(kind) = member.output.and_then(|output| output.names) {
+                    write!(form, ", gives {} {kind}", kind.article())?;
+                }
+                let roles = if ctx && spec.own_script {
+                    format!(" {}'s own script |", roles(spec.roles))
+                } else if ctx {
                     format!(" {} |", roles(spec.roles))
                 } else {
                     String::new()
@@ -76,7 +92,7 @@ impl ApiReference<'_> {
                     out,
                     "| `{}` | {form} |{roles} {} | {} | {} |",
                     spec.name,
-                    capability(spec.capability),
+                    capability(spec.capability, spec.planned_in),
                     member.status,
                     spec.description,
                 )?;
@@ -96,18 +112,17 @@ impl ApiReference<'_> {
         out.push_str(
             "\n## Hooks\n\n| Hook | Role | Capability | Status |\n| --- | --- | --- | --- |\n",
         );
-        for status in Hook::ALL
-            .iter()
-            .filter_map(|&hook| self.0.hooks.iter().find(|status| status.hook == hook))
-        {
+        let mut hooks: Vec<_> = self.0.hooks.iter().collect();
+        hooks.sort_by_key(|status| (status.hook.role, status.hook.name));
+        for status in hooks {
             let hook = status.hook;
             writeln!(
                 out,
                 "| `{}({})` | {} | {} | {} |",
-                hook.name(),
-                hook.param_names().join(", "),
-                hook.role().name(),
-                capability(status.capability),
+                hook.name,
+                hook.param_names.join(", "),
+                hook.role.name(),
+                capability(status.capability, status.planned_in),
                 status.status,
             )?;
         }
@@ -121,7 +136,13 @@ impl ApiReference<'_> {
     /// The data fields, table by table.
     fn write_data(&self, out: &mut String) -> fmt::Result {
         out.push_str("\n## Data fields\n");
-        for table in DataTable::ALL {
+        let mut tables: Vec<DataTable> = Vec::new();
+        for field in &self.0.data {
+            if !tables.contains(&field.table) {
+                tables.push(field.table);
+            }
+        }
+        for table in tables {
             writeln!(
                 out,
                 "\n### {}\n\n| Field | Capability | Status |\n| --- | --- | --- |",
@@ -132,7 +153,7 @@ impl ApiReference<'_> {
                     out,
                     "| `{}` | {} | {} |",
                     field.name,
-                    ApiReference::capability(field.capability),
+                    ApiReference::owner(field.capability, None),
                     field.status
                 )?;
             }
@@ -140,8 +161,16 @@ impl ApiReference<'_> {
         Ok(())
     }
 
-    /// The name of `capability`, or `core` for none.
-    fn capability(capability: Option<Capability>) -> &'static str {
-        capability.map_or("core", Capability::name)
+    /// The name of `planned`, a capability the release does not build, else of `capability`,
+    /// or `core` for none.
+    const fn owner(
+        capability: Option<Capability>,
+        planned: Option<PlannedCapability>,
+    ) -> &'static str {
+        match (planned, capability) {
+            (Some(planned), _) => planned.name(),
+            (None, Some(capability)) => capability.name(),
+            (None, None) => "core",
+        }
     }
 }

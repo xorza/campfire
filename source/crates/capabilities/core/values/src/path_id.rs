@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::name_kind::{Article, NameKind, NameScope, Named};
 use crate::names::NameId;
 
 /// A path of the map, by its place in the map's list.
@@ -18,6 +19,10 @@ impl NameId for PathId {
     fn index(self) -> usize {
         self.0 as usize
     }
+}
+
+impl Named for PathId {
+    const NAMES: NameKind = NameKind::new("path", Article::A, NameScope::Match);
 }
 
 #[cfg(feature = "internals")]

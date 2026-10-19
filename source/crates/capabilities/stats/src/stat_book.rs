@@ -3,13 +3,16 @@ use std::num::NonZeroI64;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_declare::Book;
+use campfire_declare::{Book, BookCx, BookError, BookPlace};
 use campfire_math::{Num, Rounding};
-use campfire_script::{NameKind, UnknownName, View};
+use campfire_script::{MatchNames, UnknownName};
 use campfire_sim::TickRate;
-use campfire_values::{EngineStat, NameId, Names, Stat, UnitType};
+use campfire_units::{MoveStep, StatId, StatNames, TurnStep, UnitSteps};
+use campfire_values::{EngineStat, NameId, Named, Names, PackageIndex, Stat, UnitType};
 
-use crate::stat_id::StatId;
+use crate::mode_stats_data::ModeStatsData;
+use crate::move_speed_cap::MoveSpeedCap;
+use crate::stat_graph::StatGraph;
 use crate::stat_rule::StatRule;
 use crate::stat_totals::StatTotals;
 use crate::stats_data::StatsData;
@@ -17,7 +20,7 @@ use crate::stats_data::StatsData;
 /// The stats of a match: each the mode declares, in order, with its rule, and each unit type's
 /// value at level 1 and gain a level; with the move speed cap the engine's formulas take.
 /// Package data, not state.
-#[derive(Resource, Debug, Default)]
+#[derive(Resource, Debug)]
 pub struct StatBook {
     /// The stats' names, by id; shared with the script view, which names them to scripts.
     names: Arc<Names<StatId>>,
@@ -71,7 +74,7 @@ impl StatBook {
     /// stat the book does not hold.
     pub fn add_type(&mut self, unit_type: UnitType, stats: &StatsData) -> Result<(), UnknownName> {
         if let Some(stat) = stats.0.keys().find(|stat| self.named(stat).is_none()) {
-            return Err(UnknownName::new(NameKind::Stat, stat.name()));
+            return Err(UnknownName::new(StatId::NAMES, stat.name()));
         }
         let count = self.names.len();
         let first = unit_type.index() * count;
@@ -214,11 +217,90 @@ impl StatBook {
     }
 }
 
+impl StatBook {
+    /// The mode's stats, with each unit type that stands and its `stats` section, refreshed in the
+    /// order the load gives; an error for a stat the mode does not declare.
+    pub fn build(cx: &BookCx<'_>) -> Result<Self, BookError> {
+        let rules = cx.mode_section::<ModeStatsData>();
+        let none = BTreeMap::new();
+        let rules = rules.map_or(&none, |rules| &rules.0);
+        let cap = cx
+            .given::<MoveSpeedCap>()
+            .expect("the load gives the move speed cap");
+        let mut book = Self::new(rules, cap.0);
+        for unit in cx.standing() {
+            let Some(stats) = unit.data.section::<StatsData>() else {
+                continue;
+            };
+            book.add_type(unit.unit_type, stats).map_err(|name| {
+                BookError::unknown(unit.package, BookPlace::UnitType(unit.place()), name)
+            })?;
+        }
+        let order = StatGraph::order_in(cx)?;
+        Ok(book.with_order(order))
+    }
+
+    /// The id of `stat`, which data at `at` of the package at `package` names; an error for a
+    /// stat the mode does not declare.
+    pub fn named_in(
+        &self,
+        package: PackageIndex,
+        at: BookPlace,
+        stat: &Stat,
+    ) -> Result<StatId, BookError> {
+        let found = self.named(stat);
+        found.ok_or_else(|| BookError::unknown(package, at, UnknownName::new(StatId::NAMES, stat)))
+    }
+}
+
+impl StatBook {
+    /// How far each unit type that stands walks and turns a tick at level 1, at the match's rate,
+    /// as a refresh computes them: a type of no move speed among its stats does not walk, and one
+    /// turns only when it walks.
+    pub fn unit_steps(cx: &BookCx<'_>) -> Result<UnitSteps, BookError> {
+        let book = cx.book::<Self>()?;
+        let rate = cx.rate();
+        let mut steps = UnitSteps::default();
+        for unit in cx.standing() {
+            let unit_type = unit.unit_type;
+            let gives = |stat| {
+                book.named(&Stat::Engine(stat))
+                    .is_some_and(|id| book.gives(unit_type, id))
+            };
+            if !gives(EngineStat::MoveSpeed) {
+                continue;
+            }
+            let values = book.base_values(unit_type, 1);
+            let step = book
+                .step(&values, rate)
+                .expect("a type gives only a stat the mode declares");
+            steps.steps.set(
+                unit_type,
+                MoveStep::new(step).expect("the book's step is never negative"),
+            );
+            if gives(EngineStat::TurnRate) {
+                let turn = book.turn_step(&values, rate);
+                let turn = turn.expect("a type gives only a stat the mode declares");
+                let turn = TurnStep::new(turn).expect("the book's turn step is never negative");
+                steps.turns.set(unit_type, turn);
+            }
+        }
+        Ok(steps)
+    }
+}
+
+impl StatBook {
+    /// The names of its stats, the fact an action's load resolves them by.
+    pub(crate) fn names_fact(cx: &BookCx<'_>) -> Result<StatNames, BookError> {
+        Ok(StatNames(Arc::clone(&cx.book::<Self>()?.names)))
+    }
+}
+
 impl Book for StatBook {
     const SCRIPTS_ONLY: bool = false;
 
-    fn share(&self, view: &View) {
-        view.names_mut().set_table(Arc::clone(&self.names));
+    fn share(&self, names: &mut MatchNames) {
+        names.set_table(Arc::clone(&self.names));
     }
 }
 

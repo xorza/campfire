@@ -1,16 +1,16 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::Mut;
+use campfire_actions::internals::LooseDues;
 use campfire_actions::{ActionProgress, SlotCharges, SlotTimes, TimedSlots};
 use campfire_common::Tick;
-use campfire_navigation::{Party, PartyKey, Progress, RouteAsk};
+use campfire_deliveries::DashDelivering;
+use campfire_navigation::{Party, PartyKey, RouteAsk};
 use campfire_orders::NextThink;
-use campfire_production::{Gatherer, NodeAt};
+use campfire_production::{Gatherer, NodeAt, QueueDues};
 use campfire_progression::{LevelUp, LevelUps};
 use campfire_sim::{HostRule, Position, SimWorld, SnapshotError, StateDelta, StateRegistry};
 use campfire_stats::{Ends, Lifetime, StackEnd};
-use campfire_units::{
-    DashTo, ForcedMove, MapBook, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState,
-};
+use campfire_units::{DashTo, ForcedMove, SpawnPoint, SyncOwner, SyncTeam, UnitEntity, UnitState};
 use campfire_values::{ActionStart, DashDelivery, VisionShare};
 
 use super::*;
@@ -112,7 +112,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!slots(strike, u8::MAX).check(&game, grunt));
     assert!(!slots(ActionId::new(u32::MAX), 1).check(&game, grunt));
     let mut ordered = ActionProgress::default();
-    ordered.order(1, ActionTarget::None);
+    ordered.order(1, ActionTarget::None, &mut LooseDues::default().dues());
     assert!(!ordered.check_against(&slots(strike, 1), &game));
     // Times of each slot the grunt has, one; a charge only on an action with them, which strike
     // is not.
@@ -134,7 +134,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
         time: Ticks::new(1),
         paid: 0,
     };
-    queue.push(queued, &[], Tick::new(0));
+    queue.push(queued, &[], Tick::new(0), &mut QueueDues::loose());
     assert!(
         !queue.check(&game, grunt),
         "a cast is no train, and a grunt trains none"
@@ -342,7 +342,7 @@ fn a_restore_refuses_a_match_without_a_part_its_start_spawned() {
         // bounds on the ground plane, and refused, as no place lies past the world's bound.
         |world| {
             let unit = first::<UnitType>(world);
-            let height = Position::BOUND + Num::EPSILON;
+            let height = Vec3::BOUND + Num::EPSILON;
             *world.get_mut::<Position>(unit).unwrap() =
                 Position::from(Vec3::new(Num::ZERO, height, Num::ZERO));
             invalid(Position::NAME, Some(id_of(world, unit)))
@@ -392,7 +392,7 @@ fn a_restore_keeps_each_time_within_the_limit() {
             tick: at,
             party: None,
         };
-        route.ask(ask, &mut Progress::default());
+        route.ask_unreported(ask);
         assert_eq!(Match::decodes(&route), holds, "{at}");
     }
 }
@@ -505,7 +505,7 @@ fn a_quiet_tick_changes_no_state_but_the_tick() {
     // timer, set again, changes besides.
     let script = r#"
 fn on_match_start(ctx) {
-    ctx.timer("each", 100, true, ());
+    ctx.every("each", 100);
 }
 
 fn on_timer(ctx, name, data) {
@@ -514,13 +514,13 @@ fn on_timer(ctx, name, data) {
     }
 }
 
-fn on_unit_died(ctx, unit, killer, assisters) {}
+fn on_unit_death(ctx, unit, killer, assisters) {}
 "#;
     let mut game = mode_match(script, ScriptLimits::ROOMY);
     Mode::tick_inputs(&mut game, &[]);
     Mode::tick_inputs(&mut game, &[]);
     let mut delta = StateDelta::default();
-    game.resource_scope(|world, mut registry: Mut<'_, StateRegistry>| {
+    game.resource_scope(|world, registry: Mut<'_, StateRegistry>| {
         registry.track(world, &mut delta);
     });
     Mode::tick_inputs(&mut game, &[]);
@@ -564,8 +564,8 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
     let game = mode_match(SCRIPT, ScriptLimits::ROOMY);
     let grunt = Mode::entity_by_id(&game, 2);
     let id = *game.get::<StableId>(grunt).unwrap();
-    let past = Vec3::new(Num::ZERO, Num::ZERO, Position::BOUND + Num::EPSILON);
-    let at = Vec3::new(Num::ZERO, Num::ZERO, Position::BOUND);
+    let past = Vec3::new(Num::ZERO, Num::ZERO, Vec3::BOUND + Num::EPSILON);
+    let at = Vec3::new(Num::ZERO, Num::ZERO, Vec3::BOUND);
     let start = |origin| ActionStart {
         origin,
         charge: None,
@@ -582,24 +582,29 @@ fn a_place_past_the_world_bound_fails_its_types_check() {
     for (point, holds) in [(at, true), (past, false)] {
         let destination = Destination::to(Some(point));
         assert_eq!(destination.check(&game, grunt), holds, "{point:?}");
-        let dash = |to, start| ForcedMove::Dash {
-            to,
+        let dash = ForcedMove::Dash {
+            to: DashTo::Point(point),
             step: Num::ONE,
-            delivers: Some(DashDelivery::new(id, ActionId::new(0), Rank::FIRST, start)),
         };
-        assert_eq!(dash(DashTo::Point(point), None).check(&game, grunt), holds);
-        let started = dash(DashTo::Unit(id), Some(start(point)));
+        assert_eq!(dash.check(&game, grunt), holds);
+        let started = DashDelivering::new(DashDelivery {
+            source: id,
+            action: ActionId::new(0),
+            rank: Rank::FIRST,
+            start: Some(start(point)),
+        });
         assert_eq!(started.check(&game, grunt), holds);
         let mut route = game.get::<Route>(grunt).unwrap().clone();
         let tick = Tick::new(0);
         let ask = |goal, party| RouteAsk { goal, tick, party };
-        route.ask(ask(point, None), &mut Progress::default());
+        route.ask_unreported(ask(point, None));
         assert_eq!(route.check(&game, grunt), holds, "{point:?}");
-        route.ask(ask(at, Some(party(point))), &mut Progress::default());
+        route.ask_unreported(ask(at, Some(party(point))));
         assert_eq!(route.check(&game, grunt), holds, "{point:?}");
         let slots = ActionSlots::new([(strike, SlotKind::new(0), Rank::new(1))]);
         let mut progress = ActionProgress::default();
-        progress.order(0, ActionTarget::Point(point));
+        let target = ActionTarget::Point(point);
+        progress.order(0, target, &mut LooseDues::default().dues());
         let checked = slots.check(&game, grunt) && progress.check_against(&slots, &game);
         assert_eq!(checked, holds, "{point:?}");
         let last = NodeAt {

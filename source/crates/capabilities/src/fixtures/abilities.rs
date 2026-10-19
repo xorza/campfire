@@ -1,17 +1,16 @@
-use bevy_ecs::bundle::Bundle;
+use bevy_ecs::bundle::{Bundle, NoBundleEffect};
 use bevy_ecs::world::World;
 use campfire_abilities::Abilities;
 use campfire_abilities::internals::{MANA, RAGE};
-use campfire_actions::{ActionData, ActionProgress, ActionSlots, Actions, SlotKind, TimedSlots};
+use campfire_actions::{ActionData, ActionSlots, Actions, ProgressDues, SlotKind, TimedSlots};
 use campfire_combat::OnDeath;
 use campfire_common::PlayerSlot;
-use campfire_declare::CapabilitySet;
+use campfire_declare::MatchFacts;
 use campfire_math::{Num, Vec3};
 use campfire_mode::Mode;
-use campfire_sim::internals::SimWorldInternals;
 use campfire_sim::{Capability, StableId};
-use campfire_stats::{Life, Pools};
-use campfire_units::{MoveStep, Owner, UnitTypeCore, Units};
+use campfire_stats::Pools;
+use campfire_units::{Life, MoveStep, Owner, UnitTypeCore, Units};
 use campfire_values::{ActionId, PackageIndex, Rank, Team, TypeScope, UnitType};
 
 use crate::fixtures::actions::ActionsFixtures;
@@ -35,7 +34,7 @@ pub trait AbilitiesFixtures {
         world: &mut World,
         pos: impl Into<Vec3>,
         team: Team,
-        parts: impl Bundle,
+        parts: impl Bundle<Effect: NoBundleEffect>,
     ) -> StableId;
 
     /// A `caster` of `team` with `parts`.
@@ -43,7 +42,7 @@ pub trait AbilitiesFixtures {
         world: &mut World,
         pos: impl Into<Vec3>,
         team: Team,
-        parts: impl Bundle,
+        parts: impl Bundle<Effect: NoBundleEffect>,
     ) -> StableId;
 
     /// A unit of `team` of the armed type `unit_type` that attacks `target`.
@@ -90,7 +89,8 @@ impl AbilitiesFixtures for Abilities {
 
     fn give_combatant(world: &mut World, unit_type: UnitType) {
         if world
-            .resource::<CapabilitySet>()
+            .resource::<MatchFacts>()
+            .set
             .contains(Capability::Combat)
         {
             Units::give_type(world, unit_type, Life::full(Num::int(500)));
@@ -110,7 +110,7 @@ impl AbilitiesFixtures for Abilities {
         world: &mut World,
         pos: impl Into<Vec3>,
         team: Team,
-        parts: impl Bundle,
+        parts: impl Bundle<Effect: NoBundleEffect>,
     ) -> StableId {
         Mode::spawn_named(world, "combatant", pos, team, parts)
     }
@@ -119,7 +119,7 @@ impl AbilitiesFixtures for Abilities {
         world: &mut World,
         pos: impl Into<Vec3>,
         team: Team,
-        parts: impl Bundle,
+        parts: impl Bundle<Effect: NoBundleEffect>,
     ) -> StableId {
         Mode::spawn_named(world, "caster", pos, team, parts)
     }
@@ -132,8 +132,9 @@ impl AbilitiesFixtures for Abilities {
         target: StableId,
     ) -> StableId {
         let id = Mode::spawn(world, unit_type, pos, team, ());
-        let mut progress = world.part_mut::<ActionProgress>(id);
-        progress.set_attack_target(Some(target));
+        ProgressDues::change_unit(world, id, |progress, dues| {
+            progress.set_attack_target(Some(target), dues);
+        });
         id
     }
 

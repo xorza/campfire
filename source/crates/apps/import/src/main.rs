@@ -7,14 +7,67 @@
 use std::env;
 use std::process::ExitCode;
 
+use campfire_common::ErrorReport;
 use campfire_common::ExitStatus;
-use campfire_import::{Imported, SkipReason, ZeroHour};
-use campfire_log::{ErrorReport, Logging};
+use campfire_import::{ImportLoss, Imported, SkipReason, ZeroHour};
+use campfire_log::Logging;
 use tracing::{error, info, warn};
 
 use crate::args::{Args, Game};
 
 mod args;
+
+/// Logs `loss` as a warning, with what it is and why.
+fn warn_of(loss: &ImportLoss) {
+    match loss {
+        ImportLoss::Model(skipped) => {
+            let model = &skipped.name;
+            match skipped.reason {
+                SkipReason::Missing => {
+                    warn!(
+                        model,
+                        "an object names a model no file of the install holds"
+                    );
+                }
+                SkipReason::Emitter => warn!(
+                    model,
+                    "an object names a particle emitter, which the importer does not convert"
+                ),
+                SkipReason::Aggregate => warn!(
+                    model,
+                    "a model's HLOD adds an aggregate, which the importer does not convert"
+                ),
+            }
+        }
+        ImportLoss::Texture(texture) => warn!(
+            texture,
+            "a model names a texture no archive holds, and draws untextured"
+        ),
+        ImportLoss::UntexturedCells { map, cells } => {
+            warn!(%map, cells, "a map's terrain draws cells of a tile with no texture");
+        }
+        ImportLoss::Waypoint { map, waypoint } => {
+            warn!(%map, waypoint, "a map's waypoint past its bounds is dropped");
+        }
+        ImportLoss::Button(dropped) => warn!(
+            button = dropped.button,
+            cause = ?dropped.cause,
+            "a command button is not imported"
+        ),
+        ImportLoss::Weapon(dropped) => warn!(
+            weapon = dropped.weapon,
+            cause = ?dropped.cause,
+            "a weapon is not imported"
+        ),
+        ImportLoss::Unliving(object) => {
+            warn!(object, "an object's body is none the import gives life");
+        }
+        ImportLoss::Wounded(object) => warn!(
+            object,
+            "an object's body starts below its most life, which the engine starts full"
+        ),
+    }
+}
 
 fn main() -> ExitCode {
     let _log = Logging {
@@ -39,85 +92,18 @@ fn main() -> ExitCode {
         Ok(Imported {
             fingerprint,
             rules,
-            skipped_models,
-            missing_textures,
             maps,
-            dropped_buttons,
-            dropped_weapons,
-            unliving,
-            wounded,
+            losses,
         }) => {
-            for skipped in &skipped_models {
-                let model = &skipped.name;
-                match skipped.reason {
-                    SkipReason::Missing => warn!(
-                        model,
-                        "an object names a model no file of the install holds"
-                    ),
-                    SkipReason::Emitter => warn!(
-                        model,
-                        "an object names a particle emitter, which the importer does not convert"
-                    ),
-                    SkipReason::Aggregate => warn!(
-                        model,
-                        "a model's HLOD adds an aggregate, which the importer does not convert"
-                    ),
-                }
-            }
-            for texture in &missing_textures {
-                warn!(
-                    texture,
-                    "a model names a texture no archive holds, and draws untextured"
-                );
-            }
-            for (map, imported) in &maps {
-                let cells = imported.untextured_cells;
-                if cells > 0 {
-                    warn!(%map, cells, "a map's terrain draws cells of a tile with no texture");
-                }
-                if !imported.dropped_waypoints.is_empty() {
-                    warn!(
-                        %map,
-                        waypoints = %imported.dropped_waypoints.join(", "),
-                        "a map's waypoints past its bounds are dropped"
-                    );
-                }
-            }
-            for dropped in &dropped_buttons {
-                warn!(
-                    button = dropped.button,
-                    cause = ?dropped.cause,
-                    "a command button is not imported"
-                );
-            }
-            for dropped in &dropped_weapons {
-                warn!(
-                    weapon = dropped.weapon,
-                    cause = ?dropped.cause,
-                    "a weapon is not imported"
-                );
-            }
-            for object in &unliving {
-                warn!(object, "an object's body is none the import gives life");
-            }
-            for object in &wounded {
-                warn!(
-                    object,
-                    "an object's body starts below its most life, which the engine starts full"
-                );
+            for loss in &losses {
+                warn_of(loss);
             }
             info!(
                 packages = %args.out.display(),
                 %fingerprint,
                 %rules,
-                skipped_models = skipped_models.len(),
-                missing_textures = missing_textures.len(),
                 maps = maps.len(),
-                untextured_cells = maps.values().map(|map| map.untextured_cells).sum::<usize>(),
-                dropped_buttons = dropped_buttons.len(),
-                dropped_weapons = dropped_weapons.len(),
-                unliving = unliving.len(),
-                wounded = wounded.len(),
+                losses = losses.len(),
                 "imported"
             );
             ExitCode::from(ExitStatus::Success)

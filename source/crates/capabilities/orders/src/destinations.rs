@@ -1,65 +1,22 @@
 use bevy_ecs::query::Without;
-use bevy_ecs::system::{Query, Res};
-use campfire_actions::{ActionBook, ActionProgress, ActionRange, ActionSlots, Targets};
+use bevy_ecs::system::{Local, Query, Res};
+use campfire_actions::{
+    ActionBook, ActionProgress, ActionRange, ActionSlots, ProgressIndexes, Targets,
+};
 use campfire_geometry::Placed;
-use campfire_navigation::{NavigationBook, OnPath, PathWalker};
-use campfire_sim::Position;
+use campfire_sim::{DueUnit, Position};
 use campfire_units::{ArrivedShort, Body, Dead, Destination};
 use campfire_values::Team;
 
-/// The destinations units walk to on their own: along their paths, and after their attack targets.
+/// The destinations units walk to on their own: after their attack targets.
 #[derive(Debug)]
 pub struct Destinations;
 
 impl Destinations {
-    /// Sends each path walker with no attack target and no cast walking in range, on its path, to
-    /// the waypoint it walks to, and on to the next once the waypoint is within its body, or it
-    /// stands on the waypoint with no body: walkers that push each other never stand on one point.
-    /// A walker that chased a target walks back to where it left its path.
-    pub(super) fn follow_paths(
-        navigation: Res<'_, NavigationBook>,
-        mut walkers: Query<
-            '_,
-            '_,
-            (
-                &Position,
-                &OnPath,
-                &mut PathWalker,
-                Option<&ActionProgress>,
-                &mut Destination,
-                Option<&ArrivedShort>,
-                Option<&Body>,
-            ),
-            Without<Dead>,
-        >,
-    ) {
-        let paths = &navigation.paths;
-        for (&position, path, mut walker, progress, mut destination, arrived, body) in &mut walkers
-        {
-            let busy = |progress: &ActionProgress| {
-                progress.attack_target().is_some() || progress.approaching()
-            };
-            if walker.left() || progress.is_some_and(busy) {
-                continue;
-            }
-            let path = path.get();
-            let mut waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
-            if waypoint.is_some_and(|at| {
-                position
-                    .get()
-                    .within_ground(at, Body::shape_of(body).bound())
-            }) {
-                walker.advance();
-                waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
-            }
-            Destination::walk_to(&mut destination, arrived, waypoint);
-        }
-    }
-
     /// Walks each unit that can move to its attack target while out of the range of the weapon it
-    /// attacks it with, and stops it in range or in its windup; a cast that walks in range walks
-    /// the unit instead. A unit whose target is gone, dead, no longer an enemy or one no weapon of
-    /// it selects drops it and stops.
+    /// attacks it with, of those the index of the attack targets holds, and stops it in range or
+    /// in its windup; a cast that walks in range walks the unit instead. A unit whose target is
+    /// gone, dead, no longer an enemy or one no weapon of it selects drops it and stops.
     pub(super) fn chase(
         book: Res<'_, ActionBook>,
         targets: Targets<'_, '_>,
@@ -76,11 +33,18 @@ impl Destinations {
             ),
             Without<Dead>,
         >,
+        (mut indexes, mut held): (ProgressIndexes<'_>, Local<'_, Vec<DueUnit>>),
     ) {
-        for (&position, &team, (slots, mut progress), mut destination, arrived, body) in
-            &mut chasers
-        {
+        held.clear();
+        held.extend(indexes.attackers());
+        for &DueUnit { id, entity } in &*held {
+            let Ok((&position, &team, (slots, mut progress), mut destination, arrived, body)) =
+                chasers.get_mut(entity)
+            else {
+                continue;
+            };
             let Some(target) = progress.attack_target() else {
+                indexes.forget_attacker(id);
                 continue;
             };
             if progress.attacking().is_some() || progress.approaching() {
@@ -93,13 +57,13 @@ impl Destinations {
             });
             match aimed {
                 None => {
-                    progress.set_attack_target(None);
+                    progress.set_attack_target(None, &mut indexes.of(id, entity));
                     Destination::walk_to(&mut destination, arrived, None);
                 }
                 Some((unit, ActionRange::Meters(range)))
                     if !targets.reaches(
                         Placed::new(position.get(), Body::shape_of(body)),
-                        range,
+                        range.get(),
                         &unit,
                     ) =>
                 {

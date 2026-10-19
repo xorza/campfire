@@ -9,22 +9,34 @@ use campfire_values::ModifierId;
 
 use crate::application::{Adding, Application, ApplyAt};
 use crate::instance::StatShare;
+use crate::interval_revival::IntervalRevival;
 use crate::lifetime::Hold;
 use crate::modifier_book::ModifierBook;
+use crate::modifier_dues::ModifierDues;
 use crate::modifiers::modifier_clocks::ModifierClocks;
 use crate::modifiers::{Modifiers, Touched};
 
 /// A unit's modifiers and their clocks, to change together: each component counts as changed
-/// only when an operation changed it, so a change of a clock alone derives no stats again.
+/// only when an operation changed it, so a change of a clock alone derives no stats again; each
+/// change pushes the unit into the indexes of the ends and the intervals.
 #[derive(Debug)]
 pub struct CarriedMut<'w> {
     modifiers: Mut<'w, Modifiers>,
     clocks: Mut<'w, ModifierClocks>,
+    dues: ModifierDues<'w>,
 }
 
 impl<'w> CarriedMut<'w> {
-    pub const fn new(modifiers: Mut<'w, Modifiers>, clocks: Mut<'w, ModifierClocks>) -> Self {
-        CarriedMut { modifiers, clocks }
+    pub(crate) const fn new(
+        modifiers: Mut<'w, Modifiers>,
+        clocks: Mut<'w, ModifierClocks>,
+        dues: ModifierDues<'w>,
+    ) -> Self {
+        CarriedMut {
+            modifiers,
+            clocks,
+            dues,
+        }
     }
 
     pub(crate) fn modifiers(&self) -> &Modifiers {
@@ -116,7 +128,8 @@ impl<'w> CarriedMut<'w> {
         }
     }
 
-    /// See `ModifierClocks::advance_intervals`.
+    /// See `ModifierClocks::advance_intervals`; the unit is pushed at its next interval, as the
+    /// pass that visits it took it.
     pub fn advance_intervals(
         &mut self,
         now: Tick,
@@ -128,6 +141,25 @@ impl<'w> CarriedMut<'w> {
         if clocks.advance_intervals(modifiers, now, takes_effect, due) {
             self.clocks.set_changed();
         }
+        self.dues.push(&self.modifiers, &self.clocks);
+    }
+
+    /// See `ModifierClocks::skip_intervals`; the unit is pushed at its next interval.
+    pub fn skip_intervals(&mut self, now: Tick) {
+        if self.clocks.bypass_change_detection().skip_intervals(now) {
+            self.clocks.set_changed();
+        }
+        self.dues.push(&self.modifiers, &self.clocks);
+    }
+
+    /// See `ModifierClocks::revive_intervals`.
+    pub fn revive_intervals(&mut self, now: Tick, revival: impl Fn(ModifierId) -> IntervalRevival) {
+        let modifiers = &*self.modifiers;
+        let clocks = self.clocks.bypass_change_detection();
+        if clocks.revive_intervals(modifiers, now, revival) {
+            self.clocks.set_changed();
+        }
+        self.dues.push(&self.modifiers, &self.clocks);
     }
 
     /// Writes the stacks and the state a call wrote to the instance of `id` from `source`, in
@@ -153,6 +185,7 @@ impl<'w> CarriedMut<'w> {
         if self.clocks.state(at) != state {
             self.clocks.set_state(at, state);
         }
+        self.dues.push(&self.modifiers, &self.clocks);
     }
 
     fn parts(&mut self) -> Parts<'_> {
@@ -162,6 +195,7 @@ impl<'w> CarriedMut<'w> {
         }
     }
 
+    /// Marks what `touched` changed, and pushes the unit as its modifiers and clocks stand.
     fn mark(&mut self, touched: Touched) {
         if touched.stats {
             self.modifiers.set_changed();
@@ -169,16 +203,29 @@ impl<'w> CarriedMut<'w> {
         if touched.clocks {
             self.clocks.set_changed();
         }
+        self.dues.push(&self.modifiers, &self.clocks);
     }
 
-    /// The modifiers and clocks of `entity`; none when it carries none.
-    pub fn of(world: &mut World, entity: Entity) -> Option<CarriedMut<'_>> {
-        let (modifiers, clocks) = world
-            .get_entity_mut(entity)
-            .ok()?
-            .into_components_mut::<(&mut Modifiers, &mut ModifierClocks)>()
-            .ok()?;
-        Some(CarriedMut::new(modifiers, clocks))
+    /// Runs `change` on the modifiers and clocks of `entity` in `world`, as an exclusive system
+    /// or an effect changes them; none when it carries none.
+    pub fn with<R>(
+        world: &mut World,
+        entity: Entity,
+        change: impl FnOnce(&mut CarriedMut<'_>) -> R,
+    ) -> Option<R> {
+        let &id = world.get::<StableId>(entity)?;
+        ModifierDues::with(world, id, entity, |world, dues| {
+            let (modifiers, clocks) = world
+                .get_entity_mut(entity)
+                .ok()?
+                .into_components_mut::<(&mut Modifiers, &mut ModifierClocks)>()
+                .ok()?;
+            Some(change(&mut CarriedMut::new(
+                modifiers,
+                clocks,
+                dues.reborrow(),
+            )))
+        })
     }
 }
 
@@ -193,6 +240,7 @@ struct Parts<'a> {
 mod tests {
     use bevy_ecs::change_detection::DetectChanges;
     use campfire_common::Ticks;
+    use campfire_sim::{DueIndex, EntityIndex, IdAllocator};
     use campfire_values::Rank;
 
     use super::*;
@@ -227,7 +275,18 @@ mod tests {
             max_stacks: None,
         };
         let mut world = World::new();
-        let unit = world.spawn(Modifiers::bundle([application])).id();
+        world.init_resource::<EntityIndex>();
+        world.init_resource::<DueIndex<Modifiers>>();
+        world.init_resource::<DueIndex<ModifierClocks>>();
+        let id = IdAllocator::default().allocate();
+        let unit = world.spawn((id, Modifiers::bundle([application]))).id();
+        // The insert pushes the unit at its interval, in tick 2, and at no end, as it never ends.
+        let held = |world: &World| {
+            let ends = world.resource::<DueIndex<Modifiers>>().due_at(id);
+            let intervals = world.resource::<DueIndex<ModifierClocks>>().due_at(id);
+            [ends, intervals]
+        };
+        assert_eq!(held(&world), [None, Some(Tick::new(2))]);
         let changed = |world: &World| {
             let unit = world.entity(unit);
             let modifiers = unit.get_ref::<Modifiers>().unwrap().is_changed();
@@ -238,11 +297,14 @@ mod tests {
             }
         };
         // The interval comes in tick 2, and a shield absorbs 4 of 10: clocks alone change. An
-        // interval not yet due changes nothing. A shield spent to 0 ends its instance: both.
-        let cases: [(&dyn Fn(&mut CarriedMut<'_>), Touched); 4] = [
+        // interval not yet due changes nothing. A shield spent to 0 ends its instance: both. Each
+        // operation, taken out of the index as a pass takes it, pushes the unit again at its next
+        // interval: 2 while not yet due, 4 once tick 2 came, and none once the instance ends.
+        let cases: [(&dyn Fn(&mut CarriedMut<'_>), Touched, Option<u64>); 4] = [
             (
                 &|carried| carried.advance_intervals(Tick::new(1), |_| true, |_, _| {}),
                 Touched::default(),
+                Some(2),
             ),
             (
                 &|carried| carried.advance_intervals(Tick::new(2), |_| true, |_, _| {}),
@@ -250,6 +312,7 @@ mod tests {
                     stats: false,
                     clocks: true,
                 },
+                Some(4),
             ),
             (
                 &|carried| {
@@ -260,6 +323,7 @@ mod tests {
                     stats: false,
                     clocks: true,
                 },
+                Some(4),
             ),
             (
                 &|carried| {
@@ -271,12 +335,18 @@ mod tests {
                     stats: true,
                     clocks: true,
                 },
+                None,
             ),
         ];
-        for (operation, expected) in cases {
+        for (operation, expected, next) in cases {
             world.clear_trackers();
-            operation(&mut CarriedMut::of(&mut world, unit).unwrap());
+            let mut taken = Vec::new();
+            let mut intervals = world.resource_mut::<DueIndex<ModifierClocks>>();
+            intervals.take_due(Tick::LIMIT, &mut taken);
+            assert_eq!(taken.len(), 1);
+            CarriedMut::with(&mut world, unit, operation).unwrap();
             assert_eq!(changed(&world), expected);
+            assert_eq!(held(&world), [None, next.map(Tick::new)]);
         }
         assert_eq!(world.get::<Modifiers>(unit).unwrap().len(), 0);
     }

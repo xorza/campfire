@@ -5,7 +5,7 @@ use campfire_common::PlayerSlot;
 use campfire_players::*;
 use campfire_sim::Capability;
 use campfire_stats::PlayerModifiers;
-use campfire_units::{Player, UnitsWorld};
+use campfire_units::UnitsWorld;
 use campfire_values::{Relations, Team};
 
 #[test]

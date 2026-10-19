@@ -175,6 +175,22 @@ fn a_flawed_delegation_is_refused() {
             event(KIND, tags(|tags| tags[4][1] = "soon".to_owned())),
             DelegationError::MalformedTag(DelegationTag::Expiration),
         ),
+        // A sign or a leading zero is not the one decimal spelling, which `parse` would take.
+        (
+            event(KIND, tags(|tags| tags[4][1] = "+1700086400".to_owned())),
+            DelegationError::MalformedTag(DelegationTag::Expiration),
+        ),
+        (
+            event(KIND, tags(|tags| tags[4][1] = "01700086400".to_owned())),
+            DelegationError::MalformedTag(DelegationTag::Expiration),
+        ),
+        (
+            event(
+                KIND,
+                tags(|tags| tags[4][1] = "18446744073709551616".to_owned()),
+            ),
+            DelegationError::MalformedTag(DelegationTag::Expiration),
+        ),
         // 0x00…00 and 0x03…03 are not the x coordinate of a curve point.
         (
             event(KIND, tags(|tags| tags[0][1] = "00".repeat(32))),

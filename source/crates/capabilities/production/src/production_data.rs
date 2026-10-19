@@ -1,6 +1,6 @@
 use std::num::NonZeroU8;
 
-use campfire_declare::PerType;
+use campfire_declare::{PerType, Section, SectionTable};
 use campfire_script::{DataSection, DataTable};
 use serde::Deserialize;
 
@@ -22,5 +22,10 @@ impl PerType for ProductionData {
 }
 
 impl DataSection for ProductionData {
-    const TABLE: DataTable = DataTable::Production;
+    const TABLE: DataTable = DataTable::new("A unit type's `production`");
+}
+
+impl Section for ProductionData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "production";
 }

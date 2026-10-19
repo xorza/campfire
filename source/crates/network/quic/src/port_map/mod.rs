@@ -18,7 +18,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use campfire_log::ErrorReport;
+use campfire_common::ErrorReport;
 use campfire_store::{SharedPort, Worker};
 use polling::{Event, Events, Poller};
 use tracing::{error, info, warn};

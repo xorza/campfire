@@ -1,7 +1,7 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::{Mut, World};
 use campfire_common::PlayerSlot;
-use campfire_script::View;
+use campfire_script::MatchNames;
 use campfire_sim::{SimWorld, StableId};
 use campfire_units::Owner;
 use campfire_values::ResourceId;
@@ -49,6 +49,6 @@ impl PlayersWorld for World {
     }
 
     fn declared_resources(&self) -> usize {
-        self.non_send::<View>().names().count::<ResourceId>()
+        self.resource::<MatchNames>().count::<ResourceId>()
     }
 }

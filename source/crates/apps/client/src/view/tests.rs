@@ -1,24 +1,30 @@
-use std::f32::consts::FRAC_PI_4;
-use std::sync::Arc;
+use campfire_common::{DeclaredName, Tick};
+use campfire_geometry::{Bounds, Metric};
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 use std::time::Duration;
 
-use bevy::asset::{AssetApp, AssetPlugin};
-use bevy::ecs::system::RunSystemOnce;
+use bevy::asset::{AssetApp, AssetServer};
+use bevy::camera::primitives::MeshAabb;
+use bevy::ecs::hierarchy::Children;
 use bevy::ecs::world::World;
+use bevy::math::Vec3A;
 use bevy::tasks::{IoTaskPool, TaskPool};
-use bevy::time::{TimePlugin, TimeUpdateStrategy};
-use bevy::world_serialization::WorldAsset;
+use bevy::time::TimeUpdateStrategy;
+use bevy::world_serialization::{WorldAsset, WorldAssetRoot};
 use campfire_actions::ShotDamage;
 use campfire_areas::Areas;
 use campfire_capabilities::internals::AreasFixtures;
-use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale};
+use campfire_client_files::{ClientModel, ClientUnit, ClientUnits, ModelScale, ModelTop};
 use campfire_math::Num;
 use campfire_projectiles::{Flight, Payload};
 use campfire_sim::IdAllocator;
 use campfire_units::{HeightGrid, TypeOrigin, TypeOriginBook};
-use campfire_values::{ActionId, DamageKind, DeclaredName, PackageIndex, PackagePath, Rank};
+use campfire_values::{ActionId, DamageKind, PackageIndex, PackagePath, Rank};
 
 use super::*;
+use crate::test_app::client_app;
+use crate::view::area_view::{AREA_LIFT, AreaView};
+use crate::view::unit_looks::ModelParts;
 
 /// A unit type the client data draws with no model, as every type of a view with no looks: its
 /// units take the figure of their team.
@@ -26,16 +32,14 @@ const UNDRAWN: UnitType = UnitType::new(0);
 
 /// A view with no window and an empty selection, whose clock moves only as a test sets it.
 fn view() -> App {
-    let mut app = App::new();
-    app.add_plugins((TimePlugin, AssetPlugin::default()));
-    app.init_asset::<Mesh>();
-    app.init_asset::<StandardMaterial>();
-    app.init_resource::<EntityIndex>();
-    app.init_resource::<Selection>();
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
-    Unpredicted::register(app.world_mut());
-    app.init_resource::<ClientData>();
+    view_of(|_| {})
+}
+
+/// The view `view` gives, which `setup` gives what it adds before the view's first frame.
+fn view_of(setup: impl FnOnce(&mut App)) -> App {
+    let mut app = client_app();
     app.add_plugins(View);
+    setup(&mut app);
     app.update();
     app
 }
@@ -232,6 +236,79 @@ fn the_result_stands_by_the_clients_team() {
 }
 
 #[test]
+fn a_map_of_no_terrain_is_drawn_on_a_plane_over_its_bounds() {
+    // Bounds from (−10, −4) to (30, 6): a plane 40 by 10 m, centered at (10, 1).
+    let bounds = Bounds::new([Num::int(-10), Num::int(-4)], [Num::int(30), Num::int(6)]).unwrap();
+    let mut app = view_of(|app| {
+        app.insert_resource(MapBook {
+            bounds,
+            ..MapBook::default()
+        });
+    });
+    let world = app.world_mut();
+    let mut ground = world.query_filtered::<(&Mesh3d, &Transform), With<Ground>>();
+    let (mesh, place) = ground.single(world).unwrap();
+    assert_eq!(place.translation, Vec3::new(10.0, 0.0, 1.0));
+    let aabb = world
+        .resource::<Assets<Mesh>>()
+        .get(&mesh.0)
+        .unwrap()
+        .compute_aabb()
+        .unwrap();
+    assert_eq!(aabb.half_extents, Vec3A::new(20.0, 0.0, 5.0));
+}
+
+#[test]
+fn the_end_shows_on_the_ground_and_in_the_title_once_it_reaches_the_matchs_entity() {
+    // A client that plays on no team, as it waits for its offer: a draw turns the view's own
+    // ground gray, and names the end in the window's title, in the frame the end arrives,
+    // whatever frames follow.
+    let mut app = view();
+    let window = app.world_mut().spawn(Window::default()).id();
+    let ground = |app: &mut App| {
+        let world = app.world_mut();
+        let mut ground = world.query_filtered::<&MeshMaterial3d<StandardMaterial>, With<Ground>>();
+        let material = ground.single(world).unwrap().0.clone();
+        world
+            .resource::<Assets<StandardMaterial>>()
+            .get(&material)
+            .unwrap()
+            .base_color
+    };
+    let before = ground(&mut app);
+    app.update();
+    assert_eq!(ground(&mut app), before);
+    let end = MatchEnd::new(Tick::new(9), MatchResult::Draw);
+    app.world_mut().spawn(end);
+    app.update();
+    assert_eq!(ground(&mut app), Color::srgb(0.35, 0.35, 0.35));
+    let title = &app.world().get::<Window>(window).unwrap().title;
+    assert_eq!(title, "Campfire: the match ended");
+}
+
+#[test]
+fn a_position_stands_on_the_drawn_ground_of_a_planar_map_and_is_its_own_point_on_a_spatial_one() {
+    // Ground 8 samples high everywhere, a step of 0.5 m: 4 m under every point. A position 2 m
+    // up at (3, 0) draws at 4 + 2 = 6 m on a planar map, and at its own 2 m on a spatial one.
+    let grid = HeightGrid::new(
+        [Num::int(-10), Num::int(-10)],
+        Num::int(10),
+        Num::from_bits(1 << (Num::FRAC_BITS - 1)),
+        4,
+        vec![8; 16],
+    )
+    .unwrap();
+    let mut data = ClientData {
+        heights: Some(GroundHeights::of(grid, None)),
+        ..ClientData::default()
+    };
+    let pos = Position::from((3, 2, 0));
+    assert_eq!(ground(pos, data.lifts()), Vec3::new(3.0, 6.0, 0.0));
+    data.metric = Metric::Spatial;
+    assert_eq!(ground(pos, data.lifts()), Vec3::new(3.0, 2.0, 0.0));
+}
+
+#[test]
 fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() {
     IoTaskPool::get_or_init(TaskPool::new);
     let mut app = view();
@@ -245,28 +322,34 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
         vec![8; 16],
     )
     .unwrap();
-    let tank = ClientUnit::new(vec![ClientModel {
-        model: PackagePath::parse("client/models/tank.glb").unwrap(),
+    // The tank's model is 2.5 m tall; the pit's is drawn under its origin; the shed's file gives
+    // no top.
+    let model = |name: &str, hide: &[&str], top: Option<f32>| ClientModel {
+        model: PackagePath::parse(&format!("client/models/{name}.glb")).unwrap(),
         scale: ModelScale::new(1.25).unwrap(),
-        hide: ["tank.flash".to_owned()].into(),
-    }]);
-    let data = ClientData {
-        units: vec![ClientUnits {
-            units: [
-                (DeclaredName::new("tank").unwrap(), tank),
-                (
-                    DeclaredName::new("sound").unwrap(),
-                    ClientUnit::new(Vec::new()),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-            ..ClientUnits::default()
-        }],
-        heights: Some(GroundHeights::of(grid, None)),
-        ..ClientData::default()
+        hide: hide.iter().map(|&node| node.to_owned()).collect(),
+        top: top.and_then(ModelTop::new),
     };
-    let origins: TypeOriginBook = ["tank", "sound"]
+    let names = ["tank", "sound", "pit", "shed"];
+    let models = [
+        vec![model("tank", &["tank.flash"], Some(2.5))],
+        Vec::new(),
+        vec![model("pit", &[], Some(-1.0))],
+        vec![model("shed", &[], None)],
+    ];
+    let looks = ClientUnits {
+        units: names
+            .into_iter()
+            .zip(models)
+            .map(|(name, models)| (DeclaredName::new(name).unwrap(), ClientUnit::new(models)))
+            .collect(),
+        ..ClientUnits::default()
+    };
+    let data = ClientData {
+        heights: Some(GroundHeights::of(grid, None)),
+        ..ClientData::of_looks([looks])
+    };
+    let origins: TypeOriginBook = names
         .map(|name| TypeOrigin {
             package: PackageIndex::MODE,
             name: name.into(),
@@ -276,7 +359,8 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let looks = UnitLooks::of(&origins, &data, app.world().resource::<AssetServer>());
     app.insert_resource(looks);
     app.insert_resource(data);
-    let [(unit_type, _), (sound_type, _)] = [0, 1].map(|at| origins.iter().nth(at).unwrap());
+    let [unit_type, sound_type, pit_type, shed_type] =
+        [0, 1, 2, 3].map(|at| origins.iter().nth(at).unwrap().0);
     // The tank stands 2 m above the ground at (3, 0), turned 90°; a sound beside it.
     let pos = Position::from((3, 2, 0));
     let mut ids = IdAllocator::default();
@@ -291,16 +375,17 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
             Facing::of(Num::int(90)),
         ))
         .id();
-    let sound = app
-        .world_mut()
-        .spawn((
-            ids.allocate(),
-            BodyUnit,
-            Position::from((5, 0, 0)),
-            Team::new(0),
-            sound_type,
-        ))
-        .id();
+    let [sound, pit, shed] = [sound_type, pit_type, shed_type].map(|unit_type| {
+        app.world_mut()
+            .spawn((
+                ids.allocate(),
+                BodyUnit,
+                Position::from((5, 0, 0)),
+                Team::new(0),
+                unit_type,
+            ))
+            .id()
+    });
     app.update();
     let world = app.world();
     // The sound's look has no models: its drawing stands where it does, of no shape, figure or
@@ -311,7 +396,7 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     assert!(world.get::<Children>(quiet).is_none());
     // Its root stands at the ground's 4 m and its own 2 m, turned a quarter about y, with its
     // shape and no figure, and turns as its unit faces; its one child is its model, at its scale
-    // of 1.25, with the node its look hides.
+    // of 1.25, with the node its look hides, painted by its team.
     let (root, _, translation) = root(world, unit);
     assert_eq!(translation, Vec3::new(3.0, 6.0, 0.0));
     assert!(world.get::<Shape>(root).is_some() && world.get::<Look>(root).is_none());
@@ -326,7 +411,6 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     assert_eq!(
         model.get::<ModelParts>(),
         Some(&ModelParts {
-            package: PackageIndex::MODE,
             hide: ["tank.flash".to_owned()].into(),
             turret: None,
         })
@@ -334,21 +418,16 @@ fn a_unit_of_a_type_with_models_is_drawn_by_them_turned_its_way_at_its_height() 
     let transform = model.get::<Transform>().unwrap();
     assert_eq!(transform.rotation, Quat::IDENTITY);
     assert_eq!(transform.scale, Vec3::splat(1.25));
+    assert_eq!(model.get::<Paint>(), Some(&Paint::of(Team::new(0))));
 
-    // Its file is in no package this view holds, so its scene's load fails: the drawing keeps
-    // the height of a structure, of no walk and no avatar, and is fitted no more.
-    let scene = model.get::<WorldAssetRoot>().unwrap().0.clone();
-    let server = world.resource::<AssetServer>().clone();
-    for _ in 0..10_000 {
-        if server.load_state(&scene).is_failed() {
-            break;
-        }
-        app.update();
-    }
-    app.update();
-    let world = app.world();
-    assert_eq!(world.get::<Shape>(root).unwrap().height, 3.8);
-    assert!(!world.entity(root).contains::<FitsModel>());
+    // A drawing of models stands as tall as their top as the file gives it, from its first
+    // frame: the tank 2.5 m; the pit, drawn under its origin, 0; the shed, of no top, as a
+    // structure of no walk and no avatar, 3.8 m.
+    let height = |unit| {
+        let root = world.get::<Drawing>(unit).unwrap().root();
+        world.get::<Shape>(root).unwrap().height
+    };
+    assert_eq!([unit, pit, shed].map(height), [2.5, 0.0, 3.8]);
 }
 
 #[test]
@@ -360,16 +439,14 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
         model: PackagePath::parse("client/models/shell.glb").unwrap(),
         scale: ModelScale::new(2.0).unwrap(),
         hide: Vec::new(),
+        top: None,
     }]);
-    let data = ClientData {
-        units: vec![ClientUnits {
-            units: [(DeclaredName::new("shell").unwrap(), shell)]
-                .into_iter()
-                .collect(),
-            ..ClientUnits::default()
-        }],
-        ..ClientData::default()
-    };
+    let data = ClientData::of_looks([ClientUnits {
+        units: [(DeclaredName::new("shell").unwrap(), shell)]
+            .into_iter()
+            .collect(),
+        ..ClientUnits::default()
+    }]);
     let origins: TypeOriginBook = ["shell", "bolt"]
         .map(|name| TypeOrigin {
             package: PackageIndex::MODE,
@@ -459,7 +536,6 @@ fn a_projectile_is_drawn_at_its_height_by_its_models_turned_along_its_step_or_as
 
 #[test]
 fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
-    let mut app = view();
     let origins: TypeOriginBook = [TypeOrigin {
         package: PackageIndex::MODE,
         name: "fire_pool".into(),
@@ -467,12 +543,14 @@ fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
     .into_iter()
     .collect();
     let (unit_type, _) = origins.iter().next().unwrap();
-    // An area 2.5 m wide at (3, −4).
-    let area = Areas::standing(
-        app.world_mut(),
-        unit_type,
-        Num::from_bits(5 << (Num::FRAC_BITS - 1)),
-    );
+    // An area 2.5 m wide at (3, −4), whose reach the view's areas read from the first frame.
+    let mut area = None;
+    let mut app = view_of(|app| {
+        let radius = Num::from_bits(5 << (Num::FRAC_BITS - 1));
+        area = Some(Areas::standing(app.world_mut(), unit_type, radius));
+        app.add_plugins(AreaView);
+    });
+    let area = area.unwrap();
     let lies = app
         .world_mut()
         .spawn((
@@ -491,175 +569,4 @@ fn an_area_is_drawn_where_it_lies_as_a_disc_of_its_radius() {
     let disc = world.get::<Transform>(disc).unwrap();
     assert_eq!(disc.scale, Vec3::new(2.5, 1.0, 2.5));
     assert_eq!(disc.translation, Vec3::Y * AREA_LIFT);
-}
-
-#[test]
-fn a_selected_unit_is_ringed_at_its_reach_once_drawn_until_it_leaves_the_selection() {
-    let mut app = view();
-    let mut ids = IdAllocator::default();
-    let team = Team::new(0);
-    let [tower_id, hero_id] = [ids.allocate(), ids.allocate()];
-    let tower = app
-        .world_mut()
-        .spawn((tower_id, BodyUnit, Position::from((0, 0, 0)), team, UNDRAWN))
-        .id();
-    // The rings under `unit`'s drawing: the scale of each.
-    let rings = |world: &World, unit: Entity| -> Vec<Vec3> {
-        let ring = &world.resource::<Palette>().ring;
-        let root = world.get::<Drawing>(unit).unwrap().root();
-        world
-            .get::<Children>(root)
-            .unwrap()
-            .iter()
-            .copied()
-            .filter(|&child| {
-                world
-                    .get::<Mesh3d>(child)
-                    .is_some_and(|mesh| mesh.0 == *ring)
-            })
-            .map(|child| {
-                let transform = world.get::<Transform>(child).unwrap();
-                assert_eq!(transform.translation, Vec3::Y * RING_LIFT);
-                transform.scale
-            })
-            .collect()
-    };
-    // The tower and the hero, not held yet, selected: the tower, of no owner and no walk, is a
-    // structure of reach 0.9 m, ringed as it is drawn.
-    app.world_mut()
-        .resource_mut::<Selection>()
-        .pick(&[tower_id, hero_id]);
-    app.update();
-    assert_eq!(rings(app.world(), tower), [Vec3::splat(0.9)]);
-    // The hero arrives, a player's avatar, of reach 0.5 m: ringed as it is drawn, with no change
-    // of the selection.
-    let hero = app
-        .world_mut()
-        .spawn((
-            hero_id,
-            BodyUnit,
-            Position::from((4, 0, 0)),
-            team,
-            UNDRAWN,
-            Avatar,
-        ))
-        .id();
-    app.update();
-    assert_eq!(rings(app.world(), hero), [Vec3::splat(0.5)]);
-    assert_eq!(rings(app.world(), tower).len(), 1);
-    // The hero alone selected: the tower's ring goes, the hero keeps its one.
-    app.world_mut().resource_mut::<Selection>().pick(&[hero_id]);
-    app.update();
-    assert_eq!(rings(app.world(), tower), []);
-    assert_eq!(rings(app.world(), hero), [Vec3::splat(0.5)]);
-}
-
-#[test]
-fn a_model_drawing_stands_as_tall_as_the_top_of_its_shown_bounds() {
-    // An axis turned to rise: x along y, y along −x. A box at (2, 5, 0) of half extents
-    // (3, 1, 1), its frame 1 m up, reaches 1 + 2 + 3 = 6 m: the half extent along x rises.
-    let turned = Affine3A::from_cols(Vec3A::Y, Vec3A::NEG_X, Vec3A::Z, Vec3A::Y);
-    let bounds = |center: Vec3, half: Vec3| Aabb::from_min_max(center - half, center + half);
-    let wide = bounds(Vec3::new(2.0, 5.0, 0.0), Vec3::new(3.0, 1.0, 1.0));
-    assert_eq!(View::bounds_top(turned, &wide), 6.0);
-
-    // A model whose file does not load: its scene's load fails.
-    IoTaskPool::get_or_init(TaskPool::new);
-    let mut app = view();
-    app.init_asset::<WorldAsset>();
-    let server = app.world().resource::<AssetServer>().clone();
-    let lost: Handle<WorldAsset> = server.load("lost.glb#Scene0");
-    for _ in 0..10_000 {
-        if server.load_state(&lost).is_failed() {
-            break;
-        }
-        app.update();
-    }
-    assert!(server.load_state(&lost).is_failed());
-    let world = app.world_mut();
-    let shape = Shape {
-        radius: 0.5,
-        height: 2.0,
-        footing: Footing::Circle(0.5),
-    };
-    let mut drawing = || world.spawn((shape, FitsModel, Transform::default())).id();
-    let [tall, waiting, unbounded, hidden, failed] = [(); 5].map(|()| drawing());
-    // A root 2 m tall, its model 1 m up and twice as tall: its mesh, of y from 0 to 1, reaches
-    // 1 + 2 · 1 = 3 m; its child 1 m above it in its frame, 1 + 2 · 1 = 3 m, of half extent
-    // 0.25, reaches 3 + 2 · 0.25 = 3.5 m. A hidden node 10 m tall counts for nothing, nor does
-    // its child, nor a node of the root that is no model, as a selection's ring.
-    let doubled = Transform::from_xyz(0.0, 1.0, 0.0).with_scale(Vec3::new(1.0, 2.0, 1.0));
-    let model = drawn_model(world, tall, Handle::default(), true, doubled);
-    world
-        .entity_mut(model)
-        .insert(bounds(Vec3::Y * 0.5, Vec3::splat(0.5)));
-    let small = bounds(Vec3::ZERO, Vec3::splat(0.25));
-    world.spawn((Transform::from_xyz(0.0, 1.0, 0.0), small, ChildOf(model)));
-    let ten = bounds(Vec3::ZERO, Vec3::splat(10.0));
-    let shut = world
-        .spawn((
-            Transform::default(),
-            ten,
-            Visibility::Hidden,
-            ChildOf(model),
-        ))
-        .id();
-    world.spawn((Transform::default(), ten, ChildOf(shut)));
-    world.spawn((Transform::default(), ten, ChildOf(tall)));
-    // A model whose scene has not spawned waits; so does one whose shown mesh has no bounds yet.
-    drawn_model(
-        world,
-        waiting,
-        Handle::default(),
-        false,
-        Transform::default(),
-    );
-    let model = drawn_model(
-        world,
-        unbounded,
-        Handle::default(),
-        true,
-        Transform::default(),
-    );
-    world.spawn((Transform::default(), Mesh3d::default(), ChildOf(model)));
-    // A model whose look hides its every mesh, and one whose file does not load, show nothing:
-    // their drawings keep their heights, and are walked no more.
-    let model = drawn_model(world, hidden, Handle::default(), true, Transform::default());
-    let shut_mesh = (Transform::default(), Mesh3d::default(), Visibility::Hidden);
-    world.spawn((shut_mesh, ChildOf(model)));
-    drawn_model(world, failed, lost, false, Transform::default());
-    world.run_system_once(View::fit_models).unwrap();
-    world.flush();
-    let fitted = |root: Entity| {
-        let at = world.entity(root);
-        (
-            at.get::<Shape>().unwrap().height,
-            at.contains::<FitsModel>(),
-        )
-    };
-    assert_eq!(fitted(tall), (3.5, false));
-    assert_eq!(fitted(waiting), (2.0, true));
-    assert_eq!(fitted(unbounded), (2.0, true));
-    assert_eq!(fitted(hidden), (2.0, false));
-    assert_eq!(fitted(failed), (2.0, false));
-}
-
-/// A model of `scene` under the drawing `root`, placed by `transform`, dressed or not.
-fn drawn_model(
-    world: &mut World,
-    root: Entity,
-    scene: Handle<WorldAsset>,
-    dressed: bool,
-    transform: Transform,
-) -> Entity {
-    let parts = ModelParts {
-        package: PackageIndex::MODE,
-        hide: Arc::<[String]>::from([]),
-        turret: None,
-    };
-    let mut model = world.spawn((WorldAssetRoot(scene), parts, transform, ChildOf(root)));
-    if dressed {
-        model.insert(Dressed);
-    }
-    model.id()
 }

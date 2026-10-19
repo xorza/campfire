@@ -1,22 +1,42 @@
 use std::collections::BTreeMap;
 
+use campfire_declare::{Section, SectionTable};
 use campfire_math::Num;
-use campfire_values::Stat;
-use serde::Deserialize;
+use campfire_values::{EngineStat, Stat};
+use serde::{Deserialize, Serialize};
 
 /// A unit type's `stats` section: each stat's value at level 1, and what it gains a level.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct StatsData(pub(crate) BTreeMap<Stat, StatValue>);
 
 /// `{ base, per_level }`: the value at level `n` is `base + per_level × (n − 1)`, `per_level`
 /// 0 when it gives none.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatValue {
     pub base: Num,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "StatValue::flat_at")]
     pub per_level: Num,
+}
+
+impl StatValue {
+    /// Whether `per_level` is 0, which data leaves out.
+    #[expect(
+        clippy::trivially_copy_pass_by_ref,
+        reason = "serde's `skip_serializing_if` passes the field by reference"
+    )]
+    fn flat_at(per_level: &Num) -> bool {
+        *per_level == Num::ZERO
+    }
+
+    /// `base` at every level.
+    pub const fn flat(base: Num) -> Self {
+        Self {
+            base,
+            per_level: Num::ZERO,
+        }
+    }
 }
 
 /// The section of `values`, each stat's last value standing, as `BTreeMap` collects them.
@@ -33,10 +53,29 @@ impl<const N: usize> From<[(Stat, StatValue); N]> for StatsData {
 }
 
 impl StatsData {
+    /// Whether its units walk: it declares a move speed.
+    pub fn walks(&self) -> bool {
+        self.declares(&Stat::Engine(EngineStat::MoveSpeed))
+    }
+
     /// Whether the type declares `stat`.
     pub fn declares(&self, stat: &Stat) -> bool {
         self.0.contains_key(stat)
     }
+
+    /// The value it gives `stat`; `None` when it declares none.
+    pub fn value(&self, stat: &Stat) -> Option<StatValue> {
+        self.0.get(stat).copied()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Section for StatsData {
+    const TABLE: SectionTable = SectionTable::UnitType;
+    const KEY: &'static str = "stats";
 }
 
 #[cfg(test)]

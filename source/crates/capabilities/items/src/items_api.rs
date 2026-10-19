@@ -1,4 +1,4 @@
-use campfire_script::{ApiBuilder, DataTable, MemberSpec};
+use campfire_script::{ApiBuilder, MemberSpec};
 
 use crate::inventory_data::InventoryData;
 use crate::item_data::ItemData;
@@ -21,21 +21,8 @@ impl ItemsApi {
             &[&["unit", "slot"]],
             "drops the item in `unit`'s inventory slot `slot` at its feet",
         ))
-        .shared_data(DataTable::Mode, &["items"], &[])
-        .data::<ItemData>(
-            &[
-                "name",
-                "cost",
-                "components",
-                "stack",
-                "uses",
-                "modifiers",
-                "action",
-            ],
-            &[],
-        )
-        .data::<InventoryData>(&["slots", "kind"], &[])
-        .shared_data(DataTable::UnitType, &["inventory", "shop"], &[])
-        .data::<ShopData>(&["items", "resource", "reach", "buyers", "sell_share"], &[]);
+        .data::<ItemData>(&[])
+        .data::<InventoryData>(&[])
+        .data::<ShopData>(&[]);
     }
 }

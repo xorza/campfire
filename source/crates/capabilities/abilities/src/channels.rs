@@ -1,24 +1,52 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, QueryState};
+use bevy_ecs::query::Has;
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_actions::{
     ActionBook, ActionCall, ActionProgress, ActionSlot, ActionSlots, Caster, ChannelCall,
-    ChannelStep, UseGroup,
+    ChannelStep, ProgressDues, ProgressIndexes, UseGroup,
 };
 use campfire_common::{Tick, Ticks};
-use campfire_script::{CallStart, Hook, HookCall, Pool, ScriptBatch, ScriptsWorld};
-use campfire_sim::{Keyed, Ordered, SimTick, StableId};
+use campfire_script::{
+    CallStart, Ctx, Hook, HookSpec, ScriptBatch, ScriptRole, ScriptValue, ScriptsWorld, Unit,
+};
+use campfire_sim::{DueUnit, Keyed, Ordered, SimTick, StableId};
 use campfire_stats::{Held, HeldModifiers};
-use campfire_units::{ForcedMove, Owner};
+use campfire_units::{Due, ForcedMove, Owner};
 use campfire_values::{Motion, UnitTags};
 
 use crate::Abilities;
 
 /// The channels units run, in Hit: their hooks on the server, and on a client their cut and their
 /// end alone.
+/// A unit whose channel is due, keyed by its stable id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChannelDue(Keyed);
+
 #[derive(Debug)]
 pub struct Channels;
+
+/// `on_channel_tick(ctx, caster, target)`: a channel's tick, at the target it aims at.
+#[derive(Debug)]
+pub(crate) struct OnChannelTick;
+
+/// `on_interrupt(ctx, caster, target)`: a channel cut before its end.
+#[derive(Debug)]
+pub(crate) struct OnInterrupt;
+
+impl HookSpec for OnChannelTick {
+    const NAME: &'static str = "on_channel_tick";
+    const ROLE: ScriptRole = ScriptRole::Action;
+    const PARAMS: &'static [&'static str] = &["ctx", "caster", "target"];
+    type Args = (Ctx, Unit, ScriptValue);
+}
+
+impl HookSpec for OnInterrupt {
+    const NAME: &'static str = "on_interrupt";
+    const ROLE: ScriptRole = ScriptRole::Action;
+    const PARAMS: &'static [&'static str] = &["ctx", "caster", "target"];
+    type Args = (Ctx, Unit, ScriptValue);
+}
 
 impl Channels {
     /// Runs each unit's channel in Hit, in the order of its stable id, after the casts resolve: a
@@ -27,35 +55,58 @@ impl Channels {
     /// whose tags keep it from casting has its channel cut. A channel's calls share one snapshot of
     /// the units, read as the batch begins. A channel that still runs holds its action's `hold`
     /// on its unit this tick, from the unit at its rank.
-    pub(super) fn run_channels(
-        world: &mut World,
-        units: &mut QueryState<(Entity, &StableId, &ActionProgress)>,
-        (mut order, mut due): (Local<'_, Ordered>, Local<'_, Vec<Keyed>>),
-    ) {
-        let now = world.resource::<SimTick>().start();
-        let running = units
-            .iter(world)
-            .filter(|(.., progress)| progress.channel_due())
-            .map(|(entity, &id, _)| Keyed { id, entity });
-        due.clear();
-        due.extend_from_slice(order.sort(running));
-        if due.is_empty() {
-            return;
+    pub(super) fn run_channels(world: &mut World) {
+        let due = world.resource_mut::<Due<ChannelDue>>().take();
+        if !due.is_empty() {
+            Self::run(world, &due);
         }
+        world.resource_mut::<Due<ChannelDue>>().give_back(due);
+    }
+
+    /// Collects the units whose channel is due, by stable id, for `run_channels`: those the
+    /// index of the channels holds, which it forgets once their channel ends.
+    pub(super) fn collect_channels(
+        units: Query<'_, '_, &ActionProgress>,
+        mut indexes: ProgressIndexes<'_>,
+        (tick, mut order, mut held): (
+            Res<'_, SimTick>,
+            Local<'_, Ordered>,
+            Local<'_, Vec<DueUnit>>,
+        ),
+        mut due: ResMut<'_, Due<ChannelDue>>,
+    ) {
+        held.clear();
+        held.extend(indexes.channels(tick.start()));
+        held.retain(|unit| {
+            let runs = units
+                .get(unit.entity)
+                .is_ok_and(ActionProgress::channel_due);
+            if !runs {
+                indexes.forget_channel(unit.id);
+            }
+            runs
+        });
+        let running = held
+            .iter()
+            .map(|&DueUnit { id, entity }| Keyed { id, entity });
+        due.refill(order.sort(running).iter().map(|&keyed| ChannelDue(keyed)));
+    }
+
+    /// Runs the channels of `due`, in order.
+    fn run(world: &mut World, due: &[ChannelDue]) {
+        let now = world.resource::<SimTick>().start();
         world.script_batch(|batch| {
-            for &Keyed { id, entity } in &*due {
-                let step = Self::step_channel(batch.world(), now, entity);
-                for (call, hook) in [
-                    (step.interrupted, Hook::OnInterrupt),
-                    (step.ticked, Hook::OnChannelTick),
-                ] {
-                    if let Some(call) = call {
-                        Self::channel_call(batch, now, id, entity, call, hook);
-                    }
+            for &ChannelDue(Keyed { id, entity }) in due {
+                let step = Self::step_channel(batch.world(), now, id, entity);
+                if let Some(call) = step.interrupted {
+                    Self::channel_call::<OnInterrupt>(batch, now, id, entity, call);
+                }
+                if let Some(call) = step.ticked {
+                    Self::channel_call::<OnChannelTick>(batch, now, id, entity, call);
                 }
             }
         });
-        for &Keyed { id, entity } in &*due {
+        for &ChannelDue(Keyed { id, entity }) in due {
             let progress = world.get::<ActionProgress>(entity);
             let held = progress.and_then(|progress| {
                 Self::channel_hold(world.resource::<ActionBook>(), progress, id)
@@ -81,7 +132,7 @@ impl Channels {
     }
 
     /// Runs the channel of `entity` at `now`, as `run_channels` does, and gives back the hooks due.
-    fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
+    fn step_channel(world: &mut World, now: Tick, id: StableId, entity: Entity) -> ChannelStep {
         let unit = world.entity(entity);
         let slots = unit
             .get::<ActionSlots>()
@@ -94,26 +145,26 @@ impl Channels {
         let channel = Self::channel(slots, progress);
         let blocked = Caster::of(unit.get(), Motion::of(forced), unit.get()).blocked(channel, book);
         let tick = Self::channel_tick(book, channel);
-        let mut progress = world
-            .get_mut::<ActionProgress>(entity)
-            .expect("a unit whose channel runs has progress");
-        if blocked {
-            progress.cut_channel();
-        }
-        progress.step_channel(now, tick)
+        let step = ProgressDues::change(world, id, entity, |progress, dues| {
+            if blocked {
+                progress.cut_channel(dues);
+            }
+            progress.step_channel(now, tick, dues)
+        });
+        step.expect("a unit whose channel runs has progress")
     }
 
-    /// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, of its action at its
-    /// rank, as the action started, with the unit and the target, when the action's script defines
-    /// it; a failed call applies nothing, and is recorded.
-    fn channel_call(
+    /// Runs the hook `H` of the channel `call` of `caster`, the unit of `entity`, of its action at
+    /// its rank, as the action started, with the unit and the target, when the action's script
+    /// defines it; a failed call applies nothing, and is recorded.
+    fn channel_call<H: HookSpec<Args = (Ctx, Unit, ScriptValue)>>(
         batch: &mut ScriptBatch<'_>,
         now: Tick,
         caster: StableId,
         entity: Entity,
         call: ChannelCall,
-        hook: Hook,
     ) {
+        let hook = Hook::of::<H>();
         let ctx = &batch.ctx().clone();
         let ChannelCall {
             call: ActionCall { aim, start },
@@ -130,13 +181,13 @@ impl Channels {
         let package = action.package;
         let start = CallStart {
             start: Some(start),
+            payer: owner,
             ..CallStart::cast(id, rank, caster, package, now)
         };
-        let pool = Pool::of(owner);
         let target = Abilities::target(ctx.view(), aim.target);
-        batch.hook_call(start, hook, Some(caster), |batch| {
+        batch.answer(start, hook, Some(caster), |batch| {
             let args = (ctx.clone(), handle, target);
-            batch.call(pool, HookCall { script, hook, args }).map(drop)
+            batch.call::<H>(script, args).map(drop)
         });
     }
 
@@ -151,7 +202,6 @@ impl Channels {
             '_,
             '_,
             (
-                &StableId,
                 &ActionSlots,
                 &mut ActionProgress,
                 Option<&UnitTags>,
@@ -159,19 +209,32 @@ impl Channels {
                 Option<&UseGroup>,
             ),
         >,
+        mut indexes: ProgressIndexes<'_>,
+        mut due: Local<'_, Vec<DueUnit>>,
     ) {
         let now = tick.start();
-        for (&id, slots, mut progress, tags, forced, used) in &mut units {
+        due.clear();
+        due.extend(indexes.channels(now));
+        for &DueUnit { id, entity } in &*due {
+            let Ok((slots, mut progress, tags, forced, used)) = units.get_mut(entity) else {
+                indexes.forget_channel(id);
+                continue;
+            };
             if !progress.channel_due() {
+                indexes.forget_channel(id);
                 continue;
             }
+            let dues = &mut indexes.of(id, entity);
             let channel = Self::channel(slots, &progress);
             let blocked = Caster::of(tags, Motion::of(forced), used).blocked(channel, &book);
             let tick = Self::channel_tick(&book, channel);
             if blocked {
-                progress.cut_channel();
+                progress.cut_channel(dues);
             }
-            progress.step_channel(now, tick);
+            progress.step_channel(now, tick, dues);
+            if !progress.channel_due() {
+                indexes.forget_channel(id);
+            }
             held.0.extend(Self::channel_hold(&book, &progress, id));
         }
     }

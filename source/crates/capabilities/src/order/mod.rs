@@ -5,6 +5,7 @@ use campfire_players::{CapabilityAction, OrderUnits};
 use campfire_production::ProductionAction;
 use campfire_progression::ProgressionAction;
 use campfire_sim::{Capability, Command, StableId};
+use campfire_units::{Ids, OrderRefs, RefMap, SerdeRefs};
 use serde::{Deserialize, Serialize};
 
 /// An order to the units it names: the body of a command to the capability its action belongs
@@ -17,12 +18,31 @@ pub struct Order {
 
 /// What an order tells its units to do, by the capability that owns it, which decodes and
 /// applies it: one variant for each capability with orders, as a command names one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum Action {
-    Orders(OrdersAction),
-    Progression(ProgressionAction),
-    Production(ProductionAction),
-    Items(ItemsAction),
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", bound = "R: SerdeRefs")]
+pub enum Action<R: OrderRefs = Ids> {
+    Orders(OrdersAction<R>),
+    Progression(ProgressionAction<R>),
+    Production(ProductionAction<R>),
+    Items(ItemsAction<R>),
+}
+
+impl Copy for Action {}
+
+impl<R: OrderRefs> Action<R> {
+    /// The same action with each reference as `refs` gives it (04-capabilities/control.md, An
+    /// action is generic over its references).
+    pub fn map_refs<T: OrderRefs, M: RefMap<R, T>>(
+        self,
+        refs: &mut M,
+    ) -> Result<Action<T>, M::Error> {
+        Ok(match self {
+            Self::Orders(action) => Action::Orders(action.map_refs(refs)?),
+            Self::Progression(action) => Action::Progression(action.map_refs(refs)?),
+            Self::Production(action) => Action::Production(action.map_refs(refs)?),
+            Self::Items(action) => Action::Items(action.map_refs(refs)?),
+        })
+    }
 }
 
 impl Action {

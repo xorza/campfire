@@ -8,6 +8,7 @@ pub(crate) mod error;
 pub(crate) mod game_data_ini;
 pub(crate) mod ini_text;
 pub(crate) mod locomotor_ini;
+pub(crate) mod mouse_ini;
 pub(crate) mod multiplayer_ini;
 pub(crate) mod object_ini;
 pub(crate) mod player_template_ini;

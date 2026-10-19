@@ -26,7 +26,7 @@ impl AreaHolds {
         specs: Res<'_, ByType<AreaSpec>>,
         mut held: ResMut<'_, HeldModifiers>,
         areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
-        mut near: UnitsNear<'_, '_>,
+        near: UnitsNear<'_>,
     ) {
         let holding = |unit_type| {
             let spec = specs.get(unit_type).expect("an area's type has a spec");

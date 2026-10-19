@@ -1,8 +1,10 @@
 use std::mem;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::{ChannelBinding, PlayerSlot, Tick};
+use campfire_package::ModePackages;
 use campfire_protocol::{
     ConnectAnswer, Delegation, DelegationId, DelegationTerms, InputChain, InputRules,
     SeedContribution, SessionId, SessionTerms, SignedReceipt, Signer, Verifier,
@@ -11,7 +13,6 @@ use campfire_runner::SessionRules;
 use campfire_values::Team;
 use campfire_visibility::Visibility;
 use lightyear::prelude::{SyncedLocalTimeline, Tick as NetTick};
-use secp256k1::Keypair;
 
 use crate::error::ReceiptRefusal;
 use crate::hosting::Hosting;
@@ -94,13 +95,13 @@ pub enum Loss {
 }
 
 /// What answers the server's offer: the player's identity, which signs the delegation, the server
-/// they mean to reach, whether they play or watch, and the rules of the mode the client holds.
+/// they mean to reach, whether they play or watch, and the packages of the mode the client holds.
 #[derive(Debug)]
 pub(crate) struct Joining {
-    pub(crate) main_key: Keypair,
+    pub(crate) main: Arc<Signer>,
     pub(crate) server: ServerPin,
     pub(crate) role: JoinRole,
-    pub(crate) rules: SessionRules,
+    pub(crate) packages: Arc<ModePackages>,
 }
 
 /// What the player's join fixed: the session its signatures name, and the terms' limits on its
@@ -628,8 +629,7 @@ impl Joining {
         if terms.server_key != self.server.key {
             return Err(TermsMismatch::OtherServer);
         }
-        let visibility = self
-            .rules
+        let visibility = SessionRules::of(&self.packages)
             .check(terms)
             .map_err(TermsMismatch::Terms)?
             .visibility;
@@ -649,8 +649,40 @@ impl Joining {
             seed_contribution: SeedContribution::new(signer.entropy().random()),
             expiration: now + DELEGATION_LIFETIME,
         };
-        let main = Signer::new(self.main_key, signer.entropy());
-        Delegation::sign(&main, &granted, now)
+        Delegation::sign(&self.main, &granted, now)
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use std::num::NonZeroU32;
+    use std::sync::Arc;
+
+    use campfire_common::TlsKey;
+    use campfire_package::ModePackages;
+    use campfire_protocol::internals::TestKey;
+    use campfire_protocol::{Entropy, Signer};
+
+    use crate::net_protocol::join::JoinRole;
+    use crate::sim_client::join_state::{JoinState, Joining};
+    use crate::sim_client::server_pin::ServerPin;
+
+    impl JoinState {
+        /// A client of `packages`, main key 1, that means to play on the remote server of key 8
+        /// at `tick_hz`, and waits for its offer, as a client stands before it joins.
+        pub fn waiting(packages: Arc<ModePackages>, tick_hz: NonZeroU32) -> Self {
+            let server = ServerPin {
+                key: TestKey::of(8).x_only_public_key().0,
+                tls_key: TlsKey::new([3; 32]),
+                tick_hz,
+            };
+            Self::new(Joining {
+                main: Arc::new(Signer::new(TestKey::of(1), Entropy::Fixed(6))),
+                server,
+                role: JoinRole::Play,
+                packages,
+            })
+        }
     }
 }
 

@@ -11,13 +11,15 @@ campfire-bots.workspace = true
 campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-client-files.workspace = true
 campfire-codec.workspace = true
+campfire-combat.workspace = true
 campfire-common.workspace = true
 campfire-geometry.workspace = true
 campfire-harness.workspace = true
 campfire-import.workspace = true
 campfire-log = { workspace = true, features = ["start"] }
 campfire-math.workspace = true
-campfire-mode.workspace = true
+campfire-mode = { workspace = true, features = ["internals"] }
+campfire-navigation.workspace = true
 campfire-orders.workspace = true
 campfire-package.workspace = true
 campfire-package-disk.workspace = true
@@ -26,14 +28,15 @@ campfire-production.workspace = true
 campfire-projectiles.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
+campfire-script.workspace = true
 campfire-sim.workspace = true
-campfire-stats.workspace = true
-campfire-store.workspace = true
+campfire-store = { workspace = true, features = ["internals"] }
 campfire-units = { workspace = true, features = ["internals"] }
 campfire-values.workspace = true
 
 clap.workspace = true
 derive_more.workspace = true
+serde.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 

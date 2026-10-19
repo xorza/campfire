@@ -198,7 +198,7 @@ fn coarse_cells_are_no_smaller_than_the_grids_cells_nor_more_than_its_samples() 
     assert_eq!(span(50, [0, 0], [400, 400]), Some(GroundError::CoarseCell));
     assert_eq!(span(100, [0, 0], [0, 400]), Some(GroundError::CoarseSpan));
     // A span past the world's bound, 2²⁰ m, at an end or by its cell.
-    let past = Position::BOUND + Num::ONE;
+    let past = Vec3::BOUND + Num::ONE;
     let beyond = |cell: Num, to: [Num; 2]| {
         let span = CoarseSpan {
             cell,
@@ -212,5 +212,5 @@ fn coarse_cells_are_no_smaller_than_the_grids_cells_nor_more_than_its_samples() 
         Some(GroundError::CoarseBound)
     );
     assert_eq!(beyond(past, [m(400); 2]), Some(GroundError::CoarseBound));
-    assert_eq!(beyond(Position::BOUND, [m(400); 2]), None);
+    assert_eq!(beyond(Vec3::BOUND, [m(400); 2]), None);
 }

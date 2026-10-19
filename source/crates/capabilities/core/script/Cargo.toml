@@ -6,6 +6,7 @@ license.workspace = true
 
 [features]
 internals = [
+    "campfire-codec/internals",
     "campfire-common/internals",
     "campfire-geometry/internals",
     "campfire-math/internals",
@@ -15,6 +16,7 @@ internals = [
 ]
 
 [dependencies]
+campfire-codec.workspace = true
 campfire-common.workspace = true
 campfire-geometry.workspace = true
 campfire-math.workspace = true
@@ -27,16 +29,13 @@ derive_more.workspace = true
 rhai.workspace = true
 serde.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
 
 [dev-dependencies]
-campfire-codec = { workspace = true, features = ["internals"] }
 campfire-script = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true
 
-# Criterion's target holds the benches, so `cargo bench -- <criterion flags>` reaches only it.
 [lib]
 bench = false
 

@@ -3,5 +3,5 @@ fn on_resolve(ctx, caster, target) {
 }
 
 fn on_interval(ctx, m) {
-    ctx.damage(m.carrier, ctx.p.damage_per_second, "true");
+    ctx.damage(m.carrier, "true", ctx.params.damage_per_second);
 }

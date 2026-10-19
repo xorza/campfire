@@ -6,7 +6,7 @@ use tracing::warn;
 /// The server refused an input message of `slot` whose frames do not fit its payloads, which
 /// ends the link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct InputMessageUnfit {
+pub(crate) struct InputMessageUnfit {
     pub slot: PlayerSlot,
 }
 

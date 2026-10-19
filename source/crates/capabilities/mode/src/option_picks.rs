@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use campfire_values::{DeclaredName, Scalar};
+use campfire_common::DeclaredName;
+use campfire_values::Scalar;
 
 use crate::error::PickError;
 use crate::option_data::OptionData;

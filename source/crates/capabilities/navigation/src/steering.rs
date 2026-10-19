@@ -7,7 +7,6 @@ use campfire_units::Layer;
 
 use crate::body_index::{BodyIndex, IndexedBody};
 use crate::pathing_grid::PathingGrid;
-use crate::route::Route;
 use crate::route_planner::{RoutePlanner, Short, Walkable, Window};
 use crate::segment::Segment;
 use crate::walker::Walker;
@@ -29,8 +28,8 @@ pub(crate) struct Steering {
     still_apart: Vec<IndexedBody>,
     /// The bodies of the units that walk, by layer, which a stuck walker searches for those it
     /// touches, and the buffer they are read into.
-    walking: BodyGrid<Layer>,
-    moving: Vec<Indexed<Layer>>,
+    walking: BodyGrid<Layer, StableId>,
+    moving: Vec<Indexed<Layer, StableId>>,
     /// The units that block the walker that steers now.
     blockers: Vec<IndexedBody>,
     /// The short route of the walker that steers now.
@@ -132,7 +131,7 @@ impl Steering {
         grid: &PathingGrid,
         statics: &BodyIndex,
         steered: Steered,
-        route: &Route,
+        ahead: &[Vec3],
     ) -> Option<Detour> {
         let Steered {
             id,
@@ -148,7 +147,7 @@ impl Steering {
         };
         let window_cells = i64::try_from(Self::WINDOW).expect("a small window");
         let reach = grid.cell() * window_cells;
-        let look = at.step_toward(route.ahead()[0], reach);
+        let look = at.step_toward(ahead[0], reach);
         if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.spent() {
             return None;
         }
@@ -159,7 +158,6 @@ impl Steering {
             let cell = cells.nearest_cell(*pos);
             window.contains(cell % cells.columns(), cell / cells.columns())
         };
-        let ahead = route.ahead();
         let within = ahead.iter().take_while(|pos| inside(pos)).count();
         let (goal, skipped) = match within {
             0 => (look, 0),
@@ -224,13 +222,11 @@ impl Steering {
 
 #[cfg(test)]
 mod tests {
-    use campfire_common::Tick;
     use campfire_geometry::{Bounds, Grid, Radius, Shape};
     use campfire_sim::IdAllocator;
 
     use super::*;
-    use crate::progress::Progress;
-    use crate::route::RouteAsk;
+    use crate::route::internals::PlannedRoute;
     use crate::terrain::Terrain;
     use crate::walker_kinds::WalkerKinds;
 
@@ -278,14 +274,7 @@ mod tests {
         };
         steering.read(&statics, [still]);
         let goal = eighths(64, 0);
-        let mut route = Route::default();
-        let ask = RouteAsk {
-            goal,
-            tick: Tick::new(0),
-            party: None,
-        };
-        route.ask(ask, &mut Progress::default());
-        route.answer(eighths(7, 0), &[goal], true);
+        let route = PlannedRoute::new(goal, eighths(7, 0), &[goal]);
         let steered = Steered {
             id,
             pos: eighths(7, 0),
@@ -294,7 +283,7 @@ mod tests {
             stuck: false,
             gathering: false,
         };
-        steering.steer(&mut planner, &grid, &statics, steered, &route);
+        steering.steer(&mut planner, &grid, &statics, steered, route.read().ahead());
         assert_eq!(steering.blockers, [standing]);
     }
 
@@ -322,14 +311,7 @@ mod tests {
             layer: Layer::FIRST,
         };
         let goal = eighths(48, 0);
-        let mut route = Route::default();
-        let ask = RouteAsk {
-            goal,
-            tick: Tick::new(0),
-            party: None,
-        };
-        route.ask(ask, &mut Progress::default());
-        route.answer(eighths(0, 0), &[goal], true);
+        let route = PlannedRoute::new(goal, eighths(0, 0), &[goal]);
         let detours = [true, false].map(|gathering| {
             let mut planner = RoutePlanner::new(&cells);
             let mut steering = Steering::default();
@@ -348,7 +330,7 @@ mod tests {
                 gathering,
             };
             steering
-                .steer(&mut planner, &grid, &statics, steered, &route)
+                .steer(&mut planner, &grid, &statics, steered, route.read().ahead())
                 .is_some()
         });
         assert_eq!(detours, [false, true]);

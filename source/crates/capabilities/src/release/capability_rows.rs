@@ -13,7 +13,7 @@ pub(super) struct CapabilityRow {
 }
 
 impl CapabilityRows {
-    /// What `capability` builds on; none for one the release does not build.
+    /// What `capability` builds on; none for the mode, which is no row.
     pub(super) fn needs(&self, capability: Capability) -> Option<&'static [Capability]> {
         self.0
             .iter()

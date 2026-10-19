@@ -39,15 +39,17 @@ impl<'de> Deserialize<'de> for SyncedStateDecl {
             #[serde(rename = "type")]
             kind: StateType,
             default: Option<StateDefault>,
+            values: Option<Vec<String>>,
             #[serde(default)]
             sync: SyncTo,
         }
         let Fields {
             kind,
             default,
+            values,
             sync,
         } = Fields::deserialize(deserializer)?;
-        let decl = StateDecl::of::<D::Error>(kind, default)?;
+        let decl = StateDecl::of::<D::Error>(kind, default, values)?;
         Ok(Self { decl, sync })
     }
 }

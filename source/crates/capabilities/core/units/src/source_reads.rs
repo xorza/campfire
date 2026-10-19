@@ -42,19 +42,19 @@ impl SourceReads {
         &mut self.each
     }
 
-    /// Keeps row `at` of the read before for every source: it joins their run, or each source
-    /// takes the run, and the row starts the next.
+    /// Keeps the rows `rows` of the read before for every source: they join their run, or each
+    /// source takes the run, and the rows start the next.
     pub(crate) fn keep_all(
         &mut self,
         sources: &[Box<dyn FillRow>],
         columns: &mut ViewColumns,
-        at: usize,
+        rows: Range<usize>,
     ) {
         match &mut self.clean {
-            Some(run) if run.end == at => run.end += 1,
+            Some(run) if run.end == rows.start => run.end = rows.end,
             _ => {
                 self.take_clean(sources, columns);
-                self.clean = Some(at..at + 1);
+                self.clean = Some(rows);
             }
         }
     }

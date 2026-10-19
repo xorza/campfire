@@ -1,4 +1,4 @@
-use campfire_common::Ticks;
+use campfire_common::{MapName, PackageFingerprint, Ticks};
 use campfire_mode::PickError;
 use campfire_protocol::SeedChain;
 use campfire_test_packages::TestMode;
@@ -112,9 +112,9 @@ fn the_rules_build_terms_of_the_packages_and_refuse_terms_of_others() {
         assert_eq!(rules.check(&other), Err(error));
     }
     // What the mode leaves its host, and the spectators the host admits, any terms may set:
-    // after the 14 kinds' bytes, the fog to `teams`, what a player out of play sees to
+    // after the 17 kinds' bytes, the fog to `teams`, what a player out of play sees to
     // `spectators`, and 3 spectators.
-    fixed.visibility[14..].copy_from_slice(&[1, 1, 3, 0, 0, 0]);
+    fixed.visibility[17..].copy_from_slice(&[1, 1, 3, 0, 0, 0]);
     let checked = rules.check(&fixed).unwrap();
     assert_eq!(checked.visibility.max_spectators(), 3);
     assert!(checked.picks.places().is_empty());
