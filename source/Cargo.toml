@@ -62,6 +62,28 @@ default-members = [
     "crates/capabilities/stats",
     "crates/capabilities/vision",
     "crates/network/net",
+    "crates/network/net-bytes",
+    "crates/network/net-channels",
+    "crates/network/net-common",
+    "crates/network/net-connection",
+    "crates/network/net-core",
+    "crates/network/net-despawn",
+    "crates/network/net-emulator",
+    "crates/network/net-endpoint",
+    "crates/network/net-interpolation",
+    "crates/network/net-link",
+    "crates/network/net-messages",
+    "crates/network/net-packets",
+    "crates/network/net-payload",
+    "crates/network/net-port-map",
+    "crates/network/net-prediction",
+    "crates/network/net-replication",
+    "crates/network/net-stack",
+    "crates/network/net-stepper",
+    "crates/network/net-sync",
+    "crates/network/net-timeline",
+    "crates/network/net-transport",
+    "crates/network/net-udp",
     "crates/network/quic",
     "crates/session/bots",
     "crates/session/client-files",
@@ -156,6 +178,27 @@ campfire-import = { path = "crates/apps/import" }
 campfire-log = { path = "crates/base/log" }
 campfire-math = { path = "crates/sim/math" }
 campfire-net = { path = "crates/network/net" }
+campfire-net-bytes = { path = "crates/network/net-bytes" }
+campfire-net-channels = { path = "crates/network/net-channels" }
+campfire-net-common = { path = "crates/network/net-common" }
+campfire-net-connection = { path = "crates/network/net-connection" }
+campfire-net-core = { path = "crates/network/net-core" }
+campfire-net-despawn = { path = "crates/network/net-despawn" }
+campfire-net-emulator = { path = "crates/network/net-emulator" }
+campfire-net-endpoint = { path = "crates/network/net-endpoint" }
+campfire-net-interpolation = { path = "crates/network/net-interpolation" }
+campfire-net-link = { path = "crates/network/net-link" }
+campfire-net-messages = { path = "crates/network/net-messages" }
+campfire-net-packets = { path = "crates/network/net-packets" }
+campfire-net-payload = { path = "crates/network/net-payload" }
+campfire-net-prediction = { path = "crates/network/net-prediction" }
+campfire-net-replication = { path = "crates/network/net-replication" }
+campfire-net-stack = { path = "crates/network/net-stack" }
+campfire-net-stepper = { path = "crates/network/net-stepper" }
+campfire-net-sync = { path = "crates/network/net-sync" }
+campfire-net-timeline = { path = "crates/network/net-timeline" }
+campfire-net-transport = { path = "crates/network/net-transport" }
+campfire-net-udp = { path = "crates/network/net-udp" }
 campfire-client-files = { path = "crates/session/client-files" }
 campfire-package = { path = "crates/session/package" }
 campfire-package-disk = { path = "crates/session/package-disk" }
@@ -222,6 +265,7 @@ clap = { version = "=4.6.7", default-features = false, features = [
 ] }
 criterion = { version = "=0.8.2", default-features = false, features = ["cargo_bench_support"] }
 derive_more = { version = "=2.1.1", default-features = false, features = ["display"] }
+fixed = "=1.31.0"
 fluent-bundle = "=0.16.0"
 fluent-syntax = "=0.12.0"
 getrandom = "=0.3.4"
@@ -237,6 +281,7 @@ lightyear = { version = "=0.30.1", default-features = false, features = [
     "raw_connection",
 ] }
 lightyear_serde = "=0.30.1"
+lz4_flex = { version = "=0.14.0", default-features = false, features = ["safe-encode", "safe-decode", "checked-decode"] }
 miniz_oxide = "=0.8.9"
 netdev = { version = "=0.46.3", default-features = false, features = ["gateway"] }
 nostr = "=0.45.5"
@@ -255,6 +300,7 @@ serde = { version = "=1.0.229", features = ["derive", "rc"] }
 serde_json = "=1.0.151"
 sha2 = "=0.11.0"
 signal-hook = { version = "=0.4.4", default-features = false }
+smallvec = { version = "=1.16.3", features = ["union"] }
 socket2 = { version = "=0.6.5", features = ["all"] }
 syn = { version = "=2.0.119", default-features = false, features = [
     "derive",
@@ -276,6 +322,9 @@ tracing-subscriber = { version = "=0.3.23", default-features = false, features =
     "tracing-log",
 ] }
 unic-langid = "=0.9.6"
+ureq = { version = "=3.4.2", default-features = false }
+variadics_please = "=2.0.0"
+webpki-roots = "=1.0.9"
 windows = { version = "=0.62.2", features = [
     "Win32_Foundation",
     "Win32_Security",

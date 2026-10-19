@@ -1,0 +1,32 @@
+[package]
+name = "campfire-net-emulator"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The model's bench, for the benches of every layer above
+internals = ["dep:criterion", "campfire-net-common/internals"]
+
+[dependencies]
+campfire-net-core.workspace = true
+campfire-net-common.workspace = true
+
+bytes.workspace = true
+criterion = { workspace = true, optional = true }
+
+bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+campfire-net-emulator = { workspace = true, features = ["internals"] }
+
+[lib]
+bench = false
+
+[[bench]]
+name = "net-emulator"
+harness = false
+required-features = ["internals"]
+
+[lints]
+workspace = true

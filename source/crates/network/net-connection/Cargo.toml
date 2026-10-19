@@ -1,0 +1,26 @@
+[package]
+name = "campfire-net-connection"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+campfire-common.workspace = true
+campfire-net-core.workspace = true
+campfire-net-link.workspace = true
+campfire-net-payload.workspace = true
+
+bytes.workspace = true
+serde.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_derive = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
+
+[lints]
+workspace = true

@@ -1,0 +1,33 @@
+[package]
+name = "campfire-net-packets"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The sessions' counts, for the tests of every layer above
+internals = [
+    "campfire-net-common/internals",
+    "dep:campfire-store",
+    "campfire-store/internals",
+    "campfire-net-emulator/internals",
+    "campfire-net-payload/internals",
+]
+
+[dependencies]
+campfire-store = { workspace = true, optional = true }
+campfire-net-core.workspace = true
+campfire-net-common.workspace = true
+campfire-net-emulator.workspace = true
+campfire-net-payload.workspace = true
+
+bytes.workspace = true
+thiserror.workspace = true
+
+bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+campfire-net-packets = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

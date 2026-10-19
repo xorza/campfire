@@ -1,0 +1,71 @@
+[package]
+name = "campfire-net-stack"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+compression_lz4 = ["campfire-net-transport/compression_lz4"]
+# The endpoint of an emulated network's wires, `net-packets`' `EmulatedWires`, which the plugin
+# groups add; the caller makes the `EmulatedNetwork` through `net-emulator`
+sim = ["dep:campfire-net-endpoint", "dep:campfire-net-packets"]
+# The stack's own UDP protocol, `net-udp`, whose socket endpoints the plugin groups add
+udp = ["dep:campfire-net-endpoint", "dep:campfire-net-packets", "dep:campfire-net-udp"]
+# The full stack and the test protocol, for every layer's tests
+internals = [
+    "sim",
+    "udp",
+    "compression_lz4",
+    "dep:bevy",
+    "dep:campfire-net-stepper",
+    "campfire-net-endpoint/internals",
+    "campfire-net-interpolation/internals",
+    "campfire-net-messages/internals",
+    "campfire-net-prediction/internals",
+    "campfire-net-replication/internals",
+    "campfire-net-packets/internals",
+    "campfire-net-sync/internals",
+    "campfire-net-transport/internals",
+    "campfire-net-udp/internals",
+    "campfire-net-timeline/internals",
+    "campfire-net-payload/internals",
+]
+
+[dependencies]
+campfire-net-timeline.workspace = true
+campfire-net-core.workspace = true
+campfire-net-link.workspace = true
+campfire-net-connection.workspace = true
+campfire-net-stepper = { workspace = true, optional = true }
+campfire-net-transport.workspace = true
+campfire-net-messages.workspace = true
+campfire-net-sync.workspace = true
+campfire-net-replication.workspace = true
+campfire-net-interpolation.workspace = true
+campfire-net-prediction.workspace = true
+campfire-net-endpoint = { workspace = true, optional = true }
+campfire-net-packets = { workspace = true, optional = true }
+campfire-net-udp = { workspace = true, optional = true }
+campfire-net-payload.workspace = true
+
+serde.workspace = true
+tracing.workspace = true
+
+bevy = { version = "=0.20.0", default-features = false, features = ["bevy_state"], optional = true }
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+campfire-net-bytes = { workspace = true, features = ["internals"] }
+campfire-net-channels = { workspace = true, features = ["internals"] }
+campfire-net-common = { workspace = true, features = ["internals"] }
+campfire-net-emulator = { workspace = true, features = ["internals"] }
+campfire-net-stack = { workspace = true, features = ["internals"] }
+campfire-store = { workspace = true, features = ["internals"] }
+
+tracing-subscriber.workspace = true
+
+bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
+
+[lints]
+workspace = true

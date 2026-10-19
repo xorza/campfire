@@ -13,7 +13,7 @@ pub trait Book: Resource + Sized {
     const SCRIPTS_ONLY: bool;
 
     /// Gives the match's names the tables it holds, which the script view and the match's checks
-    /// read; a call part or a view column takes its book from the match as it begins.
+    /// read; a call extension or a view column takes its book from the match as it begins.
     fn share(&self, names: &mut MatchNames);
 
     /// Whether a match of `role`, which installs its module, holds it: one that runs scripts, when

@@ -1,0 +1,20 @@
+[package]
+name = "campfire-net-port-map"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+campfire-store.workspace = true
+campfire-common.workspace = true
+campfire-net-common = { workspace = true, features = ["os_random"] }
+
+netdev.workspace = true
+polling.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+ureq.workspace = true
+xmltree = "=0.12.0"
+
+[lints]
+workspace = true

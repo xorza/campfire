@@ -21,6 +21,8 @@ mod exchange;
 mod input_file;
 mod latest_writer;
 mod output_file;
+#[cfg(feature = "internals")]
+mod parallel;
 mod path_error;
 #[cfg(feature = "internals")]
 mod pinned_file;
@@ -65,10 +67,11 @@ pub use crate::stream_writer::stream_sender::StreamSender;
 pub use crate::worker::Worker;
 
 /// What the tests of the engine's crates use of files: a test's own directory, the files it pins,
-/// the workspace's sources and manifests, a race of writers and a link.
+/// the workspace's sources and manifests, a race of writers, a parallel run and a link.
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::cargo_manifest::CargoManifest;
+    pub use crate::parallel::Parallel;
     pub use crate::pinned_file::PinnedFile;
     pub use crate::platform::file_link::FileLink;
     pub use crate::race::Race;

@@ -1,0 +1,73 @@
+use campfire_net_core::NetTick;
+use campfire_net_core::Overstep;
+use campfire_net_core::TickInstant;
+
+use bevy_ecs::prelude::Resource;
+use bevy_ecs::system::ResMut;
+use bevy_reflect::Reflect;
+use bevy_time::{Fixed, Time};
+use tracing::trace;
+
+/// The local simulation timeline: its tick advances each `FixedUpdate`, rollback replays
+/// included, and its fraction is the overstep of [`Time<Fixed>`].
+#[derive(Debug, Resource, Default, Clone, Reflect)]
+pub struct LocalTimeline {
+    tick: NetTick,
+    /// Whether `FixedMain` simulates [`Self::tick`] now: from its tick's advance in
+    /// `FixedFirst` to the end of its `FixedLast`.
+    simulating: bool,
+}
+
+impl LocalTimeline {
+    /// Get the current tick
+    pub const fn tick(&self) -> NetTick {
+        self.tick
+    }
+
+    /// The tick `FixedMain` simulates now, a rollback replay included, or `None` outside it.
+    /// It is the one tick a client and its server agree on for an entity spawned in it: outside
+    /// `FixedMain`, [`Self::tick`] is the last one simulated.
+    pub const fn simulated_tick(&self) -> Option<NetTick> {
+        if self.simulating {
+            Some(self.tick)
+        } else {
+            None
+        }
+    }
+
+    /// Return the current fractional simulation instant.
+    ///
+    /// [`LocalTimeline`] owns the whole simulation tick while Bevy's [`Time<Fixed>`]
+    /// owns the fractional progress towards the next fixed update. Constructing the
+    /// instant on demand avoids maintaining a second, potentially stale clock.
+    pub fn now(&self, fixed_time: &Time<Fixed>) -> TickInstant {
+        TickInstant::from_tick_and_overstep(
+            self.tick,
+            Overstep::from_f32(fixed_time.overstep_fraction()),
+        )
+    }
+
+    /// Moves the local tick by `ticks` whole ticks, back when negative.
+    pub fn shift(&mut self, ticks: i32) {
+        self.tick = self.tick + ticks;
+    }
+}
+
+/// Increment the local tick at each FixedUpdate
+pub(crate) fn increment_local_tick(mut timeline: ResMut<'_, LocalTimeline>) {
+    timeline.tick += 1;
+    timeline.simulating = true;
+    trace!(
+        target: "campfire_net_debug::timeline",
+        kind = "local_tick",
+        sample_point = "FixedFirst",
+        schedule = "FixedFirst",
+        local_tick = timeline.tick.0,
+        "local timeline tick advanced"
+    );
+}
+
+/// Ends the simulation of the local tick, after the `FixedLast` that closes it.
+pub(crate) fn end_local_tick(mut timeline: ResMut<'_, LocalTimeline>) {
+    timeline.simulating = false;
+}

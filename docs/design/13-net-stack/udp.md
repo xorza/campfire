@@ -1,0 +1,76 @@
+# UDP
+
+How `net-udp` makes a sealed session over a network: its handshake, its trust, and how a
+server guards itself. The session that it seals is in [session](session.md).
+
+## Handshake
+
+- **The handshake is TLS 1.3 by rustls's QUIC API,** carried in our own handshake packets. The
+  first key epoch goes in the clear, as TLS over TCP sends it, and the transcript hash protects
+  it; the handshake epoch is sealed with the keys rustls gives. A flight goes again until the
+  peer's next flight arrives, as DTLS 1.3 does, on a timer of 999 ms, the probe timeout of RFC
+  9002's initial RTT of 333 ms, which doubles at each resend; the client sends its end again
+  while the server sends its flight again. Each handshake packet carries a version byte and the
+  client's 8-byte handshake ID. Refused: Noise, which has no WebPKI; DTLS, which has no complete
+  Rust implementation; QUIC itself, whose ACKs and number space repeat the session's. Source:
+  RFC 9001 §4; RFC 9147 §5.8.
+- **The AEAD is ChaCha20-Poly1305 only,** with no key update. Its confidentiality limit is past
+  the packets a session sends; a session ends at its integrity limit of 2^36 failed decryptions.
+  Refused: AES-GCM, which needs a key update before 2^23 packets, 5 to 39 hours of play, a path
+  that runs too seldom to stay tested. Source: RFC 9001 §6.6.
+- **The MTU is a fixed 1,200 bytes.** Fragments and replicon's messages are sized from the
+  minimum MTU, so a larger probed one helps only packets that carry many whole messages.
+  Refused: RFC 8899 probes, a state machine for a small gain; a fixed 1,232, IPv6's guarantee
+  with no margin for a smaller IPv4 path under a tunnel. Source: RFC 9000 §14.
+
+## Trust
+
+- **A server's identity and a client's trust match.** A server presents an Ed25519 raw public key
+  (RFC 7250), which a client of `ServerTrust::pinned` takes and no other; or a certificate chain,
+  which a client of `ServerTrust::web_pki` checks for its name against the roots of
+  `webpki-roots`. TLS 1.3 only, the ALPN a required setting, no resumption and no 0-RTT, so each
+  handshake checks the identity. Refused: a mode that skips verification, even in development,
+  where a server makes a key and its client pins it; the OS's root store through
+  `rustls-platform-verifier`, which needs a Java component on Android.
+- **One server secret derives the raw key and the reset key,** by HKDF-SHA256 with the labels
+  `campfire/udp/tls/v1` and `campfire/udp/reset/v1`, so one file holds the identity and the pin
+  cannot be lost while the identity stays.
+- **The app authenticates over the link.** No client key in TLS. Each end of a link holds RFC
+  9266's `tls-exporter` binding as `ChannelBinding`, which an app's login signs, so a party that
+  relays a login holds two sessions with two bindings, and the relay fails. A plain session has
+  none. Refused: client certificates, which put an account system in the transport.
+
+## Admission
+
+- **A server checks an address before it keeps state.** A Retry for each new address, whose
+  token names the handshake; two tokens in the server's encrypted parameters that let the next
+  connection from that address skip it within two minutes, each usable once; and a token key new
+  at each start, so a token outlives no server. Refused: a Retry only under load, which lets each
+  spoofed packet cost a signature and amplified bytes until the limit. Source: RFC 9000 §8.1.
+- **A Retry checks each new address,** so the client pads each `Initial` to 1,200 bytes and the
+  server drops a shorter one: no answer of the server to an address it has not checked is larger
+  than what it received. Source: RFC 9000 §14.1.
+- **Each address holds a bounded count of connections and handshakes.** `AdmissionConfig` holds
+  at most so many live sessions for an IPv4 address or an IPv6 /64, and a bucket of as many
+  handshakes that come back over its refill time, kept in one number as the generic cell rate
+  algorithm keeps it. A refusal comes after the Retry and before the handshake, so it costs no
+  signature. A session counts at the address it was admitted from, also after it moved. A
+  loopback address holds no limit.
+
+## Sessions
+
+- **A client packet starts with the server's random connection ID,** and a new address is checked
+  before data goes to it. The server gives the ID, 8 bytes whose first bit is the IO's, in its
+  handshake and routes each client datagram by it, so a session survives a NAT rebinding or a
+  change of network. A newer packet from a new address makes it a candidate, which gets a path
+  challenge until it answers; a challenge goes again at each probe timeout, 3 times at most, and a
+  check that failed starts again at the peer's next newer packet. Refused: routing by address, as
+  netcode.io does, which ends the link at each such change; a 15-bit ID, as an attacker collects
+  the reset tokens of all 32,768 IDs from the server and resets each later session that takes
+  one. Source: RFC 9000 §8.2, §9, §10.3.2 and §21.11.
+- **A stateless reset ends the sessions of a server that started again.** Its token is an HMAC of
+  the reset key and the connection ID, which the client gets in the handshake; the server answers
+  a datagram of an ID it does not hold with a reset shorter than it, and none to a datagram of 21
+  bytes or less, so two endpoints never reset each other in a loop. Source: RFC 9000 §10.3.
+- **The socket stays on `quinn-udp`, with GSO and GRO.** A send joins the datagrams of one peer
+  and one length; a read splits what GRO joined. `quinn-proto` goes with QUIC.

@@ -5,8 +5,8 @@ use campfire_store::internals::{CargoManifest, SourceFile};
 
 use crate::bans::{PROXIES, foreign_names};
 use crate::workspace::{
-    Crate, crate_dependencies, crates, holder, manifests, read, required_dependencies, sim_closure,
-    source, sources,
+    Crate, crate_dependencies, crates, holder, manifests, read, required_closure,
+    required_dependencies, sim_closure, source, sources,
 };
 
 #[test]
@@ -105,6 +105,64 @@ fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
     built.sort_unstable();
     let crates: Vec<String> = manifests().into_iter().map(|(name, _)| name).collect();
     assert_eq!(built, crates);
+}
+
+/// The network stack's problem crates: each holds one problem, a protocol, a codec, a model or an
+/// algorithm, with no engine in it (13-net-stack/layering.md, A problem crate depends on problem
+/// crates alone).
+const PROBLEM_CRATES: [&str; 8] = [
+    "campfire-net-bytes",
+    "campfire-net-channels",
+    "campfire-net-common",
+    "campfire-net-core",
+    "campfire-net-emulator",
+    "campfire-net-packets",
+    "campfire-net-payload",
+    "campfire-net-udp",
+];
+
+/// Whether `name` is a crate of Bevy's engine: each but `bevy_platform`, its platform layer, which
+/// holds no engine.
+fn is_engine(name: &str) -> bool {
+    name.starts_with("bevy") && name != "bevy_platform"
+}
+
+#[test]
+fn a_problem_crate_builds_with_no_engine_under_it() {
+    let manifests = manifests();
+    let found: Vec<String> = PROBLEM_CRATES
+        .iter()
+        .flat_map(|name| {
+            required_closure(&manifests, name)
+                .into_iter()
+                .filter(|other| is_engine(other))
+                .map(move |other| format!("{name} requires {other}"))
+        })
+        .collect();
+    assert_eq!(found, Vec::<String>::new());
+    for name in PROBLEM_CRATES {
+        assert!(
+            manifests.iter().any(|(crate_name, _)| crate_name == name),
+            "{name}"
+        );
+    }
+    // Bevy's engine crates are refused, and its platform layer is not.
+    assert!(is_engine("bevy_ecs") && is_engine("bevy_replicon") && is_engine("bevy"));
+    assert!(!is_engine("bevy_platform") && !is_engine("bytes"));
+    // A dependency of a dependency counts, through each crate of the workspace; an optional one
+    // does not, as a feature turns it on.
+    let manifests = [
+        ("a".to_owned(), "[dependencies]\nb.workspace = true\n".to_owned()),
+        (
+            "b".to_owned(),
+            "[dependencies]\nbevy_ecs.workspace = true\nbevy_reflect = { workspace = true, optional = true }\n"
+                .to_owned(),
+        ),
+    ];
+    assert_eq!(
+        required_closure(&manifests, "a"),
+        BTreeSet::from(["b".to_owned(), "bevy_ecs".to_owned()])
+    );
 }
 
 /// The crates a sim's match runs on and whose code may read files or log: `store`, the one home
@@ -783,7 +841,7 @@ fn an_optional_dependency_is_named_by_library_code() {
 #[test]
 fn the_name_checks_fail_on_what_breaks_them() {
     // A proxy's source that names another proxy's call or one of no proxy's, but not its own.
-    let [store, codec, _] = &PROXIES;
+    let [store, codec, _, _] = &PROXIES;
     let text = "use std::fs::File;\nlet map: HashMap<u8, u8>;\nlet n = 1;";
     assert_eq!(foreign_names(codec, text), ["std::fs", "HashMap"]);
     assert_eq!(

@@ -1,0 +1,44 @@
+[package]
+name = "campfire-net-channels"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+compression_lz4 = ["dep:lz4_flex"]
+# The channels' measurements and payload fixtures, and the fragment bench, for the tests and
+# benches of every layer above
+internals = [
+    "dep:criterion",
+    "campfire-net-common/internals",
+    "campfire-net-payload/internals",
+    "campfire-net-bytes/internals",
+]
+
+[dependencies]
+campfire-net-common.workspace = true
+campfire-net-core.workspace = true
+campfire-net-payload.workspace = true
+campfire-net-bytes.workspace = true
+
+bytes.workspace = true
+criterion = { workspace = true, optional = true }
+lz4_flex = { workspace = true, optional = true }
+thiserror.workspace = true
+tracing.workspace = true
+
+bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+campfire-net-channels = { workspace = true, features = ["internals"] }
+
+[lib]
+bench = false
+
+[[bench]]
+name = "net-channels"
+harness = false
+required-features = ["internals"]
+
+[lints]
+workspace = true

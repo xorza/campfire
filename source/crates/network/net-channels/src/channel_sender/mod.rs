@@ -1,0 +1,504 @@
+//! Channel send state and delivery policies.
+
+use bytes::Bytes;
+use core::time::Duration;
+use std::collections::VecDeque;
+
+use crate::bench_counter::BenchCounter;
+use crate::channel_config::ChannelConfig;
+use crate::channel_kind::ChannelKind;
+use crate::channel_mode::ChannelMode;
+use crate::channel_slots::ChannelSlots;
+use crate::compression_config::CompressionConfig;
+use crate::compression_scratch::CompressionScratch;
+use crate::fragmented_message::FragmentedMessage;
+use crate::message_id::MessageId;
+use crate::message_ref::MessageRef;
+use crate::send_candidate::{CandidateMessages, CandidateRank, CandidateSink, SendCandidate};
+use crate::send_message_key::SendMessageKey;
+use crate::single_data::SingleData;
+use campfire_net_core::NetId;
+
+use crate::packet::MAX_FRAGMENTS;
+use crate::reliable_send_state::{ReliableDelivery, ReliableSendState};
+
+/// The sending half of one registered transport channel.
+///
+/// `ChannelSender` owns messages buffered by the application until the transport either sends or
+/// discards them according to the channel's delivery policy. It also applies the channel's send
+/// cadence, fragments oversized messages, and sends a reliable message again when its packet is
+/// lost.
+///
+/// Sending is transactional: eligible messages are first exposed as lightweight candidates for
+/// global prioritization and packet packing. A candidate is committed only after its packet enters
+/// the link's send queue, and the channel finalizes its queues once the complete send flush ends.
+/// The private state enum contains only the queueing and acknowledgement state which differs
+/// between reliable and unreliable channels.
+#[derive(Debug)]
+pub struct ChannelSender {
+    channel_kind: ChannelKind,
+    channel_id: NetId,
+    name: &'static str,
+    config: ChannelConfig,
+    timer: Option<SendTimer>,
+    /// The time since candidates were last collected, which grows the waiting messages' priority.
+    since_collect: Duration,
+    state: SendState,
+    /// Bytes of this channel's messages in packets given to the session.
+    pub(crate) sent_bytes: BenchCounter,
+    /// This channel's messages and fragments in packets given to the session.
+    pub(crate) sent_messages: BenchCounter,
+}
+
+/// How a send flush ended, which decides whether unsent unreliable messages are dropped.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum SendFlushOutcome {
+    /// Every candidate that fit was sent, or staging stopped on an error.
+    Complete,
+    /// The session's budget stopped the flush with candidates left.
+    BudgetLimited,
+}
+
+#[derive(Debug)]
+enum SendState {
+    Unreliable(UnreliableSendState),
+    Reliable(ReliableSendState),
+}
+
+#[derive(Debug)]
+struct UnreliableSendState {
+    delivery: UnreliableDelivery,
+    singles: VecDeque<Pending<SingleData>>,
+    fragmented: VecDeque<Pending<FragmentedMessage>>,
+    next_message_id: MessageId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UnreliableDelivery {
+    Unordered,
+    Sequenced,
+}
+
+/// An unreliable message while it waits to be sent.
+#[derive(Debug)]
+struct Pending<T> {
+    message: T,
+    base_priority: f32,
+    /// Grows by `base_priority` a second while the message waits to be sent.
+    priority: f32,
+    /// Whether a packet carried it; a fragmented message's fragments keep their own.
+    committed: bool,
+}
+
+impl<T> Pending<T> {
+    const fn new(message: T, base_priority: f32) -> Self {
+        Self {
+            message,
+            base_priority,
+            priority: 0.0,
+            committed: false,
+        }
+    }
+}
+
+impl ChannelSender {
+    pub(crate) fn new(
+        channel_kind: ChannelKind,
+        channel_id: NetId,
+        name: &'static str,
+        config: &ChannelConfig,
+    ) -> Self {
+        let state = match config.mode {
+            ChannelMode::UnorderedUnreliable => {
+                SendState::Unreliable(UnreliableSendState::new(UnreliableDelivery::Unordered))
+            }
+            ChannelMode::SequencedUnreliable => {
+                SendState::Unreliable(UnreliableSendState::new(UnreliableDelivery::Sequenced))
+            }
+            ChannelMode::UnorderedReliable | ChannelMode::OrderedReliable => {
+                SendState::Reliable(ReliableSendState::new(ReliableDelivery::Every))
+            }
+            ChannelMode::SequencedReliable => {
+                SendState::Reliable(ReliableSendState::new(ReliableDelivery::Newest))
+            }
+        };
+        let timer = (config.send_frequency != Duration::default())
+            .then(|| SendTimer::new(config.send_frequency));
+        Self {
+            channel_kind,
+            channel_id,
+            name,
+            config: *config,
+            timer,
+            since_collect: Duration::ZERO,
+            state,
+            sent_bytes: BenchCounter::default(),
+            sent_messages: BenchCounter::default(),
+        }
+    }
+
+    /// Drops every message and counter, as a new sender with the same config starts.
+    pub(crate) fn reset(&mut self) {
+        *self = Self::new(self.channel_kind, self.channel_id, self.name, &self.config);
+    }
+
+    /// The type-level channel key associated with this channel.
+    pub const fn channel_kind(&self) -> ChannelKind {
+        self.channel_kind
+    }
+
+    /// The compact channel identifier encoded on the wire.
+    pub const fn channel_id(&self) -> NetId {
+        self.channel_id
+    }
+
+    /// The channel's type name, which diagnostics show.
+    pub const fn name(&self) -> &'static str {
+        self.name
+    }
+
+    /// The largest message this channel sends on a link of `fragment_size`, in uncompressed
+    /// bytes: its setting, or the `MAX_FRAGMENTS` fragments the link allows if fewer.
+    pub const fn max_message_size(&self, fragment_size: usize) -> usize {
+        let fragmented = MAX_FRAGMENTS.saturating_mul(fragment_size);
+        if self.config.max_message_size < fragmented {
+            self.config.max_message_size
+        } else {
+            fragmented
+        }
+    }
+
+    /// The ordering and reliability mode implemented by this channel.
+    pub const fn mode(&self) -> ChannelMode {
+        self.config.mode
+    }
+
+    /// Whether the transport tracks which packet carried each message, which only reliable
+    /// channels need.
+    pub(crate) const fn watches_acks(&self) -> bool {
+        matches!(&self.state, SendState::Reliable(_))
+    }
+
+    /// Advances the channel by a frame of `delta`.
+    pub(crate) fn update(&mut self, delta: Duration) {
+        if let Some(timer) = &mut self.timer {
+            timer.tick(delta);
+        }
+        self.since_collect += delta;
+    }
+
+    /// Buffers `message`, which a link of `fragment_size` splits when it is longer.
+    pub(crate) fn buffer_send(
+        &mut self,
+        message: Bytes,
+        priority: f32,
+        fragment_size: usize,
+        compression: CompressionConfig,
+        compression_scratch: &mut CompressionScratch,
+    ) -> Option<MessageId> {
+        match &mut self.state {
+            SendState::Unreliable(state) => state.buffer_send(
+                message,
+                priority,
+                fragment_size,
+                compression,
+                compression_scratch,
+            ),
+            SendState::Reliable(state) => state.buffer_send(
+                message,
+                priority,
+                fragment_size,
+                compression,
+                compression_scratch,
+            ),
+        }
+    }
+
+    /// Appends the messages which are eligible for this send flush.
+    ///
+    /// Candidates participate in global priority ordering and packet packing, but collecting them
+    /// does not remove messages from the channel or mark reliable messages as sent, so an
+    /// unsuccessful staging attempt leaves the channel unchanged.
+    pub(crate) fn collect_send_candidates(&mut self, output: &mut Vec<SendCandidate>) {
+        if !is_ready_to_send(self.timer.as_ref()) {
+            return;
+        }
+        let elapsed = core::mem::take(&mut self.since_collect);
+        let mut sink = CandidateSink {
+            channel_id: self.channel_id,
+            channel_priority: self.config.priority,
+            candidates: output,
+        };
+        match &mut self.state {
+            SendState::Unreliable(state) => state.collect_candidates(elapsed, &mut sink),
+            SendState::Reliable(state) => state.collect_candidates(elapsed, &mut sink),
+        }
+    }
+
+    /// The pending message that `key` names in this flush.
+    pub(crate) fn message(&self, key: SendMessageKey) -> MessageRef<'_> {
+        match &self.state {
+            SendState::Unreliable(state) => state.message(key),
+            SendState::Reliable(state) => state.message(key),
+        }
+    }
+
+    /// The key of the next due fragment of the message whose fragment `key` names, past it.
+    pub(crate) fn next_due(&self, key: SendMessageKey) -> Option<SendMessageKey> {
+        match &self.state {
+            SendState::Unreliable(state) => state.next_due(key),
+            SendState::Reliable(state) => state.next_due(key),
+        }
+    }
+
+    /// Commits one candidate after the packet containing it enters the link's send queue.
+    ///
+    /// Unreliable messages are marked for removal at the end of the flush. Reliable messages stay
+    /// pending, in flight until the session reports their packet's fate. Returns whether a packet
+    /// carried the message or fragment before.
+    pub(crate) fn commit_send(&mut self, key: SendMessageKey) -> bool {
+        self.sent_messages.add(1);
+        match &mut self.state {
+            SendState::Unreliable(state) => {
+                state.commit_send(key);
+                false
+            }
+            SendState::Reliable(state) => state.commit_send(key),
+        }
+    }
+
+    /// Finalizes channel state after all packets for the current flush have been staged.
+    ///
+    /// This removes committed unreliable candidates and applies
+    /// [`ChannelConfig::retry_unsent_messages`] when the budget prevented eligible unreliable
+    /// messages from being sent. Reliable messages remain pending until acknowledged.
+    pub(crate) fn finish_send(&mut self, outcome: SendFlushOutcome) {
+        if let SendState::Unreliable(state) = &mut self.state {
+            let discard_unsent = is_ready_to_send(self.timer.as_ref())
+                && !self.config.retry_unsent_messages
+                && outcome == SendFlushOutcome::BudgetLimited;
+            state.finish_send(discard_unsent);
+        }
+    }
+
+    /// Applies the loss of a packet that carried the message or fragment `key` names.
+    pub(crate) fn receive_loss(&mut self, key: SendMessageKey) {
+        match &mut self.state {
+            SendState::Reliable(state) => state.receive_loss(key),
+            SendState::Unreliable(_) => {
+                unreachable!("only reliable channels track the packets of their messages")
+            }
+        }
+    }
+
+    /// Applies an acknowledgement and returns whether it completed the logical message.
+    pub(crate) fn receive_ack(&mut self, key: SendMessageKey) -> bool {
+        match &mut self.state {
+            SendState::Reliable(state) => state.receive_ack(key),
+            SendState::Unreliable(_) => {
+                unreachable!("only reliable channels track the packets of their messages")
+            }
+        }
+    }
+}
+
+impl UnreliableSendState {
+    const fn new(delivery: UnreliableDelivery) -> Self {
+        Self {
+            delivery,
+            singles: VecDeque::new(),
+            fragmented: VecDeque::new(),
+            next_message_id: MessageId(0),
+        }
+    }
+
+    fn buffer_send(
+        &mut self,
+        message: Bytes,
+        priority: f32,
+        fragment_size: usize,
+        compression: CompressionConfig,
+        compression_scratch: &mut CompressionScratch,
+    ) -> Option<MessageId> {
+        let message_id = self.next_message_id;
+        let is_fragmented = message.len() > fragment_size;
+        let has_id = is_fragmented || self.delivery != UnreliableDelivery::Unordered;
+
+        if is_fragmented {
+            let message = FragmentedMessage::split(
+                message_id,
+                message,
+                fragment_size,
+                compression,
+                compression_scratch,
+            );
+            self.fragmented.push_back(Pending::new(message, priority));
+        } else {
+            self.singles.push_back(Pending::new(
+                SingleData::new(has_id.then_some(message_id), message),
+                priority,
+            ));
+        }
+
+        has_id.then(|| {
+            self.next_message_id += 1;
+            message_id
+        })
+    }
+
+    fn collect_candidates(&mut self, elapsed: Duration, sink: &mut CandidateSink<'_>) {
+        let elapsed_secs = elapsed.as_secs_f32();
+        for (index, pending) in self.singles.iter_mut().enumerate() {
+            if pending.committed {
+                continue;
+            }
+            pending.priority += pending.base_priority * elapsed_secs;
+            let slot = u32::try_from(index).unwrap();
+            let rank = CandidateRank {
+                priority: pending.priority,
+                send_order: slot,
+            };
+            sink.push(
+                SendMessageKey::UnreliableSingle(slot),
+                rank,
+                MessageRef::Single(&pending.message),
+            );
+        }
+        for (index, pending) in self.fragmented.iter_mut().enumerate() {
+            let Some(first) = pending.message.first_due() else {
+                continue;
+            };
+            pending.priority += pending.base_priority * elapsed_secs;
+            let slot = u32::try_from(index).unwrap();
+            let rank = CandidateRank {
+                priority: pending.priority,
+                send_order: slot,
+            };
+            sink.push(
+                SendMessageKey::UnreliableFragment(slot, first),
+                rank,
+                MessageRef::Fragment(pending.message.fragment(first)),
+            );
+        }
+    }
+
+    fn message(&self, key: SendMessageKey) -> MessageRef<'_> {
+        match key {
+            SendMessageKey::UnreliableSingle(slot) => {
+                MessageRef::Single(&self.singles[index_of(slot)].message)
+            }
+            SendMessageKey::UnreliableFragment(slot, index) => {
+                MessageRef::Fragment(self.fragmented[index_of(slot)].message.fragment(index))
+            }
+            SendMessageKey::ReliableSingle(_) | SendMessageKey::ReliableFragment(..) => {
+                unreachable!("an unreliable channel names its messages by queue index")
+            }
+        }
+    }
+
+    fn next_due(&self, key: SendMessageKey) -> Option<SendMessageKey> {
+        let SendMessageKey::UnreliableFragment(slot, index) = key else {
+            unreachable!("only a fragment of an unreliable channel has a next fragment here")
+        };
+        self.fragmented[index_of(slot)]
+            .message
+            .next_due(index + 1)
+            .map(|next| key.with_fragment(next))
+    }
+
+    fn commit_send(&mut self, key: SendMessageKey) {
+        match key {
+            SendMessageKey::UnreliableSingle(slot) => {
+                self.singles[index_of(slot)].committed = true;
+            }
+            SendMessageKey::UnreliableFragment(slot, index) => {
+                self.fragmented[index_of(slot)].message.commit(index);
+            }
+            SendMessageKey::ReliableSingle(_) | SendMessageKey::ReliableFragment(..) => {
+                unreachable!("an unreliable channel names its messages by queue index")
+            }
+        }
+    }
+
+    /// Drops what the flush sent. With `discard_unsent`, it drops what it did not send too, but
+    /// a fragmented message it started, whose fragments the receiver waits for.
+    fn finish_send(&mut self, discard_unsent: bool) {
+        if discard_unsent {
+            self.singles.clear();
+            self.fragmented
+                .retain(|pending| pending.message.is_started() && !pending.message.is_sent());
+        } else {
+            self.singles.retain(|pending| !pending.committed);
+            self.fragmented.retain(|pending| !pending.message.is_sent());
+        }
+    }
+}
+
+impl CandidateMessages for ChannelSlots<ChannelSender> {
+    fn message(&self, channel_id: NetId, key: SendMessageKey) -> MessageRef<'_> {
+        self[channel_id].message(key)
+    }
+
+    fn next_due(&self, channel_id: NetId, key: SendMessageKey) -> Option<SendMessageKey> {
+        self[channel_id].next_due(key)
+    }
+}
+
+/// The queue index a key's slot names.
+fn index_of(slot: u32) -> usize {
+    usize::try_from(slot).unwrap()
+}
+
+fn is_ready_to_send(timer: Option<&SendTimer>) -> bool {
+    timer.is_none_or(|timer| timer.fired)
+}
+
+/// A channel's send frequency: it fires in each update that completes a period, and keeps the
+/// overrun toward the next, as a repeating timer does.
+#[derive(Debug, Clone, Copy)]
+struct SendTimer {
+    period: Duration,
+    elapsed: Duration,
+    /// Whether the last update completed a period.
+    fired: bool,
+}
+
+impl SendTimer {
+    const fn new(period: Duration) -> Self {
+        Self {
+            period,
+            elapsed: Duration::ZERO,
+            fired: false,
+        }
+    }
+
+    fn tick(&mut self, delta: Duration) {
+        self.elapsed += delta;
+        self.fired = self.elapsed >= self.period;
+        if self.fired {
+            let overrun = self.elapsed.as_nanos() % self.period.as_nanos();
+            self.elapsed = Duration::from_nanos(
+                u64::try_from(overrun).expect("an overrun is below its period"),
+            );
+        }
+    }
+}
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use crate::channel_sender::{ChannelSender, SendState};
+    use crate::message_id::MessageId;
+
+    impl ChannelSender {
+        /// The ids of the reliable messages not acknowledged yet; none for an unreliable channel.
+        pub(crate) fn pending_reliable(&self) -> Vec<MessageId> {
+            match &self.state {
+                SendState::Unreliable(_) => Vec::new(),
+                SendState::Reliable(state) => state.pending_ids().collect(),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

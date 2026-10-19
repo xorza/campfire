@@ -1,0 +1,38 @@
+[package]
+name = "campfire-net-bytes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = [
+    "dep:criterion",
+    "campfire-net-common/internals",
+    "campfire-codec/internals",
+]
+
+[dependencies]
+campfire-codec.workspace = true
+campfire-net-common.workspace = true
+
+bytes.workspace = true
+criterion = { workspace = true, optional = true }
+serde.workspace = true
+smallvec.workspace = true
+thiserror.workspace = true
+variadics_please.workspace = true
+
+
+[dev-dependencies]
+campfire-net-bytes = { workspace = true, features = ["internals"] }
+
+[lib]
+bench = false
+
+[[bench]]
+name = "net-bytes"
+harness = false
+required-features = ["internals"]
+
+[lints]
+workspace = true

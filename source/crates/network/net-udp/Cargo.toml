@@ -1,0 +1,49 @@
+[package]
+name = "campfire-net-udp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The admission bench, for the benches of every layer above
+internals = [
+    "dep:criterion",
+    "campfire-net-common/internals",
+    "campfire-net-packets/internals",
+    "campfire-common/internals",
+    "campfire-net-emulator/internals",
+    "campfire-net-payload/internals",
+]
+
+[dependencies]
+campfire-common.workspace = true
+campfire-net-core.workspace = true
+campfire-net-common = { workspace = true, features = ["os_random"] }
+campfire-net-emulator.workspace = true
+campfire-net-packets.workspace = true
+campfire-net-payload.workspace = true
+
+bytes.workspace = true
+criterion = { workspace = true, optional = true }
+polling.workspace = true
+quinn-udp = "=0.6.3"
+ring.workspace = true
+rustls.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+webpki-roots.workspace = true
+zeroize.workspace = true
+
+[dev-dependencies]
+campfire-net-udp = { workspace = true, features = ["internals"] }
+
+[lib]
+bench = false
+
+[[bench]]
+name = "net-udp"
+harness = false
+required-features = ["internals"]
+
+[lints]
+workspace = true

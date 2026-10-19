@@ -47,18 +47,31 @@ pub(crate) fn required_dependencies(manifest: &str) -> Vec<&str> {
 /// The crates of the workspace a match runs on, by name: the release and each crate of the
 /// workspace its required dependencies reach, of `manifests`, the workspace's.
 pub(crate) fn sim_closure(manifests: &[(String, String)]) -> BTreeSet<String> {
-    let manifest = |name: &str| {
-        let (_, manifest) = (manifests.iter())
-            .find(|(crate_name, _)| crate_name == name)
-            .expect("a walk reaches the workspace's crates");
-        manifest
-    };
     let workspace = |name: &str| manifests.iter().any(|(crate_name, _)| crate_name == name);
-    let mut reached = BTreeSet::from(["campfire-capabilities".to_owned()]);
-    let mut next = vec!["campfire-capabilities".to_owned()];
+    let mut reached = required_closure(manifests, "campfire-capabilities");
+    reached.retain(|name| workspace(name));
+    reached.insert("campfire-capabilities".to_owned());
+    reached
+}
+
+/// Every crate the build of `name`, a crate of `manifests`, requires, by name: its required
+/// dependencies, and theirs through each crate of the workspace, as a dependency from outside it
+/// names its own in no manifest here.
+pub(crate) fn required_closure(manifests: &[(String, String)], name: &str) -> BTreeSet<String> {
+    let manifest = |name: &str| {
+        manifests
+            .iter()
+            .find(|(crate_name, _)| crate_name == name)
+            .map(|(_, manifest)| manifest)
+    };
+    let mut reached = BTreeSet::new();
+    let mut next = vec![name.to_owned()];
     while let Some(at) = next.pop() {
-        for other in required_dependencies(manifest(&at)) {
-            if workspace(other) && reached.insert(other.to_owned()) {
+        let Some(manifest) = manifest(&at) else {
+            continue;
+        };
+        for other in required_dependencies(manifest) {
+            if reached.insert(other.to_owned()) {
                 next.push(other.to_owned());
             }
         }

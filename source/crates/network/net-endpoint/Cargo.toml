@@ -1,0 +1,35 @@
+[package]
+name = "campfire-net-endpoint"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The session counts of each endpoint, for the tests of every layer above
+internals = [
+    "campfire-net-packets/internals",
+    "campfire-store/internals",
+    "campfire-net-timeline/internals",
+    "campfire-net-payload/internals",
+]
+
+[dependencies]
+campfire-store.workspace = true
+campfire-net-timeline.workspace = true
+campfire-net-link.workspace = true
+campfire-net-payload.workspace = true
+campfire-net-packets.workspace = true
+
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+
+[dev-dependencies]
+campfire-net-core.workspace = true
+campfire-net-endpoint = { workspace = true, features = ["internals"] }
+campfire-net-emulator = { workspace = true, features = ["internals"] }
+
+bevy_time = { version = "=0.20.0", default-features = false }
+bytes.workspace = true
+
+[lints]
+workspace = true

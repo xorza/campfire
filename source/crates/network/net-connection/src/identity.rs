@@ -1,0 +1,25 @@
+use crate::networking_state::NetworkingState;
+use bevy_ecs::system::Res;
+
+/// Returns true for a connected client topology.
+pub fn is_client(networking: Res<'_, NetworkingState>) -> bool {
+    networking.topology.is_client()
+}
+
+/// Returns true for a started server, including the server side of a ready host-client topology.
+pub fn is_server(networking: Res<'_, NetworkingState>) -> bool {
+    networking.topology.is_server()
+}
+
+/// Returns true for a started server without a connected in-process client.
+pub fn is_headless_server(networking: Res<'_, NetworkingState>) -> bool {
+    networking.topology.is_headless_server()
+}
+
+/// Returns true if we are running in host-server mode, i.e. the server is acting as a client
+/// (in which case we can disable the networking/prediction/interpolation systems on the client)
+///
+/// We are in host-server mode when both sides form a ready cached host-client topology.
+pub fn is_host_server(networking: Res<'_, NetworkingState>) -> bool {
+    networking.topology.is_host_server()
+}

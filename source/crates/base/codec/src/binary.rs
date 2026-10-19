@@ -80,6 +80,16 @@ impl Binary {
         Ok(Self::decode(value)?)
     }
 
+    /// The value at the front of `bytes` that another library's encoder wrote, and the bytes
+    /// after it, for a type that library gives no `Serialize` to check the bytes against, as
+    /// Replicon's diffs: its decode makes no check that the bytes are the value's one encoding.
+    pub fn take_unchecked<'a, T: Deserialize<'a>>(
+        bytes: &'a [u8],
+    ) -> Result<Taken<'a, T>, BinaryError> {
+        let (value, rest) = postcard::take_from_bytes::<T>(bytes)?;
+        Ok(Taken { value, rest })
+    }
+
     /// The value at the front of `bytes`, and the bytes after it.
     pub fn take<'a, T: Deserialize<'a> + Serialize>(
         bytes: &'a [u8],
@@ -193,6 +203,13 @@ mod tests {
         assert_eq!(
             Binary::take::<u32>(&[0x80, 0x00, 0x05]),
             Err(BinaryError::NotCanonical)
+        );
+        // The unchecked take reads the same value from it, 0, and makes no such check.
+        let unchecked = Binary::take_unchecked::<u32>(&[0x80, 0x00, 0x05]).unwrap();
+        assert_eq!((unchecked.value, unchecked.rest), (0, &[0x05][..]));
+        assert_eq!(
+            Binary::take_unchecked::<u32>(&[0x80]),
+            Err(BinaryError::Truncated)
         );
     }
 

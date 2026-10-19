@@ -1,0 +1,36 @@
+[package]
+name = "campfire-net-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The sync layer's stack, for the tests and benches of every layer above
+internals = [
+    "campfire-net-transport/internals",
+    "dep:campfire-net-stepper",
+    "campfire-net-timeline/internals",
+]
+
+[dependencies]
+campfire-net-timeline.workspace = true
+campfire-net-core.workspace = true
+campfire-net-link.workspace = true
+campfire-net-connection.workspace = true
+campfire-net-stepper = { workspace = true, optional = true }
+campfire-net-transport.workspace = true
+
+tracing.workspace = true
+
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_derive = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
+bevy_time = { version = "=0.20.0", default-features = false }
+bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"] }
+
+[dev-dependencies]
+campfire-net-sync = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

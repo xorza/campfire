@@ -1,4 +1,5 @@
-use campfire_store::internals::CargoManifest;
+use campfire_store::InputFile;
+use campfire_store::internals::{CargoManifest, PinnedFile};
 
 use crate::workspace::{crates, manifests, read, sim_closure, source, sources};
 
@@ -19,6 +20,9 @@ pub(crate) struct Proxy {
     pub(crate) dependencies: &'static [&'static str],
     /// What names its group's calls in source, which no other proxy's source holds.
     pub(crate) names: &'static [&'static str],
+    /// The crates under `source/crates/` whose own `clippy.toml` bans its group, as Clippy reads
+    /// the nearest `clippy.toml` alone; none when the workspace's bans it everywhere.
+    pub(crate) crates: &'static [&'static str],
 }
 
 impl Proxy {
@@ -134,6 +138,31 @@ const SCHEDULE_METHODS: [&str; 2] = [
     "bevy_ecs::schedule::Schedules::configure_schedules",
 ];
 
+/// The despawns only `campfire-net-despawn` makes in the network stack's replication crates
+/// (13-net-stack/replication.md, The server alone ends a replicated entity's life on the
+/// receiver): each of Bevy's despawns, which takes each child the server still owns.
+const DESPAWN_METHODS: [&str; 19] = [
+    "bevy_ecs::system::Commands::despawn_all",
+    "bevy_ecs::system::Commands::despawn_all_where",
+    "bevy_ecs::system::EntityCommands::despawn",
+    "bevy_ecs::system::EntityCommands::despawn_children",
+    "bevy_ecs::system::EntityCommands::despawn_related",
+    "bevy_ecs::system::EntityCommands::try_despawn",
+    "bevy_ecs::system::command::despawn_all",
+    "bevy_ecs::system::command::despawn_all_where",
+    "bevy_ecs::system::entity_command::despawn",
+    "bevy_ecs::world::EntityWorldMut::despawn",
+    "bevy_ecs::world::EntityWorldMut::despawn_children",
+    "bevy_ecs::world::EntityWorldMut::despawn_no_free",
+    "bevy_ecs::world::EntityWorldMut::despawn_related",
+    "bevy_ecs::world::World::despawn",
+    "bevy_ecs::world::World::despawn_all",
+    "bevy_ecs::world::World::despawn_all_where",
+    "bevy_ecs::world::World::despawn_no_free",
+    "bevy_ecs::world::World::try_despawn",
+    "bevy_ecs::world::World::try_despawn_no_free",
+];
+
 /// The lints of the bans, and the groups that hold them, named in parts so that this file's own
 /// samples hold no attribute of them.
 const LINTS: [&str; 2] = [
@@ -143,7 +172,7 @@ const LINTS: [&str; 2] = [
 const GROUPS: [&str; 2] = [concat!("clippy::", "style"), concat!("clippy::", "all")];
 
 /// Every proxy crate, each the owner of one group of the bans.
-pub(crate) const PROXIES: [Proxy; 3] = [
+pub(crate) const PROXIES: [Proxy; 4] = [
     Proxy {
         dir: "base/store",
         lints: &LINTS,
@@ -159,6 +188,7 @@ pub(crate) const PROXIES: [Proxy; 3] = [
             "zeroize",
         ],
         names: &["std::fs", "std::thread", "tempfile::"],
+        crates: &[],
     },
     Proxy {
         dir: "base/codec",
@@ -174,6 +204,7 @@ pub(crate) const PROXIES: [Proxy; 3] = [
             "toml",
         ],
         names: &["postcard::", "serde_json::", "toml::", "postcard_utils"],
+        crates: &[],
     },
     Proxy {
         dir: "base/schedule",
@@ -182,6 +213,21 @@ pub(crate) const PROXIES: [Proxy; 3] = [
         types: &[],
         dependencies: &["bevy_ecs"],
         names: &["set_build_settings", "configure_schedules"],
+        crates: &[],
+    },
+    Proxy {
+        dir: "network/net-despawn",
+        lints: &[LINTS[0]],
+        methods: &DESPAWN_METHODS,
+        types: &[],
+        dependencies: &["bevy_ecs", "bevy_replicon"],
+        names: &["despawn"],
+        crates: &[
+            "network/net-despawn",
+            "network/net-interpolation",
+            "network/net-prediction",
+            "network/net-replication",
+        ],
     },
 ];
 
@@ -311,10 +357,22 @@ fn each_banned_call_goes_through_its_proxy_alone() {
     let clippy = read(source().join("clippy.toml").to_str().unwrap());
     let sources = sources();
     for proxy in &PROXIES {
-        let methods = unlisted(&clippy, "disallowed-methods", proxy.methods);
-        assert_eq!(methods, Vec::<&str>::new(), "{}", proxy.dir);
-        let types = unlisted(&clippy, "disallowed-types", proxy.types);
-        assert_eq!(types, Vec::<&str>::new(), "{}", proxy.dir);
+        let own: Vec<String> = proxy
+            .crates
+            .iter()
+            .map(|dir| crate_clippy(dir).expect("a proxy's crate has its own clippy.toml"))
+            .collect();
+        let bans = if own.is_empty() {
+            vec![clippy.clone()]
+        } else {
+            own
+        };
+        for bans in &bans {
+            let methods = unlisted(bans, "disallowed-methods", proxy.methods);
+            assert_eq!(methods, Vec::<&str>::new(), "{}", proxy.dir);
+            let types = unlisted(bans, "disallowed-types", proxy.types);
+            assert_eq!(types, Vec::<&str>::new(), "{}", proxy.dir);
+        }
         assert!(sources.iter().any(|file| file.path == proxy.root()));
         let own = format!("crates/{}/", proxy.dir);
         let foreign: Vec<String> = sources
@@ -355,6 +413,81 @@ fn each_banned_call_goes_through_its_proxy_alone() {
         })
         .collect();
     assert_eq!(misplaced, Vec::<String>::new());
+}
+
+/// The text of the `clippy.toml` of the crate at `dir`, under `source/crates/`, when it has one.
+fn crate_clippy(dir: &str) -> Option<String> {
+    let path = source().join("crates").join(dir).join("clippy.toml");
+    let bytes = InputFile::read_if_present(&path, CLIPPY_LEN).unwrap()?;
+    Some(String::from_utf8(bytes).expect("a clippy.toml is text"))
+}
+
+/// The most bytes a `clippy.toml` holds: far past the workspace's.
+const CLIPPY_LEN: usize = 1 << 16;
+
+/// `workspace`, the workspace's `clippy.toml`, with the entries of each list that `own`, a
+/// crate's, adds to it after that list's own: what a crate's `clippy.toml` holds, as Clippy reads
+/// the nearest one alone and so no crate file may drop a ban of the workspace's.
+fn with_own_entries(workspace: &str, own: &str) -> String {
+    let mut merged = workspace.to_owned();
+    for list in ["disallowed-types", "disallowed-methods"] {
+        let entries = |text: &str| -> Vec<String> {
+            text.split_once(&format!("{list} = [\n"))
+                .and_then(|(_, rest)| rest.split_once("\n]"))
+                .map_or_else(Vec::new, |(list, _)| {
+                    list.lines().map(str::to_owned).collect()
+                })
+        };
+        let shared = entries(workspace);
+        let added: Vec<String> = entries(own)
+            .into_iter()
+            .filter(|line| !shared.contains(line))
+            .collect();
+        if added.is_empty() {
+            continue;
+        }
+        let head = format!("{list} = [\n");
+        let start = merged
+            .find(&head)
+            .expect("the workspace's clippy.toml holds each list")
+            + head.len();
+        let end = start + merged[start..].find("\n]").expect("a list ends");
+        merged.insert_str(end, &format!("\n{}", added.join("\n")));
+    }
+    merged
+}
+
+#[test]
+fn a_crates_clippy_toml_is_the_workspaces_with_its_own_entries() {
+    // Each crate's own `clippy.toml` holds the workspace's, written again with `CAMPFIRE_BLESS=1`,
+    // and a proxy owns every crate that has one.
+    let workspace = read(source().join("clippy.toml").to_str().unwrap());
+    let mut owned: Vec<&str> = PROXIES
+        .iter()
+        .flat_map(|proxy| proxy.crates)
+        .copied()
+        .collect();
+    owned.sort_unstable();
+    let mut found = Vec::new();
+    for krate in crates() {
+        let dir = krate.path.trim_start_matches("crates/");
+        let Some(own) = crate_clippy(dir) else {
+            continue;
+        };
+        found.push(krate.path.clone());
+        let path = source().join(&krate.path).join("clippy.toml");
+        PinnedFile::new(&path).pin(with_own_entries(&workspace, &own).as_bytes(), CLIPPY_LEN);
+    }
+    found.sort_unstable();
+    let owned: Vec<String> = owned.iter().map(|dir| format!("crates/{dir}")).collect();
+    assert_eq!(found, owned);
+    // An entry the crate adds goes after its list's own; one the workspace holds stays once.
+    let workspace = "a = 1\ndisallowed-methods = [\n    { path = \"x\" },\n]\n";
+    let own = "a = 1\ndisallowed-methods = [\n    { path = \"x\" },\n    { path = \"y\" },\n]\n";
+    assert_eq!(with_own_entries(workspace, own), own);
+    assert_eq!(with_own_entries(workspace, workspace), workspace);
+    let stale = "a = 2\ndisallowed-methods = [\n    { path = \"y\" },\n]\n";
+    assert_eq!(with_own_entries(workspace, stale), own);
 }
 
 #[test]

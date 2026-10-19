@@ -1,0 +1,215 @@
+use std::collections::BTreeMap;
+use std::sync::Arc;
+
+use bevy_platform::time::Instant as OsInstant;
+use campfire_net_core::Instant;
+use campfire_net_payload::{PayloadFate, SessionQueues, UnlinkReason};
+use campfire_store::Worker;
+
+use crate::channel_binding::ChannelBinding;
+use crate::datagram_io::DatagramIo;
+use crate::datagram_io::Outbound;
+use crate::endpoint_core::{EndpointTime, News, PeerKey};
+use crate::endpoint_parts::EndpointParts;
+use crate::endpoint_runtime::{EndpointRuntime, PassScratch};
+
+/// The carrier of a client's one session: the host's own.
+pub const CLIENT: u32 = 0;
+
+/// A host with no engine, for the tests of an endpoint's protocol: it runs an endpoint's frame
+/// steps as `campfire_net_endpoint` does, with a number for each session where the ECS has an
+/// entity and a [`HostLink`] where it has a link. Each payload a session opens is accepted.
+#[derive(Debug)]
+pub struct PlainHost<Io: DatagramIo> {
+    runtime: Arc<EndpointRuntime<Io, u32>>,
+    driver: Driver,
+    links: BTreeMap<u32, HostLink>,
+    next_carrier: u32,
+    outbound: Vec<Outbound>,
+    scratch: PassScratch,
+    carried: Vec<(PeerKey, u32)>,
+}
+
+/// What runs the host's pass: its frame on a driven clock, or a thread on the OS clock.
+#[derive(Debug)]
+enum Driver {
+    Inline,
+    Thread(Worker),
+}
+
+/// A session as the host holds it: its queues, its binding, whether it linked or ended, and what
+/// it opened and learned.
+#[derive(Debug, Default)]
+pub struct HostLink {
+    pub queues: SessionQueues,
+    pub binding: Option<ChannelBinding>,
+    pub linked: bool,
+    pub ended: Option<UnlinkReason>,
+    /// The bytes of each payload the session opened, in order.
+    pub opened: Vec<Vec<u8>>,
+    pub fates: Vec<PayloadFate>,
+}
+
+impl<Io: DatagramIo> PlainHost<Io> {
+    /// A host on a driven clock, whose frames run the pass at the instant each names.
+    pub fn driven(parts: EndpointParts<Io>) -> Self {
+        Self::new(parts, Driver::Inline)
+    }
+
+    /// A host on the OS clock since `origin`, whose IO thread runs the pass.
+    pub fn os(parts: EndpointParts<Io>, origin: OsInstant) -> Self {
+        let runtime = Arc::new(EndpointRuntime::new(parts));
+        runtime.lock().set_time(EndpointTime::Os(origin));
+        let thread = Arc::clone(&runtime);
+        let driver = Driver::Thread(Worker::start("campfire-plain-host", move || {
+            thread.run();
+        }));
+        Self::with_runtime(runtime, driver)
+    }
+
+    fn new(parts: EndpointParts<Io>, driver: Driver) -> Self {
+        Self::with_runtime(Arc::new(EndpointRuntime::new(parts)), driver)
+    }
+
+    fn with_runtime(runtime: Arc<EndpointRuntime<Io, u32>>, driver: Driver) -> Self {
+        Self {
+            runtime,
+            driver,
+            links: BTreeMap::new(),
+            next_carrier: CLIENT + 1,
+            outbound: Vec::new(),
+            scratch: PassScratch::default(),
+            carried: Vec::new(),
+        }
+    }
+
+    pub fn io(&self) -> &Io {
+        self.runtime.io()
+    }
+
+    /// The endpoint's time: the instant a driven host's last frame named, the OS's since its
+    /// origin on a thread.
+    pub fn now(&self) -> Instant {
+        self.runtime.lock().now()
+    }
+
+    /// Starts the endpoint at `now`: a client connects, its session carried by [`CLIENT`], and
+    /// a server accepts.
+    pub fn start(&mut self, now: Instant) {
+        {
+            let mut core = self.runtime.lock();
+            if matches!(self.driver, Driver::Inline) {
+                core.set_time(EndpointTime::Driven(now));
+            }
+            core.start(CLIENT, &mut self.outbound);
+            if core.is_client() {
+                self.links.insert(CLIENT, HostLink::default());
+            }
+        }
+        self.runtime.send(&mut self.outbound);
+    }
+
+    /// One frame at `now`: the receive step, which accepts each opened payload and takes each
+    /// fate, then the send step, as `campfire_net_endpoint`'s systems run them.
+    pub fn frame(&mut self, now: Instant) {
+        match &mut self.driver {
+            Driver::Inline => {
+                self.runtime.lock().set_time(EndpointTime::Driven(now));
+                self.runtime.pass(&mut self.scratch);
+            }
+            Driver::Thread(worker) => worker.check(),
+        }
+        self.receive();
+        for link in self.links.values_mut() {
+            for opened in link.queues.opened().collect::<Vec<_>>() {
+                link.queues.accept(opened.number);
+                link.opened.push(opened.payload.freeze().to_vec());
+            }
+            link.fates.extend(link.queues.fates());
+        }
+        self.send();
+    }
+
+    fn receive(&mut self) {
+        let runtime = &self.runtime;
+        let mut core = runtime.lock();
+        while let Some(news) = core.next_news() {
+            match news {
+                News::Linked {
+                    key,
+                    address,
+                    binding,
+                } => {
+                    let carrier = if core.is_client() {
+                        CLIENT
+                    } else {
+                        let carrier = self.next_carrier;
+                        self.next_carrier += 1;
+                        carrier
+                    };
+                    let link = self.links.entry(carrier).or_default();
+                    link.binding = binding;
+                    link.linked = true;
+                    core.carry(key, carrier, runtime.io().mtu(address));
+                }
+                News::Ended { carrier, reason } => {
+                    if let Some(link) = self.links.get_mut(&carrier) {
+                        link.linked = false;
+                        link.ended = Some(reason);
+                    }
+                }
+            }
+        }
+        self.carried.clear();
+        self.carried.extend(core.carried());
+        for &(key, carrier) in &self.carried {
+            let Some(link) = self.links.get_mut(&carrier) else {
+                continue;
+            };
+            core.hand_over(key, &mut link.queues);
+        }
+    }
+
+    fn send(&mut self) {
+        {
+            let mut core = self.runtime.lock();
+            for &(key, carrier) in &self.carried {
+                if let Some(link) = self.links.get_mut(&carrier) {
+                    core.take_over(key, &mut link.queues, &mut self.outbound);
+                }
+            }
+        }
+        self.runtime.send(&mut self.outbound);
+        match self.driver {
+            Driver::Inline => self.runtime.pass(&mut self.scratch),
+            Driver::Thread(_) => self.runtime.io().wake(),
+        }
+    }
+
+    /// The session `carrier` carries.
+    pub fn link(&self, carrier: u32) -> Option<&HostLink> {
+        self.links.get(&carrier)
+    }
+
+    pub fn link_mut(&mut self, carrier: u32) -> Option<&mut HostLink> {
+        self.links.get_mut(&carrier)
+    }
+
+    /// The carriers of the sessions a server took, which linked, in the order they linked.
+    pub fn linked(&self) -> impl Iterator<Item = u32> + '_ {
+        self.links
+            .iter()
+            .filter(|(carrier, link)| **carrier != CLIENT && link.linked)
+            .map(|(carrier, _)| *carrier)
+    }
+}
+
+impl<Io: DatagramIo> Drop for PlainHost<Io> {
+    fn drop(&mut self) {
+        {
+            self.runtime.lock().close_all(&mut self.outbound);
+        }
+        self.runtime.send(&mut self.outbound);
+        self.runtime.io().wake();
+    }
+}

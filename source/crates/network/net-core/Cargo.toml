@@ -1,0 +1,25 @@
+[package]
+name = "campfire-net-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# `Reflect` on the shared types, for the ECS crates that hold them in components and resources
+reflect = ["dep:bevy_reflect"]
+# `Resource` on the shared types the ECS holds as resources, as `TickRate`
+ecs = ["dep:bevy_ecs"]
+
+[dependencies]
+campfire-net-bytes.workspace = true
+
+fixed.workspace = true
+blake3.workspace = true
+serde.workspace = true
+
+bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"], optional = true }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"], optional = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,53 @@
+[package]
+name = "campfire-net-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The channels' LZ4 compression, in `net-channels`
+compression_lz4 = ["campfire-net-channels/compression_lz4"]
+internals = [
+    "dep:bytes",
+    "dep:criterion",
+    "dep:campfire-net-common",
+    "campfire-net-common/internals",
+    "dep:campfire-net-stepper",
+    "campfire-net-channels/internals",
+    "campfire-net-timeline/internals",
+    "campfire-net-payload/internals",
+]
+
+[dependencies]
+campfire-net-channels.workspace = true
+campfire-net-timeline.workspace = true
+campfire-net-common = { workspace = true, optional = true }
+campfire-net-core.workspace = true
+campfire-net-link.workspace = true
+campfire-net-connection.workspace = true
+campfire-net-stepper = { workspace = true, optional = true }
+campfire-net-payload.workspace = true
+
+bytes = { workspace = true, optional = true }
+criterion = { workspace = true, optional = true }
+tracing.workspace = true
+
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_derive = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
+bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"] }
+
+[dev-dependencies]
+campfire-net-transport = { workspace = true, features = ["internals"] }
+
+[lib]
+bench = false
+
+[[bench]]
+name = "net-transport"
+harness = false
+required-features = ["internals"]
+
+[lints]
+workspace = true

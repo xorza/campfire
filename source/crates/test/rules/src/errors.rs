@@ -2,12 +2,14 @@ use campfire_store::internals::{SourceFile, SourceFiles};
 
 use crate::workspace::source;
 
-/// The lines that write an error's message alone and pass: Rhai's `EvalAltResult` has no source,
-/// so its message is all of it; clap writes its value parser's error into its own message, which
-/// `Logging::command_line` logs as the usage error; and a script failure's text keeps each error
-/// of its chain's message apart, its source the rest of the chain, which its report writes.
-const ALONE: [&str; 3] = [
+/// The lines that write an error's message alone and pass: Rhai's `EvalAltResult` and Bevy's
+/// `BevyError`, a diff's, give no source, so the message is all of it; clap writes its value
+/// parser's error into its own message, which `Logging::command_line` logs as the usage error; and
+/// a script failure's text keeps each error of its chain's message apart, its source the rest of
+/// the chain, which its report writes.
+const ALONE: [&str; 4] = [
     "_ => ScriptError::Runtime(error.to_string()),",
+    "Self::ApplyDiff(error) => write!(f, \"a diff did not apply to its base: {error}\"),",
     "error!(error = %error, \"the command line is refused\");",
     "message: error.to_string(),",
 ];

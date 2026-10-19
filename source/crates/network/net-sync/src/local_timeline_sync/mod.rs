@@ -1,0 +1,216 @@
+use crate::sync_config::SyncConfig;
+use crate::sync_hysteresis::SyncHysteresis;
+use crate::sync_sample::SyncSample;
+use crate::timeline_sync::TimelineSync;
+
+use crate::input_timeline_config::InputTimelineConfig;
+use crate::link_estimate::LinkEstimate;
+use crate::link_estimator::LinkEstimator;
+use bevy_ecs::prelude::*;
+use bevy_reflect::Reflect;
+use campfire_net_connection::NetworkTopology;
+use campfire_net_connection::NetworkingState;
+use campfire_net_core::TickDelta;
+use campfire_net_core::TickInstant;
+use campfire_net_core::TickRate;
+use tracing::trace;
+
+/// Runtime state for synchronizing the application-global
+/// [`LocalTimeline`](campfire_net_timeline::LocalTimeline).
+///
+/// This resource is not a clock. The authoritative fractional simulation instant is constructed
+/// from `LocalTimeline` and `Time<Fixed>` when synchronization runs.
+#[derive(Resource, Debug, Reflect)]
+pub struct LocalTimelineSync {
+    controller: SyncHysteresis,
+    /// Current input_delay_ticks that are being applied
+    pub(crate) input_delay_ticks: u16,
+    /// The input delay the link's latency calls for, which the next resync applies: a delay
+    /// changes only with the timeline shift a resync makes, as inputs are stamped by it.
+    link_input_delay_ticks: u16,
+    relative_speed: f32,
+    is_synced: bool,
+}
+
+impl LocalTimelineSync {
+    /// Return the input delay in number of ticks
+    pub const fn input_delay(&self) -> u16 {
+        self.input_delay_ticks
+    }
+}
+
+impl Default for LocalTimelineSync {
+    fn default() -> Self {
+        Self {
+            controller: SyncHysteresis::default(),
+            input_delay_ticks: 0,
+            link_input_delay_ticks: 0,
+            relative_speed: 1.0,
+            is_synced: false,
+        }
+    }
+}
+
+impl LocalTimelineSync {
+    /// Recompute the global input delay from the client Link of the current topology, and
+    /// apply it at once.
+    ///
+    /// Returns `false` when the topology has no client Link.
+    pub(crate) fn recompute_input_delay(
+        &mut self,
+        config: &InputTimelineConfig,
+        topology: &NetworkTopology,
+        links: &Query<'_, '_, &LinkEstimator>,
+        tick_rate: TickRate,
+    ) -> bool {
+        let client = match topology {
+            NetworkTopology::Client(client) | NetworkTopology::HostClient { client, .. } => *client,
+            NetworkTopology::Undefined
+            | NetworkTopology::Server(_)
+            | NetworkTopology::Invalid(_) => return false,
+        };
+        let Ok(estimator) = links.get(client) else {
+            return false;
+        };
+        self.apply_link_input_delay(config, estimator.estimate(), tick_rate);
+        true
+    }
+
+    /// Applies the input delay `estimate` calls for at once, where no resync will.
+    pub(crate) fn apply_link_input_delay(
+        &mut self,
+        config: &InputTimelineConfig,
+        estimate: Option<LinkEstimate>,
+        tick_rate: TickRate,
+    ) {
+        self.set_link_input_delay(config, estimate, tick_rate);
+        self.input_delay_ticks = self.link_input_delay_ticks;
+    }
+
+    /// Recompute input delay when the global configuration resource is inserted or replaced.
+    pub(crate) fn recompute_input_delay_on_config_update(
+        _trigger: On<'_, '_, Insert<InputTimelineConfig>>,
+        tick_rate: Res<'_, TickRate>,
+        networking: Res<'_, NetworkingState>,
+        links: Query<'_, '_, &LinkEstimator>,
+        config: Res<'_, InputTimelineConfig>,
+        mut timeline: ResMut<'_, Self>,
+    ) {
+        if !timeline.recompute_input_delay(&config, &networking.topology, &links, *tick_rate) {
+            // Configuration is commonly installed before a Client or HostClient connects. The
+            // configured minimum is topology-independent; the first resync replaces it with the
+            // latency-aware delay once the Link is ready.
+            timeline.input_delay_ticks = config.input_delay_config.minimum_input_delay_ticks();
+        }
+        trace!(
+            input_delay_ticks = timeline.input_delay(),
+            config = ?config.input_delay_config,
+            topology = ?networking.topology,
+            "recomputed global input delay after config update"
+        );
+    }
+
+    /// Records the input delay the link's `estimate` calls for, which the next resync applies.
+    pub(crate) fn set_link_input_delay(
+        &mut self,
+        config: &InputTimelineConfig,
+        estimate: Option<LinkEstimate>,
+        tick_rate: TickRate,
+    ) {
+        self.link_input_delay_ticks =
+            config
+                .input_delay_config
+                .input_delay_ticks(estimate, &config.sync, tick_rate);
+    }
+}
+
+impl TimelineSync for LocalTimelineSync {
+    type Config = InputTimelineConfig;
+
+    fn sync_hysteresis(&mut self) -> &mut SyncHysteresis {
+        &mut self.controller
+    }
+
+    fn sync_config(config: &Self::Config) -> &SyncConfig {
+        &config.sync
+    }
+
+    /// Compute the desired local simulation instant.
+    ///
+    /// The local simulation runs far enough ahead of the remote timeline for inputs to arrive,
+    /// with RTT and jitter margins. Input delay reduces that required clock lead because inputs are
+    /// assigned to later ticks without advancing the simulation clock itself.
+    fn sync_objective(&self, sample: &SyncSample<'_, Self::Config>) -> TickInstant {
+        let SyncSample {
+            remote,
+            config,
+            estimate,
+            tick_rate,
+        } = *sample;
+        let remote = remote.current_estimate();
+        let network_delay = TickDelta::from_duration(estimate.rtt() / 2, tick_rate);
+        let jitter_margin = TickDelta::from_duration(
+            config.sync.jitter_margin(estimate.jitter(), tick_rate),
+            tick_rate,
+        );
+        let input_delay = TickDelta::from(i32::from(self.input_delay_ticks));
+        let sync_error_margin = TickDelta::try_from(config.sync.error_margin)
+            .expect("the error margin is under 2^31 ticks");
+        // Inputs received by the server in `PreUpdate` are first read in
+        // `FixedPreUpdate`, after `LocalTimeline` advances in `FixedFirst`.
+        // Therefore an input packet that arrives while the server is at tick T
+        // must contain inputs for at least tick T + 1.
+        //
+        // `sync_error_margin` compensates for the sync controller's allowed
+        // deadband: the controller may let the local timeline drift behind the
+        // objective by this much without correcting.
+        let obj = remote + network_delay + jitter_margin + TickDelta::from(1) + sync_error_margin
+            - input_delay;
+        trace!(
+            ?remote,
+            ?network_delay,
+            ?jitter_margin,
+            ?sync_error_margin,
+            ?input_delay,
+            "LocalTimeline sync objective: {:?}",
+            obj
+        );
+        obj
+    }
+
+    /// Applies the link's input delay with the shift, in one step: the objective subtracts the
+    /// applied delay, so the new one moves it by their difference.
+    fn resync(&mut self, now: TickInstant, sync_objective: TickInstant) -> i32 {
+        let objective = sync_objective
+            + TickDelta::from(
+                i32::from(self.input_delay_ticks) - i32::from(self.link_input_delay_ticks),
+            );
+        self.input_delay_ticks = self.link_input_delay_ticks;
+        (objective - now).to_i32()
+    }
+
+    fn is_synced(&self) -> bool {
+        self.is_synced
+    }
+
+    fn set_synced(&mut self, synced: bool) {
+        self.is_synced = synced;
+    }
+
+    fn relative_speed(&self) -> f32 {
+        self.relative_speed
+    }
+
+    fn set_relative_speed(&mut self, ratio: f32) {
+        self.relative_speed = ratio;
+    }
+
+    /// Resets the controller and the session's input delay, which the first resync sets.
+    fn reset(&mut self) {
+        trace!("Resetting LocalTimelineSync");
+        *self = Self::default();
+    }
+}
+
+#[cfg(test)]
+mod tests;

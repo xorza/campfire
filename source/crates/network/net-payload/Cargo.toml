@@ -1,0 +1,23 @@
+[package]
+name = "campfire-net-payload"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# Queues with no budget, and a loop-back, for the tests of every layer above
+internals = []
+# `Reflect` on the close codes and unlink reasons, for the ECS crates that hold them
+reflect = ["dep:bevy_reflect"]
+
+[dependencies]
+bytes.workspace = true
+serde.workspace = true
+
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"], optional = true }
+
+[dev-dependencies]
+campfire-net-payload = { workspace = true, features = ["internals"] }
+
+[lints]
+workspace = true

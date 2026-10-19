@@ -1,0 +1,51 @@
+[package]
+name = "campfire-net-prediction"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = [
+    "dep:serde",
+    "campfire-net-interpolation/internals",
+    "dep:campfire-net-stepper",
+    "campfire-net-timeline/internals",
+    "campfire-net-sync/internals",
+    "campfire-net-replication/internals",
+]
+
+[dependencies]
+campfire-net-timeline.workspace = true
+campfire-net-core.workspace = true
+campfire-net-despawn.workspace = true
+campfire-net-connection.workspace = true
+campfire-net-stepper = { workspace = true, optional = true }
+campfire-net-sync.workspace = true
+campfire-net-replication.workspace = true
+campfire-net-interpolation.workspace = true
+
+bytes.workspace = true
+serde = { workspace = true, optional = true }
+tracing.workspace = true
+
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_curve = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_diagnostic = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
+bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
+bevy_time = { version = "=0.20.0", default-features = false }
+bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"] }
+
+[dev-dependencies]
+campfire-codec = { workspace = true, features = ["internals"] }
+campfire-net-emulator = { workspace = true, features = ["internals"] }
+campfire-net-prediction = { workspace = true, features = ["internals"] }
+
+serde.workspace = true
+
+bevy = { version = "=0.20.0", default-features = false }
+bevy_state = { version = "=0.20.0", default-features = false }
+
+[lints]
+workspace = true

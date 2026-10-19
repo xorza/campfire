@@ -1,0 +1,52 @@
+[package]
+name = "campfire-net-interpolation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The interpolation layer's stack and test components, for the tests and benches of every layer
+# above
+internals = [
+    "campfire-net-replication/internals",
+    "campfire-net-sync/internals",
+    "dep:campfire-net-stepper",
+    "campfire-net-timeline/internals",
+    "campfire-net-messages/internals",
+]
+
+[dependencies]
+campfire-net-timeline.workspace = true
+campfire-net-core.workspace = true
+campfire-net-despawn.workspace = true
+campfire-net-connection.workspace = true
+campfire-net-stepper = { workspace = true, optional = true }
+campfire-net-messages.workspace = true
+campfire-net-sync.workspace = true
+campfire-net-replication.workspace = true
+
+bytes.workspace = true
+serde.workspace = true
+tracing.workspace = true
+variadics_please.workspace = true
+
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_curve = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_derive = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
+bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
+bevy_time = { version = "=0.20.0", default-features = false }
+bevy_transform = { version = "=0.20.0", default-features = false, features = ["bevy-support"] }
+bevy_utils = { version = "=0.20.0", default-features = false, features = ["debug"] }
+
+[dev-dependencies]
+campfire-codec = { workspace = true, features = ["internals"] }
+campfire-net-interpolation = { workspace = true, features = ["internals"] }
+
+bevy = { version = "=0.20.0", default-features = false }
+bevy_state = { version = "=0.20.0", default-features = false }
+
+[lints]
+workspace = true

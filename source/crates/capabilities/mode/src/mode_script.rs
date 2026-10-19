@@ -12,7 +12,7 @@ const RUN: usize = 0;
 
 /// The mode's values as its scripts read them: its params, each option's picked value among them,
 /// and `ctx.map`. Script values, which only the match's thread of scripts holds, so the mode's
-/// call part holds them and `MatchMode` does not; package data, not state.
+/// call extension holds them and `MatchMode` does not; package data, not state.
 #[derive(Debug)]
 pub(crate) struct ModeScript {
     /// One run; each param as `ctx.params` reads it, converted once.

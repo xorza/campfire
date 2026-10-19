@@ -1,0 +1,66 @@
+[package]
+name = "campfire-net-replication"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+# The replication layer's stack and test components, for the tests and benches of every layer above
+internals = [
+    "dep:criterion",
+    "dep:campfire-net-common",
+    "campfire-net-common/internals",
+    "campfire-net-messages/internals",
+    "dep:campfire-net-stepper",
+    "campfire-codec/internals",
+    "campfire-net-channels/internals",
+    "campfire-net-timeline/internals",
+    "campfire-net-bytes/internals",
+    "campfire-net-transport/internals",
+]
+
+[dependencies]
+campfire-codec.workspace = true
+campfire-net-channels.workspace = true
+campfire-net-timeline.workspace = true
+campfire-net-common = { workspace = true, optional = true }
+campfire-net-bytes.workspace = true
+campfire-net-core.workspace = true
+campfire-net-despawn.workspace = true
+campfire-net-connection.workspace = true
+campfire-net-stepper = { workspace = true, optional = true }
+campfire-net-transport.workspace = true
+campfire-net-messages.workspace = true
+
+bytes.workspace = true
+criterion = { workspace = true, optional = true }
+serde.workspace = true
+smallvec.workspace = true
+tracing.workspace = true
+
+bevy_app = { version = "=0.20.0", default-features = false }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect", "serialize"] }
+bevy_math = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_platform = { version = "=0.20.0", default-features = false, features = ["std"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "smallvec"] }
+bevy_replicon = { version = "=0.45.2", default-features = false, features = ["client", "server"] }
+bevy_state = { version = "=0.20.0", default-features = false }
+bevy_time = { version = "=0.20.0", default-features = false, features = ["bevy_reflect"] }
+bevy_transform = { version = "=0.20.0", default-features = false, features = ["libm"] }
+
+[dev-dependencies]
+campfire-net-link.workspace = true
+campfire-net-replication = { workspace = true, features = ["internals"] }
+
+bevy = { version = "=0.20.0", default-features = false }
+
+[lib]
+bench = false
+
+[[bench]]
+name = "net-replication"
+harness = false
+required-features = ["internals"]
+
+[lints]
+workspace = true

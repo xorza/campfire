@@ -110,7 +110,7 @@ struct DeclarationAudit {
     checks: Vec<Named>,
     books: Vec<DeclaredBook>,
     columns: Vec<Named>,
-    call_parts: Vec<Named>,
+    call_extensions: Vec<Named>,
     /// Each part: its host, the kinds the host takes, and its type.
     parts: Vec<(Named, Vec<TypeId>, Named)>,
     calls: Vec<Named>,
@@ -174,8 +174,8 @@ impl DeclarationAudit {
         once("book", self.books.iter().map(|book| book.ty.name).collect());
         once("column", self.columns.iter().map(|ty| ty.name).collect());
         once(
-            "call part",
-            self.call_parts.iter().map(|ty| ty.name).collect(),
+            "call extension",
+            self.call_extensions.iter().map(|ty| ty.name).collect(),
         );
         once("part", self.parts.iter().map(|(.., ty)| ty.name).collect());
         // A state part sits on a declared kind, and never comes with the spawn as well.
@@ -407,11 +407,11 @@ impl Declarations for DeclarationAudit {
     }
 
     fn call_extension<P: CallExtension + Default>(&mut self) {
-        self.call_parts.push(Named::of::<P>());
+        self.call_extensions.push(Named::of::<P>());
     }
 
     fn call_params<P: CallParams + Default>(&mut self) {
-        self.call_parts.push(Named::of::<P>());
+        self.call_extensions.push(Named::of::<P>());
     }
 
     fn part<H: HostRule + SimComponent, C: SimComponent>(
