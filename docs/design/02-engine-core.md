@@ -45,6 +45,7 @@ The engine's structure: its modules, the rules that hold them, and the choices o
 | `verifier` | built | CLI that replays a session log and checks it |
 | `lan-check` | built | The real server and bot clients over QUIC on localhost, on request |
 | `zero-hour-check` | built | Imports and checks a Zero Hour install, on request |
+| `vocabulary` | built | Writes the repository's layout and the names its Rust files declare to one text file for review, on request |
 | `harness` | built | The session and network tests' match harness; never shipped |
 | `rules` | built | The workspace's structural rules as tests; never shipped |
 | `test-packages` | built | The workspace's test packages; never shipped |

@@ -75,6 +75,7 @@ Every check, test and bench runs through `cargo drive`, from `source/` ([The dri
 | `cargo drive test [nextest arguments]` | each workspace package's `package.index` written again, then the tests, each time; with arguments, those nextest selects |
 | `cargo drive bench [criterion arguments]` | the benches, only when the task asks for them |
 | `cargo drive run lan`, `cargo drive run zero-hour [out]` | the LAN check and the Zero Hour check, on request |
+| `cargo drive run vocabulary [out]` | the repository's layout and the names its Rust files declare, in `target/vocabulary.txt` unless `out` names another file, on request |
 | `cargo drive run index` | each workspace package's `package.index`, after a change to a package |
 | `cargo drive gate` | `fmt`, the lints, the build that ships, the Windows lint on Linux, the tests, the LAN check and each bench case once, to the first failure; CI runs `gate --ci`, which checks the format and runs every step |
 | `cargo drive package` | the release build of the shipped binaries, stripped, each with its debug info beside it in `target/package` |

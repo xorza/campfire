@@ -27,6 +27,7 @@ members = [
 
 default-members = [
     "checks/lan-check",
+    "checks/vocabulary",
     "crates/apps/client",
     "crates/apps/import",
     "crates/apps/server",
@@ -110,6 +111,11 @@ steps = [
 # The Zero Hour check, which needs `GENERALSZH_DATA`: its arguments are the check's own.
 [workspace.metadata.drive.commands.zero-hour]
 steps = [{ cargo = "run --profile release-dev -p campfire-zero-hour-check", args = true }]
+
+# The repository's layout and the names its Rust files declare, in one text file for review: its
+# argument is the file it writes.
+[workspace.metadata.drive.commands.vocabulary]
+steps = [{ cargo = "run -p campfire-vocabulary", args = true }]
 
 [workspace.package]
 version = "0.1.0"
@@ -252,6 +258,7 @@ signal-hook = { version = "=0.4.4", default-features = false }
 socket2 = { version = "=0.6.5", features = ["all"] }
 syn = { version = "=2.0.119", default-features = false, features = [
     "derive",
+    "full",
     "parsing",
     "printing",
     "proc-macro",

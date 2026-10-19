@@ -3201,6 +3201,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-vocabulary"
+version = "0.1.0"
+dependencies = [
+ "campfire-common",
+ "campfire-log",
+ "campfire-store",
+ "clap",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+ "thiserror 2.0.21",
+ "tracing",
+]
+
+[[package]]
 name = "campfire-zero-hour-check"
 version = "0.1.0"
 dependencies = [
